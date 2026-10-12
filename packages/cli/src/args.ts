@@ -472,6 +472,13 @@ Start a colony from a spec. The file is Markdown with one fenced block tagged
 \`\`\`json firetrident holding {"firetrident":"spec/v1", name, goal, rules[], intents[]}.
 ft creates an empty colony, adds each rule, then declares each intent.
 
+  context[]          ## sections every intent carries as its spec context
+                     (default: every section but the machine-readable one)
+  intents[].uses     files the intent builds on (other intents create them): it is
+                     declared after them, they become its parent, and its agent
+                     waits for them to land and reads them before writing
+  intents[].model    "default", "bulk" or a model id its files are written with
+
 Example
   ft new --spec demo/new-project-spec.md
 `,

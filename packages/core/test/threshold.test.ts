@@ -1,7 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
-import { admissionOpen, chooseIntent, reinforceThreshold, responseProbability, stimulus } from "../src/threshold.ts";
+import { markValue } from "../src/field.ts";
+import {
+  LATERAL_INHIBITION,
+  admissionOpen,
+  chooseIntent,
+  directClaimOn,
+  inhibited,
+  reinforceThreshold,
+  responseProbability,
+  stimulus,
+} from "../src/threshold.ts";
 import type { Candidate } from "../src/threshold.ts";
-import type { Intent } from "../src/types.ts";
+import type { FieldReading, Intent } from "../src/types.ts";
 
 const MIN = 60_000;
 const NOW = 100 * MIN;
@@ -180,6 +190,133 @@ describe("chooseIntent", () => {
   it("returns the candidate object itself", () => {
     const c = candidate("a", 1, "src");
     expect(chooseIntent([c], {}, NOW, () => 0)).toBe(c);
+  });
+});
+
+describe("directClaimOn", () => {
+  const byPath: FieldReading["byPath"] = {
+    "src/a.ts": { claim: 1, danger: 3 },
+    "src/b.ts": { claim: 0.25 },
+    "src/": { claim: 2 },
+    "src/**/*.ts": { claim: 2 },
+    "src/c.ts": { danger: 1, trail: 4 },
+  };
+
+  it("sums claims on exactly the footprint paths", () => {
+    expect(directClaimOn(byPath, ["src/a.ts", "src/b.ts"])).toBe(1.25);
+    expect(directClaimOn(byPath, ["src/a.ts"])).toBe(1);
+  });
+
+  it("ignores directory and glob claims that only overlap, danger, and other kinds", () => {
+    expect(directClaimOn(byPath, ["src/z.ts"])).toBe(0);
+    expect(directClaimOn(byPath, ["src/c.ts"])).toBe(0);
+  });
+
+  it("counts a directory or glob entry only against the same entry", () => {
+    expect(directClaimOn(byPath, ["src/"])).toBe(2);
+    expect(directClaimOn(byPath, ["src/**/*.ts"])).toBe(2);
+  });
+
+  it("counts a path once however often the footprint lists it", () => {
+    expect(directClaimOn(byPath, ["src/a.ts", "src/a.ts"])).toBe(1);
+  });
+
+  it("is 0 for an empty footprint or reading", () => {
+    expect(directClaimOn(byPath, [])).toBe(0);
+    expect(directClaimOn({}, ["src/a.ts"])).toBe(0);
+  });
+
+  it("skips non-finite and negative values", () => {
+    const odd: FieldReading["byPath"] = { a: { claim: Number.NaN }, b: { claim: -1 }, c: { claim: Infinity }, d: { claim: 0.5 } };
+    expect(directClaimOn(odd, ["a", "b", "c", "d"])).toBe(0.5);
+  });
+
+  it("does not read inherited keys", () => {
+    expect(directClaimOn({}, ["constructor", "__proto__", "toString"])).toBe(0);
+    const own = Object.fromEntries([["constructor", { claim: 1 }]]) as FieldReading["byPath"];
+    expect(directClaimOn(own, ["constructor"])).toBe(1);
+  });
+});
+
+describe("inhibited (lateral inhibition)", () => {
+  it("defaults to half a fresh claim", () => {
+    expect(LATERAL_INHIBITION).toBe(0.5);
+    expect(inhibited({ directClaim: 0.5 })).toBe(true);
+    expect(inhibited({ directClaim: 1 })).toBe(true);
+    expect(inhibited({ directClaim: 0.4999 })).toBe(false);
+  });
+
+  it("never inhibits without a positive claim", () => {
+    expect(inhibited({})).toBe(false);
+    expect(inhibited({ directClaim: 0 })).toBe(false);
+    expect(inhibited({ directClaim: -1 })).toBe(false);
+    expect(inhibited({ directClaim: Number.NaN })).toBe(false);
+    expect(inhibited({ directClaim: 0 }, 0)).toBe(false);
+  });
+
+  it("takes a custom threshold; Infinity turns it off, 0 inhibits on any claim, NaN is the default", () => {
+    expect(inhibited({ directClaim: 1 }, 1.5)).toBe(false);
+    expect(inhibited({ directClaim: 2 }, 1.5)).toBe(true);
+    expect(inhibited({ directClaim: 1e9 }, Infinity)).toBe(false);
+    expect(inhibited({ directClaim: Infinity }, Infinity)).toBe(false);
+    expect(inhibited({ directClaim: 0.01 }, 0)).toBe(true);
+    expect(inhibited({ directClaim: 0.01 }, -1)).toBe(true);
+    expect(inhibited({ directClaim: 0.6 }, Number.NaN)).toBe(true);
+    expect(inhibited({ directClaim: 0.4 }, Number.NaN)).toBe(false);
+  });
+
+  it("decays with the claim: a silent agent's claim stops inhibiting after one half-life", () => {
+    const claim = { id: "m", kind: "claim" as const, path: "src/a.ts", strength: 1, at: 0 };
+    const halfLife = 5 * MIN * Math.LN2;
+    expect(inhibited({ directClaim: markValue(claim, 45_000) })).toBe(true); // a heartbeat interval
+    expect(inhibited({ directClaim: markValue(claim, halfLife - 1_000) })).toBe(true);
+    expect(inhibited({ directClaim: markValue(claim, halfLife + 1_000) })).toBe(false);
+    // Two agents on the same file keep it inhibited for about two half-lives.
+    expect(inhibited({ directClaim: 2 * markValue(claim, 2 * halfLife - 1_000) })).toBe(true);
+    expect(inhibited({ directClaim: 2 * markValue(claim, 2 * halfLife + 1_000) })).toBe(false);
+  });
+});
+
+describe("chooseIntent with lateral inhibition", () => {
+  it("skips a candidate whose files another agent claims, without drawing for it", () => {
+    const cands = [candidate("claimed", 5, "src", { repulsion: 1, directClaim: 1 }), candidate("free", 1, "lib")];
+    const rand = sequence(0);
+    expect(chooseIntent(cands, {}, NOW, rand)?.intent.id).toBe("free");
+    expect(rand).toHaveBeenCalledTimes(1);
+  });
+
+  it("is not overridden by age, priority or an eager threshold", () => {
+    const old: Candidate = { ...candidate("old", 10, "src", { repulsion: 1, directClaim: 1 }), intent: intent({ id: "old", priority: 10, createdAt: NOW - 600 * MIN }) };
+    expect(chooseIntent([old], { src: 0.01 }, NOW, () => 0)).toBeNull();
+    expect(chooseIntent([old, candidate("free", 0.5, "lib")], { src: 0.01 }, NOW, () => 0)?.intent.id).toBe("free");
+  });
+
+  it("returns null when every candidate is inhibited", () => {
+    const cands = [candidate("a", 2, "src", { directClaim: 0.5 }), candidate("b", 3, "lib", { directClaim: 2 })];
+    expect(chooseIntent(cands, {}, NOW, () => 0)).toBeNull();
+  });
+
+  it("leaves a claim below the threshold soft: it only lowers the stimulus", () => {
+    // A decayed claim of 0.4: still the best candidate (stimulus 3 - 0.4 > 2), so it is taken.
+    const cands = [candidate("decayed", 3, "src", { repulsion: 0.4, directClaim: 0.4 }), candidate("other", 2, "lib")];
+    expect(chooseIntent(cands, {}, NOW, () => 0)?.intent.id).toBe("decayed");
+  });
+
+  it("keeps co-change repulsion soft however large it is", () => {
+    // Repulsion from claimed neighbors (no claim on the intent's own files) never skips a candidate.
+    const coupled: Candidate = { ...candidate("coupled", 1, "src", { repulsion: 5 }), intent: intent({ id: "coupled", priority: 1, createdAt: NOW - 60 * MIN }) };
+    expect(chooseIntent([coupled], {}, NOW, () => 0)?.intent.id).toBe("coupled");
+  });
+
+  it("takes a custom threshold (Infinity turns lateral inhibition off)", () => {
+    const cands = [candidate("claimed", 5, "src", { repulsion: 1, directClaim: 1 }), candidate("free", 1, "lib")];
+    expect(chooseIntent(cands, {}, NOW, () => 0, 1, Infinity)?.intent.id).toBe("claimed");
+    expect(chooseIntent(cands, {}, NOW, () => 0, 1, 1.5)?.intent.id).toBe("claimed");
+    expect(chooseIntent(cands, {}, NOW, () => 0, 1, 1)?.intent.id).toBe("free");
+  });
+
+  it("treats a missing directClaim as no claim", () => {
+    expect(chooseIntent([candidate("a", 1, "src")], {}, NOW, () => 0)?.intent.id).toBe("a");
   });
 });
 

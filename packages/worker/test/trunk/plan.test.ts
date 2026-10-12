@@ -1,0 +1,166 @@
+import { describe, expect, it } from "vitest";
+import type { FileVersion, Landing, Path, Proposal, Sha } from "@fire_trident/core";
+import { overlaps, planCycle, resultsFor, uniqueProposals, type Outcome, type PlanProposal } from "../../src/trunk/plan.ts";
+
+const sha = (c: string): Sha => c.repeat(40).slice(0, 40);
+const OLD = sha("0");
+
+function prop(id: string, writes: Record<Path, Sha | null>, reads: Record<Path, Sha | null> = {}): Proposal {
+  return {
+    id,
+    colonyId: "c",
+    intentId: `int_${id}`,
+    agentId: `agt_${id}`,
+    workspace: { namespace: "ft-ws-0", name: `c--ws-${id}`, remote: "https://example.invalid/ws.git" },
+    baseSha: sha("b"),
+    headSha: sha("h"),
+    writeSet: Object.entries(writes).map(([path, blob]) => ({ path, blob })),
+    readSet: Object.entries(reads).map(([path, blob]) => ({ path, blob })),
+    declared: { footprint: Object.keys(writes), summary: id },
+    evidence: { checks: [] },
+    status: "ready",
+    createdAt: 0,
+  };
+}
+
+/** A plan entry whose base holds `base` for its written paths (default: what trunk holds now). */
+function entry(p: Proposal, trunk: Record<Path, Sha | null>, base: Record<Path, Sha | null> = {}): PlanProposal {
+  const fv: FileVersion[] = p.writeSet.map((w) => ({ path: w.path, blob: w.path in base ? base[w.path]! : (trunk[w.path] ?? null) }));
+  return { p, base: fv };
+}
+
+function landing(id: string, proposalIds: string[]): Landing {
+  return { id, colonyId: "c", trunkSha: sha("t"), parentSha: sha("p"), proposalIds, intentIds: [], paths: [], regions: [], at: 1 };
+}
+
+describe("planCycle: one cycle, chained commits", () => {
+  const trunk: Record<Path, Sha | null> = { "src/a.ts": OLD, "src/b.ts": OLD, "docs/x.md": OLD, lib: OLD };
+  const at = (path: Path): Sha | null => trunk[path] ?? null;
+
+  it("lands independent batches from different lanes in the same cycle", () => {
+    const a = prop("a", { "src/a.ts": sha("1") });
+    const b = prop("b", { "docs/x.md": sha("2") }, { "src/b.ts": OLD });
+    const plan = planCycle([[entry(a, trunk)], [entry(b, trunk)]], at);
+    expect(plan.accepted.map((x) => x.map((p) => p.id))).toEqual([["a"], ["b"]]);
+    expect(plan.returned).toEqual([[], []]);
+  });
+
+  it("returns a later batch's write to a path an earlier batch writes (write/write), naming the proposal ahead", () => {
+    const a = prop("a", { "src/a.ts": sha("1") });
+    const b = prop("b", { "src/a.ts": sha("2") });
+    const plan = planCycle([[entry(a, trunk)], [entry(b, trunk)]], at);
+    expect(plan.accepted).toEqual([[a], []]);
+    expect(plan.returned[1]).toEqual([
+      { proposalId: "b", reason: `stale: src/a.ts (expected ${OLD}, trunk has ${sha("1")}, landing ahead in this cycle from a)` },
+    ]);
+  });
+
+  it("returns a later batch that read a path an earlier batch writes (write/read)", () => {
+    const a = prop("a", { "src/a.ts": sha("1") });
+    const b = prop("b", { "docs/x.md": sha("2") }, { "src/a.ts": OLD });
+    const plan = planCycle([[entry(a, trunk)], [entry(b, trunk)]], at);
+    expect(plan.accepted).toEqual([[a], []]);
+    expect(plan.returned[1]![0]!.reason).toMatch(/^stale: src\/a\.ts \(expected 0{40}, trunk has 1{40}, landing ahead in this cycle from a\)$/);
+  });
+
+  it("lets a later batch write a path an earlier batch only read: the earlier commit lands first, on the trunk it read", () => {
+    const a = prop("a", { "docs/x.md": sha("1") }, { "src/a.ts": OLD });
+    const b = prop("b", { "src/a.ts": sha("2") });
+    const plan = planCycle([[entry(a, trunk)], [entry(b, trunk)]], at);
+    expect(plan.accepted).toEqual([[a], [b]]);
+  });
+
+  it("keeps the lane's rule inside one batch (one commit): overlapping writes and reads conflict", () => {
+    const a = prop("a", { "src/a.ts": sha("1") }, { "src/b.ts": OLD });
+    const b = prop("b", { "docs/x.md": sha("2") }, { "src/a.ts": OLD }); // reads what a writes
+    const c = prop("c", { "src/b.ts": sha("3") }); // writes what a reads
+    const plan = planCycle([[entry(a, trunk), entry(b, trunk), entry(c, trunk)]], at);
+    expect(plan.accepted).toEqual([[a]]);
+    expect(plan.returned[0]).toEqual([
+      { proposalId: "b", reason: "conflicts with another proposal in this landing on src/a.ts" },
+      { proposalId: "c", reason: "conflicts with another proposal in this landing on src/b.ts" },
+    ]);
+  });
+
+  it("returns a file/directory clash with an earlier batch (one path a prefix of the other)", () => {
+    const n = prop("n", { "gen/out": sha("1") }); // creates a file gen/out
+    const d = prop("d", { "gen/out/part.ts": sha("2") }); // would need gen/out to be a directory
+    const z = prop("z", { "src/a.ts": null }); // deletes src/a.ts
+    const c = prop("c", { "src/a.ts": sha("3") }); // writes it on the base z deletes
+    const plan = planCycle([[entry(n, trunk)], [entry(d, trunk)], [entry(z, trunk)], [entry(c, trunk)]], at);
+    expect(plan.accepted.map((x) => x.map((p) => p.id))).toEqual([["n"], [], ["z"], []]);
+    expect(plan.returned[1]).toEqual([{ proposalId: "d", reason: `conflicts with n on gen/out/part.ts: n writes ${sha("1").slice(0, 10)} at gen/out, landing ahead in this cycle` }]);
+    expect(plan.returned[3]![0]!.reason).toMatch(/^stale: src\/a\.ts \(expected 0{40}, trunk has absent, landing ahead in this cycle from z\)$/);
+  });
+
+  it("returns a proposal stale against trunk itself with the exact delta (no attribution)", () => {
+    const a = prop("a", { "src/a.ts": sha("1") });
+    const plan = planCycle([[entry(a, trunk, { "src/a.ts": sha("9") })]], at);
+    expect(plan.returned[0]).toEqual([{ proposalId: "a", reason: `stale: src/a.ts (expected ${sha("9")}, trunk has ${OLD})` }]);
+  });
+
+  it("does not let a returned proposal shadow later batches", () => {
+    const a = prop("a", { "src/a.ts": sha("1") }, { "src/b.ts": sha("7") }); // stale read: goes back
+    const b = prop("b", { "src/a.ts": sha("2") });
+    const plan = planCycle([[entry(a, trunk)], [entry(b, trunk)]], at);
+    expect(plan.accepted).toEqual([[], [b]]);
+  });
+
+  it("serves batches in order and skips a repeated id", () => {
+    const a = prop("a", { "src/a.ts": sha("1") });
+    const plan = planCycle([[entry(a, trunk)], [entry(a, trunk)]], at);
+    expect(plan.accepted).toEqual([[a], []]);
+    expect(plan.returned).toEqual([[], []]);
+  });
+
+  it("treats directory prefixes as overlapping", () => {
+    expect(overlaps("a/b", "a/b")).toBe(true);
+    expect(overlaps("a", "a/b")).toBe(true);
+    expect(overlaps("a/b/c", "a/b")).toBe(true);
+    expect(overlaps("a/bc", "a/b")).toBe(false);
+  });
+});
+
+describe("idempotent results per proposal id", () => {
+  it("keeps the first occurrence of each proposal across a cycle's batches", () => {
+    const a = prop("a", { x: sha("1") });
+    const b = prop("b", { y: sha("1") });
+    expect(uniqueProposals([[a, b], [a], [b, prop("c", { z: sha("1") })]]).map((e) => `${e.request}:${e.p.id}`)).toEqual(["0:a", "0:b", "2:c"]);
+  });
+
+  it("reports an already-landed proposal with its landing (prior), never as returned", () => {
+    const earlier = landing("lnd_old", ["p1", "p9"]);
+    const mine = landing("lnd_new", ["p2"]);
+    const outcome = new Map<string, Outcome>([
+      ["p1", { kind: "landed", landing: earlier }],
+      ["p2", { kind: "landed", landing: mine }],
+      ["p3", { kind: "returned", reason: "stale: x" }],
+    ]);
+    const [r] = resultsFor([[prop("p1", {}), prop("p2", {}), prop("p3", {})]], outcome, [mine]);
+    expect(r).toEqual({ landing: mine, prior: [earlier], returned: [{ proposalId: "p3", reason: "stale: x" }] });
+    expect(r!.returned.some((x) => /already landed/.test(x.reason))).toBe(false);
+  });
+
+  it("gives a repeated proposal in a later batch the first one's landing as prior, and lists each landing once", () => {
+    const mine = landing("lnd_1", ["p1", "p2"]);
+    const outcome = new Map<string, Outcome>([
+      ["p1", { kind: "landed", landing: mine }],
+      ["p2", { kind: "landed", landing: mine }],
+    ]);
+    const res = resultsFor([[prop("p1", {}), prop("p2", {})], [prop("p1", {}), prop("p2", {}), prop("p2", {})]], outcome, [mine, undefined]);
+    expect(res[0]).toEqual({ landing: mine, returned: [] });
+    expect(res[1]).toEqual({ prior: [mine], returned: [] });
+  });
+
+  it("passes deferred proposals and malformed input through", () => {
+    const outcome = new Map<string, Outcome>([["p1", { kind: "deferred", reason: "blob pull failed: busy" }]]);
+    const res = resultsFor([[prop("p1", {}), prop("p2", {})]], outcome, [undefined], [[{ proposalId: "", reason: "proposal has no id" }]]);
+    expect(res[0]).toEqual({
+      returned: [{ proposalId: "", reason: "proposal has no id" }],
+      deferred: [
+        { proposalId: "p1", reason: "blob pull failed: busy" },
+        { proposalId: "p2", reason: "not decided in this trunk cycle" },
+      ],
+    });
+  });
+});

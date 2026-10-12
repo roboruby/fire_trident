@@ -1,0 +1,2148 @@
+{
+  "generatedAt": "2026-10-12T08:45:03.966Z",
+  "labels": {
+    "sim": "SIMULATED",
+    "live": "MEASURED (preview deployment)"
+  },
+  "variants": {
+    "baseline": "Locks + one merge queue",
+    "ft": "FireTrident, claims repel softly only",
+    "ft+inh": "FireTrident + lateral inhibition",
+    "ft+cc": "FireTrident + co-change (before)",
+    "ft+cc+inh": "FireTrident + co-change + lateral inhibition (after)",
+    "group": "Group commit, claims repel softly only",
+    "group+inh": "Group commit + lateral inhibition",
+    "group+cc": "Group commit + co-change (before)",
+    "group+cc+inh": "Group commit + co-change + lateral inhibition (after)"
+  },
+  "steady": {
+    "100|baseline": {
+      "n": 3,
+      "landingsPerMin": {
+        "mean": 56.2,
+        "min": 56.1,
+        "max": 56.3
+      },
+      "reworkPct": {
+        "mean": 5.7,
+        "min": 5.2,
+        "max": 6
+      },
+      "conflictsPer1000": {
+        "mean": 71.7,
+        "min": 66.5,
+        "max": 76.5
+      },
+      "writeWritePer1000": {
+        "mean": 0,
+        "min": 0,
+        "max": 0
+      },
+      "e2eP50S": {
+        "mean": 76.1,
+        "min": 74.4,
+        "max": 78.4
+      },
+      "e2eP99S": {
+        "mean": 439.3,
+        "min": 394,
+        "max": 488.8
+      },
+      "inhibitedWindowPct": {
+        "mean": null,
+        "min": null,
+        "max": null
+      }
+    },
+    "100|ft": {
+      "n": 3,
+      "landingsPerMin": {
+        "mean": 62.1,
+        "min": 62,
+        "max": 62.2
+      },
+      "reworkPct": {
+        "mean": 12.3,
+        "min": 11,
+        "max": 13.3
+      },
+      "conflictsPer1000": {
+        "mean": 74.8,
+        "min": 69.9,
+        "max": 77.9
+      },
+      "writeWritePer1000": {
+        "mean": 1,
+        "min": 0,
+        "max": 2
+      },
+      "e2eP50S": {
+        "mean": 64,
+        "min": 61.8,
+        "max": 66.8
+      },
+      "e2eP99S": {
+        "mean": 474.9,
+        "min": 442.7,
+        "max": 506.8
+      },
+      "inhibitedWindowPct": {
+        "mean": null,
+        "min": null,
+        "max": null
+      }
+    },
+    "100|ft+inh": {
+      "n": 3,
+      "landingsPerMin": {
+        "mean": 62.1,
+        "min": 62,
+        "max": 62.2
+      },
+      "reworkPct": {
+        "mean": 12.3,
+        "min": 11,
+        "max": 13.3
+      },
+      "conflictsPer1000": {
+        "mean": 74.8,
+        "min": 69.9,
+        "max": 77.9
+      },
+      "writeWritePer1000": {
+        "mean": 1,
+        "min": 0,
+        "max": 2
+      },
+      "e2eP50S": {
+        "mean": 64,
+        "min": 61.8,
+        "max": 66.8
+      },
+      "e2eP99S": {
+        "mean": 474.9,
+        "min": 442.7,
+        "max": 506.8
+      },
+      "inhibitedWindowPct": {
+        "mean": 10.1,
+        "min": 7.5,
+        "max": 12
+      }
+    },
+    "100|ft+cc": {
+      "n": 3,
+      "landingsPerMin": {
+        "mean": 63.4,
+        "min": 62.4,
+        "max": 63.9
+      },
+      "reworkPct": {
+        "mean": 10,
+        "min": 7.3,
+        "max": 12.4
+      },
+      "conflictsPer1000": {
+        "mean": 62.8,
+        "min": 52.5,
+        "max": 70.4
+      },
+      "writeWritePer1000": {
+        "mean": 0.7,
+        "min": 0,
+        "max": 2
+      },
+      "e2eP50S": {
+        "mean": 64.2,
+        "min": 62.1,
+        "max": 67.4
+      },
+      "e2eP99S": {
+        "mean": 442.8,
+        "min": 403.5,
+        "max": 504.8
+      },
+      "inhibitedWindowPct": {
+        "mean": null,
+        "min": null,
+        "max": null
+      }
+    },
+    "100|ft+cc+inh": {
+      "n": 3,
+      "landingsPerMin": {
+        "mean": 63.4,
+        "min": 62.4,
+        "max": 63.9
+      },
+      "reworkPct": {
+        "mean": 10,
+        "min": 7.3,
+        "max": 12.4
+      },
+      "conflictsPer1000": {
+        "mean": 62.8,
+        "min": 52.5,
+        "max": 70.4
+      },
+      "writeWritePer1000": {
+        "mean": 0.7,
+        "min": 0,
+        "max": 2
+      },
+      "e2eP50S": {
+        "mean": 64.2,
+        "min": 62.1,
+        "max": 67.4
+      },
+      "e2eP99S": {
+        "mean": 442.8,
+        "min": 403.5,
+        "max": 504.8
+      },
+      "inhibitedWindowPct": {
+        "mean": 10.2,
+        "min": 7.9,
+        "max": 12
+      }
+    },
+    "100|group": {
+      "n": 3,
+      "landingsPerMin": {
+        "mean": 62,
+        "min": 61.3,
+        "max": 63.4
+      },
+      "reworkPct": {
+        "mean": 12.7,
+        "min": 10.7,
+        "max": 14.8
+      },
+      "conflictsPer1000": {
+        "mean": 77.4,
+        "min": 69,
+        "max": 82.5
+      },
+      "writeWritePer1000": {
+        "mean": 1,
+        "min": 0,
+        "max": 2
+      },
+      "e2eP50S": {
+        "mean": 64.1,
+        "min": 62.7,
+        "max": 66.8
+      },
+      "e2eP99S": {
+        "mean": 475,
+        "min": 447.9,
+        "max": 501.4
+      },
+      "inhibitedWindowPct": {
+        "mean": null,
+        "min": null,
+        "max": null
+      }
+    },
+    "100|group+inh": {
+      "n": 3,
+      "landingsPerMin": {
+        "mean": 62,
+        "min": 61.3,
+        "max": 63.4
+      },
+      "reworkPct": {
+        "mean": 12.7,
+        "min": 10.7,
+        "max": 14.8
+      },
+      "conflictsPer1000": {
+        "mean": 77.4,
+        "min": 69,
+        "max": 82.5
+      },
+      "writeWritePer1000": {
+        "mean": 1,
+        "min": 0,
+        "max": 2
+      },
+      "e2eP50S": {
+        "mean": 64.1,
+        "min": 62.7,
+        "max": 66.8
+      },
+      "e2eP99S": {
+        "mean": 475,
+        "min": 447.9,
+        "max": 501.4
+      },
+      "inhibitedWindowPct": {
+        "mean": 9.7,
+        "min": 7.7,
+        "max": 11
+      }
+    },
+    "100|group+cc": {
+      "n": 3,
+      "landingsPerMin": {
+        "mean": 64.5,
+        "min": 64,
+        "max": 64.9
+      },
+      "reworkPct": {
+        "mean": 10.1,
+        "min": 7.8,
+        "max": 11.5
+      },
+      "conflictsPer1000": {
+        "mean": 64.5,
+        "min": 56.3,
+        "max": 71.7
+      },
+      "writeWritePer1000": {
+        "mean": 0.3,
+        "min": 0,
+        "max": 1
+      },
+      "e2eP50S": {
+        "mean": 62.6,
+        "min": 61,
+        "max": 65.1
+      },
+      "e2eP99S": {
+        "mean": 453.9,
+        "min": 409.6,
+        "max": 504.7
+      },
+      "inhibitedWindowPct": {
+        "mean": null,
+        "min": null,
+        "max": null
+      }
+    },
+    "100|group+cc+inh": {
+      "n": 3,
+      "landingsPerMin": {
+        "mean": 64.5,
+        "min": 64,
+        "max": 64.9
+      },
+      "reworkPct": {
+        "mean": 10.1,
+        "min": 7.8,
+        "max": 11.5
+      },
+      "conflictsPer1000": {
+        "mean": 64.5,
+        "min": 56.3,
+        "max": 71.7
+      },
+      "writeWritePer1000": {
+        "mean": 0.3,
+        "min": 0,
+        "max": 1
+      },
+      "e2eP50S": {
+        "mean": 62.6,
+        "min": 61,
+        "max": 65.1
+      },
+      "e2eP99S": {
+        "mean": 453.9,
+        "min": 409.6,
+        "max": 504.7
+      },
+      "inhibitedWindowPct": {
+        "mean": 10,
+        "min": 7.7,
+        "max": 11.9
+      }
+    },
+    "1000|baseline": {
+      "n": 3,
+      "landingsPerMin": {
+        "mean": 51.9,
+        "min": 51.3,
+        "max": 52.3
+      },
+      "reworkPct": {
+        "mean": 21.7,
+        "min": 20.8,
+        "max": 22.1
+      },
+      "conflictsPer1000": {
+        "mean": 318,
+        "min": 315.7,
+        "max": 319.9
+      },
+      "writeWritePer1000": {
+        "mean": 0,
+        "min": 0,
+        "max": 0
+      },
+      "e2eP50S": {
+        "mean": 563.3,
+        "min": 536.8,
+        "max": 581.6
+      },
+      "e2eP99S": {
+        "mean": 1142.2,
+        "min": 1136.9,
+        "max": 1151.1
+      },
+      "inhibitedWindowPct": {
+        "mean": null,
+        "min": null,
+        "max": null
+      }
+    },
+    "1000|ft": {
+      "n": 3,
+      "landingsPerMin": {
+        "mean": 85.6,
+        "min": 85.4,
+        "max": 85.9
+      },
+      "reworkPct": {
+        "mean": 42.5,
+        "min": 41.4,
+        "max": 44.1
+      },
+      "conflictsPer1000": {
+        "mean": 397.2,
+        "min": 383.7,
+        "max": 415.7
+      },
+      "writeWritePer1000": {
+        "mean": 269.6,
+        "min": 259.4,
+        "max": 282.4
+      },
+      "e2eP50S": {
+        "mean": 354.6,
+        "min": 349.1,
+        "max": 364.7
+      },
+      "e2eP99S": {
+        "mean": 1076.1,
+        "min": 1047.3,
+        "max": 1101.3
+      },
+      "inhibitedWindowPct": {
+        "mean": null,
+        "min": null,
+        "max": null
+      }
+    },
+    "1000|ft+inh": {
+      "n": 3,
+      "landingsPerMin": {
+        "mean": 86.3,
+        "min": 86.1,
+        "max": 86.8
+      },
+      "reworkPct": {
+        "mean": 32.2,
+        "min": 30.5,
+        "max": 33.2
+      },
+      "conflictsPer1000": {
+        "mean": 282.7,
+        "min": 276.1,
+        "max": 290.5
+      },
+      "writeWritePer1000": {
+        "mean": 141.4,
+        "min": 134,
+        "max": 148.4
+      },
+      "e2eP50S": {
+        "mean": 298.2,
+        "min": 287.4,
+        "max": 310.1
+      },
+      "e2eP99S": {
+        "mean": 940.7,
+        "min": 900.1,
+        "max": 996.6
+      },
+      "inhibitedWindowPct": {
+        "mean": 99.6,
+        "min": 99.6,
+        "max": 99.7
+      }
+    },
+    "1000|ft+cc": {
+      "n": 3,
+      "landingsPerMin": {
+        "mean": 85.9,
+        "min": 85.5,
+        "max": 86.2
+      },
+      "reworkPct": {
+        "mean": 38.7,
+        "min": 37.3,
+        "max": 40.3
+      },
+      "conflictsPer1000": {
+        "mean": 354.3,
+        "min": 342.6,
+        "max": 369.8
+      },
+      "writeWritePer1000": {
+        "mean": 236.4,
+        "min": 228.1,
+        "max": 244.3
+      },
+      "e2eP50S": {
+        "mean": 324.9,
+        "min": 313.9,
+        "max": 334.5
+      },
+      "e2eP99S": {
+        "mean": 1038.1,
+        "min": 998,
+        "max": 1059.9
+      },
+      "inhibitedWindowPct": {
+        "mean": null,
+        "min": null,
+        "max": null
+      }
+    },
+    "1000|ft+cc+inh": {
+      "n": 3,
+      "landingsPerMin": {
+        "mean": 86.4,
+        "min": 86.1,
+        "max": 86.8
+      },
+      "reworkPct": {
+        "mean": 31.2,
+        "min": 29.8,
+        "max": 33.7
+      },
+      "conflictsPer1000": {
+        "mean": 284.6,
+        "min": 270.2,
+        "max": 296.5
+      },
+      "writeWritePer1000": {
+        "mean": 138.1,
+        "min": 129.2,
+        "max": 145.2
+      },
+      "e2eP50S": {
+        "mean": 294,
+        "min": 288.2,
+        "max": 299.1
+      },
+      "e2eP99S": {
+        "mean": 923.8,
+        "min": 894.6,
+        "max": 940.7
+      },
+      "inhibitedWindowPct": {
+        "mean": 96.8,
+        "min": 96.6,
+        "max": 97
+      }
+    },
+    "1000|group": {
+      "n": 3,
+      "landingsPerMin": {
+        "mean": 204.5,
+        "min": 197.3,
+        "max": 213.1
+      },
+      "reworkPct": {
+        "mean": 45.3,
+        "min": 44.4,
+        "max": 46.7
+      },
+      "conflictsPer1000": {
+        "mean": 318.5,
+        "min": 307.7,
+        "max": 333.1
+      },
+      "writeWritePer1000": {
+        "mean": 130.2,
+        "min": 122.3,
+        "max": 134.4
+      },
+      "e2eP50S": {
+        "mean": 71.8,
+        "min": 70.9,
+        "max": 73.5
+      },
+      "e2eP99S": {
+        "mean": 824.6,
+        "min": 792.6,
+        "max": 868.1
+      },
+      "inhibitedWindowPct": {
+        "mean": null,
+        "min": null,
+        "max": null
+      }
+    },
+    "1000|group+inh": {
+      "n": 3,
+      "landingsPerMin": {
+        "mean": 173.1,
+        "min": 152.5,
+        "max": 198.3
+      },
+      "reworkPct": {
+        "mean": 33,
+        "min": 32.5,
+        "max": 33.5
+      },
+      "conflictsPer1000": {
+        "mean": 212.5,
+        "min": 210.3,
+        "max": 214.8
+      },
+      "writeWritePer1000": {
+        "mean": 1.8,
+        "min": 1,
+        "max": 2.4
+      },
+      "e2eP50S": {
+        "mean": 67.7,
+        "min": 66.4,
+        "max": 69.1
+      },
+      "e2eP99S": {
+        "mean": 719.8,
+        "min": 695.9,
+        "max": 752.4
+      },
+      "inhibitedWindowPct": {
+        "mean": 99.6,
+        "min": 99.5,
+        "max": 99.6
+      }
+    },
+    "1000|group+cc": {
+      "n": 3,
+      "landingsPerMin": {
+        "mean": 192,
+        "min": 187.7,
+        "max": 196.7
+      },
+      "reworkPct": {
+        "mean": 40.4,
+        "min": 39.7,
+        "max": 41.3
+      },
+      "conflictsPer1000": {
+        "mean": 279.2,
+        "min": 269,
+        "max": 286.6
+      },
+      "writeWritePer1000": {
+        "mean": 105.5,
+        "min": 98.9,
+        "max": 111
+      },
+      "e2eP50S": {
+        "mean": 68.7,
+        "min": 67.5,
+        "max": 70.7
+      },
+      "e2eP99S": {
+        "mean": 760.5,
+        "min": 748.8,
+        "max": 783.1
+      },
+      "inhibitedWindowPct": {
+        "mean": null,
+        "min": null,
+        "max": null
+      }
+    },
+    "1000|group+cc+inh": {
+      "n": 3,
+      "landingsPerMin": {
+        "mean": 175.9,
+        "min": 173.7,
+        "max": 177.2
+      },
+      "reworkPct": {
+        "mean": 31.2,
+        "min": 30.2,
+        "max": 31.9
+      },
+      "conflictsPer1000": {
+        "mean": 199.9,
+        "min": 189.9,
+        "max": 206.7
+      },
+      "writeWritePer1000": {
+        "mean": 3.1,
+        "min": 2.2,
+        "max": 4.5
+      },
+      "e2eP50S": {
+        "mean": 65.8,
+        "min": 64.8,
+        "max": 67.7
+      },
+      "e2eP99S": {
+        "mean": 672.6,
+        "min": 625.8,
+        "max": 716.3
+      },
+      "inhibitedWindowPct": {
+        "mean": 95,
+        "min": 94.6,
+        "max": 95.7
+      }
+    },
+    "10000|baseline": {
+      "n": 3,
+      "landingsPerMin": {
+        "mean": 51.9,
+        "min": 51.3,
+        "max": 52.3
+      },
+      "reworkPct": {
+        "mean": 21.7,
+        "min": 20.8,
+        "max": 22.1
+      },
+      "conflictsPer1000": {
+        "mean": 318,
+        "min": 315.7,
+        "max": 319.9
+      },
+      "writeWritePer1000": {
+        "mean": 0,
+        "min": 0,
+        "max": 0
+      },
+      "e2eP50S": {
+        "mean": 563.4,
+        "min": 536.8,
+        "max": 581.8
+      },
+      "e2eP99S": {
+        "mean": 1142.2,
+        "min": 1136.9,
+        "max": 1151.1
+      },
+      "inhibitedWindowPct": {
+        "mean": null,
+        "min": null,
+        "max": null
+      }
+    },
+    "10000|ft": {
+      "n": 3,
+      "landingsPerMin": {
+        "mean": 85.8,
+        "min": 85.5,
+        "max": 86
+      },
+      "reworkPct": {
+        "mean": 41.4,
+        "min": 40.1,
+        "max": 43.2
+      },
+      "conflictsPer1000": {
+        "mean": 385.7,
+        "min": 370.8,
+        "max": 401.1
+      },
+      "writeWritePer1000": {
+        "mean": 257.7,
+        "min": 255,
+        "max": 260.7
+      },
+      "e2eP50S": {
+        "mean": 354.8,
+        "min": 347.7,
+        "max": 365
+      },
+      "e2eP99S": {
+        "mean": 1060.1,
+        "min": 1014.3,
+        "max": 1122.4
+      },
+      "inhibitedWindowPct": {
+        "mean": null,
+        "min": null,
+        "max": null
+      }
+    },
+    "10000|ft+inh": {
+      "n": 3,
+      "landingsPerMin": {
+        "mean": 86.3,
+        "min": 86.1,
+        "max": 86.8
+      },
+      "reworkPct": {
+        "mean": 31.7,
+        "min": 31.1,
+        "max": 32.7
+      },
+      "conflictsPer1000": {
+        "mean": 274.6,
+        "min": 269.3,
+        "max": 280.5
+      },
+      "writeWritePer1000": {
+        "mean": 139.4,
+        "min": 137.5,
+        "max": 140.5
+      },
+      "e2eP50S": {
+        "mean": 298.8,
+        "min": 287.8,
+        "max": 308.3
+      },
+      "e2eP99S": {
+        "mean": 944.1,
+        "min": 899.8,
+        "max": 980
+      },
+      "inhibitedWindowPct": {
+        "mean": 99.7,
+        "min": 99.7,
+        "max": 99.7
+      }
+    },
+    "10000|ft+cc": {
+      "n": 3,
+      "landingsPerMin": {
+        "mean": 85.8,
+        "min": 85.7,
+        "max": 85.8
+      },
+      "reworkPct": {
+        "mean": 38.6,
+        "min": 37.2,
+        "max": 39.9
+      },
+      "conflictsPer1000": {
+        "mean": 364.7,
+        "min": 351.6,
+        "max": 379.9
+      },
+      "writeWritePer1000": {
+        "mean": 241.9,
+        "min": 238.4,
+        "max": 244
+      },
+      "e2eP50S": {
+        "mean": 326,
+        "min": 318.3,
+        "max": 337.2
+      },
+      "e2eP99S": {
+        "mean": 1025.5,
+        "min": 993.7,
+        "max": 1058.4
+      },
+      "inhibitedWindowPct": {
+        "mean": null,
+        "min": null,
+        "max": null
+      }
+    },
+    "10000|ft+cc+inh": {
+      "n": 3,
+      "landingsPerMin": {
+        "mean": 86.2,
+        "min": 86,
+        "max": 86.5
+      },
+      "reworkPct": {
+        "mean": 31.4,
+        "min": 29.6,
+        "max": 33.3
+      },
+      "conflictsPer1000": {
+        "mean": 281.7,
+        "min": 275.8,
+        "max": 292
+      },
+      "writeWritePer1000": {
+        "mean": 147.3,
+        "min": 139.3,
+        "max": 152.4
+      },
+      "e2eP50S": {
+        "mean": 291.8,
+        "min": 281.5,
+        "max": 299.6
+      },
+      "e2eP99S": {
+        "mean": 967.6,
+        "min": 926.9,
+        "max": 1016
+      },
+      "inhibitedWindowPct": {
+        "mean": 96.3,
+        "min": 96,
+        "max": 96.4
+      }
+    },
+    "10000|group": {
+      "n": 3,
+      "landingsPerMin": {
+        "mean": 205.6,
+        "min": 202.5,
+        "max": 211.1
+      },
+      "reworkPct": {
+        "mean": 46.9,
+        "min": 46.1,
+        "max": 48
+      },
+      "conflictsPer1000": {
+        "mean": 333.5,
+        "min": 321,
+        "max": 342
+      },
+      "writeWritePer1000": {
+        "mean": 132.4,
+        "min": 129.8,
+        "max": 134.1
+      },
+      "e2eP50S": {
+        "mean": 69.7,
+        "min": 68.3,
+        "max": 71.2
+      },
+      "e2eP99S": {
+        "mean": 831.6,
+        "min": 823.1,
+        "max": 839.3
+      },
+      "inhibitedWindowPct": {
+        "mean": null,
+        "min": null,
+        "max": null
+      }
+    },
+    "10000|group+inh": {
+      "n": 3,
+      "landingsPerMin": {
+        "mean": 176.3,
+        "min": 174.3,
+        "max": 180.2
+      },
+      "reworkPct": {
+        "mean": 31.5,
+        "min": 30.5,
+        "max": 32.4
+      },
+      "conflictsPer1000": {
+        "mean": 207.4,
+        "min": 195.1,
+        "max": 213.9
+      },
+      "writeWritePer1000": {
+        "mean": 2.5,
+        "min": 1.5,
+        "max": 3
+      },
+      "e2eP50S": {
+        "mean": 66.3,
+        "min": 63.1,
+        "max": 68.7
+      },
+      "e2eP99S": {
+        "mean": 700.1,
+        "min": 672.1,
+        "max": 724.9
+      },
+      "inhibitedWindowPct": {
+        "mean": 99.6,
+        "min": 99.6,
+        "max": 99.6
+      }
+    },
+    "10000|group+cc": {
+      "n": 3,
+      "landingsPerMin": {
+        "mean": 191.9,
+        "min": 189.9,
+        "max": 193.4
+      },
+      "reworkPct": {
+        "mean": 40.3,
+        "min": 39.8,
+        "max": 40.7
+      },
+      "conflictsPer1000": {
+        "mean": 278.7,
+        "min": 276.1,
+        "max": 280.4
+      },
+      "writeWritePer1000": {
+        "mean": 101.9,
+        "min": 99.1,
+        "max": 106.9
+      },
+      "e2eP50S": {
+        "mean": 69.4,
+        "min": 68.5,
+        "max": 70.7
+      },
+      "e2eP99S": {
+        "mean": 730.2,
+        "min": 690.3,
+        "max": 761.9
+      },
+      "inhibitedWindowPct": {
+        "mean": null,
+        "min": null,
+        "max": null
+      }
+    },
+    "10000|group+cc+inh": {
+      "n": 3,
+      "landingsPerMin": {
+        "mean": 173.1,
+        "min": 170.4,
+        "max": 174.8
+      },
+      "reworkPct": {
+        "mean": 31.6,
+        "min": 30.1,
+        "max": 32.7
+      },
+      "conflictsPer1000": {
+        "mean": 206.7,
+        "min": 200.2,
+        "max": 210.7
+      },
+      "writeWritePer1000": {
+        "mean": 2.9,
+        "min": 2.1,
+        "max": 3.7
+      },
+      "e2eP50S": {
+        "mean": 67.3,
+        "min": 66.6,
+        "max": 67.9
+      },
+      "e2eP99S": {
+        "mean": 711.5,
+        "min": 686.6,
+        "max": 742
+      },
+      "inhibitedWindowPct": {
+        "mean": 94.6,
+        "min": 93.7,
+        "max": 95
+      }
+    }
+  },
+  "timeToZero": {
+    "tasks": 1500,
+    "byVariant": {
+      "100|baseline": {
+        "n": 5,
+        "drained": 5,
+        "t50": 813.4,
+        "t90": 1455.2,
+        "t95": 1537,
+        "ttzMedian": 2008,
+        "ttzMean": 2087.2,
+        "reworkPct": 5.2,
+        "conflictsPer1000": 61.3
+      },
+      "100|ft+cc": {
+        "n": 5,
+        "drained": 5,
+        "t50": 698,
+        "t90": 1268.2,
+        "t95": 1341.4,
+        "ttzMedian": 2828,
+        "ttzMean": 2801.8,
+        "reworkPct": 11.4,
+        "conflictsPer1000": 63.9
+      },
+      "100|ft+cc+inh": {
+        "n": 5,
+        "drained": 5,
+        "t50": 698,
+        "t90": 1268.2,
+        "t95": 1341.8,
+        "ttzMedian": 2042,
+        "ttzMean": 2660.8,
+        "reworkPct": 10.2,
+        "conflictsPer1000": 58.6
+      },
+      "100|group+cc": {
+        "n": 5,
+        "drained": 5,
+        "t50": 687,
+        "t90": 1253.2,
+        "t95": 1326,
+        "ttzMedian": 2811,
+        "ttzMean": 2908.2,
+        "reworkPct": 11.4,
+        "conflictsPer1000": 63.8
+      },
+      "100|group+cc+inh": {
+        "n": 5,
+        "drained": 5,
+        "t50": 687,
+        "t90": 1253.2,
+        "t95": 1326.6,
+        "ttzMedian": 2029,
+        "ttzMean": 2398.4,
+        "reworkPct": 10.1,
+        "conflictsPer1000": 59
+      },
+      "1000|baseline": {
+        "n": 5,
+        "drained": 5,
+        "t50": 846,
+        "t90": 1554.4,
+        "t95": 1641.2,
+        "ttzMedian": 2319,
+        "ttzMean": 2352,
+        "reworkPct": 15.7,
+        "conflictsPer1000": 221.8
+      },
+      "1000|ft+cc": {
+        "n": 5,
+        "drained": 5,
+        "t50": 531,
+        "t90": 951.4,
+        "t95": 1080.8,
+        "ttzMedian": 2262,
+        "ttzMean": 2530.8,
+        "reworkPct": 35.4,
+        "conflictsPer1000": 285.6
+      },
+      "1000|ft+cc+inh": {
+        "n": 5,
+        "drained": 5,
+        "t50": 529.4,
+        "t90": 948.2,
+        "t95": 1070,
+        "ttzMedian": 1987,
+        "ttzMean": 2151.6,
+        "reworkPct": 25.7,
+        "conflictsPer1000": 201.6
+      },
+      "1000|group+cc": {
+        "n": 5,
+        "drained": 5,
+        "t50": 130.8,
+        "t90": 428.2,
+        "t95": 598.4,
+        "ttzMedian": 2364,
+        "ttzMean": 2514.6,
+        "reworkPct": 33.3,
+        "conflictsPer1000": 246.7
+      },
+      "1000|group+cc+inh": {
+        "n": 5,
+        "drained": 5,
+        "t50": 142.2,
+        "t90": 432.4,
+        "t95": 595.8,
+        "ttzMedian": 1697,
+        "ttzMean": 1806.2,
+        "reworkPct": 23.9,
+        "conflictsPer1000": 174.8
+      },
+      "10000|baseline": {
+        "n": 5,
+        "drained": 5,
+        "t50": 846,
+        "t90": 1554.4,
+        "t95": 1641.2,
+        "ttzMedian": 2319,
+        "ttzMean": 2352,
+        "reworkPct": 15.7,
+        "conflictsPer1000": 221.9
+      },
+      "10000|ft+cc": {
+        "n": 5,
+        "drained": 5,
+        "t50": 530.4,
+        "t90": 951.6,
+        "t95": 1082.2,
+        "ttzMedian": 2402,
+        "ttzMean": 2624.4,
+        "reworkPct": 36,
+        "conflictsPer1000": 289.9
+      },
+      "10000|ft+cc+inh": {
+        "n": 5,
+        "drained": 5,
+        "t50": 529.6,
+        "t90": 947.2,
+        "t95": 1074.2,
+        "ttzMedian": 1986,
+        "ttzMean": 2039.8,
+        "reworkPct": 25.9,
+        "conflictsPer1000": 201.5
+      },
+      "10000|group+cc": {
+        "n": 5,
+        "drained": 5,
+        "t50": 130.2,
+        "t90": 431.8,
+        "t95": 591.6,
+        "ttzMedian": 2253,
+        "ttzMean": 2380,
+        "reworkPct": 33.1,
+        "conflictsPer1000": 246.8
+      },
+      "10000|group+cc+inh": {
+        "n": 5,
+        "drained": 5,
+        "t50": 142.4,
+        "t90": 431.6,
+        "t95": 586.6,
+        "ttzMedian": 1697,
+        "ttzMean": 1806.2,
+        "reworkPct": 23.8,
+        "conflictsPer1000": 174.3
+      }
+    }
+  },
+  "weights": {
+    "ft+cc+inh|0": {
+      "n": 3,
+      "landingsPerMin": {
+        "mean": 86.3,
+        "min": 86.1,
+        "max": 86.8
+      },
+      "reworkPct": {
+        "mean": 32.2,
+        "min": 30.5,
+        "max": 33.2
+      },
+      "conflictsPer1000": {
+        "mean": 282.7,
+        "min": 276.1,
+        "max": 290.5
+      },
+      "writeWritePer1000": {
+        "mean": 141.4,
+        "min": 134,
+        "max": 148.4
+      },
+      "e2eP50S": {
+        "mean": 298.2,
+        "min": 287.4,
+        "max": 310.1
+      },
+      "e2eP99S": {
+        "mean": 940.7,
+        "min": 900.1,
+        "max": 996.6
+      },
+      "inhibitedWindowPct": {
+        "mean": 99.6,
+        "min": 99.6,
+        "max": 99.7
+      }
+    },
+    "ft+cc+inh|2": {
+      "n": 3,
+      "landingsPerMin": {
+        "mean": 86.4,
+        "min": 86.1,
+        "max": 86.8
+      },
+      "reworkPct": {
+        "mean": 31.2,
+        "min": 29.8,
+        "max": 33.7
+      },
+      "conflictsPer1000": {
+        "mean": 284.6,
+        "min": 270.2,
+        "max": 296.5
+      },
+      "writeWritePer1000": {
+        "mean": 138.1,
+        "min": 129.2,
+        "max": 145.2
+      },
+      "e2eP50S": {
+        "mean": 294,
+        "min": 288.2,
+        "max": 299.1
+      },
+      "e2eP99S": {
+        "mean": 923.8,
+        "min": 894.6,
+        "max": 940.7
+      },
+      "inhibitedWindowPct": {
+        "mean": 96.8,
+        "min": 96.6,
+        "max": 97
+      }
+    },
+    "ft+cc+inh|5": {
+      "n": 3,
+      "landingsPerMin": {
+        "mean": 86.3,
+        "min": 86.1,
+        "max": 86.6
+      },
+      "reworkPct": {
+        "mean": 26.2,
+        "min": 24.1,
+        "max": 29.9
+      },
+      "conflictsPer1000": {
+        "mean": 236.9,
+        "min": 229,
+        "max": 250.2
+      },
+      "writeWritePer1000": {
+        "mean": 117.2,
+        "min": 113.8,
+        "max": 119.6
+      },
+      "e2eP50S": {
+        "mean": 253.8,
+        "min": 244.1,
+        "max": 259.5
+      },
+      "e2eP99S": {
+        "mean": 891.4,
+        "min": 860.9,
+        "max": 950
+      },
+      "inhibitedWindowPct": {
+        "mean": 76.5,
+        "min": 75.6,
+        "max": 77.4
+      }
+    },
+    "ft+cc+inh|10": {
+      "n": 3,
+      "landingsPerMin": {
+        "mean": 86.3,
+        "min": 86.1,
+        "max": 86.5
+      },
+      "reworkPct": {
+        "mean": 26.5,
+        "min": 24.2,
+        "max": 30.4
+      },
+      "conflictsPer1000": {
+        "mean": 229.2,
+        "min": 218.2,
+        "max": 246.9
+      },
+      "writeWritePer1000": {
+        "mean": 111.8,
+        "min": 99.7,
+        "max": 122.4
+      },
+      "e2eP50S": {
+        "mean": 234.2,
+        "min": 221.9,
+        "max": 241.9
+      },
+      "e2eP99S": {
+        "mean": 891.9,
+        "min": 878.6,
+        "max": 903.4
+      },
+      "inhibitedWindowPct": {
+        "mean": 66.6,
+        "min": 66,
+        "max": 67.3
+      }
+    },
+    "group+cc+inh|0": {
+      "n": 3,
+      "landingsPerMin": {
+        "mean": 173.1,
+        "min": 152.5,
+        "max": 198.3
+      },
+      "reworkPct": {
+        "mean": 33,
+        "min": 32.5,
+        "max": 33.5
+      },
+      "conflictsPer1000": {
+        "mean": 212.5,
+        "min": 210.3,
+        "max": 214.8
+      },
+      "writeWritePer1000": {
+        "mean": 1.8,
+        "min": 1,
+        "max": 2.4
+      },
+      "e2eP50S": {
+        "mean": 67.7,
+        "min": 66.4,
+        "max": 69.1
+      },
+      "e2eP99S": {
+        "mean": 719.8,
+        "min": 695.9,
+        "max": 752.4
+      },
+      "inhibitedWindowPct": {
+        "mean": 99.6,
+        "min": 99.5,
+        "max": 99.6
+      }
+    },
+    "group+cc+inh|2": {
+      "n": 3,
+      "landingsPerMin": {
+        "mean": 175.9,
+        "min": 173.7,
+        "max": 177.2
+      },
+      "reworkPct": {
+        "mean": 31.2,
+        "min": 30.2,
+        "max": 31.9
+      },
+      "conflictsPer1000": {
+        "mean": 199.9,
+        "min": 189.9,
+        "max": 206.7
+      },
+      "writeWritePer1000": {
+        "mean": 3.1,
+        "min": 2.2,
+        "max": 4.5
+      },
+      "e2eP50S": {
+        "mean": 65.8,
+        "min": 64.8,
+        "max": 67.7
+      },
+      "e2eP99S": {
+        "mean": 672.6,
+        "min": 625.8,
+        "max": 716.3
+      },
+      "inhibitedWindowPct": {
+        "mean": 95,
+        "min": 94.6,
+        "max": 95.7
+      }
+    },
+    "group+cc+inh|5": {
+      "n": 3,
+      "landingsPerMin": {
+        "mean": 157.9,
+        "min": 153.1,
+        "max": 162.7
+      },
+      "reworkPct": {
+        "mean": 27.6,
+        "min": 26,
+        "max": 28.7
+      },
+      "conflictsPer1000": {
+        "mean": 173.2,
+        "min": 164.3,
+        "max": 178.8
+      },
+      "writeWritePer1000": {
+        "mean": 2.2,
+        "min": 1.7,
+        "max": 2.8
+      },
+      "e2eP50S": {
+        "mean": 64.9,
+        "min": 62.9,
+        "max": 66.3
+      },
+      "e2eP99S": {
+        "mean": 678.6,
+        "min": 621.1,
+        "max": 748.4
+      },
+      "inhibitedWindowPct": {
+        "mean": 74.6,
+        "min": 72.1,
+        "max": 77
+      }
+    },
+    "group+cc+inh|10": {
+      "n": 3,
+      "landingsPerMin": {
+        "mean": 156.2,
+        "min": 143.3,
+        "max": 163.5
+      },
+      "reworkPct": {
+        "mean": 24.8,
+        "min": 22.8,
+        "max": 26.1
+      },
+      "conflictsPer1000": {
+        "mean": 158.6,
+        "min": 151.7,
+        "max": 172
+      },
+      "writeWritePer1000": {
+        "mean": 2,
+        "min": 1,
+        "max": 2.8
+      },
+      "e2eP50S": {
+        "mean": 65.1,
+        "min": 63.1,
+        "max": 67.1
+      },
+      "e2eP99S": {
+        "mean": 632.1,
+        "min": 613.7,
+        "max": 643.8
+      },
+      "inhibitedWindowPct": {
+        "mean": 65.5,
+        "min": 63.5,
+        "max": 67.7
+      }
+    }
+  },
+  "window": {
+    "ft+cc|200": {
+      "n": 3,
+      "landingsPerMin": {
+        "mean": 85.9,
+        "min": 85.5,
+        "max": 86.2
+      },
+      "reworkPct": {
+        "mean": 38.7,
+        "min": 37.3,
+        "max": 40.3
+      },
+      "conflictsPer1000": {
+        "mean": 354.3,
+        "min": 342.6,
+        "max": 369.8
+      },
+      "writeWritePer1000": {
+        "mean": 236.4,
+        "min": 228.1,
+        "max": 244.3
+      },
+      "e2eP50S": {
+        "mean": 324.9,
+        "min": 313.9,
+        "max": 334.5
+      },
+      "e2eP99S": {
+        "mean": 1038.1,
+        "min": 998,
+        "max": 1059.9
+      },
+      "inhibitedWindowPct": {
+        "mean": null,
+        "min": null,
+        "max": null
+      }
+    },
+    "ft+cc|400": {
+      "n": 3,
+      "landingsPerMin": {
+        "mean": 86.6,
+        "min": 86.3,
+        "max": 86.9
+      },
+      "reworkPct": {
+        "mean": 38.8,
+        "min": 38.1,
+        "max": 39.6
+      },
+      "conflictsPer1000": {
+        "mean": 370.2,
+        "min": 354.2,
+        "max": 381.3
+      },
+      "writeWritePer1000": {
+        "mean": 241.8,
+        "min": 232.1,
+        "max": 250.3
+      },
+      "e2eP50S": {
+        "mean": 417,
+        "min": 403,
+        "max": 439.4
+      },
+      "e2eP99S": {
+        "mean": 1093,
+        "min": 1076.3,
+        "max": 1111.3
+      },
+      "inhibitedWindowPct": {
+        "mean": null,
+        "min": null,
+        "max": null
+      }
+    },
+    "ft+cc|1000": {
+      "n": 3,
+      "landingsPerMin": {
+        "mean": 87.8,
+        "min": 87.5,
+        "max": 88
+      },
+      "reworkPct": {
+        "mean": 26.3,
+        "min": 25.3,
+        "max": 27.6
+      },
+      "conflictsPer1000": {
+        "mean": 251.9,
+        "min": 231.6,
+        "max": 276
+      },
+      "writeWritePer1000": {
+        "mean": 147.1,
+        "min": 137.6,
+        "max": 159.3
+      },
+      "e2eP50S": {
+        "mean": 470.8,
+        "min": 467.9,
+        "max": 472.3
+      },
+      "e2eP99S": {
+        "mean": 1085.6,
+        "min": 1046.6,
+        "max": 1116
+      },
+      "inhibitedWindowPct": {
+        "mean": null,
+        "min": null,
+        "max": null
+      }
+    },
+    "ft+cc+inh|200": {
+      "n": 3,
+      "landingsPerMin": {
+        "mean": 86.4,
+        "min": 86.1,
+        "max": 86.8
+      },
+      "reworkPct": {
+        "mean": 31.2,
+        "min": 29.8,
+        "max": 33.7
+      },
+      "conflictsPer1000": {
+        "mean": 284.6,
+        "min": 270.2,
+        "max": 296.5
+      },
+      "writeWritePer1000": {
+        "mean": 138.1,
+        "min": 129.2,
+        "max": 145.2
+      },
+      "e2eP50S": {
+        "mean": 294,
+        "min": 288.2,
+        "max": 299.1
+      },
+      "e2eP99S": {
+        "mean": 923.8,
+        "min": 894.6,
+        "max": 940.7
+      },
+      "inhibitedWindowPct": {
+        "mean": 96.8,
+        "min": 96.6,
+        "max": 97
+      }
+    },
+    "ft+cc+inh|400": {
+      "n": 3,
+      "landingsPerMin": {
+        "mean": 86.9,
+        "min": 86.7,
+        "max": 87.3
+      },
+      "reworkPct": {
+        "mean": 33.3,
+        "min": 31.8,
+        "max": 34.2
+      },
+      "conflictsPer1000": {
+        "mean": 314.4,
+        "min": 311,
+        "max": 316.8
+      },
+      "writeWritePer1000": {
+        "mean": 160.8,
+        "min": 147.3,
+        "max": 170.4
+      },
+      "e2eP50S": {
+        "mean": 390.7,
+        "min": 377.7,
+        "max": 410.5
+      },
+      "e2eP99S": {
+        "mean": 1044.4,
+        "min": 1020.2,
+        "max": 1059.9
+      },
+      "inhibitedWindowPct": {
+        "mean": 94.5,
+        "min": 92.9,
+        "max": 95.5
+      }
+    },
+    "ft+cc+inh|1000": {
+      "n": 3,
+      "landingsPerMin": {
+        "mean": 87.8,
+        "min": 87.6,
+        "max": 88
+      },
+      "reworkPct": {
+        "mean": 24.9,
+        "min": 23.3,
+        "max": 26.7
+      },
+      "conflictsPer1000": {
+        "mean": 237.1,
+        "min": 220.9,
+        "max": 261.8
+      },
+      "writeWritePer1000": {
+        "mean": 127.3,
+        "min": 116.8,
+        "max": 143.7
+      },
+      "e2eP50S": {
+        "mean": 469.5,
+        "min": 465.7,
+        "max": 472.2
+      },
+      "e2eP99S": {
+        "mean": 1087,
+        "min": 1047,
+        "max": 1118.5
+      },
+      "inhibitedWindowPct": {
+        "mean": 73.5,
+        "min": 69.9,
+        "max": 76.9
+      }
+    },
+    "group+cc|200": {
+      "n": 3,
+      "landingsPerMin": {
+        "mean": 192,
+        "min": 187.7,
+        "max": 196.7
+      },
+      "reworkPct": {
+        "mean": 40.4,
+        "min": 39.7,
+        "max": 41.3
+      },
+      "conflictsPer1000": {
+        "mean": 279.2,
+        "min": 269,
+        "max": 286.6
+      },
+      "writeWritePer1000": {
+        "mean": 105.5,
+        "min": 98.9,
+        "max": 111
+      },
+      "e2eP50S": {
+        "mean": 68.7,
+        "min": 67.5,
+        "max": 70.7
+      },
+      "e2eP99S": {
+        "mean": 760.5,
+        "min": 748.8,
+        "max": 783.1
+      },
+      "inhibitedWindowPct": {
+        "mean": null,
+        "min": null,
+        "max": null
+      }
+    },
+    "group+cc|400": {
+      "n": 3,
+      "landingsPerMin": {
+        "mean": 222.9,
+        "min": 218.1,
+        "max": 225.8
+      },
+      "reworkPct": {
+        "mean": 44.8,
+        "min": 44.3,
+        "max": 45.8
+      },
+      "conflictsPer1000": {
+        "mean": 307.9,
+        "min": 298.5,
+        "max": 317.8
+      },
+      "writeWritePer1000": {
+        "mean": 108.3,
+        "min": 107.3,
+        "max": 109.3
+      },
+      "e2eP50S": {
+        "mean": 69.1,
+        "min": 67.9,
+        "max": 71
+      },
+      "e2eP99S": {
+        "mean": 819.1,
+        "min": 803.5,
+        "max": 838
+      },
+      "inhibitedWindowPct": {
+        "mean": null,
+        "min": null,
+        "max": null
+      }
+    },
+    "group+cc|1000": {
+      "n": 3,
+      "landingsPerMin": {
+        "mean": 288.2,
+        "min": 285.7,
+        "max": 290.6
+      },
+      "reworkPct": {
+        "mean": 47.7,
+        "min": 47.2,
+        "max": 48.5
+      },
+      "conflictsPer1000": {
+        "mean": 346.4,
+        "min": 337,
+        "max": 360
+      },
+      "writeWritePer1000": {
+        "mean": 100.9,
+        "min": 99.2,
+        "max": 102.2
+      },
+      "e2eP50S": {
+        "mean": 72.4,
+        "min": 71.1,
+        "max": 73.2
+      },
+      "e2eP99S": {
+        "mean": 803.1,
+        "min": 769.1,
+        "max": 834.4
+      },
+      "inhibitedWindowPct": {
+        "mean": null,
+        "min": null,
+        "max": null
+      }
+    },
+    "group+cc+inh|200": {
+      "n": 3,
+      "landingsPerMin": {
+        "mean": 175.9,
+        "min": 173.7,
+        "max": 177.2
+      },
+      "reworkPct": {
+        "mean": 31.2,
+        "min": 30.2,
+        "max": 31.9
+      },
+      "conflictsPer1000": {
+        "mean": 199.9,
+        "min": 189.9,
+        "max": 206.7
+      },
+      "writeWritePer1000": {
+        "mean": 3.1,
+        "min": 2.2,
+        "max": 4.5
+      },
+      "e2eP50S": {
+        "mean": 65.8,
+        "min": 64.8,
+        "max": 67.7
+      },
+      "e2eP99S": {
+        "mean": 672.6,
+        "min": 625.8,
+        "max": 716.3
+      },
+      "inhibitedWindowPct": {
+        "mean": 95,
+        "min": 94.6,
+        "max": 95.7
+      }
+    },
+    "group+cc+inh|400": {
+      "n": 3,
+      "landingsPerMin": {
+        "mean": 217.5,
+        "min": 213.2,
+        "max": 222.9
+      },
+      "reworkPct": {
+        "mean": 36.3,
+        "min": 35.4,
+        "max": 37.3
+      },
+      "conflictsPer1000": {
+        "mean": 245.4,
+        "min": 242.2,
+        "max": 249.4
+      },
+      "writeWritePer1000": {
+        "mean": 3.1,
+        "min": 1.9,
+        "max": 5.2
+      },
+      "e2eP50S": {
+        "mean": 68.1,
+        "min": 66.4,
+        "max": 69.3
+      },
+      "e2eP99S": {
+        "mean": 758.6,
+        "min": 698.3,
+        "max": 822.3
+      },
+      "inhibitedWindowPct": {
+        "mean": 93,
+        "min": 92.8,
+        "max": 93.2
+      }
+    },
+    "group+cc+inh|1000": {
+      "n": 3,
+      "landingsPerMin": {
+        "mean": 277.1,
+        "min": 269.5,
+        "max": 288.7
+      },
+      "reworkPct": {
+        "mean": 42.3,
+        "min": 42,
+        "max": 42.9
+      },
+      "conflictsPer1000": {
+        "mean": 293.3,
+        "min": 286,
+        "max": 299.4
+      },
+      "writeWritePer1000": {
+        "mean": 3.6,
+        "min": 3.4,
+        "max": 3.9
+      },
+      "e2eP50S": {
+        "mean": 72.2,
+        "min": 72,
+        "max": 72.7
+      },
+      "e2eP99S": {
+        "mean": 835.9,
+        "min": 811.4,
+        "max": 865.6
+      },
+      "inhibitedWindowPct": {
+        "mean": 90.1,
+        "min": 89.4,
+        "max": 91.2
+      }
+    }
+  },
+  "live": {
+    "kind": "inhibition-live",
+    "label": "MEASURED",
+    "generatedAt": "2026-10-12T08:44:33.031Z",
+    "url": "https://g5-firetrident.mattsolt.workers.dev",
+    "method": "X writes [shared, a] (priority 5), Y writes [shared, b] (priority 4); agent A takes first (X with p = 25/26) and B targets the other one. rounds: fresh A and B per round, B takes once, both stop. landing: B tries before and while A's proposal is queued, then after it lands (a real trunk commit). decay: A never heartbeats; B retries every poll seconds until it is assigned.",
+    "expected": {
+      "withoutInhibition": "B takes Y with p = 3^2 / (3^2 + 1) = 0.9 per try (soft repulsion only)",
+      "withInhibition": "B is turned away while A's claim is >= 0.5; takes the other intent after the landing, or about one half-life (208 s) after A's last claim refresh"
+    },
+    "rounds": {
+      "colony": "g5-inhibit-v3-rounds",
+      "createMs": 10705,
+      "intents": {
+        "x": "int_mv505akj6ib76j",
+        "y": "int_mv505b0zqxwm4i"
+      },
+      "rounds": 20,
+      "inhibited": 20,
+      "tookOther": 0,
+      "aTookY": 1,
+      "outcomes": [
+        "inhibited",
+        "inhibited",
+        "inhibited",
+        "inhibited",
+        "inhibited",
+        "inhibited",
+        "inhibited",
+        "inhibited",
+        "inhibited",
+        "inhibited",
+        "inhibited",
+        "inhibited",
+        "inhibited",
+        "inhibited",
+        "inhibited",
+        "inhibited",
+        "inhibited",
+        "inhibited",
+        "inhibited",
+        "inhibited"
+      ]
+    },
+    "landing": {
+      "colony": "g5-inhibit-v3-landing",
+      "createMs": 9967,
+      "intents": {
+        "x": "int_mv505eg1fiwtz6",
+        "y": "int_mv505euxlkc4o7"
+      },
+      "aTook": "int_mv505eg1fiwtz6",
+      "before": "inhibited",
+      "whileQueued": "inhibited",
+      "proposal": {
+        "id": "prp_mv505fqa5k1pxx",
+        "status": "landed",
+        "reason": null,
+        "outcomeAfterMs": 3147
+      },
+      "after": "took the other",
+      "afterTakeMs": 517
+    },
+    "decay": {
+      "colony": "g5-inhibit-v3-decay",
+      "createMs": 10597,
+      "intents": {
+        "x": "int_mv505aiwbo6sum",
+        "y": "int_mv505axn60g8qc"
+      },
+      "aTook": "int_mv505aiwbo6sum",
+      "pollS": 10,
+      "halfLifeS": 207.9,
+      "tookOtherAtS": 218,
+      "lastInhibitedAtS": 207.2,
+      "tries": [
+        {
+          "s": 0.1,
+          "outcome": "inhibited"
+        },
+        {
+          "s": 10.3,
+          "outcome": "inhibited"
+        },
+        {
+          "s": 20.5,
+          "outcome": "inhibited"
+        },
+        {
+          "s": 30.8,
+          "outcome": "inhibited"
+        },
+        {
+          "s": 41.3,
+          "outcome": "inhibited"
+        },
+        {
+          "s": 51.4,
+          "outcome": "inhibited"
+        },
+        {
+          "s": 61.5,
+          "outcome": "inhibited"
+        },
+        {
+          "s": 71.7,
+          "outcome": "inhibited"
+        },
+        {
+          "s": 82.2,
+          "outcome": "inhibited"
+        },
+        {
+          "s": 92.8,
+          "outcome": "inhibited"
+        },
+        {
+          "s": 103.3,
+          "outcome": "inhibited"
+        },
+        {
+          "s": 113.5,
+          "outcome": "inhibited"
+        },
+        {
+          "s": 123.7,
+          "outcome": "inhibited"
+        },
+        {
+          "s": 133.8,
+          "outcome": "inhibited"
+        },
+        {
+          "s": 144.8,
+          "outcome": "inhibited"
+        },
+        {
+          "s": 155,
+          "outcome": "inhibited"
+        },
+        {
+          "s": 165.2,
+          "outcome": "inhibited"
+        },
+        {
+          "s": 175.7,
+          "outcome": "inhibited"
+        },
+        {
+          "s": 186.5,
+          "outcome": "inhibited"
+        },
+        {
+          "s": 196.6,
+          "outcome": "inhibited"
+        },
+        {
+          "s": 207.2,
+          "outcome": "inhibited"
+        },
+        {
+          "s": 218,
+          "outcome": "took the other"
+        }
+      ]
+    },
+    "errors": []
+  }
+}

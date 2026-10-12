@@ -53,10 +53,13 @@ interface AiRunner {
  * Anthropic provider when ANTHROPIC_API_KEY is set. No sampling parameters are
  * sent (current Anthropic models reject them) and no assistant prefill is used.
  */
-export function modelClient(env: Pick<Env, "AI" | "ANTHROPIC_API_KEY">): ModelClient {
+export function modelClient(env: Pick<Env, "AI" | "ANTHROPIC_API_KEY"> & Partial<Pick<Env, "FT_DEFAULT_MODEL" | "FT_BULK_MODEL">>): ModelClient {
   return {
-    async complete(p: { model: string; messages: ChatMessage[]; maxTokens: number }): Promise<ModelReply> {
-      if (usesAnthropic(env, p.model)) return anthropicComplete(env.ANTHROPIC_API_KEY as string, p);
+    async complete(req: { model: string; messages: ChatMessage[]; maxTokens: number }): Promise<ModelReply> {
+      // "default" and "bulk" name the server's models (a spec intent may ask for one by class).
+      const alias = req.model === "default" ? env.FT_DEFAULT_MODEL : req.model === "bulk" ? env.FT_BULK_MODEL : undefined;
+      const p = alias ? { ...req, model: alias } : req;
+      if (usesAnthropic(env, p.model)) return { ...(await anthropicComplete(env.ANTHROPIC_API_KEY as string, p)), model: p.model };
       if (p.model.startsWith("claude-")) throw new Error(`model ${p.model} needs ANTHROPIC_API_KEY, which is not set`);
       const ai = env.AI as unknown as AiRunner;
       const t0 = Date.now();
@@ -66,7 +69,7 @@ export function modelClient(env: Pick<Env, "AI" | "ANTHROPIC_API_KEY">): ModelCl
       } catch (e) {
         throw throttleError(e, p.model);
       }
-      const reply: ModelReply = { text: extractModelText(result), ms: Date.now() - t0 };
+      const reply: ModelReply = { text: extractModelText(result), ms: Date.now() - t0, model: p.model };
       const finish = extractFinishReason(result);
       if (finish) reply.finishReason = finish;
       const usage = extractUsage(result);

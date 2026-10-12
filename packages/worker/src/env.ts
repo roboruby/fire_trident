@@ -33,6 +33,10 @@ export interface Env {
   FT_REFLEX_MODEL: string;
   /** Secret: bearer token for mutating API routes. */
   FT_ADMIN_TOKEN?: string;
+  /** Optional: co-change repulsion weight (see ColonyDO; the simulator favors 5). */
+  FT_COCHANGE_WEIGHT?: string;
+  /** Optional: lateral inhibition threshold as a fraction of a fresh claim, or "off". */
+  FT_LATERAL_INHIBITION?: string;
   /** Secret (optional): token MCP clients must present at /mcp and /sse. */
   FT_MCP_TOKEN?: string;
   /** Secret (optional): enables Claude agents via AI Gateway / Anthropic. */

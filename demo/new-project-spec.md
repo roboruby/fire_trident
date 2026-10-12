@@ -17,7 +17,7 @@ git clone <trunk remote> shortlinks && cd shortlinks && node --test
 ft why shortlinks src/routes/create.ts:1
 ```
 
-Six agents make the colony grow in waves. Priorities put the scaffold and shared types first, the leaf modules next, and the routes, entry point, and acceptance suite last, so most proposals build on modules that have already landed. Use `--agents 13` for a faster but noisier run where some early proposals get returned until their dependencies land.
+Six agents make the colony grow in waves. Priorities put the scaffold and shared types first, the leaf modules next, and the routes, entry point, and acceptance suite last. Each intent also names the files it builds on (`uses`): an agent that takes it waits until those files have landed, then reads them, so every module is written against the code of its dependencies as well as their contracts. Six agents match the widest wave (six intents at priority 4); more agents only wait longer. A swarm can mix models (`ft swarm shortlinks --agents 6 --model default=3,bulk`): the four intents that integrate several modules (the router, the create route, the entry point, and the acceptance suite) ask for the default model (`"model": "default"`), so whichever agent takes one writes it with that model, and bulk agents write the rest.
 
 ### Shot list (about 60 seconds)
 
@@ -42,8 +42,9 @@ Conventions every module follows:
 
 - Erasable TypeScript only: no `enum`, no `namespace`, no constructor parameter properties. Node strips the types and runs the file.
 - Relative imports name the `.ts` file (`import { json } from "./http.ts"`).
-- Strict mode. No `any`.
-- Tests use `node:test` and `node:assert/strict`. Test files are `test/*.test.ts`.
+- Strict mode. No `any`. Import types with `import type` (Node strips types, so a type imported as a value fails at load time).
+- Narrow a result union before reading it: `const r = await readJson(request); if (!r.ok) return r.response;` then use `r.value`.
+- Tests use `node:test` and `node:assert/strict`. Test files are `test/*.test.ts`. Expected values use the platform's normal forms: `new URL("https://example.com").href` is `"https://example.com/"`, and `new Request(url, { method: "get" }).method` is `"GET"`. Build boundary inputs (a body of exactly `MAX_BODY_BYTES` bytes) by measuring the encoded bytes, not by counting characters.
 
 ## HTTP API
 
@@ -139,7 +140,7 @@ export function isValidSlug(value: unknown): value is string;
 
 ```ts
 export const MAX_URL_LENGTH = 2048;
-/** Accept absolute http: or https: URLs up to MAX_URL_LENGTH characters with no username or password. Returns URL.href. */
+/** Accept absolute http: or https: URLs up to MAX_URL_LENGTH characters with no username or password. Returns URL.href (normalized: "https://example.com" becomes "https://example.com/"). */
 export function parseTargetUrl(input: unknown): { ok: true; url: string } | { ok: false; reason: string };
 ```
 
@@ -227,13 +228,14 @@ How FireTrident should verify, so parallel work does not trip over itself: a mod
 
 ## Machine-readable spec
 
-`ft new` reads this block. Rules are created before intents, so the morphology check is live before any code lands.
+`ft new` reads this block. Rules are created before intents, so the morphology check is live before any code lands. Intents are declared in dependency order: the intent that creates a file another intent `uses` becomes that intent's parent. Every intent carries the sections named in `context` (contracts, conventions, rules, and acceptance scenarios) as its spec context, so its agent builds against the same target shape as every other agent.
 
 ```json firetrident
 {
   "firetrident": "spec/v1",
   "name": "shortlinks",
   "regionDepth": 2,
+  "context": ["What it is", "HTTP API", "Module contracts", "Morphology: the rules", "Acceptance tests"],
   "goal": {
     "title": "shortlinks: a link shortener Worker built from demo/new-project-spec.md",
     "why": "Show a colony growing a project from a spec: contracts, rules, and acceptance tests instead of a task list."
@@ -346,6 +348,8 @@ How FireTrident should verify, so parallel work does not trip over itself: a mod
       "title": "Router with params, 404, and 405",
       "why": "A tiny dependency-free router keeps the Worker small and its behavior exact.",
       "footprint": ["src/router.ts", "test/router.test.ts"],
+      "uses": ["src/types.ts", "src/http.ts"],
+      "model": "default",
       "acceptance": [
         "Matches the src/router.ts contract: first match wins, trailing slash ignored, params URI-decoded",
         "405 method_not_allowed with Allow listing matching methods sorted and joined by \", \"; 404 not_found otherwise",
@@ -357,6 +361,7 @@ How FireTrident should verify, so parallel work does not trip over itself: a mod
       "title": "In-memory store",
       "why": "Tests and local development need a Store with no bindings.",
       "footprint": ["src/store/memory.ts", "test/store.memory.test.ts"],
+      "uses": ["src/types.ts"],
       "acceptance": [
         "Implements Store exactly: create returns false on an existing slug, hit and delete return false on a missing slug",
         "get returns a copy, so callers cannot mutate stored links",
@@ -368,6 +373,7 @@ How FireTrident should verify, so parallel work does not trip over itself: a mod
       "title": "KV store",
       "why": "Production storage on Workers KV behind the same Store interface.",
       "footprint": ["src/store/kv.ts", "test/store.kv.test.ts"],
+      "uses": ["src/types.ts"],
       "acceptance": [
         "Stores each Link as JSON under link:<slug>",
         "Same Store semantics as MemoryStore, tested against an in-memory KVLike fake",
@@ -379,6 +385,8 @@ How FireTrident should verify, so parallel work does not trip over itself: a mod
       "title": "Route: POST /api/links creates a short link",
       "why": "The core feature: turn a URL into a slug.",
       "footprint": ["src/routes/create.ts"],
+      "uses": ["src/types.ts", "src/http.ts", "src/slug.ts", "src/validate.ts"],
+      "model": "default",
       "acceptance": ["Behaves as the API table and acceptance scenarios A1, A3, and A4 describe", "Up to 5 attempts on a generated-slug collision, then 500 internal"],
       "priority": 3
     },
@@ -386,6 +394,7 @@ How FireTrident should verify, so parallel work does not trip over itself: a mod
       "title": "Route: GET /:slug redirects and counts",
       "why": "Following a short link is the hot path.",
       "footprint": ["src/routes/resolve.ts"],
+      "uses": ["src/types.ts", "src/http.ts"],
       "acceptance": ["302 with Location and cache-control: no-store, and one click added (scenario A2)", "404 not_found for unknown slugs"],
       "priority": 3
     },
@@ -393,6 +402,7 @@ How FireTrident should verify, so parallel work does not trip over itself: a mod
       "title": "Routes: GET and DELETE /api/links/:slug",
       "why": "Owners need stats, and admins need to remove links.",
       "footprint": ["src/routes/links.ts"],
+      "uses": ["src/types.ts", "src/http.ts"],
       "acceptance": ["GET returns { slug, url, clicks, createdAt } or 404", "DELETE needs Authorization: Bearer <adminToken>; 401 without it, 204 on success, 404 when missing (scenario A6)"],
       "priority": 3
     },
@@ -400,6 +410,8 @@ How FireTrident should verify, so parallel work does not trip over itself: a mod
       "title": "Worker entry: routes, error boundary, store selection",
       "why": "Wires the modules into a deployable Worker.",
       "footprint": ["src/index.ts"],
+      "uses": ["src/types.ts", "src/http.ts", "src/router.ts", "src/store/memory.ts", "src/store/kv.ts", "src/routes/create.ts", "src/routes/resolve.ts", "src/routes/links.ts"],
+      "model": "default",
       "acceptance": [
         "Exports routes in the contract order, createApp, and a default export with fetch(request, env)",
         "An unexpected throw becomes 500 internal; KvStore when env.LINKS is bound, else one module-level MemoryStore",
@@ -411,6 +423,8 @@ How FireTrident should verify, so parallel work does not trip over itself: a mod
       "title": "Acceptance suite A1 to A7",
       "why": "The definition of done for the whole spec.",
       "footprint": ["test/acceptance.test.ts"],
+      "uses": ["src/types.ts", "src/store/memory.ts", "src/index.ts"],
+      "model": "default",
       "acceptance": ["Encodes scenarios A1 to A7 from the spec with node:test, through createApp and MemoryStore", "node --test passes from a clean clone with nothing installed"],
       "priority": 1
     }

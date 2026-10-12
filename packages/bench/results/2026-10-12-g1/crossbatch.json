@@ -1,0 +1,158 @@
+{
+  "summary": {
+    "pairs": 16,
+    "violations": 0,
+    "a_landed": 16,
+    "b_landed": 11,
+    "b_landed_before_a": 11,
+    "b_returned": 5,
+    "b_returned_in_cycle": 5,
+    "unresolved": 0
+  },
+  "rows": [
+    {
+      "k": 1,
+      "a": "landed",
+      "b": "landed",
+      "order": "B before A",
+      "same_cycle_return": false,
+      "b_reason": null,
+      "ok": true
+    },
+    {
+      "k": 2,
+      "a": "landed",
+      "b": "returned",
+      "order": null,
+      "same_cycle_return": true,
+      "b_reason": "stale: bench/ga0901252/f.txt (expected absent, trunk has 84c125ae7b8ee08dc5b6e06358ebb6134f45a4c4, landing ahead in this cycle from prp_mv50w3gx2jb1kz)",
+      "ok": true
+    },
+    {
+      "k": 3,
+      "a": "landed",
+      "b": "returned",
+      "order": null,
+      "same_cycle_return": true,
+      "b_reason": "stale: bench/ga0901253/f.txt (expected absent, trunk has 84c125ae7b8ee08dc5b6e06358ebb6134f45a4c4, landing ahead in this cycle from prp_mv50w3gxh9jsbl)",
+      "ok": true
+    },
+    {
+      "k": 4,
+      "a": "landed",
+      "b": "landed",
+      "order": "B before A",
+      "same_cycle_return": false,
+      "b_reason": null,
+      "ok": true
+    },
+    {
+      "k": 5,
+      "a": "landed",
+      "b": "landed",
+      "order": "B before A",
+      "same_cycle_return": false,
+      "b_reason": null,
+      "ok": true
+    },
+    {
+      "k": 6,
+      "a": "landed",
+      "b": "landed",
+      "order": "B before A",
+      "same_cycle_return": false,
+      "b_reason": null,
+      "ok": true
+    },
+    {
+      "k": 7,
+      "a": "landed",
+      "b": "landed",
+      "order": "B before A",
+      "same_cycle_return": false,
+      "b_reason": null,
+      "ok": true
+    },
+    {
+      "k": 8,
+      "a": "landed",
+      "b": "returned",
+      "order": null,
+      "same_cycle_return": true,
+      "b_reason": "stale: bench/ga0901258/f.txt (expected absent, trunk has 84c125ae7b8ee08dc5b6e06358ebb6134f45a4c4, landing ahead in this cycle from prp_mv50w3gvhidp6s)",
+      "ok": true
+    },
+    {
+      "k": 9,
+      "a": "landed",
+      "b": "landed",
+      "order": "B before A",
+      "same_cycle_return": false,
+      "b_reason": null,
+      "ok": true
+    },
+    {
+      "k": 10,
+      "a": "landed",
+      "b": "landed",
+      "order": "B before A",
+      "same_cycle_return": false,
+      "b_reason": null,
+      "ok": true
+    },
+    {
+      "k": 11,
+      "a": "landed",
+      "b": "landed",
+      "order": "B before A",
+      "same_cycle_return": false,
+      "b_reason": null,
+      "ok": true
+    },
+    {
+      "k": 12,
+      "a": "landed",
+      "b": "landed",
+      "order": "B before A",
+      "same_cycle_return": false,
+      "b_reason": null,
+      "ok": true
+    },
+    {
+      "k": 13,
+      "a": "landed",
+      "b": "returned",
+      "order": null,
+      "same_cycle_return": true,
+      "b_reason": "stale: bench/ga09012513/f.txt (expected absent, trunk has 84c125ae7b8ee08dc5b6e06358ebb6134f45a4c4, landing ahead in this cycle from prp_mv50w3gxpsz2s3)",
+      "ok": true
+    },
+    {
+      "k": 14,
+      "a": "landed",
+      "b": "landed",
+      "order": "B before A",
+      "same_cycle_return": false,
+      "b_reason": null,
+      "ok": true
+    },
+    {
+      "k": 15,
+      "a": "landed",
+      "b": "returned",
+      "order": null,
+      "same_cycle_return": true,
+      "b_reason": "stale: bench/ga09012515/f.txt (expected absent, trunk has 84c125ae7b8ee08dc5b6e06358ebb6134f45a4c4, landing ahead in this cycle from prp_mv50w3gxn9zou2)",
+      "ok": true
+    },
+    {
+      "k": 16,
+      "a": "landed",
+      "b": "landed",
+      "order": "B before A",
+      "same_cycle_return": false,
+      "b_reason": null,
+      "ok": true
+    }
+  ]
+}

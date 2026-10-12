@@ -1,0 +1,309 @@
+{
+  "kind": "live",
+  "note": "MEASURED, real landings: synthetic API agents (no model, no agent-side git); every landed proposal is a real trunk commit built by the trunk writer from a blob read out of the agent's workspace fork.",
+  "label": "n10",
+  "url": "https://g1-firetrident.mattsolt.workers.dev",
+  "colony": "g1-bench",
+  "agents": 10,
+  "durationS": 60,
+  "workMs": 0,
+  "regions": 64,
+  "startedAt": "2026-10-12T08:52:09.065Z",
+  "elapsedS": 62.01899525,
+  "stoppedEarly": null,
+  "ops": [
+    {
+      "op": "snapshot",
+      "calls": 3,
+      "errors": 0,
+      "n": 3,
+      "min": 214.21662500000093,
+      "p50": 295.90470799999997,
+      "p90": 385.19350000000003,
+      "p99": 385.19350000000003,
+      "max": 385.19350000000003,
+      "mean": 298.438277666667
+    },
+    {
+      "op": "register",
+      "calls": 10,
+      "errors": 0,
+      "n": 10,
+      "min": 95.734375,
+      "p50": 144.22416700000008,
+      "p90": 182.1830420000001,
+      "p99": 210.64245800000003,
+      "max": 210.64245800000003,
+      "mean": 152.00101660000004
+    },
+    {
+      "op": "take",
+      "calls": 228,
+      "errors": 0,
+      "n": 228,
+      "min": 212.87758399999439,
+      "p50": 474.3915420000012,
+      "p90": 935.2166250000009,
+      "p99": 1513.9067499999999,
+      "max": 1717.8218749999999,
+      "mean": 566.8878509035087
+    },
+    {
+      "op": "propose",
+      "calls": 228,
+      "errors": 0,
+      "n": 228,
+      "min": 87.34500000000116,
+      "p50": 116.75587499999892,
+      "p90": 229.63366600000154,
+      "p99": 425.12404199999946,
+      "max": 579.8175000000047,
+      "mean": 144.02749159210526
+    },
+    {
+      "op": "poll",
+      "calls": 253,
+      "errors": 0,
+      "n": 253,
+      "min": 36.699916999998095,
+      "p50": 54.7896669999991,
+      "p90": 144.58008300000074,
+      "p99": 253.11125000000175,
+      "max": 476.6672499999986,
+      "mean": 79.30607802371534
+    },
+    {
+      "op": "heartbeat",
+      "calls": 10,
+      "errors": 0,
+      "n": 10,
+      "min": 49.67095800000243,
+      "p50": 54.712790999998106,
+      "p90": 58.401833000003535,
+      "p99": 115.73791699999856,
+      "max": 115.73791699999856,
+      "mean": 60.50869579999926
+    }
+  ],
+  "takeAssigned": {
+    "n": 228,
+    "min": 212.9355829999986,
+    "p50": 474.48162500000035,
+    "p90": 935.2722919999997,
+    "p99": 1513.9393340000001,
+    "max": 1717.9217090000002,
+    "mean": 566.9702003157897
+  },
+  "takeWait": {
+    "n": 0,
+    "min": null,
+    "p50": null,
+    "p90": null,
+    "p99": null,
+    "max": null,
+    "mean": null
+  },
+  "counts": {
+    "registered": 10,
+    "assigned": 228,
+    "waits": {},
+    "proposals": 228,
+    "landed": 228,
+    "returned": 0,
+    "rejected": 0,
+    "unresolved": 0
+  },
+  "returns": {},
+  "window": {
+    "fromS": 15.2,
+    "toS": 60,
+    "commits": 158,
+    "landedProposals": 161,
+    "landedPerMin": 215.62500000000003,
+    "commitsPerMin": 211.60714285714286,
+    "source": "live WebSocket landing events"
+  },
+  "snapshotDelta": {
+    "landings": 224,
+    "landedProposals": 228,
+    "proposals": 228,
+    "returned": 0,
+    "rejected": 0,
+    "takes": 228
+  },
+  "timeToLandMs": {
+    "n": 228,
+    "min": 309,
+    "p50": 833,
+    "p90": 1315,
+    "p99": 7959,
+    "max": 8359,
+    "mean": 1096.7850877192982
+  },
+  "batchSize": {
+    "n": 224,
+    "min": 1,
+    "p50": 1,
+    "p90": 1,
+    "p99": 2,
+    "max": 3,
+    "mean": 1.0178571428571428
+  },
+  "commitGapMs": {
+    "n": 223,
+    "min": 0,
+    "p50": 123,
+    "p90": 685,
+    "p99": 1280,
+    "max": 1488,
+    "mean": 265.7533632286995
+  },
+  "feed": {
+    "connected": true,
+    "events": 5033,
+    "sigmaMax": 0,
+    "sigmaEvents": 224
+  },
+  "trunkCycles": {
+    "n": 85,
+    "perMin": 113.83928571428572,
+    "metrics": {
+      "batches": {
+        "n": 85,
+        "min": 1,
+        "p50": 1,
+        "p90": 4,
+        "p99": 6,
+        "max": 6,
+        "mean": 1.8588235294117648
+      },
+      "buildMs": {
+        "n": 85,
+        "min": 0,
+        "p50": 0,
+        "p90": 16,
+        "p99": 26,
+        "max": 26,
+        "mean": 3.7058823529411766
+      },
+      "commitMs": {
+        "n": 85,
+        "min": 0,
+        "p50": 0,
+        "p90": 0,
+        "p99": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "cycleMs": {
+        "n": 85,
+        "min": 182,
+        "p50": 367,
+        "p90": 542,
+        "p99": 712,
+        "max": 712,
+        "mean": 369.3411764705882
+      },
+      "finalizeMs": {
+        "n": 85,
+        "min": 0,
+        "p50": 0,
+        "p90": 0,
+        "p99": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "landed": {
+        "n": 85,
+        "min": 1,
+        "p50": 1,
+        "p90": 4,
+        "p99": 6,
+        "max": 6,
+        "mean": 1.8941176470588235
+      },
+      "landings": {
+        "n": 85,
+        "min": 1,
+        "p50": 1,
+        "p90": 4,
+        "p99": 6,
+        "max": 6,
+        "mean": 1.8588235294117648
+      },
+      "lineageMs": {
+        "n": 85,
+        "min": 0,
+        "p50": 0,
+        "p90": 0,
+        "p99": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "proposals": {
+        "n": 85,
+        "min": 1,
+        "p50": 1,
+        "p90": 4,
+        "p99": 6,
+        "max": 6,
+        "mean": 1.8941176470588235
+      },
+      "pullMs": {
+        "n": 85,
+        "min": 20,
+        "p50": 64,
+        "p90": 88,
+        "p99": 359,
+        "max": 359,
+        "mean": 74.44705882352942
+      },
+      "pushMs": {
+        "n": 85,
+        "min": 134,
+        "p50": 278,
+        "p90": 408,
+        "p99": 654,
+        "max": 654,
+        "mean": 291.18823529411765
+      },
+      "returned": {
+        "n": 85,
+        "min": 0,
+        "p50": 0,
+        "p90": 0,
+        "p99": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "screenMs": {
+        "n": 85,
+        "min": 0,
+        "p50": 0,
+        "p90": 0,
+        "p99": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "surgeryMs": {
+        "n": 85,
+        "min": 0,
+        "p50": 0,
+        "p90": 0,
+        "p99": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "waitMs": {
+        "n": 85,
+        "min": 0,
+        "p50": 180,
+        "p90": 347,
+        "p99": 641,
+        "max": 641,
+        "mean": 155.71764705882353
+      }
+    }
+  },
+  "errors": []
+}

@@ -1,8 +1,9 @@
-import { checkFile, ruleApplies } from "@fire_trident/core";
+import { checkFile, importsOf, ruleApplies } from "@fire_trident/core";
 import type { AgentKind, AgentState, CheckResult, FileVersion, Id, Intent, Path, Proposal, ProposalStatus, Rule, Sha, WorkspaceLease } from "@fire_trident/core";
-import { agentIdentity, applyReplacement, changeSummary, cleanPath, commitMessage, decodeText, expandFootprint, isLiteralPath, recheck, ruleReplacement } from "./change.ts";
+import { agentIdentity, applyReplacement, changeSummary, cleanPath, commitMessage, decodeText, expandFootprint, isLiteralPath, oneLine, recheck, ruleReplacement } from "./change.ts";
 import { TreeIndex, applySpecifierEdits, isImportRule, parseSpecifierEdits, specifierFacts } from "./context.ts";
-import { buildEditMessages, buildSpecifierMessages, maxTokensFor, parseFileReply, retryMessages, specifierRetryMessages, violationProblem } from "./prompt.ts";
+import { checkWrittenFile, parseIntentSpec, resolveImport, wantsErasable, writeOrder } from "./create.ts";
+import { buildEditMessages, buildSpecifierMessages, buildWriteMessages, maxTokensFor, parseFileReply, retryMessages, specifierRetryMessages, violationProblem } from "./prompt.ts";
 import type { ChatMessage, TokenUsage } from "./prompt.ts";
 import { TERMINAL_STATUSES, errorMessage, errorStatus } from "./rpc.ts";
 import type { ColonyRpc, TakeResult } from "./rpc.ts";
@@ -11,9 +12,11 @@ import type { ColonyRpc, TakeResult } from "./rpc.ts";
  * The in-platform agent loop as a journaled state machine.
  *
  * One job (an intent plus its workspace lease) moves through
- * fetch -> read -> produce -> commit -> push -> propose -> await. The job record is
+ * [deps ->] fetch -> read -> produce -> commit -> push -> propose -> await. The job record is
  * written to the journal after every step (and after every file in `produce`), so an
  * agent that is killed resumes at the step it was in, keyed by intent id:
+ * - deps (only for intents that build on other intents' files) waits until those files are
+ *   on trunk; it only reads, so it is safe to repeat,
  * - fetch and read are reads and safe to repeat,
  * - produce keeps each finished file's new content, so no model call is repeated,
  * - commit uses the job's take time as the commit time, so a repeat yields the same sha,
@@ -24,7 +27,7 @@ import type { ColonyRpc, TakeResult } from "./rpc.ts";
  * git, the model, the journal, and the clock.
  */
 
-export type JobStep = "fetch" | "read" | "produce" | "commit" | "push" | "propose" | "await";
+export type JobStep = "deps" | "fetch" | "read" | "produce" | "commit" | "push" | "propose" | "await";
 export type Outcome = "landed" | "returned" | "rejected" | "abandoned" | "timeout" | "lost";
 
 /** Persistent configuration of one agent. `epoch` changes on every start/stop. */
@@ -74,7 +77,19 @@ export interface Job {
   produced?: Path[];
   checks?: CheckResult[];
   llmCalls: number;
-  method?: "replacement" | "model";
+  method?: "replacement" | "model" | "write";
+  /** Files of other intents this intent builds on (from its spec layout; see create.ts). */
+  buildsOn?: Path[];
+  /** Of those, the files not on trunk at the last check (deps step) or at the base (read step). */
+  depsMissing?: Path[];
+  /** Time spent waiting for them. */
+  depsWaitedMs?: number;
+  /** Files the job read as context (the files it builds on, at the base). */
+  context?: FileRead[];
+  /** The colony's rules, for checking the files a non-rule intent writes. */
+  rules?: Rule[];
+  /** The model that wrote the files, when the intent asked for one other than the agent's. */
+  writeModel?: string;
   headSha?: Sha;
   writeSet?: FileVersion[];
   summary?: string;
@@ -193,6 +208,8 @@ export interface GitOps {
   blobsAt?(sha: Sha, paths: Path[]): Promise<Map<Path, Sha | null>>;
   /** Network cost since the last call (then reset). */
   takeNetStats?(): NetStats;
+  /** Fetch trunk's `main` (shallow) and return the commit it points at now (null when absent). */
+  fetchTip?(p: { remote: string; token: string }): Promise<Sha | null>;
 }
 
 /** A model reply. */
@@ -202,6 +219,8 @@ export interface ModelReply {
   usage?: TokenUsage;
   /** Wall time of the call. */
   ms?: number;
+  /** The model that answered (the client resolves "default" and "bulk" to model ids). */
+  model?: string;
 }
 
 /** Text generation, whichever provider serves the model. */
@@ -241,6 +260,16 @@ export const MAX_MODEL_CHARS = 120_000;
 export const MAX_EDIT_CHARS = 1_500_000;
 /** Output budget of one specifier-edit call: the reply is a few lines, the rest is room for reasoning. */
 export const SPECIFIER_MAX_TOKENS = 8_192;
+/** Model attempts per written file (the first, then retries with the problems found). */
+export const MAX_WRITE_ATTEMPTS = 3;
+/** Smallest output budget for writing a file (room for reasoning models to think). */
+export const WRITE_MIN_TOKENS = 12_288;
+/** Files an intent builds on that one job reads as context, and their characters in all. */
+export const MAX_CONTEXT_FILES = 12;
+export const MAX_CONTEXT_CHARS = 60_000;
+/** How often a job waiting for the files it builds on looks at trunk, and how long it waits at most. */
+export const DEPS_POLL_MS = 5_000;
+export const DEPS_MAX_WAIT_MS = 15 * 60_000;
 const TOKEN_SLACK_MS = 10_000;
 const MIN_WAIT_MS = 200;
 const MAX_WAIT_MS = 60_000;
@@ -386,6 +415,8 @@ async function throttled(deps: LoopDeps, cfg: AgentConfig, job: Job, msg: string
 
 async function runStep(deps: LoopDeps, cfg: AgentConfig, job: Job): Promise<StepResult> {
   switch (job.step) {
+    case "deps":
+      return depsStep(deps, cfg, job);
     case "fetch":
       return fetchStep(deps, cfg, job);
     case "read":
@@ -448,27 +479,66 @@ async function takeWork(deps: LoopDeps, cfg: AgentConfig): Promise<StepResult> {
     }
   }
   const now = deps.now();
-  save(deps, cfg, {
+  // A spec-declared intent names the files it builds on; its agent waits for them to land first.
+  const own = new Set((res.intent.footprint ?? []).map(cleanPath));
+  const buildsOn = rule ? [] : parseIntentSpec(res.intent.why ?? "").buildsOn.filter((p) => isLiteralPath(p) && !own.has(p));
+  const job: Job = {
     intentId: res.intent.id,
     intent: res.intent,
     lease: res.lease,
     rule,
-    step: "fetch",
+    step: buildsOn.length > 0 && deps.trunk ? "deps" : "fetch",
     attempts: 0,
     takenAt: now,
     stepStartedAt: now,
     llmCalls: 0,
     lastHeartbeatAt: now,
-  });
+  };
+  if (buildsOn.length > 0) job.buildsOn = buildsOn;
+  save(deps, cfg, job);
   deps.journal.bump("taken");
   deps.journal.log({ at: now, intentId: res.intent.id, step: "take", ok: true, ms: now - t0 });
   return { sleepMs: 0 };
 }
 
+/**
+ * Wait until every file the intent builds on is on trunk (one TrunkDO.blobsFor per poll).
+ * The colony checks every new import against trunk, so a file written before its
+ * dependencies land would only come back; waiting also lets the agent read the real code.
+ * The claim stays held (heartbeats refresh it). After DEPS_MAX_WAIT_MS the intent is given
+ * back, so a colony whose dependencies stall never deadlocks on waiting agents.
+ */
+async function depsStep(deps: LoopDeps, cfg: AgentConfig, job: Job): Promise<StepResult> {
+  const needed = job.buildsOn ?? [];
+  if (needed.length === 0 || !deps.trunk) return advance(deps, cfg, job, "fetch");
+  const blobs = await deps.trunk.blobsFor(needed);
+  const missing = needed.filter((p) => !blobs[p]);
+  const now = deps.now();
+  const waited = Math.max(0, now - job.stepStartedAt);
+  job.depsWaitedMs = waited;
+  if (missing.length === 0) {
+    delete job.depsMissing;
+    if (waited > 0) deps.journal.log({ at: now, intentId: job.intentId, step: "deps", ok: true, ms: waited, detail: `${needed.length} file(s) on trunk after ${Math.round(waited / 1000)} s` });
+    return advance(deps, cfg, job, "fetch");
+  }
+  if (waited >= DEPS_MAX_WAIT_MS) {
+    return abandon(deps, cfg, job, `waited ${Math.round(waited / 60_000)} min for ${missing.join(", ")} to land; giving the intent back`);
+  }
+  // Waiting is not a failed attempt.
+  job.attempts = 0;
+  job.depsMissing = missing;
+  save(deps, cfg, job);
+  return { sleepMs: Math.round(DEPS_POLL_MS * (0.75 + (deps.rand ?? Math.random)() * 0.5)) };
+}
+
 async function fetchStep(deps: LoopDeps, cfg: AgentConfig, job: Job): Promise<StepResult> {
   deps.git.takeNetStats?.();
-  const reuse = await workspaceBase(deps, job);
-  if (reuse) {
+  // A job that waited for files to land builds on trunk as it is now: the lease base predates them.
+  const tip = (job.buildsOn ?? []).length > 0 && deps.git.fetchTip ? await deps.git.fetchTip({ remote: job.lease.trunk.remote, token: job.lease.trunk.token }) : null;
+  const reuse = tip ? null : await workspaceBase(deps, job);
+  if (tip) {
+    job.baseSha = tip;
+  } else if (reuse) {
     job.baseSha = reuse.sha;
     job.parentSha = reuse.sha;
     job.parentHow = reuse.how;
@@ -496,7 +566,8 @@ async function workspaceBase(deps: LoopDeps, job: Job): Promise<{ sha: Sha; how:
   if (!deps.trunk || !g.remoteHead || !g.commitInfo || !g.blobsAt || !g.fetchCommit) return null;
   const footprint = job.intent.footprint ?? [];
   if (footprint.length === 0 || !footprint.every(isLiteralPath)) return null;
-  const paths = [...new Set(footprint.map(cleanPath))];
+  // The files the intent builds on must match trunk too: the job reads them.
+  const paths = [...new Set([...footprint, ...(job.buildsOn ?? [])].map(cleanPath))];
   try {
     const tip = await g.remoteHead({ remote: job.lease.repo.remote, token: job.lease.token });
     if (!tip) return null;
@@ -532,17 +603,36 @@ async function readStep(deps: LoopDeps, cfg: AgentConfig, job: Job): Promise<Ste
   if (rule) paths = paths.filter((p) => ruleApplies(rule, p));
   paths = paths.slice(0, MAX_FILES);
   if (paths.length === 0) return abandon(deps, cfg, job, "the footprint names no file this agent can edit");
-  const reads: FileRead[] = [];
-  for (const path of paths) {
+  const at = async (path: Path): Promise<FileRead | null> => {
     const f = await deps.git.readFile(baseSha, path);
-    if (!f) {
-      reads.push({ path, blob: null, mode: null, size: 0, text: true });
-      continue;
-    }
+    if (!f) return null;
     const regular = f.mode === "100644" || f.mode === "100755";
-    reads.push({ path, blob: f.blob, mode: f.mode, size: f.bytes.length, text: regular && decodeText(f.bytes) !== null });
+    return { path, blob: f.blob, mode: f.mode, size: f.bytes.length, text: regular && decodeText(f.bytes) !== null };
+  };
+  const reads: FileRead[] = [];
+  for (const path of paths) reads.push((await at(path)) ?? { path, blob: null, mode: null, size: 0, text: true });
+  if (rule) {
+    job.reads = reads;
+    return advance(deps, cfg, job, "produce");
   }
-  job.reads = reads;
+  // A non-rule intent writes its files with a model: sources before tests, so a test sees the code it tests;
+  // the files it builds on as context; and the colony's rules, which every written file must keep.
+  job.reads = writeOrder(reads);
+  const context: FileRead[] = [];
+  const missing: Path[] = [];
+  let chars = 0;
+  for (const path of (job.buildsOn ?? []).slice(0, MAX_CONTEXT_FILES)) {
+    const f = await at(path);
+    if (!f) missing.push(path);
+    else if (f.text && chars + f.size <= MAX_CONTEXT_CHARS) {
+      context.push(f);
+      chars += f.size;
+    }
+  }
+  job.context = context;
+  if (missing.length > 0) job.depsMissing = missing;
+  else delete job.depsMissing;
+  job.rules = (await deps.colony.snapshot()).rules ?? [];
   return advance(deps, cfg, job, "produce");
 }
 
@@ -566,7 +656,8 @@ async function produceStep(deps: LoopDeps, cfg: AgentConfig, job: Job): Promise<
   }
   const changed = deps.journal.changes().map((c) => c.path);
   if (changed.length === 0) return abandon(deps, cfg, job, "no change needed: the files already satisfy the intent");
-  job.summary = changeSummary(job.intent, changed, job.method === "replacement" ? "applied the rule's replacement" : "edited with a model");
+  const how = job.method === "replacement" ? "applied the rule's replacement" : job.method === "write" ? "written with a model and checked" : "edited with a model";
+  job.summary = changeSummary(job.intent, changed, how);
   return advance(deps, cfg, job, "commit");
 }
 
@@ -603,9 +694,101 @@ async function produceFile(deps: LoopDeps, cfg: AgentConfig, job: Job, baseSha: 
     if (!r.ok) return { kind: "abandon", reason: r.reason };
     return r.content === original ? { kind: "skip" } : { kind: "change", content: r.content };
   }
-  const r = await modelEdit(deps, cfg, job, f.path, original, []);
+  const r = await writeFile(deps, cfg, job, baseSha, f.path, original, treeAt);
   if (!r.ok) return { kind: "abandon", reason: r.reason };
   return r.content === (original ?? "") ? { kind: "skip" } : { kind: "change", content: r.content };
+}
+
+/**
+ * Write one file of a non-rule intent with a model (see create.ts and buildWriteMessages):
+ * the model sees the intent with its spec context, the colony's rules for the path, the
+ * project tree, the files the intent builds on and the files this change already wrote.
+ * The reply must parse and pass every check (syntax, rules, erasable TypeScript when the
+ * project asks for it, imports that resolve in trunk or this change); otherwise the model
+ * gets the problems and tries again, MAX_WRITE_ATTEMPTS times in all.
+ */
+async function writeFile(
+  deps: LoopDeps,
+  cfg: AgentConfig,
+  job: Job,
+  baseSha: Sha,
+  path: Path,
+  original: string | null,
+  treeAt: () => Promise<TreeIndex>,
+): Promise<{ ok: true; content: string } | { ok: false; reason: string }> {
+  if (original !== null && original.length > MAX_MODEL_CHARS) {
+    return { ok: false, reason: `${path} is too large to rewrite with a model (${original.length} characters)` };
+  }
+  const tree = await treeAt();
+  const siblings = (job.reads ?? []).map((r) => r.path);
+  const written = deps.journal.changes().filter((c) => c.path !== path);
+  const context: Array<{ path: Path; content: string }> = [];
+  for (const c of job.context ?? []) {
+    const file = await deps.git.readFile(baseSha, c.path);
+    const text = file ? decodeText(file.bytes) : null;
+    if (text !== null) context.push({ path: c.path, content: text });
+  }
+  const spec = parseIntentSpec(job.intent.why ?? "");
+  const tsconfig = written.find((w) => w.path === "tsconfig.json")?.content ?? (tree.isFile("tsconfig.json") ? decodeText((await deps.git.readFile(baseSha, "tsconfig.json"))?.bytes ?? new Uint8Array()) : null);
+  const erasable = wantsErasable(`${job.intent.why ?? ""}\n${(job.intent.acceptance ?? []).join("\n")}`, tsconfig);
+  const rules = job.rules ?? [];
+  const exists = (p: Path): boolean => tree.isFile(p) || siblings.includes(p);
+  const planned = new Set(spec.planned);
+  const first = buildWriteMessages({
+    intent: job.intent,
+    path,
+    content: original,
+    siblings,
+    rules: rules.filter((r) => ruleApplies(r, path)),
+    tree: [...tree.files].sort(),
+    context,
+    missing: job.depsMissing ?? [],
+    written,
+  });
+  // Modules the written file imports, read once, so the binding check sees what they export.
+  const sources = new Map<Path, string | null>();
+  const loadSources = async (content: string): Promise<void> => {
+    for (const imp of importsOf(content)) {
+      const target = resolveImport(path, imp.specifier, exists);
+      if (target === null || sources.has(target)) continue;
+      const mine = written.find((w) => w.path === target);
+      if (mine) sources.set(target, mine.content);
+      else sources.set(target, tree.isFile(target) ? decodeText((await deps.git.readFile(baseSha, target))?.bytes ?? new Uint8Array()) : null);
+    }
+  };
+  const maxTokens = maxTokensFor(original, WRITE_MIN_TOKENS);
+  // An intent may ask for a model class ("default" for integration-heavy work); bulk agents then write with it.
+  const asked = spec.model ?? cfg.model;
+  let messages = first;
+  let problem = "";
+  for (let attempt = 0; attempt < MAX_WRITE_ATTEMPTS; attempt++) {
+    await maybeHeartbeat(deps, cfg, job);
+    const t0 = deps.now();
+    const reply = await deps.model.complete({ model: asked, messages, maxTokens });
+    countCall(deps, cfg, job, reply, deps.now() - t0, asked);
+    job.method = "write";
+    const used = reply.model ?? asked;
+    if (used !== cfg.model) job.writeModel = used;
+    const text = reply.text ?? "";
+    if (reply.finishReason === "length" && !text.includes("</file>")) {
+      problem = "the reply was cut off before </file>; return the complete file and nothing else";
+    } else {
+      const parsed = parseFileReply(text, original);
+      if (!parsed.ok) problem = parsed.reason;
+      else {
+        await loadSources(parsed.content);
+        const check = checkWrittenFile({ path, before: original, after: parsed.content, rules, exists, planned, erasable, source: (p) => sources.get(p) ?? null });
+        if (check.problems.length === 0) {
+          addCheck(job, { name: `write ${path}`, ok: true, ms: deps.now() - t0, detail: `${check.detail} (model ${used}, attempt ${attempt + 1})` });
+          return { ok: true, content: parsed.content };
+        }
+        problem = `the file has these problems:\n${check.problems.map((p) => `- ${p}`).join("\n")}`;
+      }
+    }
+    messages = retryMessages(first, text, problem);
+  }
+  addCheck(job, { name: `write ${path}`, ok: false, ms: 0, detail: problem.slice(0, 500) });
+  return { ok: false, reason: `the model did not write a valid ${path}: ${oneLine(problem).slice(0, 300)}` };
 }
 
 function addCheck(job: Job, c: CheckResult): void {
@@ -663,12 +846,15 @@ async function modelEdit(
 }
 
 /** Book one model call on the job (calls, tokens, time) and in the agent's counters. */
-function countCall(deps: LoopDeps, cfg: AgentConfig, job: Job, reply: ModelReply, ms: number): void {
+function countCall(deps: LoopDeps, cfg: AgentConfig, job: Job, reply: ModelReply, ms: number, asked?: string): void {
   job.llmCalls += 1;
   job.method = "model";
   const u = job.usage ?? { calls: 0, input: 0, output: 0, cached: 0, neurons: 0, ms: 0 };
   u.calls += 1;
   u.ms += reply.ms ?? ms;
+  // A call to a model other than the agent's own (an intent that asks for one) is also counted under that model.
+  const model = reply.model ?? asked ?? cfg.model;
+  const other = model !== cfg.model ? model : null;
   if (reply.usage) {
     u.input += reply.usage.input;
     u.output += reply.usage.output;
@@ -676,10 +862,15 @@ function countCall(deps: LoopDeps, cfg: AgentConfig, job: Job, reply: ModelReply
     u.neurons += reply.usage.neurons;
     deps.journal.bump("tokensIn", reply.usage.input);
     deps.journal.bump("tokensOut", reply.usage.output);
+    if (other) {
+      deps.journal.bump(`tokensIn:${other}`, reply.usage.input);
+      deps.journal.bump(`tokensOut:${other}`, reply.usage.output);
+    }
   }
   job.usage = u;
   save(deps, cfg, job);
   deps.journal.bump("llmCalls");
+  if (other) deps.journal.bump(`llmCalls:${other}`);
 }
 
 /**
@@ -838,7 +1029,7 @@ function telemetryChecks(cfg: AgentConfig, job: Job): CheckResult[] {
       name: "agent model usage",
       ok: true,
       ms: u.ms,
-      detail: `${cfg.model}: ${u.calls} call(s), ${u.input} input / ${u.output} output tokens${u.cached ? ` (${u.cached} cached)` : ""}${u.neurons ? `, ${u.neurons.toFixed(1)} neurons` : ""}`,
+      detail: `${job.writeModel ?? cfg.model}: ${u.calls} call(s), ${u.input} input / ${u.output} output tokens${u.cached ? ` (${u.cached} cached)` : ""}${u.neurons ? `, ${u.neurons.toFixed(1)} neurons` : ""}`,
     });
   }
   const n = job.net;
@@ -853,6 +1044,24 @@ function telemetryChecks(cfg: AgentConfig, job: Job): CheckResult[] {
   return out;
 }
 
+/**
+ * The not-verified statement of a written change: what the agent checked (every file passed
+ * syntax, the colony's rules and import resolution before it was proposed), what it read, and
+ * what it did not run. Reviewers see the first 400 characters, so the facts come first.
+ */
+export function writeStatement(cfg: Pick<AgentConfig, "model">, job: Pick<Job, "rules" | "context" | "depsMissing" | "buildsOn" | "baseSha" | "lease" | "checks" | "writeModel">): string {
+  const read = (job.context ?? []).map((c) => c.path);
+  const erasable = (job.checks ?? []).some((c) => c.name.startsWith("write ") && (c.detail ?? "").includes("erasable TypeScript"));
+  const parts = [
+    // Review diffs are cut per file for length and end in "… (truncated)"; say up front that the files are whole.
+    `Complete files (each parses); a diff ending in "… (truncated)" is a display limit, not the file. Checked by the agent before proposing: the colony's ${(job.rules ?? []).length} rule(s) hold${erasable ? ", the TypeScript is erasable (Node runs it by stripping types)" : ""}, and each relative import names a file in trunk or in this change and only names it exports. No tests, type checks or builds were run. Written by model ${job.writeModel ?? cfg.model} from the intent and its spec context.`,
+    read.length > 0 ? `Built on the landed ${read.slice(0, 4).join(", ")}${read.length > 4 ? ` and ${read.length - 4} more` : ""}.` : "",
+    (job.depsMissing ?? []).length > 0 ? `Not in trunk when written (built against the spec's contracts): ${(job.depsMissing ?? []).join(", ")}.` : "",
+    (job.buildsOn ?? []).length > 0 && job.baseSha && job.baseSha !== job.lease.baseSha ? `Based on trunk ${job.baseSha}, the tip once those files had landed.` : "",
+  ];
+  return parts.filter(Boolean).join(" ");
+}
+
 async function proposeStep(deps: LoopDeps, cfg: AgentConfig, job: Job): Promise<StepResult> {
   const headSha = requireHead(job);
   let proposal: Proposal | undefined;
@@ -862,12 +1071,13 @@ async function proposeStep(deps: LoopDeps, cfg: AgentConfig, job: Job): Promise<
     proposal = recent.find((p) => p.intentId === job.intentId && p.headSha === headSha);
   }
   if (!proposal) {
-    const readSet: FileVersion[] = (job.reads ?? []).filter((f) => f.text).map((f) => ({ path: f.path, blob: f.blob }));
+    // The files read as context belong in the read set: if one changes before landing, the change is re-checked.
+    const readSet: FileVersion[] = [...(job.reads ?? []), ...(job.context ?? [])].filter((f) => f.text).map((f) => ({ path: f.path, blob: f.blob }));
     // Reviewers read the start of this statement (the decide stream's second opinion keeps 400 characters),
     // so for import rules it leads with what was and was not checked, naming any directory rewrites.
     const importEdit = isImportRule(job.rule) && job.method === "model";
     const dirs = job.directoryRewrites ?? [];
-    const notVerified = [
+    const notVerified = job.method === "write" ? writeStatement(cfg, job) : [
       importEdit
         ? `No tests, type checks or builds were run. Checked by the agent against the trunk tree: the rule reports 0 violations after the edit; every rewritten import names an existing file, the one TypeScript resolved before (x.ts before x/index.ts)${
             dirs.length > 0 ? `; directories name their index file: ${dirs.slice(0, 2).join(", ")}` : ""
@@ -974,6 +1184,7 @@ function finishJob(deps: LoopDeps, cfg: AgentConfig, job: Job, outcome: Outcome,
     pushUp: job.net?.push?.sentBytes ?? null,
     pushMs: job.net?.push?.ms ?? null,
     parent: job.parentHow ?? null,
+    depsWaitMs: job.depsWaitedMs ?? 0,
     workspace: job.lease.repo.name,
   });
   deps.journal.setJob(null);

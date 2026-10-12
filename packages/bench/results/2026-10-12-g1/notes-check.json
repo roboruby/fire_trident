@@ -1,0 +1,15 @@
+{
+  "kind": "notes-audit",
+  "at": "2026-10-12T09:02:24Z",
+  "colony": "g1-bench",
+  "url": "https://g1-firetrident.mattsolt.workers.dev",
+  "note": "Fetched trunk main and refs/notes/firetrident from the Artifacts trunk repo after every run: each commit with an FT-Landing trailer must carry a lineage note naming that landing.",
+  "result": {
+    "commits_on_main": 5262,
+    "landing_commits": 5062,
+    "notes": 5062,
+    "landing_commits_without_note": 0,
+    "sampled": 60,
+    "sampled_note_landing_mismatch": 0
+  }
+}

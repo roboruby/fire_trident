@@ -1,0 +1,928 @@
+{
+  "generatedAt": "2026-10-12T08:14:59.155Z",
+  "labels": {
+    "linkpred": "MEASURED (real hono history)",
+    "live": "MEASURED (preview deployment)",
+    "sim": "SIMULATED"
+  },
+  "linkpred": [
+    {
+      "name": "default (retain 0.98, prior 1, maxFiles 30, STDP 0.25, follow-ups within 6 h)",
+      "precision": {
+        "1": 0.533,
+        "3": 0.346,
+        "5": 0.285,
+        "8": 0.251
+      },
+      "recall": {
+        "1": 0.167,
+        "3": 0.245,
+        "5": 0.269,
+        "8": 0.295
+      },
+      "coverage": 62.8,
+      "popularity": {
+        "precision": {
+          "1": 0.126,
+          "3": 0.109,
+          "5": 0.1,
+          "8": 0.08
+        },
+        "recall": {
+          "1": 0.028,
+          "3": 0.071,
+          "5": 0.112,
+          "8": 0.15
+        }
+      },
+      "upstream": {
+        "queries": 1178,
+        "precision": {
+          "1": 0.029,
+          "3": 0.024,
+          "5": 0.022,
+          "8": 0.022
+        },
+        "recall": {
+          "1": 0.011,
+          "3": 0.019,
+          "5": 0.025,
+          "8": 0.032
+        }
+      }
+    },
+    {
+      "name": "no STDP",
+      "precision": {
+        "1": 0.531,
+        "3": 0.356,
+        "5": 0.3,
+        "8": 0.272
+      },
+      "recall": {
+        "1": 0.165,
+        "3": 0.244,
+        "5": 0.266,
+        "8": 0.292
+      },
+      "coverage": 62.5,
+      "popularity": {
+        "precision": {
+          "1": 0.126,
+          "3": 0.109,
+          "5": 0.1,
+          "8": 0.08
+        },
+        "recall": {
+          "1": 0.028,
+          "3": 0.071,
+          "5": 0.112,
+          "8": 0.15
+        }
+      },
+      "upstream": {
+        "queries": 1178,
+        "precision": {
+          "1": 0.028,
+          "3": 0.023,
+          "5": 0.023,
+          "8": 0.021
+        },
+        "recall": {
+          "1": 0.01,
+          "3": 0.016,
+          "5": 0.022,
+          "8": 0.026
+        }
+      }
+    },
+    {
+      "name": "prior 0.5",
+      "precision": {
+        "1": 0.494,
+        "3": 0.33,
+        "5": 0.278,
+        "8": 0.247
+      },
+      "recall": {
+        "1": 0.156,
+        "3": 0.234,
+        "5": 0.261,
+        "8": 0.29
+      },
+      "coverage": 62.8,
+      "popularity": {
+        "precision": {
+          "1": 0.126,
+          "3": 0.109,
+          "5": 0.1,
+          "8": 0.08
+        },
+        "recall": {
+          "1": 0.028,
+          "3": 0.071,
+          "5": 0.112,
+          "8": 0.15
+        }
+      },
+      "upstream": {
+        "queries": 1178,
+        "precision": {
+          "1": 0.028,
+          "3": 0.022,
+          "5": 0.021,
+          "8": 0.021
+        },
+        "recall": {
+          "1": 0.011,
+          "3": 0.018,
+          "5": 0.024,
+          "8": 0.031
+        }
+      }
+    },
+    {
+      "name": "prior 2",
+      "precision": {
+        "1": 0.546,
+        "3": 0.362,
+        "5": 0.296,
+        "8": 0.258
+      },
+      "recall": {
+        "1": 0.17,
+        "3": 0.256,
+        "5": 0.281,
+        "8": 0.304
+      },
+      "coverage": 62.8,
+      "popularity": {
+        "precision": {
+          "1": 0.126,
+          "3": 0.109,
+          "5": 0.1,
+          "8": 0.08
+        },
+        "recall": {
+          "1": 0.028,
+          "3": 0.071,
+          "5": 0.112,
+          "8": 0.15
+        }
+      },
+      "upstream": {
+        "queries": 1178,
+        "precision": {
+          "1": 0.029,
+          "3": 0.026,
+          "5": 0.023,
+          "8": 0.023
+        },
+        "recall": {
+          "1": 0.011,
+          "3": 0.02,
+          "5": 0.026,
+          "8": 0.034
+        }
+      }
+    },
+    {
+      "name": "retain 0.9",
+      "precision": {
+        "1": 0.526,
+        "3": 0.344,
+        "5": 0.284,
+        "8": 0.25
+      },
+      "recall": {
+        "1": 0.165,
+        "3": 0.244,
+        "5": 0.268,
+        "8": 0.293
+      },
+      "coverage": 62.8,
+      "popularity": {
+        "precision": {
+          "1": 0.126,
+          "3": 0.109,
+          "5": 0.1,
+          "8": 0.08
+        },
+        "recall": {
+          "1": 0.028,
+          "3": 0.071,
+          "5": 0.112,
+          "8": 0.15
+        }
+      },
+      "upstream": {
+        "queries": 1178,
+        "precision": {
+          "1": 0.028,
+          "3": 0.022,
+          "5": 0.022,
+          "8": 0.022
+        },
+        "recall": {
+          "1": 0.01,
+          "3": 0.019,
+          "5": 0.025,
+          "8": 0.032
+        }
+      }
+    },
+    {
+      "name": "retain 1 (no decay)",
+      "precision": {
+        "1": 0.537,
+        "3": 0.344,
+        "5": 0.285,
+        "8": 0.252
+      },
+      "recall": {
+        "1": 0.168,
+        "3": 0.245,
+        "5": 0.27,
+        "8": 0.296
+      },
+      "coverage": 62.8,
+      "popularity": {
+        "precision": {
+          "1": 0.126,
+          "3": 0.109,
+          "5": 0.1,
+          "8": 0.08
+        },
+        "recall": {
+          "1": 0.028,
+          "3": 0.071,
+          "5": 0.112,
+          "8": 0.15
+        }
+      },
+      "upstream": {
+        "queries": 1178,
+        "precision": {
+          "1": 0.029,
+          "3": 0.023,
+          "5": 0.022,
+          "8": 0.022
+        },
+        "recall": {
+          "1": 0.011,
+          "3": 0.019,
+          "5": 0.025,
+          "8": 0.032
+        }
+      }
+    },
+    {
+      "name": "maxFiles 10",
+      "precision": {
+        "1": 0.568,
+        "3": 0.384,
+        "5": 0.323,
+        "8": 0.287
+      },
+      "recall": {
+        "1": 0.168,
+        "3": 0.249,
+        "5": 0.274,
+        "8": 0.292
+      },
+      "coverage": 58.3,
+      "popularity": {
+        "precision": {
+          "1": 0.126,
+          "3": 0.109,
+          "5": 0.1,
+          "8": 0.08
+        },
+        "recall": {
+          "1": 0.028,
+          "3": 0.071,
+          "5": 0.112,
+          "8": 0.15
+        }
+      },
+      "upstream": {
+        "queries": 1178,
+        "precision": {
+          "1": 0.024,
+          "3": 0.022,
+          "5": 0.022,
+          "8": 0.024
+        },
+        "recall": {
+          "1": 0.008,
+          "3": 0.017,
+          "5": 0.022,
+          "8": 0.034
+        }
+      }
+    },
+    {
+      "name": "maxFiles 15",
+      "precision": {
+        "1": 0.552,
+        "3": 0.363,
+        "5": 0.299,
+        "8": 0.267
+      },
+      "recall": {
+        "1": 0.167,
+        "3": 0.246,
+        "5": 0.269,
+        "8": 0.295
+      },
+      "coverage": 60.7,
+      "popularity": {
+        "precision": {
+          "1": 0.126,
+          "3": 0.109,
+          "5": 0.1,
+          "8": 0.08
+        },
+        "recall": {
+          "1": 0.028,
+          "3": 0.071,
+          "5": 0.112,
+          "8": 0.15
+        }
+      },
+      "upstream": {
+        "queries": 1178,
+        "precision": {
+          "1": 0.026,
+          "3": 0.025,
+          "5": 0.024,
+          "8": 0.025
+        },
+        "recall": {
+          "1": 0.009,
+          "3": 0.018,
+          "5": 0.024,
+          "8": 0.033
+        }
+      }
+    },
+    {
+      "name": "prior 2, maxFiles 15",
+      "precision": {
+        "1": 0.564,
+        "3": 0.374,
+        "5": 0.311,
+        "8": 0.273
+      },
+      "recall": {
+        "1": 0.17,
+        "3": 0.255,
+        "5": 0.28,
+        "8": 0.303
+      },
+      "coverage": 60.7,
+      "popularity": {
+        "precision": {
+          "1": 0.126,
+          "3": 0.109,
+          "5": 0.1,
+          "8": 0.08
+        },
+        "recall": {
+          "1": 0.028,
+          "3": 0.071,
+          "5": 0.112,
+          "8": 0.15
+        }
+      },
+      "upstream": {
+        "queries": 1178,
+        "precision": {
+          "1": 0.028,
+          "3": 0.028,
+          "5": 0.026,
+          "8": 0.026
+        },
+        "recall": {
+          "1": 0.009,
+          "3": 0.02,
+          "5": 0.027,
+          "8": 0.035
+        }
+      }
+    },
+    {
+      "name": "STDP 0.5",
+      "precision": {
+        "1": 0.533,
+        "3": 0.345,
+        "5": 0.285,
+        "8": 0.251
+      },
+      "recall": {
+        "1": 0.166,
+        "3": 0.245,
+        "5": 0.269,
+        "8": 0.293
+      },
+      "coverage": 62.8,
+      "popularity": {
+        "precision": {
+          "1": 0.126,
+          "3": 0.109,
+          "5": 0.1,
+          "8": 0.08
+        },
+        "recall": {
+          "1": 0.028,
+          "3": 0.071,
+          "5": 0.112,
+          "8": 0.15
+        }
+      },
+      "upstream": {
+        "queries": 1178,
+        "precision": {
+          "1": 0.029,
+          "3": 0.022,
+          "5": 0.022,
+          "8": 0.022
+        },
+        "recall": {
+          "1": 0.011,
+          "3": 0.02,
+          "5": 0.025,
+          "8": 0.032
+        }
+      }
+    }
+  ],
+  "steady": {
+    "100|baseline": {
+      "n": 3,
+      "landingsPerMin": 56.2,
+      "reworkPct": 5.7,
+      "conflictsPer1000": 71.7,
+      "e2eP50S": 76.1
+    },
+    "100|firetrident": {
+      "n": 3,
+      "landingsPerMin": 62.1,
+      "reworkPct": 12.3,
+      "conflictsPer1000": 74.8,
+      "e2eP50S": 64
+    },
+    "100|firetrident+cochange": {
+      "n": 3,
+      "landingsPerMin": 63.4,
+      "reworkPct": 10,
+      "conflictsPer1000": 62.8,
+      "e2eP50S": 64.2
+    },
+    "100|firetrident+cochange(full history)": {
+      "n": 3,
+      "landingsPerMin": 63.2,
+      "reworkPct": 10.1,
+      "conflictsPer1000": 64.1,
+      "e2eP50S": 63.8
+    },
+    "100|firetrident-group": {
+      "n": 3,
+      "landingsPerMin": 62,
+      "reworkPct": 12.7,
+      "conflictsPer1000": 77.4,
+      "e2eP50S": 64.1
+    },
+    "100|firetrident-group+cochange": {
+      "n": 3,
+      "landingsPerMin": 64.5,
+      "reworkPct": 10.1,
+      "conflictsPer1000": 64.5,
+      "e2eP50S": 62.6
+    },
+    "1000|baseline": {
+      "n": 3,
+      "landingsPerMin": 51.9,
+      "reworkPct": 21.7,
+      "conflictsPer1000": 318,
+      "e2eP50S": 563.3
+    },
+    "1000|firetrident": {
+      "n": 3,
+      "landingsPerMin": 85.6,
+      "reworkPct": 42.5,
+      "conflictsPer1000": 397.2,
+      "e2eP50S": 354.6
+    },
+    "1000|firetrident+cochange": {
+      "n": 3,
+      "landingsPerMin": 85.9,
+      "reworkPct": 38.7,
+      "conflictsPer1000": 354.3,
+      "e2eP50S": 324.9
+    },
+    "1000|firetrident+cochange(full history)": {
+      "n": 3,
+      "landingsPerMin": 86,
+      "reworkPct": 39.5,
+      "conflictsPer1000": 344,
+      "e2eP50S": 315.1
+    },
+    "1000|firetrident-group": {
+      "n": 3,
+      "landingsPerMin": 204.5,
+      "reworkPct": 45.3,
+      "conflictsPer1000": 318.5,
+      "e2eP50S": 71.8
+    },
+    "1000|firetrident-group+cochange": {
+      "n": 3,
+      "landingsPerMin": 192,
+      "reworkPct": 40.4,
+      "conflictsPer1000": 279.2,
+      "e2eP50S": 68.7
+    },
+    "10000|baseline": {
+      "n": 3,
+      "landingsPerMin": 51.9,
+      "reworkPct": 21.7,
+      "conflictsPer1000": 318,
+      "e2eP50S": 563.4
+    },
+    "10000|firetrident": {
+      "n": 3,
+      "landingsPerMin": 85.8,
+      "reworkPct": 41.4,
+      "conflictsPer1000": 385.7,
+      "e2eP50S": 354.8
+    },
+    "10000|firetrident+cochange": {
+      "n": 3,
+      "landingsPerMin": 85.8,
+      "reworkPct": 38.6,
+      "conflictsPer1000": 364.7,
+      "e2eP50S": 326
+    },
+    "10000|firetrident+cochange(full history)": {
+      "n": 3,
+      "landingsPerMin": 85.8,
+      "reworkPct": 38.9,
+      "conflictsPer1000": 353,
+      "e2eP50S": 320.2
+    },
+    "10000|firetrident-group": {
+      "n": 3,
+      "landingsPerMin": 205.6,
+      "reworkPct": 46.9,
+      "conflictsPer1000": 333.5,
+      "e2eP50S": 69.7
+    },
+    "10000|firetrident-group+cochange": {
+      "n": 3,
+      "landingsPerMin": 191.9,
+      "reworkPct": 40.3,
+      "conflictsPer1000": 278.7,
+      "e2eP50S": 69.4
+    }
+  },
+  "weights": {
+    "1000|firetrident|0": {
+      "n": 3,
+      "landingsPerMin": 85.6,
+      "reworkPct": 42.5
+    },
+    "1000|firetrident|1": {
+      "n": 3,
+      "landingsPerMin": 85.8,
+      "reworkPct": 39.8
+    },
+    "1000|firetrident|2": {
+      "n": 3,
+      "landingsPerMin": 85.9,
+      "reworkPct": 38.7
+    },
+    "1000|firetrident|3": {
+      "n": 3,
+      "landingsPerMin": 85.9,
+      "reworkPct": 37.8
+    },
+    "1000|firetrident|10": {
+      "n": 3,
+      "landingsPerMin": 85.9,
+      "reworkPct": 35.9
+    },
+    "1000|firetrident-group|0": {
+      "n": 3,
+      "landingsPerMin": 204.5,
+      "reworkPct": 45.3
+    },
+    "1000|firetrident-group|1": {
+      "n": 3,
+      "landingsPerMin": 196.7,
+      "reworkPct": 43.2
+    },
+    "1000|firetrident-group|2": {
+      "n": 3,
+      "landingsPerMin": 192,
+      "reworkPct": 40.4
+    },
+    "1000|firetrident-group|3": {
+      "n": 3,
+      "landingsPerMin": 186.3,
+      "reworkPct": 39.8
+    },
+    "1000|firetrident-group|10": {
+      "n": 3,
+      "landingsPerMin": 153.9,
+      "reworkPct": 36.4
+    },
+    "10000|firetrident|0": {
+      "n": 3,
+      "landingsPerMin": 85.8,
+      "reworkPct": 41.4
+    },
+    "10000|firetrident|1": {
+      "n": 3,
+      "landingsPerMin": 85.8,
+      "reworkPct": 40.8
+    },
+    "10000|firetrident|2": {
+      "n": 3,
+      "landingsPerMin": 85.8,
+      "reworkPct": 38.6
+    },
+    "10000|firetrident|3": {
+      "n": 3,
+      "landingsPerMin": 85.9,
+      "reworkPct": 37.4
+    },
+    "10000|firetrident|10": {
+      "n": 3,
+      "landingsPerMin": 85.9,
+      "reworkPct": 36.4
+    },
+    "10000|firetrident-group|0": {
+      "n": 3,
+      "landingsPerMin": 205.6,
+      "reworkPct": 46.9
+    },
+    "10000|firetrident-group|1": {
+      "n": 3,
+      "landingsPerMin": 203.3,
+      "reworkPct": 43
+    },
+    "10000|firetrident-group|2": {
+      "n": 3,
+      "landingsPerMin": 191.9,
+      "reworkPct": 40.3
+    },
+    "10000|firetrident-group|3": {
+      "n": 3,
+      "landingsPerMin": 186.6,
+      "reworkPct": 39.1
+    },
+    "10000|firetrident-group|10": {
+      "n": 3,
+      "landingsPerMin": 152,
+      "reworkPct": 36.8
+    }
+  },
+  "timeToZero": {
+    "tasks": 1500,
+    "byVariant": {
+      "100|baseline": {
+        "n": 10,
+        "t50": 813.3,
+        "t90": 1454.5,
+        "t95": 1535.5,
+        "ttzMedian": 1997.5,
+        "ttzMean": 2026,
+        "reworkPct": 5.2
+      },
+      "100|firetrident": {
+        "n": 10,
+        "t50": 702.4,
+        "t90": 1272.7,
+        "t95": 1345.4,
+        "ttzMedian": 2375.5,
+        "ttzMean": 2558.8,
+        "reworkPct": 12.4
+      },
+      "100|firetrident+cochange": {
+        "n": 10,
+        "t50": 693.6,
+        "t90": 1258.4,
+        "t95": 1327.8,
+        "ttzMedian": 2359.5,
+        "ttzMean": 2572.2,
+        "reworkPct": 11.2
+      },
+      "100|firetrident-group": {
+        "n": 10,
+        "t50": 692.7,
+        "t90": 1258.3,
+        "t95": 1329.6,
+        "ttzMedian": 2476.5,
+        "ttzMean": 2573.5,
+        "reworkPct": 12.4
+      },
+      "100|firetrident-group+cochange": {
+        "n": 10,
+        "t50": 684.3,
+        "t90": 1244.3,
+        "t95": 1312.4,
+        "ttzMedian": 2302.5,
+        "ttzMean": 2612.4,
+        "reworkPct": 11.1
+      },
+      "1000|baseline": {
+        "n": 10,
+        "t50": 846.5,
+        "t90": 1557.2,
+        "t95": 1644.2,
+        "ttzMedian": 2276.5,
+        "ttzMean": 2299.6,
+        "reworkPct": 15.9
+      },
+      "1000|firetrident": {
+        "n": 10,
+        "t50": 532.8,
+        "t90": 953.3,
+        "t95": 1074.9,
+        "ttzMedian": 2323,
+        "ttzMean": 2375.3,
+        "reworkPct": 39.2
+      },
+      "1000|firetrident+cochange": {
+        "n": 10,
+        "t50": 531.4,
+        "t90": 951.8,
+        "t95": 1074.4,
+        "ttzMedian": 2260.5,
+        "ttzMean": 2381.3,
+        "reworkPct": 35.8
+      },
+      "1000|firetrident-group": {
+        "n": 10,
+        "t50": 115.9,
+        "t90": 411.3,
+        "t95": 565.4,
+        "ttzMedian": 1703,
+        "ttzMean": 1797.2,
+        "reworkPct": 37.1
+      },
+      "1000|firetrident-group+cochange": {
+        "n": 10,
+        "t50": 131.3,
+        "t90": 428.5,
+        "t95": 591.1,
+        "ttzMedian": 1830.5,
+        "ttzMean": 2091.8,
+        "reworkPct": 33.4
+      }
+    }
+  },
+  "analysis": {
+    "firetrident": {
+      "n": 3,
+      "landingsPerMin": 85.6,
+      "reworkPct": 42.5
+    },
+    "firetrident+cochange(w2)": {
+      "n": 3,
+      "landingsPerMin": 85.9,
+      "reworkPct": 38.7
+    },
+    "direct overlap excluded": {
+      "n": 3,
+      "landingsPerMin": 86.3,
+      "reworkPct": 33.9
+    },
+    "direct overlap excluded+cochange(w2)": {
+      "n": 3,
+      "landingsPerMin": 86.4,
+      "reworkPct": 31.2
+    },
+    "direct overlap excluded+cochange(w10)": {
+      "n": 3,
+      "landingsPerMin": 86.3,
+      "reworkPct": 26.5
+    },
+    "group, direct overlap excluded+cochange(w2)": {
+      "n": 3,
+      "landingsPerMin": 175.9,
+      "reworkPct": 31.2
+    }
+  },
+  "live": [
+    {
+      "arm": "coupled",
+      "colony": "g4-steer-mv4z0cqe-coupled",
+      "y": "src/jsx/streaming.ts",
+      "createMs": 18773,
+      "rounds": 20,
+      "tookY": 2,
+      "tookZ": 14,
+      "other": [
+        "wait: no intent accepted at this agent's thresholds",
+        "invalid (A took src/jsx/streaming.ts)",
+        "wait: no intent accepted at this agent's thresholds",
+        "invalid (A took src/jsx/streaming.ts)"
+      ],
+      "outcomes": [
+        "wait: no intent accepted at this agent's thresholds",
+        "invalid (A took src/jsx/streaming.ts)",
+        "Z",
+        "Z",
+        "Z",
+        "Z",
+        "Y",
+        "Z",
+        "Z",
+        "Z",
+        "Z",
+        "Z",
+        "Y",
+        "Z",
+        "Z",
+        "Z",
+        "wait: no intent accepted at this agent's thresholds",
+        "Z",
+        "Z",
+        "invalid (A took src/jsx/streaming.ts)"
+      ],
+      "takeMsA": {
+        "n": 20,
+        "min": 251.99400000000605,
+        "p50": 368.6502920000057,
+        "p90": 606.7930420000048,
+        "p99": 884.2159160000156,
+        "max": 884.2159160000156,
+        "mean": 444.8920603500017
+      },
+      "takeMsB": {
+        "n": 18,
+        "min": 57.5572079999838,
+        "p50": 318.80408299999544,
+        "p90": 566.5619170000136,
+        "p99": 2258.70745799999,
+        "max": 2258.70745799999,
+        "mean": 423.99905533333526
+      },
+      "yIntent": "int_mv4z1ugzbha44i"
+    },
+    {
+      "arm": "control",
+      "colony": "g4-steer-mv4z0cqe-control",
+      "y": "src/router/reg-exp-router/node.ts",
+      "createMs": 22695,
+      "rounds": 20,
+      "tookY": 16,
+      "tookZ": 3,
+      "other": [
+        "invalid (A took src/utils/body.ts)"
+      ],
+      "outcomes": [
+        "invalid (A took src/utils/body.ts)",
+        "Y",
+        "Y",
+        "Y",
+        "Z",
+        "Y",
+        "Y",
+        "Y",
+        "Y",
+        "Y",
+        "Y",
+        "Y",
+        "Y",
+        "Y",
+        "Y",
+        "Y",
+        "Y",
+        "Z",
+        "Z",
+        "Y"
+      ],
+      "takeMsA": {
+        "n": 20,
+        "min": 300.5219170000055,
+        "p50": 644.6128749999916,
+        "p90": 1103.346749999997,
+        "p99": 1372.030207999982,
+        "max": 1372.030207999982,
+        "mean": 701.8900103499975
+      },
+      "takeMsB": {
+        "n": 19,
+        "min": 241.33425000001444,
+        "p50": 292.041624999998,
+        "p90": 575.3752500000119,
+        "p99": 684.3160410000128,
+        "max": 684.3160410000128,
+        "mean": 350.6969232631596
+      },
+      "yIntent": "int_mv4z1vzbagjntm"
+    }
+  ]
+}

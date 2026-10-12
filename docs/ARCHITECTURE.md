@@ -16,7 +16,10 @@ FireTrident is a git platform for very large numbers of concurrent coding agents
 ## Request flow (an in-platform agent)
 
 1. `ColonyDO.registerAgent` gives the agent an id.
-2. `ColonyDO.take(agentId)` builds candidates from open intents, reads the field from the relevant `RegionDO`s (repulsion from other agents' claims, admission), and picks one with the response-threshold rule (`core/threshold.ts`). It deposits `claim` marks on the intent's footprint and asks `PoolDO.lease` for a workspace.
+2. `ColonyDO.take(agentId)` builds candidates from open intents, reads the field from the relevant `RegionDO`s, and picks one with the response-threshold rule (`core/threshold.ts`). Three signals shape the choice:
+   - **Lateral inhibition**: a candidate whose exact footprint files carry live claims from other agents above a threshold (half a fresh claim by default) is skipped. Claims decay, so a silent agent's claim stops inhibiting after about two half-lives: there is no lock to release and nothing to deadlock.
+   - **Co-change repulsion** (soft): TrunkDO mines trunk history into a Hebbian co-change map (`core/cochange.ts`, `trunk/cochange.ts`); candidates whose files usually change together with files other agents have claimed score lower.
+   - **Admission**: `RegionDO.admit` checks the region's admission cap and deposits the agent's `claim` marks in one synchronous step, so concurrent takes cannot over-admit a region. Only then does `PoolDO.lease` hand out a workspace.
 3. The agent (`AgentDO`) clones trunk at `lease.baseSha` into a `@cloudflare/computer` Workspace using the read-only trunk token, reads files (each read is recorded with its blob id), edits with an LLM, commits, and force-pushes its commit to `main` of its own workspace repo with the workspace write token. The fork's prior content never matters. (At very large scale agents read from trunk mirrors instead of trunk, to respect per-repo git request limits.)
 4. `ColonyDO.propose` records the proposal, computes the residual (paths changed outside the declared footprint), runs innate checks, and enqueues it in the lane of the proposal's primary region (`RegionDO.enqueue`).
 5. On each lane tick (`RegionDO` alarm, interval from `core/batch.ts#laneIntervalMs`), the region asks `TrunkDO.blobsFor` for current trunk blobs, validates proposals with `core/occ.ts`, selects a batch with `core/batch.ts#selectBatch`, and calls `TrunkDO.land(batch)`. Stale proposals are returned to their agents with the exact delta.
@@ -101,6 +104,9 @@ Facts the design relies on (from the docs and the spike): each repo is one Durab
 - TrunkDO: `init` accepts an optional `regionDepth`; `land(batch, ctx?)` takes compact lineage context (lanes pass it, so the writer never pulls a snapshot); `stats`, `flushNotes` (re-pushes any note whose push failed after its landing), `mirrorTo`, `refreshTokenIfNeeded`. TrunkDO does not call `onLanding`; the lane does.
 - PoolDO: `stats`, `teardown`. Forks cannot cross namespaces, so each `ft-ws-N` namespace holds a seed repo `<colony>--seed` that workspaces fork from.
 - AgentDO: `start({ colonyId, agentId, model?, kind?, name?, delayMs? })`; `status()` returns AgentInfo plus journal fields.
+- RegionDO: `configure({ colonyId, region, regionDepth })`; `admit` (atomic admission plus claim deposit, see request flow step 2); `landedFor(paths)` answers which landing last changed a path, so a stale return with no local cause records the landing in another region as its parent (the cascade detector sees cross-region causes).
+- TrunkDO: `neighbors(paths)` and `cochangeStats()` read the co-change map; `landingsOf`, `systemCommit` (antibodies).
+- `destroy()` on RegionDO, TrunkDO, PoolDO and AgentDO wipes the object's storage and alarms; `DELETE /api/colonies/:id` calls them.
 - `deprovisionTrunk()` in `artifacts/colony.ts` removes a colony's repos.
 - MCP: `/mcp` (Streamable HTTP) and `/sse`, gated by `FT_MCP_TOKEN` when set (Bearer header or `?token=`).
 
@@ -109,10 +115,23 @@ Facts the design relies on (from the docs and the spike): each repo is one Durab
 A proposal enters `checking` and the decide engine routes it:
 
 1. **Innate checks**: the rule re-check on the changed files, residual paths (changed but not in the declared footprint), and a mandatory "Not verified:" statement.
-2. **System 1 (reflex)**: one Clef call (`@cf/cloudflare/clef`, typed noul/choice/score questions: needs_human, risk, touches_sensitive, off_intent, plus every matching antibody question). Confident answers act; uncertain ones escalate.
-3. **System 2 (LLM)**: a second opinion from a different model family than the authoring agent (for example `@cf/openai/gpt-oss-120b`), strict JSON verdict.
-4. **System 3 (human)**: the review queue.
+2. **Deterministic proof**: every changed relative import is resolved against the trunk file tree. When only import specifiers changed and each still points at the same file, the rule re-check passes, the change stays inside its footprint and touches no sensitive path, the proof is a confirmation on its own and no model is consulted. A broken import is returned with the exact path. The resolution facts are passed to every model that is consulted, and no model opinion can override them.
+3. **System 1 (reflex)**: one Clef call (`@cf/cloudflare/clef`, typed noul/choice/score questions: needs_human, risk, touches_sensitive, off_intent, plus every matching antibody question). Confident answers act; uncertain ones escalate.
+4. **System 2 (LLM)**: consulted only when the deterministic proof is inconclusive and the reflex cannot act alone. A second opinion from a different model family than the authoring agent (`@cf/google/gemma-4-26b-a4b-it`, or `@cf/openai/gpt-oss-120b` when the author is Gemma), strict JSON verdict, behind a per-model concurrency and rate limiter with backoff and fallback (Workers AI caps large models at 20 requests a minute per account). Reviewers see up to 8,000 diff characters per file, and a truncation marker is never grounds to return.
+5. **System 3 (human)**: the review queue.
+
+`propose` is idempotent: a repeat for the same agent, intent and head commit returns the existing proposal. Deterministic outcomes are recorded as their own checks in the evidence and in `decide.deterministic.*` metrics; they never count as reflex decisions in the funnel.
 
 **Two-signal gate**: a proposal lands without a human only with two independent confirmations bound to the same head commit (innate checks plus a System-2 approval or earned path autonomy) and a low p(needs_human). One signal returns it to its agent. Escalation to a human needs a detector hit plus damage or a capability change. **Regulation**: an alert budget caps human pages per hour; a detector marked not useful ≥10% goes advisory and >25% goes off. **Antibodies**: a human rejection mints an antibody (path matcher + yes/no question + threshold), committed to trunk as `.firetrident/antibodies/<id>.json` by `TrunkDO.systemCommit` with a lineage note; every later matching proposal is screened. **Vaccination meter**: `POST /api/colonies/:id/vaccinate {count}` injects sealed bad proposals of several threat classes through the normal path; they can never land, and recall per class is reported with a Wilson 95% interval (`GET /api/colonies/:id/vaccinate`).
 
 Routes: `POST|GET /api/colonies/:id/vaccinate`, `GET /api/colonies/:id/immune`, `POST /api/colonies/:id/decide/policy`, `POST /api/colonies/:id/detectors/:did` (useful / not useful feedback). ColonyDO: `vaccinate`, `vaccineReport`, `immune`, `setDecidePolicy`, `detectorFeedback`. Every decision is recorded (`recordDecision`) and emitted, so the UI funnel shows reflex / LLM / human counts.
+
+## New projects (`ft new --spec`)
+
+A spec (see `demo/new-project-spec.md`) declares the project's intents, the files each one builds on, the spec sections every agent receives, an optional model per intent, the architecture rules, and acceptance tests. `ft new` creates a colony with an empty trunk, adds the rules, and posts the intents in dependency order (parents and priorities make foundations land first). An in-platform agent waits until the files its intent builds on have landed, reads them, and writes files that must parse, keep every rule, use only TypeScript that Node can strip, and import only files and names that exist; each file gets up to three attempts with the failure as feedback. `demo/run_new_project.rb` runs the flow and verifies the result from a plain git clone.
+
+## Configuration and deployment
+
+- Tuning variables: `FT_COCHANGE_WEIGHT` (co-change repulsion weight, 5 in production) and `FT_LATERAL_INHIBITION` (inhibition threshold as a fraction of a fresh claim, or `off`).
+- Secrets: `FT_ADMIN_TOKEN` (mutating API routes), `FT_MCP_TOKEN` (`/mcp` and `/sse`), `ANTHROPIC_API_KEY` (optional Claude agents).
+- `wrangler.jsonc` has a `previews` block that mirrors every production binding, so `npx wrangler preview --name <x>` gives an isolated deployment with its own Durable Objects. Previews share the Artifacts namespaces with production, so a preview colony must not reuse a production colony's name.

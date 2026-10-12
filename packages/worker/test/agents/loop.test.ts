@@ -74,8 +74,9 @@ class FakeColony implements ColonyRpc {
   async getColony(): Promise<Colony | null> {
     return null;
   }
+  /** Only `rules` is read (by jobs of non-rule intents, to check what they write). */
   async snapshot(): Promise<ColonySnapshot> {
-    throw new Error("not used");
+    return { rules: this.rule ? [this.rule] : [] } as unknown as ColonySnapshot;
   }
   async addIntent(): Promise<Intent> {
     throw new Error("not used");

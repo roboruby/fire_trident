@@ -22,6 +22,7 @@ import {
 } from "./format.ts";
 import type { AgentRow, ColonyRow, Colors, DeleteResult, SnapshotLike, StopResult } from "./format.ts";
 import { extractSpec, planNew } from "./spec.ts";
+import type { IntentBody } from "./spec.ts";
 import type { Intent, Landing, LineageNote, Proposal, Rule } from "@fire_trident/core";
 
 /** Everything the CLI touches outside itself, injectable for tests. */
@@ -316,17 +317,21 @@ async function importColony(cmd: Extract<Command, { name: "import" }>, req: ApiR
 async function newColony(cmd: Extract<Command, { name: "new" }>, ctx: Ctx): Promise<number> {
   const { io, c } = ctx;
   const by = cmd.by ?? ctx.by;
-  const spec = extractSpec(await io.readFile(cmd.specPath));
+  const markdown = await io.readFile(cmd.specPath);
+  const spec = extractSpec(markdown);
   const name = cmd.colonyName ?? spec.name;
+  const opts = { markdown, source: cmd.specPath };
   if (ctx.flags.dryRun) {
-    const plan = planNew(spec, "<colony>", by, name);
-    return dryRun(ctx, [plan.create, ...plan.rules, ...plan.intents]);
+    const plan = planNew(spec, "<colony>", by, name, opts);
+    // Parents are only known once created; the dry run names them by position.
+    const intents = plan.intents.map(({ parentIndex, ...req }) => (parentIndex === undefined ? req : { ...req, body: { ...(req.body as object), parentId: `<intent ${parentIndex + 1}>` } }));
+    return dryRun(ctx, [plan.create, ...plan.rules, ...intents]);
   }
 
-  const created = await send<unknown>(ctx.http, planNew(spec, "<colony>", by, name).create, 120_000);
+  const created = await send<unknown>(ctx.http, planNew(spec, "<colony>", by, name, opts).create, 120_000);
   const colony = pickColony(created);
   if (!colony) throw new Error(`the server did not return a colony id: ${JSON.stringify(created)}`);
-  const plan = planNew(spec, colony.id, by, name);
+  const plan = planNew(spec, colony.id, by, name, opts);
   if (!ctx.flags.json) io.stdout(`${c.green("✓")} Colony ${c.bold(name)} ${c.dim(colony.id)} created from ${cmd.specPath}`);
 
   const rules: unknown[] = [];
@@ -335,18 +340,36 @@ async function newColony(cmd: Extract<Command, { name: "new" }>, ctx: Ctx): Prom
     rules.push(res);
     if (!ctx.flags.json) io.stdout(`  ${c.green("✓")} rule ${res?.rule?.id ?? ""} ${c.dim((req.body as { description: string }).description)}`);
   }
-  const intents: unknown[] = [];
-  for (const req of plan.intents) {
-    const res = await send<Partial<Intent>>(ctx.http, req);
-    intents.push(res);
-    if (!ctx.flags.json) io.stdout(`  ${c.green("✓")} intent ${res?.id ?? ""} ${c.dim((req.body as { title: string }).title)}`);
+  // Intents go out in dependency order, so each parent exists before the intents that build on it.
+  const intents: Array<Partial<Intent>> = [];
+  for (const { parentIndex, ...req } of plan.intents) {
+    const body = req.body as IntentBody;
+    const parent = parentIndex === undefined ? undefined : intents[parentIndex];
+    const res = await send<Partial<Intent>>(ctx.http, parent?.id ? { ...req, body: { ...body, parentId: parent.id } } : req);
+    intents.push(res ?? {});
+    if (!ctx.flags.json) {
+      const follows = parent?.title ? c.dim(` ← builds on "${parent.title}"`) : "";
+      io.stdout(`  ${c.green("✓")} intent ${res?.id ?? ""} ${c.dim(`p${body.priority}`)} ${body.title}${follows}`);
+    }
   }
   if (ctx.flags.json) {
     printJson(ctx, { colony: created, rules, intents });
     return 0;
   }
-  io.stdout(`\n${num(plan.rules.length)} rules and ${num(plan.intents.length)} intents painted into the field.`);
-  io.stdout(c.dim(`  Next: ft swarm ${colony.id} --agents ${Math.min(50, Math.max(4, plan.intents.length * 2))}   then   ft watch ${colony.id}`));
+  const waves = new Map<number, number>();
+  for (const req of plan.intents) {
+    const p = (req.body as IntentBody).priority;
+    waves.set(p, (waves.get(p) ?? 0) + 1);
+  }
+  const levels = [...waves.keys()].sort((a, b) => b - a);
+  const widest = Math.max(...waves.values());
+  const context = Math.max(0, ...plan.intents.map((r) => (r.body as IntentBody).why.length));
+  io.stdout(
+    `\n${num(plan.rules.length)} rule${plan.rules.length === 1 ? "" : "s"} and ${num(plan.intents.length)} intent${plan.intents.length === 1 ? "" : "s"} painted into the field, in ${num(levels.length)} wave${levels.length === 1 ? "" : "s"}` +
+      `${levels.length > 1 ? ` (priority ${levels[0]} to ${levels[levels.length - 1]})` : ""}.`,
+  );
+  io.stdout(c.dim(`  Each intent carries the spec's contracts (${num(context)} characters at most); an agent waits for the files its intent builds on, then reads them.`));
+  io.stdout(c.dim(`  Next: ft swarm ${colony.id} --agents ${Math.max(2, Math.min(50, widest))}   then   ft watch ${colony.id}`));
   return 0;
 }
 

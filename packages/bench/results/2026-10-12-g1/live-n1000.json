@@ -1,0 +1,332 @@
+{
+  "kind": "live",
+  "note": "MEASURED, real landings: synthetic API agents (no model, no agent-side git); every landed proposal is a real trunk commit built by the trunk writer from a blob read out of the agent's workspace fork.",
+  "label": "n1000",
+  "url": "https://g1-firetrident.mattsolt.workers.dev",
+  "colony": "g1-bench",
+  "agents": 1000,
+  "durationS": 90,
+  "workMs": 0,
+  "regions": 64,
+  "startedAt": "2026-10-12T08:55:55.238Z",
+  "elapsedS": 75.23434766700001,
+  "stoppedEarly": "error rate 38% over 5 s at 60 s",
+  "ops": [
+    {
+      "op": "snapshot",
+      "calls": 3,
+      "errors": 0,
+      "n": 3,
+      "min": 209.10166700000082,
+      "p50": 368.1970419999998,
+      "p90": 995.017125,
+      "p99": 995.017125,
+      "max": 995.017125,
+      "mean": 524.1052780000001
+    },
+    {
+      "op": "intent",
+      "calls": 1243,
+      "errors": 0,
+      "n": 1243,
+      "min": 71.95441699999992,
+      "p50": 113.29266600000005,
+      "p90": 260.31775000000016,
+      "p99": 590.624417,
+      "max": 1184.403875,
+      "mean": 155.00045614963776
+    },
+    {
+      "op": "register",
+      "calls": 1000,
+      "errors": 0,
+      "n": 1000,
+      "min": 53.84833299999991,
+      "p50": 483.24991600000067,
+      "p90": 998.1912500000017,
+      "p99": 1374.8138330000002,
+      "max": 1752.772958999998,
+      "mean": 541.0467245790005
+    },
+    {
+      "op": "take",
+      "calls": 4267,
+      "errors": 405,
+      "n": 4267,
+      "min": 27.769000000000233,
+      "p50": 9339.901874999996,
+      "p90": 18760.199083,
+      "p99": 30000.540458000003,
+      "max": 30004.751084000003,
+      "mean": 10990.448697616124
+    },
+    {
+      "op": "propose",
+      "calls": 1041,
+      "errors": 113,
+      "n": 1041,
+      "min": 28.40154099999927,
+      "p50": 1327.4264169999951,
+      "p90": 3264.594459,
+      "p99": 4164.382292000002,
+      "max": 10743.37425,
+      "mean": 1616.4581452747348
+    },
+    {
+      "op": "poll",
+      "calls": 2106,
+      "errors": 187,
+      "n": 2106,
+      "min": 29.056582999997772,
+      "p50": 640.9490000000005,
+      "p90": 1392.9277919999986,
+      "p99": 2233.679250000001,
+      "max": 2943.7869169999976,
+      "mean": 742.6348104131058
+    },
+    {
+      "op": "heartbeat",
+      "calls": 267,
+      "errors": 111,
+      "n": 267,
+      "min": 29.085582999992766,
+      "p50": 344.1102499999979,
+      "p90": 947.4643329999963,
+      "p99": 1089.8359590000036,
+      "max": 2048.420208000003,
+      "mean": 399.4639900000003
+    }
+  ],
+  "takeAssigned": {
+    "n": 1041,
+    "min": 426.99099999999453,
+    "p50": 15032.933291000001,
+    "p90": 22822.132750000004,
+    "p99": 27823.427625000004,
+    "max": 29868.928458000002,
+    "mean": 14554.108537958682
+  },
+  "takeWait": {
+    "n": 2821,
+    "min": 272.268167000002,
+    "p50": 9067.500083000006,
+    "p90": 10249.660041999996,
+    "p99": 11154.394,
+    "max": 11181.413915999998,
+    "mean": 8930.263774026922
+  },
+  "counts": {
+    "registered": 1000,
+    "assigned": 1041,
+    "waits": {
+      "no intent accepted at this agent's thresholds": 2803,
+      "take already in progress": 18
+    },
+    "proposals": 928,
+    "landed": 928,
+    "returned": 0,
+    "rejected": 0,
+    "unresolved": 0
+  },
+  "returns": {},
+  "window": {
+    "fromS": 25,
+    "toS": 90,
+    "commits": 400,
+    "landedProposals": 558,
+    "landedPerMin": 515.0769230769231,
+    "commitsPerMin": 369.2307692307692,
+    "source": "live WebSocket landing events"
+  },
+  "snapshotDelta": {
+    "landings": 656,
+    "landedProposals": 928,
+    "proposals": 928,
+    "returned": 0,
+    "rejected": 0,
+    "takes": 1044
+  },
+  "timeToLandMs": {
+    "n": 873,
+    "min": 879,
+    "p50": 4782,
+    "p90": 8033,
+    "p99": 10441,
+    "max": 13953,
+    "mean": 5135.9324169530355
+  },
+  "batchSize": {
+    "n": 621,
+    "min": 1,
+    "p50": 1,
+    "p90": 2,
+    "p99": 3,
+    "max": 4,
+    "mean": 1.4057971014492754
+  },
+  "commitGapMs": {
+    "n": 620,
+    "min": 0,
+    "p50": 0,
+    "p90": 0,
+    "p99": 2220,
+    "max": 3496,
+    "mean": 96.67258064516129
+  },
+  "feed": {
+    "connected": true,
+    "events": 15069,
+    "sigmaMax": 0,
+    "sigmaEvents": 589
+  },
+  "trunkCycles": {
+    "n": 26,
+    "perMin": 24,
+    "metrics": {
+      "batches": {
+        "n": 26,
+        "min": 1,
+        "p50": 11,
+        "p90": 30,
+        "p99": 35,
+        "max": 35,
+        "mean": 11.76923076923077
+      },
+      "buildMs": {
+        "n": 26,
+        "min": 0,
+        "p50": 43,
+        "p90": 145,
+        "p99": 420,
+        "max": 420,
+        "mean": 73.6923076923077
+      },
+      "commitMs": {
+        "n": 26,
+        "min": 0,
+        "p50": 0,
+        "p90": 0,
+        "p99": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "cycleMs": {
+        "n": 26,
+        "min": 212,
+        "p50": 890,
+        "p90": 1465,
+        "p99": 1518,
+        "max": 1518,
+        "mean": 835.7692307692307
+      },
+      "finalizeMs": {
+        "n": 26,
+        "min": 0,
+        "p50": 0,
+        "p90": 0,
+        "p99": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "landed": {
+        "n": 26,
+        "min": 1,
+        "p50": 14,
+        "p90": 44,
+        "p99": 52,
+        "max": 52,
+        "mean": 16.615384615384617
+      },
+      "landings": {
+        "n": 26,
+        "min": 1,
+        "p50": 11,
+        "p90": 30,
+        "p99": 35,
+        "max": 35,
+        "mean": 11.76923076923077
+      },
+      "lineageMs": {
+        "n": 26,
+        "min": 0,
+        "p50": 0,
+        "p90": 0,
+        "p99": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "proposals": {
+        "n": 26,
+        "min": 1,
+        "p50": 14,
+        "p90": 44,
+        "p99": 52,
+        "max": 52,
+        "mean": 16.615384615384617
+      },
+      "pullMs": {
+        "n": 26,
+        "min": 31,
+        "p50": 132,
+        "p90": 511,
+        "p99": 741,
+        "max": 741,
+        "mean": 234.6153846153846
+      },
+      "pushMs": {
+        "n": 26,
+        "min": 158,
+        "p50": 517,
+        "p90": 925,
+        "p99": 1079,
+        "max": 1079,
+        "mean": 527.4615384615385
+      },
+      "returned": {
+        "n": 26,
+        "min": 0,
+        "p50": 0,
+        "p90": 0,
+        "p99": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "screenMs": {
+        "n": 26,
+        "min": 0,
+        "p50": 0,
+        "p90": 0,
+        "p99": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "surgeryMs": {
+        "n": 26,
+        "min": 0,
+        "p50": 0,
+        "p90": 0,
+        "p99": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "waitMs": {
+        "n": 26,
+        "min": 0,
+        "p50": 307,
+        "p90": 970,
+        "p99": 995,
+        "max": 995,
+        "mean": 413.84615384615387
+      }
+    }
+  },
+  "errors": [
+    "take: TimeoutError: The operation was aborted due to timeout",
+    "poll: 500 Durable Object is overloaded. Requests queued for too long.",
+    "heartbeat: 500 Durable Object is overloaded. Requests queued for too long.",
+    "propose: 500 Durable Object is overloaded. Requests queued for too long.",
+    "take: 500 Durable Object is overloaded. Requests queued for too long.",
+    "take: 500 Connection closed: this Durable Object instance is no longer active. Reconnect or retry the request.",
+    "take: 500 Network connection lost."
+  ]
+}

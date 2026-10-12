@@ -285,6 +285,19 @@ export class WorkspaceGit implements GitOps {
     return { baseSha: tip, fallback: true };
   }
 
+  /** Fetch trunk's `main` at depth 1 (incremental) and return the commit it points at now, or null. */
+  async fetchTip(p: { remote: string; token: string }): Promise<Sha | null> {
+    await this.init();
+    await this.repairShallow();
+    let tip: string | null;
+    try {
+      tip = await this.fetch(p.remote, p.token, "main", 1);
+    } catch (e) {
+      throw httpError(e, "fetch trunk");
+    }
+    return tip && (await this.hasCommit(tip)) ? tip : null;
+  }
+
   /** Every file path in the commit's tree. */
   async listFiles(baseSha: Sha): Promise<Path[]> {
     return git.listFiles({ fs: this.fs(), dir: this.dir, ref: baseSha, cache: this.cache });

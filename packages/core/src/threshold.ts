@@ -1,7 +1,15 @@
-import type { Id, Intent } from "./types.ts";
+import type { FieldReading, Id, Intent, Path } from "./types.ts";
 
 const REINFORCE_FACTOR = 0.8;
 const THETA_FLOOR = 0.1;
+
+/**
+ * Lateral inhibition threshold, as a claim value (a fresh claim is worth 1): an open intent whose
+ * own footprint paths carry at least this much live claim from other agents is not taken. Half a
+ * fresh claim: heartbeats keep a working agent's claim above it, while a silent agent's claim
+ * (tau = 5 min) falls below it after one half-life, about 3.5 minutes. Suppression, not a lock.
+ */
+export const LATERAL_INHIBITION = 0.5;
 
 /**
  * Bonabeau/Theraulaz/Deneubourg response function: s^2 / (s^2 + theta^2).
@@ -32,9 +40,47 @@ export function stimulus(intent: Intent, now: number, repulsion: number, repulsi
 export interface Candidate {
   intent: Intent;
   region: string;
+  /** Soft repulsion subtracted from the stimulus: claims and danger on the footprint, claims on co-change neighbors. */
   repulsion: number;
   /** Region admission (harvester-ant control): closed regions are skipped. */
   admissionOpen: boolean;
+  /**
+   * Lateral inhibition: the live claim value other agents hold on this intent's own footprint
+   * paths (exact paths, summed). At or above the inhibition threshold the candidate is skipped;
+   * below it, it acts only through `repulsion`. Co-change neighbors and directory or glob overlaps
+   * never inhibit. Absent counts as 0.
+   */
+  directClaim?: number;
+}
+
+/**
+ * Claim value on exactly these footprint paths: `claim` summed over the distinct paths that are
+ * keys of `byPath` (a field reading with the caller's own claims removed). Directory and glob
+ * claims that only overlap a path, and danger, are not counted; non-finite or negative values count as 0.
+ */
+export function directClaimOn(byPath: FieldReading["byPath"], footprint: Iterable<Path>): number {
+  let total = 0;
+  const seen = new Set<Path>();
+  for (const path of footprint) {
+    if (seen.has(path)) continue;
+    seen.add(path);
+    if (!Object.hasOwn(byPath, path)) continue;
+    const claim = byPath[path]?.claim;
+    if (typeof claim === "number" && claim > 0 && Number.isFinite(claim)) total += claim;
+  }
+  return total;
+}
+
+/**
+ * Lateral inhibition (winner-take-all on a target): true when other agents' live claim on the
+ * candidate's own footprint paths is positive and at least `inhibitAt`. Infinity turns it off,
+ * 0 (or less) inhibits on any positive claim, NaN means LATERAL_INHIBITION.
+ */
+export function inhibited(candidate: Pick<Candidate, "directClaim">, inhibitAt: number = LATERAL_INHIBITION): boolean {
+  const claim = candidate.directClaim;
+  if (typeof claim !== "number" || !(claim > 0)) return false;
+  const at = Number.isNaN(inhibitAt) ? LATERAL_INHIBITION : inhibitAt;
+  return at !== Number.POSITIVE_INFINITY && claim >= at;
 }
 
 /**
@@ -42,7 +88,8 @@ export interface Candidate {
  * descending stimulus and accepts each with probability responseProbability(s, theta[region] ?? defaultTheta).
  * Returns null if nothing is accepted. `rand` is injectable for tests.
  *
- * Closed-admission candidates are skipped; ties keep input order; `rand` (default Math.random) is
+ * Closed-admission candidates and laterally inhibited ones (see `inhibited`; `inhibitAt` defaults
+ * to LATERAL_INHIBITION) are skipped; ties keep input order; `rand` (default Math.random) is
  * called once per candidate walked and accepts when rand() < p; defaultTheta defaults to 1.
  */
 export function chooseIntent(
@@ -51,9 +98,10 @@ export function chooseIntent(
   now: number,
   rand: () => number = Math.random,
   defaultTheta = 1,
+  inhibitAt: number = LATERAL_INHIBITION,
 ): Candidate | null {
   const ranked = candidates
-    .filter((c) => c.admissionOpen)
+    .filter((c) => c.admissionOpen && !inhibited(c, inhibitAt))
     .map((c) => ({ c, s: stimulus(c.intent, now, c.repulsion) }))
     .sort((a, b) => b.s - a.s);
   for (const { c, s } of ranked) {

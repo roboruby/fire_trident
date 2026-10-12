@@ -1,10 +1,12 @@
 import { DurableObject } from "cloudflare:workers";
-import { admissionOpen, aggregate, inhibitionFactor, isExpired, markValue, selectBatch, validateProposal } from "@fire_trident/core";
+import { admissionOpen, aggregate, inhibitionFactor, isExpired, markValue, regionKey, regionOf, selectBatch, validateProposal } from "@fire_trident/core";
 import type { CausalEvent, ColonyEvent, FieldReading, FileVersion, Id, Landing, Mark, MarkKind, OccResult, Path, Proposal, Sha } from "@fire_trident/core";
 import type { Env } from "../env.ts";
 import { errorText } from "../colony/errors.ts";
 import { coalesceEvents } from "../colony/events.ts";
 import type { ClearFilter, FieldOps } from "../colony/logic.ts";
+import { settleLane, suspects } from "../trunk/outcome.ts";
+import type { LandResult } from "../trunk/plan.ts";
 import {
   accumulates,
   chunks,
@@ -72,6 +74,14 @@ const JSON_CHUNK = 500;
 /** Undelivered colony reports are retried this often, at most this many times. */
 const REPORT_RETRY_MS = 5_000;
 const MAX_REPORT_ATTEMPTS = 50;
+/**
+ * A stale return whose cause landed in another lane is resolved this long after the tick (the
+ * landing's fan-out to the regions it changed may still be on its way), at most this many times.
+ */
+const CAUSE_RESOLVE_MS = 1_500;
+const MAX_CAUSE_ATTEMPTS = 3;
+/** Pending causes resolved per pass. */
+const CAUSE_BATCH = 200;
 
 /** What a lane tick tells the ColonyDO. */
 type LaneReport = { kind: "landing"; landing: Landing } | { kind: "updates"; updates: Array<{ id: Id; patch: Partial<Proposal> }> };
@@ -103,6 +113,11 @@ const SCHEMA = [
   "CREATE INDEX IF NOT EXISTS path_landing_path ON path_landing(path, at)",
   "CREATE TABLE IF NOT EXISTS intent_returns (intent_id TEXT PRIMARY KEY, event_id TEXT NOT NULL, at INTEGER NOT NULL)",
   "CREATE TABLE IF NOT EXISTS reports (id TEXT PRIMARY KEY, at INTEGER NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, data TEXT NOT NULL)",
+  // The last landing that changed each of this region's paths, whichever lane landed it (fed by the colony's landing fan-out).
+  "CREATE TABLE IF NOT EXISTS landed_paths (path TEXT PRIMARY KEY, landing_id TEXT NOT NULL, at INTEGER NOT NULL)",
+  "CREATE INDEX IF NOT EXISTS landed_paths_at ON landed_paths(at)",
+  // Stale returns whose cause is a landing this region has not heard of yet (resolved shortly after, see resolveCauses).
+  "CREATE TABLE IF NOT EXISTS pending_causes (id TEXT PRIMARY KEY, paths TEXT NOT NULL, at INTEGER NOT NULL, attempts INTEGER NOT NULL DEFAULT 0)",
 ];
 
 type MarkRow = {
@@ -183,6 +198,10 @@ export class RegionDO extends DurableObject<Env> {
   private quietUntil = 0;
   /** Last inhibition factor sent to the colony (so the return to 1 is sent once). */
   private sentInhibition = 1;
+  /** The colony's region depth (from configure), null until known. */
+  private depth: number | null = null;
+  private causeTimer: ReturnType<typeof setTimeout> | null = null;
+  private resolvingCauses = false;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -191,6 +210,7 @@ export class RegionDO extends DurableObject<Env> {
     for (const row of this.sql.exec<{ k: string; v: string }>("SELECT k, v FROM meta")) {
       if (row.k === "colonyId") this.colonyId = row.v;
       else if (row.k === "region") this.region = row.v;
+      else if (row.k === "regionDepth") this.depth = Number(row.v) || null;
     }
     if (this.colonyId === null) this.adoptName();
   }
@@ -199,13 +219,20 @@ export class RegionDO extends DurableObject<Env> {
   // Configuration
   // -------------------------------------------------------------------------
 
-  /** Bind this object to its colony and region (idempotent). */
-  async configure(p: { colonyId: Id; region: string }): Promise<void> {
+  /**
+   * Bind this object to its colony and region (idempotent). `regionDepth` (the colony's) lets
+   * the region find which region owns a path, to name causes that landed elsewhere.
+   */
+  async configure(p: { colonyId: Id; region: string; regionDepth?: number }): Promise<void> {
     const upsert = "INSERT INTO meta (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v";
     this.sql.exec(upsert, "colonyId", p.colonyId);
     this.sql.exec(upsert, "region", p.region);
     this.colonyId = p.colonyId;
     this.region = p.region;
+    if (typeof p.regionDepth === "number" && Number.isInteger(p.regionDepth) && p.regionDepth >= 1) {
+      this.sql.exec(upsert, "regionDepth", String(p.regionDepth));
+      this.depth = p.regionDepth;
+    }
   }
 
   /** Fall back to the object name (`colonyId:region`) when configure() has not run yet. */
@@ -279,6 +306,45 @@ export class RegionDO extends DurableObject<Env> {
     };
   }
 
+  /**
+   * Harvester-ant admission, decided here and atomically: admit an agent into this region and
+   * deposit its claim marks in the same synchronous step, so concurrent takes (from any number
+   * of callers, with any stale view of the field) can never push the region past its cap. An
+   * agent already holding a live claim here is inside and always admitted. A refusal deposits
+   * nothing. `activeAgents` counts the agents holding claims after the decision.
+   */
+  async admit(p: { agentId: Id; intentId: Id; paths: Path[]; strength?: number }): Promise<{ admitted: boolean; activeAgents: number; landingsPerMin: number }> {
+    const now = Date.now();
+    this.maybeGc(now);
+    const others = this.claimHolders(now, p.agentId).size;
+    const inside = this.holdsClaim(p.agentId, now);
+    const landingsPerMin = this.count("land", now - RATE_WINDOW_MS);
+    const admitted = inside || admissionOpen(others, landingsPerMin);
+    if (admitted) {
+      const strength = typeof p.strength === "number" && Number.isFinite(p.strength) && p.strength > 0 ? p.strength : 1;
+      this.applyOps({ deposit: p.paths.map((path) => ({ kind: "claim" as const, path, strength, at: now, agentId: p.agentId, intentId: p.intentId })) });
+    }
+    return { admitted, activeAgents: others + (admitted || inside ? 1 : 0), landingsPerMin };
+  }
+
+  /**
+   * The last landing that changed each of these paths of this region, as the colony's landing
+   * fan-out reported it. Another region asks when one of its stale returns read a path here.
+   */
+  async landedFor(paths: Path[]): Promise<Array<{ path: Path; landingId: Id; at: number }>> {
+    const out: Array<{ path: Path; landingId: Id; at: number }> = [];
+    const wanted = Array.isArray(paths) ? [...new Set(paths.filter((p) => typeof p === "string"))] : [];
+    for (const part of chunks(wanted, JSON_CHUNK)) {
+      for (const r of this.sql.exec<{ path: string; landing_id: string; at: number }>(
+        "SELECT path, landing_id, at FROM landed_paths WHERE path IN (SELECT value FROM json_each(?))",
+        JSON.stringify(part),
+      )) {
+        out.push({ path: r.path, landingId: r.landing_id, at: r.at });
+      }
+    }
+    return out;
+  }
+
   /** Record a causal event for the criticality governor (sigma). */
   async recordCause(e: { id: string; causeId?: string; at: number }): Promise<void> {
     this.sql.exec(
@@ -331,6 +397,33 @@ export class RegionDO extends DurableObject<Env> {
     };
   }
 
+  /**
+   * Erase this region (colony deletion): cancel the alarm and pending events, delete all
+   * storage, and recreate the empty schema, so the object keeps answering as a fresh region.
+   */
+  async destroy(): Promise<{ cleared: true }> {
+    if (this.flushTimer !== null) clearTimeout(this.flushTimer);
+    if (this.causeTimer !== null) clearTimeout(this.causeTimer);
+    this.flushTimer = null;
+    this.causeTimer = null;
+    this.depth = null;
+    this.outbox = [];
+    await this.ctx.storage.deleteAlarm();
+    await this.ctx.storage.deleteAll();
+    for (const stmt of SCHEMA) this.sql.exec(stmt);
+    this.colonyId = null;
+    this.region = null;
+    this.version++;
+    this.agg = null;
+    this.sigmaCache = null;
+    this.lastGc = 0;
+    this.lastTickAt = 0;
+    this.quietUntil = 0;
+    this.sentInhibition = 1;
+    this.adoptName();
+    return { cleared: true };
+  }
+
   /** Lane tick: deliver pending reports, then validate, batch, land, report, reschedule. */
   async alarm(): Promise<void> {
     if (this.ticking) return;
@@ -370,7 +463,19 @@ export class RegionDO extends DurableObject<Env> {
     let cleared = 0;
     for (const filter of ops.clear ?? []) cleared += this.clearRows(filter, touched);
     const deposited = ops.deposit && ops.deposit.length > 0 ? this.depositRows(ops.deposit, now, touched) : 0;
-    if (ops.landingId) this.log(`land:${ops.landingId}`, "land", now);
+    if (ops.landingId) {
+      this.log(`land:${ops.landingId}`, "land", now);
+      // The colony's landing fan-out: its trail deposits are the paths the landing changed here.
+      for (const m of ops.deposit ?? []) {
+        if (m.kind !== "trail" || typeof m.path !== "string" || m.path === "") continue;
+        this.sql.exec(
+          "INSERT INTO landed_paths (path, landing_id, at) VALUES (?, ?, ?) ON CONFLICT(path) DO UPDATE SET landing_id = excluded.landing_id, at = excluded.at",
+          m.path,
+          ops.landingId,
+          now,
+        );
+      }
+    }
     if (cleared > 0 || deposited > 0) {
       this.version++;
       this.queueMarkEvents(touched, now);
@@ -496,6 +601,14 @@ export class RegionDO extends DurableObject<Env> {
     return out;
   }
 
+  /** Does this agent hold a live claim in the region (is it already inside)? */
+  private holdsClaim(agentId: Id, now: number): boolean {
+    for (const r of this.sql.exec<MarkRow>(`SELECT ${MARK_COLUMNS} FROM marks WHERE agent_id = ? AND kind = 'claim'`, agentId)) {
+      if (!isExpired(toMark(r), now)) return true;
+    }
+    return false;
+  }
+
   private sigma(now: number): number {
     if (this.sigmaCache && now - this.sigmaCache.at < SIGMA_TTL_MS) return this.sigmaCache.sigma;
     const events: CausalEvent[] = [];
@@ -533,6 +646,8 @@ export class RegionDO extends DurableObject<Env> {
     this.sql.exec("DELETE FROM causes WHERE at < ?", now - SIGMA_KEEP_MS);
     this.sql.exec("DELETE FROM path_landing WHERE at < ?", now - PATH_LANDING_KEEP_MS);
     this.sql.exec("DELETE FROM intent_returns WHERE at < ?", now - LOG_KEEP_MS);
+    this.sql.exec("DELETE FROM landed_paths WHERE at < ?", now - PATH_LANDING_KEEP_MS);
+    this.sql.exec("DELETE FROM pending_causes WHERE at < ?", now - SIGMA_KEEP_MS);
   }
 
   // -------------------------------------------------------------------------
@@ -686,10 +801,9 @@ export class RegionDO extends DurableObject<Env> {
       else stale.push({ p, occ });
     }
 
-    // 3. Lateral inhibition: the largest non-conflicting batch lands as one commit.
+    // 3. Lateral inhibition: the largest non-conflicting batch lands as one commit (in the trunk writer's next group-commit cycle).
     const { batch } = selectBatch(valid, LANE_SCAN);
-    let landing: Landing | undefined;
-    let trunkReturned: Array<{ proposalId: Id; reason: string }> = [];
+    let result: LandResult | null = null;
     let landError: string | null = null;
     if (batch.length > 0) {
       try {
@@ -698,38 +812,34 @@ export class RegionDO extends DurableObject<Env> {
         const ctx = await colony
           .landContext(batch.map((p) => p.intentId), batch.map((p) => p.agentId))
           .catch(() => undefined);
-        const res = await trunk.land(batch, ctx);
-        landing = res.landing;
-        trunkReturned = res.returned ?? [];
+        result = (await trunk.land(batch, ctx)) as LandResult;
       } catch (err) {
         landError = errorText(err);
         console.error(`TrunkDO.land failed for ${colonyId}:${this.region}: ${landError}`);
       }
     }
 
-    // 4. Bookkeeping: lane removals, returns, causal events.
+    // 4. Idempotent per proposal id: a proposal whose landing report was lost (the land call failed
+    //    after the trunk writer landed it) looks stale against its own blob. The trunk writer's index
+    //    of landed proposals decides; a proposal that landed is settled as landed, never returned.
+    const ask = suspects(stale, result);
+    const known = ask.length > 0 ? ((await trunk.landingsOf(ask).catch(() => null)) as Record<Id, Landing> | null) : {};
+    const settled = settleLane({ batch, stale: stale.map(({ p, occ }) => ({ p, occ, reason: staleReason(occ.stale) })), result, known, trunk: (path) => current[path] });
+
+    // 5. Bookkeeping: lane removals, returns, causal events.
     const now = Date.now();
-    const remove = new Set<Id>();
+    const remove = new Set<Id>(settled.landed);
     const updates: Array<{ id: Id; patch: Partial<Proposal> }> = [];
-    if (landing) {
-      this.recordLanding(landing, batch, now);
-      for (const id of landing.proposalIds) remove.add(id);
-    }
-    for (const { p, occ } of stale) {
-      remove.add(p.id);
-      updates.push({ id: p.id, patch: { status: "returned", reason: staleReason(occ.stale) } });
-      this.recordReturn(p, occ.stale, now);
-    }
-    const byId = new Map(batch.map((p) => [p.id, p]));
-    for (const r of trunkReturned) {
-      if (remove.has(r.proposalId)) continue;
-      remove.add(r.proposalId);
-      updates.push({ id: r.proposalId, patch: { status: "returned", reason: r.reason } });
-      const p = byId.get(r.proposalId);
-      if (p) this.recordReturn(p, null, now);
+    const seen = [...batch, ...stale.map((s) => s.p)];
+    for (const landing of settled.landings) this.recordLanding(landing, seen, now);
+    for (const r of settled.returned) {
+      remove.add(r.id);
+      updates.push({ id: r.id, patch: { status: "returned", reason: r.reason } });
+      if (r.p) this.recordReturn(r.p, r.stale ?? null, now);
     }
     let retryMs: number | null = null;
-    const unresolved = batch.filter((p) => !remove.has(p.id));
+    const keep = new Set(settled.keep);
+    const unresolved = seen.filter((p) => keep.has(p.id) && !remove.has(p.id));
     if (unresolved.length > 0) {
       // Land failed, or the trunk neither landed nor returned them: count an attempt so nothing loops forever.
       let worst = 0;
@@ -747,8 +857,8 @@ export class RegionDO extends DurableObject<Env> {
     }
     if (remove.size > 0) this.deleteFromLane([...remove]);
 
-    // 5. Report to the colony (landing first so intents settle before returns reopen anything).
-    if (landing) await this.report(colonyId, { kind: "landing", landing });
+    // 6. Report to the colony (landings first so intents settle before returns reopen anything; onLanding is idempotent per landing id).
+    for (const landing of settled.landings) await this.report(colonyId, { kind: "landing", landing });
     if (updates.length > 0) await this.report(colonyId, { kind: "updates", updates });
     this.sigmaCache = null; // alarm() sends the new sigma
     return retryMs;
@@ -779,9 +889,14 @@ export class RegionDO extends DurableObject<Env> {
     }
   }
 
-  /** A return is a child of the landing that changed one of its stale paths (when known). */
+  /**
+   * A return is a child of the landing that changed one of its stale paths (when known): one this
+   * lane landed, else one another lane landed on this region's paths, else (resolved shortly after,
+   * see resolveCauses) one that landed in the region owning the stale path.
+   */
   private recordReturn(p: Proposal, stale: OccResult["stale"] | null, now: number): void {
     let cause: string | null = null;
+    let deferred = false;
     if (stale) {
       for (const s of stale) {
         const row = this.sql
@@ -791,6 +906,10 @@ export class RegionDO extends DurableObject<Env> {
           cause = row.event_id;
           break;
         }
+      }
+      if (cause === null && stale.length > 0) {
+        cause = this.landedCause(stale.map((s) => s.path));
+        deferred = cause === null;
       }
     } else {
       const row = this.sql
@@ -804,12 +923,134 @@ export class RegionDO extends DurableObject<Env> {
     }
     const eventId = `ret:${p.id}`;
     this.sql.exec("INSERT OR IGNORE INTO causes (id, cause_id, at) VALUES (?, ?, ?)", eventId, cause, now);
+    if (deferred && stale) this.deferCause(eventId, stale.map((s) => s.path), now);
     this.sql.exec(
       "INSERT INTO intent_returns (intent_id, event_id, at) VALUES (?, ?, ?) ON CONFLICT(intent_id) DO UPDATE SET event_id = excluded.event_id, at = excluded.at",
       p.intentId,
       eventId,
       now,
     );
+  }
+
+  /** The most recent landing this region heard of on any of these paths, as a parent event here (null if none). */
+  private landedCause(paths: Path[]): string | null {
+    let best: { landing_id: string; at: number } | undefined;
+    for (const part of chunks([...new Set(paths)], JSON_CHUNK)) {
+      const row = this.sql
+        .exec<{ landing_id: string; at: number }>(
+          "SELECT landing_id, at FROM landed_paths WHERE path IN (SELECT value FROM json_each(?)) ORDER BY at DESC LIMIT 1",
+          JSON.stringify(part),
+        )
+        .toArray()[0];
+      if (row && (!best || row.at > best.at)) best = row;
+    }
+    return best ? this.landingParent(best.landing_id, best.at) : null;
+  }
+
+  /**
+   * A landing as a parent event of this region's causal graph, keyed to its landing id. Only
+   * landings that invalidated work here become parents this way (this lane's own landings are
+   * recorded per landed proposal by recordLanding).
+   */
+  private landingParent(landingId: Id, at: number): string {
+    const id = `land:${landingId}`;
+    this.sql.exec("INSERT OR IGNORE INTO causes (id, cause_id, at) VALUES (?, NULL, ?)", id, at);
+    return id;
+  }
+
+  /** Keep a stale return whose cause is not known here yet; resolveCauses names it shortly. */
+  private deferCause(eventId: string, paths: Path[], now: number): void {
+    this.sql.exec(
+      "INSERT OR IGNORE INTO pending_causes (id, paths, at, attempts) VALUES (?, ?, ?, 0)",
+      eventId,
+      JSON.stringify([...new Set(paths)].slice(0, JSON_CHUNK)),
+      now,
+    );
+    this.scheduleCauses();
+  }
+
+  private scheduleCauses(): void {
+    if (this.causeTimer !== null) return;
+    this.causeTimer = setTimeout(() => {
+      this.causeTimer = null;
+      this.ctx.waitUntil(this.resolveCauses());
+    }, CAUSE_RESOLVE_MS);
+  }
+
+  /**
+   * Name the landings behind stale returns this lane could not attribute when it returned them.
+   * A path of this region is looked up in its own landed_paths; a path of another region is asked
+   * of that region (landedFor), one call per region per pass. Each landing found becomes a parent
+   * here and the return its child, so a landing elsewhere that invalidates this lane's work counts
+   * in this region's sigma. Unresolved returns are retried a few times, then dropped.
+   */
+  private async resolveCauses(): Promise<void> {
+    if (this.resolvingCauses) return;
+    this.resolvingCauses = true;
+    try {
+      const rows = this.sql
+        .exec<{ id: string; paths: string; attempts: number }>("SELECT id, paths, attempts FROM pending_causes ORDER BY at LIMIT ?", CAUSE_BATCH)
+        .toArray();
+      if (rows.length === 0) return;
+      const pathsOf = new Map<string, Path[]>();
+      const elsewhere = new Map<string, Set<Path>>();
+      for (const r of rows) {
+        let paths: Path[] = [];
+        try {
+          const parsed: unknown = JSON.parse(r.paths);
+          if (Array.isArray(parsed)) paths = parsed.filter((x): x is Path => typeof x === "string");
+        } catch {
+          // dropped below
+        }
+        pathsOf.set(r.id, paths);
+        if (this.depth === null) continue; // owners unknown until configure() passes the colony's depth
+        for (const path of paths) {
+          const owner = regionOf(path, this.depth);
+          if (owner === this.region) continue;
+          let set = elsewhere.get(owner);
+          if (!set) elsewhere.set(owner, (set = new Set()));
+          set.add(path);
+        }
+      }
+      const found = new Map<Path, { landingId: Id; at: number }>();
+      const colonyId = this.colonyId;
+      if (colonyId !== null) {
+        await Promise.all(
+          [...elsewhere].map(async ([owner, paths]) => {
+            try {
+              const stub = this.env.REGION.get(this.env.REGION.idFromName(regionKey(colonyId, owner)));
+              for (const l of await stub.landedFor([...paths])) found.set(l.path, { landingId: l.landingId, at: l.at });
+            } catch (err) {
+              console.warn(`cause lookup in region ${owner} failed for ${colonyId}:${this.region}: ${errorText(err)}`);
+            }
+          }),
+        );
+      }
+      for (const r of rows) {
+        const paths = pathsOf.get(r.id) ?? [];
+        let cause = this.landedCause(paths);
+        if (cause === null) {
+          let best: { landingId: Id; at: number } | undefined;
+          for (const path of paths) {
+            const l = found.get(path);
+            if (l && (!best || l.at > best.at)) best = l;
+          }
+          if (best) cause = this.landingParent(best.landingId, best.at);
+        }
+        if (cause !== null) {
+          this.sql.exec("UPDATE causes SET cause_id = ? WHERE id = ? AND cause_id IS NULL", cause, r.id);
+          this.sql.exec("DELETE FROM pending_causes WHERE id = ?", r.id);
+        } else if (paths.length === 0 || r.attempts + 1 >= MAX_CAUSE_ATTEMPTS) {
+          this.sql.exec("DELETE FROM pending_causes WHERE id = ?", r.id);
+        } else {
+          this.sql.exec("UPDATE pending_causes SET attempts = attempts + 1 WHERE id = ?", r.id);
+        }
+      }
+      this.sigmaCache = null;
+      if (this.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM pending_causes").one().n > 0) this.scheduleCauses();
+    } finally {
+      this.resolvingCauses = false;
+    }
   }
 
   /**

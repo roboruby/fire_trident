@@ -2,7 +2,10 @@
  * FireTrident coordination model, mirroring the deployed code paths:
  *  - take = ColonyDO.takeFor: the 200 oldest open intents are candidates; repulsion is the
  *    other agents' claims on the footprint; admission per region is core admissionOpen(active
- *    claim holders, landing commits in the last minute); core chooseIntent picks.
+ *    claim holders, landing commits in the last minute); core chooseIntent picks. With `inhibitAt`
+ *    set, lateral inhibition as ColonyDO.take applies it: a candidate whose own files carry that
+ *    much claim from other agents is skipped (core inhibited). Live agents heartbeat, so every
+ *    claim counts as a fresh one (1); unset keeps the model as it was before inhibition was built.
  *  - each proposal goes to the lane of its primary region (RegionDO): on a tick it is validated
  *    with core validateProposal against current trunk, core selectBatch picks the batch, and the
  *    trunk writer lands it; the next tick waits core laneIntervalMs(flux) times
@@ -16,6 +19,7 @@ import {
   admissionOpen,
   branchingRatio,
   chooseIntent,
+  inhibited,
   inhibitionFactor,
   laneIntervalMs,
   reinforceThreshold,
@@ -35,6 +39,25 @@ const SIGMA_TTL_MS = 1_000;
 const READING_TTL_MS = 250;
 const HEARTBEAT_MS = 45_000;
 const RETRY = { idle: 5_000, closed: 3_000, declined: 1_500 };
+
+/**
+ * Extra repulsion on a candidate task, given the claim count on any path (other agents' claims;
+ * the taking agent holds none). ColonyDO.take adds co-change repulsion this way. With `relative`,
+ * only the part above the least repelled admitted candidate counts (lateral inhibition: it
+ * reorders candidates but never makes the best one less acceptable).
+ */
+export type ExtraRepulsion = ((task: SimTask, claimOn: (path: string) => number) => number) & { relative?: boolean };
+
+/** Model options beyond SimParams. */
+export interface FireOptions {
+  /**
+   * Lateral inhibition at this claim value, passed to core chooseIntent (ColonyDO.take uses core
+   * LATERAL_INHIBITION, half a fresh claim). Undefined leaves it off.
+   */
+  inhibitAt?: number;
+  /** Open intents considered per take, oldest first (ColonyDO's CANDIDATE_CAP, 200). For analysis. */
+  window?: number;
+}
 
 interface Agent {
   id: number;
@@ -61,7 +84,10 @@ interface Prop {
 interface EvalCache {
   version: number;
   at: number;
+  /** Admitted candidates. */
   open: Array<Candidate & { task: SimTask }>;
+  /** Admitted candidates that are not laterally inhibited (all of `open` when inhibition is off). */
+  free: Array<Candidate & { task: SimTask }>;
   nextViableAt: number;
 }
 
@@ -107,11 +133,20 @@ export class FireSim extends SimBase {
   private candidateRegions: { version: number; n: number } = { version: -1, n: 0 };
   private readonly trunkQueue: Array<{ region: Region; batch: Prop[]; done: (res: { landed: Prop[]; returned: Prop[]; landingId: string | null }) => void }> = [];
   private trunkBusy = false;
+  /** Optional repulsion added to the claim overlap (co-change neighbors, see sim/cochange.ts). */
+  private readonly extraRepulsion: ExtraRepulsion | null;
+  private readonly claimOn = (path: string): number => this.claimCount.get(path) ?? 0;
+  /** Lateral inhibition threshold passed to core chooseIntent (Infinity = off). */
+  private readonly inhibitAt: number;
+  private readonly window: number;
 
-  constructor(p: SimParams, source: TaskSource, initial: (path: string) => string | null) {
+  constructor(p: SimParams, source: TaskSource, initial: (path: string) => string | null, extraRepulsion?: ExtraRepulsion, opts: FireOptions = {}) {
     super(p, source);
     this.group = p.model === "firetrident-group";
     this.initial = initial;
+    this.extraRepulsion = extraRepulsion ?? null;
+    this.inhibitAt = opts.inhibitAt ?? Number.POSITIVE_INFINITY;
+    this.window = opts.window !== undefined && opts.window >= 1 ? Math.floor(opts.window) : CANDIDATE_CAP;
   }
 
   protected backlogAtEnd(): number {
@@ -181,10 +216,17 @@ export class FireSim extends SimBase {
       this.q.after(this.p.timings.takeMs + this.rng.jitter(RETRY.closed), () => this.take(a));
       return;
     }
+    if (ev.free.length === 0) {
+      // ColonyDO.takeFor: every admitted candidate is laterally inhibited; same hint as a closed region.
+      this.m.wait(now, "every open intent's files are claimed by another agent");
+      this.q.after(this.p.timings.takeMs + this.rng.jitter(RETRY.closed), () => this.take(a));
+      return;
+    }
     // Candidates whose stimulus is still 0 (repelled more than their age offsets) have p = 0 in
-    // chooseIntent; leaving them out changes nothing but the number of random draws.
-    const viable = now < ev.nextViableAt ? [] : ev.open.filter((c) => stimulus(c.intent, now, c.repulsion) > 0);
-    const pick = viable.length > 0 ? (chooseIntent(viable, a.thresholds, now, this.rng.fn()) as (Candidate & { task: SimTask }) | null) : null;
+    // chooseIntent, and inhibited ones are skipped without a draw; leaving them out changes nothing
+    // but the number of random draws.
+    const viable = now < ev.nextViableAt ? [] : ev.free.filter((c) => stimulus(c.intent, now, c.repulsion) > 0);
+    const pick = viable.length > 0 ? (chooseIntent(viable, a.thresholds, now, this.rng.fn(), undefined, this.inhibitAt) as (Candidate & { task: SimTask }) | null) : null;
     if (!pick) {
       this.m.wait(now, "no intent accepted at this agent's thresholds");
       this.q.after(this.p.timings.takeMs + this.rng.jitter(RETRY.declined), () => this.take(a));
@@ -201,8 +243,8 @@ export class FireSim extends SimBase {
   private evaluate(now: number): EvalCache {
     const open: Array<Candidate & { task: SimTask }> = [];
     const openRegion = new Map<string, boolean>();
-    let nextViableAt = Number.POSITIVE_INFINITY;
-    for (const t of this.open.top(CANDIDATE_CAP)) {
+    const extras: number[] = [];
+    for (const t of this.open.top(this.window)) {
       let rep = 0;
       for (const w of t.writes) rep += this.claimCount.get(w) ?? 0;
       let ok = true;
@@ -216,12 +258,26 @@ export class FireSim extends SimBase {
         if (!o) ok = false;
       }
       if (!ok) continue;
-      open.push({ intent: t.intent, region: t.primary, repulsion: rep, admissionOpen: true, task: t });
+      if (this.extraRepulsion) extras.push(this.extraRepulsion(t, this.claimOn));
+      // The direct claim is the soft overlap term itself: every live claim is a fresh one (1).
+      open.push({ intent: t.intent, region: t.primary, repulsion: rep, directClaim: rep, admissionOpen: true, task: t });
+    }
+    if (this.extraRepulsion && open.length > 0) {
+      const floor = this.extraRepulsion.relative ? Math.min(...extras) : 0;
+      open.forEach((c, i) => (c.repulsion += extras[i]! - floor));
+    }
+    const free = this.inhibitAt === Number.POSITIVE_INFINITY ? open : open.filter((c) => !inhibited(c, this.inhibitAt));
+    if (this.m.on(now) && this.inhibitAt !== Number.POSITIVE_INFINITY) {
+      this.m.windowAdmitted += open.length;
+      this.m.windowInhibited += open.length - free.length;
+    }
+    let nextViableAt = Number.POSITIVE_INFINITY;
+    for (const c of free) {
       // stimulus = 1 + ageMinutes / 10 - repulsion is positive once age > 10 min * (repulsion - 1).
-      const viableAt = rep < 1 ? Number.NEGATIVE_INFINITY : t.createdAt + 600_000 * (rep - 1);
+      const viableAt = c.repulsion < 1 ? Number.NEGATIVE_INFINITY : c.task.createdAt + 600_000 * (c.repulsion - 1);
       if (viableAt < nextViableAt) nextViableAt = viableAt;
     }
-    const ev: EvalCache = { version: this.stateVersion, at: now, open, nextViableAt };
+    const ev: EvalCache = { version: this.stateVersion, at: now, open, free, nextViableAt };
     this.evalCache = ev;
     return ev;
   }
@@ -232,7 +288,7 @@ export class FireSim extends SimBase {
     this.readingsAt = now;
     if (this.candidateRegions.version !== this.open.version) {
       const set = new Set<string>();
-      for (const t of this.open.top(CANDIDATE_CAP)) for (const r of t.regions) set.add(r);
+      for (const t of this.open.top(this.window)) for (const r of t.regions) set.add(r);
       this.candidateRegions = { version: this.open.version, n: set.size };
     }
     this.m.msg(now, "fieldReading", this.candidateRegions.n);

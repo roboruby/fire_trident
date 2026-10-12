@@ -38,7 +38,12 @@ const C = {
   fire: "#F38020",
   base: "#3987e5",
   danger: "#d03b3b",
+  /** FireTrident with trunk group commit (measured live and simulated). */
+  group: "#F7C548",
 };
+/** What limits the colony next, from the group-commit runs (shown under Findings). */
+const GROUP_NEXT =
+  "The next limits are outside the trunk writer. At 1,000 agents the one ColonyDO that serves every take, poll and propose saturates (overload errors and take timeouts tripped the driver's error guard at 60 s, so that run's rate is measured over a window it only partly worked in), and at 200 agents workspace leasing sets take latency (p50 6 s). Inside a cycle the trunk push is now the largest phase, and lane cadence at low flux sets the time-to-land tail.";
 const MONO = `ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace`;
 const SANS = `system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif`;
 
@@ -218,8 +223,8 @@ function aggregate(results: SimResult[]): Agg[] {
 
 const MODEL_LABEL: Record<string, string> = {
   baseline: "Baseline: file locks + one merge queue",
-  firetrident: "FireTrident as deployed",
-  "firetrident-group": "FireTrident + trunk group commit (proposed, not built)",
+  firetrident: "FireTrident with the serial trunk writer",
+  "firetrident-group": "FireTrident + trunk group commit",
 };
 
 function seriesFor(agg: Agg[], model: string, key: string, opts: Partial<Series> & { color: string; tipUnit: string; digits?: number }): Series {
@@ -265,6 +270,10 @@ function load<T>(dir: string, name: string): T | null {
 function main(): void {
   const dir = process.argv[2] ?? "packages/bench/results/2026-10-12";
   const live = [10, 50, 200, 1000].map((n) => load<LiveReport>(dir, `live-n${n}.json`)).filter((x): x is LiveReport => x !== null);
+  // Optional second directory: the same live runs with trunk group commit built (MEASURED).
+  const groupDir = process.argv[3];
+  const group = groupDir ? [10, 50, 200, 1000].map((n) => load<LiveReport>(groupDir, `live-n${n}.json`)).filter((x): x is LiveReport => x !== null) : [];
+  const groupName = groupDir ? groupDir.replace(/\/+$/, "").split("/").pop() ?? groupDir : "";
   const simLive = load<Sim>(dir, "sim-live.json");
   const simHist = load<Sim>(dir, "sim-history.json");
   const simTest = load<Sim>(dir, "sim-history-test30s.json");
@@ -276,7 +285,7 @@ function main(): void {
   const get = (agg: Agg[], model: string, n: number) => agg.find((r) => r.model === model && r.agents === n);
 
   // ---- Chart 1: the measured setting (live workload) -----------------------
-  const maxLive = niceMax(Math.max(...aggLive.map((r) => r.landingsPerMin ?? 0), ...live.map((r) => r.window.landedPerMin)) * 1.08);
+  const maxLive = niceMax(Math.max(...aggLive.map((r) => r.landingsPerMin ?? 0), ...live.map((r) => r.window.landedPerMin), ...group.map((r) => r.window.landedPerMin)) * 1.08);
   const measured: Series = {
     name: "measured",
     color: C.fire,
@@ -286,7 +295,20 @@ function main(): void {
       x: r.agents,
       y: r.window.landedPerMin,
       note: r.window.landedPerMin.toFixed(0),
-      tip: `MEASURED · FireTrident live · ${r.agents} agents: ${r.window.landedPerMin.toFixed(1)} landed changes/min (${r.window.commitsPerMin.toFixed(1)} commits/min, batch ${r.batchSize.mean?.toFixed(2)}), time-to-land p50 ${((r.timeToLandMs.p50 ?? 0) / 1000).toFixed(1)} s`,
+      tip: `MEASURED · FireTrident live, serial trunk writer · ${r.agents} agents: ${r.window.landedPerMin.toFixed(1)} landed changes/min (${r.window.commitsPerMin.toFixed(1)} commits/min, batch ${r.batchSize.mean?.toFixed(2)}), time-to-land p50 ${((r.timeToLandMs.p50 ?? 0) / 1000).toFixed(1)} s`,
+    })),
+  };
+  const measuredGroup: Series = {
+    name: "measured-group",
+    color: C.group,
+    marker: "filled",
+    line: true,
+    label: "group commit (measured)",
+    points: group.map((r) => ({
+      x: r.agents,
+      y: r.window.landedPerMin,
+      note: r.window.landedPerMin.toFixed(0),
+      tip: `MEASURED · FireTrident live with trunk group commit · ${r.agents} agents: ${r.window.landedPerMin.toFixed(1)} landed changes/min (${r.window.commitsPerMin.toFixed(1)} commits/min, batch ${r.batchSize.mean?.toFixed(2)}), time-to-land p50 ${((r.timeToLandMs.p50 ?? 0) / 1000).toFixed(1)} s`,
     })),
   };
   const c1 = chart({
@@ -295,10 +317,11 @@ function main(): void {
     x: { log: true, min: 7, max: 1500, ticks: [10, 50, 100, 200, 500, 1000], label: "concurrent agents (log scale)", tick: (v) => fmtInt(v) },
     y: { min: 0, max: maxLive, ticks: linTicks(maxLive), label: "landed changes per minute" },
     series: [
-      seriesFor(aggLive, "firetrident-group", "landingsPerMin", { color: C.fire, dash: "7 5", opacity: 0.75, tipUnit: "landed/min", label: "+ group commit (proposed)" }),
+      seriesFor(aggLive, "firetrident-group", "landingsPerMin", { color: C.group, dash: "7 5", opacity: 0.7, tipUnit: "landed/min", label: group.length ? "group commit (sim)" : "+ group commit (sim)" }),
       seriesFor(aggLive, "baseline", "landingsPerMin", { color: C.base, tipUnit: "landed/min", label: "Baseline" }),
-      seriesFor(aggLive, "firetrident", "landingsPerMin", { color: C.fire, tipUnit: "landed/min", label: "FireTrident (sim)" }),
+      seriesFor(aggLive, "firetrident", "landingsPerMin", { color: C.fire, tipUnit: "landed/min", label: "serial writer (sim)" }),
       measured,
+      ...(group.length ? [measuredGroup] : []),
     ],
   });
 
@@ -310,9 +333,9 @@ function main(): void {
     x: { log: true, min: 7, max: 150_000, ticks: [10, 100, 1000, 10_000, 100_000], label: "concurrent agents (log scale)", tick: (v) => fmt(v) },
     y: { min: 0, max: maxHist, ticks: linTicks(maxHist), label: "landed changes per minute" },
     series: [
-      seriesFor(aggHist, "firetrident-group", "landingsPerMin", { color: C.fire, dash: "7 5", opacity: 0.75, tipUnit: "landed/min", label: "+ group commit (proposed)" }),
+      seriesFor(aggHist, "firetrident-group", "landingsPerMin", { color: C.group, dash: "7 5", opacity: 0.75, tipUnit: "landed/min", label: "+ group commit" }),
       seriesFor(aggHist, "baseline", "landingsPerMin", { color: C.base, tipUnit: "landed/min", label: "Baseline" }),
-      seriesFor(aggHist, "firetrident", "landingsPerMin", { color: C.fire, tipUnit: "landed/min", label: "FireTrident" }),
+      seriesFor(aggHist, "firetrident", "landingsPerMin", { color: C.fire, tipUnit: "landed/min", label: "serial writer" }),
     ],
   });
 
@@ -328,7 +351,7 @@ function main(): void {
       x: { log: true, min: 7, max: 150_000, ticks: [10, 100, 1000, 10_000, 100_000], label: "agents (log)", tick: (v) => fmt(v) },
       y: { log: !!opts.log, min, max: opts.log ? 10 ** Math.ceil(Math.log10(max)) : max, ticks, label },
       series: [
-        seriesFor(aggHist, "firetrident-group", key, { color: C.fire, dash: "7 5", opacity: 0.75, tipUnit: unit, digits: opts.digits ?? 1 }),
+        seriesFor(aggHist, "firetrident-group", key, { color: C.group, dash: "7 5", opacity: 0.75, tipUnit: unit, digits: opts.digits ?? 1 }),
         seriesFor(aggHist, "baseline", key, { color: C.base, tipUnit: unit, digits: opts.digits ?? 1 }),
         seriesFor(aggHist, "firetrident", key, { color: C.fire, tipUnit: unit, digits: opts.digits ?? 1 }),
       ],
@@ -394,11 +417,32 @@ function main(): void {
   const ratio = (a: Agg | undefined, b: Agg | undefined) => (a && b && b.landingsPerMin ? a.landingsPerMin! / b.landingsPerMin : NaN);
   const hono = (m: string) => get(aggHist, m, 1000);
   const t30 = ratio(get(aggTest, "firetrident", 1000), get(aggTest, "baseline", 1000));
+  const gTop = group.find((r) => r.agents === 1000) ?? group[group.length - 1];
+  const gBefore = gTop ? live.find((r) => r.agents === gTop.agents) : undefined;
+  const gErrors = group.reduce((n, r) => n + r.ops.reduce((a, o) => a + o.errors, 0), 0);
+  const gCycles = gTop?.trunkCycles;
+  const gMetric = (k: string, q: "p50" | "mean" = "p50"): number => gCycles?.metrics?.[k]?.[q] ?? NaN;
+  const gPeak = group.reduce<LiveReport | undefined>((m, r) => (!m || r.window.landedPerMin > m.window.landedPerMin ? r : m), undefined);
+  const gPeakBefore = gPeak ? live.find((r) => r.agents === gPeak.agents) : undefined;
   const tiles = [
-    { label: "Measured peak, real commits", value: `${peakLive.toFixed(0)}/min`, sub: `FireTrident live, ${l1000 ? "1,000 agents, 0 errors" : ""}`, tag: "MEASURED" },
+    ...(gPeak && gTop
+      ? [
+          {
+            label: "Trunk group commit, measured peak",
+            value: `${gPeak.window.landedPerMin.toFixed(0)}/min`,
+            sub: `${fmtInt(gPeak.agents)} agents: ${gPeakBefore ? `${(gPeak.window.landedPerMin / gPeakBefore.window.landedPerMin).toFixed(1)}× the serial writer's ${gPeakBefore.window.landedPerMin.toFixed(0)}/min` : ""}${
+              gTop !== gPeak && gBefore
+                ? `; ${fmtInt(gTop.agents)} agents ${gTop.window.landedPerMin.toFixed(0)}/min (${(gTop.window.landedPerMin / gBefore.window.landedPerMin).toFixed(1)}×${gTop.stoppedEarly ? ", stopped early: coordinator overload" : ""})`
+                : ""
+            }`,
+            tag: "MEASURED",
+          },
+        ]
+      : []),
+    { label: gTop ? "Serial trunk writer, measured peak" : "Measured peak, real commits", value: `${peakLive.toFixed(0)}/min`, sub: `FireTrident live, ${l1000 ? "1,000 agents, 0 errors" : ""}`, tag: "MEASURED" },
     { label: "Baseline ceiling, same costs", value: `${baseLiveCeil.toFixed(0)}/min`, sub: "locks + one merge queue, live workload", tag: "SIMULATED" },
-    { label: "FireTrident as deployed vs baseline", value: `${ratio(fireLive1k, get(aggLive, "baseline", 1000)).toFixed(1)}× · ${ratio(hono("firetrident"), hono("baseline")).toFixed(1)}×`, sub: "live workload · hono workload, 1,000 agents", tag: "SIMULATED" },
-    { label: "With trunk group commit", value: `${ratio(groupLive1k, get(aggLive, "baseline", 1000)).toFixed(0)}× · ${ratio(hono("firetrident-group"), hono("baseline")).toFixed(0)}×`, sub: "proposed, not built; same two workloads", tag: "SIMULATED" },
+    { label: "Serial trunk writer vs baseline", value: `${ratio(fireLive1k, get(aggLive, "baseline", 1000)).toFixed(1)}× · ${ratio(hono("firetrident"), hono("baseline")).toFixed(1)}×`, sub: "live workload · hono workload, 1,000 agents", tag: "SIMULATED" },
+    { label: "Group commit vs baseline", value: `${ratio(groupLive1k, get(aggLive, "baseline", 1000)).toFixed(0)}× · ${ratio(hono("firetrident-group"), hono("baseline")).toFixed(0)}×`, sub: gTop ? "simulator; same two workloads" : "proposed, not built; same two workloads", tag: "SIMULATED" },
     ...(Number.isFinite(t30) ? [{ label: "When checks take 30 s", value: `${t30.toFixed(0)}×`, sub: "hono, 1,000 agents: the queue retests serially", tag: "SIMULATED" }] : []),
     { label: "Cascade detected and damped", value: cascade ? `σ ${cascade.sigma.max.toFixed(0)}` : "-", sub: cascade ? `1 landing, ${cascade.returned} stale returns; σ < 1 in ${(((cascade.sigma.lastAboveOneMs ?? 0) - cascade.writerLanding.tMs) / 1000 + 2).toFixed(0)} s` : "", tag: "MEASURED" },
   ];
@@ -407,11 +451,14 @@ function main(): void {
   void groupHist;
 
   // ---- Tables -------------------------------------------------------------
-  const liveRows = live
-    .map(
-      (r) =>
-        `<tr><td>${fmtInt(r.agents)}</td><td>${r.window.landedPerMin.toFixed(1)}</td><td>${r.window.commitsPerMin.toFixed(1)}</td><td>${(r.batchSize.mean ?? 0).toFixed(2)}</td><td>${fmt((r.timeToLandMs.p50 ?? 0) / 1000, 1)}</td><td>${fmt((r.timeToLandMs.p99 ?? 0) / 1000, 1)}</td><td>${fmtInt(r.takeAssigned.p50 ?? 0)}</td><td>${fmtInt(r.takeAssigned.p99 ?? 0)}</td><td>${fmtInt(r.ops.find((o) => o.op === "propose")?.p50 ?? 0)}</td><td>${fmtInt(r.ops.find((o) => o.op === "propose")?.p99 ?? 0)}</td><td>${fmtInt(Object.values(r.counts.waits).reduce((a, b) => a + b, 0))}</td><td>${r.counts.returned}</td><td>${r.ops.reduce((a, o) => a + o.errors, 0)}</td></tr>`,
-    )
+  const liveRow = (r: LiveReport, writer: string) =>
+    `<tr><td>${fmtInt(r.agents)}</td><td class="l">${writer}</td><td>${r.window.landedPerMin.toFixed(1)}</td><td>${r.window.commitsPerMin.toFixed(1)}</td><td>${(r.batchSize.mean ?? 0).toFixed(2)}</td><td>${fmt((r.timeToLandMs.p50 ?? 0) / 1000, 1)}</td><td>${fmt((r.timeToLandMs.p99 ?? 0) / 1000, 1)}</td><td>${fmtInt(r.takeAssigned.p50 ?? 0)}</td><td>${fmtInt(r.takeAssigned.p99 ?? 0)}</td><td>${fmtInt(r.ops.find((o) => o.op === "propose")?.p50 ?? 0)}</td><td>${fmtInt(r.ops.find((o) => o.op === "propose")?.p99 ?? 0)}</td><td>${fmtInt(Object.values(r.counts.waits).reduce((a, b) => a + b, 0))}</td><td>${r.counts.returned}</td><td>${r.ops.reduce((a, o) => a + o.errors, 0)}</td></tr>`;
+  const liveRows = [
+    ...live.map((r) => ({ r, w: `<span class="sw" style="background:${C.fire}"></span>serial` })),
+    ...group.map((r) => ({ r, w: `<span class="sw" style="background:${C.group}"></span>group commit` })),
+  ]
+    .sort((a, b) => a.r.agents - b.r.agents)
+    .map(({ r, w }) => liveRow(r, w))
     .join("");
   const simRows = (agg: Agg[]) =>
     agg
@@ -419,19 +466,24 @@ function main(): void {
       .sort((a, b) => a.agents - b.agents || a.model.localeCompare(b.model))
       .map(
         (r) =>
-          `<tr><td>${fmtInt(r.agents)}</td><td class="l"><span class="sw" style="background:${r.model === "baseline" ? C.base : C.fire};${r.model === "firetrident-group" ? "opacity:.6" : ""}"></span>${esc(r.model === "firetrident-group" ? "FireTrident + group commit (proposed)" : r.model === "firetrident" ? "FireTrident" : "Baseline")}</td><td>${(r.landingsPerMin ?? 0).toFixed(1)}</td><td>${(r.meanBatch ?? 0).toFixed(2)}</td><td>${(r.reworkPct ?? 0).toFixed(1)}</td><td>${(r.conflictsPer1000 ?? 0).toFixed(0)}</td><td>${num(r.ttlP50S)}</td><td>${num(r.ttlP99S)}</td><td>${num(r.messagesPerLanded, 0)}</td><td>${(r.messagesPerAgentAction ?? 0).toFixed(2)}</td></tr>`,
+          `<tr><td>${fmtInt(r.agents)}</td><td class="l"><span class="sw" style="background:${r.model === "baseline" ? C.base : r.model === "firetrident-group" ? C.group : C.fire}"></span>${esc(r.model === "firetrident-group" ? "FireTrident + group commit" : r.model === "firetrident" ? "FireTrident, serial writer" : "Baseline")}</td><td>${(r.landingsPerMin ?? 0).toFixed(1)}</td><td>${(r.meanBatch ?? 0).toFixed(2)}</td><td>${(r.reworkPct ?? 0).toFixed(1)}</td><td>${(r.conflictsPer1000 ?? 0).toFixed(0)}</td><td>${num(r.ttlP50S)}</td><td>${num(r.ttlP99S)}</td><td>${num(r.messagesPerLanded, 0)}</td><td>${(r.messagesPerAgentAction ?? 0).toFixed(2)}</td></tr>`,
       )
       .join("");
   const calib = (simLive?.calibration ?? simHist?.calibration ?? {}) as { inPlatform?: Record<string, number> };
   const cal = calib.inPlatform ?? {};
-  const validation = live
-    .map((r) => {
-      const s = get(aggLive, "firetrident", r.agents);
-      if (!s) return "";
-      const err = ((s.landingsPerMin! - r.window.landedPerMin) / r.window.landedPerMin) * 100;
-      return `<tr><td>${fmtInt(r.agents)}</td><td>${r.window.landedPerMin.toFixed(1)}</td><td>${s.landingsPerMin!.toFixed(1)}</td><td>${err >= 0 ? "+" : ""}${err.toFixed(0)}%</td><td>${fmt((r.timeToLandMs.p50 ?? 0) / 1000, 1)}</td><td>${fmt(s.ttlP50S ?? NaN, 1)}</td><td>${(r.batchSize.mean ?? 0).toFixed(2)}</td><td>${(s.meanBatch ?? 0).toFixed(2)}</td></tr>`;
-    })
-    .join("");
+  const check = (runs: LiveReport[], model: string, name: string) =>
+    runs
+      .map((r) => {
+        const s = get(aggLive, model, r.agents);
+        if (!s) return "";
+        const err = ((s.landingsPerMin! - r.window.landedPerMin) / r.window.landedPerMin) * 100;
+        // The simulator's group model folds a whole cycle into one commit: compare its batch with proposals per cycle.
+        const perCycle = model === "firetrident-group" ? r.trunkCycles?.metrics?.proposals?.mean : undefined;
+        const batch = perCycle !== undefined && perCycle !== null ? `${perCycle.toFixed(1)} / cycle` : (r.batchSize.mean ?? 0).toFixed(2);
+        return `<tr><td>${fmtInt(r.agents)}</td><td class="l">${name}</td><td>${r.window.landedPerMin.toFixed(1)}</td><td>${s.landingsPerMin!.toFixed(1)}</td><td>${err >= 0 ? "+" : ""}${err.toFixed(0)}%</td><td>${fmt((r.timeToLandMs.p50 ?? 0) / 1000, 1)}</td><td>${fmt(s.ttlP50S ?? NaN, 1)}</td><td>${batch}</td><td>${(s.meanBatch ?? 0).toFixed(2)}</td></tr>`;
+      })
+      .join("");
+  const validation = check(live, "firetrident", "serial writer") + check(group, "firetrident-group", "group commit");
   const testRows = aggTest.length
     ? aggTest
         .filter((r) => r.model !== "firetrident-group")
@@ -498,12 +550,23 @@ ${tiles.map((t) => `<div class="tile"><span class="tag ${t.tag === "MEASURED" ? 
 
 <h2>Throughput on the live workload<span class="tag m">MEASURED</span><span class="tag s">SIMULATED</span></h2>
 <p>Synthetic agents on the deployed service, ${live.length} runs at 10 to 1,000 concurrent agents. Each change adds one file in one of 64 directories, and every landing is a real trunk commit pushed with compare-and-swap. The lines are the simulator replaying the same workload with costs fitted to these runs: it lands within about 10% of every measured point.</p>
+${
+  group.length
+    ? `<p><b>Trunk group commit, built and MEASURED</b> (${esc(groupName)}). The trunk writer now takes every lane batch that queued while its previous cycle ran: it re-validates each proposal against trunk and against the batches ahead of it, builds one commit per batch chained on the one before (so lineage and <code>why</code> stay per landing), pushes trunk once and all lineage notes once. Same driver, same workload: ${group
+        .map((r) => {
+          const b = live.find((x) => x.agents === r.agents);
+          return `${fmtInt(r.agents)} agents ${r.window.landedPerMin.toFixed(0)}/min${b ? ` (serial writer ${b.window.landedPerMin.toFixed(0)}/min)` : ""}`;
+        })
+        .join(", ")}.</p>`
+    : ""
+}
 <div class="card">
 ${legend([
-  { color: C.fire, label: "FireTrident, MEASURED live", kind: "dot" },
-  { color: C.fire, label: "FireTrident as deployed, SIMULATED", kind: "hollow" },
+  { color: C.fire, label: "FireTrident, serial trunk writer, MEASURED live", kind: "dot" },
+  ...(group.length ? [{ color: C.group, label: "FireTrident + trunk group commit, MEASURED live", kind: "dot" as const }] : []),
+  { color: C.fire, label: "FireTrident, serial trunk writer, SIMULATED", kind: "hollow" },
   { color: C.base, label: "Baseline: locks + one merge queue, SIMULATED", kind: "hollow" },
-  { color: C.fire, label: "FireTrident + trunk group commit, SIMULATED (proposed, not built)", kind: "dash" },
+  { color: C.group, label: group.length ? "FireTrident + trunk group commit, SIMULATED" : "FireTrident + trunk group commit, SIMULATED (proposed, not built)", kind: "dash" },
 ])}
 ${c1}
 </div>
@@ -512,9 +575,9 @@ ${c1}
 <p>Write sets drawn from ${esc(String(wl.commitsUsed ?? ""))} real changes to honojs/hono, grown along co-change edges. Read sets are the written files' direct imports. The repo is a monorepo of ${esc(String(wl.packages ?? ""))} copies (regions at depth ${esc(String(wl.regionDepth ?? ""))}), and agents work a log-normal median of 60 s per change. Mean of 3 seeds; hover a point for the seed range.</p>
 <div class="card">
 ${legend([
-  { color: C.fire, label: "FireTrident as deployed", kind: "hollow" },
+  { color: C.fire, label: "FireTrident, serial trunk writer", kind: "hollow" },
   { color: C.base, label: "Baseline: locks + one merge queue", kind: "hollow" },
-  { color: C.fire, label: "FireTrident + trunk group commit (proposed, not built)", kind: "dash" },
+  { color: C.group, label: group.length ? "FireTrident + trunk group commit" : "FireTrident + trunk group commit (proposed, not built)", kind: "dash" },
 ])}
 ${c2}
 </div>
@@ -547,9 +610,9 @@ ${c4}
 
 <h2>Tables</h2>
 <div class="card table-wrap"><h3>Live runs (MEASURED, laptop-side latencies)</h3>
-<table><thead><tr><th>agents</th><th>landed/min</th><th>commits/min</th><th>batch</th><th>ttl p50 s</th><th>ttl p99 s</th><th>take p50 ms</th><th>take p99 ms</th><th>propose p50 ms</th><th>propose p99 ms</th><th>admission waits</th><th>returned</th><th>errors</th></tr></thead><tbody>${liveRows}</tbody></table></div>
-<div class="card table-wrap"><h3>Simulator check against the live runs (FireTrident as deployed)</h3>
-<table><thead><tr><th>agents</th><th>measured/min</th><th>simulated/min</th><th>error</th><th>ttl p50 measured s</th><th>ttl p50 sim s</th><th>batch measured</th><th>batch sim</th></tr></thead><tbody>${validation}</tbody></table></div>
+<table><thead><tr><th>agents</th><th class="l">trunk writer</th><th>landed/min</th><th>commits/min</th><th>batch</th><th>ttl p50 s</th><th>ttl p99 s</th><th>take p50 ms</th><th>take p99 ms</th><th>propose p50 ms</th><th>propose p99 ms</th><th>admission waits</th><th>returned</th><th>errors</th></tr></thead><tbody>${liveRows}</tbody></table></div>
+<div class="card table-wrap"><h3>Simulator check against the live runs</h3>
+<table><thead><tr><th>agents</th><th class="l">trunk writer</th><th>measured/min</th><th>simulated/min</th><th>error</th><th>ttl p50 measured s</th><th>ttl p50 sim s</th><th>batch measured</th><th>batch sim</th></tr></thead><tbody>${validation}</tbody></table></div>
 <div class="card table-wrap"><h3>hono workload (SIMULATED, mean of seeds)</h3>
 <table><thead><tr><th>agents</th><th class="l">model</th><th>landed/min</th><th>batch</th><th>rework %</th><th>conflicts/1k</th><th>ttl p50 s</th><th>ttl p99 s</th><th>msgs/landed</th><th>msgs/agent action</th></tr></thead><tbody>${simRows(aggHist)}</tbody></table></div>
 ${testRows ? `<div class="card table-wrap"><h3>Sensitivity: checks take 30 s (SIMULATED, hono workload)</h3><p>FireTrident agents run checks in their own workspace before proposing, so the checks run in parallel. The baseline also re-runs them in the queue after every rebase, so they run serially.</p><table><thead><tr><th>agents</th><th class="l">model</th><th>landed/min</th><th>ttl p50 s</th><th>rework %</th></tr></thead><tbody>${testRows}</tbody></table></div>` : ""}
@@ -572,12 +635,21 @@ ${batchRows ? `<div class="card table-wrap"><h3>Trunk writer cost per batch (MEA
 
 <h2>Findings and open issues</h2>
 <ul>
-<li><b>One trunk writer serializes every commit.</b> Each lane's batch is its own commit, so work spread over many regions never batches (batch 1.0-2.0 live), and the deployed system behaves close to one merge queue with tree surgery. Folding every batch waiting on the trunk writer's chain into one commit (group commit) is the change that unlocks the colony: ${fmt(ratio(groupLive1k, get(aggLive, "baseline", 1000)), 0)}× and ${fmt(ratio(hono("firetrident-group"), hono("baseline")), 0)}× the baseline here. The next limit is the sequential blob pull at about 72 ms per proposal.</li>
-<li><b>"already landed" reported as returned.</b> A retried <code>TrunkDO.land</code> returns proposals from an earlier landing with <code>already landed in lnd_…</code>. The lane reports them as returned, so the intent reopens and the work is redone (13 times at 1,000 agents).</li>
+${
+  gTop
+    ? `<li><b>Trunk group commit lifts the one-commit-at-a-time ceiling (MEASURED).</b> At ${fmtInt(gTop.agents)} agents the colony landed ${gTop.window.landedPerMin.toFixed(0)} changes/min${gBefore ? `, ${(gTop.window.landedPerMin / gBefore.window.landedPerMin).toFixed(1)}× the serial writer's ${gBefore.window.landedPerMin.toFixed(0)}/min` : ""}, with ${gErrors} errors and ${group.reduce((n, r) => n + r.counts.returned, 0)} returns across the group-commit runs. ${
+        gCycles
+          ? `The writer ran ${gCycles.perMin.toFixed(0)} cycles/min, each landing ${fmt(gMetric("batches", "mean"), 1)} lane batches (${fmt(gMetric("proposals", "mean"), 1)} proposals) as chained commits behind one trunk push and one notes push. A cycle took ${fmtInt(gMetric("cycleMs"))} ms at the median: pull ${fmtInt(gMetric("pullMs"))} ms, build ${fmtInt(gMetric("buildMs"))} ms, push ${fmtInt(gMetric("pushMs"))} ms.`
+          : ""
+      } Each lane batch is still its own commit with its own lineage note, so <code>why</code> stays per landing. ${GROUP_NEXT}</li>
+<li><b>Fixed: landed proposals reported as returned.</b> A lane's <code>TrunkDO.land</code> call could fail on the lane's side after the trunk writer had landed the batch (the logs show <code>Durable Object reset because its code was updated</code> during deploys). The retry then reported those proposals as <code>already landed in lnd_…</code> (13 times at 1,000 agents), and a lane re-validating them saw them stale against their own new blob (on the Hono run one landed proposal was returned and its intent taken and abandoned 19 times). Outcomes are now idempotent per proposal id: the trunk writer reports earlier landings in <code>prior</code>, and a lane asks <code>TrunkDO.landingsOf</code> before returning a stale-looking proposal, so a landed proposal is always settled as landed.</li>`
+    : `<li><b>One trunk writer serializes every commit.</b> Each lane's batch is its own commit, so work spread over many regions never batches (batch 1.0-2.0 live), and the deployed system behaves close to one merge queue with tree surgery. Folding every batch waiting on the trunk writer's chain into one commit (group commit) is the change that unlocks the colony: ${fmt(ratio(groupLive1k, get(aggLive, "baseline", 1000)), 0)}× and ${fmt(ratio(hono("firetrident-group"), hono("baseline")), 0)}× the baseline here. The next limit is the sequential blob pull at about 72 ms per proposal.</li>
+<li><b>"already landed" reported as returned.</b> A retried <code>TrunkDO.land</code> returns proposals from an earlier landing with <code>already landed in lnd_…</code>. The lane reports them as returned, so the intent reopens and the work is redone (13 times at 1,000 agents).</li>`
+}
 <li><b>Admission ignores the shared trunk writer.</b> The floor of 3 agents per region admits far more agents than one writer serves when a colony has many regions. With the 200-oldest candidate window and repulsion, contended intents clog the window and are eventually taken anyway. That is why rework is about 42% vs 22% for locks on hono's history.</li>
 <li><b>σ is per region.</b> A stale read caused by a landing in another region gets no cause, so cross-region cascades stay invisible to the governor.</li>
 <li><b>The review prong triages every proposal</b> (deployed 06:32 UTC). It returned 41 of 87 synthetic proposals and added seconds each, so it was turned off on the two bench colonies with <code>POST /api/colonies/:id/decide/policy {"enabled":false}</code>. The 10-1,000 agent runs predate it. Two other deploys happened during the runs (06:24 and 06:32 UTC); the 200-agent run spans the first.</li>
-<li><b>Account use.</b> 286 workspace forks (bench-w2-load 249, bench-w2-cascade 37), 8 seeds, 2 trunk imports. Both colonies are kept for re-runs and video capture; <code>DELETE /api/colonies/:id</code> removes them.</li>
+<li><b>Account use.</b> 286 workspace forks (bench-w2-load 249, bench-w2-cascade 37), 8 seeds, 2 trunk imports. Both colonies are kept for re-runs and video capture; <code>DELETE /api/colonies/:id</code> removes them.${group.length ? ` The group-commit runs used one more colony on a preview deployment (g1-bench: 253 workspace forks, 4 seeds, 1 trunk import).` : ""}</li>
 </ul>
 
 <h2>Reproduce</h2>
@@ -588,7 +660,9 @@ node packages/bench/src/scenarios/cascade.ts --colony bench-w2-cascade --readers
 node packages/bench/src/sim/sweep.ts --mode live --agents 10,50,200,1000 --seeds 1,2,3 --out results/sim-live.json
 node packages/bench/src/sim/sweep.ts --mode history --agents 10,100,1000,10000,100000 --seeds 1,2,3 --duration 1200 --warmup 300 --out results/sim-history.json
 node packages/bench/src/sim/sweep.ts --mode history --agents 10,100,1000,10000,100000 --test-ms 30000 --out results/sim-history-test30s.json
-node packages/bench/src/report.ts packages/bench/results/2026-10-12</pre></div>
+node packages/bench/src/report.ts packages/bench/results/2026-10-12${group.length ? ` packages/bench/results/${esc(groupName)}` : ""}${group.length ? `
+# group commit (preview deployment, no auth): same driver, intents topped up so the supply never runs out
+FT_URL=https://g1-firetrident.mattsolt.workers.dev FT_TOKEN= node packages/bench/src/live.ts --colony g1-bench --agents 200 --duration 90 --intents 3000 --out results/${esc(groupName)}/live-n200.json` : ""}</pre></div>
 
 <p class="foot">Data: <code>live-n*.json</code>, <code>sim-live.json</code>, <code>sim-history.json</code>, <code>sim-history-test30s.json</code>, <code>cascade.json</code>, <code>batchcost.json</code>, <code>results.json</code> next to this page. Code: <code>packages/bench</code>. Generated ${new Date().toISOString()}.</p>
 </main>
@@ -598,8 +672,33 @@ node packages/bench/src/report.ts packages/bench/results/2026-10-12</pre></div>
   writeFileSync(join(dir, "index.html"), html);
 
   // ---- Combined JSON -----------------------------------------------------
+  const measuredRow = (r: LiveReport) => ({
+    label: "MEASURED",
+    agents: r.agents,
+    landedPerMin: r.window.landedPerMin,
+    commitsPerMin: r.window.commitsPerMin,
+    batchMean: r.batchSize.mean,
+    timeToLandP50S: (r.timeToLandMs.p50 ?? 0) / 1000,
+    timeToLandP99S: (r.timeToLandMs.p99 ?? 0) / 1000,
+    takeAssignedMs: { p50: r.takeAssigned.p50, p90: r.takeAssigned.p90, p99: r.takeAssigned.p99 },
+    takeWaitMs: { p50: r.takeWait.p50, p99: r.takeWait.p99 },
+    proposeMs: { p50: r.ops.find((o) => o.op === "propose")?.p50, p99: r.ops.find((o) => o.op === "propose")?.p99 },
+    admissionWaits: Object.values(r.counts.waits).reduce((a, b) => a + b, 0),
+    returned: r.counts.returned,
+    returns: r.returns,
+    errors: r.ops.reduce((a, o) => a + o.errors, 0),
+  });
   const combined = {
     generatedAt: new Date().toISOString(),
+    ...(group.length
+      ? {
+          measuredGroupCommit: {
+            source: groupName,
+            note: "MEASURED with trunk group commit built: same driver and workload as `measured`, on a preview deployment.",
+            runs: group.map((r) => ({ ...measuredRow(r), url: r.url, startedAt: r.startedAt, trunkCycles: r.trunkCycles ?? null })),
+          },
+        }
+      : {}),
     measured: live.map((r) => ({
       label: "MEASURED",
       agents: r.agents,

@@ -1,0 +1,123 @@
+{
+  "kind": "cochange-live",
+  "label": "MEASURED",
+  "generatedAt": "2026-10-12T08:14:05.956Z",
+  "url": "https://g4-firetrident.mattsolt.workers.dev",
+  "method": "Per round: fresh agent A takes X (priority 5), fresh agent B takes (Y 2.5 vs Z 2), both stop. Coupled colony: Y = src/jsx/streaming.ts, which co-changes with X = src/jsx/components.ts in hono's last 200 commits; control colony: Y = src/router/reg-exp-router/node.ts, which never did. Z = src/utils/body.ts in both.",
+  "files": {
+    "x": "src/jsx/components.ts",
+    "z": "src/utils/body.ts"
+  },
+  "arms": [
+    {
+      "arm": "coupled",
+      "colony": "g4-steer-mv4z0cqe-coupled",
+      "y": "src/jsx/streaming.ts",
+      "createMs": 18773,
+      "rounds": 20,
+      "tookY": 2,
+      "tookZ": 14,
+      "other": [
+        "wait: no intent accepted at this agent's thresholds",
+        "invalid (A took src/jsx/streaming.ts)",
+        "wait: no intent accepted at this agent's thresholds",
+        "invalid (A took src/jsx/streaming.ts)"
+      ],
+      "outcomes": [
+        "wait: no intent accepted at this agent's thresholds",
+        "invalid (A took src/jsx/streaming.ts)",
+        "Z",
+        "Z",
+        "Z",
+        "Z",
+        "Y",
+        "Z",
+        "Z",
+        "Z",
+        "Z",
+        "Z",
+        "Y",
+        "Z",
+        "Z",
+        "Z",
+        "wait: no intent accepted at this agent's thresholds",
+        "Z",
+        "Z",
+        "invalid (A took src/jsx/streaming.ts)"
+      ],
+      "takeMsA": {
+        "n": 20,
+        "min": 251.99400000000605,
+        "p50": 368.6502920000057,
+        "p90": 606.7930420000048,
+        "p99": 884.2159160000156,
+        "max": 884.2159160000156,
+        "mean": 444.8920603500017
+      },
+      "takeMsB": {
+        "n": 18,
+        "min": 57.5572079999838,
+        "p50": 318.80408299999544,
+        "p90": 566.5619170000136,
+        "p99": 2258.70745799999,
+        "max": 2258.70745799999,
+        "mean": 423.99905533333526
+      },
+      "yIntent": "int_mv4z1ugzbha44i"
+    },
+    {
+      "arm": "control",
+      "colony": "g4-steer-mv4z0cqe-control",
+      "y": "src/router/reg-exp-router/node.ts",
+      "createMs": 22695,
+      "rounds": 20,
+      "tookY": 16,
+      "tookZ": 3,
+      "other": [
+        "invalid (A took src/utils/body.ts)"
+      ],
+      "outcomes": [
+        "invalid (A took src/utils/body.ts)",
+        "Y",
+        "Y",
+        "Y",
+        "Z",
+        "Y",
+        "Y",
+        "Y",
+        "Y",
+        "Y",
+        "Y",
+        "Y",
+        "Y",
+        "Y",
+        "Y",
+        "Y",
+        "Y",
+        "Z",
+        "Z",
+        "Y"
+      ],
+      "takeMsA": {
+        "n": 20,
+        "min": 300.5219170000055,
+        "p50": 644.6128749999916,
+        "p90": 1103.346749999997,
+        "p99": 1372.030207999982,
+        "max": 1372.030207999982,
+        "mean": 701.8900103499975
+      },
+      "takeMsB": {
+        "n": 19,
+        "min": 241.33425000001444,
+        "p50": 292.041624999998,
+        "p90": 575.3752500000119,
+        "p99": 684.3160410000128,
+        "max": 684.3160410000128,
+        "mean": 350.6969232631596
+      },
+      "yIntent": "int_mv4z1vzbagjntm"
+    }
+  ],
+  "errors": []
+}

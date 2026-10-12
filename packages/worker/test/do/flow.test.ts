@@ -142,6 +142,11 @@ describe("take → propose → lane → landing", () => {
 
   it("lands disjoint proposals in one commit and defers an overlapping one", async () => {
     const c = await newColony();
+    // Two agents write the same file on purpose: lateral inhibition (on by default) would keep b off i1.
+    await runInDurableObject(colony(c.id), (instance) => {
+      const self = instance as unknown as { env: object };
+      self.env = new Proxy(self.env, { get: (t, k) => (k === "FT_LATERAL_INHIBITION" ? "off" : Reflect.get(t, k)) });
+    });
     const i1 = await addIntent(c.id, ["src/lib/util.ts"], { priority: 3 });
     const i2 = await addIntent(c.id, ["src/app/main.ts"], { priority: 2 });
     const i3 = await addIntent(c.id, ["src/lib/util.ts"], { priority: 5 });

@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { branchingRatio } from "@fire_trident/core";
+import { LATERAL_INHIBITION, branchingRatio } from "@fire_trident/core";
+import type { Intent } from "@fire_trident/core";
 import { parseEnvFile, redact } from "../src/env.ts";
 import { Alias, EventQueue, Rng, q } from "../src/sim/engine.ts";
+import { FireSim } from "../src/sim/fire.ts";
 import { params, runOne } from "../src/sim/sweep.ts";
 import type { Timings } from "../src/sim/common.ts";
-import { HistoryWorkload, LiveWorkload } from "../src/sim/workloads.ts";
+import { HistoryWorkload, LiveWorkload, type SimTask, type TaskSource } from "../src/sim/workloads.ts";
 import { buildModel, parseLog } from "../src/workload.ts";
 
 const timings: Timings = { takeMs: 250, proposeMs: 30, laneOverheadMs: 100, commitBaseMs: 620, commitPerProposalMs: 72, landMs: 692, rebaseMs: 350, testMs: 0 };
@@ -100,6 +102,55 @@ describe("simulator", () => {
     // The simulator's mapping: returns get an infinite time, so only the landing is a parent.
     const mapped = causes.map((e) => (e.id.startsWith("ret:") ? { ...e, at: Number.POSITIVE_INFINITY } : e));
     expect(branchingRatio(mapped, now)).toBeCloseTo(3, 6);
+  });
+});
+
+describe("lateral inhibition in the simulator", () => {
+  /** Every task writes one or two of four hot files in one region, so concurrent tasks often share a file. */
+  const hot = (): TaskSource => ({
+    describe: () => ({ kind: "hot" }),
+    make(id: number, now: number, rng: Rng): SimTask {
+      const files = ["src/a.ts", "src/b.ts", "src/c.ts", "src/d.ts"];
+      const first = rng.int(4);
+      const writes = rng.next() < 0.5 ? [files[first]!] : [files[first]!, files[(first + 1 + rng.int(3)) % 4]!];
+      const intent = { id: `t${id}`, priority: 1, createdAt: now } as unknown as Intent;
+      return { id, writes, reads: [], regions: ["src"], writeRegions: writes.map(() => "src"), primary: "src", workMs: 20_000, createdAt: now, intent, status: "open", attempts: 0, firstClaimAt: -1, firstSubmitAt: -1 };
+    },
+  });
+
+  /** Run 10 simulated minutes and return the most agents that ever held a claim on one file at once. */
+  const maxClaimants = (inhibitAt: number | undefined): { most: number; conflicts: number } => {
+    const p = params("firetrident", 12, { durationMs: 600_000, warmupMs: 0, seed: 4, timings, backlog: 40, rampMs: 1_000 });
+    const sim = new FireSim(p, hot(), () => "v0", undefined, inhibitAt === undefined ? {} : { inhibitAt });
+    const claims = (sim as unknown as { claimCount: Map<string, number> }).claimCount;
+    sim.refill();
+    (sim as unknown as { start(): void }).start();
+    let most = 0;
+    for (let t = 0; t < p.durationMs; t += 250) {
+      sim.q.run(t);
+      for (const n of claims.values()) most = Math.max(most, n);
+    }
+    return { most, conflicts: sim.m.invalidated };
+  };
+
+  it("never lets two agents hold claims on the same file at once", () => {
+    const on = maxClaimants(LATERAL_INHIBITION);
+    expect(on.most).toBe(1);
+    // The same workload with claims that only repel softly does stack claims, and conflicts more.
+    const off = maxClaimants(undefined);
+    expect(off.most).toBeGreaterThan(1);
+    expect(on.conflicts).toBeLessThan(off.conflicts);
+  });
+
+  it("is deterministic for a seed", () => {
+    const run = () => {
+      const p = params("firetrident", 12, { durationMs: 300_000, warmupMs: 60_000, seed: 2, timings, backlog: 40, rampMs: 1_000 });
+      return new FireSim(p, hot(), () => "v0", undefined, { inhibitAt: LATERAL_INHIBITION }).run();
+    };
+    const [a, b] = [run(), run()];
+    expect(a.landingsPerMin).toBe(b.landingsPerMin);
+    expect(a.waits).toEqual(b.waits);
+    expect(a.waits["every open intent's files are claimed by another agent"]).toBeGreaterThan(0);
   });
 });
 

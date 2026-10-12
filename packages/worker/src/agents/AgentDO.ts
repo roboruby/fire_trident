@@ -117,6 +117,19 @@ export class AgentDO extends DurableObject<Env> {
     return this.status();
   }
 
+  /**
+   * Erase this agent (colony deletion, after stop): cancel the alarm and delete all storage
+   * (journal and local clone). The journal tables are recreated empty, so status() keeps
+   * answering as an agent that never started; the clone is rebuilt on next use.
+   */
+  async destroy(): Promise<{ cleared: true }> {
+    await this.ctx.storage.deleteAlarm();
+    await this.ctx.storage.deleteAll();
+    new SqlJournal(this.ctx.storage.sql); // the journal's constructor creates its tables
+    this.git = null;
+    return { cleared: true };
+  }
+
   /** What the agent is doing (no tokens). */
   async status(): Promise<AgentStatus> {
     const cfg = this.journal.config();

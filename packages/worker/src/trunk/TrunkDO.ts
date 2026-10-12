@@ -1,12 +1,13 @@
 import { DurableObject } from "cloudflare:workers";
 import { landingMessage, newId, regionOf, serializeNote, validateProposal } from "@fire_trident/core";
-import type { AgentKind, ColonySnapshot, Decision, FileVersion, Id, Landing, LineageNote, Path, Proposal, RepoRef, Sha } from "@fire_trident/core";
+import type { AgentKind, ColonySnapshot, Decision, FileVersion, Id, Landing, LineageNote, OccResult, Path, Proposal, RepoRef, Sha } from "@fire_trident/core";
+import type { TreeEntry } from "isomorphic-git";
 import type { Env } from "../env.ts";
 import {
+  LANDING_IDENTITY,
   NEW_FILE_MODE,
   NOTES_REF,
   TokenCache,
-  addNoteObject,
   applyTreeChanges,
   artifactsCode,
   blobAt,
@@ -24,7 +25,6 @@ import {
   mintToken,
   pushRef,
   readLocalBlob,
-  readNoteText,
   remoteBlobAt,
   resolveLocal,
   setRef,
@@ -39,18 +39,38 @@ import {
   type PushOutcome,
 } from "../artifacts/git.ts";
 import { mapLine } from "./blame.ts";
+import { addNotes } from "./notes.ts";
+import { BoundedMap, applyTreeChangesDeferred, writePending, type PendingObject } from "./surgery.ts";
+import { commitContent, objectId } from "./objects.ts";
+import { pushPack } from "./push.ts";
+import { CoChangeStore, mineHistory, type CoChangeStats, type Neighbor } from "./cochange.ts";
+import { planCycle, resultsFor, uniqueProposals, type LandResult, type Outcome, type PlanProposal, type Returned } from "./plan.ts";
 import { durableFs } from "../artifacts/workspace.ts";
 import { TRUNK_NAMESPACE, bindingFor } from "../artifacts/shards.ts";
+
+export type { LandResult, Returned } from "./plan.ts";
 
 /** Trunk write token lifetime, and how long before expiry it is replaced. */
 const TOKEN_TTL_S = 6 * 3600;
 const TOKEN_MARGIN_MS = 10 * 60_000;
 /** History fetched at init; older bases are read through the binding. */
 const INIT_DEPTH = 1;
-/** Rebuilds of one batch on a moved trunk before its proposals go back. */
+/** Rebuilds of one cycle on a moved trunk before its proposals go back. */
 const MAX_REBUILDS = 3;
 /** Retry delay for a failed notes push. */
 const NOTES_RETRY_MS = 30_000;
+/** Group commit: proposals one trunk cycle takes at most (whole lane batches; one oversized batch still runs alone). */
+const CYCLE_MAX_PROPOSALS = 200;
+/** Workspaces read at once while a cycle pulls new blobs, and base lookups at once while it screens. */
+const PULL_CONCURRENCY = 20;
+const BASE_CONCURRENCY = 8;
+/** Trees and commit → tree ids kept in memory (immutable objects; a few thousand cover many cycles). */
+const TREE_CACHE = 4_000;
+/** Objects of a cycle written to the git store at once. */
+const WRITE_CONCURRENCY = 16;
+const COMMIT_CACHE = 2_000;
+/** Recent cycle summaries kept for stats(). */
+const CYCLE_LOG_KEEP = 50;
 const STAGING_REF = "refs/heads/ft-landing";
 const MAIN_REF = "refs/heads/main";
 const WHY_LIMIT = 50;
@@ -66,21 +86,9 @@ export interface LandContext {
   decisions?: Record<Id, Array<Pick<Decision, "kind" | "layer" | "p" | "action">>>;
 }
 
-/** A proposal sent back from `land`, with the exact reason. */
-export interface Returned {
-  proposalId: Id;
-  reason: string;
-}
-
 type IntentInfo = { title: string; why: string; ruleId?: Id; parentId?: Id };
 type AgentLite = { kind: AgentKind; model?: string };
 type StagedChange = { blob: Sha; mode: string; size: number; before: Sha | null } | { blob: null; before: Sha | null };
-
-/** A proposal that passed screening, with its effective changes (new blobs already written locally). */
-interface Staged {
-  p: Proposal;
-  changes: Map<Path, StagedChange>;
-}
 
 /** Everything needed to record a landing, journaled before the trunk push. */
 interface JournalData {
@@ -89,13 +97,58 @@ interface JournalData {
   changes: Array<[Path, StagedChange]>;
 }
 
+/** One lane batch waiting for a trunk cycle; its caller awaits the result. */
+interface LandRequest {
+  batch: Proposal[];
+  ctx: LandContext;
+  at: number;
+  resolve: (r: LandResult) => void;
+  reject: (e: unknown) => void;
+}
+
+/** Per-cycle memo of commit → root tree and tree entries, shared by every base lookup of the cycle. */
+interface BaseCaches {
+  commits: Map<Sha, string | null>;
+  trees: Map<string, TreeEntry[]>;
+  remote: Map<string, ArtifactsTreeEntry[] | null>;
+}
+
+/** What one trunk cycle did, for stats() and the cycle log line. */
+export interface CycleStat {
+  at: number;
+  batches: number;
+  proposals: number;
+  landings: number;
+  landed: number;
+  prior: number;
+  returned: number;
+  deferred: number;
+  rebuilds: number;
+  /** Oldest request's time in the queue before the cycle started. */
+  waitMs: number;
+  /** Time per phase: recover, screen, pull, plan, build, push, finalize. */
+  ms: Record<string, number>;
+  totalMs: number;
+  error?: string;
+}
+
 /** A definitive problem with one proposal (it goes back to its agent). */
 class ProposalProblem extends Error {}
 
+/** A trunk push whose outcome could not be learned; its journal rows stay for recovery. */
+class UnknownPush extends Error {}
+
 /**
  * The only writer of trunk. Holds trunk cloned into a @cloudflare/computer Workspace (SQLite VFS,
- * no working tree), a path → blob index of trunk main, and the lineage tables. Every mutation
- * (init, land, notes flush, mirror) runs on one serial chain.
+ * no working tree), a path → blob index of trunk main, and the lineage tables. Every trunk
+ * mutation (init, landing cycles, system commits, mirror) runs on one serial chain, so trunk
+ * pushes are single-flight; the notes push is single-flight on its own and overlaps the next cycle.
+ *
+ * Landing is group commit: lanes' batches queue in memory and one cycle at a time takes all of
+ * them (up to CYCLE_MAX_PROPOSALS), re-validates every proposal against trunk and against the
+ * batches ahead of it, builds one chained commit per batch, pushes the tip once with
+ * compare-and-swap, and writes every lineage note in one notes commit. A caller whose call fails
+ * (eviction, deploy) retries; results are idempotent per proposal id.
  */
 export class TrunkDO extends DurableObject<Env> {
   private readonly sql: SqlStorage;
@@ -105,6 +158,24 @@ export class TrunkDO extends DurableObject<Env> {
   private readonly intentCache = new Map<Id, IntentInfo>();
   private readonly agentCache = new Map<Id, AgentLite>();
   private lastSnapshotAt = 0;
+  /** Group commit: batches waiting for the next cycle, and the cycle running now (driven by a waiting land call). */
+  private queue: LandRequest[] = [];
+  private activeCycle: Promise<void> | null = null;
+  private readonly cycleLog: CycleStat[] = [];
+  private cycles = 0;
+  /** Strictly increasing landing times, so the newest landing of a cycle sorts last everywhere. */
+  private lastLandingAt = 0;
+  /** Single-flight notes flush, and whether more notes arrived while it ran. */
+  private notesRun: Promise<{ pending: number }> | null = null;
+  private notesAgain = false;
+  /** Tree entries and commit → root tree, kept across cycles and calls (objects are immutable by id). */
+  private readonly trees = new BoundedMap<string, TreeEntry[]>(TREE_CACHE);
+  private readonly commitTrees = new BoundedMap<Sha, string>(COMMIT_CACHE);
+  /** The notes tree of the latest notes commits (the flat notes tree grows with every landing). */
+  private readonly notesTrees = new BoundedMap<string, TreeEntry[]>(2);
+  /** Co-change map (trunk/cochange.ts), and its history mining run while one is in flight. */
+  private cochangeStore: CoChangeStore | null = null;
+  private mining: Promise<void> | null = null;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -134,7 +205,9 @@ export class TrunkDO extends DurableObject<Env> {
    * `regionDepth` (default 1) sets how landing regions are derived from paths.
    */
   async init(p: { colonyId: Id; trunk: RepoRef; regionDepth?: number }): Promise<{ trunkSha: Sha; files: number }> {
-    return this.serial(() => this.initNow(p));
+    const out = await this.serial(() => this.initNow(p));
+    this.cochangeSoon();
+    return out;
   }
 
   /** Every file on trunk main with its size and blob id, sorted by path. */
@@ -175,20 +248,57 @@ export class TrunkDO extends DurableObject<Env> {
   }
 
   /**
-   * Land a batch as one trunk commit. Each proposal is re-validated against trunk at landing
-   * time (read set, base of the write set, tree shape, blob ids); failures come back in
-   * `returned` with the reason. The rest build one commit by tree surgery on main, pushed
-   * with compare-and-swap; on a moved trunk the batch is rebuilt if its paths are untouched.
-   * The lineage note is pushed right after, on the same serial chain.
+   * Land a batch as one trunk commit, in the next group-commit cycle. Each proposal is
+   * re-validated at landing time against trunk and against the batches landing ahead of it in
+   * the same cycle (read set, base of the write set, tree shape, blob ids); failures come back
+   * in `returned` with the exact reason. The batch's commit is chained onto the cycle's earlier
+   * commits and the cycle pushes once with compare-and-swap; on a moved trunk the cycle is
+   * rebuilt. Idempotent per proposal id: a proposal that already landed comes back in `prior`
+   * with its landing, never as returned. `deferred` ones hit a transient error; send them again.
    */
-  async land(batch: Proposal[], ctx?: LandContext): Promise<{ landing?: Landing; returned: Returned[] }> {
-    const out = await this.serial(() => this.landNow(batch, ctx ?? {}));
-    if (this.pendingNotes() > 0) {
-      // The alarm is the safety net if this object is evicted before the flush below runs.
-      await this.armAlarm(NOTES_RETRY_MS);
-      void this.serial(() => this.flushNotesNow()).catch(() => undefined);
+  async land(batch: Proposal[], ctx?: LandContext): Promise<LandResult> {
+    this.state();
+    const list = Array.isArray(batch) ? batch : [];
+    if (list.length === 0) return { returned: [] };
+    let settled = false;
+    const answer = new Promise<LandResult>((resolve, reject) => {
+      const done = <T>(f: (v: T) => void) => (v: T): void => {
+        settled = true;
+        f(v);
+      };
+      this.queue.push({ batch: list, ctx: ctx ?? {}, at: Date.now(), resolve: done(resolve), reject: done(reject) });
+    });
+    // Cycles are driven by the calls waiting on them: whichever waiting call finds no cycle running
+    // starts the next one, so a cycle always runs inside a live call (its logs and limits included).
+    while (!settled) {
+      if (this.activeCycle === null) {
+        const run: Promise<void> = this.serial(async () => {
+          const take = this.takeCycle();
+          if (take.length > 0) await this.runCycle(take);
+        })
+          .catch(() => undefined)
+          .finally(() => {
+            if (this.activeCycle === run) this.activeCycle = null;
+          });
+        this.activeCycle = run;
+      }
+      await this.activeCycle;
     }
-    return out;
+    return answer;
+  }
+
+  /**
+   * The landing of each proposal that has landed (by proposal id). Lanes ask before they return
+   * a proposal that looks stale: a proposal whose landing report was lost looks stale against
+   * its own blob, and must be settled as landed instead.
+   */
+  async landingsOf(proposalIds: Id[]): Promise<Record<Id, Landing>> {
+    this.state();
+    if (this.sql.exec<{ n: number }>(`SELECT COUNT(*) AS n FROM ft_journal WHERE state = 'pushing'`).one().n > 0) {
+      await this.serial(() => this.recoverJournal());
+    }
+    const ids = Array.isArray(proposalIds) ? proposalIds.filter((x): x is Id => typeof x === "string" && x !== "") : [];
+    return Object.fromEntries(this.landingsByProposal(ids));
   }
 
   /**
@@ -199,10 +309,7 @@ export class TrunkDO extends DurableObject<Env> {
    */
   async systemCommit(p: { files: Array<{ path: Path; content: string | null }>; message: string; note: LineageNote & Record<string, unknown> }): Promise<Landing> {
     const landing = await this.serial(() => this.systemCommitNow(p));
-    if (this.pendingNotes() > 0) {
-      await this.armAlarm(NOTES_RETRY_MS);
-      void this.serial(() => this.flushNotesNow()).catch(() => undefined);
-    }
+    await this.notesSoon();
     return landing;
   }
 
@@ -251,7 +358,8 @@ export class TrunkDO extends DurableObject<Env> {
 
   /** Push notes for landings whose note has not reached the remote yet. */
   async flushNotes(): Promise<{ pending: number }> {
-    return this.serial(() => this.flushNotesNow());
+    this.state();
+    return this.notesFlush();
   }
 
   /**
@@ -274,20 +382,72 @@ export class TrunkDO extends DurableObject<Env> {
     });
   }
 
-  /** Operational counters (for status pages and tests). */
-  async stats(): Promise<{ trunkSha: Sha | null; files: number; landings: number; pendingNotes: number; notesTip: Sha | null }> {
+  /** Operational counters (for status pages and tests), with the group-commit queue and recent cycles. */
+  async stats(): Promise<{
+    trunkSha: Sha | null;
+    files: number;
+    landings: number;
+    pendingNotes: number;
+    notesTip: Sha | null;
+    queued: { batches: number; proposals: number };
+    cycles: number;
+    recentCycles: CycleStat[];
+  }> {
     return {
       trunkSha: this.meta("trunk_sha"),
       files: this.fileCount(),
       landings: this.sql.exec<{ n: number }>(`SELECT COUNT(*) AS n FROM ft_landings`).one().n,
       pendingNotes: this.pendingNotes(),
       notesTip: this.meta("notes_tip"),
+      queued: { batches: this.queue.length, proposals: this.queue.reduce((n, r) => n + r.batch.length, 0) },
+      cycles: this.cycles,
+      recentCycles: this.cycleLog.slice(-20),
     };
+  }
+
+  /**
+   * Erase this object (colony deletion): cancel the alarm and delete all storage, then replay
+   * the DDL of its own `ft_` tables so a later init() starts from empty tables. The git storage
+   * is rebuilt by the next repo().
+   */
+  async destroy(): Promise<{ cleared: true }> {
+    const ddl = this.sql.exec<{ sql: string }>(`SELECT sql FROM sqlite_master WHERE substr(name, 1, 3) = 'ft_' AND sql IS NOT NULL ORDER BY rowid`).toArray();
+    await this.ctx.storage.deleteAlarm();
+    await this.ctx.storage.deleteAll();
+    for (const { sql } of ddl) this.sql.exec(sql);
+    this.gitRepo = null;
+    this.tokenCache = null;
+    this.intentCache.clear();
+    this.agentCache.clear();
+    // Batches still waiting for a cycle belong to the erased colony.
+    for (const r of this.queue.splice(0)) r.reject(new Error("trunk erased"));
+    return { cleared: true };
+  }
+
+  /**
+   * For each path, the files whose claims should repel work on it, strongest first (at most `k`,
+   * coupling >= 0.1): co-change mined from trunk history at init and learned from every landing
+   * since. Learns the landings recorded since the last call first, and starts history mining if
+   * it never ran. Paths without neighbors are left out.
+   */
+  async neighbors(paths: Path[], k = 8): Promise<Record<Path, Neighbor[]>> {
+    this.state();
+    const cc = this.cochange();
+    this.cochangeSoon();
+    if (this.mining === null && cc.minedState() !== null) cc.catchUp();
+    return cc.neighbors(Array.isArray(paths) ? paths : [], k);
+  }
+
+  /** Co-change map counts, mining state, and the landing watermark. */
+  async cochangeStats(): Promise<CoChangeStats & { mining: boolean }> {
+    this.state();
+    return { ...this.cochange().stats(), mining: this.mining !== null };
   }
 
   /** Retries a failed notes push. */
   async alarm(): Promise<void> {
-    await this.serial(() => this.flushNotesNow()).catch(() => undefined);
+    if (this.meta("trunk_sha") === null) return;
+    await this.notesFlush().catch(() => undefined);
   }
 
   // -------------------------------------------------------------------------
@@ -319,7 +479,7 @@ export class TrunkDO extends DurableObject<Env> {
       await this.recoverJournal();
       await this.resync();
     }
-    await this.flushNotesNow();
+    await this.notesFlush();
     return { trunkSha: this.state().trunkSha, files: this.fileCount() };
   }
 
@@ -381,87 +541,410 @@ export class TrunkDO extends DurableObject<Env> {
   // Landing
   // -------------------------------------------------------------------------
 
-  private async landNow(batch: Proposal[], ctx: LandContext): Promise<{ landing?: Landing; returned: Returned[] }> {
-    this.state();
-    await this.recoverJournal();
-    const returned: Returned[] = [];
+  /** The next cycle's batches: whole batches in arrival order, up to CYCLE_MAX_PROPOSALS proposals (always at least one batch). */
+  private takeCycle(): LandRequest[] {
+    const out: LandRequest[] = [];
+    let n = 0;
+    while (this.queue.length > 0) {
+      const next = this.queue[0]!;
+      if (out.length > 0 && n + next.batch.length > CYCLE_MAX_PROPOSALS) break;
+      out.push(this.queue.shift()!);
+      n += next.batch.length;
+    }
+    return out;
+  }
 
-    // Idempotency: a retried batch that already landed gets its landing back.
-    const fresh: Proposal[] = [];
-    const prior = new Map<Id, Id>();
-    for (const p of batch) {
-      const row = this.sql.exec<{ landing_id: string }>(`SELECT landing_id FROM ft_landed WHERE proposal_id = ?`, p?.id ?? "").toArray()[0];
-      if (row) prior.set(p.id, row.landing_id);
-      else fresh.push(p);
+  /** Run one cycle and answer each of its batches. A failed cycle fails every batch; the lanes retry, idempotently per proposal id. */
+  private async runCycle(reqs: LandRequest[]): Promise<void> {
+    const at = Date.now();
+    const stat: CycleStat = {
+      at,
+      batches: reqs.length,
+      proposals: reqs.reduce((n, r) => n + r.batch.length, 0),
+      landings: 0,
+      landed: 0,
+      prior: 0,
+      returned: 0,
+      deferred: 0,
+      rebuilds: 0,
+      waitMs: at - reqs.reduce((m, r) => Math.min(m, r.at), at),
+      ms: {},
+      totalMs: 0,
+    };
+    try {
+      const results = await this.cycle(reqs, stat);
+      reqs.forEach((r, i) => r.resolve(results[i] ?? { returned: [] }));
+    } catch (e) {
+      stat.error = errorText(e);
+      for (const r of reqs) r.reject(e);
+    } finally {
+      stat.totalMs = Date.now() - at;
+      this.cycles++;
+      this.cycleLog.push(stat);
+      if (this.cycleLog.length > CYCLE_LOG_KEEP) this.cycleLog.splice(0, this.cycleLog.length - CYCLE_LOG_KEEP);
+      console.log(JSON.stringify({ ft: "trunk-cycle", colonyId: this.meta("colony_id"), ...stat }));
+      void this.emitCycle(stat).catch(() => undefined);
     }
-    if (prior.size > 0) {
-      const ids = [...new Set(prior.values())];
-      if (fresh.length === 0 && ids.length === 1) {
-        const landing = this.landingById(ids[0]!);
-        if (landing) return { landing, returned: [] };
-      }
-      for (const [proposalId, landingId] of prior) returned.push({ proposalId, reason: `already landed in ${landingId}` });
-    }
-    if (fresh.length === 0) return { returned };
-
-    const screened = await this.screen(fresh);
-    returned.push(...screened.returned);
-    let staged = screened.staged;
-    for (let attempt = 0; staged.length > 0; attempt++) {
-      const res = await this.commitAndPush(staged, ctx);
-      if (res.landing) return { landing: res.landing, returned };
-      if (attempt >= MAX_REBUILDS) {
-        for (const s of staged) returned.push({ proposalId: s.p.id, reason: `trunk kept moving during landing (${res.detail}); propose again` });
-        break;
-      }
-      const moved = await this.resync();
-      const keep: Staged[] = [];
-      for (const s of staged) {
-        const touched = unique(proposalPaths(s.p)).filter((path) => [...moved].some((m) => overlaps(m, path)));
-        if (touched.length > 0) returned.push({ proposalId: s.p.id, reason: `stale: trunk advanced underneath (${touched.join(", ")} changed)` });
-        else keep.push(s);
-      }
-      staged = keep;
-    }
-    return { returned };
   }
 
   /**
-   * Validate each proposal against current trunk (in batch order) and pull its new blobs
-   * from its workspace into the local object store.
+   * Publish one cycle on the colony's live feed as `trunk.*` metric events (same `at` for the
+   * cycle), so the UI shows group commit working and benchmarks can record every cycle.
    */
-  private async screen(proposals: Proposal[]): Promise<{ staged: Staged[]; returned: Returned[] }> {
-    const staged: Staged[] = [];
-    const returned: Returned[] = [];
-    const writes = new Set<Path>();
-    const reads = new Set<Path>();
-    for (const p of proposals) {
+  private async emitCycle(stat: CycleStat): Promise<void> {
+    const colonyId = this.meta("colony_id");
+    const ns = this.env.COLONY as DurableObjectNamespace | undefined;
+    if (colonyId === null || !ns) return;
+    const metric = (name: string, value: number) => ({ t: "metric" as const, at: stat.at, name: `trunk.${name}`, value });
+    const events = [
+      metric("cycleMs", stat.totalMs),
+      metric("waitMs", stat.waitMs),
+      metric("batches", stat.batches),
+      metric("proposals", stat.proposals),
+      metric("landings", stat.landings),
+      metric("landed", stat.landed),
+      metric("returned", stat.returned),
+      metric("screenMs", stat.ms.screen ?? 0),
+      metric("pullMs", stat.ms.pull ?? 0),
+      metric("buildMs", stat.ms.build ?? 0),
+      metric("lineageMs", stat.ms.lineage ?? 0),
+      metric("surgeryMs", stat.ms.surgery ?? 0),
+      metric("commitMs", stat.ms.commit ?? 0),
+      metric("pushMs", stat.ms.push ?? 0),
+      metric("finalizeMs", stat.ms.finalize ?? 0),
+    ];
+    const stub = ns.get(ns.idFromName(colonyId)) as unknown as { emit(e: unknown[]): Promise<unknown> };
+    await stub.emit(events);
+  }
+
+  /**
+   * One group-commit cycle: idempotency per proposal id, screening against trunk, blob pulls,
+   * the plan over the virtual trunk (plan.ts), one chained commit per batch, one push of the tip
+   * with compare-and-swap, and the record of every landing in one transaction.
+   */
+  private async cycle(reqs: LandRequest[], stat: CycleStat): Promise<LandResult[]> {
+    let mark = Date.now();
+    const lap = (phase: string): void => {
+      const now = Date.now();
+      stat.ms[phase] = (stat.ms[phase] ?? 0) + (now - mark);
+      mark = now;
+    };
+    this.state();
+    await this.recoverJournal();
+    lap("recover");
+    const batches = reqs.map((r) => r.batch);
+    const outcome = new Map<Id, Outcome>();
+    const own: Array<Landing | undefined> = reqs.map(() => undefined);
+    const direct: Returned[][] = batches.map((b) =>
+      b.filter((p) => typeof p?.id !== "string" || p.id === "").map((p) => ({ proposalId: "", reason: shapeProblem(p) ?? "proposal has no id" })),
+    );
+
+    // 1. Each proposal once (a repeat shares the first one's outcome); malformed ones go back.
+    let live: Array<{ request: number; p: Proposal }> = [];
+    for (const e of uniqueProposals(batches)) {
+      const shape = shapeProblem(e.p);
+      if (shape) outcome.set(e.p.id, { kind: "returned", reason: shape });
+      else live.push(e);
+    }
+
+    // 2. Idempotency: a proposal that already landed (its batch's answer was lost) is landed, never returned.
+    const prior = this.landingsByProposal(live.map((e) => e.p.id));
+    for (const [id, landing] of prior) outcome.set(id, { kind: "landed", landing });
+    live = live.filter((e) => !prior.has(e.p.id));
+    stat.prior = prior.size;
+
+    // 3. Screen against current trunk with local reads (base blobs, OCC, structure); stale ones never pull.
+    const caches: BaseCaches = { commits: new Map(), trees: new Map(), remote: new Map() };
+    const bases = new Map<Id, FileVersion[]>();
+    const screened = await mapLimit(live, BASE_CONCURRENCY, async (e): Promise<Outcome | null> => {
       try {
-        const shape = shapeProblem(p);
-        if (shape) throw new ProposalProblem(shape);
-        const w = p.writeSet.map((f) => f.path);
-        const r = p.readSet.map((f) => f.path);
-        const clash = w.find((path) => reads.has(path) || [...writes].some((x) => overlaps(x, path))) ?? r.find((path) => writes.has(path));
-        if (clash !== undefined) throw new ProposalProblem(`conflicts with another proposal in this landing on ${clash}`);
-        const base = await this.baseBlobMap(p.baseSha, w);
-        if (base === null) throw new ProposalProblem(`unknown base commit ${p.baseSha}`);
-        const occ = validateProposal(p, (path) => this.indexBlob(path), w.map((path) => ({ path, blob: base.get(path) ?? null })));
-        if (!occ.eligible) {
-          const detail = occ.stale.map((s) => `${s.path} (expected ${s.expected ?? "absent"}, trunk has ${s.actual ?? "absent"})`).join(", ");
-          throw new ProposalProblem(`stale: ${detail}`);
+        const w = e.p.writeSet.map((f) => f.path);
+        const base = await this.baseBlobMap(e.p.baseSha, w, caches);
+        if (base === null) return { kind: "returned", reason: `unknown base commit ${e.p.baseSha}` };
+        const fv = w.map((path) => ({ path, blob: base.get(path) ?? null }));
+        bases.set(e.p.id, fv);
+        const occ = validateProposal(e.p, (path) => this.indexBlob(path), fv);
+        if (!occ.eligible) return { kind: "returned", reason: `stale: ${staleDetail(occ.stale)}` };
+        const structural = this.structuralProblem(e.p);
+        return structural ? { kind: "returned", reason: structural } : null;
+      } catch (err) {
+        return { kind: "deferred", reason: `base lookup failed: ${errorText(err)}` };
+      }
+    });
+    live = live.filter((e, i) => {
+      const o = screened[i];
+      if (o) outcome.set(e.p.id, o);
+      return !o;
+    });
+    lap("screen");
+
+    // 4. Pull the new blobs from the agents' workspaces, many workspaces at once.
+    const sizes = new Map<Id, Map<Path, number>>();
+    const pulls = await mapLimit(live, PULL_CONCURRENCY, async (e): Promise<Outcome | null> => {
+      try {
+        sizes.set(e.p.id, await this.pullBlobs(e.p));
+        return null;
+      } catch (err) {
+        if (err instanceof ProposalProblem) return { kind: "returned", reason: err.message };
+        return { kind: "deferred", reason: `blob pull failed: ${errorText(err)}` };
+      }
+    });
+    live = live.filter((e, i) => {
+      const o = pulls[i];
+      if (o) outcome.set(e.p.id, o);
+      return !o;
+    });
+    lap("pull");
+
+    // 5. Plan over the virtual trunk, build one chained commit per batch, push the tip once.
+    for (let attempt = 0; ; attempt++) {
+      if (attempt > 0) {
+        // Trunk moved underneath: the plan re-validates against the new index, structure too.
+        live = live.filter((e) => {
+          const s = this.structuralProblem(e.p);
+          if (s) outcome.set(e.p.id, { kind: "returned", reason: s });
+          return !s;
+        });
+      }
+      const input: PlanProposal[][] = reqs.map(() => []);
+      for (const e of live) input[e.request]!.push({ p: e.p, base: bases.get(e.p.id) ?? [] });
+      const plan = planCycle(input, (path) => this.indexBlob(path));
+      const back = (): void => {
+        for (const r of plan.returned.flat()) outcome.set(r.proposalId, { kind: "returned", reason: r.reason });
+      };
+      lap("plan");
+      const chain = await this.buildChain(reqs, plan.accepted, sizes, stat);
+      lap("build");
+      if (chain === null) {
+        back();
+        break;
+      }
+      const pushed = await this.pushChain(chain);
+      lap("push");
+      if (pushed.ok) {
+        this.ctx.storage.transactionSync(() => {
+          for (const it of chain.items) this.finalizeRows(it.data);
+        });
+        await setRef(this.repo(), MAIN_REF, chain.tip);
+        for (const it of chain.items) {
+          own[it.request] = it.data.landing;
+          for (const id of it.data.landing.proposalIds) outcome.set(id, { kind: "landed", landing: it.data.landing });
+          stat.landed += it.data.landing.proposalIds.length;
         }
-        const structural = this.structuralProblem(p);
-        if (structural) throw new ProposalProblem(structural);
-        const changes = await this.pullBlobs(p);
-        staged.push({ p, changes });
-        for (const path of w) writes.add(path);
-        for (const path of r) reads.add(path);
-      } catch (e) {
-        if (e instanceof ProposalProblem) returned.push({ proposalId: p?.id ?? "", reason: e.message });
-        else throw e;
+        stat.landings = chain.items.length;
+        back();
+        lap("finalize");
+        break;
+      }
+      if (attempt >= MAX_REBUILDS) {
+        for (const it of chain.items) {
+          for (const id of it.data.landing.proposalIds) outcome.set(id, { kind: "returned", reason: `trunk kept moving during landing (${pushed.detail}); propose again` });
+        }
+        back();
+        break;
+      }
+      stat.rebuilds++;
+      await this.resync();
+      lap("resync");
+    }
+
+    // The landings are recorded; a failure to start the notes flush must not fail them (the journal keeps every note).
+    if (stat.landings > 0) await this.notesSoon().catch((e: unknown) => console.error(`notes flush not started: ${errorText(e)}`));
+    for (const o of outcome.values()) {
+      if (o.kind === "returned") stat.returned++;
+      else if (o.kind === "deferred") stat.deferred++;
+    }
+    return resultsFor(batches, outcome, own, direct);
+  }
+
+  /**
+   * One commit per batch with accepted proposals, by tree surgery, each on top of the previous
+   * one (the first on current main), with its message, landing and lineage note. Null when the
+   * plan accepted nothing.
+   */
+  private async buildChain(
+    reqs: LandRequest[],
+    accepted: Proposal[][],
+    sizes: Map<Id, Map<Path, number>>,
+    stat?: CycleStat,
+  ): Promise<{ parent: Sha; tip: Sha; items: Array<{ request: number; data: JournalData }>; objects: string[] } | null> {
+    if (accepted.every((a) => a.length === 0)) return null;
+    const st = this.state();
+    const g = this.repo();
+    let mark = Date.now();
+    const lap = (phase: string): void => {
+      const now = Date.now();
+      if (stat) stat.ms[phase] = (stat.ms[phase] ?? 0) + (now - mark);
+      mark = now;
+    };
+    const ctx = mergeContexts(reqs.map((r) => r.ctx));
+    const info = await this.lineageInfo(accepted.flat(), ctx, st.colonyId);
+    lap("lineage");
+    const root = this.commitTrees.get(st.trunkSha) ?? (await commitTree(g, st.trunkSha));
+    if (root === null) throw new Error(`trunk commit ${st.trunkSha} is missing locally`);
+    let tree: string = root;
+    let parent = st.trunkSha;
+    const items: Array<{ request: number; data: JournalData }> = [];
+    // Every object the chain adds (blobs, rewritten trees, commits): what its push must carry. Trees and
+    // commits are computed in memory and written together after the loop (writePending).
+    const objects = new Set<string>();
+    const pending = new Map<string, PendingObject & { entries?: TreeEntry[] }>();
+    for (let i = 0; i < accepted.length; i++) {
+      const proposals = accepted[i]!;
+      if (proposals.length === 0) continue;
+      // No earlier batch of the cycle touches these paths (the plan), so `before` is current trunk.
+      const changes = new Map<Path, StagedChange>();
+      for (const p of proposals) {
+        for (const w of p.writeSet) {
+          const before = this.indexBlob(w.path);
+          if (w.blob === null) {
+            if (before !== null) changes.set(w.path, { blob: null, before });
+          } else if (w.blob !== before) {
+            const size = sizes.get(p.id)?.get(w.path) ?? (await readLocalBlob(g, w.blob)).length;
+            changes.set(w.path, { blob: w.blob, mode: this.indexMode(w.path) ?? NEW_FILE_MODE, size, before });
+          }
+        }
+      }
+      const treeChanges = new Map<Path, PathChange>();
+      for (const [path, c] of changes) treeChanges.set(path, c.blob === null ? null : { blob: c.blob, mode: c.mode });
+      lap("changes");
+      for (const c of changes.values()) if (c.blob !== null) objects.add(c.blob);
+      if (treeChanges.size > 0) tree = await applyTreeChangesDeferred(g, this.trees, tree, treeChanges, pending);
+      lap("surgery");
+      const at = this.nextLandingAt();
+      const id = newId("lnd_");
+      const intentIds = unique(proposals.map((p) => p.intentId));
+      const message = landingMessage({ id, intentIds }, proposals, info.titles);
+      const content = commitContent({ tree, parents: [parent], message, name: LANDING_IDENTITY.name, email: LANDING_IDENTITY.email, timestamp: Math.floor(at / 1000) });
+      const commit = objectId("commit", content);
+      pending.set(commit, { type: "commit", content });
+      this.commitTrees.set(commit, tree);
+      lap("commit");
+      const paths = [...changes.keys()].sort();
+      const landing: Landing = {
+        id,
+        colonyId: st.colonyId,
+        trunkSha: commit,
+        parentSha: parent,
+        proposalIds: proposals.map((p) => p.id),
+        intentIds,
+        paths,
+        regions: unique(paths.map((path) => regionOf(path, st.regionDepth))).sort(),
+        at,
+      };
+      const note = serializeNote(buildNote(landing, proposals, info, ctx));
+      items.push({ request: i, data: { landing, note, changes: [...changes] } });
+      parent = commit;
+      lap("note");
+    }
+    await writePending(g, pending, WRITE_CONCURRENCY);
+    for (const id of pending.keys()) objects.add(id);
+    lap("write");
+    return { parent: st.trunkSha, tip: parent, items, objects: [...objects] };
+  }
+
+  /**
+   * Journal every landing of the chain, then push its tip to main with compare-and-swap on the
+   * chain's parent (one push however many batches). On a stale main the journal rows are dropped
+   * (nothing landed); when the outcome cannot be learned they stay for recoverJournal.
+   */
+  private async pushChain(chain: { parent: Sha; tip: Sha; items: Array<{ data: JournalData }>; objects?: string[] }): Promise<{ ok: true } | { ok: false; detail: string }> {
+    const st = this.state();
+    const g = this.repo();
+    const now = Date.now();
+    this.ctx.storage.transactionSync(() => {
+      for (const { data } of chain.items) {
+        this.sql.exec(
+          `INSERT INTO ft_journal (landing_id, state, commit_sha, parent_sha, data, created_at, updated_at) VALUES (?, 'pushing', ?, ?, ?, ?, ?)`,
+          data.landing.id,
+          data.landing.trunkSha,
+          data.landing.parentSha,
+          JSON.stringify(data),
+          data.landing.at,
+          now,
+        );
+      }
+    });
+    const drop = (): void => {
+      this.ctx.storage.transactionSync(() => {
+        for (const { data } of chain.items) this.dropJournal(data.landing.id);
+      });
+    };
+    await setRef(g, STAGING_REF, chain.tip);
+    /** Where main is when a push's outcome is unknown; journal kept (UnknownPush) when even that cannot be learned. */
+    const head = async (e: unknown): Promise<Sha | null> => {
+      try {
+        return await this.remoteHead();
+      } catch {
+        throw new UnknownPush(`trunk push outcome unknown, journal kept for recovery: ${errorText(e)}`);
+      }
+    };
+    const regular = (): Promise<PushOutcome> =>
+      this.authed((token) => pushRef(g, { url: st.trunk.remote, token, localRef: STAGING_REF, remoteRef: MAIN_REF, expectedOld: chain.parent }));
+    let outcome: PushOutcome;
+    try {
+      if (chain.objects && chain.objects.length > 0) {
+        // Direct push of exactly the chain's new objects (push.ts); the regular push settles anything unexpected.
+        try {
+          outcome = await this.authed((token) => pushPack(g, { url: st.trunk.remote, token, ref: MAIN_REF, oldOid: chain.parent, newOid: chain.tip, oids: chain.objects! }));
+          if (!outcome.ok && !outcome.stale) {
+            console.error(`direct trunk push refused (${outcome.detail}); using the regular push`);
+            outcome = await regular();
+          }
+        } catch (e) {
+          const at = await head(e);
+          if (at === chain.tip) return { ok: true };
+          if (at !== chain.parent) {
+            drop();
+            return { ok: false, detail: `trunk main moved to ${at ?? "nothing"}` };
+          }
+          console.error(`direct trunk push failed (${errorText(e)}); using the regular push`);
+          outcome = await regular();
+        }
+      } else {
+        outcome = await regular();
+      }
+    } catch (e) {
+      // The outcome is unknown (network): ask the binding where main is.
+      if ((await head(e)) === chain.tip) return { ok: true };
+      drop();
+      throw new Error(`trunk push failed: ${errorText(e)}`);
+    }
+    if (outcome.ok) return { ok: true };
+    drop();
+    if (outcome.stale) return { ok: false, detail: outcome.detail };
+    throw new Error(`trunk push rejected: ${outcome.detail}`);
+  }
+
+  /** Landing of each of these proposal ids that has landed. */
+  private landingsByProposal(ids: Id[]): Map<Id, Landing> {
+    const out = new Map<Id, Landing>();
+    const parsed = new Map<string, Landing>();
+    for (let i = 0; i < ids.length; i += 500) {
+      const rows = this.sql
+        .exec<{ proposal_id: string; landing_id: string; data: string }>(
+          `SELECT ld.proposal_id AS proposal_id, ld.landing_id AS landing_id, l.data AS data FROM ft_landed ld
+             JOIN ft_landings l ON l.id = ld.landing_id
+           WHERE ld.proposal_id IN (SELECT value FROM json_each(?))`,
+          JSON.stringify(ids.slice(i, i + 500)),
+        )
+        .toArray();
+      for (const r of rows) {
+        let l = parsed.get(r.landing_id);
+        if (!l) {
+          l = JSON.parse(r.data) as Landing;
+          parsed.set(r.landing_id, l);
+        }
+        out.set(r.proposal_id, l);
       }
     }
-    return { staged, returned };
+    return out;
+  }
+
+  /** A landing time later than every earlier one, so a cycle's newest landing sorts last everywhere. */
+  private nextLandingAt(): number {
+    this.lastLandingAt = Math.max(Date.now(), this.lastLandingAt + 1);
+    return this.lastLandingAt;
   }
 
   /** A file where a directory is needed (or the reverse), or a write into a submodule. */
@@ -480,19 +963,11 @@ export class TrunkDO extends DurableObject<Env> {
     return null;
   }
 
-  /** Read every new blob of `p` from its workspace repo, verify its id, and write it locally. */
-  private async pullBlobs(p: Proposal): Promise<Map<Path, StagedChange>> {
-    const changes = new Map<Path, StagedChange>();
-    const needed: FileVersion[] = [];
-    for (const w of p.writeSet) {
-      const current = this.indexBlob(w.path);
-      if (w.blob === null) {
-        if (current !== null) changes.set(w.path, { blob: null, before: current });
-      } else if (w.blob !== current) {
-        needed.push(w);
-      }
-    }
-    if (needed.length === 0) return changes;
+  /** Read every new blob of `p` from its workspace repo, verify its id, and write it locally. Returns each pulled blob's size by path. */
+  private async pullBlobs(p: Proposal): Promise<Map<Path, number>> {
+    const sizes = new Map<Path, number>();
+    const needed = p.writeSet.filter((w) => w.blob !== null && w.blob !== this.indexBlob(w.path));
+    if (needed.length === 0) return sizes;
     const binding = bindingFor(this.env, p.workspace.namespace);
     if (!binding) throw new ProposalProblem(`unknown workspace namespace ${p.workspace.namespace}`);
     const g = this.repo();
@@ -513,79 +988,11 @@ export class TrunkDO extends DurableObject<Env> {
         await writeLocalBlob(g, bytes);
         return { w, size: bytes.length };
       });
-      for (const { w, size } of pulled) {
-        changes.set(w.path, { blob: w.blob!, mode: this.indexMode(w.path) ?? NEW_FILE_MODE, size, before: this.indexBlob(w.path) });
-      }
+      for (const { w, size } of pulled) sizes.set(w.path, size);
     } finally {
       dispose(repo);
     }
-    return changes;
-  }
-
-  /** Build the landing commit on current main and push it with compare-and-swap. */
-  private async commitAndPush(staged: Staged[], ctx: LandContext): Promise<{ landing: Landing; detail?: undefined } | { landing?: undefined; detail: string }> {
-    const st = this.state();
-    const g = this.repo();
-    const parent = st.trunkSha;
-    const merged = new Map<Path, StagedChange>();
-    for (const s of staged) for (const [path, c] of s.changes) merged.set(path, c);
-    const treeChanges = new Map<Path, PathChange>();
-    for (const [path, c] of merged) treeChanges.set(path, c.blob === null ? null : { blob: c.blob, mode: c.mode });
-    const parentTree = await commitTree(g, parent);
-    if (parentTree === null) throw new Error(`trunk commit ${parent} is missing locally`);
-    const tree = treeChanges.size > 0 ? await applyTreeChanges(g, parentTree, treeChanges) : parentTree;
-
-    const proposals = staged.map((s) => s.p);
-    const at = Date.now();
-    const id = newId("lnd_");
-    const intentIds = unique(proposals.map((p) => p.intentId));
-    const info = await this.lineageInfo(proposals, ctx, st.colonyId);
-    const message = landingMessage({ id, intentIds }, proposals, info.titles);
-    const commit = await writeCommitObject(g, { tree, parents: [parent], message, at });
-    const paths = [...merged.keys()].sort();
-    const landing: Landing = {
-      id,
-      colonyId: st.colonyId,
-      trunkSha: commit,
-      parentSha: parent,
-      proposalIds: proposals.map((p) => p.id),
-      intentIds,
-      paths,
-      regions: unique(paths.map((path) => regionOf(path, st.regionDepth))).sort(),
-      at,
-    };
-    const note = serializeNote(buildNote(landing, proposals, info, ctx));
-    const data: JournalData = { landing, note, changes: [...merged] };
-    this.sql.exec(
-      `INSERT INTO ft_journal (landing_id, state, commit_sha, parent_sha, data, created_at, updated_at) VALUES (?, 'pushing', ?, ?, ?, ?, ?)`,
-      id,
-      commit,
-      parent,
-      JSON.stringify(data),
-      at,
-      at,
-    );
-
-    await setRef(g, STAGING_REF, commit);
-    let outcome: PushOutcome;
-    try {
-      outcome = await this.authed((token) => pushRef(g, { url: st.trunk.remote, token, localRef: STAGING_REF, remoteRef: MAIN_REF, expectedOld: parent }));
-    } catch (e) {
-      // The outcome is unknown (network): ask the binding where main is.
-      const head = await this.remoteHead().catch(() => null);
-      if (head !== commit) {
-        this.dropJournal(id);
-        throw new Error(`trunk push failed: ${errorText(e)}`);
-      }
-      outcome = { ok: true };
-    }
-    if (!outcome.ok) {
-      this.dropJournal(id);
-      if (outcome.stale) return { detail: outcome.detail };
-      throw new Error(`trunk push rejected: ${outcome.detail}`);
-    }
-    await this.finalize(data);
-    return { landing };
+    return sizes;
   }
 
   /** Build, push and record one system commit (see systemCommit); up to MAX_REBUILDS retries on a moved trunk. */
@@ -619,7 +1026,7 @@ export class TrunkDO extends DurableObject<Env> {
       const parentTree = await commitTree(g, parent);
       if (parentTree === null) throw new Error(`trunk commit ${parent} is missing locally`);
       const tree = await applyTreeChanges(g, parentTree, treeChanges);
-      const at = Date.now();
+      const at = this.nextLandingAt();
       const id = newId("lnd_");
       const message = `${p.message.replace(/\s+$/, "")}\nFT-Landing: ${id}`;
       const commit = await writeCommitObject(g, { tree, parents: [parent], message, at });
@@ -651,7 +1058,13 @@ export class TrunkDO extends DurableObject<Env> {
       try {
         outcome = await this.authed((token) => pushRef(g, { url: st.trunk.remote, token, localRef: STAGING_REF, remoteRef: MAIN_REF, expectedOld: parent }));
       } catch (e) {
-        const head = await this.remoteHead().catch(() => null);
+        // The outcome is unknown (network): ask the binding where main is; if that fails too, the journal row stays for recovery.
+        let head: Sha | null;
+        try {
+          head = await this.remoteHead();
+        } catch {
+          throw new UnknownPush(`system commit push outcome unknown, journal kept for recovery: ${errorText(e)}`);
+        }
         if (head !== commit) {
           this.dropJournal(id);
           throw new Error(`system commit push failed: ${errorText(e)}`);
@@ -670,76 +1083,146 @@ export class TrunkDO extends DurableObject<Env> {
 
   /** Record a pushed landing: index, lineage tables, trunk sha, and the journal moves to pending_note. */
   private async finalize(data: JournalData): Promise<void> {
+    this.ctx.storage.transactionSync(() => this.finalizeRows(data));
+    await setRef(this.repo(), MAIN_REF, data.landing.trunkSha);
+  }
+
+  /** The storage part of finalize (call inside a transaction; a cycle records all its landings in one). */
+  private finalizeRows(data: JournalData): void {
     const { landing, note, changes } = data;
-    this.ctx.storage.transactionSync(() => {
-      for (const [path, c] of changes) {
-        if (c.blob === null) this.sql.exec(`DELETE FROM ft_files WHERE path = ?`, path);
-        else this.sql.exec(`INSERT OR REPLACE INTO ft_files (path, blob, size, mode) VALUES (?, ?, ?, ?)`, path, c.blob, c.size, c.mode);
-      }
-      const seq = this.sql
-        .exec<{ seq: number }>(
-          `INSERT INTO ft_landings (id, trunk_sha, parent_sha, at, data) VALUES (?, ?, ?, ?, ?) RETURNING seq`,
-          landing.id,
-          landing.trunkSha,
-          landing.parentSha,
-          landing.at,
-          JSON.stringify(landing),
-        )
-        .one().seq;
-      for (const [path, c] of changes) {
-        this.sql.exec(
-          `INSERT OR REPLACE INTO ft_landing_paths (path, seq, landing_id, before_blob, after_blob) VALUES (?, ?, ?, ?, ?)`,
-          path,
-          seq,
-          landing.id,
-          c.before,
-          c.blob,
-        );
-      }
-      this.sql.exec(`INSERT OR REPLACE INTO ft_notes (landing_id, commit_sha, note) VALUES (?, ?, ?)`, landing.id, landing.trunkSha, note);
-      for (const pid of landing.proposalIds) this.sql.exec(`INSERT OR REPLACE INTO ft_landed (proposal_id, landing_id) VALUES (?, ?)`, pid, landing.id);
-      this.setMeta("trunk_sha", landing.trunkSha);
-      this.sql.exec(`UPDATE ft_journal SET state = 'pending_note', updated_at = ? WHERE landing_id = ?`, Date.now(), landing.id);
-    });
-    await setRef(this.repo(), MAIN_REF, landing.trunkSha);
+    for (const [path, c] of changes) {
+      if (c.blob === null) this.sql.exec(`DELETE FROM ft_files WHERE path = ?`, path);
+      else this.sql.exec(`INSERT OR REPLACE INTO ft_files (path, blob, size, mode) VALUES (?, ?, ?, ?)`, path, c.blob, c.size, c.mode);
+    }
+    const seq = this.sql
+      .exec<{ seq: number }>(
+        `INSERT INTO ft_landings (id, trunk_sha, parent_sha, at, data) VALUES (?, ?, ?, ?, ?) RETURNING seq`,
+        landing.id,
+        landing.trunkSha,
+        landing.parentSha,
+        landing.at,
+        JSON.stringify(landing),
+      )
+      .one().seq;
+    for (const [path, c] of changes) {
+      this.sql.exec(
+        `INSERT OR REPLACE INTO ft_landing_paths (path, seq, landing_id, before_blob, after_blob) VALUES (?, ?, ?, ?, ?)`,
+        path,
+        seq,
+        landing.id,
+        c.before,
+        c.blob,
+      );
+    }
+    this.sql.exec(`INSERT OR REPLACE INTO ft_notes (landing_id, commit_sha, note) VALUES (?, ?, ?)`, landing.id, landing.trunkSha, note);
+    for (const pid of landing.proposalIds) this.sql.exec(`INSERT OR REPLACE INTO ft_landed (proposal_id, landing_id) VALUES (?, ?)`, pid, landing.id);
+    this.setMeta("trunk_sha", landing.trunkSha);
+    this.sql.exec(`UPDATE ft_journal SET state = 'pending_note', updated_at = ? WHERE landing_id = ?`, Date.now(), landing.id);
   }
 
   /**
    * Settle landings whose trunk push outcome was never recorded (the object was evicted
-   * mid-push): finalize those whose commit reached main, drop the rest.
+   * mid-push, or the push outcome could not be learned): finalize, in chain order, those whose
+   * commit reached main, and drop the rest. A cycle's landings are one chain, so they reach
+   * main together or not at all.
    */
   private async recoverJournal(): Promise<void> {
-    const rows = this.sql.exec<{ landing_id: string; commit_sha: string; data: string }>(`SELECT landing_id, commit_sha, data FROM ft_journal WHERE state = 'pushing' ORDER BY created_at`).toArray();
+    const rows = this.sql
+      .exec<{ landing_id: string; commit_sha: string; data: string }>(`SELECT landing_id, commit_sha, data FROM ft_journal WHERE state = 'pushing' ORDER BY created_at, rowid`)
+      .toArray();
     if (rows.length === 0) return;
     const st = this.state();
-    const recent = await withRepo(this.trunkBinding(st.trunk), st.trunk.name, (r) => r.log({ ref: "main", limit: 50 }));
+    const recent = await withRepo(this.trunkBinding(st.trunk), st.trunk.name, (r) => r.log({ ref: "main", limit: Math.min(500, rows.length + 50) }));
     const onMain = new Set(recent.map((c) => c.hash));
-    for (const row of rows) {
-      if (onMain.has(row.commit_sha)) await this.finalize(JSON.parse(row.data) as JournalData);
-      else this.dropJournal(row.landing_id);
-    }
+    const landed: JournalData[] = [];
+    this.ctx.storage.transactionSync(() => {
+      for (const row of rows) {
+        if (!onMain.has(row.commit_sha)) {
+          this.dropJournal(row.landing_id);
+          continue;
+        }
+        const data = JSON.parse(row.data) as JournalData;
+        this.finalizeRows(data);
+        landed.push(data);
+      }
+    });
+    const tip = landed[landed.length - 1];
+    if (tip) await setRef(this.repo(), MAIN_REF, tip.landing.trunkSha);
   }
 
   private dropJournal(landingId: Id): void {
     this.sql.exec(`DELETE FROM ft_journal WHERE landing_id = ?`, landingId);
   }
 
+  /** Start the notes flush, with the alarm armed as the safety net in case this object is evicted first. */
+  private async notesSoon(): Promise<void> {
+    if (this.pendingNotes() === 0) return;
+    await this.armAlarm(NOTES_RETRY_MS);
+    void this.notesFlush().catch(() => undefined);
+  }
+
   /**
-   * Push refs/notes/firetrident with compare-and-swap against the last known remote tip,
-   * after making sure every pending landing has its note locally. On a moved remote notes
-   * ref, rebuilds the pending notes on top of it once.
+   * Single-flight notes flush. It runs beside the trunk cycles (another ref, never two notes
+   * pushes at once); notes that arrive while it runs get one more round before it settles.
    */
-  private async flushNotesNow(): Promise<{ pending: number }> {
+  private notesFlush(): Promise<{ pending: number }> {
+    if (this.notesRun) {
+      this.notesAgain = true;
+      return this.notesRun;
+    }
+    const run = (async () => {
+      try {
+        let res: { pending: number; failed?: boolean };
+        do {
+          this.notesAgain = false;
+          res = await this.flushNotesNow();
+        } while (this.notesAgain && !res.failed);
+        return { pending: res.pending };
+      } finally {
+        this.notesRun = null;
+      }
+    })();
+    this.notesRun = run;
+    return run;
+  }
+
+  /**
+   * Push refs/notes/firetrident with compare-and-swap against the last known remote tip, after
+   * adding every pending landing's note locally in ONE notes commit. On a moved remote notes
+   * ref, rebuilds the pending notes on top of it once. A journal row is deleted only after its
+   * note reached the remote, so no note is lost.
+   */
+  private async flushNotesNow(): Promise<{ pending: number; failed?: boolean }> {
     const pending = this.sql
-      .exec<{ landing_id: string; commit_sha: string }>(`SELECT landing_id, commit_sha FROM ft_journal WHERE state = 'pending_note' ORDER BY created_at`)
+      .exec<{ landing_id: string; commit_sha: string; note: string | null }>(
+        `SELECT j.landing_id AS landing_id, j.commit_sha AS commit_sha, n.note AS note FROM ft_journal j
+           LEFT JOIN ft_notes n ON n.landing_id = j.landing_id
+         WHERE j.state = 'pending_note' ORDER BY j.created_at, j.rowid`,
+      )
       .toArray();
     if (pending.length === 0) return { pending: 0 };
     const st = this.state();
     const g = this.repo();
+    const notes = pending.filter((r) => r.note !== null).map((r) => ({ oid: r.commit_sha, note: r.note! }));
     try {
-      await this.ensureLocalNotes(pending);
+      const before = await resolveLocal(g, NOTES_REF);
+      const added = await addNotes(g, { ref: NOTES_REF, notes, at: Date.now(), entriesByCommit: this.notesTrees });
       const expected = this.meta("notes_tip");
-      let res = await this.authed((token) => pushRef(g, { url: st.trunk.remote, token, localRef: NOTES_REF, remoteRef: NOTES_REF, expectedOld: expected }));
+      const regular = (): Promise<PushOutcome> =>
+        this.authed((token) => pushRef(g, { url: st.trunk.remote, token, localRef: NOTES_REF, remoteRef: NOTES_REF, expectedOld: expected }));
+      let res: PushOutcome;
+      if (added.tip !== null && added.objects.length > 0 && before === expected) {
+        // Only this flush's notes commit is new to the remote: push exactly its objects (push.ts).
+        try {
+          res = await this.authed((token) => pushPack(g, { url: st.trunk.remote, token, ref: NOTES_REF, oldOid: expected, newOid: added.tip!, oids: added.objects }));
+          if (!res.ok && !res.stale) res = await regular();
+        } catch (e) {
+          console.error(`direct notes push failed (${errorText(e)}); using the regular push`);
+          res = await regular();
+        }
+      } else {
+        res = await regular();
+      }
       if (!res.ok && res.stale) {
         const local = await resolveLocal(g, NOTES_REF);
         const remote = await this.authed((token) => fetchRef(g, { url: st.trunk.remote, token, ref: NOTES_REF }));
@@ -748,7 +1231,7 @@ export class TrunkDO extends DurableObject<Env> {
         } else {
           if (remote !== null) await setRef(g, NOTES_REF, remote);
           else await deleteLocalRef(g, NOTES_REF);
-          await this.ensureLocalNotes(pending, true);
+          await addNotes(g, { ref: NOTES_REF, notes, at: Date.now(), entriesByCommit: this.notesTrees });
           res = await this.authed((token) => pushRef(g, { url: st.trunk.remote, token, localRef: NOTES_REF, remoteRef: NOTES_REF, expectedOld: remote }));
         }
       }
@@ -762,7 +1245,7 @@ export class TrunkDO extends DurableObject<Env> {
     } catch (e) {
       console.error(`notes push for ${st.colonyId} failed: ${errorText(e)}`);
       await this.armAlarm(NOTES_RETRY_MS);
-      return { pending: pending.length };
+      return { pending: pending.length, failed: true };
     }
   }
 
@@ -771,17 +1254,6 @@ export class TrunkDO extends DurableObject<Env> {
     const at = Date.now() + delayMs;
     const current = await this.ctx.storage.getAlarm();
     if (current === null || current > at) await this.ctx.storage.setAlarm(at);
-  }
-
-  /** Add the stored note for each pending landing that the local notes ref lacks (all of them with `force`). */
-  private async ensureLocalNotes(rows: Array<{ landing_id: string; commit_sha: string }>, force = false): Promise<void> {
-    const g = this.repo();
-    for (const row of rows) {
-      const note = this.sql.exec<{ note: string }>(`SELECT note FROM ft_notes WHERE landing_id = ?`, row.landing_id).toArray()[0]?.note;
-      if (note === undefined) continue;
-      if (!force && (await readNoteText(g, NOTES_REF, row.commit_sha)) === note) continue;
-      await addNoteObject(g, { ref: NOTES_REF, oid: row.commit_sha, note, at: Date.now() });
-    }
   }
 
   // -------------------------------------------------------------------------
@@ -820,6 +1292,54 @@ export class TrunkDO extends DurableObject<Env> {
     } catch {
       // lineage falls back to proposal summaries
     }
+  }
+
+  // -------------------------------------------------------------------------
+  // Co-change map
+  // -------------------------------------------------------------------------
+
+  private cochange(): CoChangeStore {
+    if (!this.cochangeStore) this.cochangeStore = new CoChangeStore(this.sql, (fn) => this.ctx.storage.transactionSync(fn));
+    return this.cochangeStore;
+  }
+
+  /**
+   * Mine trunk history into the co-change map once per trunk (retried 10 minutes after a failure).
+   * It runs off the serial chain: it only reads through the binding, and its learning step is one
+   * synchronous transaction on tables nothing else writes.
+   */
+  private cochangeSoon(): void {
+    if (this.mining !== null) return;
+    try {
+      if (!this.cochange().shouldMine(Date.now())) return;
+    } catch {
+      return;
+    }
+    this.mining = this.mineCoChange()
+      .catch((e: unknown) => {
+        console.error(`co-change mining failed: ${errorText(e)}`);
+        try {
+          this.cochange().markMined(`failed: ${errorText(e).slice(0, 200)}`, Date.now());
+        } catch {
+          // erased meanwhile
+        }
+      })
+      .finally(() => {
+        this.mining = null;
+      });
+  }
+
+  private async mineCoChange(): Promise<void> {
+    const st = this.state();
+    const t0 = Date.now();
+    const mined = await withRepo(this.trunkBinding(st.trunk), st.trunk.name, (repo) => mineHistory(repo, st.trunkSha));
+    // The trunk may have been replaced or erased while the history was read.
+    const trunk = this.meta("trunk");
+    if (trunk === null || (JSON.parse(trunk) as RepoRef).name !== st.trunk.name) return;
+    const learned = this.cochange().learnHistory(mined, st.trunkSha, Date.now());
+    console.log(
+      JSON.stringify({ ft: "cochange-mined", colonyId: st.colonyId, head: st.trunkSha, listed: mined.listed, learned, skipped: mined.skipped, truncated: mined.truncated, reads: mined.reads, ms: Date.now() - t0 }),
+    );
   }
 
   // -------------------------------------------------------------------------
@@ -892,7 +1412,7 @@ export class TrunkDO extends DurableObject<Env> {
   }
 
   /** Blob of each path at `baseSha`, or null when the commit is unknown locally and remotely. */
-  private async baseBlobMap(baseSha: Sha, paths: Path[]): Promise<Map<Path, Sha | null> | null> {
+  private async baseBlobMap(baseSha: Sha, paths: Path[], caches?: BaseCaches): Promise<Map<Path, Sha | null> | null> {
     const st = this.state();
     const out = new Map<Path, Sha | null>();
     if (baseSha === st.trunkSha) {
@@ -901,16 +1421,26 @@ export class TrunkDO extends DurableObject<Env> {
     }
     if (!isSha(baseSha)) return null;
     const g = this.repo();
-    const tree = await commitTree(g, baseSha);
+    let tree: string | null | undefined = this.commitTrees.get(baseSha) ?? caches?.commits.get(baseSha);
+    if (tree === undefined) {
+      tree = await commitTree(g, baseSha);
+      if (tree !== null) this.commitTrees.set(baseSha, tree);
+      else caches?.commits.set(baseSha, null);
+    }
     if (tree !== null) {
-      const trees = new Map();
-      for (const path of paths) out.set(path, (await blobAt(g, tree, path, trees))?.blob ?? null);
-      return out;
+      try {
+        for (const path of paths) out.set(path, (await blobAt(g, tree, path, this.trees))?.blob ?? null);
+        return out;
+      } catch (e) {
+        // A tree missing from the local store: read the commit through the binding instead.
+        if ((e as { code?: string }).code !== "NotFoundError") throw e;
+        out.clear();
+      }
     }
     return withRepo(this.trunkBinding(st.trunk), st.trunk.name, async (repo) => {
       const commit = await repo.readCommit(baseSha).catch(() => null);
       if (!commit) return null;
-      const trees = new Map<string, ArtifactsTreeEntry[] | null>();
+      const trees = caches?.remote ?? new Map<string, ArtifactsTreeEntry[] | null>();
       for (const path of paths) out.set(path, await remoteBlobAt(repo, commit.treeHash, path, trees));
       return out;
     });
@@ -990,6 +1520,7 @@ export class TrunkDO extends DurableObject<Env> {
   private reset(): void {
     this.ctx.storage.transactionSync(() => {
       for (const t of ["ft_files", "ft_landings", "ft_landing_paths", "ft_notes", "ft_landed", "ft_journal", "ft_meta"]) this.sql.exec(`DELETE FROM ${t}`);
+      this.cochange().reset();
       this.setMeta("dir", `/trunk-${Date.now().toString(36)}`);
     });
     this.gitRepo = null;
@@ -1056,14 +1587,20 @@ function pathProblem(path: unknown): string | null {
   return null;
 }
 
-/** Every path a proposal reads or writes. */
-function proposalPaths(p: Proposal): Path[] {
-  return [...p.writeSet.map((f) => f.path), ...p.readSet.map((f) => f.path)];
+/** The stale paths of an OCC result, as reasons name them. */
+function staleDetail(stale: OccResult["stale"]): string {
+  return stale.map((s) => `${s.path} (expected ${s.expected ?? "absent"}, trunk has ${s.actual ?? "absent"})`).join(", ");
 }
 
-/** Same path, or one is a directory prefix of the other. */
-function overlaps(a: Path, b: Path): boolean {
-  return a === b || a.startsWith(`${b}/`) || b.startsWith(`${a}/`);
+/** The lineage context of every batch in a cycle, merged. */
+function mergeContexts(list: LandContext[]): Required<LandContext> {
+  const out: Required<LandContext> = { intents: {}, agents: {}, decisions: {} };
+  for (const c of list) {
+    Object.assign(out.intents, c?.intents ?? {});
+    Object.assign(out.agents, c?.agents ?? {});
+    Object.assign(out.decisions, c?.decisions ?? {});
+  }
+  return out;
 }
 
 /** Distinct values, first occurrence first. */

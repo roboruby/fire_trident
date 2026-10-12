@@ -309,7 +309,35 @@ export interface LiveReport {
   batchSize: Summary;
   commitGapMs: Summary;
   feed: { connected: boolean; events: number; sigmaMax: number; sigmaEvents: number };
+  /** Trunk writer cycles seen on the live feed (`trunk.*` metrics, one group per cycle); absent before group commit. */
+  trunkCycles?: TrunkCycles;
   errors: string[];
+}
+
+/** Summaries over the trunk writer's group-commit cycles in the steady-state window, one per `trunk.<name>` metric. */
+export interface TrunkCycles {
+  n: number;
+  perMin: number;
+  metrics: Record<string, Summary>;
+}
+
+/** Group the feed's `trunk.*` metrics by cycle (they share `at`) and summarize the cycles received in [fromMs, toMs]. */
+export function trunkCycles(metrics: LiveFeed["metrics"], fromMs: number, toMs: number): TrunkCycles | undefined {
+  const cycles = new Map<number, { recvMs: number; v: Record<string, number> }>();
+  for (const m of metrics) {
+    if (!m.name.startsWith("trunk.")) continue;
+    const c = cycles.get(m.at) ?? { recvMs: m.recvMs, v: {} };
+    c.v[m.name.slice(6)] = m.value;
+    cycles.set(m.at, c);
+  }
+  const rows = [...cycles.values()].filter((c) => c.recvMs >= fromMs && c.recvMs <= toMs).map((c) => c.v);
+  if (rows.length === 0) return undefined;
+  const names = [...new Set(rows.flatMap((r) => Object.keys(r)))].sort();
+  return {
+    n: rows.length,
+    perMin: (rows.length / Math.max(1e-9, (toMs - fromMs) / 1000)) * 60,
+    metrics: Object.fromEntries(names.map((k) => [k, summarize(rows.map((r) => r[k]).filter((x): x is number => typeof x === "number"))])),
+  };
 }
 
 function reasonKey(reason: string | undefined): string {
@@ -467,6 +495,10 @@ export async function runLive(cfg: LiveConfig, opts: LiveOptions, state: LiveSta
     batchSize: summarize(feed.landings.map((l) => l.proposalIds.length)),
     commitGapMs: summarize(gaps),
     feed: { connected: feed.open, events: feed.events, sigmaMax, sigmaEvents: feed.sigma.length },
+    ...(() => {
+      const tc = trunkCycles(feed.metrics, t0 + fromS * 1000, t0 + toS * 1000);
+      return tc ? { trunkCycles: tc } : {};
+    })(),
     errors: rec.errorSamples,
   };
 }

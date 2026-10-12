@@ -12,6 +12,7 @@ import type {
   ProposalStatus,
   Rule,
 } from "@fire_trident/core";
+import { whySummary } from "./spec.ts";
 
 /** ANSI styling functions; identity functions when color is off. */
 export interface Colors {
@@ -109,7 +110,7 @@ export interface SeriesLike {
 }
 
 /** A snapshot as the CLI reads it: every list optional, plus rules and series when the server sends them. */
-export type SnapshotLike = Partial<Omit<ColonySnapshot, "colony">> & { colony: ColonySnapshot["colony"]; rules?: Rule[]; series?: SeriesLike };
+export type SnapshotLike = Partial<Omit<ColonySnapshot, "colony" | "series">> & { colony: ColonySnapshot["colony"]; rules?: Rule[]; series?: SeriesLike };
 
 const BARS = "▁▂▃▄▅▆▇█";
 
@@ -432,7 +433,7 @@ export function formatWhy(
     for (const p of shown) {
       out.push(`  ${label("proposal")}${p.id} ${c.dim("by")} ${p.agentId} ${c.dim(`(${p.agentKind}${p.model ? ` · ${p.model}` : ""})`)}`);
       out.push(`  ${label("intent")}${p.intent.id} ${quote(p.intent.title ?? "")}`);
-      if (p.intent.why) out.push(`  ${label("why")}${p.intent.why.replace(/\s+/g, " ").trim()}`);
+      if (p.intent.why) out.push(`  ${label("why")}${whySummary(p.intent.why)}`);
       // Walk the parent chain (the why behind the why), guarding against cycles.
       const seen = new Set<string>([p.intent.id]);
       let parentId = p.intent.parentId;

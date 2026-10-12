@@ -1,0 +1,168 @@
+{
+  "kind": "inhibition-live",
+  "label": "MEASURED",
+  "generatedAt": "2026-10-12T08:44:33.031Z",
+  "url": "https://g5-firetrident.mattsolt.workers.dev",
+  "method": "X writes [shared, a] (priority 5), Y writes [shared, b] (priority 4); agent A takes first (X with p = 25/26) and B targets the other one. rounds: fresh A and B per round, B takes once, both stop. landing: B tries before and while A's proposal is queued, then after it lands (a real trunk commit). decay: A never heartbeats; B retries every poll seconds until it is assigned.",
+  "expected": {
+    "withoutInhibition": "B takes Y with p = 3^2 / (3^2 + 1) = 0.9 per try (soft repulsion only)",
+    "withInhibition": "B is turned away while A's claim is >= 0.5; takes the other intent after the landing, or about one half-life (208 s) after A's last claim refresh"
+  },
+  "rounds": {
+    "colony": "g5-inhibit-v3-rounds",
+    "createMs": 10705,
+    "intents": {
+      "x": "int_mv505akj6ib76j",
+      "y": "int_mv505b0zqxwm4i"
+    },
+    "rounds": 20,
+    "inhibited": 20,
+    "tookOther": 0,
+    "aTookY": 1,
+    "outcomes": [
+      "inhibited",
+      "inhibited",
+      "inhibited",
+      "inhibited",
+      "inhibited",
+      "inhibited",
+      "inhibited",
+      "inhibited",
+      "inhibited",
+      "inhibited",
+      "inhibited",
+      "inhibited",
+      "inhibited",
+      "inhibited",
+      "inhibited",
+      "inhibited",
+      "inhibited",
+      "inhibited",
+      "inhibited",
+      "inhibited"
+    ]
+  },
+  "landing": {
+    "colony": "g5-inhibit-v3-landing",
+    "createMs": 9967,
+    "intents": {
+      "x": "int_mv505eg1fiwtz6",
+      "y": "int_mv505euxlkc4o7"
+    },
+    "aTook": "int_mv505eg1fiwtz6",
+    "before": "inhibited",
+    "whileQueued": "inhibited",
+    "proposal": {
+      "id": "prp_mv505fqa5k1pxx",
+      "status": "landed",
+      "reason": null,
+      "outcomeAfterMs": 3147
+    },
+    "after": "took the other",
+    "afterTakeMs": 517
+  },
+  "decay": {
+    "colony": "g5-inhibit-v3-decay",
+    "createMs": 10597,
+    "intents": {
+      "x": "int_mv505aiwbo6sum",
+      "y": "int_mv505axn60g8qc"
+    },
+    "aTook": "int_mv505aiwbo6sum",
+    "pollS": 10,
+    "halfLifeS": 207.9,
+    "tookOtherAtS": 218,
+    "lastInhibitedAtS": 207.2,
+    "tries": [
+      {
+        "s": 0.1,
+        "outcome": "inhibited"
+      },
+      {
+        "s": 10.3,
+        "outcome": "inhibited"
+      },
+      {
+        "s": 20.5,
+        "outcome": "inhibited"
+      },
+      {
+        "s": 30.8,
+        "outcome": "inhibited"
+      },
+      {
+        "s": 41.3,
+        "outcome": "inhibited"
+      },
+      {
+        "s": 51.4,
+        "outcome": "inhibited"
+      },
+      {
+        "s": 61.5,
+        "outcome": "inhibited"
+      },
+      {
+        "s": 71.7,
+        "outcome": "inhibited"
+      },
+      {
+        "s": 82.2,
+        "outcome": "inhibited"
+      },
+      {
+        "s": 92.8,
+        "outcome": "inhibited"
+      },
+      {
+        "s": 103.3,
+        "outcome": "inhibited"
+      },
+      {
+        "s": 113.5,
+        "outcome": "inhibited"
+      },
+      {
+        "s": 123.7,
+        "outcome": "inhibited"
+      },
+      {
+        "s": 133.8,
+        "outcome": "inhibited"
+      },
+      {
+        "s": 144.8,
+        "outcome": "inhibited"
+      },
+      {
+        "s": 155,
+        "outcome": "inhibited"
+      },
+      {
+        "s": 165.2,
+        "outcome": "inhibited"
+      },
+      {
+        "s": 175.7,
+        "outcome": "inhibited"
+      },
+      {
+        "s": 186.5,
+        "outcome": "inhibited"
+      },
+      {
+        "s": 196.6,
+        "outcome": "inhibited"
+      },
+      {
+        "s": 207.2,
+        "outcome": "inhibited"
+      },
+      {
+        "s": 218,
+        "outcome": "took the other"
+      }
+    ]
+  },
+  "errors": []
+}

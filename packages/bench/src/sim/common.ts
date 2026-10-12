@@ -64,6 +64,9 @@ export class Metrics {
   inhibitedTicks = 0;
   ticks = 0;
   trunkBusyMs = 0;
+  /** FireTrident with lateral inhibition: admitted candidates per evaluation, summed, and how many were inhibited. */
+  windowAdmitted = 0;
+  windowInhibited = 0;
 
   constructor(warmupMs: number) {
     this.warmupMs = warmupMs;

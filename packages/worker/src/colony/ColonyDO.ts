@@ -1,5 +1,21 @@
 import { DurableObject } from "cloudflare:workers";
-import { admissionOpen, chooseIntent, markValue, newId, regionKey, reinforceThreshold, repulsion, residualPaths, validateRule } from "@fire_trident/core";
+import {
+  LATERAL_INHIBITION,
+  admissionOpen,
+  chooseIntent,
+  directClaimOn,
+  inhibited,
+  markValue,
+  newId,
+  regionKey,
+  regionOf,
+  reinforceThreshold,
+  repulsion,
+  residualPaths,
+  validateRule,
+} from "@fire_trident/core";
+// Direct import until packages/core/src/index.ts re-exports cochange.ts (orchestrator-owned).
+import { neighborRepulsion } from "@fire_trident/core";
 import type {
   AgentInfo,
   AgentKind,
@@ -36,6 +52,7 @@ import { DecideEngine, type DecideHost, type TrunkRpc, type VaccinationResult } 
 import type { DecidePolicy } from "../decide/policy.ts";
 import type { DetectorStats } from "../decide/store.ts";
 import { DEFAULT_NOT_VERIFIED, FieldBatch, groupByRegion, jitter, normalizePath, normalizePaths, overlapCount, primaryRegion, violationIntents } from "./logic.ts";
+import { NeighborCache, claimLookup, type Neighbor } from "../trunk/cochange.ts";
 import {
   BUCKET_MS,
   COUNTER_SERIES,
@@ -106,6 +123,17 @@ const SNAPSHOT_DONE_CAP = 200;
 const SNAPSHOT_AGENT_CAP = 5_000;
 const LANDINGS_KEEP = 1_000;
 const RATE_WINDOW_MS = 60_000;
+/**
+ * Co-change repulsion: a claim on a file also repels work on the files that change with it
+ * (TrunkDO's co-change map), weighted by their coupling and then by this (FT_COCHANGE_WEIGHT
+ * overrides it; 0 turns it off). 2 cut simulated rework on hono's history from 42% to 39% at 1,000
+ * agents with no throughput cost on per-lane landing; with group commit it costs about 6% of
+ * throughput (packages/bench/results/2026-10-12-cochange).
+ */
+const COCHANGE_WEIGHT = 2;
+/** Neighbors read per footprint file, and how long a take waits for neighbors it has not cached. */
+const COCHANGE_K = 8;
+const COCHANGE_WAIT_MS = 150;
 
 const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS colony (
@@ -300,6 +328,10 @@ export class ColonyDO extends DurableObject<Env> {
   private readonly sentMetrics = new Map<string, number>();
   private lastFullMetricsAt = 0;
   private lastSeriesPrune = 0;
+  /** Co-change neighbors of footprint files, cached from TrunkDO.neighbors (fails open). */
+  private readonly cochange = new NeighborCache(
+    (paths) => this.trunkStub().neighbors(paths, COCHANGE_K) as unknown as Promise<Record<Path, Neighbor[]>>,
+  );
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -565,8 +597,9 @@ export class ColonyDO extends DurableObject<Env> {
 
   /**
    * Self-assignment. Reads the field of every region the top open intents
-   * touch, computes repulsion from other agents' claims, and applies the
-   * response-threshold rule. On success: claims the intent, leases a workspace
+   * touch, computes repulsion from other agents' claims, skips intents whose
+   * own files another agent holds a live claim on (lateral inhibition), and
+   * applies the response-threshold rule. On success: claims the intent, leases a workspace
    * and deposits `claim` marks. A repeated take returns the held assignment.
    */
   async take(agentId: Id): Promise<TakeResult> {
@@ -617,20 +650,30 @@ export class ColonyDO extends DurableObject<Env> {
     );
     const perIntent = intents.map((i) => groupByRegion(i.footprint, depth));
     const wanted = new Map<string, Set<Path>>();
-    for (const regions of perIntent) {
-      for (const [region, paths] of regions) {
-        let set = wanted.get(region);
-        if (!set) {
-          set = new Set();
-          wanted.set(region, set);
-        }
-        for (const p of paths) set.add(p);
+    const want = (region: string, path: Path): void => {
+      let set = wanted.get(region);
+      if (!set) {
+        set = new Set();
+        wanted.set(region, set);
       }
+      set.add(path);
+    };
+    for (const regions of perIntent) {
+      for (const [region, paths] of regions) for (const p of paths) want(region, p);
     }
+    // Files that change together wire together: read the claims on each footprint file's co-change neighbors too.
+    const cochangeWeight = this.cochangeWeight();
+    const neighbors = cochangeWeight > 0 ? await this.cochange.get(intents.flatMap((i) => i.footprint), now, COCHANGE_WAIT_MS) : new Map<Path, Neighbor[]>();
+    for (const nbs of neighbors.values()) for (const nb of nbs) want(regionOf(nb.path, depth), nb.path);
     const readings = await this.readRegions(wanted);
     const views = this.fieldViews(agentId, readings, depth);
+    const claimOn = claimLookup(views, (p) => regionOf(p, depth), CLAIM_STRENGTH);
+    const neighborsOf = (p: Path): Neighbor[] | undefined => neighbors.get(p);
     const candidates: Candidate[] = intents.map((intent, idx) => {
       let rep = 0;
+      // Lateral inhibition: other agents' live claims on the intent's own files, kept apart from the
+      // soft repulsion (which still counts them, plus overlaps, danger and co-change neighbors).
+      let direct = 0;
       let open = true;
       let primary = ".";
       let most = 0;
@@ -641,17 +684,25 @@ export class ColonyDO extends DurableObject<Env> {
         }
         const view = views.get(region);
         if (!view) continue; // unreadable region: fail open
-        if (view.repulsive) rep += repulsion(view.byPath, paths);
-        for (const c of view.unseen) rep += CLAIM_STRENGTH * overlapCount(c.paths, paths);
+        if (view.repulsive) {
+          rep += repulsion(view.byPath, paths);
+          direct += directClaimOn(view.byPath, paths);
+        }
+        for (const c of view.unseen) {
+          rep += CLAIM_STRENGTH * overlapCount(c.paths, paths);
+          for (const p of paths) if (c.paths.has(p)) direct += CLAIM_STRENGTH;
+        }
         if (!view.open) open = false;
       }
-      return { intent, region: primary, repulsion: rep, admissionOpen: open };
+      if (neighbors.size > 0) rep += cochangeWeight * neighborRepulsion(intent.footprint, neighborsOf, claimOn);
+      return { intent, region: primary, repulsion: rep, directClaim: direct, admissionOpen: open };
     });
 
     const thresholds = parseJson<Record<string, number>>(agent.thresholds, {});
+    const inhibitAt = this.inhibitAt();
     let pool = candidates;
     for (let attempt = 0; attempt < PICK_ATTEMPTS && pool.length > 0; attempt++) {
-      const pick = chooseIntent(pool, thresholds, Date.now(), this.rand);
+      const pick = chooseIntent(pool, thresholds, Date.now(), this.rand, undefined, inhibitAt);
       if (!pick) break;
       if (this.reserve(pick.intent.id, agentId)) {
         const full = this.intentRow(pick.intent.id);
@@ -664,6 +715,9 @@ export class ColonyDO extends DurableObject<Env> {
     this.setAgentState(agentId, "waiting", Date.now());
     if (candidates.every((c) => !c.admissionOpen)) {
       return { wait: true, retryInMs: jitter(CLOSED_RETRY_MS, this.rand), reason: "admission closed in every candidate region" };
+    }
+    if (candidates.every((c) => !c.admissionOpen || inhibited(c, inhibitAt))) {
+      return { wait: true, retryInMs: jitter(CLOSED_RETRY_MS, this.rand), reason: "every open intent's files are claimed by another agent" };
     }
     return { wait: true, retryInMs: jitter(DECLINED_RETRY_MS, this.rand), reason: "no intent accepted at this agent's thresholds" };
   }
@@ -1584,6 +1638,26 @@ export class ColonyDO extends DurableObject<Env> {
     return closed;
   }
 
+  /** Co-change repulsion weight: FT_COCHANGE_WEIGHT when set to a non-negative number, else COCHANGE_WEIGHT. */
+  private cochangeWeight(): number {
+    const raw = (this.env as unknown as { FT_COCHANGE_WEIGHT?: string }).FT_COCHANGE_WEIGHT;
+    const w = raw === undefined || raw === "" ? Number.NaN : Number(raw);
+    return Number.isFinite(w) && w >= 0 ? w : COCHANGE_WEIGHT;
+  }
+
+  /**
+   * Lateral inhibition threshold for takes, as a claim value: FT_LATERAL_INHIBITION as a fraction of
+   * a fresh claim when set to a non-negative number ("off" disables it), else core LATERAL_INHIBITION
+   * (half a fresh claim). An open intent whose own files carry that much claim from other agents is
+   * skipped until the claim lands, is released, or decays below it.
+   */
+  private inhibitAt(): number {
+    const raw = (this.env as unknown as { FT_LATERAL_INHIBITION?: string }).FT_LATERAL_INHIBITION?.trim();
+    if (raw === "off") return Number.POSITIVE_INFINITY;
+    const f = raw === undefined || raw === "" ? Number.NaN : Number(raw);
+    return (Number.isFinite(f) && f >= 0 ? f : LATERAL_INHIBITION) * CLAIM_STRENGTH;
+  }
+
   /** Recent claims of other agents that a reading started at `since` may not include (prunes old entries). */
   private unseenClaims(agentId: Id, since: number): Array<{ paths: Set<Path>; regions: Set<string> }> {
     const horizon = Date.now() - RECENT_CLAIM_MS;
@@ -1715,6 +1789,8 @@ export class ColonyDO extends DurableObject<Env> {
         fx.events.push({ t: "intent", at: now, intentId: h.id, status: "open", title: h.title, footprint: fp });
       }
       this.sql.exec("UPDATE agents SET state = 'dead', intent_id = NULL, workspace = NULL WHERE id = ?", a.id);
+      // A dead agent's claims stop counting in the takes that follow (they inhibit; see takeFor).
+      this.recentClaims.delete(a.id);
       fx.events.push({ t: "agent", at: now, agentId: a.id, kind: a.kind as AgentKind, state: "dead" });
       fx.release.add(a.id);
     }

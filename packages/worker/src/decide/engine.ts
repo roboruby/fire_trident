@@ -52,6 +52,9 @@ import { VACCINE_CLASSES, VACCINE_LABELS, makeVaccine, recallReport, type Source
  */
 
 /** Input of ColonyDO.recordDecision. */
+/** Diff characters shown to reviewers per file: enough for a whole new module, so a complete file never looks cut off. */
+const REVIEW_FILE_CHARS = 8_000;
+
 export type DecisionInput = Omit<Decision, "id" | "colonyId" | "at"> & { at?: number };
 
 /** Input of ColonyDO.propose. */
@@ -208,7 +211,7 @@ export class DecideEngine {
 
     // Innate checks, then what the change looks like and what it could damage.
     const innate = await runInnateChecks(p, { env: this.host.env, colony, intent, rules, baseBlobs: (sha, paths) => this.host.trunk().baseBlobs(sha, paths) });
-    const diffs = innate.files.map((f) => fileDiff(f.path, f.before, f.after, { binary: f.binary, unreadable: f.unreadable }));
+    const diffs = innate.files.map((f) => fileDiff(f.path, f.before, f.after, { binary: f.binary, unreadable: f.unreadable, maxChars: REVIEW_FILE_CHARS }));
     const damage = damageSignals(
       innate.files.map((f, i) => ({ path: f.path, before: f.before, after: f.after, added: diffs[i]?.addedLines ?? [] })),
       innate.residual,
@@ -490,7 +493,7 @@ export class DecideEngine {
       added = files.flatMap(addedFromHunks);
     } else {
       const innate = await runInnateChecks(p, { env: this.host.env, colony, intent, rules: this.host.rules(), baseBlobs: (sha, paths) => this.host.trunk().baseBlobs(sha, paths) });
-      const diffs: FileDiff[] = innate.files.map((f) => fileDiff(f.path, f.before, f.after, { binary: f.binary, unreadable: f.unreadable }));
+      const diffs: FileDiff[] = innate.files.map((f) => fileDiff(f.path, f.before, f.after, { binary: f.binary, unreadable: f.unreadable, maxChars: REVIEW_FILE_CHARS }));
       added = diffs.flatMap((d) => d.addedLines);
       state = reflexState({ intent: intent ?? { title: p.declared.summary, why: "" }, footprint: intent?.footprint ?? p.declared.footprint, residual: innate.residual, diffs, antibodies: [] });
     }

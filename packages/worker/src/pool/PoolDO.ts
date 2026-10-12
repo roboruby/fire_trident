@@ -245,6 +245,21 @@ export class PoolDO extends DurableObject<Env> {
     return { deleted, errors };
   }
 
+  /**
+   * Erase this object (colony deletion, after teardown): cancel the alarm and delete all storage,
+   * then replay the DDL of its own `ft_` tables so a later init() starts from empty tables.
+   * The git storage is rebuilt on next use.
+   */
+  async destroy(): Promise<{ cleared: true }> {
+    const ddl = this.sql.exec<{ sql: string }>(`SELECT sql FROM sqlite_master WHERE substr(name, 1, 3) = 'ft_' AND sql IS NOT NULL ORDER BY rowid`).toArray();
+    await this.ctx.storage.deleteAlarm();
+    await this.ctx.storage.deleteAll();
+    for (const { sql } of ddl) this.sql.exec(sql);
+    this.gitRepo = null;
+    this.trunkRead = null;
+    return { cleared: true };
+  }
+
   /** Keep growing toward the target; back off when every fork fails. */
   async alarm(): Promise<void> {
     if (this.meta("trunk") === null) return;

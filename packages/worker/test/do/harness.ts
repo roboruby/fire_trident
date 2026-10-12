@@ -31,6 +31,10 @@ interface TrunkState {
   reportLandings: boolean;
   /** land() calls that land the batch and then throw anyway (the caller never learns). */
   loseAnswers?: number;
+  /** Co-change neighbors answered by neighbors() (none by default), or "fail" to make it throw. */
+  neighbors?: Record<Path, Array<{ path: Path; weight: number }>> | "fail";
+  /** neighbors() calls, for asserting caching. */
+  neighborCalls?: number;
 }
 
 const DEFAULT_FILES: Record<Path, string> = {
@@ -125,6 +129,27 @@ export class TrunkDO extends DurableObject<Env> {
   /** Test helper: current state. */
   async state(): Promise<TrunkState> {
     return this.load();
+  }
+
+  /** Test helper: the co-change neighbors neighbors() answers ("fail" makes it throw). */
+  async setNeighbors(table: Record<Path, Array<{ path: Path; weight: number }>> | "fail"): Promise<void> {
+    const s = await this.load();
+    s.neighbors = table;
+    await this.save(s);
+  }
+
+  /** Co-change neighbors, as the real TrunkDO answers (top k per path, paths without neighbors left out). */
+  async neighbors(paths: Path[], k = 8): Promise<Record<Path, Array<{ path: Path; weight: number }>>> {
+    const s = await this.load();
+    s.neighborCalls = (s.neighborCalls ?? 0) + 1;
+    await this.save(s);
+    if (s.neighbors === "fail") throw new Error("simulated neighbors failure");
+    const out: Record<Path, Array<{ path: Path; weight: number }>> = {};
+    for (const p of paths) {
+      const nb = s.neighbors?.[p];
+      if (nb && nb.length > 0) out[p] = nb.slice(0, k);
+    }
+    return out;
   }
 
   async files(): Promise<Array<{ path: Path; size: number; blob: Sha }>> {
