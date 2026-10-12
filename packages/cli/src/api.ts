@@ -20,6 +20,11 @@ import type { Command } from "./args.ts";
  *   POST /api/colonies/:id/swarm/stop   { reason? }  -> { ok, considered, stopped, failed, retired }
  *   POST /api/colonies/:id/vaccinate    { count }
  *   DELETE /api/colonies/:id            -> { found, ok, agents, repos, objects, unregistered }
+ *   PATCH  /api/colonies/:id/intents/:iid           { title?, why?, footprint?, priority?, reason, by } -> { intent, revision, returned, notified }
+ *   POST   /api/colonies/:id/intents/:iid/withdraw  { reason, by } -> { intent, returned, notified }
+ *   GET    /api/colonies/:id/intents/:iid           -> { intent, revisions, directives }
+ *   DELETE /api/colonies/:id/rules/:rid             { reason, by } -> { rule, withdrawn, returned, notified }
+ *   POST   /api/colonies/:id/agents/:aid/directive  { message, intentId?, by } -> Directive + { delivery }
  *
  * Every request carries `Authorization: Bearer $FT_TOKEN` when the token is set.
  */
@@ -32,7 +37,7 @@ export const VERSION = "0.0.1";
 
 /** One planned HTTP call. `path` includes any query string. */
 export interface ApiRequest {
-  method: "GET" | "POST" | "DELETE";
+  method: "GET" | "POST" | "PATCH" | "DELETE";
   path: string;
   body?: unknown;
 }
@@ -150,6 +155,28 @@ export function planRequest(cmd: Command, by: string): ApiRequest | null {
       return { method: "DELETE", path: colonyPath(cmd.colony) };
     case "vaccinate":
       return { method: "POST", path: colonyPath(cmd.colony, "/vaccinate"), body: { count: cmd.count } };
+    case "intent-amend": {
+      const body: Record<string, unknown> = {};
+      if (cmd.title !== undefined) body.title = cmd.title;
+      if (cmd.why !== undefined) body.why = cmd.why;
+      if (cmd.footprint !== undefined) body.footprint = cmd.footprint;
+      if (cmd.priority !== undefined) body.priority = cmd.priority;
+      body.reason = cmd.reason;
+      body.by = cmd.by ?? by;
+      return { method: "PATCH", path: colonyPath(cmd.colony, `/intents/${encodeURIComponent(cmd.intentId)}`), body };
+    }
+    case "intent-withdraw":
+      return { method: "POST", path: colonyPath(cmd.colony, `/intents/${encodeURIComponent(cmd.intentId)}/withdraw`), body: { reason: cmd.reason, by: cmd.by ?? by } };
+    case "intent-show":
+      return { method: "GET", path: colonyPath(cmd.colony, `/intents/${encodeURIComponent(cmd.intentId)}`) };
+    case "rule-retract":
+      return { method: "DELETE", path: colonyPath(cmd.colony, `/rules/${encodeURIComponent(cmd.ruleId)}`), body: { reason: cmd.reason, by: cmd.by ?? by } };
+    case "direct":
+      return {
+        method: "POST",
+        path: colonyPath(cmd.colony, `/agents/${encodeURIComponent(cmd.agentId)}/directive`),
+        body: { message: cmd.message, ...(cmd.intentId ? { intentId: cmd.intentId } : {}), by: cmd.by ?? by },
+      };
     default:
       return null;
   }

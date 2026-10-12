@@ -3,11 +3,13 @@ import type {
   CheckResult,
   ColonyEvent,
   ColonySnapshot,
+  Direction,
   Intent,
   IntentStatus,
   Landing,
   LineageNote,
   MarkKind,
+  NoteDecision,
   Proposal,
   ProposalStatus,
   Rule,
@@ -98,7 +100,7 @@ function quote(s: string, max = 72): string {
   return `"${one.length > max ? `${one.slice(0, max - 1)}…` : one}"`;
 }
 
-const INTENT_ORDER: readonly IntentStatus[] = ["open", "claimed", "proposed", "landed", "abandoned"];
+const INTENT_ORDER: readonly IntentStatus[] = ["open", "claimed", "proposed", "landed", "abandoned", "withdrawn"];
 const AGENT_ORDER: readonly AgentState[] = ["working", "proposing", "waiting", "idle", "dead"];
 
 /** Per-minute history the server adds to the snapshot (the last 30 minutes, oldest first). */
@@ -208,6 +210,9 @@ export interface AgentRow {
   journalError?: string;
   /** The agent's own counters (taken, proposed, landed, returned, waits, ...). */
   counters?: Record<string, number>;
+  /** What the agent says it is doing now (its relayed status note), and when it said it. */
+  note?: string;
+  noteAt?: number;
 }
 
 /** Visible width of a string (ANSI color codes do not count). */
@@ -280,16 +285,19 @@ export function formatAgents(colony: string, rows: AgentRow[], c: Colors, now: n
   const notes = rows.map((a) => a.lastError ?? (a.state === "dead" ? a.stopReason : undefined) ?? a.journalError ?? "");
   const withNotes = notes.some(Boolean);
   const withLanded = rows.some((a) => a.counters !== undefined);
+  // What each agent says it is doing (its relayed status note), with how old the note is.
+  const withNow = rows.some((a) => typeof a.note === "string" && a.note !== "");
   const body = rows.map((a, i) => {
     const state = c[AGENT_COLOR[a.state as AgentState] ?? "dim"](a.state ?? "?");
     const intent = a.intentTitle ? quote(a.intentTitle, 40) : (a.intentId ?? "-");
     const cells = [a.id, a.kind ?? "-", state, agentStep(a), intent, a.model ?? "-"];
     if (withLanded) cells.push(a.counters ? num(a.counters.landed ?? 0) : "-");
     cells.push(typeof a.lastSeen === "number" ? ago(a.lastSeen, now) : "-");
+    if (withNow) cells.push(a.note ? `${cut(a.note, 70)}${typeof a.noteAt === "number" ? c.dim(` (${ago(a.noteAt, now)})`) : ""}` : "");
     if (withNotes) cells.push(notes[i] ? c.dim(cut(notes[i] ?? "", 60)) : "");
     return cells;
   });
-  const header = ["AGENT", "KIND", "STATE", "STEP", "INTENT", "MODEL", ...(withLanded ? ["LANDED"] : []), "SEEN", ...(withNotes ? ["NOTE"] : [])];
+  const header = ["AGENT", "KIND", "STATE", "STEP", "INTENT", "MODEL", ...(withLanded ? ["LANDED"] : []), "SEEN", ...(withNow ? ["NOW"] : []), ...(withNotes ? ["NOTE"] : [])];
   return [`${c.bold(colony)}  ${num(rows.length)} agent${rows.length === 1 ? "" : "s"}: ${states}`, ...table(header, body, withLanded ? new Set([6]) : new Set(), c)].join("\n");
 }
 
@@ -449,14 +457,190 @@ export function formatWhy(
         const r = rules.get(ruleId);
         out.push(`  ${label("rule")}${ruleId}${r ? ` ${quote(r.description)} ${c.dim("approved by")} ${r.approvedBy}` : ""}`);
       }
-      if (p.decisions.length) {
-        out.push(`  ${label("decided")}${p.decisions.map((d) => `${d.layer} ${d.kind}${typeof d.p === "number" ? ` ${c.dim(`p=${d.p.toFixed(2)}`)}` : ""} → ${d.action}`).join(c.dim(" · "))}`);
+      for (const line of directionLines(p.evidence?.direction, c, now)) out.push(`  ${label(line.k)}${line.v}`);
+      const steps = decisionSteps(p.decisions, p.evidence?.checks, c);
+      if (steps.length) {
+        out.push(`  ${label("decided")}${steps.map((s) => s.head).join(c.dim(" · "))}`);
+        for (const s of steps) if (s.detail) out.push(`  ${label("")}${c.dim(s.detail)}`);
       }
       out.push(`  ${label("checks")}${checkLine(p.evidence?.checks, c)}`);
       if (p.evidence?.residual?.length) out.push(`  ${label("residual")}${c.yellow(paths(p.evidence.residual, 4))} ${c.dim("(outside the declared footprint)")}`);
       if (p.evidence?.notVerified) out.push(`  ${label("unproven")}${p.evidence.notVerified}`);
       out.push(`  ${label("wrote")}${paths(p.writeSet.map((w) => w.path), 4)}`);
       if (p.readSet.length) out.push(`  ${label("read")}${paths(p.readSet.map((r) => r.path), 4)}`);
+    }
+  }
+  return out.join("\n");
+}
+
+/**
+ * The direction a landed change was built under (its evidence): the intent revision, the amendments
+ * up to it, the human directives the agent had, and what the agent said it was doing.
+ */
+export function directionLines(d: Direction | undefined, c: Colors, now: number): Array<{ k: string; v: string }> {
+  if (!d || typeof d.intentRevision !== "number") return [];
+  const out: Array<{ k: string; v: string }> = [];
+  const revisions = Array.isArray(d.revisions) ? d.revisions : [];
+  out.push({ k: "revision", v: `built on r${d.intentRevision}${revisions.length > 0 ? c.dim(` (amended ${revisions.length} time${revisions.length === 1 ? "" : "s"})`) : ""}` });
+  for (const r of revisions) {
+    const changed = Array.isArray(r.changed) && r.changed.length > 0 ? r.changed.join(", ") : "nothing";
+    out.push({ k: "", v: `r${r.revision}: ${changed} changed by ${r.by}${typeof r.at === "number" ? c.dim(` ${ago(r.at, now)}`) : ""}: ${quote(r.reason ?? "", 80)}` });
+  }
+  for (const g of Array.isArray(d.directives) ? d.directives : []) {
+    out.push({ k: "directive", v: `${quote(g.message ?? "", 80)} ${c.dim(`from ${g.by}${typeof g.at === "number" ? ` ${ago(g.at, now)}` : ""}`)}` });
+  }
+  if (d.note) out.push({ k: "doing", v: c.dim(quote(d.note, 90)) });
+  return out;
+}
+
+/**
+ * The decide arc of a change, in order: the deterministic proof when it decided alone (from the
+ * evidence's gate check), then each recorded decision (layer, kind, p, action, who answered), with
+ * its one-line answer when the note has one.
+ */
+export function decisionSteps(decisions: NoteDecision[] | undefined, checks: CheckResult[] | undefined, c: Colors): Array<{ head: string; detail?: string }> {
+  const out: Array<{ head: string; detail?: string }> = [];
+  const gate = (checks ?? []).find((k) => k.name === "gate");
+  const m = gate?.detail ? /→ (\S+) by (\S+)/.exec(gate.detail) : null;
+  if (m && m[2] === "deterministic") {
+    const proof = (checks ?? []).find((k) => k.name.startsWith("deterministic"));
+    out.push({ head: `deterministic proof → ${m[1]}`, ...(proof?.detail ? { detail: `deterministic: ${cut(proof.detail.replace(/\s+/g, " "), 160)}` } : {}) });
+  }
+  for (const d of decisions ?? []) {
+    const p = typeof d.p === "number" && Number.isFinite(d.p) ? ` ${c.dim(`p=${d.p.toFixed(2)}`)}` : "";
+    const head = `${d.layer} ${d.kind}${p} → ${d.action}${d.by ? c.dim(` (${d.by})`) : ""}`;
+    out.push(d.answer ? { head, detail: `${d.layer}: ${cut(d.answer, 160)}` } : { head });
+  }
+  return out;
+}
+
+/** What PATCH /intents/:iid answered. */
+export interface AmendResult {
+  intent?: Partial<Intent>;
+  revision?: { revision: number; changed: string[]; reason: string; substantive: boolean } | null;
+  returned?: number;
+  notified?: Array<{ agentId: string; delivery: string }>;
+}
+
+function deliveries(list: Array<{ agentId: string; delivery: string }> | undefined): string {
+  const l = list ?? [];
+  if (l.length === 0) return "";
+  if (l.length === 1) return `${l[0]!.agentId} ${l[0]!.delivery === "pushed" ? "was told at once" : l[0]!.delivery === "inbox" ? "will read it in its inbox" : "could not be reached (the notice waits in the colony)"}`;
+  const by = countBy(l, (n) => n.delivery);
+  return `${num(l.length)} agents told (${[...by].map(([k, n]) => `${num(n)} ${k}`).join(", ")})`;
+}
+
+/** The outcome of `ft intent amend`. */
+export function formatAmend(intentId: string, res: AmendResult, c: Colors): string {
+  const title = res.intent?.title ? ` ${quote(res.intent.title, 60)}` : "";
+  if (!res.revision) return `${c.green("✓")} Nothing changed: ${c.bold(intentId)}${title} already says that ${c.dim(`(r${res.intent?.revision ?? 1})`)}`;
+  const r = res.revision;
+  const out = [`${c.green("✓")} Amended ${c.bold(intentId)}${title} to ${c.bold(`r${r.revision}`)}: ${r.changed.join(", ")} changed`];
+  out.push(c.dim(`  reason: ${r.reason}`));
+  const parts: string[] = [];
+  if (!r.substantive) parts.push("priority only: work in progress still fits");
+  if ((res.returned ?? 0) > 0) parts.push(`${num(res.returned ?? 0)} change${res.returned === 1 ? "" : "s"} built on r${r.revision - 1} went back`);
+  const told = deliveries(res.notified);
+  if (told) parts.push(told);
+  if (parts.length) out.push(`  ${parts.join("; ")}`);
+  if (r.substantive) out.push(c.dim("  The agent holding it keeps it and redoes the work against the new revision; stale changes never land."));
+  return out.join("\n");
+}
+
+/** What POST /intents/:iid/withdraw answered. */
+export interface WithdrawResult {
+  intent?: Partial<Intent>;
+  returned?: number;
+  notified?: Array<{ agentId: string; delivery: string }>;
+  already?: boolean;
+}
+
+/** The outcome of `ft intent withdraw`. */
+export function formatWithdraw(intentId: string, reason: string, res: WithdrawResult, c: Colors): string {
+  const title = res.intent?.title ? ` ${quote(res.intent.title, 60)}` : "";
+  if (res.already) return `${c.green("✓")} ${c.bold(intentId)}${title} was already withdrawn${res.intent?.withdrawnReason ? `: ${res.intent.withdrawnReason}` : ""}`;
+  const out = [`${c.green("✓")} Withdrew ${c.bold(intentId)}${title}: ${reason}`];
+  const parts = ["its needs evaporated"];
+  if ((res.returned ?? 0) > 0) parts.push(`${num(res.returned ?? 0)} change${res.returned === 1 ? "" : "s"} in flight went back`);
+  const told = deliveries(res.notified);
+  if (told) parts.push(told);
+  out.push(`  ${parts.join("; ")}`);
+  return out.join("\n");
+}
+
+/** What DELETE /rules/:rid answered. */
+export interface RetractResult {
+  rule?: Partial<Rule>;
+  withdrawn?: number;
+  returned?: number;
+  notified?: Array<{ agentId: string; delivery: string }>;
+  already?: boolean;
+}
+
+/** The outcome of `ft rule retract`. */
+export function formatRetract(ruleId: string, reason: string, res: RetractResult, c: Colors): string {
+  const desc = res.rule?.description ? ` ${quote(res.rule.description, 60)}` : "";
+  if (res.already) return `${c.green("✓")} ${c.bold(ruleId)}${desc} was already retracted${res.rule?.retractReason ? `: ${res.rule.retractReason}` : ""}`;
+  const out = [`${c.green("✓")} Retracted ${c.bold(ruleId)}${desc}: ${reason}`];
+  const parts = [`${num(res.withdrawn ?? 0)} unlanded intent${res.withdrawn === 1 ? "" : "s"} withdrawn`];
+  if ((res.returned ?? 0) > 0) parts.push(`${num(res.returned ?? 0)} change${res.returned === 1 ? "" : "s"} in flight went back`);
+  const told = deliveries(res.notified);
+  if (told) parts.push(told);
+  out.push(`  ${parts.join("; ")}`);
+  out.push(c.dim("  The rule stays in history; landed work is untouched."));
+  return out.join("\n");
+}
+
+/** What POST /agents/:aid/directive answered. */
+export interface DirectResult {
+  id?: string;
+  agentId?: string;
+  intentId?: string;
+  message?: string;
+  delivery?: string;
+}
+
+/** The outcome of `ft direct`. */
+export function formatDirect(agentId: string, res: DirectResult, c: Colors): string {
+  const about = res.intentId ? c.dim(` about ${res.intentId}`) : "";
+  const how =
+    res.delivery === "pushed"
+      ? "delivered: the agent acts on it at its next step"
+      : res.delivery === "inbox"
+        ? "waiting in its inbox (an external agent reads it there)"
+        : c.yellow("not delivered: the agent did not answer (it is kept in the colony's record)");
+  return [`${res.delivery === "failed" ? c.yellow("!") : c.green("✓")} Directive ${c.bold(res.id ?? "?")} to ${c.bold(agentId)}${about}: ${how}`, c.dim(`  ${quote(res.message ?? "", 100)}`), c.dim(`  Follow it: ft agents <colony> (NOW column) or ft watch <colony> --only status,directive`)].join("\n");
+}
+
+/** What GET /intents/:iid answered. */
+export interface IntentShowResult {
+  intent?: Partial<Intent>;
+  revisions?: Array<{ revision: number; changed: string[]; before?: Record<string, unknown>; after?: Record<string, unknown>; reason: string; by: string; at: number; substantive?: boolean }>;
+  directives?: Array<{ id: string; kind: string; agentId: string; message: string; by: string; at: number; deliveredAt?: number; via?: string }>;
+}
+
+/** An intent with its revision history and the directives about it. */
+export function formatIntentShow(res: IntentShowResult, c: Colors, now: number): string {
+  const i = res.intent ?? {};
+  const out = [`${c.bold(i.id ?? "?")} ${quote(i.title ?? "", 70)} ${c.dim(`r${i.revision ?? 1} · ${i.status ?? "?"}${i.assignedTo ? ` · held by ${i.assignedTo}` : ""}`)}`];
+  if (i.footprint?.length) out.push(`  ${c.dim("footprint".padEnd(10))}${paths(i.footprint, 4)}`);
+  if (i.withdrawnReason) out.push(`  ${c.dim("withdrawn".padEnd(10))}${i.withdrawnReason}`);
+  if (i.why) out.push(`  ${c.dim("why".padEnd(10))}${cut(i.why.replace(/\s+/g, " "), 160)}`);
+  for (const r of res.revisions ?? []) {
+    out.push(`  ${c.dim(`r${r.revision}`.padEnd(10))}${r.changed.join(", ")} changed by ${r.by} ${c.dim(ago(r.at, now))}: ${quote(r.reason, 80)}${r.substantive === false ? c.dim(" (priority only)") : ""}`);
+    for (const f of r.changed) {
+      const was = r.before?.[f];
+      const is = r.after?.[f];
+      const show = (v: unknown) => (Array.isArray(v) ? v.join(", ") : typeof v === "string" ? quote(v, 60) : String(v));
+      if (was !== undefined || is !== undefined) out.push(`  ${"".padEnd(10)}${c.dim(`${f}: ${show(was)} → `)}${show(is)}`);
+    }
+  }
+  const ds = res.directives ?? [];
+  if (ds.length) {
+    out.push(`  ${c.dim("directives")}`);
+    for (const d of ds) {
+      const seen = d.deliveredAt ? c.dim(` (${d.via ?? "delivered"} ${ago(d.deliveredAt, now)})`) : c.dim(" (not delivered yet)");
+      out.push(`    ${d.id} ${d.kind} → ${d.agentId} from ${d.by} ${c.dim(ago(d.at, now))}: ${quote(d.message, 80)}${seen}`);
     }
   }
   return out.join("\n");
@@ -520,6 +704,16 @@ export function formatEvent(e: ColonyEvent, c: Colors, clock: (at: number) => st
     }
     case "metric":
       return `${time} ${tag("metric", "dim")} ${e.name} ${num(e.value)}`;
+    case "amended":
+      return `${time} ${tag("amended", "magenta")} ${e.intentId} ${c.bold(`r${e.revision}`)} ${(e.changed ?? []).join(", ")} changed ${quote(e.title, 50)} ${c.dim(`by ${e.by}: ${e.reason}`)}${e.returned ? c.yellow(` (${e.returned} returned)`) : ""}`;
+    case "withdrawn":
+      return `${time} ${tag("withdrawn", "red")} ${e.intentId} ${quote(e.title, 50)} ${c.dim(`by ${e.by}: ${e.reason}`)}${e.returned ? c.yellow(` (${e.returned} returned)`) : ""}`;
+    case "retracted":
+      return `${time} ${tag("retracted", "red")} ${e.ruleId} ${c.dim(`by ${e.by}: ${e.reason}`)} ${e.withdrawn} intent${e.withdrawn === 1 ? "" : "s"} withdrawn`;
+    case "directive":
+      return `${time} ${tag("directive", "cyan")} ${e.agentId} ← ${e.by}: ${quote(e.message, 80)}${e.intentId ? c.dim(` (${e.intentId})`) : ""}${e.via ? c.dim(` ${e.via}`) : ""}`;
+    case "status":
+      return `${time} ${tag("status", "blue")} ${e.agentId} ${e.note}`;
     default: {
       const unknown = e as { t?: unknown };
       return `${time} ${tag(String(unknown.t ?? "event"), "dim")} ${c.dim(JSON.stringify(e).slice(0, 160))}`;

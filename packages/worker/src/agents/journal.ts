@@ -1,4 +1,5 @@
 import type { Path } from "@fire_trident/core";
+import type { HeldDirective } from "./direction.ts";
 import type { AgentConfig, HistoryEntry, Job, Journal, StepLogEntry } from "./loop.ts";
 
 /** Steps kept in the step log. */
@@ -70,6 +71,15 @@ export class SqlJournal implements Journal, JournalView {
     return this.sql.exec<{ path: string; content: string }>("SELECT path, content FROM ft_agent_changes ORDER BY path").toArray();
   }
 
+  /** Directives the colony pushed (see agents/direction.ts). */
+  directives(): HeldDirective[] {
+    return this.get<HeldDirective[]>("directives") ?? [];
+  }
+
+  setDirectives(list: HeldDirective[]): void {
+    this.put("directives", list);
+  }
+
   putChange(path: Path, content: string): void {
     this.sql.exec("INSERT INTO ft_agent_changes (path, content) VALUES (?, ?) ON CONFLICT(path) DO UPDATE SET content = excluded.content", path, content);
   }
@@ -134,6 +144,7 @@ export class SqlJournal implements Journal, JournalView {
 export class MemoryJournal implements Journal, JournalView {
   private cfg: AgentConfig | null = null;
   private current: Job | null = null;
+  private held: HeldDirective[] = [];
   private files = new Map<Path, string>();
   private readonly log_: StepLogEntry[] = [];
   private readonly history_: HistoryEntry[] = [];
@@ -157,6 +168,12 @@ export class MemoryJournal implements Journal, JournalView {
   }
   putChange(path: Path, content: string): void {
     this.files.set(path, content);
+  }
+  directives(): HeldDirective[] {
+    return structuredClone(this.held);
+  }
+  setDirectives(list: HeldDirective[]): void {
+    this.held = structuredClone(list);
   }
   log(e: StepLogEntry): void {
     this.log_.push(structuredClone(e));

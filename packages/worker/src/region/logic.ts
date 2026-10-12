@@ -106,6 +106,20 @@ export function nextTickAt(now: number, lastTickAt: number, delayMs: number): nu
   return Math.max(now, lastTickAt + delayMs);
 }
 
+/**
+ * The smallest claim value that keeps an agent inside a region for admission: the bar lateral
+ * inhibition uses (FT_LATERAL_INHIBITION as a fraction of a fresh claim, else half a fresh claim).
+ * "off", 0 or anything unparsable falls back to the default: admission must never count a claim
+ * that is mostly gone. Heartbeats keep a working agent's claims above it; a silent agent's claims
+ * (tau 5 minutes) fall below it after about 3.5 minutes, where counting every claim until it
+ * decays to 0.01 kept a stopped run in the count for 23 minutes.
+ */
+export function admissionBar(raw: string | undefined, fallback = 0.5): number {
+  const s = (raw ?? "").trim();
+  const f = s === "" || s === "off" ? Number.NaN : Number(s);
+  return Number.isFinite(f) && f > 0 && f <= 1 ? f : fallback;
+}
+
 /** Split a list into chunks of at most `size` items. */
 export function chunks<T>(items: T[], size: number): T[][] {
   const out: T[][] = [];

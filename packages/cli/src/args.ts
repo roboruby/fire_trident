@@ -2,7 +2,22 @@ import { parseArgs } from "node:util";
 import type { AgentKind, ColonyEvent } from "@fire_trident/core";
 
 /** Event types `ft watch --only` accepts. */
-export const EVENT_TYPES: ReadonlyArray<ColonyEvent["t"]> = ["agent", "mark", "intent", "proposal", "landing", "decision", "sigma", "violations", "metric"];
+export const EVENT_TYPES: ReadonlyArray<ColonyEvent["t"]> = [
+  "agent",
+  "mark",
+  "intent",
+  "proposal",
+  "landing",
+  "decision",
+  "sigma",
+  "violations",
+  "metric",
+  "amended",
+  "withdrawn",
+  "retracted",
+  "directive",
+  "status",
+];
 
 /** What a human can do with an escalated proposal. */
 export type ReviewDecision = "approve" | "reject" | "return";
@@ -25,7 +40,12 @@ export type Command =
   | { name: "agents"; colony: string; all: boolean; journal: boolean }
   | { name: "stop"; colony: string; agentId?: string; all: boolean; reason?: string }
   | { name: "delete"; colony: string }
-  | { name: "vaccinate"; colony: string; count: number };
+  | { name: "vaccinate"; colony: string; count: number }
+  | { name: "intent-amend"; colony: string; intentId: string; title?: string; why?: string; footprint?: string[]; priority?: number; reason: string; by?: string }
+  | { name: "intent-withdraw"; colony: string; intentId: string; reason: string; by?: string }
+  | { name: "intent-show"; colony: string; intentId: string }
+  | { name: "rule-retract"; colony: string; ruleId: string; reason: string; by?: string }
+  | { name: "direct"; colony: string; agentId: string; message: string; intentId?: string; by?: string };
 
 /** Options every command accepts. */
 export interface GlobalFlags {
@@ -61,7 +81,17 @@ const COMMAND_OPTIONS: Record<string, Record<string, OptionSpec>> = {
     description: { type: "string" },
     replacement: { type: "string" },
     by: { type: "string" },
+    reason: { type: "string" },
   },
+  intent: {
+    title: { type: "string" },
+    why: { type: "string" },
+    footprint: { type: "string", multiple: true },
+    priority: { type: "string" },
+    reason: { type: "string" },
+    by: { type: "string" },
+  },
+  direct: { intent: { type: "string" }, by: { type: "string" } },
   swarm: { agents: { type: "string" }, model: { type: "string" }, kind: { type: "string" } },
   why: {},
   review: { reason: { type: "string" }, by: { type: "string" } },
@@ -346,9 +376,84 @@ function build(word: string, v: Record<string, unknown>, p: string[]): Command {
       const colony = colonyArg(p[0], usage);
       return { name: "vaccinate", colony, count: positiveInt(required(v.count, "count"), "--count", 64) };
     }
+    case "intent":
+      return buildIntent(v, p);
+    case "direct": {
+      const usage = 'ft direct <colony> <agentId> "message" [--intent <intentId>]';
+      const colony = colonyArg(p[0], usage);
+      const agentId = p[1]?.trim();
+      if (!agentId) fail(`missing <agentId>. Usage: ${usage}`);
+      // The message may come as one quoted argument or as several words.
+      const message = p.slice(2).join(" ").trim();
+      if (!message) fail(`missing the message. Usage: ${usage}`);
+      if (message.length > 2_000) fail(`the message is ${message.length} characters; at most 2000`);
+      const cmd: Command = { name: "direct", colony, agentId, message };
+      const intent = str(v.intent)?.trim();
+      if (intent) cmd.intentId = intent;
+      const by = str(v.by)?.trim();
+      if (by) cmd.by = by;
+      return cmd;
+    }
     default:
       return fail(`unknown command "${word}"`);
   }
+}
+
+function buildIntent(v: Record<string, unknown>, p: string[]): Command {
+  const sub = p[0];
+  const by = str(v.by)?.trim();
+  if (sub === "amend") {
+    const usage = "ft intent amend <colony> <intentId> [--title <t>] [--why <w>] [--footprint <path>]... [--priority <n>] --reason <text>";
+    noExtras(p, 3, usage);
+    onlyFlags(v, ["title", "why", "footprint", "priority", "reason", "by"], "intent amend");
+    const colony = colonyArg(p[1], usage);
+    const intentId = p[2]?.trim();
+    if (!intentId) fail(`missing <intentId>. Usage: ${usage}`);
+    const cmd: Command = { name: "intent-amend", colony, intentId, reason: required(v.reason, "reason") };
+    const title = str(v.title)?.trim();
+    if (str(v.title) !== undefined) {
+      if (!title) fail("--title cannot be empty");
+      cmd.title = title;
+    }
+    if (str(v.why) !== undefined) cmd.why = str(v.why) ?? "";
+    const footprint = list(v.footprint).flatMap((s) => s.split(",")).map((s) => s.trim()).filter(Boolean);
+    if (list(v.footprint).length > 0) {
+      if (footprint.length === 0) fail("--footprint needs at least one path");
+      cmd.footprint = [...new Set(footprint)];
+    }
+    const priority = str(v.priority);
+    if (priority !== undefined) {
+      const n = Number(priority.trim());
+      if (priority.trim() === "" || !Number.isFinite(n) || n < 0 || n > 1_000) fail(`--priority must be a number from 0 to 1000, got "${priority}"`);
+      cmd.priority = n;
+    }
+    if (cmd.title === undefined && cmd.why === undefined && cmd.footprint === undefined && cmd.priority === undefined) {
+      fail(`say what changes: --title, --why, --footprint or --priority. Usage: ${usage}`);
+    }
+    if (by) cmd.by = by;
+    return cmd;
+  }
+  if (sub === "withdraw") {
+    const usage = "ft intent withdraw <colony> <intentId> --reason <text>";
+    noExtras(p, 3, usage);
+    onlyFlags(v, ["reason", "by"], "intent withdraw");
+    const colony = colonyArg(p[1], usage);
+    const intentId = p[2]?.trim();
+    if (!intentId) fail(`missing <intentId>. Usage: ${usage}`);
+    const cmd: Command = { name: "intent-withdraw", colony, intentId, reason: required(v.reason, "reason") };
+    if (by) cmd.by = by;
+    return cmd;
+  }
+  if (sub === "show") {
+    const usage = "ft intent show <colony> <intentId>";
+    noExtras(p, 3, usage);
+    onlyFlags(v, [], "intent show");
+    const colony = colonyArg(p[1], usage);
+    const intentId = p[2]?.trim();
+    if (!intentId) fail(`missing <intentId>. Usage: ${usage}`);
+    return { name: "intent-show", colony, intentId };
+  }
+  return fail(sub ? `unknown intent subcommand "${sub}" (expected amend, withdraw or show)` : "missing intent subcommand: amend, withdraw or show");
 }
 
 function buildRule(v: Record<string, unknown>, p: string[]): Command {
@@ -398,7 +503,19 @@ function buildRule(v: Record<string, unknown>, p: string[]): Command {
     if (by) cmd.by = by;
     return cmd;
   }
-  return fail(sub ? `unknown rule subcommand "${sub}" (expected add or import-boundary)` : "missing rule subcommand: add or import-boundary");
+  if (sub === "retract") {
+    const usage = "ft rule retract <colony> <ruleId> --reason <text>";
+    noExtras(p, 3, usage);
+    onlyFlags(v, ["reason", "by"], "rule retract");
+    const colony = colonyArg(p[1], usage);
+    const ruleId = p[2]?.trim();
+    if (!ruleId) fail(`missing <ruleId>. Usage: ${usage}`);
+    const cmd: Command = { name: "rule-retract", colony, ruleId, reason: required(v.reason, "reason") };
+    const by = str(v.by)?.trim();
+    if (by) cmd.by = by;
+    return cmd;
+  }
+  return fail(sub ? `unknown rule subcommand "${sub}" (expected add, import-boundary or retract)` : "missing rule subcommand: add, import-boundary or retract");
 }
 
 /** Usage text for the whole CLI, or for one command when `topic` names it. */
@@ -420,8 +537,13 @@ Commands
   status <colony>                  Summarize trunk, intents, agents, and violations
   rule add <colony>                Forbid a pattern; every match becomes a need
   rule import-boundary <colony>    Forbid imports across a boundary
+  rule retract <colony> <ruleId>   Retract a rule; its unlanded intents are withdrawn
+  intent amend <colony> <id>       Change an intent's title, why, footprint or priority
+  intent withdraw <colony> <id>    Call an intent off before it lands
+  intent show <colony> <id>        An intent with its revisions and directives
+  direct <colony> <agent> "text"   Send one agent free-text guidance mid-flight
   swarm <colony> --agents <n>      Spawn in-platform agents
-  agents <colony>                  List agents: state, intent, model, current step
+  agents <colony>                  List agents: state, intent, step, what each says it is doing
   stop <colony> <agentId>|--all    Stop one agent, or every in-platform agent
   vaccinate <colony> --count <n>   Inject planted bad changes to test the immune layer
   why <colony> <path[:line]>       Show the lineage behind a file or line
@@ -494,12 +616,18 @@ ft rule add <colony> --pattern <regex> [--flags <f>] [--include <glob>]... [--ex
                      --hint <text> --description <text> [--replacement <text>] [--by <name>]
 ft rule import-boundary <colony> --from <glob>... --module <regex>
                      --hint <text> --description <text> [--by <name>]
+ft rule retract <colony> <ruleId> --reason <text> [--by <name>]
 
 Declare an architecture rule. FireTrident scans trunk; every violation becomes a
 need in the field and an intent the swarm can take. --hint tells agents how to
 fix a violation. --replacement is an optional deterministic fix for synthetic
 agents: a RegExp replacement string ($1 allowed) applied to each violating line.
 --by records who approved the rule (default $FT_USER).
+
+retract takes a rule back: it stays in history but is no longer checked, its
+open violations stop counting, and every intent it created that has not landed
+is withdrawn (needs evaporate, changes in flight go back, agents stop). Landed
+work is untouched.
 
 Examples
   ft rule add web --pattern "console\\\\.(log|warn|error)\\\\(" --include "src/**" \\
@@ -534,12 +662,41 @@ ft review <colony> <proposalId> approve|reject|return [--reason <text>] [--by <n
 List proposals escalated to a human, or decide one. --reason is required to
 reject or return; a rejection can mint an antibody.
 `,
+  intent: `
+ft intent amend <colony> <intentId> [--title <t>] [--why <text>] [--footprint <path>]...
+                [--priority <n>] --reason <text> [--by <name>]
+ft intent withdraw <colony> <intentId> --reason <text> [--by <name>]
+ft intent show <colony> <intentId>
+
+Change direction while the colony works. amend raises the intent's revision and
+records what changed and why. Needs move with the footprint. When the title, why
+or footprint changes, changes built on the older revision go back, and the agent
+holding the intent is told: it keeps the intent and redoes the work against the
+new revision. withdraw calls the intent off: its needs evaporate, changes in
+flight go back, and its agent stops. Landed work is never touched.
+
+Examples
+  ft intent amend web int_42 --why "Return 'bonjour', not 'hello'" --reason "French UI"
+  ft intent withdraw web int_42 --reason "Superseded by the new router"
+`,
+  direct: `
+ft direct <colony> <agentId> "message" [--intent <intentId>] [--by <name>]
+
+Send one agent free-text guidance. It is about the intent the agent holds unless
+--intent names another. An in-platform agent gets it at once, folds it into its
+next prompt and redoes work it has not landed (it recalls a proposal still in
+flight); an external agent reads it in its inbox. The agent's status note
+(ft agents) shows what it did with it.
+
+Example
+  ft direct web agt_7 "Use the logger from src/log.ts, not console"
+`,
   watch: `
 ft watch <colony> [--only <type,...>]
 
 Stream live colony events, one line each. Types: agent, mark, intent, proposal,
-landing, decision, sigma, violations, metric. --json prints raw events.
-Reconnects automatically; Ctrl-C to stop.
+landing, decision, sigma, violations, metric, amended, withdrawn, retracted,
+directive, status. --json prints raw events. Reconnects automatically; Ctrl-C to stop.
 
 Example
   ft watch web --only landing,proposal,violations
@@ -554,7 +711,8 @@ age, and source. --scan also looks for colonies created before the registry.
 ft agents <colony> [--all] [--no-journal]
 
 List a colony's agents: kind, state, the step each in-platform agent is on, the
-intent it holds, its model, and when it was last seen.
+intent it holds, its model, what it says it is doing now (its relayed status
+note), and when it was last seen.
 
   --all          Include dead and stopped agents
   --no-journal   Skip each agent's own journal (faster for large swarms)

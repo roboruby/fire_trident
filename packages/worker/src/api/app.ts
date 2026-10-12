@@ -8,7 +8,22 @@ import { decodeError, ftError } from "../colony/errors.ts";
 import { slug } from "../colony/logic.ts";
 import { flag, isUnsupportedRpc, mapLimit, messageOf } from "./logic.ts";
 import { UPGRADING, deleteColony, listAgents, listColonies, registerColony, stopAgents, stopSwarm } from "./ops.ts";
-import { AgentBody, CreateColonyBody, DecisionBody, IntentBody, ProposalBody, RuleBody, StopBody, SwarmBody, SwarmStopBody, WhyQuery } from "./schemas.ts";
+import {
+  AgentBody,
+  AmendIntentBody,
+  CreateColonyBody,
+  DecisionBody,
+  DirectiveBody,
+  IntentBody,
+  ProposalBody,
+  RuleBody,
+  StatusBody,
+  StopBody,
+  SwarmBody,
+  SwarmStopBody,
+  WhyQuery,
+  WithdrawBody,
+} from "./schemas.ts";
 import { decideApi } from "./vaccinate.ts";
 
 /** Hono environment of the API. */
@@ -133,12 +148,19 @@ async function requireColony(env: Env, colonyId: Id): Promise<void> {
  *   GET    /colonies/:id/field              FieldReading[] (all regions, or ?region=)
  *   GET    /colonies/:id/metrics            metrics, funnel, violations, per-minute series
  *   POST   /colonies/:id/intents            declare an intent
+ *   GET    /colonies/:id/intents/:iid       one intent with its revision history and directives
+ *   PATCH  /colonies/:id/intents/:iid       amend an intent (revision + 1; stale work goes back)
+ *   POST   /colonies/:id/intents/:iid/withdraw  withdraw an intent (needs evaporate, holder stops)
  *   POST   /colonies/:id/rules              add a morphology rule (creates needs)
+ *   DELETE /colonies/:id/rules/:rid         retract a rule (kept in history; its unlanded intents withdrawn)
  *   GET    /colonies/:id/agents             agents with state, intent, model, journal step (?all=1, ?journal=0)
  *   POST   /colonies/:id/agents             register an agent
  *   POST   /colonies/:id/agents/:aid/take   self-assign work + workspace lease
  *   POST   /colonies/:id/agents/:aid/heartbeat
  *   POST   /colonies/:id/agents/:aid/stop   stop one agent (claims released)
+ *   POST   /colonies/:id/agents/:aid/directive  free-text guidance (pushed in-platform, inbox otherwise)
+ *   POST   /colonies/:id/agents/:aid/status the agent's one-line "what I am doing now"
+ *   GET    /colonies/:id/agents/:aid/inbox  the agent's proposals and directives, newest first
  *   POST   /colonies/:id/proposals          propose a change
  *   GET    /colonies/:id/proposals/:pid     one proposal (poll its outcome)
  *   GET    /colonies/:id/why                ?path=&line=
@@ -298,6 +320,66 @@ export function createApi(deps: ApiDeps): Hono<ApiEnv> {
     return json(res, 201);
   });
 
+  // Changing direction: amend or withdraw an intent, retract a rule, direct an agent, relay status.
+
+  app.get("/colonies/:id/intents/:iid", async (c) => {
+    const res = await colonyStub(c.env, colonyParam(c)).intentHistory(c.req.param("iid"));
+    if (!res) throw ftError(404, `unknown intent ${c.req.param("iid")}`);
+    return json(res);
+  });
+
+  app.patch("/colonies/:id/intents/:iid", requireAdmin, async (c) => {
+    const b = await body(c, AmendIntentBody);
+    const res = await colonyStub(c.env, colonyParam(c)).amendIntent(c.req.param("iid"), {
+      ...(b.title !== undefined ? { title: b.title } : {}),
+      ...(b.why !== undefined ? { why: b.why } : {}),
+      ...(b.footprint !== undefined ? { footprint: b.footprint } : {}),
+      ...(b.priority !== undefined ? { priority: b.priority } : {}),
+      reason: b.reason,
+      by: b.by ?? "api",
+    });
+    return json(res);
+  });
+
+  app.post("/colonies/:id/intents/:iid/withdraw", requireAdmin, async (c) => {
+    const b = await body(c, WithdrawBody);
+    return json(await colonyStub(c.env, colonyParam(c)).withdrawIntent(c.req.param("iid"), { reason: b.reason, by: b.by ?? "api" }));
+  });
+
+  app.delete("/colonies/:id/rules/:rid", requireAdmin, async (c) => {
+    const colonyId = colonyParam(c);
+    // The reason comes in a JSON body or as ?reason= (some clients send no body with DELETE).
+    const text = await c.req.text();
+    let raw: Record<string, unknown> = {};
+    if (text.trim()) {
+      try {
+        raw = JSON.parse(text) as Record<string, unknown>;
+      } catch {
+        throw ftError(400, "body must be JSON");
+      }
+    }
+    const q = { reason: c.req.query("reason"), by: c.req.query("by") };
+    const b = validate(WithdrawBody, { ...(q.reason !== undefined ? { reason: q.reason } : {}), ...(q.by !== undefined ? { by: q.by } : {}), ...raw });
+    return json(await colonyStub(c.env, colonyId).retractRule(c.req.param("rid"), { reason: b.reason, by: b.by ?? "api" }));
+  });
+
+  app.post("/colonies/:id/agents/:aid/directive", requireAdmin, async (c) => {
+    const b = await body(c, DirectiveBody);
+    const d = await colonyStub(c.env, colonyParam(c)).direct(c.req.param("aid"), { message: b.message, ...(b.intentId ? { intentId: b.intentId } : {}), by: b.by ?? "api" });
+    return json(d, 201);
+  });
+
+  app.post("/colonies/:id/agents/:aid/status", requireAdmin, async (c) => {
+    const b = await body(c, StatusBody);
+    return json(await colonyStub(c.env, colonyParam(c)).relay(c.req.param("aid"), b.note));
+  });
+
+  app.get("/colonies/:id/agents/:aid/inbox", requireAdmin, async (c) => {
+    const raw = c.req.query("limit");
+    const limit = raw !== undefined && /^\d+$/.test(raw) ? Math.max(1, Math.min(200, Number(raw))) : 20;
+    return json(await colonyStub(c.env, colonyParam(c)).inbox(c.req.param("aid"), limit));
+  });
+
   app.post("/colonies/:id/agents", requireAdmin, async (c) => {
     const colonyId = colonyParam(c);
     const b = await body(c, AgentBody);
@@ -334,6 +416,7 @@ export function createApi(deps: ApiDeps): Hono<ApiEnv> {
       writeSet: b.writeSet,
       readSet: b.readSet,
       declared: b.declared,
+      ...(b.intentRevision !== undefined ? { intentRevision: b.intentRevision } : {}),
       ...(evidence ? { evidence } : {}),
     });
     return json(proposal, 201);

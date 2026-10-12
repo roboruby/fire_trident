@@ -47,6 +47,9 @@ export interface AgentView {
   seen: number;
   /** Epoch ms the UI first saw this agent (fade-in on the map). */
   bornAt: number;
+  /** What the agent says it is doing now (its relayed status note), and when. */
+  note?: string;
+  noteAt?: number;
 }
 
 export interface IntentView {
@@ -61,6 +64,9 @@ export interface IntentView {
   updatedAt: number;
   assignedTo?: Id;
   ruleId?: Id;
+  /** 1 until the intent is amended. */
+  revision: number;
+  withdrawnReason?: string;
 }
 
 export interface ProposalView {
@@ -117,9 +123,24 @@ export interface Vaccination {
   hits: number | null;
 }
 
-const EVENT_TYPES: ReadonlySet<string> = new Set(["agent", "mark", "intent", "proposal", "landing", "decision", "sigma", "violations", "metric"]);
+const EVENT_TYPES: ReadonlySet<string> = new Set([
+  "agent",
+  "mark",
+  "intent",
+  "proposal",
+  "landing",
+  "decision",
+  "sigma",
+  "violations",
+  "metric",
+  "amended",
+  "withdrawn",
+  "retracted",
+  "directive",
+  "status",
+]);
 const AGENT_STATES: ReadonlySet<string> = new Set<AgentState>(["idle", "working", "proposing", "waiting", "dead"]);
-const INTENT_STATUSES: ReadonlySet<string> = new Set<IntentStatus>(["open", "claimed", "proposed", "landed", "abandoned"]);
+const INTENT_STATUSES: ReadonlySet<string> = new Set<IntentStatus>(["open", "claimed", "proposed", "landed", "abandoned", "withdrawn"]);
 const LAYERS: ReadonlySet<string> = new Set<DecisionLayer>(["reflex", "llm", "human"]);
 const IN_FLIGHT: ReadonlySet<ProposalStatus> = new Set<ProposalStatus>(["pending", "checking", "ready", "escalated"]);
 const FINAL: ReadonlySet<ProposalStatus> = new Set<ProposalStatus>(["landed", "returned", "rejected"]);
@@ -193,7 +214,7 @@ export class ColonyStore {
   readonly agentNames = new Map<Id, string>();
   readonly agentsByState: Record<AgentState, number> = { idle: 0, working: 0, proposing: 0, waiting: 0, dead: 0 };
   readonly intents = new Map<Id, IntentView>();
-  readonly intentsByStatus: Record<IntentStatus, number> = { open: 0, claimed: 0, proposed: 0, landed: 0, abandoned: 0 };
+  readonly intentsByStatus: Record<IntentStatus, number> = { open: 0, claimed: 0, proposed: 0, landed: 0, abandoned: 0, withdrawn: 0 };
   intentsVersion = 0;
   readonly proposals = new Map<Id, ProposalView>();
   readonly rules = new Map<Id, Rule>();
@@ -288,6 +309,8 @@ export class ColonyStore {
         updatedAt: finite(i.createdAt, now),
         assignedTo: i.assignedTo,
         ruleId: i.ruleId,
+        revision: Math.max(1, finite(i.revision, 1)),
+        withdrawnReason: i.withdrawnReason,
       });
       tally(this.intentsByStatus, i.status, 1, INTENT_STATUSES);
     }
@@ -313,6 +336,8 @@ export class ColonyStore {
         paths: a.intentId ? (this.intents.get(a.intentId)?.footprint ?? []) : [],
         seen: finite(a.lastSeen, now),
         bornAt: 0,
+        note: a.note,
+        noteAt: a.noteAt,
       });
       tally(this.agentsByState, a.state, 1, AGENT_STATES);
       this.agentChanges.add(a.id);
@@ -429,6 +454,26 @@ export class ColonyStore {
         if (layer) this.funnel[layer] = Math.max(0, ev.value);
         break;
       }
+      case "amended":
+      case "withdrawn":
+        this.onDirection(ev, now);
+        break;
+      case "retracted": {
+        const rule = this.rules.get(ev.ruleId);
+        if (rule) this.rules.set(ev.ruleId, { ...rule, retractedAt: finite(ev.at, now), retractedBy: ev.by, retractReason: ev.reason });
+        this.intentsVersion++;
+        break;
+      }
+      case "status": {
+        const a = typeof ev.agentId === "string" ? this.agents.get(ev.agentId) : undefined;
+        if (a && typeof ev.note === "string") {
+          a.note = ev.note;
+          a.noteAt = finite(ev.at, now);
+        }
+        break;
+      }
+      case "directive":
+        break; // shown in the log only
     }
     this.ring[this.ringHead] = { seq: ++this.seq, ev, delta };
     this.ringHead = (this.ringHead + 1) % LOG_CAP;
@@ -521,7 +566,7 @@ export class ColonyStore {
     if (typeof ev.intentId !== "string") return;
     let it = this.intents.get(ev.intentId);
     if (!it) {
-      it = { id: ev.intentId, title: ev.title ?? ev.intentId, status: ev.status, footprint: Array.isArray(ev.footprint) ? ev.footprint : [], priority: 1, createdAt: finite(ev.at, now), updatedAt: now };
+      it = { id: ev.intentId, title: ev.title ?? ev.intentId, status: ev.status, footprint: Array.isArray(ev.footprint) ? ev.footprint : [], priority: 1, createdAt: finite(ev.at, now), updatedAt: now, revision: 1 };
       this.intents.set(it.id, it);
       tally(this.intentsByStatus, ev.status, 1, INTENT_STATUSES);
     } else {
@@ -535,6 +580,26 @@ export class ColonyStore {
       it.updatedAt = now;
     }
     if (ev.status === "open") it.assignedTo = undefined;
+    this.intentsVersion++;
+  }
+
+  /** An intent was amended (new revision, maybe a new title) or withdrawn (with the reason). */
+  private onDirection(ev: Extract<ColonyEvent, { t: "amended" | "withdrawn" }>, now: number): void {
+    const it = typeof ev.intentId === "string" ? this.intents.get(ev.intentId) : undefined;
+    if (!it) return;
+    if (ev.t === "amended") {
+      if (typeof ev.revision === "number" && ev.revision > it.revision) it.revision = ev.revision;
+      if (ev.title) it.title = ev.title;
+    } else {
+      if (it.status !== "withdrawn") {
+        tally(this.intentsByStatus, it.status, -1, INTENT_STATUSES);
+        tally(this.intentsByStatus, "withdrawn", 1, INTENT_STATUSES);
+        it.status = "withdrawn";
+      }
+      it.withdrawnReason = ev.reason;
+      it.assignedTo = undefined;
+    }
+    it.updatedAt = now;
     this.intentsVersion++;
   }
 

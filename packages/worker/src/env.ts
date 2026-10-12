@@ -37,6 +37,8 @@ export interface Env {
   FT_COCHANGE_WEIGHT?: string;
   /** Optional: lateral inhibition threshold as a fraction of a fresh claim, or "off". */
   FT_LATERAL_INHIBITION?: string;
+  /** Optional (load tests only): when set, ColonyDO logs event-loop lag and streams it as colony.lagMs. */
+  FT_LAG_PROBE?: string;
   /** Secret (optional): token MCP clients must present at /mcp and /sse. */
   FT_MCP_TOKEN?: string;
   /** Secret (optional): enables Claude agents via AI Gateway / Anthropic. */

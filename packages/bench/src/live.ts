@@ -44,6 +44,8 @@ export interface LiveOptions {
   timeoutMs: number;
   out?: string;
   label: string;
+  /** After the run, stop (retire) its agents so their claims never hold admission (default true). */
+  stopAgents?: boolean;
 }
 
 type Assignment = { intent: Intent; lease: WorkspaceLease };
@@ -51,6 +53,24 @@ type TakeResult = Assignment | { wait: true; retryInMs: number; reason: string }
 const TERMINAL = new Set(["landed", "returned", "rejected"]);
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, Math.max(0, ms)));
+
+/** Backoff after the n-th failed call in a row, as in-platform agents do (agents/loop.ts backoffMs): 1 s, 2 s, 4 s, ... +-25%, at most 60 s. */
+export function errorBackoffMs(n: number, rand: () => number = Math.random): number {
+  const base = Math.min(60_000, 1000 * 2 ** Math.max(0, n - 1));
+  return Math.round(base * (0.75 + rand() * 0.5));
+}
+
+/**
+ * "Name: message (cause)" for a failed call. fetch reports every network failure as "fetch failed"
+ * and keeps the reason (reset, refused, connect timeout, no free local port) in `cause`.
+ */
+export function errorDetail(e: unknown): string {
+  if (!(e instanceof Error)) return String(e);
+  const cause = (e as { cause?: unknown }).cause;
+  const code = cause instanceof Error ? (cause as { code?: unknown }).code : undefined;
+  const why = typeof code === "string" ? code : cause instanceof Error ? cause.message : typeof cause === "string" ? cause : undefined;
+  return why ? `${e.name}: ${e.message} (${why})` : `${e.name}: ${e.message}`;
+}
 
 /** Minimal timed JSON client for one colony. */
 export class Client {
@@ -60,6 +80,8 @@ export class Client {
   readonly timeoutMs: number;
   calls = 0;
   failures = 0;
+  /** Calls, failures and the slowest call per second of wall time (by when each call finished). */
+  readonly timeline = new Map<number, { calls: number; errors: number; maxMs: number }>();
 
   constructor(cfg: LiveConfig, colony: string, rec: Recorder, timeoutMs = 30_000) {
     this.cfg = cfg;
@@ -94,15 +116,27 @@ export class Client {
         }
         this.failures++;
         this.rec.error(op, ms, redact(`${res.status} ${detail}`));
+        this.mark(ms, true);
         return null;
       }
       this.rec.record(op, ms);
+      this.mark(ms, false);
       return (text ? JSON.parse(text) : null) as T;
     } catch (e) {
       this.failures++;
-      this.rec.error(op, performance.now() - t0, redact(e instanceof Error ? `${e.name}: ${e.message}` : String(e)));
+      this.rec.error(op, performance.now() - t0, redact(errorDetail(e)));
+      this.mark(performance.now() - t0, true);
       return null;
     }
+  }
+
+  private mark(ms: number, failed: boolean): void {
+    const sec = Math.floor(Date.now() / 1000);
+    const b = this.timeline.get(sec) ?? { calls: 0, errors: 0, maxMs: 0 };
+    b.calls++;
+    if (failed) b.errors++;
+    b.maxMs = Math.max(b.maxMs, Math.round(ms));
+    this.timeline.set(sec, b);
   }
 }
 
@@ -138,16 +172,48 @@ export async function trunkBlobs(lease: WorkspaceLease, dir: string): Promise<Ar
     .map((m) => ({ blob: m[1]!, path: m[2]! }));
 }
 
-/** Poll a proposal until it is terminal, with the in-platform agent's backoff (1.5 s, x1.6, cap 15 s). */
-async function awaitOutcome(client: Client, id: string, untilMs: number, op = "poll"): Promise<Proposal | null> {
+/** A proposal outcome as the agent loop needs it. */
+type Outcome = Pick<Proposal, "status" | "reason" | "landingId">;
+
+/** With the live feed, how long an agent waits for its outcome event before it asks the colony once. */
+const FEED_FALLBACK_MS = 20_000;
+
+/**
+ * Wait for a proposal to become terminal. With the live feed connected, the outcome arrives as an
+ * event (the colony pushes it, as it pushes outcomes to in-platform agents) and the colony is only
+ * asked when no event came for FEED_FALLBACK_MS; without it, poll with the in-platform agent's old
+ * backoff (1.5 s, x1.6, cap 15 s). `via` counts where outcomes came from.
+ */
+async function awaitOutcome(client: Client, id: string, untilMs: number, op = "poll", feed?: LiveFeed, via?: { feed: number; poll: number }): Promise<Outcome | null> {
+  let last: Outcome | null = null;
+  if (feed?.open) {
+    while (performance.now() < untilMs) {
+      const got = await feed.waitFor(id, Math.min(FEED_FALLBACK_MS, untilMs - performance.now()));
+      if (got) {
+        if (via) via.feed++;
+        return got;
+      }
+      const p = await client.call<Proposal>(op, "GET", `/proposals/${encodeURIComponent(id)}`);
+      if (p) {
+        last = p;
+        if (TERMINAL.has(p.status)) {
+          if (via) via.poll++;
+          return p;
+        }
+      }
+    }
+    return last;
+  }
   let wait = 1_500;
-  let last: Proposal | null = null;
   while (performance.now() < untilMs) {
     await sleep(Math.min(wait, untilMs - performance.now()));
     const p = await client.call<Proposal>(op, "GET", `/proposals/${encodeURIComponent(id)}`);
     if (p) {
       last = p;
-      if (TERMINAL.has(p.status)) return p;
+      if (TERMINAL.has(p.status)) {
+        if (via) via.poll++;
+        return p;
+      }
     }
     wait = Math.min(15_000, Math.round(wait * 1.6));
   }
@@ -206,8 +272,9 @@ export async function setup(cfg: LiveConfig, colony: string, stateDir: string, l
 
 /** Make sure at least `target` open bench intents exist, spread over `regions` directories. */
 export async function ensureIntents(client: Client, target: number, regions: number, tag: string, log: (s: string) => void): Promise<number> {
-  const snap = await client.call<ColonySnapshot>("snapshot", "GET", "");
-  const open = (snap?.intents ?? []).filter((i) => i.status === "open" && i.createdBy === "bench-live").length;
+  // The metrics report counts every open intent (a snapshot lists 5,000 at most); bench colonies hold only bench intents.
+  const m = await client.call<{ metrics?: Record<string, number> }>("metrics", "GET", "/metrics");
+  const open = m?.metrics?.["intentsOpen"] ?? 0;
   const need = Math.max(0, target - open);
   if (need === 0) return open;
   log(`creating ${need} bench intents over ${regions} regions (open ${open}, target ${target})`);
@@ -234,9 +301,13 @@ export class LiveFeed {
   metrics: Array<{ at: number; recvMs: number; name: string; value: number }> = [];
   events = 0;
   open = false;
+  reconnects = 0;
   private ws: WebSocket | null = null;
+  private closing = false;
+  /** Agents waiting for a proposal's final status (see waitFor). */
+  private readonly waiters = new Map<string, Array<(o: { status: Proposal["status"]; reason?: string }) => void>>();
 
-  /** Connect; resolves once open (or after 5 s). */
+  /** Connect; resolves once open (or after 5 s). A socket that drops is reopened until close(). */
   async connect(cfg: LiveConfig, colony: string): Promise<void> {
     const url = `${cfg.url.replace(/^http/, "ws")}/api/colonies/${encodeURIComponent(colony)}/live`;
     const ws = new WebSocket(url);
@@ -254,6 +325,33 @@ export class LiveFeed {
         resolve();
       };
     });
+    ws.onclose = () => {
+      if (this.closing || this.ws !== ws) return;
+      this.reconnects++;
+      setTimeout(() => void this.connect(cfg, colony).catch(() => undefined), 1_000);
+    };
+  }
+
+  /**
+   * The final status of a proposal as the feed reports it, or null after `ms` without one (the
+   * caller then asks the colony). Statuses seen before the call count.
+   */
+  waitFor(id: string, ms: number): Promise<{ status: Proposal["status"]; reason?: string } | null> {
+    const known = this.proposalStatus.get(id);
+    if (known && TERMINAL.has(known.status)) return Promise.resolve({ status: known.status as Proposal["status"], ...(known.reason ? { reason: known.reason } : {}) });
+    return new Promise((resolve) => {
+      const list = this.waiters.get(id) ?? [];
+      const done = (o: { status: Proposal["status"]; reason?: string } | null): void => {
+        clearTimeout(timer);
+        const left = (this.waiters.get(id) ?? []).filter((f) => f !== done);
+        if (left.length > 0) this.waiters.set(id, left);
+        else this.waiters.delete(id);
+        resolve(o);
+      };
+      const timer = setTimeout(() => done(null), Math.max(0, ms));
+      list.push(done);
+      this.waiters.set(id, list);
+    });
   }
 
   private onMessage(data: unknown): void {
@@ -269,13 +367,16 @@ export class LiveFeed {
     for (const e of list) {
       this.events++;
       if (e.t === "landing") this.landings.push({ id: e.landingId, at: e.at, recvMs, proposalIds: e.proposalIds });
-      else if (e.t === "proposal") this.proposalStatus.set(e.proposalId, e.reason ? { status: e.status, at: e.at, reason: e.reason } : { status: e.status, at: e.at });
-      else if (e.t === "sigma") this.sigma.push({ at: e.at, recvMs, region: e.region, sigma: e.sigma });
+      else if (e.t === "proposal") {
+        this.proposalStatus.set(e.proposalId, e.reason ? { status: e.status, at: e.at, reason: e.reason } : { status: e.status, at: e.at });
+        if (TERMINAL.has(e.status)) for (const done of this.waiters.get(e.proposalId) ?? []) done(e.reason ? { status: e.status, reason: e.reason } : { status: e.status });
+      } else if (e.t === "sigma") this.sigma.push({ at: e.at, recvMs, region: e.region, sigma: e.sigma });
       else if (e.t === "metric") this.metrics.push({ at: e.at, recvMs, name: e.name, value: e.value });
     }
   }
 
   close(): void {
+    this.closing = true;
     try {
       this.ws?.close();
     } catch {
@@ -308,7 +409,15 @@ export interface LiveReport {
   timeToLandMs: Summary;
   batchSize: Summary;
   commitGapMs: Summary;
-  feed: { connected: boolean; events: number; sigmaMax: number; sigmaEvents: number };
+  feed: { connected: boolean; events: number; sigmaMax: number; sigmaEvents: number; reconnects: number };
+  /** Where agents learned their outcomes: a live feed event, or a (fallback) poll. */
+  outcomes: { feed: number; poll: number };
+  /** Per second of the run (UTC seconds): calls finished, failed, and the slowest. */
+  timeline: Array<{ t: string; calls: number; errors: number; maxMs: number }>;
+  /** The colony's event-loop lag over 250 ms per 5-s window, when the preview runs with FT_LAG_PROBE (colony/lag.ts). */
+  colonyLag: Array<{ t: string; ms: number }>;
+  /** The end-of-run stop of this run's agents (POST /swarm/stop), when it ran. */
+  stopped?: { ok: boolean; ms: number; retired?: number; failed?: number; error?: string };
   /** Trunk writer cycles seen on the live feed (`trunk.*` metrics, one group per cycle); absent before group commit. */
   trunkCycles?: TrunkCycles;
   errors: string[];
@@ -358,7 +467,7 @@ export async function runLive(cfg: LiveConfig, opts: LiveOptions, state: LiveSta
   const client = new Client(cfg, opts.colony, rec, opts.timeoutMs);
   const tag = `${opts.label}-${Date.now().toString(36)}`;
   await ensureIntents(client, opts.intents, opts.regions, tag, log);
-  const before = await client.call<ColonySnapshot>("snapshot", "GET", "");
+  const before = await client.call<{ metrics?: Record<string, number> }>("metrics", "GET", "/metrics");
   const feed = new LiveFeed();
   await feed.connect(cfg, opts.colony);
   log(`feed ${feed.open ? "connected" : "NOT connected"}; ${opts.agents} agents for ${opts.durationS}s (ramp ${opts.rampS}s, work ${opts.workMs} ms)`);
@@ -368,6 +477,7 @@ export async function runLive(cfg: LiveConfig, opts: LiveOptions, state: LiveSta
   const takeAssigned: number[] = [];
   const takeWait: number[] = [];
   const created = new Map<string, number>(); // proposalId -> server createdAt
+  const via = { feed: 0, poll: 0 };
   const t0 = performance.now();
   const startedAt = new Date().toISOString();
   const deadline = t0 + opts.durationS * 1000;
@@ -403,7 +513,9 @@ export async function runLive(cfg: LiveConfig, opts: LiveOptions, state: LiveSta
       const ts = performance.now();
       const t = await client.call<TakeResult>("take", "POST", `/agents/${reg.id}/take`, {});
       if (!t) {
-        await sleep(Math.min(5_000, 250 * 2 ** Math.min(4, failures++)));
+        // The in-platform agents' backoff (1 s, 2 s, 4 s, ... +-25%, cap 60 s): a failed call is not retried at once,
+        // so a colony that stalls for a moment is not met by every agent retrying four times a second.
+        await sleep(errorBackoffMs(++failures));
         continue;
       }
       failures = 0;
@@ -427,7 +539,7 @@ export async function runLive(cfg: LiveConfig, opts: LiveOptions, state: LiveSta
       }
       counts.proposals++;
       created.set(p.id, p.createdAt);
-      const done = await awaitOutcome(client, p.id, drainUntil);
+      const done = await awaitOutcome(client, p.id, drainUntil, "poll", feed, via);
       const status = done?.status ?? "unknown";
       if (status === "landed") counts.landed++;
       else if (status === "returned") {
@@ -443,8 +555,26 @@ export async function runLive(cfg: LiveConfig, opts: LiveOptions, state: LiveSta
   clearInterval(guard);
   const elapsedS = (performance.now() - t0) / 1000;
   await sleep(1_500); // let the feed catch the last events
-  const after = await client.call<ColonySnapshot>("snapshot", "GET", "");
+  const after = await client.call<{ metrics?: Record<string, number> }>("metrics", "GET", "/metrics");
   feed.close();
+  // Retire the run's agents: their claims go at once, so the next run is never held back by this one.
+  let stopped: LiveReport["stopped"];
+  if (opts.stopAgents !== false) {
+    const s0 = performance.now();
+    const stopRec = new Recorder();
+    const stopper = new Client(cfg, opts.colony, stopRec, 300_000);
+    // A large swarm may not stop in one call (each agent is one call from the API); repeat for the rest.
+    let res: { ok?: boolean; retired?: number; failed?: unknown[]; error?: string } | null = null;
+    let retired = 0;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      res = await stopper.call<{ ok?: boolean; retired?: number; failed?: unknown[]; error?: string }>("stop", "POST", "/swarm/stop", { reason: `bench run ${tag} over` });
+      retired += typeof res?.retired === "number" ? res.retired : 0;
+      if (res?.ok) break;
+    }
+    const error = res?.error ?? stopRec.errorSamples[0];
+    stopped = { ok: !!res?.ok, ms: Math.round(performance.now() - s0), retired, ...(Array.isArray(res?.failed) ? { failed: res.failed.length } : {}), ...(error ? { error: error.slice(0, 300) } : {}) };
+    log(`stopped the run's agents: ${JSON.stringify(stopped)}`);
+  }
 
   // Steady-state window: skip the ramp and a short warm-up; stop at the deadline.
   const fromS = Math.min(opts.durationS / 2, opts.rampS + Math.min(15, opts.durationS / 4));
@@ -494,7 +624,11 @@ export async function runLive(cfg: LiveConfig, opts: LiveOptions, state: LiveSta
     timeToLandMs: summarize(timeToLand),
     batchSize: summarize(feed.landings.map((l) => l.proposalIds.length)),
     commitGapMs: summarize(gaps),
-    feed: { connected: feed.open, events: feed.events, sigmaMax, sigmaEvents: feed.sigma.length },
+    feed: { connected: feed.open, events: feed.events, sigmaMax, sigmaEvents: feed.sigma.length, reconnects: feed.reconnects },
+    outcomes: via,
+    timeline: [...client.timeline].sort((a, b) => a[0] - b[0]).map(([sec, b]) => ({ t: new Date(sec * 1000).toISOString().slice(11, 19), ...b })),
+    colonyLag: feed.metrics.filter((m) => m.name === "colony.lagMs").map((m) => ({ t: new Date(m.at).toISOString().slice(11, 19), ms: m.value })),
+    ...(stopped ? { stopped } : {}),
     ...(() => {
       const tc = trunkCycles(feed.metrics, t0 + fromS * 1000, t0 + toS * 1000);
       return tc ? { trunkCycles: tc } : {};
@@ -527,6 +661,7 @@ async function main(): Promise<void> {
       label: { type: "string" },
       state: { type: "string" },
       "setup-only": { type: "boolean" },
+      "keep-agents": { type: "boolean" },
     },
     strict: true,
   });
@@ -545,6 +680,7 @@ async function main(): Promise<void> {
     timeoutMs: num(values.timeout, "timeout", 30_000, 1_000, 600_000),
     label: values.label ?? `n${agents}`,
     ...(values.out ? { out: values.out } : {}),
+    stopAgents: values["keep-agents"] !== true,
   };
   const cfg = liveConfig();
   const log = (s: string) => console.error(`[${new Date().toISOString().slice(11, 19)}] ${s}`);
@@ -561,7 +697,8 @@ async function main(): Promise<void> {
   const s = report;
   log(
     `N=${s.agents}: landed/min ${s.window.landedPerMin.toFixed(1)} (commits/min ${s.window.commitsPerMin.toFixed(1)}), take p50 ${s.takeAssigned.p50?.toFixed(0)} ms p99 ${s.takeAssigned.p99?.toFixed(0)} ms, ` +
-      `ttl p50 ${s.timeToLandMs.p50?.toFixed(0)} ms p99 ${s.timeToLandMs.p99?.toFixed(0)} ms, batch p50 ${s.batchSize.p50}, returned ${s.counts.returned}, errors ${s.ops.reduce((n, o) => n + o.errors, 0)}`,
+      `ttl p50 ${s.timeToLandMs.p50?.toFixed(0)} ms p90 ${s.timeToLandMs.p90?.toFixed(0)} ms p99 ${s.timeToLandMs.p99?.toFixed(0)} ms, batch p50 ${s.batchSize.p50}, returned ${s.counts.returned}, ` +
+      `errors ${s.ops.reduce((n, o) => n + o.errors, 0)}, outcomes feed ${s.outcomes.feed} poll ${s.outcomes.poll}${s.stoppedEarly ? `, STOPPED EARLY: ${s.stoppedEarly}` : ""}`,
   );
 }
 

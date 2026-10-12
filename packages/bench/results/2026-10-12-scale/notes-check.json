@@ -1,0 +1,27 @@
+{
+  "kind": "notes-audit",
+  "at": "2026-10-12T11:25:16Z",
+  "colony": "g6-scale5k",
+  "url": "https://g6-firetrident.mattsolt.workers.dev",
+  "note": "Fetched trunk main and refs/notes/firetrident from the Artifacts trunk repo with stock git after the runs: each commit with an FT-Landing trailer must carry a lineage note naming that landing; `git notes --ref firetrident show` reads sampled notes through the 2-character fanout layout.",
+  "result": {
+    "commits_on_main": 6094,
+    "landing_commits": 5894,
+    "notes": 5894,
+    "landing_commits_without_note": 0,
+    "sampled": 60,
+    "sampled_note_landing_mismatch": 0,
+    "notes_root": {
+      "fanout_directories": 256,
+      "flat_notes": 0,
+      "other_entries": 0
+    },
+    "notes_commits": 240,
+    "example": {
+      "commit": "6811138c3d5ae5fe0b128cb6a190a6a5f448374f",
+      "landing_trailer": "lnd_mv54venihpr7od",
+      "git_notes_show_landingId": "lnd_mv54venihpr7od",
+      "path_in_notes_tree": "68/11138c3d5ae5fe0b128cb6a190a6a5f448374f"
+    }
+  }
+}

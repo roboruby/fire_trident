@@ -99,7 +99,8 @@ Facts the design relies on (from the docs and the spike): each repo is one Durab
 
 ## Additional RPCs (as built)
 
-- ColonyDO: `getColony`, `listRegions`, `getIntent`, `getAgent`, `registerAgents` (batch), `abandon(agentId, reason)`, `inbox(agentId, limit)`, `updateProposals` (batch), `recordDecision`, `landContext(intentIds, agentIds)` (compact lineage context for lanes).
+- ColonyDO: `getColony`, `listRegions`, `getIntent`, `getAgent`, `registerAgents` (batch), `abandon(agentId, reason)`, `inbox(agentId, limit, opts?)` (proposals and directives), `updateProposals` (batch), `recordDecision`, `landContext(intentIds, agentIds, proposalIds?)` (compact lineage context for lanes: intents with their direction, agents, recorded decisions). Changing direction: `amendIntent`, `withdrawIntent`, `retractRule`, `direct`, `recall`, `relay`, `intentHistory` (see "Changing direction").
+- AgentDO: `direct({ directive, intent? })` (a directive pushed by the colony; see "Changing direction").
 - RegionDO: `reading(opts)` (optionally filtered by paths), `apply`, `dequeue`, `status`.
 - TrunkDO: `init` accepts an optional `regionDepth`; `land(batch, ctx?)` takes compact lineage context (lanes pass it, so the writer never pulls a snapshot); `stats`, `flushNotes` (re-pushes any note whose push failed after its landing), `mirrorTo`, `refreshTokenIfNeeded`. TrunkDO does not call `onLanding`; the lane does.
 - PoolDO: `stats`, `teardown`. Forks cannot cross namespaces, so each `ft-ws-N` namespace holds a seed repo `<colony>--seed` that workspaces fork from.
@@ -125,6 +126,48 @@ A proposal enters `checking` and the decide engine routes it:
 **Two-signal gate**: a proposal lands without a human only with two independent confirmations bound to the same head commit (innate checks plus a System-2 approval or earned path autonomy) and a low p(needs_human). One signal returns it to its agent. Escalation to a human needs a detector hit plus damage or a capability change. **Regulation**: an alert budget caps human pages per hour; a detector marked not useful ≥10% goes advisory and >25% goes off. **Antibodies**: a human rejection mints an antibody (path matcher + yes/no question + threshold), committed to trunk as `.firetrident/antibodies/<id>.json` by `TrunkDO.systemCommit` with a lineage note; every later matching proposal is screened. **Vaccination meter**: `POST /api/colonies/:id/vaccinate {count}` injects sealed bad proposals of several threat classes through the normal path; they can never land, and recall per class is reported with a Wilson 95% interval (`GET /api/colonies/:id/vaccinate`).
 
 Routes: `POST|GET /api/colonies/:id/vaccinate`, `GET /api/colonies/:id/immune`, `POST /api/colonies/:id/decide/policy`, `POST /api/colonies/:id/detectors/:did` (useful / not useful feedback). ColonyDO: `vaccinate`, `vaccineReport`, `immune`, `setDecidePolicy`, `detectorFeedback`. Every decision is recorded (`recordDecision`) and emitted, so the UI funnel shows reflex / LLM / human counts.
+
+## Changing direction (chemotaxis)
+
+A colony is steered the way cells follow a chemical gradient: when the gradient changes, cells re-orient. Here a human changes the gradient (amends an intent, withdraws it, retracts a rule, or sends an agent guidance), the field updates (needs evaporate, move or appear), and agents re-orient at their next step. Nothing is preempted by a lock or a queue. Agents also tell the colony what they are doing, so a human can see where to push. Pure helpers live in `colony/direction.ts` (colony side) and `agents/direction.ts` (agent side).
+
+**Amend** (`PATCH /api/colonies/:id/intents/:iid {title?, why?, footprint?, priority?, reason, by?}`, `ColonyDO.amendIntent`, `ft intent amend`). The intent's `revision` goes up by one and the change is kept in `intent_revisions` (fields changed, before and after, reason, by, at). Need marks move with the footprint (strength = priority) and claims leave the paths it dropped; the holder's claim follows the paths it gained. A title, why or footprint change is **substantive**: changes in flight built on the older revision go back (`intent revised: r1 → r2, why changed (...)`), and the holder keeps the intent, claim and lease and redoes the work against the new revision. A priority-only amendment just moves the intent in the queue. Landed, withdrawn and sealed intents cannot be amended (409); `GET /api/colonies/:id/intents/:iid` (`ft intent show`) returns the intent with its revisions and directives.
+
+**Withdraw** (`POST .../intents/:iid/withdraw {reason, by?}`, `ft intent withdraw`). The intent becomes `withdrawn` (kept, with the reason), its need marks evaporate and its claims clear, changes in flight go back (`withdrawn: ...`), and its holder goes idle and gives its lease back. Idempotent. **Retract a rule** (`DELETE /api/colonies/:id/rules/:rid {reason, by?}` or `?reason=`, `ft rule retract`): the rule stays in history (`retractedAt`, `retractedBy`, `retractReason`) but is no longer checked (the decide arc and agents skip it), its open violations stop counting, and every intent it created that has not landed is withdrawn. Landed work is never touched.
+
+**Directives** (`POST /api/colonies/:id/agents/:aid/directive {message, intentId?, by?}`, `ColonyDO.direct`, `ft direct`). Free-text guidance for one agent, about the intent it holds unless `intentId` names another. Revisions and withdrawals reach the holder the same way, as directives of kind `revision` and `withdrawal`. An in-platform agent gets them pushed (`AgentDO.direct`); external agents read them in their inbox (`ColonyDO.inbox`, which the MCP `inbox` tool calls): a directive entry lines up with a proposal entry (`id`, `intentId`, `status: "directive"`, `reason` = what to do, `createdAt`). Reading a revision notice records that the agent saw that revision.
+
+**How an in-platform agent re-orients** (`loop.ts`, `applyDirection`). Directives are kept in the agent's journal and acted on before its next step. A withdrawal ends the job (the colony already released the claim). A revision ends it too, and the next take hands back the same intent at the new revision. Guidance joins every later prompt for that intent (a "Directives from a human operator" block); work already produced is redone with it, after the agent recalls a proposal still in flight (`ColonyDO.recall`: returned as `superseded: ...`, intent, claim and lease kept). A directive that makes the step in flight moot (any withdrawal or revision of the job's intent, guidance while it produces or proposes) moves the agent's epoch, so the step halts at its next check and no more model calls go the old way.
+
+**Stale direction never lands.** Three layers: (1) an amendment or withdrawal returns the changes in flight at once, and dequeues them from their lanes; (2) `ColonyDO.propose` refuses (409) a change built on an older substantive revision: the agent passes `intentRevision` (an external agent that passes none is held to the revision it last saw, until it reads the notice in its inbox); (3) the lane's pre-land check: one `landContext` call per tick returns each intent's status, revision and substantive amendments, and the lane sends back (`splitByDirection`) any change for a withdrawn intent or built on an older revision before it calls `TrunkDO.land`. A withdrawal that arrives after `TrunkDO.land` started loses the race: the change lands, and the intent shows landed. Direction returns leave no failure mark, count as `redirected` (not `returned`), and never reopen the intent.
+
+**Relay** (`POST /api/colonies/:id/agents/:aid/status {note}`, `ColonyDO.relay`). An agent's one-line "what I am doing now" is stored on the agent (`GET agents` and `ft agents` show it in the NOW column), emitted live (at most one event per agent per second), and recorded with its next proposal. In-platform agents relay as they enter each step and when they act on a directive (at most every 3 s; synthetic agents at most once a minute).
+
+**Lineage.** At propose time the colony records the direction a change was built under in its evidence (`evidence.direction`: `intentRevision`, the amendments up to it, the human guidance the agent had for the intent, its last status note), so it lands in the lineage note under `refs/notes/firetrident`. `landContext(intentIds, agentIds, proposalIds)` also hands the lane each proposal's recorded decide-arc decisions (layer, kind, p, action, at, the question, who answered, a one-line answer; the latest 8 per proposal), which TrunkDO writes into the note's `decisions`. A deterministic proof that decided alone appears in the note's evidence checks (`deterministic: ...`, `gate`). `ft why` and the Why tab show the revision history, directives, note and the decide arc.
+
+**Events**: `amended`, `withdrawn`, `retracted`, `directive` and `status` (plus `intent` with status `withdrawn`). The Events tab groups the first four under Direction; the Intents tab shows an `rN` badge on amended intents and a withdrawn segment.
+
+## Scale
+
+Every agent talks to one ColonyDO, so the take path is built to stay cheap per call:
+
+- **Shared field reads.** A take scores up to 200 open intents against the claims of the regions they touch. Each region's claim field is read once and shared by the takes running at the same time (`colony/views.ts`), so scoring a candidate costs map lookups instead of glob tests against every claimed path. Results equal core `repulsion`.
+- **Take gate.** At most 128 takes score at once; more queue behind them (`TAKES_IN_FLIGHT`). Without the gate the object ran out of memory and reset at 5,000 agents. Waiting agents are paced (`WaitPacer`): each wait gets a retry time that keeps the whole waiting crowd near a fixed rate of takes a second, so idle agents do not retry in step.
+- **Pushed outcomes.** When a proposal settles, the colony pushes the outcome to the agent (`AgentDO.outcome`), so in-platform agents stop polling `getProposal`.
+- **Live claims only.** Stopping or reaping an agent clears its claims in every region, and admission counts only live claims, so a stopped run no longer holds a region's admission for its claims' decay time.
+- **Lease book.** Leasing a workspace is pure SQL (`pool/slots.ts`). Each slot keeps one write token (two hours). A released slot keeps its lessee's token, so the same agent leasing it again needs no control-plane call. An idle slot gets its token revoked and a fresh one minted in the background. A token is never handed to a different agent.
+- **Notes fanout.** Lineage notes use git's 2-character fanout layout. Notes written flat before it migrate a slice per flush. After the scale runs, stock git found a note on 5,894 of 5,894 landing commits.
+- `FT_LAG_PROBE` (load tests only) makes ColonyDO log event-loop lag and stream it as `colony.lagMs`.
+
+Measured on a preview (`packages/bench/results/2026-10-12-scale/`) with synthetic API agents (no model calls, review off, no work time, 64 regions), 120 s runs:
+
+| Agents | Landings/min | Time to land p50 / p90 | Platform errors |
+|---|---|---|---|
+| 1,000 | 2,924 | 13.0 / 17.0 s | 0 |
+| 2,000 | 2,714 | 14.8 / 19.5 s | 0 |
+| 5,000 | 2,778 | 12.5 / 17.4 s | 0 (78 of 50,368 bench-client connect errors during the ramp) |
+
+Before these changes, 1,000 agents reached 515 landings/min and the run stopped at 60 s with a 38% error rate. The next limit is TrunkDO, the single writer: every 3.4 to 3.9 s commit cycle hits the 200-proposal cap, so throughput no longer grows with agents, and about 6 s of queueing dominates time to land.
 
 ## New projects (`ft new --spec`)
 

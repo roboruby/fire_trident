@@ -10,9 +10,25 @@ export interface ChatMessage {
   content: string;
 }
 
+/** Guidance a human sent the agent about this intent (see agents/direction.ts), oldest first. */
+export type PromptDirective = { message: string; by: string };
+
+/**
+ * The directives block of a prompt, or null without directives. Directives come from the colony's
+ * operators (admin-authenticated API), not from repository content; they refine the intent.
+ */
+export function directiveBlock(list: readonly PromptDirective[] | undefined): string | null {
+  const items = (list ?? []).filter((d) => typeof d.message === "string" && d.message.trim() !== "");
+  if (items.length === 0) return null;
+  const lines = items.map((d) => `- ${d.message.replace(/\s+/g, " ").trim()} (from ${oneLine(d.by || "a human")})`);
+  return `Directives from a human operator (they refine the intent: follow them; where they conflict with the intent text, the latest directive wins):\n${lines.join("\n")}`;
+}
+
 /** Everything one file edit prompt is built from. */
 export interface EditRequest {
   intent: Pick<Intent, "id" | "title" | "why" | "acceptance">;
+  /** Human directives about this intent. */
+  directives?: PromptDirective[];
   rule?: Rule | null;
   path: Path;
   /** Current file content; null when the file does not exist yet. */
@@ -62,6 +78,8 @@ export function buildEditMessages(req: EditRequest): ChatMessage[] {
   if (why) task.push(`Why: ${why}`);
   const acceptance = (req.intent.acceptance ?? []).map(oneLine).filter(Boolean);
   if (acceptance.length > 0) task.push(`Acceptance:\n${acceptance.map((a) => `- ${a}`).join("\n")}`);
+  const directives = directiveBlock(req.directives);
+  if (directives) task.push(directives);
   if (req.rule) {
     task.push(`Rule: ${oneLine(req.rule.description)}`);
     const hint = ruleHint(req.rule);
@@ -94,6 +112,8 @@ const WRITE_SYSTEM = [
 /** Everything a write prompt (a file of a spec-declared intent) is built from. */
 export interface WriteRequest {
   intent: Pick<Intent, "id" | "title" | "why" | "acceptance">;
+  /** Human directives about this intent. */
+  directives?: PromptDirective[];
   path: Path;
   /** Current content at the base; null when the file does not exist yet. */
   content: string | null;
@@ -148,6 +168,8 @@ export function buildWriteMessages(req: WriteRequest): ChatMessage[] {
   const siblings = req.siblings.filter((p) => p !== req.path);
   if (siblings.length > 0) task.push(`This change also writes: ${siblings.join(", ")} (each in its own step; write only ${req.path} now).`);
   parts.push(task.join("\n"));
+  const directives = directiveBlock(req.directives);
+  if (directives) parts.push(directives);
 
   if (req.rules.length > 0) {
     const lines = req.rules.map((r) => {
@@ -191,6 +213,8 @@ const SPECIFIER_SYSTEM = [
 /** Everything a specifier edit prompt is built from. */
 export interface SpecifierRequest {
   intent: Pick<Intent, "id" | "title" | "why" | "acceptance">;
+  /** Human directives about this intent. */
+  directives?: PromptDirective[];
   rule: Rule;
   path: Path;
   content: string;
@@ -232,6 +256,8 @@ export function buildSpecifierMessages(req: SpecifierRequest): ChatMessage[] {
   const task: string[] = [`Intent: ${oneLine(req.intent.title)}`, `Rule: ${oneLine(req.rule.description)}`];
   const hint = ruleHint(req.rule);
   if (hint) task.push(`Hint: ${hint}`);
+  const directives = directiveBlock(req.directives);
+  if (directives) task.push(directives);
   task.push(`Path: ${req.path}`);
   const facts = req.facts.map(factLine).join("\n");
   const listings = contextDirs(req.path, req.facts, req.tree)

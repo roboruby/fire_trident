@@ -10,17 +10,34 @@ import {
   colors,
   eventsFromMessage,
   formatAgents,
+  formatAmend,
   formatColonies,
   formatDelete,
+  formatDirect,
   formatEvent,
+  formatIntentShow,
+  formatRetract,
   formatReview,
   formatStatus,
   formatStop,
   formatVaccinate,
   formatWhy,
+  formatWithdraw,
   num,
 } from "./format.ts";
-import type { AgentRow, ColonyRow, Colors, DeleteResult, SnapshotLike, StopResult } from "./format.ts";
+import type {
+  AgentRow,
+  AmendResult,
+  ColonyRow,
+  Colors,
+  DeleteResult,
+  DirectResult,
+  IntentShowResult,
+  RetractResult,
+  SnapshotLike,
+  StopResult,
+  WithdrawResult,
+} from "./format.ts";
 import { extractSpec, planNew } from "./spec.ts";
 import type { IntentBody } from "./spec.ts";
 import type { Intent, Landing, LineageNote, Proposal, Rule } from "@fire_trident/core";
@@ -251,6 +268,36 @@ async function execute(cmd: Command, ctx: Ctx): Promise<number> {
       if (ctx.flags.json) printJson(ctx, res);
       else io.stdout(formatVaccinate(cmd.colony, cmd.count, res, c));
       return 0;
+    }
+    case "intent-amend": {
+      const res = await send<AmendResult>(ctx.http, req, 60_000);
+      if (ctx.flags.json) printJson(ctx, res);
+      else io.stdout(formatAmend(cmd.intentId, res ?? {}, c));
+      return 0;
+    }
+    case "intent-withdraw": {
+      const res = await send<WithdrawResult>(ctx.http, req, 60_000);
+      if (ctx.flags.json) printJson(ctx, res);
+      else io.stdout(formatWithdraw(cmd.intentId, cmd.reason, res ?? {}, c));
+      return 0;
+    }
+    case "intent-show": {
+      const res = await send<IntentShowResult>(ctx.http, req);
+      if (ctx.flags.json) printJson(ctx, res);
+      else io.stdout(formatIntentShow(res ?? {}, c, io.now()));
+      return 0;
+    }
+    case "rule-retract": {
+      const res = await send<RetractResult>(ctx.http, req, 120_000);
+      if (ctx.flags.json) printJson(ctx, res);
+      else io.stdout(formatRetract(cmd.ruleId, cmd.reason, res ?? {}, c));
+      return 0;
+    }
+    case "direct": {
+      const res = await send<DirectResult>(ctx.http, req, 60_000);
+      if (ctx.flags.json) printJson(ctx, res);
+      else io.stdout(formatDirect(cmd.agentId, res ?? {}, c));
+      return res?.delivery === "failed" ? 1 : 0;
     }
     default:
       throw new Error(`unhandled command ${cmd.name}`);

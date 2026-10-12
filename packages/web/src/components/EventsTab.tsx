@@ -5,19 +5,29 @@ import type { ColonyStore, LoggedEvent } from "../store.ts";
 import { ACCENT, FIELD_COLOR, LAYER_COLOR } from "../theme.ts";
 import { useThrottledVersion } from "../useStore.ts";
 
-const FILTERS: ReadonlyArray<[type: ColonyEvent["t"], label: string, color: string]> = [
-  ["landing", "Landings", FIELD_COLOR.trail],
-  ["decision", "Decisions", LAYER_COLOR.reflex],
-  ["proposal", "Proposals", LAYER_COLOR.llm],
-  ["intent", "Intents", "#7cc4ff"],
-  ["agent", "Agents", "#c9d4e5"],
-  ["violations", "Rules", FIELD_COLOR.need],
-  ["sigma", "Sigma", FIELD_COLOR.danger],
-  ["mark", "Marks", "#8b97a8"],
-  ["metric", "Metrics", "#8b97a8"],
+/** Changing direction: amendments, withdrawals, retracted rules and human directives. */
+const DIRECTION_COLOR = "#c084fc";
+const STATUS_COLOR = "#9fd8ff";
+
+/** Filter chips: a key, a label, a color, and the event types the chip covers. */
+const FILTERS: ReadonlyArray<[key: string, label: string, color: string, types: ReadonlyArray<ColonyEvent["t"]>]> = [
+  ["landing", "Landings", FIELD_COLOR.trail, ["landing"]],
+  ["decision", "Decisions", LAYER_COLOR.reflex, ["decision"]],
+  ["proposal", "Proposals", LAYER_COLOR.llm, ["proposal"]],
+  ["intent", "Intents", "#7cc4ff", ["intent"]],
+  ["direction", "Direction", DIRECTION_COLOR, ["amended", "withdrawn", "retracted", "directive"]],
+  ["status", "Status", STATUS_COLOR, ["status"]],
+  ["agent", "Agents", "#c9d4e5", ["agent"]],
+  ["violations", "Rules", FIELD_COLOR.need, ["violations"]],
+  ["sigma", "Sigma", FIELD_COLOR.danger, ["sigma"]],
+  ["mark", "Marks", "#8b97a8", ["mark"]],
+  ["metric", "Metrics", "#8b97a8", ["metric"]],
 ];
 
-const DEFAULT_ON: ReadonlySet<string> = new Set(["landing", "decision", "proposal", "intent", "violations", "sigma"]);
+/** The chip that covers each event type. */
+const CHIP_OF: ReadonlyMap<string, string> = new Map(FILTERS.flatMap(([key, , , types]) => types.map((t) => [t, key] as const)));
+
+const DEFAULT_ON: ReadonlySet<string> = new Set(["landing", "decision", "proposal", "intent", "direction", "status", "violations", "sigma"]);
 
 /** The events worth reading at a glance; routine status steps are hidden unless the viewer asks for everything. */
 function notable(e: ColonyEvent): boolean {
@@ -25,6 +35,7 @@ function notable(e: ColonyEvent): boolean {
     case "proposal":
       return e.status === "escalated" || e.status === "returned" || e.status === "rejected";
     case "intent":
+      // A withdrawal has its own event with the reason.
       return e.status === "open" || e.status === "claimed" || e.status === "abandoned";
     case "sigma":
       return e.sigma > 1;
@@ -81,6 +92,22 @@ function describe(le: LoggedEvent, store: ColonyStore): Line {
     }
     case "metric":
       return { tag: "metric", color: "#8b97a8", text: `${e.name} = ${fmtFixed(e.value)}` };
+    case "amended":
+      return {
+        tag: "amended",
+        color: DIRECTION_COLOR,
+        text: `r${e.revision} · ${(e.changed ?? []).join(", ")} changed · ${e.title}${e.returned ? ` · ${e.returned} sent back` : ""}`,
+        mono: e.by,
+        title: `${e.by}: ${e.reason}`,
+      };
+    case "withdrawn":
+      return { tag: "withdrawn", color: FIELD_COLOR.failure, text: `${e.title} · ${e.reason}`, mono: e.by, title: `${e.by}: ${e.reason}` };
+    case "retracted":
+      return { tag: "retracted", color: FIELD_COLOR.failure, text: `rule ${shortId(e.ruleId)} · ${fmtInt(e.withdrawn)} intents withdrawn · ${e.reason}`, mono: e.by, title: e.reason };
+    case "directive":
+      return { tag: "directive", color: DIRECTION_COLOR, text: `${e.by} → ${store.agentName(e.agentId)}: “${e.message}”`, mono: e.via, title: e.message };
+    case "status":
+      return { tag: "status", color: STATUS_COLOR, text: `${store.agentName(e.agentId)}: ${e.note}`, title: e.note };
     default:
       return { tag: String((e as { t?: unknown }).t ?? "event"), color: "#8b97a8", text: "" };
   }
@@ -92,7 +119,7 @@ export function EventsTab({ store, director = false }: { store: ColonyStore; dir
   const [on, setOn] = useState<ReadonlySet<string>>(DEFAULT_ON);
   const [frozen, setFrozen] = useState<LoggedEvent[] | null>(null);
   const [everything, setEverything] = useState(false);
-  const live = store.recentEvents((e) => on.has(e.t) && (everything || notable(e)), 100);
+  const live = store.recentEvents((e) => on.has(CHIP_OF.get(e.t) ?? e.t) && (everything || notable(e)), 100);
   const rows = frozen ?? live;
   const toggle = (t: string) => {
     const next = new Set(on);
@@ -105,11 +132,11 @@ export function EventsTab({ store, director = false }: { store: ColonyStore; dir
     <div className="events">
       {director ? null : (
       <div className="chips">
-        {FILTERS.map(([t, label, color]) => (
-          <button key={t} type="button" className={`chip${on.has(t) ? " is-on" : ""}`} onClick={() => toggle(t)} aria-pressed={on.has(t)}>
+        {FILTERS.map(([key, label, color, types]) => (
+          <button key={key} type="button" className={`chip${on.has(key) ? " is-on" : ""}`} onClick={() => toggle(key)} aria-pressed={on.has(key)}>
             <i style={{ background: color }} />
             {label}
-            <span className="chip-n">{fmtInt(store.typeCounts.get(t) ?? 0)}</span>
+            <span className="chip-n">{fmtInt(types.reduce((n, t) => n + (store.typeCounts.get(t) ?? 0), 0))}</span>
           </button>
         ))}
       </div>

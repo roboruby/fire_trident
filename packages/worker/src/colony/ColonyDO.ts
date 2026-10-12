@@ -10,7 +10,6 @@ import {
   regionKey,
   regionOf,
   reinforceThreshold,
-  repulsion,
   residualPaths,
   validateRule,
 } from "@fire_trident/core";
@@ -52,6 +51,32 @@ import { DecideEngine, type DecideHost, type TrunkRpc, type VaccinationResult } 
 import type { DecidePolicy } from "../decide/policy.ts";
 import type { DetectorStats } from "../decide/store.ts";
 import { DEFAULT_NOT_VERIFIED, FieldBatch, groupByRegion, jitter, normalizePath, normalizePaths, overlapCount, primaryRegion, violationIntents } from "./logic.ts";
+import { EmitPacer, Gate, WaitPacer, fastRepulsion, fieldIndex, unseenByRegion, type FieldIndex, type RecentClaim } from "./views.ts";
+import { LagProbe } from "./lag.ts";
+import {
+  MAX_DIRECTIVE_CHARS,
+  MAX_NOTE_DIRECTIVES,
+  MAX_REVISIONS,
+  cleanNote,
+  footprintDelta,
+  guidanceText,
+  inboxEntry,
+  intentChanges,
+  isRedirect,
+  migrateDirection,
+  noteDecisions,
+  oneLine,
+  revisedReturn,
+  staleRevisionError,
+  supersededReturn,
+  toDirective,
+  toRevision,
+  unionChanged,
+  withdrawnError,
+  withdrawnReturn,
+} from "./direction.ts";
+import type { DecisionRow, DirectionInfo, DirectiveRow, IntentPatch, RevisionRow } from "./direction.ts";
+import type { Direction, Directive, DirectiveKind, InboxDirective, IntentField, IntentRevision, NoteDecision } from "@fire_trident/core";
 import { NeighborCache, claimLookup, type Neighbor } from "../trunk/cochange.ts";
 import {
   BUCKET_MS,
@@ -79,8 +104,11 @@ export type TakeResult = { intent: Intent; lease: WorkspaceLease; rule?: Rule } 
 /** Input of ColonyDO.addIntent. */
 export type IntentInput = Omit<Intent, "id" | "status" | "createdAt">;
 
-/** Input of ColonyDO.propose. */
-export type ProposalInput = Omit<Proposal, "id" | "status" | "createdAt" | "evidence"> & { evidence?: Partial<Evidence> };
+/**
+ * Input of ColonyDO.propose. `notify`: push the outcome to the agent's AgentDO (AgentDO.outcome)
+ * when it lands, comes back or is escalated, so an in-platform agent need not poll for it.
+ */
+export type ProposalInput = Omit<Proposal, "id" | "status" | "createdAt" | "evidence"> & { evidence?: Partial<Evidence>; notify?: boolean };
 
 /** Input of ColonyDO.init. */
 export interface ColonyInit {
@@ -107,8 +135,32 @@ const CLOSED_RETRY_MS = 3_000;
 const BUSY_RETRY_MS = 500;
 /** Claims younger than this are overlaid on field readings that may predate them. */
 const RECENT_CLAIM_MS = 10_000;
-/** Concurrent takes share a region reading this young (claims made since are overlaid). */
+/**
+ * Concurrent takes share one claim reading per region, READING_TTL_MS old at most. Under load
+ * (BUSY_TAKES takes in flight or more) a reading is shared for READING_BUSY_TTL_MS and then
+ * refreshed in the background while takes keep using it, up to READING_STALE_MS old: claims made
+ * since a reading started are overlaid, so a stale reading can only over-repel, never hide a claim.
+ */
 const READING_TTL_MS = 250;
+const READING_BUSY_TTL_MS = 1_000;
+const READING_STALE_MS = 3_000;
+const BUSY_TAKES = 8;
+/** Waiting agents together retry at about this many takes a second (see WaitPacer). */
+const WAIT_TAKES_PER_S = 200;
+/** Takes scoring candidates at once (see take); later ones wait their turn, up to TAKES_QUEUED. */
+const TAKES_IN_FLIGHT = 128;
+/** Takes waiting for a turn; past this the agent is told the colony is busy and to come back later. */
+const TAKES_QUEUED = 1_024;
+/** A take refreshes its agent's last-seen time at most this often. */
+const LAST_SEEN_EVERY_MS = 15_000;
+/** Buffered counter and gauge writes are flushed this often (see bump). */
+const METRIC_FLUSH_MS = 1_000;
+/** Under load, concurrent takes share the open-intent candidate list this long (see openCandidates). */
+const CANDIDATES_TTL_MS = 200;
+/** The metrics tick recomputes intent and agent counts (table scans) at most this often. */
+const COUNTS_TTL_MS = 10_000;
+/** In-platform agents' outcomes are pushed to them (AgentDO.outcome) in these states. */
+const PUSHED_STATES: ReadonlySet<string> = new Set(["landed", "returned", "rejected", "escalated"]);
 /** Picks re-tried when a concurrent take wins the chosen intent. */
 const PICK_ATTEMPTS = 8;
 /** Heartbeats refresh claim marks at most this often (claims decay with tau = 5 min). */
@@ -174,6 +226,8 @@ const SCHEMA = [
 const OPS_SCHEMA = [
   "CREATE TABLE IF NOT EXISTS series (name TEXT NOT NULL, minute INTEGER NOT NULL, value REAL NOT NULL, PRIMARY KEY (name, minute))",
   "CREATE TABLE IF NOT EXISTS agent_stops (agent_id TEXT PRIMARY KEY, at INTEGER NOT NULL, reason TEXT NOT NULL)",
+  // Proposals whose outcome is pushed to their agent (in-platform agents ask for it when they propose).
+  "CREATE TABLE IF NOT EXISTS outcome_watch (proposal_id TEXT PRIMARY KEY, agent_id TEXT NOT NULL, at INTEGER NOT NULL)",
 ];
 /** Registry tables, created only in the registry instance. */
 const REGISTRY_SCHEMA = [
@@ -187,6 +241,15 @@ const METRICS_FULL_MS = 30_000;
 const SERIES_PRUNE_EVERY_MS = 10 * 60_000;
 /** Agents listed by listAgents at most. */
 const LIST_AGENTS_CAP = 10_000;
+/** Status-note events per agent at most this often (the note itself is always stored). */
+const NOTE_EVENT_MS = 1_000;
+/** How long a directive push to an in-platform agent may take before it counts as failed. */
+const PUSH_TIMEOUT_MS = 5_000;
+
+/** A directive for one agent to deliver, with the agent's kind (in-platform agents get it pushed). */
+type Notice = { directive: Directive; kind: string; intent?: Intent };
+/** How a directive reached its agent: pushed, left in the inbox (external agents), or the push failed. */
+export type Notified = { agentId: Id; directiveId: Id; delivery: "pushed" | "inbox" | "failed" };
 
 type ColonyRow = {
   id: string;
@@ -216,6 +279,9 @@ type IntentRow = {
   assigned_to: string | null;
   violations: number;
   updated_at: number;
+  /** Direction columns (direction.ts migrates older tables). */
+  revision?: number;
+  withdrawn_reason?: string | null;
 };
 
 type RuleRow = {
@@ -226,6 +292,9 @@ type RuleRow = {
   approved_by: string;
   created_at: number;
   open_violations: number;
+  retracted_at?: number | null;
+  retracted_by?: string | null;
+  retract_reason?: string | null;
 };
 
 type AgentRow = {
@@ -239,6 +308,8 @@ type AgentRow = {
   workspace: string | null;
   last_seen: number;
   created_at: number;
+  note?: string | null;
+  note_at?: number | null;
 };
 
 type ProposalRow = {
@@ -253,11 +324,14 @@ type ProposalRow = {
   data: string;
 };
 
-/** A region reading shared by concurrent takes. */
+/** A region's claim reading shared by concurrent takes (see readRegions). */
 interface ReadingEntry {
   fetchStart: number;
-  paths: Set<Path>;
   promise: Promise<FieldReading | null>;
+  /** Set once the reading arrived: later takes use it without waiting. */
+  reading?: FieldReading | null;
+  /** Its claims and danger indexed for scoring, built once and shared. */
+  index?: FieldIndex;
 }
 
 /** One region as self-assignment sees it. */
@@ -265,8 +339,10 @@ interface FieldView {
   /** Claim and danger values per path, the reader's own claims removed. */
   byPath: FieldReading["byPath"];
   repulsive: boolean;
+  /** The same values indexed for scoring (views.ts). */
+  index: FieldIndex;
   /** Recent claims of other agents the reading may not include. */
-  unseen: Array<{ paths: Set<Path>; regions: Set<string> }>;
+  unseen: RecentClaim[];
   open: boolean;
 }
 
@@ -277,6 +353,8 @@ interface Effects {
   enqueue: Array<{ proposal: Proposal; region: string; priority: number }>;
   dequeue: Map<string, Id[]>;
   release: Set<Id>;
+  /** Outcomes to push to in-platform agents that asked for them (outcome_watch). */
+  outcomes?: Proposal[];
 }
 
 function parseJson<T>(text: string | null | undefined, fallback: T): T {
@@ -314,9 +392,23 @@ export class ColonyDO extends DurableObject<Env> {
    * reading may have missed onto repulsion and admission, so a burst of
    * concurrent takes does not pile onto the same paths or overfill a region.
    */
-  private readonly recentClaims = new Map<Id, { paths: Set<Path>; regions: Set<string>; doneAt: number | null }>();
-  /** Shared field readings for self-assignment (see readRegions). */
+  private readonly recentClaims = new Map<Id, RecentClaim>();
+  /** Shared field readings for self-assignment (see readRegions), and the readings in flight. */
   private readonly readingCache = new Map<string, ReadingEntry>();
+  private readonly pendingReadings = new Map<string, ReadingEntry>();
+  /** Retry hints for waiting agents, and the pace regions send field events at (views.ts). */
+  private readonly waits = new WaitPacer(WAIT_TAKES_PER_S);
+  private readonly emitPace = new EmitPacer();
+  /** Bounds the takes in flight (see take). */
+  private readonly takeGate = new Gate(TAKES_IN_FLIGHT, TAKES_QUEUED);
+  /** Metric and series writes waiting for the next flush (bump, setMetric, recordSeries). */
+  private readonly pendingMetrics = new Map<string, { add: number; set: number | null; at: number }>();
+  private readonly pendingSeries = new Map<string, { name: string; minute: number; value: number; gauge: boolean }>();
+  private metricsFlush: ReturnType<typeof setTimeout> | null = null;
+  /** The open-intent candidates shared by concurrent takes under load (openCandidates). */
+  private candidateRows: { at: number; rows: Array<{ id: string; footprint: string; priority: number; created_at: number }> } | null = null;
+  /** Intent and agent counts for the metrics tick, recomputed at most every COUNTS_TTL_MS (each is a scan). */
+  private countsCache: { at: number; counts: Record<string, number> } | null = null;
   /** Agents with a take in progress (waiting on the pool). */
   private readonly taking = new Set<Id>();
   private readonly lastRefresh = new Map<Id, number>();
@@ -328,6 +420,8 @@ export class ColonyDO extends DurableObject<Env> {
   private readonly sentMetrics = new Map<string, number>();
   private lastFullMetricsAt = 0;
   private lastSeriesPrune = 0;
+  /** When each agent's last status-note event went out (see relay). */
+  private readonly noteEmitted = new Map<Id, number>();
   /** Co-change neighbors of footprint files, cached from TrunkDO.neighbors (fails open). */
   private readonly cochange = new NeighborCache(
     (paths) => this.trunkStub().neighbors(paths, COCHANGE_K) as unknown as Promise<Record<Path, Neighbor[]>>,
@@ -338,8 +432,18 @@ export class ColonyDO extends DurableObject<Env> {
     this.sql = ctx.storage.sql;
     for (const stmt of SCHEMA) this.sql.exec(stmt);
     for (const stmt of OPS_SCHEMA) this.sql.exec(stmt);
+    migrateDirection(this.sql);
     this.backfillSeries();
     this.hub = new EventHub(() => this.ctx.getWebSockets());
+    // Load tests only (FT_LAG_PROBE set): log how long this object's thread was busy or paused (lag.ts).
+    if (env.FT_LAG_PROBE) {
+      // Also on the live feed, so a load test records it beside its own timeline.
+      new LagProbe(`colony ${ctx.id.name ?? ctx.id.toString()}`, (line) => {
+        console.log(line);
+        const worst = (JSON.parse(line) as { worstMs?: number }).worstMs;
+        if (typeof worst === "number") this.hub.push({ t: "metric", at: Date.now(), name: "colony.lagMs", value: worst });
+      }).start();
+    }
     try {
       ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"));
     } catch {
@@ -419,7 +523,7 @@ export class ColonyDO extends DurableObject<Env> {
         .exec<IntentRow>("SELECT * FROM intents WHERE status IN ('open', 'claimed', 'proposed') ORDER BY priority DESC, created_at ASC LIMIT ?", SNAPSHOT_ACTIVE_CAP)
         .toArray(),
       ...this.sql
-        .exec<IntentRow>("SELECT * FROM intents WHERE status IN ('landed', 'abandoned') ORDER BY updated_at DESC LIMIT ?", SNAPSHOT_DONE_CAP)
+        .exec<IntentRow>("SELECT * FROM intents WHERE status IN ('landed', 'abandoned', 'withdrawn') ORDER BY updated_at DESC LIMIT ?", SNAPSHOT_DONE_CAP)
         .toArray(),
     ].map((r) => this.toIntent(r, colony.id));
     const agents = this.sql
@@ -522,6 +626,449 @@ export class ColonyDO extends DurableObject<Env> {
   }
 
   // =========================================================================
+  // Changing direction (chemotaxis): a human changes the gradient, needs
+  // evaporate or move, agents re-orient. See colony/direction.ts.
+  // =========================================================================
+
+  /**
+   * Amend an intent (title, why, footprint, priority) with a reason: its revision goes up by one and the
+   * change is kept in its history. Needs move with the footprint (strength = priority) and claims leave
+   * the paths it dropped. A substantive amendment (title, why or footprint) sends back the changes built
+   * on the older revision and tells the holder, which keeps the intent and redoes the work against the
+   * new revision (pushed to an in-platform agent, in an external agent's inbox). Landed, withdrawn and
+   * sealed intents cannot be amended (409); an amendment that changes nothing returns the intent as is.
+   */
+  async amendIntent(id: Id, p: IntentPatch & { reason: string; by?: string }): Promise<{ intent: Intent; revision: IntentRevision | null; returned: number; notified: Notified[] }> {
+    const colony = this.requireColony();
+    const row = this.intentRow(id);
+    if (!row) throw ftError(404, `unknown intent ${id}`);
+    this.assertRedirectable(row, "amended");
+    const reason = oneLine(String(p?.reason ?? ""), 500);
+    if (!reason) throw ftError(400, "a reason is required: it is recorded with the revision and sent to the agent");
+    const patch: IntentPatch = {};
+    if (p.title !== undefined) {
+      const title = String(p.title).trim();
+      if (!title) throw ftError(400, "intent title cannot be empty");
+      patch.title = title;
+    }
+    if (p.why !== undefined) patch.why = String(p.why);
+    if (p.footprint !== undefined) {
+      const footprint = normalizePaths(Array.isArray(p.footprint) ? p.footprint.map(String) : []);
+      if (footprint.length === 0) throw ftError(400, "intent footprint must name at least one path");
+      patch.footprint = footprint;
+    }
+    if (p.priority !== undefined) {
+      if (typeof p.priority !== "number" || !Number.isFinite(p.priority) || p.priority < 0) throw ftError(400, "priority must be a number >= 0");
+      patch.priority = p.priority;
+    }
+    if (Object.keys(patch).length === 0) throw ftError(400, "nothing to amend: give a title, why, footprint or priority");
+    const current = this.toIntent(row, colony.id);
+    const diff = intentChanges(current, patch);
+    if (diff.changed.length === 0) return { intent: current, revision: null, returned: 0, notified: [] };
+
+    const now = Date.now();
+    const by = oneLine(p.by ?? "", 200) || "unknown";
+    const revision = (row.revision ?? 1) + 1;
+    this.sql.exec(
+      "INSERT INTO intent_revisions (intent_id, revision, at, by, reason, changed, before, after, substantive) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      id,
+      revision,
+      now,
+      by,
+      reason,
+      JSON.stringify(diff.changed),
+      JSON.stringify(diff.before),
+      JSON.stringify(diff.after),
+      diff.substantive ? 1 : 0,
+    );
+    this.sql.exec(
+      "UPDATE intents SET title = ?, why = ?, footprint = ?, priority = ?, revision = ?, updated_at = ? WHERE id = ?",
+      diff.next.title,
+      diff.next.why,
+      JSON.stringify(diff.next.footprint),
+      diff.next.priority,
+      revision,
+      now,
+      id,
+    );
+    this.footprintCache.set(id, diff.next.footprint);
+
+    const fx = this.effects(colony.regionDepth);
+    const holder = row.assigned_to !== null && (row.status === "claimed" || row.status === "proposed") ? row.assigned_to : null;
+    if (diff.changed.includes("footprint")) {
+      const { added, removed } = footprintDelta(current.footprint, diff.next.footprint);
+      if (removed.length > 0) fx.batch.clear(removed, { intentId: id, kind: "need" }).clear(removed, { intentId: id, kind: "claim" });
+      if (holder && added.length > 0) fx.batch.deposit("claim", added, CLAIM_STRENGTH, now, { agentId: holder, intentId: id });
+    }
+    if (diff.changed.includes("footprint") || diff.changed.includes("priority")) fx.batch.deposit("need", diff.next.footprint, diff.next.priority, now, { intentId: id });
+
+    let returned = 0;
+    const notices: Notice[] = [];
+    if (diff.substantive) {
+      for (const prev of this.inFlightFor([id])) {
+        const next: Proposal = { ...prev, status: "returned", reason: revisedReturn(prev.intentRevision ?? null, revision, diff.changed, reason) };
+        this.writeProposal(next, now);
+        this.transition(next, prev.status, now, fx);
+        returned++;
+      }
+      const agent = holder ? this.agentRow(holder) : undefined;
+      if (holder && agent) {
+        // The holder works from the previous revision until it reads the notice (see stampDirection).
+        this.sql.exec("INSERT INTO intent_acks (intent_id, agent_id, revision, at) VALUES (?, ?, ?, ?) ON CONFLICT(intent_id, agent_id) DO NOTHING", id, holder, revision - 1, now);
+        notices.push({ directive: this.insertDirective({ agentId: holder, kind: "revision", intentId: id, message: reason, by, at: now, revision, changed: diff.changed }), kind: agent.kind });
+      }
+    }
+    const fresh = this.intentRow(id);
+    const intent = fresh ? this.toIntent(fresh, colony.id) : { ...current, ...diff.next, revision };
+    fx.events.push({ t: "intent", at: now, intentId: id, status: intent.status, title: intent.title, footprint: intent.footprint });
+    fx.events.push({ t: "amended", at: now, intentId: id, revision, changed: diff.changed, reason, by, title: intent.title, returned });
+    await this.flushEffects(fx);
+    for (const n of notices) n.intent = intent;
+    const notified = await this.deliver(notices);
+    return { intent, revision: { intentId: id, revision, changed: diff.changed, before: diff.before, after: diff.after, reason, by, at: now, substantive: diff.substantive }, returned, notified };
+  }
+
+  /**
+   * Withdraw an intent before it lands: it becomes "withdrawn" (kept, with the reason), its needs
+   * evaporate and its claims clear, the changes in flight for it go back ("withdrawn: ..."), and its
+   * holder gives up its lease and is told to stop. Idempotent. Landed work is untouched (409).
+   */
+  async withdrawIntent(id: Id, p: { reason: string; by?: string }): Promise<{ intent: Intent; returned: number; notified: Notified[]; already?: true }> {
+    const colony = this.requireColony();
+    const row = this.intentRow(id);
+    if (!row) throw ftError(404, `unknown intent ${id}`);
+    if (row.status === "withdrawn") return { intent: this.toIntent(row, colony.id), returned: 0, notified: [], already: true };
+    this.assertRedirectable(row, "withdrawn");
+    const reason = oneLine(String(p?.reason ?? ""), 500);
+    if (!reason) throw ftError(400, "a reason is required: it is recorded with the intent and sent to the agent");
+    const now = Date.now();
+    const fx = this.effects(colony.regionDepth);
+    const out = this.withdrawRows([row], reason, oneLine(p.by ?? "", 200) || "unknown", now, fx);
+    await this.flushEffects(fx);
+    const notified = await this.deliver(out.notices);
+    const fresh = this.intentRow(id);
+    return { intent: this.toIntent(fresh ?? row, colony.id), returned: out.returned, notified };
+  }
+
+  /**
+   * Retract a rule: it stays in history (retractedAt, by, reason) but is no longer checked, its open
+   * violations no longer count, and every intent it created that has not landed is withdrawn (needs
+   * evaporate, changes in flight go back, holders stop). Idempotent.
+   */
+  async retractRule(ruleId: Id, p: { reason: string; by?: string }): Promise<{ rule: Rule; withdrawn: number; returned: number; notified: Notified[]; already?: true }> {
+    const colony = this.requireColony();
+    const row = this.sql.exec<RuleRow>("SELECT * FROM rules WHERE id = ?", ruleId).toArray()[0];
+    if (!row) throw ftError(404, `unknown rule ${ruleId}`);
+    if (row.retracted_at) return { rule: this.toRule(row, colony.id), withdrawn: 0, returned: 0, notified: [], already: true };
+    const reason = oneLine(String(p?.reason ?? ""), 500);
+    if (!reason) throw ftError(400, "a reason is required: it is recorded with the rule and sent to the agents holding its intents");
+    const now = Date.now();
+    const by = oneLine(p.by ?? "", 200) || "unknown";
+    this.sql.exec("UPDATE rules SET retracted_at = ?, retracted_by = ?, retract_reason = ?, open_violations = 0 WHERE id = ?", now, by, reason, ruleId);
+    const rows = this.sql
+      .exec<IntentRow>("SELECT * FROM intents WHERE rule_id = ? AND status IN ('open', 'claimed', 'proposed') AND created_by != 'vaccine'", ruleId)
+      .toArray();
+    const fx = this.effects(colony.regionDepth);
+    const out = this.withdrawRows(rows, `rule ${ruleId} retracted: ${reason}`, by, now, fx, ruleId);
+    fx.events.push({ t: "retracted", at: now, ruleId, reason, by, withdrawn: rows.length });
+    fx.events.push(this.violationsEvent(now));
+    await this.flushEffects(fx);
+    const notified = await this.deliver(out.notices);
+    const fresh = this.sql.exec<RuleRow>("SELECT * FROM rules WHERE id = ?", ruleId).toArray()[0] ?? row;
+    return { rule: this.toRule(fresh, colony.id), withdrawn: rows.length, returned: out.returned, notified };
+  }
+
+  /**
+   * Send free-text guidance to one agent, about the intent it holds unless `intentId` names another.
+   * An in-platform agent gets it pushed and folds it into its next prompt, re-planning work it has not
+   * proposed (and recalling a proposal still in flight); an external agent reads it in its inbox.
+   */
+  async direct(agentId: Id, p: { message: string; intentId?: Id; by?: string }): Promise<Directive & { delivery: Notified["delivery"] }> {
+    this.requireColony();
+    const agent = this.requireAgent(agentId);
+    const message = String(p?.message ?? "").trim();
+    if (!message) throw ftError(400, "a directive needs a message");
+    if (message.length > MAX_DIRECTIVE_CHARS) throw ftError(400, `a directive is at most ${MAX_DIRECTIVE_CHARS} characters`);
+    let intentId = typeof p.intentId === "string" && p.intentId.trim() ? p.intentId.trim() : undefined;
+    if (intentId && !this.intentRow(intentId)) throw ftError(404, `unknown intent ${intentId}`);
+    intentId ??= agent.intent_id ?? undefined;
+    const now = Date.now();
+    const by = oneLine(p.by ?? "", 200) || "unknown";
+    const d = this.insertDirective({ agentId, kind: "guidance", ...(intentId ? { intentId } : {}), message, by, at: now });
+    const intent = intentId ? this.intentRow(intentId) : undefined;
+    const [n] = await this.deliver([{ directive: d, kind: agent.kind, ...(intent ? { intent: this.toIntent(intent, d.colonyId) } : {}) }]);
+    const fresh = this.sql.exec<DirectiveRow>("SELECT * FROM directives WHERE id = ?", d.id).toArray()[0];
+    const out = fresh ? toDirective(fresh, d.colonyId) : d;
+    this.hub.push({ t: "directive", at: now, directiveId: d.id, agentId, ...(intentId ? { intentId } : {}), message, by, ...(out.via ? { via: out.via } : {}) });
+    return { ...out, delivery: n?.delivery ?? "failed" };
+  }
+
+  /**
+   * An agent takes back its own change while it is in flight (a directive changed its course): it is
+   * returned ("superseded: ..."), and the agent keeps its intent, claim and lease to redo it. A change
+   * already decided is returned as it is.
+   */
+  async recall(agentId: Id, proposalId: Id, reason = "recalled by its agent"): Promise<Proposal> {
+    const colony = this.requireColony();
+    this.requireAgent(agentId);
+    const row = this.proposalRow(proposalId);
+    if (!row) throw ftError(404, `unknown proposal ${proposalId}`);
+    const prev = JSON.parse(row.data) as Proposal;
+    if (prev.agentId !== agentId) throw ftError(409, `proposal ${proposalId} is not ${agentId}'s`);
+    if (!OPEN_LIKE.has(prev.status) && prev.status !== "escalated") return prev;
+    const now = Date.now();
+    const next: Proposal = { ...prev, status: "returned", reason: supersededReturn(reason) };
+    this.writeProposal(next, now);
+    const fx = this.effects(colony.regionDepth);
+    this.transition(next, prev.status, now, fx);
+    await this.flushEffects(fx);
+    return next;
+  }
+
+  /**
+   * An agent's one-line "what I am doing now": stored on the agent (GET agents shows it), recorded in
+   * the evidence of its next proposal (and so in the lineage note), and emitted live (at most one event
+   * per agent per second). Counts as a sign of life.
+   */
+  async relay(agentId: Id, note: string): Promise<{ note: string; at: number; emitted: boolean }> {
+    this.requireColony();
+    const agent = this.requireAgent(agentId);
+    const text = cleanNote(String(note ?? ""));
+    if (!text) throw ftError(400, "a status note cannot be empty");
+    const now = Date.now();
+    this.sql.exec("UPDATE agents SET note = ?, note_at = ?, last_seen = ? WHERE id = ?", text, now, now, agentId);
+    const emitted = now - (this.noteEmitted.get(agentId) ?? 0) >= NOTE_EVENT_MS;
+    if (emitted) {
+      if (this.noteEmitted.size > 20_000) this.noteEmitted.clear();
+      this.noteEmitted.set(agentId, now);
+      this.hub.push({ t: "status", at: now, agentId, ...(agent.intent_id ? { intentId: agent.intent_id } : {}), note: text });
+    }
+    return { note: text, at: now, emitted };
+  }
+
+  /**
+   * The human guidance about an intent (the latest few, oldest first). An agent that takes the intent
+   * over from another follows it too: guidance is about the work, not only the agent it was sent to.
+   */
+  async guidance(intentId: Id): Promise<Array<{ id: Id; message: string; by: string; at: number }>> {
+    this.requireColony();
+    return this.guidanceRows(intentId);
+  }
+
+  /** One intent with its revision history (oldest first) and the directives about it (newest first). */
+  async intentHistory(id: Id): Promise<{ intent: Intent; revisions: IntentRevision[]; directives: Directive[] } | null> {
+    const colony = this.requireColony();
+    const row = this.intentRow(id);
+    if (!row) return null;
+    const directives = this.sql
+      .exec<DirectiveRow>("SELECT * FROM directives WHERE intent_id = ? ORDER BY at DESC LIMIT 100", id)
+      .toArray()
+      .map((r) => toDirective(r, colony.id));
+    return { intent: this.toIntent(row, colony.id), revisions: this.revisionRows(id).map(toRevision), directives };
+  }
+
+  /** Amending or withdrawing needs an intent that is still live: not landed, withdrawn or sealed. */
+  private assertRedirectable(row: IntentRow, verb: string): void {
+    if (row.status === "landed") throw ftError(409, `intent ${row.id} already landed; landed work is untouched (declare a new intent to change it further)`);
+    if (row.status === "withdrawn") throw ftError(409, `intent ${row.id} was withdrawn${row.withdrawn_reason ? ` (${row.withdrawn_reason})` : ""} and cannot be ${verb}`);
+    if (row.status === "abandoned" || row.created_by === "vaccine") throw ftError(409, `intent ${row.id} is sealed (${row.status}) and cannot be ${verb}`);
+  }
+
+  /**
+   * Withdraw these intents in one batch of effects: status, reason, needs and claims cleared, changes
+   * in flight sent back (see settleRedirect), holders idle with their leases released and a withdrawal
+   * notice each. Returns the notices to deliver and how many changes went back.
+   */
+  private withdrawRows(rows: IntentRow[], reason: string, by: string, now: number, fx: Effects, ruleId?: Id): { notices: Notice[]; returned: number } {
+    if (rows.length === 0) return { notices: [], returned: 0 };
+    const inflight = this.inFlightFor(rows.map((r) => r.id));
+    const perIntent = new Map<Id, number>();
+    for (const p of inflight) perIntent.set(p.intentId, (perIntent.get(p.intentId) ?? 0) + 1);
+    for (const row of rows) {
+      const fp = this.footprintOf(row.id, row.footprint);
+      this.sql.exec("UPDATE intents SET status = 'withdrawn', withdrawn_reason = ?, assigned_to = NULL, updated_at = ? WHERE id = ?", reason, now, row.id);
+      fx.batch.clear(fp, { intentId: row.id, kind: "need" }).clear(fp, { intentId: row.id, kind: "claim" });
+      fx.events.push({ t: "intent", at: now, intentId: row.id, status: "withdrawn", title: row.title, footprint: fp });
+    }
+    for (const prev of inflight) {
+      const next: Proposal = { ...prev, status: "returned", reason: withdrawnReturn(reason) };
+      this.writeProposal(next, now);
+      this.transition(next, prev.status, now, fx);
+    }
+    const notices: Notice[] = [];
+    for (const row of rows) {
+      fx.events.push({ t: "withdrawn", at: now, intentId: row.id, reason, by, title: row.title, returned: perIntent.get(row.id) ?? 0, ...(ruleId ? { ruleId } : {}) });
+      if (!row.assigned_to) continue;
+      const agent = this.agentRow(row.assigned_to);
+      if (!agent) continue;
+      if (agent.intent_id === row.id) {
+        this.sql.exec("UPDATE agents SET state = 'idle', intent_id = NULL, workspace = NULL WHERE id = ?", agent.id);
+        if (agent.state !== "idle") fx.events.push({ t: "agent", at: now, agentId: agent.id, kind: agent.kind as AgentKind, state: "idle" });
+        fx.release.add(agent.id);
+      }
+      notices.push({ directive: this.insertDirective({ agentId: agent.id, kind: "withdrawal", intentId: row.id, message: reason, by, at: now }), kind: agent.kind });
+    }
+    return { notices, returned: inflight.length };
+  }
+
+  /**
+   * A change sent back because its direction changed (see isRedirect): no failure mark and nothing
+   * reopens. For a withdrawn intent the agent goes idle and gives its lease back; for a revised one, or
+   * one its agent recalled, the holder keeps intent, claim and lease and works on.
+   */
+  private settleRedirect(p: Proposal, intent: IntentRow | undefined, agent: AgentRow | undefined, now: number, fx: Effects): void {
+    this.bump("redirected", 1, now);
+    if (!intent || intent.status === "withdrawn" || intent.status === "landed" || intent.status === "abandoned") {
+      if (intent?.status === "withdrawn") fx.batch.clear(this.footprintOf(intent.id, intent.footprint), { agentId: p.agentId, intentId: p.intentId, kind: "claim" });
+      if (agent && agent.intent_id === p.intentId && intent?.status !== "landed") {
+        this.sql.exec("UPDATE agents SET state = 'idle', intent_id = NULL, workspace = NULL WHERE id = ?", agent.id);
+        if (agent.state !== "idle") fx.events.push({ t: "agent", at: now, agentId: agent.id, kind: agent.kind as AgentKind, state: "idle" });
+        fx.release.add(agent.id);
+      }
+      return;
+    }
+    if (intent.status === "proposed" && intent.assigned_to === p.agentId && this.inFlightFor([intent.id]).every((x) => x.id === p.id || x.agentId !== p.agentId)) {
+      this.sql.exec("UPDATE intents SET status = 'claimed', updated_at = ? WHERE id = ? AND status = 'proposed'", now, intent.id);
+      fx.events.push({ t: "intent", at: now, intentId: intent.id, status: "claimed", title: intent.title, footprint: this.footprintOf(intent.id, intent.footprint) });
+    }
+    if (agent && agent.intent_id === p.intentId && agent.state === "proposing") {
+      this.sql.exec("UPDATE agents SET state = 'working' WHERE id = ?", agent.id);
+      fx.events.push({ t: "agent", at: now, agentId: agent.id, kind: agent.kind as AgentKind, state: "working", intentId: p.intentId });
+    }
+  }
+
+  /**
+   * Stamp a new proposal with the intent revision it was built on: the agent's own claim, else the
+   * revision it last saw if the intent was amended while it held it, else the current one. A change
+   * built on an older revision is refused (409) when a substantive amendment came after it. The
+   * direction (revision, history, the human guidance the agent received for this intent, its last
+   * status note) goes into the evidence and from there into the lineage note.
+   */
+  private stampDirection(draft: Proposal, row: IntentRow, claimed: unknown): void {
+    const current = row.revision ?? 1;
+    let built = current;
+    if (typeof claimed === "number" && Number.isInteger(claimed) && claimed >= 1) built = Math.min(claimed, current);
+    else if (current > 1) {
+      const ack = this.sql.exec<{ revision: number }>("SELECT revision FROM intent_acks WHERE intent_id = ? AND agent_id = ?", row.id, draft.agentId).toArray()[0];
+      if (ack) built = Math.min(ack.revision, current);
+    }
+    const revisions = current > 1 ? this.revisionRows(row.id) : [];
+    if (built < current) {
+      const later = revisions.filter((r) => r.revision > built && r.substantive === 1).map(toRevision);
+      const last = later[later.length - 1];
+      if (last) throw ftError(409, staleRevisionError(row.id, built, current, unionChanged(later), last.reason));
+      built = current; // only the priority moved since: the change still fits the current revision
+    }
+    draft.intentRevision = built;
+    const direction: Direction = { intentRevision: built };
+    if (revisions.length > 0) {
+      direction.revisions = revisions.slice(-MAX_REVISIONS).map((r) => {
+        const v = toRevision(r);
+        return { revision: v.revision, changed: v.changed, reason: v.reason, by: v.by, at: v.at };
+      });
+    }
+    // Guidance is about the intent: whichever agent proposes for it, the change was made under it.
+    const directives = this.guidanceRows(row.id);
+    if (directives.length > 0) direction.directives = directives;
+    const note = this.agentRow(draft.agentId)?.note;
+    if (note) direction.note = note;
+    // Only when it says something: an unamended intent, no guidance and no note leave the evidence as it was.
+    if (built > 1 || direction.directives || direction.note) draft.evidence = { ...draft.evidence, direction };
+  }
+
+  /** The human guidance about an intent, the latest MAX_NOTE_DIRECTIVES, oldest first. */
+  private guidanceRows(intentId: Id): Array<{ id: Id; message: string; by: string; at: number }> {
+    return this.sql
+      .exec<{ id: string; message: string; by: string; at: number }>(
+        "SELECT id, message, by, at FROM directives WHERE intent_id = ? AND kind = 'guidance' ORDER BY at DESC LIMIT ?",
+        intentId,
+        MAX_NOTE_DIRECTIVES,
+      )
+      .toArray()
+      .reverse()
+      .map((d) => ({ id: d.id, message: d.message, by: d.by, at: d.at }));
+  }
+
+  /**
+   * An intent as the decide arc reviews it: its human guidance is part of its direction, appended to
+   * the why, so a change that follows a directive is judged against it instead of as off-intent.
+   */
+  private reviewIntent(id: Id): Intent | null {
+    const r = this.intentRow(id);
+    if (!r) return null;
+    const intent = this.toIntent(r, this.requireColony().id);
+    const guidance = this.guidanceRows(id);
+    if (guidance.length > 0) intent.why = `${intent.why}\n\n${guidanceText(guidance)}`;
+    return intent;
+  }
+
+  /** Changes in flight (pending, checking, in a lane, or waiting for a human) for these intents, oldest first. */
+  private inFlightFor(intentIds: Id[]): Proposal[] {
+    const want = new Set(intentIds);
+    return this.sql
+      .exec<{ intent_id: string; data: string }>("SELECT intent_id, data FROM proposals WHERE status IN ('pending', 'checking', 'ready', 'escalated') ORDER BY created_at")
+      .toArray()
+      .filter((r) => want.has(r.intent_id))
+      .map((r) => JSON.parse(r.data) as Proposal);
+  }
+
+  private revisionRows(intentId: Id): RevisionRow[] {
+    return this.sql.exec<RevisionRow>("SELECT * FROM intent_revisions WHERE intent_id = ? ORDER BY revision", intentId).toArray();
+  }
+
+  private insertDirective(d: { agentId: Id; kind: DirectiveKind; intentId?: Id; message: string; by: string; at: number; revision?: number; changed?: IntentField[] }): Directive {
+    const out: Directive = { id: newId("dir_"), colonyId: this.requireColony().id, agentId: d.agentId, kind: d.kind, message: d.message, by: d.by, at: d.at };
+    if (d.intentId) out.intentId = d.intentId;
+    if (typeof d.revision === "number") out.revision = d.revision;
+    if (d.changed) out.changed = d.changed;
+    this.sql.exec(
+      "INSERT INTO directives (id, agent_id, kind, intent_id, message, by, at, revision, changed, delivered_at, via) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL)",
+      out.id,
+      out.agentId,
+      out.kind,
+      out.intentId ?? null,
+      out.message,
+      out.by,
+      out.at,
+      out.revision ?? null,
+      out.changed ? JSON.stringify(out.changed) : null,
+    );
+    return out;
+  }
+
+  /** Deliver notices: pushed to in-platform agents (AgentDO.direct), left in the inbox of external ones. */
+  private async deliver(notices: Notice[]): Promise<Notified[]> {
+    return Promise.all(
+      notices.map(async (n): Promise<Notified> => {
+        const base = { agentId: n.directive.agentId, directiveId: n.directive.id };
+        if (n.kind !== "internal" && n.kind !== "synthetic") return { ...base, delivery: "inbox" };
+        return { ...base, delivery: (await this.pushDirective(n.directive, n.intent)) ? "pushed" : "failed" };
+      }),
+    );
+  }
+
+  /** Push a directive to an in-platform agent; true when the agent took it (marked delivered). */
+  private async pushDirective(d: Directive, intent?: Intent): Promise<boolean> {
+    const ns = (this.env as unknown as { AGENT?: DurableObjectNamespace }).AGENT;
+    if (!ns) return false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const stub = ns.get(ns.idFromName(d.agentId)) as unknown as { direct(p: { directive: Directive; intent?: Intent }): Promise<unknown> };
+      const timeout = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`no answer in ${PUSH_TIMEOUT_MS} ms`)), PUSH_TIMEOUT_MS);
+      });
+      await Promise.race([stub.direct(intent ? { directive: d, intent } : { directive: d }), timeout]);
+      this.sql.exec("UPDATE directives SET delivered_at = ?, via = 'push' WHERE id = ? AND delivered_at IS NULL", Date.now(), d.id);
+      return true;
+    } catch (err) {
+      console.warn(`directive ${d.id} not pushed to ${d.agentId}: ${errorText(err)}`);
+      return false;
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
+  // =========================================================================
   // Agents
   // =========================================================================
 
@@ -570,20 +1117,35 @@ export class ColonyDO extends DurableObject<Env> {
   }
 
   /**
-   * The intents and agents a landing's lineage note needs, in one call. Lanes pass
-   * this to TrunkDO.land so the trunk writer never has to pull a full snapshot.
+   * What a lane needs right before landing, in one call: each intent's lineage fields plus its
+   * direction (status, revision, withdrawal reason, substantive amendments) so the lane can send back
+   * changes for withdrawn or revised intents; each agent's kind and model; and the decide-arc
+   * decisions recorded for each proposal (keyed by proposal id, the latest MAX_NOTE_DECISIONS each).
+   * Lanes pass it on to TrunkDO.land, so the trunk writer never pulls a snapshot and the lineage note
+   * carries the decisions.
    */
-  async landContext(intentIds: Id[], agentIds: Id[]): Promise<{
-    intents: Record<Id, { title: string; why: string; ruleId?: Id; parentId?: Id }>;
+  async landContext(intentIds: Id[], agentIds: Id[], proposalIds: Id[] = []): Promise<{
+    intents: Record<Id, { title: string; why: string; ruleId?: Id; parentId?: Id } & DirectionInfo>;
     agents: Record<Id, { kind: AgentKind; model?: string }>;
+    decisions: Record<Id, NoteDecision[]>;
   }> {
     const colonyId = this.requireColony().id;
-    const intents: Record<Id, { title: string; why: string; ruleId?: Id; parentId?: Id }> = {};
+    const intents: Record<Id, { title: string; why: string; ruleId?: Id; parentId?: Id } & DirectionInfo> = {};
     for (const id of new Set(intentIds)) {
       const row = this.intentRow(id);
       if (!row) continue;
       const i = this.toIntent(row, colonyId);
-      intents[id] = { title: i.title, why: i.why, ...(i.ruleId ? { ruleId: i.ruleId } : {}), ...(i.parentId ? { parentId: i.parentId } : {}) };
+      const entry: { title: string; why: string; ruleId?: Id; parentId?: Id } & DirectionInfo = { title: i.title, why: i.why, status: i.status, revision: i.revision ?? 1 };
+      if (i.ruleId) entry.ruleId = i.ruleId;
+      if (i.parentId) entry.parentId = i.parentId;
+      if (i.withdrawnReason) entry.withdrawnReason = i.withdrawnReason;
+      if ((i.revision ?? 1) > 1) {
+        entry.revisions = this.revisionRows(id)
+          .filter((r) => r.substantive === 1)
+          .slice(-MAX_REVISIONS)
+          .map((r) => ({ revision: r.revision, changed: toRevision(r).changed, reason: r.reason, at: r.at }));
+      }
+      intents[id] = entry;
     }
     const agents: Record<Id, { kind: AgentKind; model?: string }> = {};
     for (const id of new Set(agentIds)) {
@@ -592,7 +1154,19 @@ export class ColonyDO extends DurableObject<Env> {
       const a = this.toAgent(row, colonyId, false);
       agents[id] = { kind: a.kind, ...(a.model ? { model: a.model } : {}) };
     }
-    return { intents, agents };
+    const wanted = [...new Set(Array.isArray(proposalIds) ? proposalIds : [])].slice(0, 500);
+    const decisions =
+      wanted.length > 0
+        ? noteDecisions(
+            this.sql
+              .exec<DecisionRow>(
+                "SELECT id, kind, subject, layer, answers, p, action, at FROM decisions WHERE subject IN (SELECT value FROM json_each(?)) ORDER BY at",
+                JSON.stringify(wanted),
+              )
+              .toArray(),
+          )
+        : {};
+    return { intents, agents, decisions };
   }
 
   /**
@@ -607,10 +1181,18 @@ export class ColonyDO extends DurableObject<Env> {
     this.requireAgent(agentId);
     // One take per agent at a time: a second one could reserve another intent while the first awaits.
     if (this.taking.has(agentId)) return { wait: true, retryInMs: BUSY_RETRY_MS, reason: "take already in progress" };
+    // Backpressure: TAKES_IN_FLIGHT takes score candidates at once and up to TAKES_QUEUED more wait
+    // their turn; past that the agent is told to come back later (paced like any wait). Every take in
+    // flight holds its candidate set while it awaits regions and the pool: thousands at once (5,000
+    // agents ramping up) exhausted the isolate's memory and reset the colony.
+    const turn = this.takeGate.enter();
+    if (turn === null) return this.waitFor(agentId, BUSY_RETRY_MS, "colony busy: too many takes in flight", Date.now());
     this.taking.add(agentId);
     try {
+      if (turn !== true) await turn;
       return await this.takeFor(agentId);
     } finally {
+      this.takeGate.leave();
       this.taking.delete(agentId);
     }
   }
@@ -619,7 +1201,11 @@ export class ColonyDO extends DurableObject<Env> {
     const colony = this.requireColony();
     const agent = this.requireAgent(agentId);
     const now = Date.now();
-    this.sql.exec("UPDATE agents SET last_seen = ?, state = CASE WHEN state = 'dead' THEN 'idle' ELSE state END WHERE id = ?", now, agentId);
+    // Last-seen is written at most every LAST_SEEN_EVERY_MS per agent (the reaper waits 10 minutes):
+    // waiting agents retry often, and a write per retry was the colony's main storage load.
+    if (agent.state === "dead" || now - agent.last_seen >= LAST_SEEN_EVERY_MS) {
+      this.sql.exec("UPDATE agents SET last_seen = ?, state = CASE WHEN state = 'dead' THEN 'idle' ELSE state END WHERE id = ?", now, agentId);
+    }
     this.maybeReap(now);
 
     // Idempotent: hand back an assignment the agent already holds.
@@ -634,16 +1220,8 @@ export class ColonyDO extends DurableObject<Env> {
     }
 
     // Only the columns self-assignment needs; the winner is loaded in full.
-    const rows = this.sql
-      .exec<{ id: string; footprint: string; priority: number; created_at: number }>(
-        "SELECT id, footprint, priority, created_at FROM intents WHERE status = 'open' ORDER BY priority DESC, created_at ASC LIMIT ?",
-        CANDIDATE_CAP,
-      )
-      .toArray();
-    if (rows.length === 0) {
-      this.setAgentState(agentId, "waiting", now);
-      return { wait: true, retryInMs: jitter(IDLE_RETRY_MS, this.rand), reason: "no open intents" };
-    }
+    const rows = this.openCandidates(now);
+    if (rows.length === 0) return this.waitFor(agentId, IDLE_RETRY_MS, "no open intents", now);
     const depth = colony.regionDepth;
     const intents = rows.map(
       (r) => ({ id: r.id, colonyId: colony.id, footprint: this.footprintOf(r.id, r.footprint), priority: r.priority, createdAt: r.created_at }) as Intent,
@@ -685,7 +1263,7 @@ export class ColonyDO extends DurableObject<Env> {
         const view = views.get(region);
         if (!view) continue; // unreadable region: fail open
         if (view.repulsive) {
-          rep += repulsion(view.byPath, paths);
+          rep += fastRepulsion(view.index, paths);
           direct += directClaimOn(view.byPath, paths);
         }
         for (const c of view.unseen) {
@@ -712,33 +1290,71 @@ export class ColonyDO extends DurableObject<Env> {
       const stillOpen = this.openAmong(pool.map((c) => c.intent.id));
       pool = pool.filter((c) => stillOpen.has(c.intent.id));
     }
-    this.setAgentState(agentId, "waiting", Date.now());
-    if (candidates.every((c) => !c.admissionOpen)) {
-      return { wait: true, retryInMs: jitter(CLOSED_RETRY_MS, this.rand), reason: "admission closed in every candidate region" };
-    }
+    const later = Date.now();
+    if (candidates.every((c) => !c.admissionOpen)) return this.waitFor(agentId, CLOSED_RETRY_MS, "admission closed in every candidate region", later);
     if (candidates.every((c) => !c.admissionOpen || inhibited(c, inhibitAt))) {
-      return { wait: true, retryInMs: jitter(CLOSED_RETRY_MS, this.rand), reason: "every open intent's files are claimed by another agent" };
+      return this.waitFor(agentId, CLOSED_RETRY_MS, "every open intent's files are claimed by another agent", later);
     }
-    return { wait: true, retryInMs: jitter(DECLINED_RETRY_MS, this.rand), reason: "no intent accepted at this agent's thresholds" };
+    return this.waitFor(agentId, DECLINED_RETRY_MS, "no intent accepted at this agent's thresholds", later);
   }
 
-  /** Liveness: refresh the agent's claim marks (at most every 15 s) and its last-seen time. */
-  async heartbeat(agentId: Id): Promise<void> {
+  /**
+   * Tell an agent to wait. The retry hint grows with the number of agents waiting (WaitPacer), so
+   * thousands of waiting agents come back at a pace the colony can serve instead of all at once.
+   */
+  private waitFor(agentId: Id, baseMs: number, reason: string, now: number): TakeResult {
+    this.setAgentState(agentId, "waiting", now);
+    return { wait: true, retryInMs: jitter(this.waits.wait(agentId, baseMs, now), this.rand), reason };
+  }
+
+  /**
+   * Liveness: the agent's last-seen time, and a refresh of the claim marks it still holds (at most
+   * every 15 s). Only existing claims are re-dated (RegionDO.refreshClaims): a claim cleared by a
+   * landing or a return is never re-created by a heartbeat that raced it. Agents that refresh
+   * their claims in the regions themselves (in-platform agents) pass `{ claims: false }`.
+   */
+  async heartbeat(agentId: Id, opts: { claims?: boolean } = {}): Promise<void> {
     const colony = this.requireColony();
     const agent = this.requireAgent(agentId);
     const now = Date.now();
     this.sql.exec("UPDATE agents SET last_seen = ? WHERE id = ?", now, agentId);
     if (agent.state === "dead") this.setAgentState(agentId, "idle", now);
     this.maybeReap(now);
+    if (opts?.claims === false) {
+      this.lastRefresh.set(agentId, now);
+      return;
+    }
     if (now - (this.lastRefresh.get(agentId) ?? 0) < CLAIM_REFRESH_MS) return;
     const held = this.sql
       .exec<{ id: string; footprint: string }>("SELECT id, footprint FROM intents WHERE assigned_to = ? AND status IN ('claimed', 'proposed')", agentId)
       .toArray();
     if (held.length === 0) return;
     this.lastRefresh.set(agentId, now);
-    const batch = new FieldBatch(colony.regionDepth);
-    for (const h of held) batch.deposit("claim", this.footprintOf(h.id, h.footprint), CLAIM_STRENGTH, now, { agentId, intentId: h.id });
-    await this.applyField(batch);
+    const byRegion = new Map<string, { intentIds: Set<Id>; deposit: Array<{ path: Path; intentId: Id }> }>();
+    for (const h of held) {
+      for (const [region, paths] of groupByRegion(this.footprintOf(h.id, h.footprint), colony.regionDepth)) {
+        let r = byRegion.get(region);
+        if (!r) byRegion.set(region, (r = { intentIds: new Set(), deposit: [] }));
+        r.intentIds.add(h.id);
+        for (const path of paths) r.deposit.push({ path, intentId: h.id });
+      }
+    }
+    await Promise.all(
+      [...byRegion].map(async ([region, r]) => {
+        try {
+          const stub = await this.region(region);
+          try {
+            await stub.refreshClaims({ agentId, intentIds: [...r.intentIds] });
+          } catch (err) {
+            if (!/does not implement/i.test(errorText(err))) throw err;
+            // A region still on the previous version (mid-deploy): deposit the claims as before.
+            await stub.apply({ deposit: r.deposit.map((d) => ({ kind: "claim" as const, path: d.path, strength: CLAIM_STRENGTH, at: now, agentId, intentId: d.intentId })) });
+          }
+        } catch (err) {
+          console.error(`claim refresh failed in region ${region} for ${agentId}: ${errorText(err)}`);
+        }
+      }),
+    );
   }
 
   /** Give up a claimed intent: it reopens, claims are cleared and a failure mark is left. */
@@ -778,7 +1394,10 @@ export class ColonyDO extends DurableObject<Env> {
     // Idempotent: a retry of the same (agent, intent, head commit) gets the proposal it already made,
     // even after that proposal landed or went back.
     const repeat = this.repeatedProposal(input.agentId, intentRow.id, input.headSha);
-    if (repeat) return repeat;
+    if (repeat) {
+      if (input.notify === true && !SENT_BACK.has(repeat.status) && repeat.status !== "landed") this.watchOutcome(repeat.id, repeat.agentId);
+      return repeat;
+    }
     this.assertProposable(intentRow, input.agentId);
     const writeSet = this.normalizeVersions(input.writeSet);
     if (writeSet.length === 0) throw ftError(400, "proposal write set is empty");
@@ -808,6 +1427,8 @@ export class ColonyDO extends DurableObject<Env> {
       status: "pending",
       createdAt: now,
     };
+    // Direction: refuse a change built on an older revision; record revision, directives and status note.
+    this.stampDirection(draft, intentRow, input.intentRevision);
 
     // Decide prong (decide/engine.ts): with Workers AI bound, the proposal waits in "checking" while
     // innate checks, the reflex arc and the two-signal gate decide where it goes; without it, it
@@ -834,6 +1455,7 @@ export class ColonyDO extends DurableObject<Env> {
       JSON.stringify(proposal),
     );
     this.bump("proposals", 1, now);
+    if (input.notify === true) this.watchOutcome(proposal.id, proposal.agentId);
     const fx = this.effects(colony.regionDepth);
     this.transition(proposal, "pending", now, fx);
     if (deciding && fresh.status === "claimed") {
@@ -854,13 +1476,45 @@ export class ColonyDO extends DurableObject<Env> {
     return this.getProposalSync(id);
   }
 
-  /** An agent's recent proposals, newest first (its inbox of outcomes). */
-  async inbox(agentId: Id, limit = 20): Promise<Proposal[]> {
-    const n = Math.max(1, Math.min(200, Math.floor(limit)));
-    return this.sql
+  /**
+   * An agent's inbox, newest first: its recent proposals (their outcomes) and, unless `proposalsOnly`,
+   * the directives addressed to it: human guidance, and revisions and withdrawals of intents it held.
+   * A directive entry lines up with a proposal entry (id, intentId, status "directive", reason = what
+   * to do, createdAt), so readers that list proposals show it too (see InboxDirective). Reading a
+   * directive here marks it delivered; reading a revision notice records that the agent saw that
+   * revision (stampDirection then accepts changes built on it).
+   */
+  async inbox(agentId: Id, limit = 20, opts: { proposalsOnly?: boolean } = {}): Promise<Array<Proposal | InboxDirective>> {
+    const n = Math.max(1, Math.min(200, Math.floor(Number(limit) || 20)));
+    const proposals: Array<Proposal | InboxDirective> = this.sql
       .exec<{ data: string }>("SELECT data FROM proposals WHERE agent_id = ? ORDER BY created_at DESC LIMIT ?", agentId, n)
       .toArray()
       .map((r) => JSON.parse(r.data) as Proposal);
+    if (opts?.proposalsOnly) return proposals;
+    const fetched = this.sql.exec<DirectiveRow>("SELECT * FROM directives WHERE agent_id = ? ORDER BY at DESC LIMIT ?", agentId, n).toArray();
+    if (fetched.length === 0) return proposals;
+    // Only the directives that make the newest `n` entries are shown, so only those count as read.
+    const oldestShown = [...proposals.map((p) => p.createdAt), ...fetched.map((r) => r.at)].sort((a, b) => b - a)[n - 1] ?? Number.NEGATIVE_INFINITY;
+    const rows = fetched.filter((r) => r.at >= oldestShown);
+    const now = Date.now();
+    const colonyId = this.loadColony()?.colony.id ?? "";
+    for (const r of rows) {
+      if (r.delivered_at === null) {
+        this.sql.exec("UPDATE directives SET delivered_at = ?, via = 'inbox' WHERE id = ? AND delivered_at IS NULL", now, r.id);
+        r.delivered_at = now;
+        r.via = "inbox";
+      }
+      if (r.kind === "revision" && r.intent_id && typeof r.revision === "number") {
+        this.sql.exec(
+          "INSERT INTO intent_acks (intent_id, agent_id, revision, at) VALUES (?, ?, ?, ?) ON CONFLICT(intent_id, agent_id) DO UPDATE SET revision = MAX(revision, excluded.revision), at = excluded.at",
+          r.intent_id,
+          agentId,
+          r.revision,
+          now,
+        );
+      }
+    }
+    return [...proposals, ...rows.map((r) => inboxEntry(toDirective(r, colonyId)))].sort((a, b) => b.createdAt - a.createdAt).slice(0, n);
   }
 
   /** Patch one proposal (RegionDO/TrunkDO). Status changes carry their side effects. */
@@ -1051,13 +1705,12 @@ export class ColonyDO extends DurableObject<Env> {
       sql: this.sql,
       waitUntil: (p) => this.ctx.waitUntil(p),
       colony: () => this.requireColony(),
-      intent: (id) => {
-        const r = this.intentRow(id);
-        return r ? this.toIntent(r, this.requireColony().id) : null;
-      },
+      // The intent with its human guidance: a change that follows a directive is judged against it, not as off-intent.
+      intent: (id) => this.reviewIntent(id),
       rules: () => {
         const colonyId = this.requireColony().id;
-        return this.sql.exec<RuleRow>("SELECT * FROM rules ORDER BY created_at").toArray().map((r) => this.toRule(r, colonyId));
+        // A retracted rule is history: it is no longer checked.
+        return this.sql.exec<RuleRow>("SELECT * FROM rules WHERE retracted_at IS NULL ORDER BY created_at").toArray().map((r) => this.toRule(r, colonyId));
       },
       agent: (id) => {
         const r = this.agentRow(id);
@@ -1202,9 +1855,21 @@ export class ColonyDO extends DurableObject<Env> {
   // Live hub
   // =========================================================================
 
-  /** Broadcast events to UI sockets (batched, at most every 100 ms). Returns the listener count. */
-  async emit(e: ColonyEvent | ColonyEvent[]): Promise<{ listeners: number }> {
-    return { listeners: this.hub.push(e) };
+  /**
+   * Broadcast events to UI sockets (batched, at most every 100 ms). Returns the listener count and
+   * `emitEveryMs`: how long regions should batch their field events before the next emit (longer
+   * when many regions emit, so the colony gets about 60 emit calls a second whatever their number).
+   */
+  async emit(e: ColonyEvent | ColonyEvent[]): Promise<{ listeners: number; emitEveryMs: number }> {
+    const list = Array.isArray(e) ? e : [e];
+    let region: string | null = null;
+    for (const ev of list) {
+      if ((ev.t === "mark" || ev.t === "sigma") && typeof ev.region === "string") {
+        region = ev.region;
+        break;
+      }
+    }
+    return { listeners: this.hub.push(list), emitEveryMs: this.emitPace.pace(region, Date.now()) };
   }
 
   /** WebSocket upgrade for /api/colonies/:id/live (hibernation API). */
@@ -1345,9 +2010,13 @@ export class ColonyDO extends DurableObject<Env> {
       );
       this.recentClaims.delete(id);
       this.lastRefresh.delete(id);
+      this.waits.done(id);
       fx.events.push({ t: "agent", at: now, agentId: id, kind: agent.kind as AgentKind, state: "dead" });
     }
     await this.flushEffects(fx);
+    // Every claim they still hold anywhere goes too (a proposal in flight stands, unprotected), so a
+    // stopped run never keeps admission closed or inhibits work while its claims decay.
+    await this.clearAgentClaims(out);
     return out;
   }
 
@@ -1364,20 +2033,33 @@ export class ColonyDO extends DurableObject<Env> {
         // already closed
       }
     }
+    // Buffered metrics belong to the colony being erased: drop them before the storage goes.
+    this.pendingMetrics.clear();
+    this.pendingSeries.clear();
+    if (this.metricsFlush !== null) clearTimeout(this.metricsFlush);
+    this.metricsFlush = null;
     await this.ctx.storage.deleteAlarm();
     await this.ctx.storage.deleteAll();
     this.colonyCache = null;
     this.configured.clear();
     this.recentClaims.clear();
     this.readingCache.clear();
+    this.pendingReadings.clear();
+    this.waits.clear();
+    this.emitPace.clear();
+    this.candidateRows = null;
+    this.countsCache = null;
+    this.landingsSincePrune = 0;
     this.taking.clear();
     this.lastRefresh.clear();
     this.footprintCache.clear();
     this.sentMetrics.clear();
     this.lastReap = 0;
     this.registryReady = false;
+    this.noteEmitted.clear();
     for (const stmt of SCHEMA) this.sql.exec(stmt);
     for (const stmt of OPS_SCHEMA) this.sql.exec(stmt);
+    migrateDirection(this.sql);
     return { cleared: true };
   }
 
@@ -1426,7 +2108,7 @@ export class ColonyDO extends DurableObject<Env> {
     this.maybeReap(now);
     const full = now - this.lastFullMetricsAt >= METRICS_FULL_MS;
     if (full) this.lastFullMetricsAt = now;
-    const changed = changedMetrics(this.currentMetrics(now), this.sentMetrics, full);
+    const changed = changedMetrics(this.currentMetrics(now, true), this.sentMetrics, full);
     if (changed.length > 0) this.hub.push(changed.map((m): ColonyEvent => ({ t: "metric", at: now, name: m.name, value: m.value })));
     await this.ctx.storage.setAlarm(now + METRICS_TICK_MS);
   }
@@ -1442,12 +2124,18 @@ export class ColonyDO extends DurableObject<Env> {
   }
 
   /** Every metric (stored counters plus live gauges for agents, intents, proposals, violations and the funnel), as a stable map. */
-  private currentMetrics(now: number): Record<string, number> {
+  private currentMetrics(now: number, cachedCounts = false): Record<string, number> {
     const m = this.metricsRecord();
-    Object.assign(m, this.agentCounts());
-    for (const r of this.sql.exec<{ status: string; n: number }>("SELECT status, COUNT(*) AS n FROM intents GROUP BY status")) {
-      m[`intents${r.status.charAt(0).toUpperCase()}${r.status.slice(1)}`] = r.n;
+    // The metrics tick (every 3 s with a UI connected) reuses the intent and agent counts for a while: both are full scans.
+    let counts = cachedCounts && this.countsCache && now - this.countsCache.at < COUNTS_TTL_MS ? this.countsCache.counts : null;
+    if (!counts) {
+      counts = { ...this.agentCounts() };
+      for (const r of this.sql.exec<{ status: string; n: number }>("SELECT status, COUNT(*) AS n FROM intents GROUP BY status")) {
+        counts[`intents${r.status.charAt(0).toUpperCase()}${r.status.slice(1)}`] = r.n;
+      }
+      this.countsCache = { at: now, counts };
     }
+    Object.assign(m, counts);
     const p = this.sql
       .exec<{ inflight: number; escalated: number }>(
         "SELECT COUNT(*) AS inflight, COALESCE(SUM(CASE WHEN status = 'escalated' THEN 1 ELSE 0 END), 0) AS escalated FROM proposals WHERE status IN ('pending', 'checking', 'ready', 'escalated')",
@@ -1481,6 +2169,7 @@ export class ColonyDO extends DurableObject<Env> {
 
   /** The last SERIES_BUCKETS minutes of the per-minute series, ending with the current minute. */
   private seriesReport(now: number): ColonySeries {
+    this.flushMetrics(now);
     const end = minuteOf(now);
     const first = end - SERIES_BUCKETS + 1;
     const rows = this.sql.exec<{ name: string; minute: number; value: number }>("SELECT name, minute, value FROM series WHERE minute >= ? AND minute <= ?", first, end).toArray();
@@ -1500,18 +2189,13 @@ export class ColonyDO extends DurableObject<Env> {
   /** Add to (counter) or set (gauge) the current minute of a series; prunes old minutes now and then. */
   private recordSeries(name: string, value: number, now: number, gauge: boolean): void {
     if (!Number.isFinite(value)) return;
-    const upsert = gauge
-      ? "INSERT INTO series (name, minute, value) VALUES (?, ?, ?) ON CONFLICT(name, minute) DO UPDATE SET value = excluded.value"
-      : "INSERT INTO series (name, minute, value) VALUES (?, ?, ?) ON CONFLICT(name, minute) DO UPDATE SET value = value + excluded.value";
-    this.sql.exec(upsert, name, minuteOf(now), value);
-    if (now - this.lastSeriesPrune < SERIES_PRUNE_EVERY_MS) return;
-    this.lastSeriesPrune = now;
-    const cutoff = minuteOf(now) - SERIES_KEEP_MINUTES;
-    // Carry each gauge's last value to the cutoff so the line stays continuous after pruning.
-    for (const g of GAUGE_SERIES) {
-      this.sql.exec("INSERT OR IGNORE INTO series (name, minute, value) SELECT name, ?, value FROM series WHERE name = ? AND minute < ? ORDER BY minute DESC LIMIT 1", cutoff, g, cutoff);
-    }
-    this.sql.exec("DELETE FROM series WHERE minute < ?", cutoff);
+    // Buffered with the counters (flushMetrics); a gauge keeps its latest value for the minute.
+    const minute = minuteOf(now);
+    const key = `${name}|${minute}`;
+    const r = this.pendingSeries.get(key);
+    if (!r) this.pendingSeries.set(key, { name, minute, value, gauge });
+    else r.value = gauge ? value : r.value + value;
+    this.scheduleMetricsFlush();
   }
 
   /** Colonies from before the series table: rebuild the landings series from the landings log (once). */
@@ -1554,6 +2238,8 @@ export class ColonyDO extends DurableObject<Env> {
     const won = this.sql
       .exec("UPDATE intents SET status = 'claimed', assigned_to = ?, updated_at = ? WHERE id = ? AND status = 'open' RETURNING id", agentId, Date.now(), intentId)
       .toArray();
+    // Gone from the shared candidate list either way: claimed now, or by someone else before.
+    if (this.candidateRows) this.candidateRows.rows = this.candidateRows.rows.filter((r) => r.id !== intentId);
     if (won.length === 0) return false;
     this.sql.exec("UPDATE agents SET intent_id = ?, workspace = NULL WHERE id = ?", intentId, agentId);
     return true;
@@ -1602,6 +2288,7 @@ export class ColonyDO extends DurableObject<Env> {
     }
     this.sql.exec("UPDATE agents SET state = 'working', intent_id = ?, workspace = ?, last_seen = ? WHERE id = ?", intent.id, JSON.stringify(lease), now, agentId);
     this.lastRefresh.set(agentId, claimedAt);
+    this.waits.done(agentId);
     this.hub.push([
       { t: "intent", at: now, intentId: intent.id, status: "claimed", title: intent.title, footprint: intent.footprint },
       { t: "agent", at: now, agentId, kind, state: "working", intentId: intent.id, paths: intent.footprint },
@@ -1658,18 +2345,23 @@ export class ColonyDO extends DurableObject<Env> {
     return (Number.isFinite(f) && f >= 0 ? f : LATERAL_INHIBITION) * CLAIM_STRENGTH;
   }
 
-  /** Recent claims of other agents that a reading started at `since` may not include (prunes old entries). */
-  private unseenClaims(agentId: Id, since: number): Array<{ paths: Set<Path>; regions: Set<string> }> {
-    const horizon = Date.now() - RECENT_CLAIM_MS;
-    const out: Array<{ paths: Set<Path>; regions: Set<string> }> = [];
-    for (const [id, c] of this.recentClaims) {
-      if (c.doneAt !== null && c.doneAt < horizon) {
-        this.recentClaims.delete(id);
-        continue;
-      }
-      if (id !== agentId && (c.doneAt === null || c.doneAt >= since)) out.push(c);
-    }
-    return out;
+  /**
+   * The open intents self-assignment considers (highest priority, then oldest; CANDIDATE_CAP of
+   * them). Under load (BUSY_TAKES takes in flight or more) concurrent takes share one list for
+   * CANDIDATES_TTL_MS instead of each reading 200 rows; reserve() stays the atomic check, and drops
+   * what it claims from the shared list.
+   */
+  private openCandidates(now: number): Array<{ id: string; footprint: string; priority: number; created_at: number }> {
+    const busy = this.taking.size >= BUSY_TAKES;
+    if (busy && this.candidateRows && now - this.candidateRows.at < CANDIDATES_TTL_MS) return this.candidateRows.rows;
+    const rows = this.sql
+      .exec<{ id: string; footprint: string; priority: number; created_at: number }>(
+        "SELECT id, footprint, priority, created_at FROM intents WHERE status = 'open' ORDER BY priority DESC, created_at ASC LIMIT ?",
+        CANDIDATE_CAP,
+      )
+      .toArray();
+    this.candidateRows = { at: now, rows };
+    return rows;
   }
 
   /** The subset of these intents that is still open. */
@@ -1688,64 +2380,81 @@ export class ColonyDO extends DurableObject<Env> {
   }
 
   /**
-   * Field readings for the candidate paths of each region. Concurrent takes
-   * share one in-flight or recent (READING_TTL_MS) reading per region when it
-   * covers the paths they need; claims made after a reading started are
-   * overlaid from recentClaims, so sharing never hides a newer claim.
+   * The claim field of each region the candidates touch. Concurrent takes share one reading per
+   * region: the claim and danger marks of the whole region (a few dozen entries), so every take
+   * can use it whatever paths it scores. Claims made after a reading started are overlaid from
+   * recentClaims, so sharing never hides a newer claim. A reading younger than READING_TTL_MS is
+   * used as is. Under load it is used for READING_BUSY_TTL_MS, then refreshed in the background
+   * while takes keep using it up to READING_STALE_MS; otherwise the take waits for a new one.
+   * A region that cannot be read is left out (fail open: it neither repels nor closes admission).
    */
-  private async readRegions(wanted: Map<string, Set<Path>>): Promise<Map<string, { reading: FieldReading; fetchStart: number }>> {
+  private async readRegions(wanted: Map<string, Set<Path>>): Promise<Map<string, ReadingEntry & { reading: FieldReading }>> {
     const now = Date.now();
-    const out = new Map<string, { reading: FieldReading; fetchStart: number }>();
-    await Promise.all(
-      [...wanted].map(async ([region, paths]) => {
-        let entry = this.readingCache.get(region);
-        const fresh = entry !== undefined && now - entry.fetchStart < READING_TTL_MS;
-        if (!entry || !fresh || ![...paths].every((p) => entry!.paths.has(p))) {
-          const all = new Set(paths);
-          if (entry && fresh) for (const p of entry.paths) all.add(p);
-          const created: ReadingEntry = { fetchStart: Date.now(), paths: all, promise: Promise.resolve(null) };
-          created.promise = this.region(region)
-            .then((stub) => stub.reading({ paths: [...all], agents: false }) as Promise<FieldReading>)
-            .catch((err: unknown) => {
-              // Fail open: a region we cannot read neither repels nor closes admission.
-              console.error(`field reading failed for region ${region}: ${errorText(err)}`);
-              if (this.readingCache.get(region) === created) this.readingCache.delete(region);
-              return null;
-            });
-          this.readingCache.set(region, created);
-          entry = created;
-        }
-        const reading = await entry.promise;
-        if (reading) out.set(region, { reading, fetchStart: entry.fetchStart });
-      }),
-    );
+    const busy = this.taking.size >= BUSY_TAKES;
+    const out = new Map<string, ReadingEntry & { reading: FieldReading }>();
+    const waits: Array<Promise<unknown>> = [];
+    for (const region of wanted.keys()) {
+      const cached = this.readingCache.get(region);
+      const age = cached ? now - cached.fetchStart : Number.POSITIVE_INFINITY;
+      if (cached && (age < READING_TTL_MS || (busy && age < READING_STALE_MS))) {
+        if (age >= (busy ? READING_BUSY_TTL_MS : READING_TTL_MS)) this.startReading(region);
+        if (cached.reading) out.set(region, cached as ReadingEntry & { reading: FieldReading });
+        continue;
+      }
+      const next = this.startReading(region);
+      waits.push(
+        next.promise.then(() => {
+          if (next.reading) out.set(region, next as ReadingEntry & { reading: FieldReading });
+        }),
+      );
+    }
+    if (waits.length > 0) await Promise.all(waits);
     return out;
+  }
+
+  /** Start a claim reading of one region (or join the one in flight); it replaces the cached one when it arrives. */
+  private startReading(region: string): ReadingEntry {
+    const flying = this.pendingReadings.get(region);
+    if (flying) return flying;
+    const created: ReadingEntry = { fetchStart: Date.now(), promise: Promise.resolve(null) };
+    created.promise = this.region(region)
+      .then((stub) => stub.reading({ kinds: ["claim", "danger"], agents: false }) as Promise<FieldReading>)
+      .then((reading) => {
+        created.reading = reading;
+        this.readingCache.set(region, created);
+        return reading;
+      })
+      .catch((err: unknown) => {
+        console.error(`field reading failed for region ${region}: ${errorText(err)}`);
+        created.reading = null;
+        return null;
+      })
+      .finally(() => {
+        if (this.pendingReadings.get(region) === created) this.pendingReadings.delete(region);
+      });
+    this.pendingReadings.set(region, created);
+    return created;
   }
 
   /**
    * What self-assignment needs from each region's reading, from one agent's
    * point of view: claim/danger values with the agent's own claims removed,
    * claims the reading may predate, and admission counting those claims.
+   * Agents with no claims of their own in a region share the reading's index.
    */
-  private fieldViews(agentId: Id, readings: Map<string, { reading: FieldReading; fetchStart: number }>, depth: number): Map<string, FieldView> {
+  private fieldViews(agentId: Id, readings: Map<string, ReadingEntry & { reading: FieldReading }>, depth: number): Map<string, FieldView> {
     const own = this.ownClaims(agentId, depth);
+    const unseenAll = unseenByRegion(this.recentClaims, agentId, (region) => readings.get(region)?.fetchStart, Date.now() - RECENT_CLAIM_MS);
     const views = new Map<string, FieldView>();
-    for (const [region, { reading, fetchStart }] of readings) {
+    for (const [region, entry] of readings) {
+      const reading = entry.reading;
       const mine = own.get(region);
-      const byPath: FieldReading["byPath"] = {};
-      let repulsive = false;
-      for (const [path, v] of Object.entries(reading.byPath)) {
-        const claim = Math.max(0, (v.claim ?? 0) - (mine?.get(path) ?? 0));
-        const danger = v.danger ?? 0;
-        if (claim + danger <= 1e-9) continue;
-        byPath[path] = { claim, danger };
-        repulsive = true;
-      }
-      const unseen = this.unseenClaims(agentId, fetchStart).filter((c) => c.regions.has(region));
       // An agent already working in the region adds no forager there, so admission does not apply to it.
       const inside = !!mine && mine.size > 0;
+      const index = inside ? fieldIndex(reading.byPath, mine) : (entry.index ??= fieldIndex(reading.byPath));
+      const unseen = unseenAll.get(region) ?? [];
       const active = Math.max(0, reading.admission.activeAgents - (inside ? 1 : 0)) + unseen.length;
-      views.set(region, { byPath, repulsive, unseen, open: inside || admissionOpen(active, reading.admission.landingsPerMin) });
+      views.set(region, { byPath: index.byPath, repulsive: index.repulsive, index, unseen, open: inside || admissionOpen(active, reading.admission.landingsPerMin) });
     }
     return views;
   }
@@ -1791,10 +2500,66 @@ export class ColonyDO extends DurableObject<Env> {
       this.sql.exec("UPDATE agents SET state = 'dead', intent_id = NULL, workspace = NULL WHERE id = ?", a.id);
       // A dead agent's claims stop counting in the takes that follow (they inhibit; see takeFor).
       this.recentClaims.delete(a.id);
+      this.waits.done(a.id);
       fx.events.push({ t: "agent", at: now, agentId: a.id, kind: a.kind as AgentKind, state: "dead" });
       fx.release.add(a.id);
     }
-    this.ctx.waitUntil(this.flushEffects(fx));
+    // ...and every claim they still hold in any region is removed, not left to decay.
+    this.ctx.waitUntil(this.flushEffects(fx).then(() => this.clearAgentClaims(stale.map((a) => a.id))));
+  }
+
+  /**
+   * Remove every claim these agents hold, in every region of the colony: one RegionDO.clearClaims
+   * call per region however many agents. Used when agents are stopped, retired or reaped, so their
+   * claims never keep a region's admission closed. Failures are logged (the claims still decay).
+   */
+  private async clearAgentClaims(agentIds: Id[]): Promise<void> {
+    const ids = [...new Set(agentIds)];
+    if (ids.length === 0) return;
+    const regions = this.sql.exec<{ name: string }>("SELECT name FROM regions").toArray().map((r) => r.name);
+    await Promise.all(
+      regions.map(async (region) => {
+        try {
+          await (await this.region(region)).clearClaims(ids);
+        } catch (err) {
+          console.error(`claim clear failed in region ${region}: ${errorText(err)}`);
+        }
+      }),
+    );
+  }
+
+  /** Push this proposal's outcome to its agent (AgentDO.outcome) when the agent asked for it at propose time. */
+  private watchOutcome(proposalId: Id, agentId: Id): void {
+    this.sql.exec("INSERT OR REPLACE INTO outcome_watch (proposal_id, agent_id, at) VALUES (?, ?, ?)", proposalId, agentId, Date.now());
+  }
+
+  /**
+   * Deliver outcomes to the agents watching them: one AgentDO.outcome call per proposal. A final
+   * outcome ends the watch; an escalation is delivered and the watch stays. Best effort: an agent
+   * that misses a push finds the outcome on its next (slow) poll.
+   */
+  private async deliverOutcomes(list: Proposal[]): Promise<void> {
+    const ns = (this.env as unknown as { AGENT?: DurableObjectNamespace }).AGENT;
+    const byId = new Map(list.map((p) => [p.id, p]));
+    const watched = this.sql
+      .exec<{ proposal_id: string; agent_id: string }>("SELECT proposal_id, agent_id FROM outcome_watch WHERE proposal_id IN (SELECT value FROM json_each(?))", JSON.stringify([...byId.keys()]))
+      .toArray();
+    if (watched.length === 0) return;
+    const final = watched.filter((w) => byId.get(w.proposal_id)?.status !== "escalated").map((w) => w.proposal_id);
+    if (final.length > 0) this.sql.exec("DELETE FROM outcome_watch WHERE proposal_id IN (SELECT value FROM json_each(?))", JSON.stringify(final));
+    if (!ns) return;
+    await Promise.all(
+      watched.map(async (w) => {
+        const p = byId.get(w.proposal_id);
+        if (!p) return;
+        try {
+          const stub = ns.get(ns.idFromName(w.agent_id)) as unknown as { outcome(o: { proposalId: Id; status: ProposalStatus; reason?: string; landingId?: Id }): Promise<unknown> };
+          await stub.outcome({ proposalId: p.id, status: p.status, ...(p.reason ? { reason: p.reason } : {}), ...(p.landingId ? { landingId: p.landingId } : {}) });
+        } catch (err) {
+          console.warn(`outcome push to ${w.agent_id} failed for ${p.id}: ${errorText(err)}`);
+        }
+      }),
+    );
   }
 
   // =========================================================================
@@ -1802,12 +2567,13 @@ export class ColonyDO extends DurableObject<Env> {
   // =========================================================================
 
   private effects(depth: number): Effects {
-    return { batch: new FieldBatch(depth), events: [], enqueue: [], dequeue: new Map(), release: new Set() };
+    return { batch: new FieldBatch(depth), events: [], enqueue: [], dequeue: new Map(), release: new Set(), outcomes: [] };
   }
 
   /** Apply the side effects of a proposal moving from `prev` to `p.status` (no-op if unchanged). */
   private transition(p: Proposal, prev: ProposalStatus, now: number, fx: Effects): void {
     if (p.status === prev) return;
+    if (PUSHED_STATES.has(p.status)) (fx.outcomes ??= []).push(p);
     const row = this.proposalRow(p.id);
     const region = row?.region ?? ".";
     const priority = row?.priority ?? 1;
@@ -1841,6 +2607,10 @@ export class ColonyDO extends DurableObject<Env> {
       }
       case "returned":
       case "rejected": {
+        if (p.status === "returned" && isRedirect(p.reason)) {
+          this.settleRedirect(p, intent, agent, now, fx);
+          break;
+        }
         const fp = intent ? this.footprintOf(intent.id, intent.footprint) : p.declared.footprint;
         if (intent && (intent.status === "proposed" || intent.status === "claimed") && (intent.assigned_to === p.agentId || intent.assigned_to === null)) {
           this.sql.exec("UPDATE intents SET status = 'open', assigned_to = NULL, updated_at = ? WHERE id = ?", now, intent.id);
@@ -1908,6 +2678,10 @@ export class ColonyDO extends DurableObject<Env> {
     for (const item of fx.enqueue) jobs.push(this.enqueue(item.proposal, item.region, item.priority));
     await Promise.all(jobs);
     if (fx.release.size > 0) this.ctx.waitUntil(this.releaseLeases([...fx.release]));
+    if (fx.outcomes && fx.outcomes.length > 0) {
+      const outcomes = fx.outcomes;
+      this.ctx.waitUntil(this.deliverOutcomes(outcomes).catch((err) => console.error(`outcome delivery failed: ${errorText(err)}`)));
+    }
   }
 
   /** Put a ready proposal in its region's lane; if the lane is unreachable, return it to its agent. */
@@ -1933,11 +2707,21 @@ export class ColonyDO extends DurableObject<Env> {
 
   private async releaseLeases(agentIds: Id[]): Promise<void> {
     const pool = this.poolStub();
+    // Only release agents that have not leased again in the meantime.
+    const ids = agentIds.filter((id) => this.agentRow(id)?.state !== "working");
+    if (ids.length === 0) return;
+    // One call for a whole landing's agents; a pool still on the previous version releases one by one.
+    try {
+      await pool.releaseMany(ids);
+      return;
+    } catch (err) {
+      if (!/does not implement/i.test(errorText(err))) {
+        console.warn(`PoolDO.releaseMany failed for ${ids.length} agent(s): ${errorText(err)}`);
+        return;
+      }
+    }
     await Promise.all(
-      agentIds.map(async (id) => {
-        // Only release agents that have not leased again in the meantime.
-        const agent = this.agentRow(id);
-        if (agent && agent.state === "working") return;
+      ids.map(async (id) => {
         try {
           await pool.release(id);
         } catch (err) {
@@ -2067,6 +2851,7 @@ export class ColonyDO extends DurableObject<Env> {
   }
 
   private assertProposable(row: IntentRow, agentId: Id): void {
+    if (row.status === "withdrawn") throw ftError(409, withdrawnError(row.id, row.withdrawn_reason ?? null));
     if (row.status === "landed" || row.status === "abandoned") throw ftError(409, `intent ${row.id} is already ${row.status}`);
     if (row.assigned_to && row.assigned_to !== agentId && (row.status === "claimed" || row.status === "proposed")) {
       throw ftError(409, `intent ${row.id} is held by another agent`);
@@ -2169,11 +2954,14 @@ export class ColonyDO extends DurableObject<Env> {
     const acceptance = parseJson<string[] | null>(r.acceptance, null);
     if (acceptance) intent.acceptance = acceptance;
     if (r.assigned_to) intent.assignedTo = r.assigned_to;
+    // Revision 1 is implied (absent) so a never-amended intent keeps its original shape.
+    if (typeof r.revision === "number" && r.revision > 1) intent.revision = r.revision;
+    if (r.withdrawn_reason) intent.withdrawnReason = r.withdrawn_reason;
     return intent;
   }
 
   private toRule(r: RuleRow, colonyId: Id): Rule {
-    return {
+    const rule: Rule = {
       id: r.id,
       colonyId,
       kind: r.kind as Rule["kind"],
@@ -2182,6 +2970,12 @@ export class ColonyDO extends DurableObject<Env> {
       approvedBy: r.approved_by,
       createdAt: r.created_at,
     };
+    if (typeof r.retracted_at === "number") {
+      rule.retractedAt = r.retracted_at;
+      if (r.retracted_by) rule.retractedBy = r.retracted_by;
+      if (r.retract_reason) rule.retractReason = r.retract_reason;
+    }
+    return rule;
   }
 
   private toAgent(r: AgentRow, colonyId: Id, redact: boolean): AgentInfo {
@@ -2198,6 +2992,10 @@ export class ColonyDO extends DurableObject<Env> {
     if (r.intent_id) info.intentId = r.intent_id;
     const lease = parseJson<WorkspaceLease | null>(r.workspace, null);
     if (lease) info.workspace = redact ? redactLease(lease) : lease;
+    if (r.note) {
+      info.note = r.note;
+      if (typeof r.note_at === "number") info.noteAt = r.note_at;
+    }
     return info;
   }
 
@@ -2214,34 +3012,91 @@ export class ColonyDO extends DurableObject<Env> {
     return this.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM landings WHERE received_at > ?", now - RATE_WINDOW_MS).one().n;
   }
 
+  /** Keep the last LANDINGS_KEEP landings, trimming every 64 landings (each trim reads the whole log index). */
   private pruneLandings(): void {
+    if (++this.landingsSincePrune < 64) return;
+    this.landingsSincePrune = 0;
     this.sql.exec("DELETE FROM landings WHERE id IN (SELECT id FROM landings ORDER BY received_at DESC LIMIT -1 OFFSET ?)", LANDINGS_KEEP);
   }
+  private landingsSincePrune = 0;
 
+  /**
+   * Add to a counter. Counter and gauge writes are buffered and written together at most every
+   * METRIC_FLUSH_MS (flushMetrics): every take, proposal and landing bumped counters, and those tiny
+   * tables were rewritten in each of hundreds of storage transactions a second. Reads see the
+   * buffered values. Returns the delta.
+   */
   private bump(name: string, delta: number, now: number): number {
-    const row = this.sql
-      .exec<{ value: number }>(
-        "INSERT INTO metrics (name, value, at) VALUES (?, ?, ?) ON CONFLICT(name) DO UPDATE SET value = value + excluded.value, at = excluded.at RETURNING value",
-        name,
-        delta,
-        now,
-      )
-      .toArray()[0];
+    const p = this.pendingMetrics.get(name);
+    if (!p) this.pendingMetrics.set(name, { add: delta, set: null, at: now });
+    else {
+      if (p.set !== null) p.set += delta;
+      else p.add += delta;
+      p.at = now;
+    }
     if (COUNTER_SERIES.has(name)) this.recordSeries(name, delta, now, false);
-    return row?.value ?? delta;
+    this.scheduleMetricsFlush();
+    return delta;
+  }
+
+  /** Write the buffered metric and series changes in one go, and prune old series minutes now and then. */
+  private flushMetrics(now = Date.now()): void {
+    if (this.metricsFlush !== null) {
+      clearTimeout(this.metricsFlush);
+      this.metricsFlush = null;
+    }
+    for (const [name, p] of this.pendingMetrics) {
+      if (p.set !== null) {
+        this.sql.exec("INSERT INTO metrics (name, value, at) VALUES (?, ?, ?) ON CONFLICT(name) DO UPDATE SET value = excluded.value, at = excluded.at", name, p.set, p.at);
+      } else {
+        this.sql.exec("INSERT INTO metrics (name, value, at) VALUES (?, ?, ?) ON CONFLICT(name) DO UPDATE SET value = value + excluded.value, at = excluded.at", name, p.add, p.at);
+      }
+    }
+    this.pendingMetrics.clear();
+    for (const r of this.pendingSeries.values()) {
+      const upsert = r.gauge
+        ? "INSERT INTO series (name, minute, value) VALUES (?, ?, ?) ON CONFLICT(name, minute) DO UPDATE SET value = excluded.value"
+        : "INSERT INTO series (name, minute, value) VALUES (?, ?, ?) ON CONFLICT(name, minute) DO UPDATE SET value = value + excluded.value";
+      this.sql.exec(upsert, r.name, r.minute, r.value);
+    }
+    this.pendingSeries.clear();
+    if (now - this.lastSeriesPrune < SERIES_PRUNE_EVERY_MS) return;
+    this.lastSeriesPrune = now;
+    const cutoff = minuteOf(now) - SERIES_KEEP_MINUTES;
+    // Carry each gauge's last value to the cutoff so the line stays continuous after pruning.
+    for (const g of GAUGE_SERIES) {
+      this.sql.exec("INSERT OR IGNORE INTO series (name, minute, value) SELECT name, ?, value FROM series WHERE name = ? AND minute < ? ORDER BY minute DESC LIMIT 1", cutoff, g, cutoff);
+    }
+    this.sql.exec("DELETE FROM series WHERE minute < ?", cutoff);
+  }
+
+  private scheduleMetricsFlush(): void {
+    if (this.metricsFlush !== null) return;
+    this.metricsFlush = setTimeout(() => {
+      this.metricsFlush = null;
+      try {
+        this.flushMetrics(Date.now());
+      } catch (err) {
+        console.error(`metrics flush failed: ${errorText(err)}`);
+      }
+    }, METRIC_FLUSH_MS);
   }
 
   private setMetric(name: string, value: number, now: number): void {
-    this.sql.exec("INSERT INTO metrics (name, value, at) VALUES (?, ?, ?) ON CONFLICT(name) DO UPDATE SET value = excluded.value, at = excluded.at", name, value, now);
+    this.pendingMetrics.set(name, { add: 0, set: value, at: now });
+    this.scheduleMetricsFlush();
   }
 
   private metric(name: string): number {
-    return this.sql.exec<{ value: number }>("SELECT value FROM metrics WHERE name = ?", name).toArray()[0]?.value ?? 0;
+    const stored = this.sql.exec<{ value: number }>("SELECT value FROM metrics WHERE name = ?", name).toArray()[0]?.value ?? 0;
+    const p = this.pendingMetrics.get(name);
+    return p ? (p.set !== null ? p.set : stored + p.add) : stored;
   }
 
   private metricsRecord(): Record<string, number> {
     const out: Record<string, number> = {};
     for (const r of this.sql.exec<{ name: string; value: number }>("SELECT name, value FROM metrics")) out[r.name] = r.value;
+    for (const [name, p] of this.pendingMetrics) out[name] = p.set !== null ? p.set : (out[name] ?? 0) + p.add;
     return out;
   }
 

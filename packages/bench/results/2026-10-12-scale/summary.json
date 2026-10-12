@@ -1,0 +1,603 @@
+{
+  "kind": "scale-summary",
+  "at": "2026-10-12T11:27:25Z",
+  "stream": "G6 scale",
+  "preview": "g6 (wrangler preview; own Durable Objects; Artifacts namespaces shared with production)",
+  "setup": "Synthetic API agents (no model), group commit on, 120 s runs with a 10 s ramp and 0 ms work, 64 bench regions, colony decide policy off, workspace pool target 6,000 (pre-forked, tokens pre-minted). Driver: packages/bench/src/live.ts (outcomes from the live WebSocket feed with a 20 s fallback poll; agents stopped after each run, which clears their claims in every region). All three final runs used one colony (g6-scale5k) and the final build.",
+  "table": [
+    {
+      "file": "live-n1000.json",
+      "colony": "g6-scale5k",
+      "agents": 1000,
+      "startedAt": "2026-10-12T11:17:00.356Z",
+      "landedPerMin": 2923.6,
+      "commitsPerMin": 473.1,
+      "timeToLandMs": {
+        "p50": 13001,
+        "p90": 16955,
+        "p99": 20931
+      },
+      "calls": 31308,
+      "errors": 0,
+      "errorKinds": [],
+      "completed": true,
+      "takeMs": {
+        "p50": 361,
+        "p90": 931,
+        "p99": 4806
+      },
+      "landed": 6000,
+      "batchSizeP50": 6,
+      "trunkCycle": {
+        "cycleMs": {
+          "p50": 3546,
+          "p90": 4111
+        },
+        "pullMs": {
+          "p50": 1838,
+          "p90": 2856
+        },
+        "pushMs": {
+          "p50": 1148,
+          "p90": 2089
+        },
+        "queueWaitMs": {
+          "p50": 5731,
+          "p90": 7228
+        },
+        "proposalsPerCycle": {
+          "p50": 196,
+          "p90": 199
+        }
+      },
+      "topWaits": {
+        "admission closed in every candidate region": 8512,
+        "every open intent's files are claimed by another agent": 2112,
+        "no intent accepted at this agent's thresholds": 9,
+        "admission closed in bench/r08": 7
+      }
+    },
+    {
+      "file": "live-n2000.json",
+      "colony": "g6-scale5k",
+      "agents": 2000,
+      "startedAt": "2026-10-12T11:20:22.900Z",
+      "landedPerMin": 2713.9,
+      "commitsPerMin": 450.9,
+      "timeToLandMs": {
+        "p50": 14812,
+        "p90": 19524,
+        "p99": 22963
+      },
+      "calls": 45034,
+      "errors": 0,
+      "errorKinds": [],
+      "completed": true,
+      "takeMs": {
+        "p50": 230,
+        "p90": 674,
+        "p99": 1486
+      },
+      "landed": 5435,
+      "batchSizeP50": 6,
+      "trunkCycle": {
+        "cycleMs": {
+          "p50": 3870,
+          "p90": 4975
+        },
+        "pullMs": {
+          "p50": 2173,
+          "p90": 2970
+        },
+        "pushMs": {
+          "p50": 1191,
+          "p90": 1574
+        },
+        "queueWaitMs": {
+          "p50": 5890,
+          "p90": 7259
+        },
+        "proposalsPerCycle": {
+          "p50": 195,
+          "p90": 199
+        }
+      },
+      "topWaits": {
+        "admission closed in every candidate region": 19327,
+        "every open intent's files are claimed by another agent": 4044,
+        "no intent accepted at this agent's thresholds": 18,
+        "admission closed in bench/r22": 18
+      }
+    },
+    {
+      "file": "live-n5000.json",
+      "colony": "g6-scale5k",
+      "agents": 5000,
+      "startedAt": "2026-10-12T11:11:25.183Z",
+      "landedPerMin": 2777.7,
+      "commitsPerMin": 468,
+      "timeToLandMs": {
+        "p50": 12543,
+        "p90": 17411,
+        "p99": 27153
+      },
+      "calls": 50368,
+      "errors": 78,
+      "errorKinds": [
+        "take: TypeError: fetch failed (ENOTFOUND)",
+        "register: TypeError: fetch failed (ENOTFOUND)",
+        "register: TypeError: fetch failed (ECONNRESET)",
+        "register: TypeError: fetch failed (UND_ERR_CONNECT_TIMEOUT)",
+        "take: TypeError: fetch failed (ECONNRESET)",
+        "propose: TypeError: fetch failed (UND_ERR_CONNECT_TIMEOUT)",
+        "take: TypeError: fetch failed (UND_ERR_CONNECT_TIMEOUT)",
+        "take: 500 Durable Object reset because its code was updated."
+      ],
+      "completed": true,
+      "takeMs": {
+        "p50": 355,
+        "p90": 1582,
+        "p99": 6031
+      },
+      "landed": 5625,
+      "batchSizeP50": 5,
+      "trunkCycle": {
+        "cycleMs": {
+          "p50": 3418,
+          "p90": 3800
+        },
+        "pullMs": {
+          "p50": 2214,
+          "p90": 2694
+        },
+        "pushMs": {
+          "p50": 966,
+          "p90": 1385
+        },
+        "queueWaitMs": {
+          "p50": 6012,
+          "p90": 7023
+        },
+        "proposalsPerCycle": {
+          "p50": 196,
+          "p90": 200
+        }
+      },
+      "topWaits": {
+        "admission closed in every candidate region": 20503,
+        "every open intent's files are claimed by another agent": 4907,
+        "colony busy: too many takes in flight": 3950,
+        "no intent accepted at this agent's thresholds": 907
+      }
+    }
+  ],
+  "baselineG1": [
+    {
+      "file": "../2026-10-12-g1/live-n10.json",
+      "colony": "g1-bench",
+      "agents": 10,
+      "startedAt": "2026-10-12T08:52:09.065Z",
+      "landedPerMin": 215.6,
+      "commitsPerMin": 211.6,
+      "timeToLandMs": {
+        "p50": 833,
+        "p90": 1315,
+        "p99": 7959
+      },
+      "calls": 732,
+      "errors": 0,
+      "errorKinds": [],
+      "completed": true,
+      "takeMs": {
+        "p50": 474,
+        "p90": 935,
+        "p99": 1514
+      },
+      "landed": 228,
+      "batchSizeP50": 1,
+      "trunkCycle": {
+        "cycleMs": {
+          "p50": 367,
+          "p90": 542
+        },
+        "pullMs": {
+          "p50": 64,
+          "p90": 88
+        },
+        "pushMs": {
+          "p50": 278,
+          "p90": 408
+        },
+        "queueWaitMs": {
+          "p50": 180,
+          "p90": 347
+        },
+        "proposalsPerCycle": {
+          "p50": 1,
+          "p90": 4
+        }
+      },
+      "topWaits": {}
+    },
+    {
+      "file": "../2026-10-12-g1/live-n200.json",
+      "colony": "g1-bench",
+      "agents": 200,
+      "startedAt": "2026-10-12T08:53:30.375Z",
+      "landedPerMin": 690.4,
+      "commitsPerMin": 589.9,
+      "timeToLandMs": {
+        "p50": 2902,
+        "p90": 5666,
+        "p99": 9302
+      },
+      "calls": 7429,
+      "errors": 22,
+      "errorKinds": [
+        "take: TimeoutError: The operation was aborted due to timeout"
+      ],
+      "completed": true,
+      "takeMs": {
+        "p50": 5325,
+        "p90": 23922,
+        "p99": 30001
+      },
+      "landed": 1199,
+      "batchSizeP50": 1,
+      "trunkCycle": {
+        "cycleMs": {
+          "p50": 1028,
+          "p90": 1667
+        },
+        "pullMs": {
+          "p50": 138,
+          "p90": 532
+        },
+        "pushMs": {
+          "p50": 621,
+          "p90": 1122
+        },
+        "queueWaitMs": {
+          "p50": 586,
+          "p90": 1386
+        },
+        "proposalsPerCycle": {
+          "p50": 9,
+          "p90": 41
+        }
+      },
+      "topWaits": {
+        "take already in progress": 159,
+        "lease failed: Durable Object is overloaded. Requests queued for too long.": 74
+      }
+    },
+    {
+      "file": "../2026-10-12-g1/live-n1000.json",
+      "colony": "g1-bench",
+      "agents": 1000,
+      "startedAt": "2026-10-12T08:55:55.238Z",
+      "landedPerMin": 515.1,
+      "commitsPerMin": 369.2,
+      "timeToLandMs": {
+        "p50": 4782,
+        "p90": 8033,
+        "p99": 10441
+      },
+      "calls": 9927,
+      "errors": 816,
+      "errorKinds": [
+        "take: TimeoutError: The operation was aborted due to timeout",
+        "poll: 500 Durable Object is overloaded. Requests queued for too long.",
+        "heartbeat: 500 Durable Object is overloaded. Requests queued for too long.",
+        "propose: 500 Durable Object is overloaded. Requests queued for too long.",
+        "take: 500 Durable Object is overloaded. Requests queued for too long.",
+        "take: 500 Connection closed: this Durable Object instance is no longer active. Reconnect or retry the request.",
+        "take: 500 Network connection lost."
+      ],
+      "completed": false,
+      "stoppedEarly": "error rate 38% over 5 s at 60 s",
+      "takeMs": {
+        "p50": 9340,
+        "p90": 18760,
+        "p99": 30001
+      },
+      "landed": 928,
+      "batchSizeP50": 1,
+      "trunkCycle": {
+        "cycleMs": {
+          "p50": 890,
+          "p90": 1465
+        },
+        "pullMs": {
+          "p50": 132,
+          "p90": 511
+        },
+        "pushMs": {
+          "p50": 517,
+          "p90": 925
+        },
+        "queueWaitMs": {
+          "p50": 307,
+          "p90": 970
+        },
+        "proposalsPerCycle": {
+          "p50": 14,
+          "p90": 44
+        }
+      },
+      "topWaits": {
+        "no intent accepted at this agent's thresholds": 2803,
+        "take already in progress": 18
+      }
+    }
+  ],
+  "earlierRuns": [
+    {
+      "file": "scratch (not kept)",
+      "colony": "g6-scale5k",
+      "agents": 1000,
+      "startedAt": "2026-10-12T10:47:44.061Z",
+      "landedPerMin": 3485.1,
+      "commitsPerMin": 530.5,
+      "timeToLandMs": {
+        "p50": 11542,
+        "p90": 15870,
+        "p99": 19151
+      },
+      "calls": 34381,
+      "errors": 0,
+      "errorKinds": [],
+      "completed": true,
+      "takeMs": {
+        "p50": 395,
+        "p90": 1027,
+        "p99": 2891
+      },
+      "landed": 6808,
+      "batchSizeP50": 6,
+      "trunkCycle": {
+        "cycleMs": {
+          "p50": 2912,
+          "p90": 4348
+        },
+        "pullMs": {
+          "p50": 1987,
+          "p90": 3105
+        },
+        "pushMs": {
+          "p50": 726,
+          "p90": 1125
+        },
+        "queueWaitMs": {
+          "p50": 5172,
+          "p90": 7098
+        },
+        "proposalsPerCycle": {
+          "p50": 196,
+          "p90": 199
+        }
+      },
+      "topWaits": {
+        "admission closed in every candidate region": 7525,
+        "every open intent's files are claimed by another agent": 2061,
+        "lease failed: Durable Object is overloaded. Requests queued for too long.": 85,
+        "no intent accepted at this agent's thresholds": 81
+      },
+      "why": "build before the take gate (10:46Z), same colony"
+    },
+    {
+      "file": "scratch (not kept)",
+      "colony": "g6-scale5k",
+      "agents": 2000,
+      "startedAt": "2026-10-12T10:52:20.021Z",
+      "landedPerMin": 3342.3,
+      "commitsPerMin": 496.4,
+      "timeToLandMs": {
+        "p50": 12675,
+        "p90": 17433,
+        "p99": 19096
+      },
+      "calls": 51833,
+      "errors": 0,
+      "errorKinds": [],
+      "completed": true,
+      "takeMs": {
+        "p50": 266,
+        "p90": 771,
+        "p99": 1688
+      },
+      "landed": 6706,
+      "batchSizeP50": 6,
+      "trunkCycle": {
+        "cycleMs": {
+          "p50": 3377,
+          "p90": 3610
+        },
+        "pullMs": {
+          "p50": 2097,
+          "p90": 2446
+        },
+        "pushMs": {
+          "p50": 851,
+          "p90": 1284
+        },
+        "queueWaitMs": {
+          "p50": 5743,
+          "p90": 6720
+        },
+        "proposalsPerCycle": {
+          "p50": 195,
+          "p90": 199
+        }
+      },
+      "topWaits": {
+        "admission closed in every candidate region": 17653,
+        "every open intent's files are claimed by another agent": 4955,
+        "no intent accepted at this agent's thresholds": 224,
+        "admission closed in bench/r31": 12
+      },
+      "why": "build before the take gate (10:51Z), same colony"
+    },
+    {
+      "file": "scratch (not kept)",
+      "colony": "g6-scale5k",
+      "agents": 5000,
+      "startedAt": "2026-10-12T10:57:29.053Z",
+      "landedPerMin": 0,
+      "commitsPerMin": 0,
+      "timeToLandMs": {
+        "p50": 2598,
+        "p90": 4885,
+        "p99": 8400
+      },
+      "calls": 30181,
+      "errors": 2909,
+      "errorKinds": [
+        "register: TypeError: fetch failed",
+        "take: TypeError: fetch failed",
+        "take: 500 Internal error in Durable Object storage caused object to be reset; reference = aqr52o89a6cnjjr4q7cp4prf",
+        "take: 500 Durable Object is overloaded. Requests queued for too long.",
+        "take: 500 Durable Object's isolate exceeded its memory limit and was reset.",
+        "poll: 500 Durable Object is overloaded. Requests queued for too long.",
+        "take: TimeoutError: The operation was aborted due to timeout",
+        "register: TimeoutError: The operation was aborted due to timeout"
+      ],
+      "completed": false,
+      "stoppedEarly": "error rate 84% over 5 s at 20 s",
+      "takeMs": {
+        "p50": 4342,
+        "p90": 7152,
+        "p99": 10110
+      },
+      "landed": 251,
+      "batchSizeP50": 1,
+      "trunkCycle": {},
+      "topWaits": {
+        "every open intent's files are claimed by another agent": 4047,
+        "admission closed in every candidate region": 2879,
+        "no intent accepted at this agent's thresholds": 9
+      },
+      "why": "build before the take gate (10:56Z): ColonyDO isolate exceeded its memory limit about 20 s in (thousands of takes in flight, each holding up to 200 scored candidates); one storage reset before it"
+    },
+    {
+      "file": "scratch (not kept)",
+      "colony": "g6-scale5k",
+      "agents": 5000,
+      "startedAt": "2026-10-12T11:06:38.623Z",
+      "landedPerMin": 36.6,
+      "commitsPerMin": 28.4,
+      "timeToLandMs": {
+        "p50": 5343,
+        "p90": 19999,
+        "p99": 20084
+      },
+      "calls": 14039,
+      "errors": 1346,
+      "errorKinds": [
+        "register: TypeError: fetch failed",
+        "take: TypeError: fetch failed",
+        "take: 500 Durable Object reset because its code was updated."
+      ],
+      "completed": false,
+      "stoppedEarly": "error rate 35% over 5 s at 15 s",
+      "takeMs": {
+        "p50": 1613,
+        "p90": 4084,
+        "p99": 6461
+      },
+      "landed": 253,
+      "batchSizeP50": 1,
+      "trunkCycle": {
+        "cycleMs": {
+          "p50": 2036,
+          "p90": 3276
+        },
+        "pullMs": {
+          "p50": 610,
+          "p90": 763
+        },
+        "pushMs": {
+          "p50": 1478,
+          "p90": 2431
+        },
+        "queueWaitMs": {
+          "p50": 2907,
+          "p90": 6395
+        },
+        "proposalsPerCycle": {
+          "p50": 17,
+          "p90": 32
+        }
+      },
+      "topWaits": {
+        "admission closed in every candidate region": 3208,
+        "colony busy: too many takes in flight": 2458,
+        "every open intent's files are claimed by another agent": 1166,
+        "no intent accepted at this agent's thresholds": 96
+      },
+      "why": "take gate build, started 1.5 min after its deploy: a burst of dropped connections (cause not recorded yet) and 'reset because its code was updated' tripped the guard at 15 s; read as deploy propagation, the next run 6 min after the deploy completed"
+    }
+  ],
+  "notes": {
+    "g6-scale5k": {
+      "commits_on_main": 6094,
+      "landing_commits": 5894,
+      "notes": 5894,
+      "landing_commits_without_note": 0,
+      "sampled": 60,
+      "sampled_note_landing_mismatch": 0,
+      "notes_root": {
+        "fanout_directories": 256,
+        "flat_notes": 0,
+        "other_entries": 0
+      },
+      "notes_commits": 240,
+      "example": {
+        "commit": "6811138c3d5ae5fe0b128cb6a190a6a5f448374f",
+        "landing_trailer": "lnd_mv54venihpr7od",
+        "git_notes_show_landingId": "lnd_mv54venihpr7od",
+        "path_in_notes_tree": "68/11138c3d5ae5fe0b128cb6a190a6a5f448374f"
+      }
+    },
+    "g6-scale": {
+      "commits_on_main": 6493,
+      "landing_commits": 6293,
+      "notes": 6293,
+      "landing_commits_without_note": 0,
+      "sampled": 60,
+      "sampled_note_landing_mismatch": 0,
+      "notes_root": {
+        "fanout_directories": 256,
+        "flat_notes": 0,
+        "other_entries": 0
+      },
+      "notes_commits": 348,
+      "example": {
+        "commit": "23762e29aab7b2dce63e0bb5fc1579394a8f113e",
+        "landing_trailer": "lnd_mv5351kcllej2s",
+        "git_notes_show_landingId": "lnd_mv5351kcllej2s",
+        "path_in_notes_tree": "23/762e29aab7b2dce63e0bb5fc1579394a8f113e"
+      }
+    },
+    "method": "stock git: fetch trunk main and refs/notes/firetrident, every FT-Landing commit has a note, 60 sampled `git notes --ref firetrident show` match their landing, notes root is 2-character fanout directories only"
+  },
+  "benchClientAt5000": {
+    "peakEstablishedSockets": {
+      "t": "11:11:37",
+      "established": 3597,
+      "timeWait": 35
+    },
+    "establishedAfterRamp": {
+      "min": 282,
+      "max": 483
+    },
+    "reading": "All 78 errors of the 5,000 run are on the bench side during the 10 s ramp (one process opening ~3,600 sockets: DNS ENOTFOUND, connect timeouts, resets) plus one deploy reset; after the ramp the run had no errors."
+  },
+  "nextBottleneck": "TrunkDO, the single trunk writer. Every cycle runs at the 200-proposal cap (p50 195-196) and takes 3.4-3.9 s (pull ~2 s reading proposal blobs out of workspace forks, push ~1-1.2 s), so landings/min plateau at ~2,700-3,500 whatever the agent count, and the trunk queue (~6 s p50) dominates time to land (12.5-14.8 s p50). Cycle time also grows with trunk tree size: the bench adds a new file per intent, so its 64 directories keep growing and each landing rewrites larger trees (2.9 s to 3.9 s per cycle over five runs on one colony).",
+  "openIssues": [
+    "Orchestrator-owned files need updates: docs/ARCHITECTURE.md (RegionDO.clearClaims / refreshClaims / claim-only readings, AgentDO.outcome push, PoolDO.releaseMany and pre-minted tokens, ColonyDO.emit emitEveryMs, heartbeat {claims:false}, propose notify, take backpressure 'colony busy', notes fanout) and worker/src/env.ts (optional FT_LAG_PROBE).",
+    "A single bench machine tops out near 5,000 agents (client sockets and DNS during the ramp); larger runs need several drivers or HTTP/2.",
+    "Runs started within minutes of a preview deploy can hit 'Durable Object reset because its code was updated'.",
+    "Intermittent platform-side 'Durable Object is overloaded' stalls seen in earlier runs (the lag probe showed no thread lag)."
+  ]
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { AgentInfo, Colony, FieldReading, Id, Intent, Proposal, ProposalStatus, Rule, WorkspaceLease } from "@fire_trident/core";
+import type { AgentInfo, Colony, Directive, FieldReading, Id, InboxDirective, Intent, Proposal, ProposalStatus, Rule, WorkspaceLease } from "@fire_trident/core";
 import type { ProposeInput, TakeResult } from "../../src/agents/rpc.ts";
 import { EXTERNAL_NOT_VERIFIED, FireTridentTools, HEARTBEAT_EVERY_MS, MAX_WAIT_S } from "../../src/mcp/tools.ts";
 import type { McpColonyRpc, RepoReader, Session, ToolContext } from "../../src/mcp/tools.ts";
@@ -139,8 +139,15 @@ class FakeColony implements Partial<McpColonyRpc> {
     const status = this.statuses[Math.min(this.statusCalls++, this.statuses.length - 1)] ?? "ready";
     return { ...p, id, status, createdAt: 0, evidence: { checks: [] }, ...(status === "landed" ? { landingId: "lnd_1" } : {}) };
   }
+  /** What inbox returns: proposals and directive entries, as the colony mixes them. */
+  inboxEntries: unknown[] = [];
   async inbox(): Promise<Proposal[]> {
-    return [];
+    return this.inboxEntries as Proposal[];
+  }
+  /** The intent as it stands now (after an amendment). */
+  current: Intent | null = null;
+  async getIntent(id: Id): Promise<Intent | null> {
+    return this.current?.id === id ? this.current : null;
   }
   async addIntent(i: Omit<Intent, "id" | "status" | "createdAt">): Promise<Intent> {
     this.intents.push(i);
@@ -149,6 +156,12 @@ class FakeColony implements Partial<McpColonyRpc> {
   async abandon(agentId: Id, reason?: string): Promise<void> {
     this.abandoned.push({ agentId, ...(reason !== undefined ? { reason } : {}) });
   }
+}
+
+/** A directive as the colony's inbox lists it. */
+function directiveEntry(d: Pick<Directive, "id" | "kind" | "message"> & Partial<Directive>): InboxDirective {
+  const directive: Directive = { colonyId: "col", agentId: "agt_1", by: "matt", at: 5, ...d };
+  return { kind: "directive", id: d.id, intentId: d.intentId ?? "", agentId: "agt_1", status: "directive", reason: d.message, createdAt: 5, headSha: "", directive };
 }
 
 function setup() {
@@ -405,5 +418,41 @@ describe("MCP tools", () => {
     expect(colony.abandoned).toEqual([{ agentId: "agt_1", reason: "cannot reproduce" }]);
     expect(session().lease).toBeUndefined();
     await expect(tools.checkout()).rejects.toThrow(/hold no intent/);
+  });
+
+  it("inbox lists directives, and a withdrawal ends the held intent and its lease", async () => {
+    const { tools, colony, session } = setup();
+    await tools.join({ colony: "col" });
+    await tools.take();
+    colony.inboxEntries = [directiveEntry({ id: "dir_1", kind: "withdrawal", intentId: "int_1", message: "rule retracted" })];
+    const out = (await tools.inbox({})) as Record<string, any>;
+    expect(out.direction).toMatch(/withdrawn: rule retracted/);
+    expect(out.directives).toEqual([expect.objectContaining({ id: "dir_1", kind: "withdrawal", intentId: "int_1", message: "rule retracted" })]);
+    expect(out.proposals).toEqual([]);
+    expect(out.holding).toBeNull();
+    expect(session().intent).toBeUndefined();
+    expect(session().lease).toBeUndefined();
+  });
+
+  it("a revision refreshes the held intent, and propose says which revision the change was built on", async () => {
+    const { tools, colony, session } = setup();
+    await tools.join({ colony: "col" });
+    await tools.take();
+    colony.current = { ...theIntent, why: "Clarity, and keep the old name as an alias", revision: 2 };
+    colony.inboxEntries = [directiveEntry({ id: "dir_2", kind: "revision", intentId: "int_1", message: "keep an alias", revision: 2, changed: ["why"] })];
+    const out = (await tools.inbox({})) as Record<string, any>;
+    expect(out.direction).toMatch(/revised to r2 \(changed: why\)/);
+    expect(out.holding).toMatchObject({ intentId: "int_1", revision: 2 });
+    expect(session().intent?.why).toMatch(/alias/);
+    await tools.propose({ headSha: sha("c") });
+    expect(colony.proposals[0]?.intentRevision).toBe(2);
+  });
+
+  it("guidance from a human comes back as the direction to follow, and the agent keeps its intent", async () => {
+    const { tools, colony } = setup();
+    await tools.join({ colony: "col" });
+    await tools.take();
+    colony.inboxEntries = [directiveEntry({ id: "dir_3", kind: "guidance", intentId: "int_1", message: "use the existing helper" })];
+    expect(await tools.inbox({})).toMatchObject({ direction: expect.stringMatching(/use the existing helper/), holding: { intentId: "int_1" } });
   });
 });

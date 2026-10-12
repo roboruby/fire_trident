@@ -13,12 +13,19 @@ import { createApi } from "./app.ts";
  *   GET    /api/colonies/:id/field            FieldReading[] (all regions) or ?region=
  *   GET    /api/colonies/:id/metrics          metrics, funnel, violations, series
  *   POST   /api/colonies/:id/intents          declare an intent
+ *   GET    /api/colonies/:id/intents/:iid     one intent with its revisions and directives
+ *   PATCH  /api/colonies/:id/intents/:iid     amend an intent (revision + 1)
+ *   POST   /api/colonies/:id/intents/:iid/withdraw  withdraw an intent
  *   POST   /api/colonies/:id/rules            add a morphology rule (creates needs)
+ *   DELETE /api/colonies/:id/rules/:rid       retract a rule (its unlanded intents withdrawn)
  *   GET    /api/colonies/:id/agents           list agents (state, intent, model, journal step)
  *   POST   /api/colonies/:id/agents           register an agent
  *   POST   /api/colonies/:id/agents/:aid/take self-assign work + workspace lease
  *   POST   /api/colonies/:id/agents/:aid/heartbeat
  *   POST   /api/colonies/:id/agents/:aid/stop stop one agent
+ *   POST   /api/colonies/:id/agents/:aid/directive  send an agent free-text guidance
+ *   POST   /api/colonies/:id/agents/:aid/status     an agent relays what it is doing now
+ *   GET    /api/colonies/:id/agents/:aid/inbox      an agent's proposals and directives
  *   POST   /api/colonies/:id/proposals        propose a change
  *   GET    /api/colonies/:id/proposals/:pid   one proposal (poll its outcome)
  *   GET    /api/colonies/:id/why              ?path=&line=

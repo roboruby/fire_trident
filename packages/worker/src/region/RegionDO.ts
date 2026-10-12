@@ -1,14 +1,16 @@
 import { DurableObject } from "cloudflare:workers";
-import { admissionOpen, aggregate, inhibitionFactor, isExpired, markValue, regionKey, regionOf, selectBatch, validateProposal } from "@fire_trident/core";
+import { LATERAL_INHIBITION, admissionOpen, aggregate, inhibitionFactor, isExpired, markValue, regionKey, regionOf, selectBatch, validateProposal } from "@fire_trident/core";
 import type { CausalEvent, ColonyEvent, FieldReading, FileVersion, Id, Landing, Mark, MarkKind, OccResult, Path, Proposal, Sha } from "@fire_trident/core";
 import type { Env } from "../env.ts";
 import { errorText } from "../colony/errors.ts";
 import { coalesceEvents } from "../colony/events.ts";
+import { splitByDirection } from "../colony/direction.ts";
 import type { ClearFilter, FieldOps } from "../colony/logic.ts";
 import { settleLane, suspects } from "../trunk/outcome.ts";
 import type { LandResult } from "../trunk/plan.ts";
 import {
   accumulates,
+  admissionBar,
   chunks,
   foldDeposit,
   laneDelayMs,
@@ -31,6 +33,12 @@ export interface ReadingOptions {
   paths?: Path[];
   /** Include the agents list (default true). */
   agents?: boolean;
+  /**
+   * Report byPath only for these mark kinds, over the whole region (self-assignment asks for
+   * claim and danger: a small reading that every concurrent take can share, whatever paths it needs).
+   * `paths` still narrows it when given.
+   */
+  kinds?: MarkKind[];
 }
 
 /** Lane and field counters for dashboards and tests. */
@@ -64,8 +72,12 @@ const GC_EVERY_MS = 10_000;
 const EXACT_TTL_MS = 250;
 const TOTALS_TTL_MS = 1_000;
 const SIGMA_TTL_MS = 1_000;
-/** Mark/sigma events are batched and sent to the ColonyDO at most this often. */
+/**
+ * Mark/sigma events are batched and sent to the ColonyDO at most this often. The colony answers
+ * each emit with the interval it wants (longer when many regions emit at once), within these bounds.
+ */
 const EMIT_EVERY_MS = 100;
+const EMIT_MAX_MS = 5_000;
 /** After the ColonyDO reports no listeners, stop sending field events for this long. */
 const QUIET_MS = 5_000;
 const MAX_OUTBOX = 20_000;
@@ -202,6 +214,8 @@ export class RegionDO extends DurableObject<Env> {
   private depth: number | null = null;
   private causeTimer: ReturnType<typeof setTimeout> | null = null;
   private resolvingCauses = false;
+  /** Current batching interval of events to the colony (the colony sets it in its emit answer). */
+  private emitEveryMs = EMIT_EVERY_MS;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -269,9 +283,15 @@ export class RegionDO extends DurableObject<Env> {
     const now = Date.now();
     this.maybeGc(now);
     const exclude = opts.excludeAgentId;
+    const kinds = Array.isArray(opts.kinds) ? opts.kinds.filter((k) => typeof k === "string") : null;
     let totals: FieldReading["totals"];
     let byPath: FieldReading["byPath"];
-    if (opts.paths !== undefined) {
+    if (kinds !== null) {
+      totals = this.fullAggregate(now, false).totals;
+      const keep = new Set<string>(kinds);
+      const marks = opts.paths !== undefined ? this.marksOverlapping(opts.paths, now, exclude).filter((m) => keep.has(m.kind)) : this.marksOfKinds(kinds, now, exclude);
+      byPath = aggregate(marks, now).byPath;
+    } else if (opts.paths !== undefined) {
       totals = this.fullAggregate(now, false).totals;
       byPath = aggregate(this.marksOverlapping(opts.paths, now, exclude), now).byPath;
     } else if (exclude !== undefined) {
@@ -288,7 +308,7 @@ export class RegionDO extends DurableObject<Env> {
     }
     const holders = this.claimHolders(now, exclude);
     const landingsPerMin = this.count("land", now - RATE_WINDOW_MS);
-    const activeAgents = holders.size;
+    const activeAgents = this.counted(holders);
     const agents: FieldReading["agents"] = [];
     if (opts.agents !== false) {
       for (const [agentId, h] of holders) {
@@ -311,12 +331,14 @@ export class RegionDO extends DurableObject<Env> {
    * deposit its claim marks in the same synchronous step, so concurrent takes (from any number
    * of callers, with any stale view of the field) can never push the region past its cap. An
    * agent already holding a live claim here is inside and always admitted. A refusal deposits
-   * nothing. `activeAgents` counts the agents holding claims after the decision.
+   * nothing. `activeAgents` counts the agents holding claims after the decision. Only claims at
+   * or above the admission bar (see admissionBar) count, here and in readings: a claim that has
+   * mostly decayed belongs to an agent that stopped, and must not keep the region closed.
    */
   async admit(p: { agentId: Id; intentId: Id; paths: Path[]; strength?: number }): Promise<{ admitted: boolean; activeAgents: number; landingsPerMin: number }> {
     const now = Date.now();
     this.maybeGc(now);
-    const others = this.claimHolders(now, p.agentId).size;
+    const others = this.counted(this.claimHolders(now, p.agentId));
     const inside = this.holdsClaim(p.agentId, now);
     const landingsPerMin = this.count("land", now - RATE_WINDOW_MS);
     const admitted = inside || admissionOpen(others, landingsPerMin);
@@ -325,6 +347,70 @@ export class RegionDO extends DurableObject<Env> {
       this.applyOps({ deposit: p.paths.map((path) => ({ kind: "claim" as const, path, strength, at: now, agentId: p.agentId, intentId: p.intentId })) });
     }
     return { admitted, activeAgents: others + (admitted || inside ? 1 : 0), landingsPerMin };
+  }
+
+  /**
+   * Remove every claim mark these agents hold here, whatever intent it was for (agents stopped,
+   * retired or reaped). One call per region however many agents, so stopping a swarm frees
+   * admission and lateral inhibition at once. Returns how many claims were removed.
+   */
+  async clearClaims(agentIds: Id[]): Promise<number> {
+    const ids = Array.isArray(agentIds) ? [...new Set(agentIds.filter((x): x is Id => typeof x === "string" && x !== ""))] : [];
+    if (ids.length === 0) return 0;
+    const now = Date.now();
+    const touched = new Map<Path, Set<MarkKind>>();
+    let removed = 0;
+    for (const part of chunks(ids, JSON_CHUNK)) {
+      const rows = this.sql
+        .exec<{ path: string }>("DELETE FROM marks WHERE kind = 'claim' AND agent_id IN (SELECT value FROM json_each(?)) RETURNING path", JSON.stringify(part))
+        .toArray();
+      for (const r of rows) touch(touched, r.path, "claim");
+      removed += rows.length;
+    }
+    if (removed > 0) {
+      this.version++;
+      this.queueMarkEvents(touched, now);
+    }
+    return removed;
+  }
+
+  /**
+   * Heartbeat for claims: re-date this agent's existing claim marks here (only those of
+   * `intentIds` when given) to now. A claim that was cleared (its proposal landed or came back,
+   * or the agent was stopped) is never re-created, so a heartbeat that races a landing cannot
+   * leave an orphan claim behind. Agents call it directly; the colony does not need to relay
+   * claim refreshes. Returns how many claims were refreshed.
+   */
+  async refreshClaims(p: { agentId: Id; intentIds?: Id[] }): Promise<number> {
+    const agentId = typeof p?.agentId === "string" ? p.agentId : "";
+    if (!agentId) return 0;
+    const now = Date.now();
+    this.maybeGc(now);
+    const touched = new Map<Path, Set<MarkKind>>();
+    const rows: Array<{ path: string }> = [];
+    if (Array.isArray(p.intentIds)) {
+      const ids = [...new Set(p.intentIds.filter((x): x is Id => typeof x === "string" && x !== ""))];
+      for (const part of chunks(ids, JSON_CHUNK)) {
+        rows.push(
+          ...this.sql
+            .exec<{ path: string }>(
+              "UPDATE marks SET at = ? WHERE kind = 'claim' AND agent_id = ? AND intent_id IN (SELECT value FROM json_each(?)) RETURNING path",
+              now,
+              agentId,
+              JSON.stringify(part),
+            )
+            .toArray(),
+        );
+      }
+    } else {
+      rows.push(...this.sql.exec<{ path: string }>("UPDATE marks SET at = ? WHERE kind = 'claim' AND agent_id = ? RETURNING path", now, agentId).toArray());
+    }
+    for (const r of rows) touch(touched, r.path, "claim");
+    if (rows.length > 0) {
+      this.version++;
+      this.queueMarkEvents(touched, now);
+    }
+    return rows.length;
   }
 
   /**
@@ -420,6 +506,7 @@ export class RegionDO extends DurableObject<Env> {
     this.lastTickAt = 0;
     this.quietUntil = 0;
     this.sentInhibition = 1;
+    this.emitEveryMs = EMIT_EVERY_MS;
     this.adoptName();
     return { cleared: true };
   }
@@ -581,18 +668,24 @@ export class RegionDO extends DurableObject<Env> {
     return agg;
   }
 
-  /** Agents holding live claims here (one entry per agent; intent = its most recent claim). */
-  private claimHolders(now: number, excludeAgentId?: Id): Map<Id, { intentId?: Id; at: number; paths: Set<Path> }> {
-    const out = new Map<Id, { intentId?: Id; at: number; paths: Set<Path> }>();
+  /**
+   * Agents holding live claims here (one entry per agent; intent = its most recent claim; value =
+   * its strongest claim now). Every live claim is listed; admission counts only those at or above
+   * the bar (see counted).
+   */
+  private claimHolders(now: number, excludeAgentId?: Id): Map<Id, { intentId?: Id; at: number; paths: Set<Path>; value: number }> {
+    const out = new Map<Id, { intentId?: Id; at: number; paths: Set<Path>; value: number }>();
     for (const r of this.sql.exec<MarkRow>(`SELECT ${MARK_COLUMNS} FROM marks WHERE kind = 'claim' AND agent_id IS NOT NULL`)) {
       if (r.agent_id === null || r.agent_id === excludeAgentId) continue;
-      if (isExpired(toMark(r), now)) continue;
+      const m = toMark(r);
+      if (isExpired(m, now)) continue;
       let h = out.get(r.agent_id);
       if (!h) {
-        h = { at: -Infinity, paths: new Set() };
+        h = { at: -Infinity, paths: new Set(), value: 0 };
         out.set(r.agent_id, h);
       }
       h.paths.add(r.path);
+      h.value = Math.max(h.value, markValue(m, now));
       if (r.at >= h.at) {
         h.at = r.at;
         if (r.intent_id !== null) h.intentId = r.intent_id;
@@ -601,12 +694,38 @@ export class RegionDO extends DurableObject<Env> {
     return out;
   }
 
-  /** Does this agent hold a live claim in the region (is it already inside)? */
+  /** Claim holders that count toward admission: their strongest claim is at or above the bar. */
+  private counted(holders: Map<Id, { value: number }>): number {
+    const bar = this.admissionBar();
+    let n = 0;
+    for (const h of holders.values()) if (h.value >= bar) n++;
+    return n;
+  }
+
+  /** The admission bar as a claim value (a fresh claim is worth 1). See region/logic.ts admissionBar. */
+  private admissionBar(): number {
+    return admissionBar((this.env as unknown as { FT_LATERAL_INHIBITION?: string } | undefined)?.FT_LATERAL_INHIBITION, LATERAL_INHIBITION);
+  }
+
+  /** Is this agent inside the region: does it hold a claim here at or above the admission bar? */
   private holdsClaim(agentId: Id, now: number): boolean {
+    const bar = this.admissionBar();
     for (const r of this.sql.exec<MarkRow>(`SELECT ${MARK_COLUMNS} FROM marks WHERE agent_id = ? AND kind = 'claim'`, agentId)) {
-      if (!isExpired(toMark(r), now)) return true;
+      if (markValue(toMark(r), now) >= bar) return true;
     }
     return false;
+  }
+
+  /** Live marks of these kinds anywhere in the region (an excluded agent's claims left out). */
+  private marksOfKinds(kinds: string[], now: number, excludeAgentId?: Id): Mark[] {
+    const out: Mark[] = [];
+    if (kinds.length === 0) return out;
+    for (const r of this.sql.exec<MarkRow>(`SELECT ${MARK_COLUMNS} FROM marks WHERE kind IN (SELECT value FROM json_each(?))`, JSON.stringify(kinds))) {
+      if (r.kind === "claim" && excludeAgentId !== undefined && r.agent_id === excludeAgentId) continue;
+      const m = toMark(r);
+      if (!isExpired(m, now)) out.push(m);
+    }
+    return out;
   }
 
   private sigma(now: number): number {
@@ -683,7 +802,7 @@ export class RegionDO extends DurableObject<Env> {
     this.flushTimer = setTimeout(() => {
       this.flushTimer = null;
       this.ctx.waitUntil(this.flushOutbox());
-    }, EMIT_EVERY_MS);
+    }, this.emitEveryMs);
   }
 
   private async flushOutbox(): Promise<void> {
@@ -691,8 +810,11 @@ export class RegionDO extends DurableObject<Env> {
     this.outbox = [];
     if (events.length === 0 || this.colonyId === null) return;
     try {
-      const res = await this.colonyStub(this.colonyId).emit(coalesceEvents(events));
+      const res = (await this.colonyStub(this.colonyId).emit(coalesceEvents(events))) as { listeners?: number; emitEveryMs?: number } | undefined;
       if (res && res.listeners === 0) this.quietUntil = Date.now() + QUIET_MS;
+      // The colony paces its regions: with many regions emitting it asks each one to batch for longer.
+      const pace = res?.emitEveryMs;
+      if (typeof pace === "number" && Number.isFinite(pace)) this.emitEveryMs = Math.min(EMIT_MAX_MS, Math.max(EMIT_EVERY_MS, Math.round(pace)));
     } catch (err) {
       console.warn(`field events not delivered for ${this.colonyId}:${this.region}: ${errorText(err)}`);
       this.quietUntil = Date.now() + QUIET_MS;
@@ -801,17 +923,23 @@ export class RegionDO extends DurableObject<Env> {
       else stale.push({ p, occ });
     }
 
-    // 3. Lateral inhibition: the largest non-conflicting batch lands as one commit (in the trunk writer's next group-commit cycle).
-    const { batch } = selectBatch(valid, LANE_SCAN);
+    // 3. Direction, then lateral inhibition. One small call fetches the lineage context (intents with
+    //    their direction, agents, recorded decisions), so TrunkDO never pulls a full colony snapshot.
+    //    A change for a withdrawn intent, or built on an older revision of a revised one, goes back
+    //    before it can land. The largest non-conflicting batch of the rest lands as one commit (in the
+    //    trunk writer's next group-commit cycle).
+    const ctx =
+      valid.length > 0
+        ? await this.env.COLONY.get(this.env.COLONY.idFromName(colonyId))
+            .landContext(valid.map((p) => p.intentId), valid.map((p) => p.agentId), valid.map((p) => p.id))
+            .catch(() => undefined)
+        : undefined;
+    const direction = splitByDirection(valid, ctx?.intents);
+    const { batch } = selectBatch(direction.keep, LANE_SCAN);
     let result: LandResult | null = null;
     let landError: string | null = null;
     if (batch.length > 0) {
       try {
-        // Lineage context in one small call, so TrunkDO never pulls a full colony snapshot.
-        const colony = this.env.COLONY.get(this.env.COLONY.idFromName(colonyId));
-        const ctx = await colony
-          .landContext(batch.map((p) => p.intentId), batch.map((p) => p.agentId))
-          .catch(() => undefined);
         result = (await trunk.land(batch, ctx)) as LandResult;
       } catch (err) {
         landError = errorText(err);
@@ -836,6 +964,11 @@ export class RegionDO extends DurableObject<Env> {
       remove.add(r.id);
       updates.push({ id: r.id, patch: { status: "returned", reason: r.reason } });
       if (r.p) this.recordReturn(r.p, r.stale ?? null, now);
+    }
+    // Stale direction never lands. A human changed course, not a landing: no causal event.
+    for (const r of direction.returned) {
+      remove.add(r.p.id);
+      updates.push({ id: r.p.id, patch: { status: "returned", reason: r.reason } });
     }
     let retryMs: number | null = null;
     const keep = new Set(settled.keep);

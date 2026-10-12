@@ -1034,6 +1034,30 @@ input {
 .intent-landed {
   border-left-color: rgba(31, 224, 142, 0.6);
 }
+.intent-withdrawn {
+  border-left-color: rgba(176, 66, 76, 0.6);
+  opacity: 0.75;
+}
+.intent-withdrawn .intent-title {
+  text-decoration: line-through;
+  text-decoration-color: var(--text-4);
+}
+.segment-withdrawn .segment-n {
+  color: var(--failure);
+}
+
+/* An amended intent's revision (changing direction). */
+.rev-badge {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 0 5px;
+  border: 1px solid rgba(167, 139, 250, 0.45);
+  border-radius: 4px;
+  font: 700 10px var(--mono);
+  line-height: 15px;
+  color: var(--llm);
+  vertical-align: 1px;
+}
 
 .intent-title {
   overflow: hidden;
@@ -2180,6 +2204,75 @@ a.lin-sha:hover,
 
 .node-rule {
   border-color: var(--accent);
+}
+
+/* Direction: the revision a change was built on, its amendments, human directives, the agent's note. */
+.node-direction {
+  border-color: var(--llm);
+}
+
+.lin-dir {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.lin-dir .rev-badge {
+  margin-right: 0;
+}
+
+.lin-dir-row {
+  margin-top: 4px;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--text-3);
+}
+
+.lin-dir-row .lin-chip {
+  margin-right: 6px;
+}
+
+.lin-dir-row b {
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.lin-dir-when {
+  color: var(--text-4);
+}
+
+.lin-dir-why {
+  display: block;
+  margin-top: 1px;
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+
+.lin-chip-dir {
+  color: var(--llm);
+}
+
+.lin-dir-note {
+  margin-top: 5px;
+  font-size: 11.5px;
+  font-style: italic;
+  color: var(--text-3);
+  overflow-wrap: anywhere;
+}
+
+.dec-by {
+  color: var(--text-4);
+}
+
+.dec-answer {
+  margin: 2px 0 4px 60px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-3);
+  overflow-wrap: anywhere;
 }
 
 .node-sets {

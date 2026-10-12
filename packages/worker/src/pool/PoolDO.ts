@@ -22,13 +22,21 @@ import {
 } from "../artifacts/git.ts";
 import { durableFs } from "../artifacts/workspace.ts";
 import { TRUNK_NAMESPACE, bindingFor, seedRepoName, workspaceBinding, workspaceNamespace, workspaceRepoName } from "../artifacts/shards.ts";
+import { CLEAN_AFTER_MS, SlotBook, TOKEN_TTL_S, reusable, type SlotRow, type SlotState, type SlotToken, type TokenOps } from "./slots.ts";
 
-/** Most workspaces one colony may hold. */
-const MAX_TARGET = 256;
-/** Forks issued in parallel. */
-const FORK_BATCH = 8;
-/** Lease token lifetimes (seconds). */
+/** Most workspaces one colony may hold (thousands of concurrent agents each hold one). */
+const MAX_TARGET = 8_192;
+/** Forks issued in parallel: six per workspace shard, so the four namespaces fork side by side. */
+const FORK_BATCH = 24;
+/** Trunk read token lifetime (seconds). */
 const LEASE_TTL_S = 3600;
+/** Background token work (cleaning released slots, pre-minting) per alarm, and its concurrency. */
+const CHORES_PER_ALARM = 400;
+const CHORE_CONCURRENCY = 8;
+/** A released slot is looked at again once its token may be cleaned. */
+const CLEAN_DELAY_MS = CLEAN_AFTER_MS + 5_000;
+/** Leases waiting on Artifacts calls (a token to replace, a fork on demand) at once; more answer null (see lease). */
+const MAX_SLOW_LEASES = 16;
 /** Forks of a repo pushed less than this long ago fail often; wait it out. */
 const SEED_SETTLE_MS = 2_000;
 /** Backoff between fork attempts on INTERNAL_ERROR. */
@@ -41,21 +49,6 @@ const GROW_BUDGET_MS = 20_000;
 const SEED_REFRESH_MS = 10 * 60_000;
 /** A cached trunk read token is reused while it has this much life left. */
 const TRUNK_READ_MARGIN_MS = 15 * 60_000;
-
-type SlotState = "forking" | "ready" | "leased" | "failed";
-
-type SlotRow = {
-  n: number;
-  shard: number;
-  name: string;
-  remote: string | null;
-  state: SlotState;
-  agent_id: string | null;
-  token_id: string | null;
-  leased_at: number | null;
-  attempts: number;
-  error: string | null;
-};
 
 type SeedRow = {
   shard: number;
@@ -77,21 +70,32 @@ export class PoolDO extends DurableObject<Env> {
   private trunkRead: TokenCache | null = null;
   private seedJob: Promise<void> | null = null;
   private growJob: Promise<number> | null = null;
+  private choreJob: Promise<number> | null = null;
+  /** Leases in flight that wait on Artifacts calls (see MAX_SLOW_LEASES). */
+  private slowLeases = 0;
+  /** Slots, leases and their tokens (pool/slots.ts): the lease path is SQL only. */
+  private book: SlotBook;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.sql = ctx.storage.sql;
     this.sql.exec(`CREATE TABLE IF NOT EXISTS ft_pool_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)`);
-    this.sql.exec(
-      `CREATE TABLE IF NOT EXISTS ft_pool_ws (n INTEGER PRIMARY KEY, shard INTEGER NOT NULL, name TEXT NOT NULL, remote TEXT, state TEXT NOT NULL, agent_id TEXT, token_id TEXT, leased_at INTEGER, released_at INTEGER, created_at INTEGER NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, error TEXT)`,
-    );
-    this.sql.exec(`CREATE INDEX IF NOT EXISTS ft_pool_ws_state ON ft_pool_ws (state)`);
-    this.sql.exec(`CREATE INDEX IF NOT EXISTS ft_pool_ws_agent ON ft_pool_ws (agent_id)`);
-    // Lease affinity: the agent that last held a slot (pools created before this column get it added).
-    if (!this.sql.exec<{ name: string }>(`PRAGMA table_info(ft_pool_ws)`).toArray().some((c) => c.name === "last_agent")) {
-      this.sql.exec(`ALTER TABLE ft_pool_ws ADD COLUMN last_agent TEXT`);
-    }
+    // The slot table (with lease affinity and per-slot tokens; older pools get the columns added).
+    this.book = new SlotBook(this.sql, this.tokenOps());
     this.sql.exec(`CREATE TABLE IF NOT EXISTS ft_pool_seeds (shard INTEGER PRIMARY KEY, name TEXT NOT NULL, remote TEXT NOT NULL, sha TEXT, pushed_at INTEGER)`);
+  }
+
+  /** The Artifacts calls behind slot tokens: a write token per workspace, revoked by id. */
+  private tokenOps(): TokenOps {
+    return {
+      mint: async (slot): Promise<SlotToken> => {
+        const t = await mintToken(workspaceBinding(this.env, slot.shard), slot.name, "write", TOKEN_TTL_S);
+        return { id: t.id, token: t.token, expiresAt: t.expiresAt };
+      },
+      revoke: async (slot, tokenId): Promise<void> => {
+        await withArtifactsRetry(() => withRepo(workspaceBinding(this.env, slot.shard), slot.name, (repo) => repo.revokeToken(tokenId)));
+      },
+    };
   }
 
   // -------------------------------------------------------------------------
@@ -100,8 +104,8 @@ export class PoolDO extends DurableObject<Env> {
 
   /**
    * Configure the pool and start filling it: create the four shard seeds from trunk main,
-   * fork the first batch (up to 8) before returning, and grow the rest toward `target`
-   * (at most 256) on the alarm. Calling it again updates the target.
+   * fork the first batch (up to FORK_BATCH) before returning, and grow the rest toward `target`
+   * (at most MAX_TARGET) on the alarm. Calling it again updates the target.
    */
   async init(p: { colonyId: Id; trunk: RepoRef; target: number }): Promise<void> {
     const prev = this.meta("trunk");
@@ -110,6 +114,7 @@ export class PoolDO extends DurableObject<Env> {
         this.sql.exec(`DELETE FROM ft_pool_ws`);
         this.sql.exec(`DELETE FROM ft_pool_seeds`);
       });
+      this.book.touched();
       this.trunkRead = null;
     }
     this.setMeta("colony_id", p.colonyId);
@@ -122,52 +127,67 @@ export class PoolDO extends DurableObject<Env> {
 
   /**
    * Lease a ready workspace to `agentId` (the same one again if it already holds a lease)
-   * with a fresh workspace write token and a read-only trunk token, both valid for an hour.
-   * Affinity: an agent gets back the workspace it last held when that one is ready, else a
-   * never-used one, else the longest idle. Its local clone already has that workspace's
-   * objects, so its next push carries only what is new. Forks one on demand when none is
-   * ready and raises the target; null if that fails.
+   * with a workspace write token (at least 30 minutes of life left) and a read-only trunk token.
+   * Affinity: an agent gets back the workspace it last held when that one is ready, else one
+   * with a clean pre-minted token, else a never-used one, else the longest idle. Its local
+   * clone already has that workspace's objects, so its next push carries only what is new.
+   * In steady state this is SQL only: the slot's token is the agent's own from its last lease or
+   * a clean one minted in the background (pool/slots.ts); only a slot another agent left behind
+   * needs its token revoked and replaced here. Forks one on demand when none is ready and raises
+   * the target; null if that fails.
    */
   async lease(agentId: Id, trunkSha: Sha): Promise<WorkspaceLease | null> {
     const st = this.state();
     for (let attempt = 0; attempt < 3; attempt++) {
-      let row: SlotRow | null | undefined = this.sql.exec<SlotRow>(`SELECT * FROM ft_pool_ws WHERE agent_id = ? AND state = 'leased' LIMIT 1`, agentId).toArray()[0];
-      if (!row) {
-        const now = Date.now();
-        row = this.sql
-          .exec<SlotRow>(
-            `SELECT * FROM ft_pool_ws WHERE state = 'ready'
-             ORDER BY CASE WHEN last_agent = ? THEN 0 WHEN last_agent IS NULL THEN 1 ELSE 2 END, COALESCE(released_at, 0), n LIMIT 1`,
-            agentId,
-          )
-          .toArray()[0];
-        if (row) {
-          this.sql.exec(`UPDATE ft_pool_ws SET state = 'leased', agent_id = ?, leased_at = ? WHERE n = ?`, agentId, now, row.n);
-          row = { ...row, state: "leased", agent_id: agentId, leased_at: now };
-        }
-      }
+      let row: SlotRow | null = this.book.take(agentId);
       if (!row) {
         this.raiseTarget();
-        row = await this.forkOnDemand(agentId);
+        // The pool is out of workspaces: fork one now, unless enough leases already wait on Artifacts.
+        if (this.slowLeases >= MAX_SLOW_LEASES) {
+          await this.schedule(250);
+          return null;
+        }
+        this.slowLeases++;
+        try {
+          row = await this.forkOnDemand(agentId);
+        } finally {
+          this.slowLeases--;
+        }
         if (!row) {
           await this.schedule(1_000);
           return null;
         }
       }
-      let ws: MintedToken;
+      // A slot whose token must be replaced (another agent's, or none yet) costs Artifacts calls. Those are
+      // capped: past MAX_SLOW_LEASES the lease answers null at once (the agent retries shortly) instead of
+      // queueing every take behind the control plane, and the pool grows so agents keep their own workspaces.
+      const slow = !reusable(row, agentId, Date.now());
+      if (slow && this.slowLeases >= MAX_SLOW_LEASES) {
+        this.book.unlease(row.n, agentId);
+        this.raiseTarget();
+        await this.schedule(250);
+        return null;
+      }
+      if (slow) this.slowLeases++;
+      let ws: SlotToken;
       let trunkTok: MintedToken;
       try {
-        [ws, trunkTok] = await Promise.all([mintToken(workspaceBinding(this.env, row.shard), row.name, "write", LEASE_TTL_S), this.trunkReadToken()]);
+        const [armed, t] = await Promise.all([this.book.arm(row, agentId), this.trunkReadToken()]);
+        ws = armed.token;
+        trunkTok = t;
       } catch (e) {
         if (artifactsCode(e) === "NOT_FOUND") {
           this.sql.exec(`UPDATE ft_pool_ws SET state = 'failed', agent_id = NULL, error = ? WHERE n = ?`, `workspace vanished: ${errorText(e)}`, row.n);
+          this.book.touched();
           continue;
         }
-        this.sql.exec(`UPDATE ft_pool_ws SET state = 'ready', agent_id = NULL, leased_at = NULL WHERE n = ? AND agent_id = ?`, row.n, agentId);
+        this.book.unlease(row.n, agentId);
         throw e;
+      } finally {
+        if (slow) this.slowLeases--;
       }
-      this.sql.exec(`UPDATE ft_pool_ws SET token_id = ? WHERE n = ?`, ws.id, row.n);
-      if (this.counts().ready < Math.ceil(this.target() / 4)) await this.schedule(250);
+      const c = this.book.counts();
+      if (c.ready < Math.ceil(this.target() / 4)) await this.schedule(250);
       return {
         repo: { namespace: workspaceNamespace(row.shard), name: row.name, remote: row.remote ?? "" },
         token: ws.token,
@@ -180,18 +200,22 @@ export class PoolDO extends DurableObject<Env> {
     return null;
   }
 
-  /** Return `agentId`'s workspace to the pool and revoke its lease token. */
+  /**
+   * Return `agentId`'s workspace to the pool. Its token stays valid for that agent, which usually
+   * leases the same workspace again within seconds; if it does not, the alarm revokes the token
+   * and mints a clean one within about a minute. No other agent ever gets a slot before its
+   * previous agent's token is revoked (SlotBook.arm).
+   */
   async release(agentId: Id): Promise<void> {
-    const rows = this.sql.exec<SlotRow>(`SELECT * FROM ft_pool_ws WHERE agent_id = ? AND state = 'leased'`, agentId).toArray();
-    const now = Date.now();
-    for (const r of rows) {
-      this.sql.exec(`UPDATE ft_pool_ws SET state = 'ready', agent_id = NULL, last_agent = ?, token_id = NULL, leased_at = NULL, released_at = ? WHERE n = ?`, agentId, now, r.n);
-    }
-    await Promise.all(
-      rows
-        .filter((r) => r.token_id !== null)
-        .map((r) => withRepo(workspaceBinding(this.env, r.shard), r.name, (repo) => repo.revokeToken(r.token_id!)).catch(() => false)),
-    );
+    if (this.book.release(agentId) > 0) await this.armAlarm(CLEAN_DELAY_MS);
+  }
+
+  /** release() for many agents in one call (a landing settles a whole batch). Returns the slots released. */
+  async releaseMany(agentIds: Id[]): Promise<number> {
+    let n = 0;
+    for (const id of new Set(Array.isArray(agentIds) ? agentIds : [])) if (typeof id === "string" && id !== "") n += this.book.release(id);
+    if (n > 0) await this.armAlarm(CLEAN_DELAY_MS);
+    return n;
   }
 
   /** Pool counters. */
@@ -206,10 +230,13 @@ export class PoolDO extends DurableObject<Env> {
     counts: Record<SlotState, number>;
     seeds: Array<{ shard: number; name: string; sha: string | null; pushedAt: number | null }>;
     failures: Array<{ n: number; name: string; attempts: number; error: string | null }>;
+    /** Ready slots holding a clean token (leased without an Artifacts call), and token chores waiting. */
+    tokens: { clean: number; chores: number };
   }> {
     return {
       target: this.target(),
       counts: this.counts(),
+      tokens: this.book.readiness(),
       seeds: this.sql.exec<SeedRow>(`SELECT * FROM ft_pool_seeds ORDER BY shard`).toArray().map((s) => ({ shard: s.shard, name: s.name, sha: s.sha, pushedAt: s.pushed_at })),
       failures: this.sql
         .exec<SlotRow>(`SELECT * FROM ft_pool_ws WHERE state = 'failed' ORDER BY n`)
@@ -242,6 +269,7 @@ export class PoolDO extends DurableObject<Env> {
       this.sql.exec(`DELETE FROM ft_pool_ws`);
       this.sql.exec(`DELETE FROM ft_pool_seeds`);
     });
+    this.book.touched();
     return { deleted, errors };
   }
 
@@ -257,33 +285,79 @@ export class PoolDO extends DurableObject<Env> {
     for (const { sql } of ddl) this.sql.exec(sql);
     this.gitRepo = null;
     this.trunkRead = null;
+    this.book.touched();
     return { cleared: true };
   }
 
-  /** Keep growing toward the target; back off when every fork fails. */
+  /**
+   * Keep growing toward the target (back off when every fork fails), then the token chores: slots
+   * an agent left a while ago get their token revoked and a clean one minted, new and expiring
+   * slots get one, so leases find tokens ready.
+   */
   async alarm(): Promise<void> {
     if (this.meta("trunk") === null) return;
     let made = 0;
+    let cleaned = 0;
     try {
       made = await this.grow(GROW_BUDGET_MS, Infinity);
     } catch (e) {
       console.error(`pool grow failed: ${errorText(e)}`);
     }
+    try {
+      cleaned = await this.chores();
+    } catch (e) {
+      console.error(`pool token chores failed: ${errorText(e)}`);
+    }
     await this.schedule(made > 0 ? 250 : 30_000);
+    const pending = this.book.readiness().chores;
+    if (pending > 0) await this.armAlarm(cleaned > 0 ? 250 : 30_000);
+    else {
+      const at = this.book.nextChoreAt();
+      if (at !== null) await this.armAlarm(Math.max(250, at - Date.now()));
+    }
+  }
+
+  /** Token chores (SlotBook.maintain), single-flight. Returns how many slots got a clean token. */
+  private chores(): Promise<number> {
+    if (this.choreJob) return this.choreJob;
+    this.choreJob = this.book.maintain(CHORES_PER_ALARM, CHORE_CONCURRENCY).finally(() => {
+      this.choreJob = null;
+    });
+    return this.choreJob;
+  }
+
+  /** Make sure the alarm fires within `delayMs`. */
+  private async armAlarm(delayMs: number): Promise<void> {
+    const at = Date.now() + delayMs;
+    const current = await this.ctx.storage.getAlarm();
+    if (current === null || current > at) await this.ctx.storage.setAlarm(at);
   }
 
   // -------------------------------------------------------------------------
   // Growth
   // -------------------------------------------------------------------------
 
-  /** Fork batches of up to 8 toward the target, within a time budget. Single-flight. Returns slots made ready. */
+  /**
+   * Fork batches of up to FORK_BATCH (spread over the four workspace shards) toward the target,
+   * within a time budget. Single-flight. Returns slots made ready.
+   */
   private grow(budgetMs: number, maxBatches: number): Promise<number> {
     if (this.growJob) return this.growJob;
+    // Nothing to fork: leave the seeds alone. Refreshing a seed fetches and pushes every trunk commit
+    // since the last refresh through isomorphic-git (seconds of CPU once thousands of landings
+    // accumulate), and it used to run on every alarm, stalling leases at full load.
+    this.book.touched();
+    const c0 = this.counts();
+    if (this.target() - (c0.ready + c0.leased + c0.forking) <= 0) return Promise.resolve(0);
+    // Only a quiet pool refreshes its seeds: under load new workspaces fork from the seeds as they are
+    // (a workspace's prior content never matters; a fresher one only makes an agent's first push smaller).
+    const quiet = c0.leased === 0;
     const job = (async () => {
       const t0 = Date.now();
       let made = 0;
-      await this.ensureSeeds(true);
+      await this.ensureSeeds(quiet);
       for (let batches = 0; batches < maxBatches && Date.now() - t0 < budgetMs; batches++) {
+        this.book.touched();
         const c = this.counts();
         const need = this.target() - (c.ready + c.leased + c.forking);
         if (need <= 0) break;
@@ -320,6 +394,7 @@ export class PoolDO extends DurableObject<Env> {
       this.sql.exec(`INSERT INTO ft_pool_ws (n, shard, name, state, agent_id, created_at) VALUES (?, ?, ?, 'forking', ?, ?)`, n, shard, name, agentId, now);
       rows.push({ n, shard, name, remote: null, state: "forking", agent_id: agentId, token_id: null, leased_at: null, attempts: 0, error: null });
     }
+    this.book.touched();
     return rows;
   }
 
@@ -356,9 +431,11 @@ export class PoolDO extends DurableObject<Env> {
         agent === null ? null : now,
         row.n,
       );
+      this.book.touched();
       return true;
     } catch (e) {
       this.sql.exec(`UPDATE ft_pool_ws SET state = 'failed', attempts = attempts + 1, error = ? WHERE n = ?`, errorText(e), row.n);
+      this.book.touched();
       return false;
     }
   }
@@ -444,9 +521,7 @@ export class PoolDO extends DurableObject<Env> {
   }
 
   private counts(): Record<SlotState, number> {
-    const out: Record<SlotState, number> = { forking: 0, ready: 0, leased: 0, failed: 0 };
-    for (const r of this.sql.exec<{ state: SlotState; n: number }>(`SELECT state, COUNT(*) AS n FROM ft_pool_ws GROUP BY state`).toArray()) out[r.state] = r.n;
-    return out;
+    return this.book.counts();
   }
 
   private seed(shard: number): SeedRow | null {

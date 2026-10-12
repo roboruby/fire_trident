@@ -1,5 +1,6 @@
 import { regionOf } from "@fire_trident/core";
-import type { AgentInfo, FieldReading, FileVersion, Id, Intent, Path, Proposal, ProposalStatus, RepoRef, Rule, Sha, WorkspaceLease } from "@fire_trident/core";
+import type { AgentInfo, Directive, FieldReading, FileVersion, Id, Intent, Path, Proposal, ProposalStatus, RepoRef, Rule, Sha, WorkspaceLease } from "@fire_trident/core";
+import { isInboxDirective } from "../colony/direction.ts";
 import { cleanPath } from "../agents/change.ts";
 import type { ColonyRpc, RegionRpc, TakeResult, TrunkRpc } from "../agents/rpc.ts";
 import { diffTrees, onFirstParentChain, readFileAt } from "./gitread.ts";
@@ -111,6 +112,19 @@ function proposalView(p: Proposal): Record<string, unknown> {
     landingId: p.landingId ?? null,
     headSha: p.headSha,
     createdAt: new Date(p.createdAt).toISOString(),
+  };
+}
+
+/** One directive as the inbox shows it. */
+function directiveView(d: Directive): Record<string, unknown> {
+  return {
+    id: d.id,
+    kind: d.kind,
+    intentId: d.intentId ?? null,
+    message: d.message,
+    by: d.by,
+    at: new Date(d.at).toISOString(),
+    ...(typeof d.revision === "number" ? { revision: d.revision, changed: d.changed ?? [] } : {}),
   };
 }
 
@@ -429,6 +443,7 @@ export class FireTridentTools {
       writeSet,
       readSet,
       declared: { footprint: intent.footprint, summary: (a.summary ?? "").trim() || intent.title },
+      ...(typeof intent.revision === "number" ? { intentRevision: intent.revision } : {}),
       evidence: { notVerified: stated === "" ? EXTERNAL_NOT_VERIFIED : /^not verified/i.test(stated) ? stated : `Not verified: ${stated}` },
     });
     const at = this.ctx.now();
@@ -474,11 +489,50 @@ export class FireTridentTools {
       }
       watched = { id, status: p.status, final: FINAL.has(p.status), reason: p.reason ?? null, landingId: p.landingId ?? null, waitedMs: this.ctx.now() - t0 };
     }
-    const list = await colony.inbox(s.agentId, Math.max(1, Math.min(50, a.limit ?? 20)));
+    const list: unknown[] = await colony.inbox(s.agentId, Math.max(1, Math.min(50, a.limit ?? 20)));
+    const proposals = list.filter((e): e is Proposal => !isInboxDirective(e));
+    const directives = list.filter(isInboxDirective).map((e) => e.directive);
+    // Directives change course: a withdrawal ends the held intent, a revision refreshes it, guidance is followed.
+    const held = s.intent;
+    const about = directives.filter((d) => !d.intentId || (held !== undefined && d.intentId === held.id));
+    let direction: string | undefined;
+    let current: Intent | undefined = held;
+    const withdrawal = held ? about.find((d) => d.kind === "withdrawal" && d.intentId === held.id) : undefined;
+    const revision = held
+      ? about
+          .filter((d) => d.kind === "revision" && d.intentId === held.id && typeof d.revision === "number" && d.revision > (held.revision ?? 1))
+          .sort((x, y) => (y.revision ?? 0) - (x.revision ?? 0))[0]
+      : undefined;
+    if (held && withdrawal) {
+      await this.update((x) => {
+        if (x.intent?.id !== held.id) return;
+        delete x.intent;
+        delete x.lease;
+        delete x.rule;
+        x.reads = {};
+      });
+      current = undefined;
+      direction = `Your intent ${held.id} was withdrawn: ${withdrawal.message}. Stop working on it (your lease is revoked) and call take for other work.`;
+    } else if (held && revision) {
+      const fresh = colony.getIntent ? await colony.getIntent(held.id) : null;
+      if (fresh) {
+        await this.update((x) => {
+          if (x.intent?.id === held.id) x.intent = fresh;
+        });
+        current = fresh;
+      }
+      const changed = (revision.changed ?? []).join(", ") || "details";
+      direction = `Your intent was revised to r${revision.revision} (changed: ${changed}): ${revision.message}. Call checkout for the new text and rebuild your change on it; a change built on an older revision is refused.`;
+    } else {
+      const guidance = about.find((d) => d.kind === "guidance");
+      if (guidance) direction = `A human sent you guidance: "${guidance.message}". Follow it in your change.`;
+    }
     return {
       ...(watched ? { watching: watched, next: nextFor(watched.status) } : {}),
-      proposals: list.map(proposalView),
-      holding: s.intent ? { intentId: s.intent.id, title: s.intent.title } : null,
+      ...(direction ? { direction } : {}),
+      proposals: proposals.map(proposalView),
+      directives: directives.map(directiveView),
+      holding: current ? { intentId: current.id, title: current.title, revision: current.revision ?? 1 } : null,
     };
   }
 

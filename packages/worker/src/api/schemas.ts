@@ -61,6 +61,8 @@ export const ProposalBody = z.object({
   writeSet: z.array(FileVersionBody).min(1).max(5_000),
   readSet: z.array(FileVersionBody).max(50_000).default([]),
   declared: z.object({ footprint: z.array(PathString).max(1_000).default([]), summary: z.string().max(20_000).default("") }).default({ footprint: [], summary: "" }),
+  /** The intent revision the change was built on (from the assignment); see Proposal.intentRevision. */
+  intentRevision: z.number().int().min(1).max(1_000_000).optional(),
   evidence: z
     .object({
       checks: z.array(z.object({ name: z.string().max(200), ok: z.boolean(), ms: z.number().finite().min(0), detail: z.string().max(20_000).optional() })).max(200).optional(),
@@ -102,4 +104,40 @@ export const SwarmStopBody = z.object({
 export const WhyQuery = z.object({
   path: PathString,
   line: z.coerce.number().int().min(1).optional(),
+});
+
+/** Why a direction changes: recorded with the change and sent to the agents it affects. */
+const Reason = z.string().trim().min(1, "a reason is required").max(500);
+
+/** PATCH /api/colonies/:id/intents/:iid: amend an intent (at least one field, and a reason). */
+export const AmendIntentBody = z
+  .object({
+    title: z.string().trim().min(1).max(500).optional(),
+    why: z.string().max(20_000).optional(),
+    footprint: z.array(PathString).min(1).max(1_000).optional(),
+    priority: z.number().finite().min(0).max(1_000).optional(),
+    reason: Reason,
+    by: z.string().trim().min(1).max(200).optional(),
+  })
+  .refine((b) => b.title !== undefined || b.why !== undefined || b.footprint !== undefined || b.priority !== undefined, {
+    message: "give at least one of title, why, footprint or priority",
+    path: ["title"],
+  });
+
+/** POST /api/colonies/:id/intents/:iid/withdraw and DELETE /api/colonies/:id/rules/:rid. */
+export const WithdrawBody = z.object({
+  reason: Reason,
+  by: z.string().trim().min(1).max(200).optional(),
+});
+
+/** POST /api/colonies/:id/agents/:aid/directive: free-text guidance for one agent. */
+export const DirectiveBody = z.object({
+  message: z.string().trim().min(1, "a directive needs a message").max(2_000),
+  intentId: z.string().trim().min(1).max(100).optional(),
+  by: z.string().trim().min(1).max(200).optional(),
+});
+
+/** POST /api/colonies/:id/agents/:aid/status: the agent's one-line "what I am doing now" (kept to 280 characters). */
+export const StatusBody = z.object({
+  note: z.string().trim().min(1, "a status note cannot be empty").max(2_000),
 });

@@ -10,6 +10,7 @@ export const SERVER_INSTRUCTIONS = [
   "5. Edit only paths in the footprint. Commit on top of the base commit and force-push to refs/heads/main of your workspace.",
   "6. propose with the head commit id and a notVerified statement (what you did not check). The server computes your write set from the commits; nothing you report about files is trusted.",
   "7. inbox with wait (seconds) blocks until the proposal is decided: landed, returned (trunk moved under your reads or review sent it back: take again), rejected, or escalated (waiting for a human). Repeat it until the proposal is final.",
+  "8. inbox also lists directives from humans. Guidance: follow it. A revision of your intent: call checkout for the new text and rebuild your change on it (work built on an older revision is refused). A withdrawal: stop and take other work. Check inbox before you propose.",
   "Any tool call keeps your claim alive; an agent silent for ten minutes loses its intent. Use sense to see where other agents work, declare to add a follow-up intent, release to give back work you cannot finish, and why to ask which intent produced a line on trunk.",
 ].join("\n");
 

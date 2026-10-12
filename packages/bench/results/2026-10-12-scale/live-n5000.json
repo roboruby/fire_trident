@@ -1,0 +1,1172 @@
+{
+  "kind": "live",
+  "note": "MEASURED, real landings: synthetic API agents (no model, no agent-side git); every landed proposal is a real trunk commit built by the trunk writer from a blob read out of the agent's workspace fork.",
+  "label": "n5000",
+  "url": "https://g6-firetrident.mattsolt.workers.dev",
+  "colony": "g6-scale5k",
+  "agents": 5000,
+  "durationS": 120,
+  "workMs": 0,
+  "regions": 64,
+  "startedAt": "2026-10-12T11:11:25.183Z",
+  "elapsedS": 134.257885875,
+  "stoppedEarly": null,
+  "ops": [
+    {
+      "op": "metrics",
+      "calls": 3,
+      "errors": 0,
+      "n": 3,
+      "min": 71.28737499999988,
+      "p50": 165.85479199999827,
+      "p90": 680.786958,
+      "p99": 680.786958,
+      "max": 680.786958,
+      "mean": 305.9763749999994
+    },
+    {
+      "op": "intent",
+      "calls": 253,
+      "errors": 0,
+      "n": 253,
+      "min": 91.4208749999998,
+      "p50": 154.785208,
+      "p90": 568.703833,
+      "p99": 4178.733375,
+      "max": 5372.909625,
+      "mean": 321.885029806324
+    },
+    {
+      "op": "register",
+      "calls": 5000,
+      "errors": 41,
+      "n": 5000,
+      "min": 3.0233750000006694,
+      "p50": 2067.6734579999993,
+      "p90": 5196.183417,
+      "p99": 10148.335250000002,
+      "max": 16301.533625000002,
+      "mean": 2515.858636840204
+    },
+    {
+      "op": "take",
+      "calls": 36313,
+      "errors": 35,
+      "n": 36313,
+      "min": 3.2620829999996204,
+      "p50": 355.2856250000041,
+      "p90": 1581.9847910000026,
+      "p99": 6031.259082999999,
+      "max": 25018.292292000002,
+      "mean": 706.0450084617893
+    },
+    {
+      "op": "propose",
+      "calls": 5627,
+      "errors": 2,
+      "n": 5627,
+      "min": 89.10524999999325,
+      "p50": 255.32558400000562,
+      "p90": 537.5562499999942,
+      "p99": 2054.4449999999997,
+      "max": 18425.658791,
+      "mean": 352.3301055770392
+    },
+    {
+      "op": "heartbeat",
+      "calls": 2918,
+      "errors": 0,
+      "n": 2918,
+      "min": 57.839291000011144,
+      "p50": 133.1387909999903,
+      "p90": 271.2867499999993,
+      "p99": 632.4873329999973,
+      "max": 1125.1472909999939,
+      "mean": 162.37448503050032
+    },
+    {
+      "op": "poll",
+      "calls": 254,
+      "errors": 0,
+      "n": 254,
+      "min": 49.30245800000557,
+      "p50": 75.29604200000176,
+      "p90": 211.3367500000022,
+      "p99": 462.46679200000654,
+      "max": 587.6040409999987,
+      "mean": 114.68301066929106
+    }
+  ],
+  "takeAssigned": {
+    "n": 5627,
+    "min": 154.8559580000001,
+    "p50": 653.1737080000021,
+    "p90": 1434.935625000002,
+    "p99": 3959.7262499999997,
+    "max": 11435.917500000001,
+    "mean": 824.3319680406984
+  },
+  "takeWait": {
+    "n": 30651,
+    "min": 42.99416700000438,
+    "p50": 286.3339580000029,
+    "p90": 1751.2918750000008,
+    "p99": 6044.414375,
+    "max": 25018.321417,
+    "mean": 676.9487896256866
+  },
+  "counts": {
+    "registered": 4959,
+    "assigned": 5627,
+    "waits": {
+      "admission closed in every candidate region": 20503,
+      "admission closed in bench/r59": 28,
+      "colony busy: too many takes in flight": 3950,
+      "admission closed in bench/r60": 31,
+      "admission closed in bench/r55": 9,
+      "admission closed in bench/r44": 30,
+      "admission closed in bench/r22": 12,
+      "admission closed in bench/r36": 10,
+      "admission closed in bench/r02": 17,
+      "admission closed in bench/r19": 20,
+      "admission closed in bench/r15": 12,
+      "admission closed in bench/r41": 21,
+      "admission closed in bench/r09": 18,
+      "no intent accepted at this agent's thresholds": 907,
+      "every open intent's files are claimed by another agent": 4907,
+      "admission closed in bench/r57": 6,
+      "admission closed in bench/r63": 3,
+      "admission closed in bench/r01": 1,
+      "admission closed in bench/r45": 2,
+      "admission closed in bench/r32": 2,
+      "admission closed in bench/r42": 3,
+      "admission closed in bench/r54": 4,
+      "admission closed in bench/r53": 2,
+      "admission closed in bench/r40": 12,
+      "admission closed in bench/r49": 5,
+      "admission closed in bench/r33": 17,
+      "admission closed in bench/r31": 11,
+      "admission closed in bench/r38": 16,
+      "admission closed in bench/r52": 3,
+      "admission closed in bench/r37": 6,
+      "admission closed in bench/r35": 2,
+      "admission closed in bench/r50": 2,
+      "admission closed in bench/r30": 2,
+      "admission closed in bench/r51": 1,
+      "admission closed in bench/r48": 1,
+      "admission closed in bench/r29": 1,
+      "admission closed in bench/r34": 5,
+      "admission closed in bench/r56": 1,
+      "admission closed in bench/r00": 2,
+      "admission closed in bench/r11": 13,
+      "admission closed in bench/r58": 1,
+      "admission closed in bench/r24": 3,
+      "admission closed in bench/r06": 1,
+      "admission closed in bench/r47": 2,
+      "admission closed in bench/r16": 1,
+      "admission closed in bench/r18": 1,
+      "admission closed in bench/r46": 1,
+      "admission closed in bench/r13": 2,
+      "admission closed in bench/r04": 7,
+      "admission closed in bench/r26": 3,
+      "admission closed in bench/r28": 4,
+      "admission closed in bench/r43": 2,
+      "admission closed in bench/r39": 1,
+      "admission closed in bench/r62": 3,
+      "admission closed in bench/r23": 1,
+      "admission closed in bench/r12": 5,
+      "admission closed in bench/r07": 8,
+      "admission closed in bench/r21": 2,
+      "admission closed in bench/r25": 5
+    },
+    "proposals": 5625,
+    "landed": 5625,
+    "returned": 0,
+    "rejected": 0,
+    "unresolved": 0
+  },
+  "returns": {},
+  "window": {
+    "fromS": 25,
+    "toS": 120,
+    "commits": 741,
+    "landedProposals": 4398,
+    "landedPerMin": 2777.684210526316,
+    "commitsPerMin": 468,
+    "source": "live WebSocket landing events"
+  },
+  "snapshotDelta": {
+    "landings": 1062,
+    "landedProposals": 5625,
+    "proposals": 5577,
+    "returned": 0,
+    "rejected": 0,
+    "takes": 5575
+  },
+  "timeToLandMs": {
+    "n": 5625,
+    "min": 250,
+    "p50": 12543,
+    "p90": 17411,
+    "p99": 27153,
+    "max": 31116,
+    "mean": 12740.964266666666
+  },
+  "batchSize": {
+    "n": 1062,
+    "min": 1,
+    "p50": 5,
+    "p90": 10,
+    "p99": 14,
+    "max": 14,
+    "mean": 5.296610169491525
+  },
+  "commitGapMs": {
+    "n": 1061,
+    "min": 0,
+    "p50": 0,
+    "p90": 0,
+    "p99": 3645,
+    "max": 8592,
+    "mean": 124.60980207351555
+  },
+  "feed": {
+    "connected": true,
+    "events": 83367,
+    "sigmaMax": 0,
+    "sigmaEvents": 1111,
+    "reconnects": 1
+  },
+  "outcomes": {
+    "feed": 5592,
+    "poll": 33
+  },
+  "timeline": [
+    {
+      "t": "11:11:18",
+      "calls": 16,
+      "errors": 0,
+      "maxMs": 681
+    },
+    {
+      "t": "11:11:19",
+      "calls": 66,
+      "errors": 0,
+      "maxMs": 1086
+    },
+    {
+      "t": "11:11:20",
+      "calls": 136,
+      "errors": 0,
+      "maxMs": 629
+    },
+    {
+      "t": "11:11:21",
+      "calls": 32,
+      "errors": 0,
+      "maxMs": 789
+    },
+    {
+      "t": "11:11:24",
+      "calls": 5,
+      "errors": 0,
+      "maxMs": 5373
+    },
+    {
+      "t": "11:11:25",
+      "calls": 160,
+      "errors": 1,
+      "maxMs": 501
+    },
+    {
+      "t": "11:11:26",
+      "calls": 504,
+      "errors": 0,
+      "maxMs": 1653
+    },
+    {
+      "t": "11:11:27",
+      "calls": 566,
+      "errors": 0,
+      "maxMs": 2131
+    },
+    {
+      "t": "11:11:28",
+      "calls": 714,
+      "errors": 0,
+      "maxMs": 3003
+    },
+    {
+      "t": "11:11:29",
+      "calls": 647,
+      "errors": 0,
+      "maxMs": 3927
+    },
+    {
+      "t": "11:11:30",
+      "calls": 549,
+      "errors": 1,
+      "maxMs": 4773
+    },
+    {
+      "t": "11:11:31",
+      "calls": 648,
+      "errors": 1,
+      "maxMs": 5843
+    },
+    {
+      "t": "11:11:32",
+      "calls": 704,
+      "errors": 0,
+      "maxMs": 6567
+    },
+    {
+      "t": "11:11:33",
+      "calls": 1126,
+      "errors": 2,
+      "maxMs": 7395
+    },
+    {
+      "t": "11:11:34",
+      "calls": 155,
+      "errors": 1,
+      "maxMs": 8753
+    },
+    {
+      "t": "11:11:35",
+      "calls": 201,
+      "errors": 0,
+      "maxMs": 9333
+    },
+    {
+      "t": "11:11:36",
+      "calls": 2378,
+      "errors": 6,
+      "maxMs": 10220
+    },
+    {
+      "t": "11:11:37",
+      "calls": 1456,
+      "errors": 8,
+      "maxMs": 11504
+    },
+    {
+      "t": "11:11:38",
+      "calls": 1275,
+      "errors": 17,
+      "maxMs": 12770
+    },
+    {
+      "t": "11:11:39",
+      "calls": 576,
+      "errors": 8,
+      "maxMs": 11436
+    },
+    {
+      "t": "11:11:40",
+      "calls": 515,
+      "errors": 14,
+      "maxMs": 13881
+    },
+    {
+      "t": "11:11:41",
+      "calls": 147,
+      "errors": 12,
+      "maxMs": 13774
+    },
+    {
+      "t": "11:11:42",
+      "calls": 442,
+      "errors": 0,
+      "maxMs": 16302
+    },
+    {
+      "t": "11:11:43",
+      "calls": 202,
+      "errors": 0,
+      "maxMs": 15359
+    },
+    {
+      "t": "11:11:44",
+      "calls": 156,
+      "errors": 0,
+      "maxMs": 17263
+    },
+    {
+      "t": "11:11:45",
+      "calls": 167,
+      "errors": 0,
+      "maxMs": 18426
+    },
+    {
+      "t": "11:11:46",
+      "calls": 151,
+      "errors": 0,
+      "maxMs": 15065
+    },
+    {
+      "t": "11:11:47",
+      "calls": 189,
+      "errors": 0,
+      "maxMs": 15545
+    },
+    {
+      "t": "11:11:48",
+      "calls": 361,
+      "errors": 0,
+      "maxMs": 16904
+    },
+    {
+      "t": "11:11:49",
+      "calls": 349,
+      "errors": 0,
+      "maxMs": 16511
+    },
+    {
+      "t": "11:11:50",
+      "calls": 488,
+      "errors": 0,
+      "maxMs": 18340
+    },
+    {
+      "t": "11:11:51",
+      "calls": 399,
+      "errors": 0,
+      "maxMs": 1515
+    },
+    {
+      "t": "11:11:52",
+      "calls": 302,
+      "errors": 0,
+      "maxMs": 680
+    },
+    {
+      "t": "11:11:53",
+      "calls": 271,
+      "errors": 0,
+      "maxMs": 1255
+    },
+    {
+      "t": "11:11:54",
+      "calls": 246,
+      "errors": 0,
+      "maxMs": 25018
+    },
+    {
+      "t": "11:11:55",
+      "calls": 326,
+      "errors": 0,
+      "maxMs": 870
+    },
+    {
+      "t": "11:11:56",
+      "calls": 268,
+      "errors": 0,
+      "maxMs": 1000
+    },
+    {
+      "t": "11:11:57",
+      "calls": 268,
+      "errors": 7,
+      "maxMs": 980
+    },
+    {
+      "t": "11:11:58",
+      "calls": 201,
+      "errors": 0,
+      "maxMs": 616
+    },
+    {
+      "t": "11:11:59",
+      "calls": 182,
+      "errors": 0,
+      "maxMs": 463
+    },
+    {
+      "t": "11:12:00",
+      "calls": 336,
+      "errors": 0,
+      "maxMs": 1321
+    },
+    {
+      "t": "11:12:01",
+      "calls": 800,
+      "errors": 0,
+      "maxMs": 2143
+    },
+    {
+      "t": "11:12:02",
+      "calls": 457,
+      "errors": 0,
+      "maxMs": 822
+    },
+    {
+      "t": "11:12:03",
+      "calls": 419,
+      "errors": 0,
+      "maxMs": 1346
+    },
+    {
+      "t": "11:12:04",
+      "calls": 332,
+      "errors": 0,
+      "maxMs": 623
+    },
+    {
+      "t": "11:12:05",
+      "calls": 497,
+      "errors": 0,
+      "maxMs": 1164
+    },
+    {
+      "t": "11:12:06",
+      "calls": 345,
+      "errors": 0,
+      "maxMs": 1052
+    },
+    {
+      "t": "11:12:07",
+      "calls": 823,
+      "errors": 0,
+      "maxMs": 1923
+    },
+    {
+      "t": "11:12:08",
+      "calls": 323,
+      "errors": 0,
+      "maxMs": 688
+    },
+    {
+      "t": "11:12:09",
+      "calls": 418,
+      "errors": 0,
+      "maxMs": 864
+    },
+    {
+      "t": "11:12:10",
+      "calls": 358,
+      "errors": 0,
+      "maxMs": 951
+    },
+    {
+      "t": "11:12:11",
+      "calls": 470,
+      "errors": 0,
+      "maxMs": 2421
+    },
+    {
+      "t": "11:12:12",
+      "calls": 428,
+      "errors": 0,
+      "maxMs": 721
+    },
+    {
+      "t": "11:12:13",
+      "calls": 459,
+      "errors": 0,
+      "maxMs": 972
+    },
+    {
+      "t": "11:12:14",
+      "calls": 744,
+      "errors": 0,
+      "maxMs": 1686
+    },
+    {
+      "t": "11:12:15",
+      "calls": 521,
+      "errors": 0,
+      "maxMs": 1968
+    },
+    {
+      "t": "11:12:16",
+      "calls": 191,
+      "errors": 0,
+      "maxMs": 751
+    },
+    {
+      "t": "11:12:17",
+      "calls": 648,
+      "errors": 0,
+      "maxMs": 1234
+    },
+    {
+      "t": "11:12:18",
+      "calls": 661,
+      "errors": 0,
+      "maxMs": 1584
+    },
+    {
+      "t": "11:12:19",
+      "calls": 437,
+      "errors": 0,
+      "maxMs": 1761
+    },
+    {
+      "t": "11:12:20",
+      "calls": 486,
+      "errors": 0,
+      "maxMs": 1715
+    },
+    {
+      "t": "11:12:21",
+      "calls": 239,
+      "errors": 0,
+      "maxMs": 459
+    },
+    {
+      "t": "11:12:22",
+      "calls": 258,
+      "errors": 0,
+      "maxMs": 326
+    },
+    {
+      "t": "11:12:23",
+      "calls": 231,
+      "errors": 0,
+      "maxMs": 564
+    },
+    {
+      "t": "11:12:24",
+      "calls": 367,
+      "errors": 0,
+      "maxMs": 764
+    },
+    {
+      "t": "11:12:25",
+      "calls": 314,
+      "errors": 0,
+      "maxMs": 996
+    },
+    {
+      "t": "11:12:26",
+      "calls": 183,
+      "errors": 0,
+      "maxMs": 479
+    },
+    {
+      "t": "11:12:27",
+      "calls": 484,
+      "errors": 0,
+      "maxMs": 720
+    },
+    {
+      "t": "11:12:28",
+      "calls": 302,
+      "errors": 0,
+      "maxMs": 588
+    },
+    {
+      "t": "11:12:29",
+      "calls": 133,
+      "errors": 0,
+      "maxMs": 501
+    },
+    {
+      "t": "11:12:30",
+      "calls": 222,
+      "errors": 0,
+      "maxMs": 769
+    },
+    {
+      "t": "11:12:31",
+      "calls": 441,
+      "errors": 0,
+      "maxMs": 963
+    },
+    {
+      "t": "11:12:32",
+      "calls": 606,
+      "errors": 0,
+      "maxMs": 1188
+    },
+    {
+      "t": "11:12:33",
+      "calls": 459,
+      "errors": 0,
+      "maxMs": 1308
+    },
+    {
+      "t": "11:12:34",
+      "calls": 152,
+      "errors": 0,
+      "maxMs": 804
+    },
+    {
+      "t": "11:12:35",
+      "calls": 599,
+      "errors": 0,
+      "maxMs": 1403
+    },
+    {
+      "t": "11:12:36",
+      "calls": 390,
+      "errors": 0,
+      "maxMs": 1252
+    },
+    {
+      "t": "11:12:37",
+      "calls": 405,
+      "errors": 0,
+      "maxMs": 1522
+    },
+    {
+      "t": "11:12:38",
+      "calls": 419,
+      "errors": 0,
+      "maxMs": 2506
+    },
+    {
+      "t": "11:12:39",
+      "calls": 547,
+      "errors": 0,
+      "maxMs": 2218
+    },
+    {
+      "t": "11:12:40",
+      "calls": 465,
+      "errors": 0,
+      "maxMs": 2345
+    },
+    {
+      "t": "11:12:41",
+      "calls": 436,
+      "errors": 0,
+      "maxMs": 3790
+    },
+    {
+      "t": "11:12:42",
+      "calls": 207,
+      "errors": 0,
+      "maxMs": 1385
+    },
+    {
+      "t": "11:12:43",
+      "calls": 182,
+      "errors": 0,
+      "maxMs": 574
+    },
+    {
+      "t": "11:12:44",
+      "calls": 430,
+      "errors": 0,
+      "maxMs": 1002
+    },
+    {
+      "t": "11:12:45",
+      "calls": 417,
+      "errors": 0,
+      "maxMs": 1158
+    },
+    {
+      "t": "11:12:46",
+      "calls": 199,
+      "errors": 0,
+      "maxMs": 723
+    },
+    {
+      "t": "11:12:47",
+      "calls": 250,
+      "errors": 0,
+      "maxMs": 957
+    },
+    {
+      "t": "11:12:48",
+      "calls": 533,
+      "errors": 0,
+      "maxMs": 1089
+    },
+    {
+      "t": "11:12:49",
+      "calls": 222,
+      "errors": 0,
+      "maxMs": 522
+    },
+    {
+      "t": "11:12:50",
+      "calls": 191,
+      "errors": 0,
+      "maxMs": 615
+    },
+    {
+      "t": "11:12:51",
+      "calls": 446,
+      "errors": 0,
+      "maxMs": 900
+    },
+    {
+      "t": "11:12:52",
+      "calls": 373,
+      "errors": 0,
+      "maxMs": 1058
+    },
+    {
+      "t": "11:12:53",
+      "calls": 206,
+      "errors": 0,
+      "maxMs": 432
+    },
+    {
+      "t": "11:12:54",
+      "calls": 127,
+      "errors": 0,
+      "maxMs": 287
+    },
+    {
+      "t": "11:12:55",
+      "calls": 553,
+      "errors": 0,
+      "maxMs": 942
+    },
+    {
+      "t": "11:12:56",
+      "calls": 441,
+      "errors": 0,
+      "maxMs": 894
+    },
+    {
+      "t": "11:12:57",
+      "calls": 240,
+      "errors": 0,
+      "maxMs": 645
+    },
+    {
+      "t": "11:12:58",
+      "calls": 290,
+      "errors": 0,
+      "maxMs": 817
+    },
+    {
+      "t": "11:12:59",
+      "calls": 414,
+      "errors": 0,
+      "maxMs": 706
+    },
+    {
+      "t": "11:13:00",
+      "calls": 462,
+      "errors": 0,
+      "maxMs": 1277
+    },
+    {
+      "t": "11:13:01",
+      "calls": 190,
+      "errors": 0,
+      "maxMs": 426
+    },
+    {
+      "t": "11:13:02",
+      "calls": 534,
+      "errors": 0,
+      "maxMs": 950
+    },
+    {
+      "t": "11:13:03",
+      "calls": 444,
+      "errors": 0,
+      "maxMs": 718
+    },
+    {
+      "t": "11:13:04",
+      "calls": 191,
+      "errors": 0,
+      "maxMs": 494
+    },
+    {
+      "t": "11:13:05",
+      "calls": 503,
+      "errors": 0,
+      "maxMs": 989
+    },
+    {
+      "t": "11:13:06",
+      "calls": 307,
+      "errors": 0,
+      "maxMs": 932
+    },
+    {
+      "t": "11:13:07",
+      "calls": 359,
+      "errors": 0,
+      "maxMs": 603
+    },
+    {
+      "t": "11:13:08",
+      "calls": 174,
+      "errors": 0,
+      "maxMs": 398
+    },
+    {
+      "t": "11:13:09",
+      "calls": 413,
+      "errors": 0,
+      "maxMs": 930
+    },
+    {
+      "t": "11:13:10",
+      "calls": 391,
+      "errors": 0,
+      "maxMs": 983
+    },
+    {
+      "t": "11:13:11",
+      "calls": 272,
+      "errors": 0,
+      "maxMs": 706
+    },
+    {
+      "t": "11:13:12",
+      "calls": 330,
+      "errors": 0,
+      "maxMs": 379
+    },
+    {
+      "t": "11:13:13",
+      "calls": 352,
+      "errors": 0,
+      "maxMs": 1133
+    },
+    {
+      "t": "11:13:14",
+      "calls": 399,
+      "errors": 0,
+      "maxMs": 1812
+    },
+    {
+      "t": "11:13:15",
+      "calls": 227,
+      "errors": 0,
+      "maxMs": 941
+    },
+    {
+      "t": "11:13:16",
+      "calls": 492,
+      "errors": 0,
+      "maxMs": 912
+    },
+    {
+      "t": "11:13:17",
+      "calls": 364,
+      "errors": 0,
+      "maxMs": 1028
+    },
+    {
+      "t": "11:13:18",
+      "calls": 277,
+      "errors": 0,
+      "maxMs": 1387
+    },
+    {
+      "t": "11:13:19",
+      "calls": 148,
+      "errors": 0,
+      "maxMs": 836
+    },
+    {
+      "t": "11:13:20",
+      "calls": 467,
+      "errors": 0,
+      "maxMs": 863
+    },
+    {
+      "t": "11:13:21",
+      "calls": 469,
+      "errors": 0,
+      "maxMs": 1075
+    },
+    {
+      "t": "11:13:22",
+      "calls": 327,
+      "errors": 0,
+      "maxMs": 835
+    },
+    {
+      "t": "11:13:23",
+      "calls": 402,
+      "errors": 0,
+      "maxMs": 913
+    },
+    {
+      "t": "11:13:24",
+      "calls": 252,
+      "errors": 0,
+      "maxMs": 1704
+    },
+    {
+      "t": "11:13:25",
+      "calls": 538,
+      "errors": 0,
+      "maxMs": 1080
+    },
+    {
+      "t": "11:13:26",
+      "calls": 13,
+      "errors": 0,
+      "maxMs": 1013
+    },
+    {
+      "t": "11:13:41",
+      "calls": 1,
+      "errors": 0,
+      "maxMs": 166
+    }
+  ],
+  "colonyLag": [],
+  "stopped": {
+    "ok": true,
+    "ms": 111152,
+    "retired": 4959,
+    "failed": 0
+  },
+  "trunkCycles": {
+    "n": 28,
+    "perMin": 17.684210526315788,
+    "metrics": {
+      "batches": {
+        "n": 28,
+        "min": 1,
+        "p50": 28,
+        "p90": 42,
+        "p99": 49,
+        "max": 49,
+        "mean": 27.5
+      },
+      "buildMs": {
+        "n": 28,
+        "min": 0,
+        "p50": 172,
+        "p90": 271,
+        "p99": 724,
+        "max": 724,
+        "mean": 177.78571428571428
+      },
+      "commitMs": {
+        "n": 28,
+        "min": 0,
+        "p50": 0,
+        "p90": 0,
+        "p99": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "cycleMs": {
+        "n": 28,
+        "min": 0,
+        "p50": 3418,
+        "p90": 3800,
+        "p99": 3833,
+        "max": 3833,
+        "mean": 3179.5714285714284
+      },
+      "finalizeMs": {
+        "n": 28,
+        "min": 0,
+        "p50": 0,
+        "p90": 0,
+        "p99": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "landed": {
+        "n": 28,
+        "min": 0,
+        "p50": 196,
+        "p90": 200,
+        "p99": 200,
+        "max": 200,
+        "mean": 157.07142857142858
+      },
+      "landings": {
+        "n": 28,
+        "min": 0,
+        "p50": 28,
+        "p90": 42,
+        "p99": 49,
+        "max": 49,
+        "mean": 26.464285714285715
+      },
+      "lineageMs": {
+        "n": 28,
+        "min": 0,
+        "p50": 0,
+        "p90": 0,
+        "p99": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "proposals": {
+        "n": 28,
+        "min": 9,
+        "p50": 196,
+        "p90": 200,
+        "p99": 200,
+        "max": 200,
+        "mean": 162.42857142857142
+      },
+      "pullMs": {
+        "n": 28,
+        "min": 0,
+        "p50": 2214,
+        "p90": 2694,
+        "p99": 3174,
+        "max": 3174,
+        "mean": 2006.9285714285713
+      },
+      "pushMs": {
+        "n": 28,
+        "min": 0,
+        "p50": 966,
+        "p90": 1385,
+        "p99": 2468,
+        "max": 2468,
+        "mean": 994.8571428571429
+      },
+      "returned": {
+        "n": 28,
+        "min": 0,
+        "p50": 0,
+        "p90": 0,
+        "p99": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "screenMs": {
+        "n": 28,
+        "min": 0,
+        "p50": 0,
+        "p90": 0,
+        "p99": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "surgeryMs": {
+        "n": 28,
+        "min": 0,
+        "p50": 0,
+        "p90": 0,
+        "p99": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "waitMs": {
+        "n": 28,
+        "min": 0,
+        "p50": 6012,
+        "p90": 7023,
+        "p99": 9554,
+        "max": 9554,
+        "mean": 4756.214285714285
+      }
+    }
+  },
+  "errors": [
+    "take: TypeError: fetch failed (ENOTFOUND)",
+    "register: TypeError: fetch failed (ENOTFOUND)",
+    "register: TypeError: fetch failed (ECONNRESET)",
+    "register: TypeError: fetch failed (UND_ERR_CONNECT_TIMEOUT)",
+    "take: TypeError: fetch failed (ECONNRESET)",
+    "propose: TypeError: fetch failed (UND_ERR_CONNECT_TIMEOUT)",
+    "take: TypeError: fetch failed (UND_ERR_CONNECT_TIMEOUT)",
+    "take: 500 Durable Object reset because its code was updated."
+  ]
+}

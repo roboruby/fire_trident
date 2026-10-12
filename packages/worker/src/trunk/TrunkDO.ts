@@ -171,8 +171,9 @@ export class TrunkDO extends DurableObject<Env> {
   /** Tree entries and commit → root tree, kept across cycles and calls (objects are immutable by id). */
   private readonly trees = new BoundedMap<string, TreeEntry[]>(TREE_CACHE);
   private readonly commitTrees = new BoundedMap<Sha, string>(COMMIT_CACHE);
-  /** The notes tree of the latest notes commits (the flat notes tree grows with every landing). */
+  /** The notes root tree of the latest notes commits, and the fanout subtrees (notes.ts) recently read or written. */
   private readonly notesTrees = new BoundedMap<string, TreeEntry[]>(2);
+  private readonly notesSubtrees = new BoundedMap<string, TreeEntry[]>(1_024);
   /** Co-change map (trunk/cochange.ts), and its history mining run while one is in flight. */
   private cochangeStore: CoChangeStore | null = null;
   private mining: Promise<void> | null = null;
@@ -1206,7 +1207,7 @@ export class TrunkDO extends DurableObject<Env> {
     const notes = pending.filter((r) => r.note !== null).map((r) => ({ oid: r.commit_sha, note: r.note! }));
     try {
       const before = await resolveLocal(g, NOTES_REF);
-      const added = await addNotes(g, { ref: NOTES_REF, notes, at: Date.now(), entriesByCommit: this.notesTrees });
+      const added = await addNotes(g, { ref: NOTES_REF, notes, at: Date.now(), entriesByCommit: this.notesTrees, trees: this.notesSubtrees });
       const expected = this.meta("notes_tip");
       const regular = (): Promise<PushOutcome> =>
         this.authed((token) => pushRef(g, { url: st.trunk.remote, token, localRef: NOTES_REF, remoteRef: NOTES_REF, expectedOld: expected }));
@@ -1231,7 +1232,7 @@ export class TrunkDO extends DurableObject<Env> {
         } else {
           if (remote !== null) await setRef(g, NOTES_REF, remote);
           else await deleteLocalRef(g, NOTES_REF);
-          await addNotes(g, { ref: NOTES_REF, notes, at: Date.now(), entriesByCommit: this.notesTrees });
+          await addNotes(g, { ref: NOTES_REF, notes, at: Date.now(), entriesByCommit: this.notesTrees, trees: this.notesSubtrees });
           res = await this.authed((token) => pushRef(g, { url: st.trunk.remote, token, localRef: NOTES_REF, remoteRef: NOTES_REF, expectedOld: remote }));
         }
       }

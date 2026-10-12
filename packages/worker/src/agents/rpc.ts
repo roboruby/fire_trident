@@ -4,6 +4,7 @@ import type {
   AgentKind,
   Colony,
   ColonySnapshot,
+  Directive,
   Evidence,
   FieldReading,
   Id,
@@ -30,7 +31,11 @@ import type { Env } from "../env.ts";
 export type TakeResult = { intent: Intent; lease: WorkspaceLease; rule?: Rule } | { wait: true; retryInMs: number; reason: string };
 
 /** Input of ColonyDO.propose. */
-export type ProposeInput = Omit<Proposal, "id" | "status" | "createdAt" | "evidence"> & { evidence?: Partial<Evidence> };
+export type ProposeInput = Omit<Proposal, "id" | "status" | "createdAt" | "evidence"> & {
+  evidence?: Partial<Evidence>;
+  /** Push the outcome to this agent's AgentDO (AgentDO.outcome) instead of making it poll. */
+  notify?: boolean;
+};
 
 /** ColonyDO methods used by agents, the swarm, and the MCP server. */
 export interface ColonyRpc {
@@ -42,14 +47,29 @@ export interface ColonyRpc {
   getAgent(agentId: Id): Promise<AgentInfo | null>;
   /** Idempotent for an agent that already holds an assignment (returns it again). */
   take(agentId: Id): Promise<TakeResult>;
-  heartbeat(agentId: Id): Promise<void>;
+  /** Liveness and claim refresh; `{ claims: false }` when the agent refreshes its claims in the regions itself. */
+  heartbeat(agentId: Id, opts?: { claims?: boolean }): Promise<void>;
   propose(p: ProposeInput): Promise<Proposal>;
   getProposal(id: Id): Promise<Proposal | null>;
-  /** An agent's recent proposals, newest first. */
-  inbox(agentId: Id, limit?: number): Promise<Proposal[]>;
+  /**
+   * An agent's inbox, newest first: its recent proposals and, unless `proposalsOnly`, the directives
+   * addressed to it (human guidance, revisions and withdrawals of intents it held). A directive entry
+   * carries a proposal entry's id, intentId, status ("directive"), reason (what to do) and createdAt,
+   * so a reader that lists proposals shows it too. It is not a Proposal: tell them apart with
+   * isInboxDirective (colony/direction.ts). Typed as Proposal[] for those readers.
+   */
+  inbox(agentId: Id, limit?: number, opts?: { proposalsOnly?: boolean }): Promise<Proposal[]>;
   getRule(id: Id): Promise<Rule | null>;
+  /** One intent as it stands now (its current revision). */
+  getIntent?(id: Id): Promise<Intent | null>;
   /** Give back every intent the agent holds as claimed: it reopens, claims clear, a failure mark is left. */
   abandon(agentId: Id, reason?: string): Promise<void>;
+  /** Take back the agent's own change while it is in flight (a directive changed its course); the agent keeps its intent. */
+  recall?(agentId: Id, proposalId: Id, reason?: string): Promise<Proposal>;
+  /** The agent's one-line "what I am doing now" (stored on the agent, shown live, recorded with its next proposal). */
+  relay?(agentId: Id, note: string): Promise<unknown>;
+  /** The human guidance about an intent: an agent that takes it over follows it too. */
+  guidance?(intentId: Id): Promise<Array<{ id: Id; message: string; by: string; at: number }>>;
 }
 
 /** RegionDO methods used for sensing. */
@@ -84,6 +104,8 @@ export interface AgentRpc {
   start(p: AgentStartParams): Promise<unknown>;
   stop(reason?: string): Promise<unknown>;
   status(): Promise<unknown>;
+  /** A directive pushed by the colony (guidance, or a revision or withdrawal of an intent the agent holds). */
+  direct?(p: { directive: Directive; intent?: Intent }): Promise<unknown>;
 }
 
 /** Proposal states after which nothing more happens to a proposal. */

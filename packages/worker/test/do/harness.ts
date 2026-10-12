@@ -287,6 +287,13 @@ export class PoolDO extends DurableObject<Env> {
     await this.ctx.storage.put("state", s);
   }
 
+  async releaseMany(agentIds: Id[]): Promise<number> {
+    const s = await this.load();
+    s.released.push(...agentIds);
+    await this.ctx.storage.put("state", s);
+    return agentIds.length;
+  }
+
   async status(): Promise<{ ready: number; leased: number; forking: number; target: number }> {
     const s = await this.load();
     return { ready: s.empty ? 0 : s.target, leased: s.next - s.released.length, forking: 0, target: s.target };

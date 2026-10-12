@@ -1,10 +1,10 @@
-import type { Colony, FileVersion, LineageNote, Rule } from "@fire_trident/core";
+import type { CheckResult, Colony, Direction, FileVersion, LineageNote, NoteDecision, Rule } from "@fire_trident/core";
 import { useEffect, useState } from "react";
 import type { Backend, WhyEntry } from "../api.ts";
 import { basename, dirname, fmtFixed, fmtInt, fmtMs, plural, shortId, shortSha, timeAgo } from "../format.ts";
 import type { ColonyStore } from "../store.ts";
 import { FIELD_COLOR, KINDS, LAYER_COLOR, intensity, KIND_INDEX } from "../theme.ts";
-import { decisionsFromChecks } from "../decisions.ts";
+import { decisionsFromChecks, type DecisionStep } from "../decisions.ts";
 import { useThrottledVersion } from "../useStore.ts";
 
 type NoteProposal = LineageNote["proposals"][number];
@@ -300,12 +300,55 @@ function BlobSets({ writeSet, readSet, path }: { writeSet: FileVersion[]; readSe
   );
 }
 
+/** The direction a change was built under: the intent revision, its amendments, the human directives, the agent's note. */
+function DirectionStep({ d }: { d: Direction }) {
+  const revisions = Array.isArray(d.revisions) ? d.revisions : [];
+  const directives = Array.isArray(d.directives) ? d.directives : [];
+  return (
+    <div className="lin-step">
+      <span className="node node-direction" />
+      <div className="lin-body">
+        <div className="lin-k">Direction</div>
+        <div className="lin-dir">
+          Built on <span className="rev-badge">r{d.intentRevision}</span>
+          {revisions.length ? `amended ${plural(revisions.length, "time")}` : "the intent as first declared"}
+        </div>
+        {revisions.map((r) => (
+          <div className="lin-dir-row" key={`r${r.revision}`} title={r.reason}>
+            <span className="lin-chip">r{r.revision}</span>
+            {(r.changed ?? []).join(", ")} changed by <b>{r.by}</b> {r.at ? <span className="lin-dir-when">{timeAgo(r.at)}</span> : null}
+            <span className="lin-dir-why">“{r.reason}”</span>
+          </div>
+        ))}
+        {directives.map((g) => (
+          <div className="lin-dir-row" key={g.id} title={g.message}>
+            <span className="lin-chip lin-chip-dir">directive</span>
+            <span className="lin-dir-why">“{g.message}”</span> from <b>{g.by}</b> {g.at ? <span className="lin-dir-when">{timeAgo(g.at)}</span> : null}
+          </div>
+        ))}
+        {d.note ? <div className="lin-dir-note">Agent said: “{d.note}”</div> : null}
+      </div>
+    </div>
+  );
+}
+
+/** The deterministic proof's verdict when it decided alone (from the evidence's gate check), else null. */
+function deterministicStep(checks: readonly CheckResult[]): { action: string; detail?: string } | null {
+  const gate = checks.find((c) => c.name === "gate");
+  const m = gate?.detail ? /→ (\S+) by (\S+)/.exec(gate.detail) : null;
+  if (!m || m[2] !== "deterministic") return null;
+  const proof = checks.find((c) => c.name.startsWith("deterministic"));
+  return { action: m[1] ?? "land", ...(proof?.detail ? { detail: proof.detail } : {}) };
+}
+
 function ProposalChain({ p, path, store }: { p: NoteProposal; path: string; store: ColonyStore }) {
   const ruleId = p.intent?.ruleId;
   const checks = p.evidence?.checks ?? [];
   // Recorded decisions, else the chain the reflex and LLM layers wrote into the evidence.
-  const recorded = p.decisions ?? [];
+  const recorded: Array<NoteDecision | DecisionStep> = p.decisions ?? [];
   const decisions = recorded.length ? recorded : decisionsFromChecks(p.evidence?.checks);
+  const proof = deterministicStep(checks);
+  const direction = p.evidence?.direction;
   const residual = p.evidence?.residual ?? [];
   const agentName = store.agentName(p.agentId);
   const title = p.intent?.title ?? "Untitled intent";
@@ -325,6 +368,7 @@ function ProposalChain({ p, path, store }: { p: NoteProposal; path: string; stor
           {p.intent?.why ? <WhyText text={p.intent.why} title={title} /> : null}
         </div>
       </div>
+      {direction && typeof direction.intentRevision === "number" ? <DirectionStep d={direction} /> : null}
       {ruleId ? (
         <div className="lin-step">
           <span className="node node-rule" />
@@ -348,25 +392,44 @@ function ProposalChain({ p, path, store }: { p: NoteProposal; path: string; stor
         <span className="node node-decision" />
         <div className="lin-body">
           <div className="lin-k">Decisions</div>
+          {proof ? (
+            <div className="dec" title={proof.detail}>
+              <span className="dec-layer" style={{ color: FIELD_COLOR.trail, borderColor: FIELD_COLOR.trail }}>
+                proof
+              </span>
+              <span className="dec-what">
+                deterministic → <b>{proof.action}</b>
+              </span>
+              <span className="dec-bar">
+                <b style={{ width: "100%", background: FIELD_COLOR.trail }} />
+              </span>
+              <span className="mono dec-p">no model</span>
+            </div>
+          ) : null}
           {decisions.length ? (
             decisions.map((d, i) => {
               const color = LAYER_COLOR[d.layer] ?? "#8b97a8";
               const has = Number.isFinite(d.p);
               const pv = has ? Math.max(0, Math.min(1, d.p)) : 0;
+              const note = d as NoteDecision;
               return (
-                <div className="dec" key={i}>
-                  <span className="dec-layer" style={{ color, borderColor: color }}>
-                    {d.layer}
-                  </span>
-                  <span className="dec-what">
-                    {d.kind} → <b>{d.action}</b>
-                  </span>
-                  <span className="dec-bar">{has ? <b style={{ width: `${Math.round(pv * 100)}%`, background: color }} /> : null}</span>
-                  <span className="mono dec-p">{has ? `p ${pv.toFixed(2)}` : ""}</span>
+                <div key={i}>
+                  <div className="dec" title={note.question}>
+                    <span className="dec-layer" style={{ color, borderColor: color }}>
+                      {d.layer}
+                    </span>
+                    <span className="dec-what">
+                      {d.kind} → <b>{d.action}</b>
+                      {note.by ? <span className="dec-by"> · {note.by}</span> : null}
+                    </span>
+                    <span className="dec-bar">{has ? <b style={{ width: `${Math.round(pv * 100)}%`, background: color }} /> : null}</span>
+                    <span className="mono dec-p">{has ? `p ${pv.toFixed(2)}` : ""}</span>
+                  </div>
+                  {note.answer ? <div className="dec-answer">{note.answer}</div> : null}
                 </div>
               );
             })
-          ) : (
+          ) : proof ? null : (
             <div className="lin-muted">No decisions were recorded with this change.</div>
           )}
         </div>

@@ -1,11 +1,12 @@
 import { DurableObject } from "cloudflare:workers";
-import type { AgentInfo, AgentKind, Id } from "@fire_trident/core";
+import type { AgentInfo, AgentKind, Directive, Id, Intent } from "@fire_trident/core";
 import type { Env } from "../env.ts";
 import { WorkspaceGit } from "./gitfs.ts";
 import { SqlJournal } from "./journal.ts";
 import { modelClient, resolveModel } from "./llm.ts";
-import { DEFAULT_TICK_BUDGET_MS, agentState, stopAgent, tick } from "./loop.ts";
-import type { AgentConfig, HistoryEntry, JobStep, LoopDeps, StepLogEntry } from "./loop.ts";
+import { DEFAULT_TICK_BUDGET_MS, agentState, receiveDirective, stopAgent, tick } from "./loop.ts";
+import type { AgentConfig, HistoryEntry, Job, JobStep, LoopDeps, StepLogEntry } from "./loop.ts";
+import { OutcomeBox, regionNames, type ClaimRefresher, type PushedOutcome } from "./outcomes.ts";
 import { colonyStub, errorMessage, trunkBlobsStub } from "./rpc.ts";
 import type { AgentStartParams } from "./rpc.ts";
 
@@ -55,11 +56,24 @@ export class AgentDO extends DurableObject<Env> {
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.journal = new SqlJournal(ctx.storage.sql);
+    this.outcomes = new OutcomeBox(ctx.storage.sql);
   }
+
+  /** Outcomes the colony pushed (outcome()), read by the await step instead of polling. */
+  private outcomes: OutcomeBox;
+  /** The running tick's interrupt: aborted by direct() when a directive halts the step in flight. */
+  private stepAbort: AbortController | null = null;
+  /** An outcome arrived while a tick ran: run the next tick at once. */
+  private wake = false;
+  /** Region depth per colony (claims are refreshed in their regions directly). */
+  private readonly depths = new Map<Id, number>();
 
   private deps(colonyId: Id): LoopDeps {
     if (!this.git) this.git = new WorkspaceGit(this.ctx.storage);
+    // One per tick: direct() aborts it when a directive makes the step in flight moot.
+    this.stepAbort = new AbortController();
     return {
+      signal: this.stepAbort.signal,
       colony: colonyStub(this.env, colonyId),
       trunk: trunkBlobsStub(this.env, colonyId),
       git: this.git,
@@ -68,7 +82,51 @@ export class AgentDO extends DurableObject<Env> {
       now: () => Date.now(),
       log: (line) => console.log(`agent ${this.journal.config()?.agentId ?? "?"}: ${line}`),
       metric: (record) => console.log(JSON.stringify({ ft: "agent-job", ...record })),
+      outcome: (proposalId) => this.outcomes.get(proposalId),
+      refreshClaims: (job) => this.refreshClaims(colonyId, job),
     };
+  }
+
+  /**
+   * The colony pushes a proposal's outcome here (landed, returned, rejected, escalated) when this
+   * agent proposed with `notify`. It is kept and the loop wakes at once, so a waiting agent learns
+   * its outcome without polling. Outcomes for a proposal the agent no longer waits on are ignored.
+   */
+  async outcome(o: PushedOutcome): Promise<{ accepted: boolean }> {
+    const job = this.journal.job();
+    const cfg = this.journal.config();
+    if (!cfg?.running || !job || job.proposalId !== o?.proposalId) return { accepted: false };
+    if (!this.outcomes.put(o, Date.now())) return { accepted: false };
+    if (this.ticking) this.wake = true;
+    else await this.ctx.storage.setAlarm(Date.now());
+    return { accepted: true };
+  }
+
+  /**
+   * Heartbeat for claims, straight to the regions of the job's footprint (RegionDO.refreshClaims
+   * re-dates existing claims only). A region that cannot (an older version mid-deploy) gets the
+   * refresh through the colony's heartbeat instead.
+   */
+  private async refreshClaims(colonyId: Id, job: Job): Promise<void> {
+    const cfg = this.journal.config();
+    if (!cfg) return;
+    let depth = this.depths.get(colonyId);
+    if (depth === undefined) {
+      const colony = await colonyStub(this.env, colonyId).getColony();
+      depth = colony?.regionDepth ?? 1;
+      this.depths.set(colonyId, depth);
+    }
+    const ns = this.env.REGION;
+    try {
+      await Promise.all(
+        regionNames(colonyId, job.intent.footprint ?? [], depth).map((name) =>
+          (ns.get(ns.idFromName(name)) as unknown as ClaimRefresher).refreshClaims({ agentId: cfg.agentId, intentIds: [job.intentId] }),
+        ),
+      );
+    } catch (e) {
+      console.warn(`agent ${cfg.agentId}: claim refresh in the regions failed (${errorMessage(e)}); refreshing through the colony`);
+      await colonyStub(this.env, colonyId).heartbeat(cfg.agentId);
+    }
   }
 
   /** Start (or restart) the loop. Idempotent while running with the same agent. */
@@ -126,8 +184,30 @@ export class AgentDO extends DurableObject<Env> {
     await this.ctx.storage.deleteAlarm();
     await this.ctx.storage.deleteAll();
     new SqlJournal(this.ctx.storage.sql); // the journal's constructor creates its tables
+    this.outcomes = new OutcomeBox(this.ctx.storage.sql);
     this.git = null;
     return { cleared: true };
+  }
+
+  /**
+   * A directive pushed by the colony: human guidance, or a revision or withdrawal of an intent this
+   * agent holds. It is kept in the journal and acted on at the next step (loop.ts receiveDirective and
+   * applyDirection); a step working the old way is halted, and a sleeping agent wakes at once.
+   */
+  async direct(p: { directive: Directive; intent?: Intent }): Promise<{ received: true; action: string; step?: JobStep }> {
+    const d = p?.directive;
+    if (!d || typeof d.id !== "string" || typeof d.kind !== "string" || typeof d.message !== "string") throw new Error("[ft:400] direct needs a directive");
+    const cfg = this.journal.config();
+    if (cfg && d.agentId && d.agentId !== cfg.agentId) throw new Error(`[ft:400] this agent is ${cfg.agentId}, not ${d.agentId}`);
+    const r = receiveDirective(this.journal, d, p.intent, Date.now());
+    // The epoch moved: drop a model call the step waits on rather than wait for a reply that no longer matters.
+    if (r.interrupted) this.stepAbort?.abort();
+    if (cfg?.running) {
+      if (this.ticking) this.wake = true;
+      else await this.ctx.storage.setAlarm(Date.now());
+    }
+    const job = this.journal.job();
+    return { received: true, action: r.action, ...(job ? { step: job.step } : {}) };
   }
 
   /** What the agent is doing (no tokens). */
@@ -184,6 +264,11 @@ export class AgentDO extends DurableObject<Env> {
       const finished = this.finishedJobs();
       if (this.git && finished !== finishedBefore && finished % RESET_CLONE_EVERY === 0 && !this.journal.job()) {
         await this.git.reset().catch(() => undefined);
+      }
+      // An outcome pushed during the tick: act on it now instead of after the step's sleep.
+      if (this.wake) {
+        this.wake = false;
+        sleepMs = 0;
       }
       // A start() during the tick bumps the epoch (the tick halts) but leaves the agent running.
       if (this.journal.config()?.running) await this.ctx.storage.setAlarm(Date.now() + Math.max(0, sleepMs ?? 0));

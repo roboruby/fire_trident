@@ -7,6 +7,10 @@ import { buildEditMessages, buildSpecifierMessages, buildWriteMessages, maxToken
 import type { ChatMessage, TokenUsage } from "./prompt.ts";
 import { TERMINAL_STATUSES, errorMessage, errorStatus } from "./rpc.ts";
 import type { ColonyRpc, TakeResult } from "./rpc.ts";
+import { MAX_GUIDANCE, directionError, directiveNote, guidanceFor, holdDirective, interrupts, markApplied, nextDirection, stepNote, withGuidance } from "./direction.ts";
+import type { Guidance, HeldDirective } from "./direction.ts";
+import type { Directive } from "@fire_trident/core";
+import { isInboxDirective } from "../colony/direction.ts";
 
 /**
  * The in-platform agent loop as a journaled state machine.
@@ -28,7 +32,8 @@ import type { ColonyRpc, TakeResult } from "./rpc.ts";
  */
 
 export type JobStep = "deps" | "fetch" | "read" | "produce" | "commit" | "push" | "propose" | "await";
-export type Outcome = "landed" | "returned" | "rejected" | "abandoned" | "timeout" | "lost";
+/** `redirected`: the intent was revised under the job (it restarts from the new revision); `withdrawn`: called off. */
+export type Outcome = "landed" | "returned" | "rejected" | "abandoned" | "timeout" | "lost" | "redirected" | "withdrawn";
 
 /** Persistent configuration of one agent. `epoch` changes on every start/stop. */
 export interface AgentConfig {
@@ -106,6 +111,8 @@ export interface Job {
   pollMs?: number;
   lastStatus?: ProposalStatus;
   lastHeartbeatAt: number;
+  /** Last liveness beat sent to the colony when claims are refreshed in the regions directly. */
+  lastColonyBeatAt?: number;
   lastError?: string;
   /** Times a step waited because the model provider throttled it (does not count as a failed attempt). */
   throttled?: number;
@@ -113,6 +120,11 @@ export interface Job {
   directoryRewrites?: string[];
   /** Imports that name a file beside a same-named directory (the file wins resolution), for the evidence. */
   fileOverDirectory?: string[];
+  /** Human guidance this job follows (it goes into every prompt; see agents/direction.ts). */
+  directives?: Guidance[];
+  /** The last status note relayed to the colony, and when. */
+  relayedNote?: string;
+  relayedAt?: number;
 }
 
 /** Model calls, tokens and time spent by one job. */
@@ -173,6 +185,9 @@ export interface Journal {
   log(e: StepLogEntry): void;
   finish(h: HistoryEntry): void;
   bump(counter: string, by?: number): void;
+  /** Directives the colony pushed, kept until acted on (agents/direction.ts). */
+  directives?(): HeldDirective[];
+  setDirectives?(list: HeldDirective[]): void;
 }
 
 /** A file at the base commit. */
@@ -242,6 +257,23 @@ export interface LoopDeps {
   metric?(record: Record<string, unknown>): void;
   /** Current trunk blobs (TrunkDO.blobsFor); lets a job reuse a base the workspace already holds. */
   trunk?: { blobsFor(paths: Path[]): Promise<Record<Path, Sha | null>> };
+  /**
+   * The outcome the colony pushed for a proposal (AgentDO.outcome), or null. When this is
+   * provided the agent proposes with `notify`, waits for the push, and asks the colony only as a
+   * slow fallback (PUSH_FALLBACK_POLL_MS) instead of polling every few seconds.
+   */
+  outcome?(proposalId: Id): { status: ProposalStatus; reason?: string } | null;
+  /**
+   * Refresh the job's claims in its regions directly (RegionDO.refreshClaims). When provided, the
+   * colony only gets a liveness beat every COLONY_BEAT_EVERY_MS: it does not need claim refreshes.
+   */
+  refreshClaims?(job: Job): Promise<void>;
+  /**
+   * Aborted when a directive makes the step in flight moot (AgentDO.direct): a model call the step
+   * waits on is dropped at once (it finishes in the background, its reply unused), so the agent
+   * re-orients without waiting for a reply that no longer matters.
+   */
+  signal?: AbortSignal;
 }
 
 export const MAX_STEP_ATTEMPTS = 4;
@@ -249,6 +281,10 @@ export const HEARTBEAT_EVERY_MS = 45_000;
 export const FIRST_POLL_MS = 1_500;
 export const MAX_POLL_MS = 5_000;
 export const ESCALATED_POLL_MS = 30_000;
+/** With pushed outcomes, how often a waiting agent still asks the colony (in case a push was lost). */
+export const PUSH_FALLBACK_POLL_MS = 30_000;
+/** With claims refreshed in the regions directly, how often the colony hears that the agent is alive (reaped after 10 minutes). */
+export const COLONY_BEAT_EVERY_MS = 3 * 60_000;
 export const AWAIT_TIMEOUT_MS = 30 * 60_000;
 export const ABANDON_PAUSE_MS = 3_000;
 export const DEFAULT_TICK_BUDGET_MS = 4 * 60_000;
@@ -280,6 +316,27 @@ export class Halt extends Error {
     super("agent stopped");
     this.name = "Halt";
   }
+}
+
+/** `p`, or a Halt as soon as `deps.signal` aborts (a directive changed course; the call runs on, unused). */
+export function interruptible<T>(deps: Pick<LoopDeps, "signal">, p: Promise<T>): Promise<T> {
+  const signal = deps.signal;
+  if (!signal) return p;
+  if (signal.aborted) return Promise.reject(new Halt());
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = (): void => reject(new Halt());
+    signal.addEventListener("abort", onAbort, { once: true });
+    p.then(
+      (v) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(v);
+      },
+      (e: unknown) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(e);
+      },
+    );
+  });
 }
 
 interface StepResult {
@@ -358,12 +415,16 @@ export async function tick(deps: LoopDeps, budgetMs = DEFAULT_TICK_BUDGET_MS): P
 async function stepOnce(deps: LoopDeps, cfg: AgentConfig): Promise<StepResult> {
   const job = deps.journal.job();
   if (!job) return takeWork(deps, cfg);
+  // A pushed directive (withdrawal, revision, guidance) is acted on before the next step runs.
+  const turned = await applyDirection(deps, cfg, job);
+  if (turned) return turned;
   if (job.attempts >= MAX_STEP_ATTEMPTS) {
     return abandon(deps, cfg, job, `gave up at ${job.step} after ${job.attempts} attempts: ${job.lastError ?? "interrupted"}`);
   }
   job.attempts += 1;
   save(deps, cfg, job);
   await maybeHeartbeat(deps, cfg, job);
+  await relayStep(deps, cfg, job);
   const step = job.step;
   const t0 = deps.now();
   try {
@@ -375,6 +436,9 @@ async function stepOnce(deps: LoopDeps, cfg: AgentConfig): Promise<StepResult> {
     const msg = errorMessage(e);
     deps.journal.log({ at: deps.now(), intentId: job.intentId, step, ok: false, ms: deps.now() - t0, detail: msg });
     if (errorStatus(e) === 429) return throttled(deps, cfg, job, msg);
+    // The colony refused because the intent was revised or withdrawn under this job: turn, do not retry.
+    const turn = directionError(e);
+    if (turn) return finishJob(deps, cfg, job, turn.kind === "withdrawal" ? "withdrawn" : "redirected", turn.reason);
     deps.journal.bump("errors");
     deps.log?.(`${step} failed (attempt ${job.attempts}) on ${job.intentId}: ${msg}`);
     if (isGone(e)) return halt(deps, cfg, msg);
@@ -495,6 +559,7 @@ async function takeWork(deps: LoopDeps, cfg: AgentConfig): Promise<StepResult> {
     lastHeartbeatAt: now,
   };
   if (buildsOn.length > 0) job.buildsOn = buildsOn;
+  await adoptGuidance(deps, cfg, job, now);
   save(deps, cfg, job);
   deps.journal.bump("taken");
   deps.journal.log({ at: now, intentId: res.intent.id, step: "take", ok: true, ms: now - t0 });
@@ -632,7 +697,8 @@ async function readStep(deps: LoopDeps, cfg: AgentConfig, job: Job): Promise<Ste
   job.context = context;
   if (missing.length > 0) job.depsMissing = missing;
   else delete job.depsMissing;
-  job.rules = (await deps.colony.snapshot()).rules ?? [];
+  // A retracted rule stays in history but is no longer checked.
+  job.rules = ((await deps.colony.snapshot()).rules ?? []).filter((r) => !r.retractedAt);
   return advance(deps, cfg, job, "produce");
 }
 
@@ -736,6 +802,7 @@ async function writeFile(
   const planned = new Set(spec.planned);
   const first = buildWriteMessages({
     intent: job.intent,
+    directives: job.directives ?? [],
     path,
     content: original,
     siblings,
@@ -764,7 +831,7 @@ async function writeFile(
   for (let attempt = 0; attempt < MAX_WRITE_ATTEMPTS; attempt++) {
     await maybeHeartbeat(deps, cfg, job);
     const t0 = deps.now();
-    const reply = await deps.model.complete({ model: asked, messages, maxTokens });
+    const reply = await interruptible(deps, deps.model.complete({ model: asked, messages, maxTokens }));
     countCall(deps, cfg, job, reply, deps.now() - t0, asked);
     job.method = "write";
     const used = reply.model ?? asked;
@@ -823,14 +890,14 @@ async function modelEdit(
   if (original !== null && original.length > MAX_MODEL_CHARS) {
     return { ok: false, reason: `${path} is too large to rewrite with a model (${original.length} characters)` };
   }
-  const first = buildEditMessages({ intent: job.intent, rule: job.rule, path, content: original, violations });
+  const first = buildEditMessages({ intent: job.intent, directives: job.directives ?? [], rule: job.rule, path, content: original, violations });
   const maxTokens = maxTokensFor(original);
   let messages = first;
   let problem = "";
   for (let attempt = 0; attempt < 2; attempt++) {
     await maybeHeartbeat(deps, cfg, job);
     const t0 = deps.now();
-    const reply = await deps.model.complete({ model: cfg.model, messages, maxTokens });
+    const reply = await interruptible(deps, deps.model.complete({ model: cfg.model, messages, maxTokens }));
     countCall(deps, cfg, job, reply, deps.now() - t0);
     const text = reply.text ?? "";
     const v = judgeReply(job.rule, path, original, text, reply.finishReason);
@@ -892,13 +959,13 @@ async function specifierEdit(
   if (!rule) return { ok: false, reason: "no rule" };
   const facts = specifierFacts(rule, path, original, tree);
   if (facts.length === 0) return { ok: true, content: original };
-  const first = buildSpecifierMessages({ intent: job.intent, rule, path, content: original, facts, tree });
+  const first = buildSpecifierMessages({ intent: job.intent, directives: job.directives ?? [], rule, path, content: original, facts, tree });
   let messages = first;
   let problems: string[] = [];
   for (let attempt = 0; attempt < 2; attempt++) {
     await maybeHeartbeat(deps, cfg, job);
     const t0 = deps.now();
-    const reply = await deps.model.complete({ model: cfg.model, messages, maxTokens: SPECIFIER_MAX_TOKENS });
+    const reply = await interruptible(deps, deps.model.complete({ model: cfg.model, messages, maxTokens: SPECIFIER_MAX_TOKENS }));
     countCall(deps, cfg, job, reply, deps.now() - t0);
     const text = reply.text ?? "";
     const parsed = parseSpecifierEdits(text);
@@ -1067,8 +1134,8 @@ async function proposeStep(deps: LoopDeps, cfg: AgentConfig, job: Job): Promise<
   let proposal: Proposal | undefined;
   if (job.attempts > 1) {
     // A previous attempt may have reached the colony before it was journaled.
-    const recent = await deps.colony.inbox(cfg.agentId, 20);
-    proposal = recent.find((p) => p.intentId === job.intentId && p.headSha === headSha);
+    const recent = await deps.colony.inbox(cfg.agentId, 20, { proposalsOnly: true });
+    proposal = recent.find((p) => !isInboxDirective(p) && p.intentId === job.intentId && p.headSha === headSha);
   }
   if (!proposal) {
     // The files read as context belong in the read set: if one changes before landing, the change is re-checked.
@@ -1104,29 +1171,36 @@ async function proposeStep(deps: LoopDeps, cfg: AgentConfig, job: Job): Promise<
       writeSet: job.writeSet ?? [],
       readSet,
       declared: { footprint: job.intent.footprint, summary: job.summary ?? job.intent.title },
-      evidence: { checks: [...(job.checks ?? []), ...telemetryChecks(cfg, job)], notVerified },
+      // The revision this change was built on: the colony refuses it if the intent was revised since.
+      intentRevision: job.intent.revision ?? 1,
+      evidence: { checks: [...(job.checks ?? []), ...telemetryChecks(cfg, job), ...directionChecks(job)], notVerified },
+      // With pushed outcomes the colony tells this agent when the proposal settles (no polling).
+      ...(deps.outcome ? { notify: true } : {}),
     });
     deps.journal.bump("proposed");
   }
   job.proposalId = proposal.id;
   job.proposedAt = deps.now();
-  job.pollMs = FIRST_POLL_MS;
+  job.pollMs = deps.outcome ? PUSH_FALLBACK_POLL_MS : FIRST_POLL_MS;
   job.lastStatus = proposal.status;
   if (TERMINAL_STATUSES.has(proposal.status)) return finishJob(deps, cfg, job, proposal.status as Outcome, proposal.reason);
   advance(deps, cfg, job, "await");
-  return { sleepMs: FIRST_POLL_MS };
+  return { sleepMs: job.pollMs };
 }
 
 async function awaitStep(deps: LoopDeps, cfg: AgentConfig, job: Job): Promise<StepResult> {
   const id = job.proposalId;
   if (!id) throw new Error("await without a proposal id");
+  // An outcome the colony pushed settles the job without asking it again.
+  const pushed = deps.outcome?.(id) ?? null;
+  if (pushed && TERMINAL_STATUSES.has(pushed.status as ProposalStatus)) return finishJob(deps, cfg, job, pushed.status as Outcome, pushed.reason);
   const p = await deps.colony.getProposal(id);
   if (!p) return finishJob(deps, cfg, job, "lost", "the colony no longer knows this proposal");
   if (TERMINAL_STATUSES.has(p.status)) return finishJob(deps, cfg, job, p.status as Outcome, p.reason);
   const now = deps.now();
   if (now - (job.proposedAt ?? now) > AWAIT_TIMEOUT_MS) return finishJob(deps, cfg, job, "timeout", `still ${p.status} after ${AWAIT_TIMEOUT_MS / 60_000} minutes`);
   const prev = job.pollMs ?? FIRST_POLL_MS;
-  job.pollMs = p.status === "escalated" ? ESCALATED_POLL_MS : Math.min(MAX_POLL_MS, Math.round(prev * 1.6));
+  job.pollMs = p.status === "escalated" ? ESCALATED_POLL_MS : deps.outcome ? PUSH_FALLBACK_POLL_MS : Math.min(MAX_POLL_MS, Math.round(prev * 1.6));
   job.lastStatus = p.status;
   job.attempts = 0;
   save(deps, cfg, job);
@@ -1221,7 +1295,16 @@ async function maybeHeartbeat(deps: LoopDeps, cfg: AgentConfig, job: Job): Promi
   if (now - job.lastHeartbeatAt < HEARTBEAT_EVERY_MS) return;
   job.lastHeartbeatAt = now;
   try {
-    await deps.colony.heartbeat(cfg.agentId);
+    if (deps.refreshClaims) {
+      // Claims are refreshed in their regions directly; the colony only needs to know the agent is alive.
+      await deps.refreshClaims(job);
+      if (now - (job.lastColonyBeatAt ?? job.takenAt) >= COLONY_BEAT_EVERY_MS) {
+        job.lastColonyBeatAt = now;
+        await deps.colony.heartbeat(cfg.agentId, { claims: false });
+      }
+    } else {
+      await deps.colony.heartbeat(cfg.agentId);
+    }
   } catch (e) {
     if (e instanceof Halt) throw e;
     deps.journal.log({ at: deps.now(), intentId: job.intentId, step: "heartbeat", ok: false, ms: deps.now() - now, detail: errorMessage(e) });
@@ -1261,3 +1344,198 @@ export async function stopAgent(deps: Pick<LoopDeps, "colony" | "journal" | "now
   }
 }
 
+
+// ---------------------------------------------------------------------------
+// Direction: directives the colony pushes, status notes the agent relays (agents/direction.ts)
+// ---------------------------------------------------------------------------
+
+/** Status notes go to the colony at most this often (synthetic agents seldom: they are load). */
+export const RELAY_MIN_MS = 3_000;
+export const SYNTHETIC_RELAY_MIN_MS = 60_000;
+/** A status note that takes longer than this is left to finish on its own (the step goes on). */
+const RELAY_WAIT_MS = 2_000;
+
+/**
+ * Keep a directive the colony pushed (AgentDO.direct) and say what the agent will do with it. A
+ * withdrawal or revision of the current job's intent, or guidance while the job produces or proposes,
+ * halts the step in flight (the epoch moves, the agent keeps running), so no more work goes the old
+ * way; the next step acts on it (applyDirection).
+ */
+export function receiveDirective(journal: Journal, d: Directive, intent: Intent | undefined, now: number): { action: string; interrupted: boolean } {
+  journal.setDirectives?.(holdDirective(journal.directives?.() ?? [], d, intent, now));
+  const job = journal.job();
+  const cfg = journal.config();
+  const interrupted = !!cfg?.running && interrupts(d, job);
+  if (interrupted && cfg) {
+    cfg.epoch += 1;
+    journal.setConfig(cfg);
+  }
+  const about = !!job && (d.intentId === undefined || d.intentId === job.intentId);
+  let action: string;
+  if (!job) action = d.kind === "guidance" ? "kept for the next job" : "noted (no job held)";
+  else if (!about) action = d.kind === "guidance" ? `kept for intent ${d.intentId}` : "noted (not the current job)";
+  else if (d.kind === "withdrawal") action = "stopping the job";
+  else if (d.kind === "revision") action = `restarting at r${d.revision ?? "?"}`;
+  else if (interrupted) action = "re-planning with it";
+  else if (job.step === "await") action = "recalling the proposal to redo it";
+  else action = "folding it into the next prompt";
+  return { action, interrupted };
+}
+
+/**
+ * Act on the first pending directive for this job (nextDirection). A withdrawal ends the job: the
+ * colony already took the claim and lease back. A revision ends it too, and the next take hands back
+ * the same intent at the new revision (the agent kept its claim and lease). Guidance joins the job's
+ * prompts; work already produced is redone with it, after recalling a proposal still in flight.
+ * Returns the step result, or null to go on with the step.
+ */
+async function applyDirection(deps: LoopDeps, cfg: AgentConfig, job: Job): Promise<StepResult | null> {
+  if (!deps.journal.directives) return null;
+  const held = nextDirection(deps.journal.directives(), job);
+  if (!held) return null;
+  const d = held.directive;
+  const now = deps.now();
+  const mark = (outcome: string): void => {
+    guard(deps, cfg.epoch);
+    deps.journal.setDirectives?.(markApplied(deps.journal.directives?.() ?? [], d.id, now, outcome));
+  };
+  deps.journal.log({ at: now, intentId: job.intentId, step: "direct", ok: true, ms: 0, detail: `${d.kind} ${d.id} from ${d.by}: ${d.message}` });
+  if (d.kind === "withdrawal") {
+    mark("stopped the job");
+    await relay(deps, cfg, job, directiveNote(d, job.intent.title, ""), true);
+    return finishJob(deps, cfg, job, "withdrawn", `intent withdrawn: ${d.message}`);
+  }
+  if (d.kind === "revision") {
+    mark(`restarted at r${d.revision ?? "?"}`);
+    await relay(deps, cfg, job, directiveNote(d, job.intent.title, ""), true);
+    finishJob(deps, cfg, job, "redirected", `intent revised to r${d.revision ?? "?"}: ${d.message}`);
+    return { sleepMs: 0 }; // take again now: the same intent comes back at its new revision
+  }
+  job.directives = withGuidance(job.directives, d);
+  if (job.step === "deps" || job.step === "fetch" || job.step === "read") {
+    mark("folded into the next prompt");
+    save(deps, cfg, job);
+    await relay(deps, cfg, job, directiveNote(d, job.intent.title, "folding it into the next prompt"), true);
+    return null;
+  }
+  if (job.step === "propose" || job.step === "await") {
+    const inFlight = await inFlightProposal(deps, cfg, job);
+    if (inFlight) {
+      let back: Proposal | null = null;
+      try {
+        back = deps.colony.recall ? await deps.colony.recall(cfg.agentId, inFlight, `directive ${d.id} from ${d.by}`) : null;
+      } catch (e) {
+        if (e instanceof Halt) throw e;
+        deps.journal.log({ at: deps.now(), intentId: job.intentId, step: "recall", ok: false, ms: 0, detail: errorMessage(e) });
+      }
+      if (!back || back.status !== "returned") {
+        // Decided already (or not recallable): the guidance stays with this intent for any later work on it.
+        mark(`arrived after proposing (${back?.status ?? "not recalled"}); kept for later work on this intent`);
+        save(deps, cfg, job);
+        return null;
+      }
+    }
+  }
+  replan(deps, cfg, job);
+  mark("re-planned: redoing the change with it");
+  await relay(deps, cfg, job, directiveNote(d, job.intent.title, `redoing ${job.intent.footprint.slice(0, 2).join(", ")}`), true);
+  return { sleepMs: 0 };
+}
+
+/** Redo the change from produce: what the job read stays, everything produced since goes. */
+function replan(deps: LoopDeps, cfg: AgentConfig, job: Job): void {
+  guard(deps, cfg.epoch);
+  delete job.produced;
+  delete job.checks;
+  delete job.method;
+  delete job.writeModel;
+  delete job.headSha;
+  delete job.writeSet;
+  delete job.summary;
+  delete job.parentSha;
+  delete job.parentHow;
+  delete job.proposalId;
+  delete job.proposedAt;
+  delete job.pollMs;
+  delete job.lastStatus;
+  delete job.directoryRewrites;
+  delete job.fileOverDirectory;
+  delete job.lastError;
+  job.step = "produce";
+  job.attempts = 0;
+  job.stepStartedAt = deps.now();
+  deps.journal.setJob(null); // drops the old file contents with the old job
+  deps.journal.setJob(job);
+}
+
+/** The job's proposal still in flight: its recorded id, else one the colony has for its head commit. */
+async function inFlightProposal(deps: LoopDeps, cfg: AgentConfig, job: Job): Promise<Id | null> {
+  if (job.proposalId) return job.proposalId;
+  if (!job.headSha) return null;
+  try {
+    const recent = await deps.colony.inbox(cfg.agentId, 20, { proposalsOnly: true });
+    return recent.find((p) => !isInboxDirective(p) && p.intentId === job.intentId && p.headSha === job.headSha && !TERMINAL_STATUSES.has(p.status))?.id ?? null;
+  } catch (e) {
+    if (e instanceof Halt) throw e;
+    return null;
+  }
+}
+
+/** A new job starts with the guidance held for its intent (and any not tied to an intent yet); it counts as applied. */
+async function adoptGuidance(deps: LoopDeps, cfg: AgentConfig, job: Job, now: number): Promise<void> {
+  const held = deps.journal.directives?.() ?? [];
+  let guidance = guidanceFor(held, job.intentId);
+  // Guidance sent to another agent about this intent counts too (the intent may have changed hands).
+  // Synthetic agents skip the call: they are load and write no prompts.
+  if (cfg.kind === "internal" && deps.colony.guidance) {
+    try {
+      const theirs = await deps.colony.guidance(job.intentId);
+      const ids = new Set(guidance.map((g) => g.id));
+      guidance = [...guidance, ...theirs.filter((g) => !ids.has(g.id))].sort((a, b) => a.at - b.at).slice(-MAX_GUIDANCE);
+    } catch (e) {
+      if (e instanceof Halt) throw e;
+      // Best effort: the agent's own directives still apply.
+    }
+  }
+  if (guidance.length === 0) return;
+  job.directives = guidance;
+  let list = held;
+  for (const g of guidance) list = markApplied(list, g.id, now, "given to the job's prompts");
+  deps.journal.setDirectives?.(list);
+}
+
+/**
+ * Relay what the job is doing as it enters a step: only a changed note, at most every RELAY_MIN_MS.
+ * An LLM agent's propose step always relays (when the note changed): the colony records it with the change.
+ */
+async function relayStep(deps: LoopDeps, cfg: AgentConfig, job: Job): Promise<void> {
+  const note = stepNote(job);
+  await relay(deps, cfg, job, note, job.step === "propose" && cfg.kind !== "synthetic" && note !== job.relayedNote);
+}
+
+async function relay(deps: LoopDeps, cfg: AgentConfig, job: Job, note: string, force: boolean): Promise<void> {
+  // Called as a method: on a Durable Object stub, `relay.bind` would name a remote property, not Function.prototype.bind.
+  const colony = deps.colony;
+  if (!colony.relay) return;
+  const now = deps.now();
+  if (!force && (job.relayedNote === note || now - (job.relayedAt ?? 0) < (cfg.kind === "synthetic" ? SYNTHETIC_RELAY_MIN_MS : RELAY_MIN_MS))) return;
+  job.relayedNote = note;
+  job.relayedAt = now;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([colony.relay(cfg.agentId, note), new Promise((resolve) => (timer = setTimeout(resolve, RELAY_WAIT_MS)))]);
+  } catch (e) {
+    if (e instanceof Halt) throw e;
+    // Best effort: a lost note only means the colony shows an older one.
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+/** Evidence of the human guidance the change was written with (the colony records the same in its direction). */
+function directionChecks(job: Job): CheckResult[] {
+  const list = job.directives ?? [];
+  if (list.length === 0) return [];
+  const detail = list.map((g) => `${g.id} from ${g.by}: "${g.message.replace(/\s+/g, " ").slice(0, 160)}"`).join("; ");
+  return [{ name: "directives", ok: true, ms: 0, detail: `given to the model with the intent: ${detail}`.slice(0, 1_000) }];
+}

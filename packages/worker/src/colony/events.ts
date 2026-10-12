@@ -4,8 +4,8 @@ import type { ColonyEvent } from "@fire_trident/core";
 export const FLUSH_INTERVAL_MS = 100;
 /** Soft cap on one WebSocket message (characters); the platform limit is 1 MiB. */
 export const MAX_MESSAGE_CHARS = 256_000;
-/** Buffer size that triggers an early coalescing pass. */
-const COALESCE_AT = 10_000;
+/** Superseded slots tolerated in the buffer before it is compacted. */
+const COMPACT_AT = 10_000;
 /** Hard cap on buffered events between two flushes (oldest dropped beyond it). */
 const MAX_BUFFER = 50_000;
 
@@ -30,6 +30,8 @@ export function eventKey(e: ColonyEvent): string | null {
       return `i|${e.intentId}`;
     case "proposal":
       return `p|${e.proposalId}`;
+    case "status":
+      return `n|${e.agentId}`;
     default:
       return null;
   }
@@ -77,9 +79,19 @@ export interface EventSink {
  * Buffers ColonyEvents and broadcasts them as JSON arrays at most every
  * FLUSH_INTERVAL_MS, coalescing superseded state events. With no sockets
  * connected, events are dropped without buffering.
+ *
+ * Coalescing is incremental: a state event replaces the earlier one with the same key as it
+ * arrives (its slot becomes a hole), so a push costs O(events pushed) however large the buffer
+ * grows between two flushes. Re-coalescing the whole buffer on every push once it passed a size
+ * made each push O(buffer) under load, which is when the colony can least afford it.
  */
 export class EventHub {
-  private buffer: ColonyEvent[] = [];
+  /** Buffered events in arrival order; superseded state events leave null holes. */
+  private buffer: Array<ColonyEvent | null> = [];
+  /** Slot in `buffer` of the latest state event per key (see eventKey). */
+  private latest = new Map<string, number>();
+  /** Events in `buffer` that are not holes. */
+  private live = 0;
   private scheduled = false;
   private lastFlush = 0;
   private knownListeners = 0;
@@ -103,11 +115,22 @@ export class EventHub {
       this.knownListeners = this.listeners();
       if (this.knownListeners === 0 || list.length === 0) return this.knownListeners;
     }
-    for (const e of list) this.buffer.push(e);
-    if (this.buffer.length > COALESCE_AT) {
-      this.buffer = coalesceEvents(this.buffer);
-      if (this.buffer.length > MAX_BUFFER) this.buffer = this.buffer.slice(-MAX_BUFFER);
+    for (const e of list) {
+      const k = eventKey(e);
+      if (k !== null) {
+        const at = this.latest.get(k);
+        if (at !== undefined && this.buffer[at] !== null) {
+          this.buffer[at] = null;
+          this.live--;
+        }
+        this.latest.set(k, this.buffer.length);
+      }
+      this.buffer.push(e);
+      this.live++;
     }
+    if (this.buffer.length - this.live > COMPACT_AT) this.compact(0);
+    // Over the cap, drop the oldest down to 90% of it, so the cost of dropping stays O(1) per event.
+    if (this.live > MAX_BUFFER) this.compact(this.live - Math.floor(MAX_BUFFER * 0.9));
     if (!this.scheduled) {
       this.scheduled = true;
       this.schedule(() => this.flush(), Math.max(0, this.intervalMs - (this.now() - this.lastFlush)));
@@ -115,12 +138,26 @@ export class EventHub {
     return this.knownListeners;
   }
 
+  /** Remove holes (and the `drop` oldest events) and re-index the latest slots. */
+  private compact(drop: number): void {
+    const kept = this.buffer.filter((e): e is ColonyEvent => e !== null).slice(Math.max(0, drop));
+    this.buffer = kept;
+    this.live = kept.length;
+    this.latest.clear();
+    kept.forEach((e, i) => {
+      const k = eventKey(e);
+      if (k !== null) this.latest.set(k, i);
+    });
+  }
+
   /** Broadcast everything buffered now (called by the timer). */
   flush(): void {
     this.scheduled = false;
     this.lastFlush = this.now();
-    const events = coalesceEvents(this.buffer);
+    const events = this.buffer.filter((e): e is ColonyEvent => e !== null);
     this.buffer = [];
+    this.latest.clear();
+    this.live = 0;
     if (events.length === 0) return;
     const sockets = this.sockets();
     if (sockets.length === 0) return;
