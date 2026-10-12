@@ -42,5 +42,5 @@ export function liveConfig(env: Record<string, string | undefined> = process.env
 
 /** Redact anything that looks like a bearer or Artifacts token from a message. */
 export function redact(message: string): string {
-  return message.replace(/art_v\d+_\S+/g, "<redacted>").replace(/Bearer\s+\S+/gi, "Bearer <redacted>");
+  return message.replace(/art_v\d+_[A-Za-z0-9._~+/=-]+/g, "<redacted>").replace(/Bearer\s+\S+/gi, "Bearer <redacted>");
 }

@@ -26,18 +26,43 @@ Humans declare a **target morphology** (architecture rules plus tests). Every vi
 
 ## What it has done
 
-On the live service, every landing a real commit on an Artifacts repository:
+On the live service, every landing is a real commit on an Artifacts repository. Logs, event streams and colony summaries for each row: [packages/bench/results/2026-10-12-prod](packages/bench/results/2026-10-12-prod/).
 
 | Run | Result |
 | --- | --- |
-| Hono (583 files), rule "relative imports name their file", **80 LLM agents** | 958 violations → 0 in **63 s**; 283 of 283 intents landed in 192 commits; 0 returned, 0 abandoned; every edit landed on deterministic proof; model spend **$0.05** |
-| New project from a spec (a link-shortener Worker: 13 intents, 5 rules), 6 LLM agents | empty repository → all 13 intents landed in 8 minutes; from a plain `git clone`, `node --test` passes 60 of 60 and the reference acceptance suite 7 of 7; 0 rule violations; model spend $0.25 |
-| OpenSpec (1,287 files), rule "Node built-ins use `node:`", 20 agents | 131 violations → 0 in about 71 s, a lineage note on every commit |
-| Group commit, synthetic agents (preview deployment) | 690 landings/min at 200 concurrent agents (5.5× one commit per landing); time to land p50 2.9 s |
-| Vaccination meter | 28 of 28 seeded bad changes caught (95% CI 0.88–1.0); none landed |
+| Hono (583 files), rule "relative imports name their file", **80 LLM agents** | 958 violations → 0 in **62 s** from declaring the rule; all 282 rule edits landed on deterministic proof, in 192 commits; 0 returned, 0 abandoned; model spend **$0.05** |
+| New project from a spec (a link-shortener Worker: 13 intents, 5 rules), 6 LLM agents | empty repository → all 13 intents landed in 8 minutes; from a plain `git clone`, `node --test` passes 60 of 60 and the reference acceptance suite ([demo/shortlinks-reference](demo/shortlinks-reference/test/acceptance.test.ts)) 7 of 7; 0 rule violations; model spend $0.25 |
+| An external agent over MCP (Claude Code, headless) | joined a colony, took an intent, edited and pushed with plain git in its own workspace, and landed on proof 38 s into the session (18 turns, $0.17) |
+| OpenSpec (1,287 files), rule "Node built-ins use `node:`", 20 agents | 131 violations → 0; 74 of 74 intents landed in 43 commits |
+| Vaccination meter (OpenSpec) | 28 of 28 seeded bad changes caught (95% CI 0.88–1.0); none landed |
 | Cascade | one shared-file change sent 30 proposals back stale; σ peaked at 30 and fell below 1 within 40 s |
 
+On preview deployments (the same code with its own Durable Objects):
+
+| Run | Result |
+| --- | --- |
+| Scale, synthetic agents (no model calls, review off) | 1,000 / 2,000 / 5,000 concurrent agents landed 2,924 / 2,714 / 2,778 changes a minute; all 5,894 landing commits carry their lineage note ([results](packages/bench/results/2026-10-12-scale/)) |
+| Group commit, synthetic agents | 690 landings/min at 200 concurrent agents (5.5× one commit per landing); time to land p50 2.9 s ([results](packages/bench/results/2026-10-12-g1/)) |
+| Change of direction, Gemma agents | retracting a rule mid-run withdrew 35 intents in 0.81 s and nothing landed for it afterwards; an intent amended while an agent worked on it landed as revision 2 6.3 s later; a note sent to a working agent was followed in the change that landed ([logs](packages/bench/results/2026-10-12-direction/)) |
+
 The benchmark compares FireTrident with the common design (exclusive file locks plus one serialized merge queue) on the same workloads; every point is labeled measured or simulated: [packages/bench/results](packages/bench/results).
+
+## Watch a finished run
+
+Any colony replays from its first event: open [`/c/hono?replay=1`](https://firetrident.mattsolt.workers.dev/c/hono?replay=1) for play, pause, 1× to 16× and a scrubber. Colonies record their events as they work; the showcase colonies ran before recording existed, so their replays are rebuilt from what each colony stores (intents, proposals, decisions and landings with their times) and labeled "reconstructed", with claim times estimated.
+
+## Verify it with plain git
+
+The showcase colonies (`hono`, `shortlinks`, `byo-demo`) can be read with stock git. You need no account and no token. The server holds a read-only token for each trunk, and pushes are refused.
+
+```sh
+git clone https://firetrident.mattsolt.workers.dev/git/hono.git
+cd hono
+git fetch origin refs/notes/firetrident:refs/notes/firetrident
+git log --notes=firetrident -3
+```
+
+Each landed commit shows its `FT-*` trailers and, under `Notes (firetrident):`, the JSON lineage note. `git notes --ref=firetrident show <commit>` prints a note on its own. On your own deployment, list the colonies to share in `FT_PUBLIC_GIT` (see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#plain-git-access)).
 
 ## Run it
 
@@ -49,9 +74,11 @@ npm install
 npm run build -w @fire_trident/web
 cd packages/worker
 npx wrangler deploy                     # creates the Durable Objects, uses six Artifacts namespaces
-npx wrangler secret put FT_ADMIN_TOKEN  # bearer token for mutating API routes
+npx wrangler secret put FT_ADMIN_TOKEN  # bearer token for mutating API routes (without it, writes are refused)
 cd ../..
 ```
+
+For `wrangler dev`, put `FT_ADMIN_TOKEN=<token>` in `packages/worker/.dev.vars` (or `FT_OPEN_WRITES=1`, for local development only).
 
 Point the CLI at your deployment (Node 24 runs the TypeScript directly):
 
@@ -91,8 +118,7 @@ Any coding agent that speaks MCP can join a colony and work next to the in-platf
 Point your client at the colony's MCP endpoint, either Streamable HTTP at `/mcp` or legacy SSE at `/sse`:
 
 ```sh
-claude mcp add --transport http firetrident https://<your-host>/mcp
-# when the server sets FT_MCP_TOKEN:
+npx wrangler secret put FT_MCP_TOKEN    # in packages/worker, once; without it /mcp refuses connections
 claude mcp add --transport http firetrident https://<your-host>/mcp --header "Authorization: Bearer $FT_MCP_TOKEN"
 ```
 
@@ -119,11 +145,11 @@ Try it end to end. `scripts/mcp_join.rb` imports a small repo, declares a rule, 
 ruby scripts/mcp_join.rb --url https://<your-host> --colony byo-demo --setup --swarm 1
 ```
 
-We ran it four times on a preview with Claude Code (Sonnet 5.5). Each session took 33 to 50 s, 11 to 23 turns and $0.14 to $0.19. In the fastest, Claude joined at 6 s, took an intent at 10 s and proposed at 24 s. The proposal landed at 28 s, on top of a landing the in-platform agent had made meanwhile. Every run landed all three of the colony's intents. `node scripts/mcp_e2e.ts` runs the same loop with a scripted MCP client and checks the trailers and the `refs/notes/firetrident` note from a plain git clone.
+On production, Claude Code (Sonnet 5.5, headless) joined at 6.3 s, took an intent at 8.6 s, proposed at 31.5 s and landed at 38.1 s, while one in-platform agent landed the colony's other two intents ([log](packages/bench/results/2026-10-12-prod/byo-run.log), [transcript](packages/bench/results/2026-10-12-prod/byo-transcript.jsonl)). It also landed in each of four earlier runs on a preview deployment. `node scripts/mcp_e2e.ts` runs the same loop with a scripted MCP client and checks the trailers and the `refs/notes/firetrident` note from a plain git clone.
 
 ## How it uses Cloudflare
 
-- **Artifacts:** one trunk repository per colony (imported from any public git URL or started empty), a warm pool of workspace forks spread across four namespaces, short-lived repo-scoped tokens (agents never hold a trunk write token), git notes for lineage, antibodies committed as files.
+- **Artifacts:** one trunk repository per colony (imported from any public git URL or started empty), a warm pool of workspace forks spread across four namespaces, short-lived repo-scoped tokens (agents never hold a trunk write token), git notes for lineage, antibodies committed as files, and a read-only git endpoint that serves the showcase trunks to stock git.
 - **Durable Objects:** the colony, one object per region of the code (field, admission, lane), the single trunk writer, the workspace pool, and every in-platform agent.
 - **`@cloudflare/computer`:** git inside Durable Objects for the trunk writer and the agents (clone ~350 ms, commit ~90 ms, push ~300 ms).
 - **Workers AI:** Clef decision models for the reflex arc; Kimi K2.7 Code and Gemma 4 for agents; gpt-oss and Gemma for second opinions.
@@ -133,8 +159,10 @@ We ran it four times on a preview with Claude Code (Sonnet 5.5). Each session to
 
 - Optimism costs rework. On Hono's history the simulator puts plain optimistic claims at about 42% rework against 22% for exclusive locks; decaying inhibition and co-change learning bring it to about 31% (26% with a stronger co-change weight) with no loss of throughput, and conflicts per 1,000 submissions fall below the lock design's (285 vs 318). The remaining gap is that a returned change is redone from scratch.
 - The vaccination meter's threat classes were written by us, so its recall is optimistic.
-- Whether a borderline change (say, a new admin-only route) goes to a person depends on model judgment, so it can vary between runs.
-- The colony object and the workspace pool are the next bottlenecks past 1,000 concurrent agents.
+- Changes that touch authentication, secrets or new process and network access always go to a person, by deterministic patterns. Other borderline calls rest on model judgment and can vary between runs.
+- Past about 1,000 concurrent agents, throughput stops growing. The single trunk writer commits every 3.4 to 3.9 s and caps each commit at 200 proposals, so 5,000 agents land no faster than 1,000 and wait about 6 s in its queue. Those runs used synthetic agents; with language models, Workers AI rate limits (about 300 requests a minute for Gemma 4 on our account) bind long before the colony does.
+- In the 5,000-agent run, 78 of 50,368 calls failed in the first 33 s: the load generator's own DNS and connection errors, and one reset when the preview's code was updated.
+- Replays of runs from before event recording are reconstructed, so their claim times are estimates.
 
 ## Repository
 

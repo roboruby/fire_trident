@@ -23,9 +23,12 @@ import type {
   Colony,
   ColonyEvent,
   ColonySnapshot,
+  Convergence,
   Decision,
   DecisionLayer,
+  EventsPage,
   Evidence,
+  FunnelStage,
   FieldReading,
   FileVersion,
   Id,
@@ -36,6 +39,7 @@ import type {
   Path,
   Proposal,
   ProposalStatus,
+  RecordedEvent,
   RepoRef,
   Rule,
   Sha,
@@ -46,7 +50,8 @@ import type { Env } from "../env.ts";
 import { scanRule } from "../morph/scan.ts";
 import type { RegionDO } from "../region/RegionDO.ts";
 import { errorText, ftError } from "./errors.ts";
-import { EventHub } from "./events.ts";
+import { EventHub, EventRecorder, RECORD_KEEP } from "./events.ts";
+import { reconstruct, type ReconInput } from "./replay.ts";
 import { DecideEngine, type DecideHost, type TrunkRpc, type VaccinationResult } from "../decide/engine.ts";
 import type { DecidePolicy } from "../decide/policy.ts";
 import type { DetectorStats } from "../decide/store.ts";
@@ -82,6 +87,7 @@ import {
   BUCKET_MS,
   COUNTER_SERIES,
   GAUGE_SERIES,
+  LIVE_METRICS,
   REGISTRY_NAME,
   SERIES_BUCKETS,
   SERIES_KEEP_MINUTES,
@@ -228,6 +234,8 @@ const OPS_SCHEMA = [
   "CREATE TABLE IF NOT EXISTS agent_stops (agent_id TEXT PRIMARY KEY, at INTEGER NOT NULL, reason TEXT NOT NULL)",
   // Proposals whose outcome is pushed to their agent (in-platform agents ask for it when they propose).
   "CREATE TABLE IF NOT EXISTS outcome_watch (proposal_id TEXT PRIMARY KEY, agent_id TEXT NOT NULL, at INTEGER NOT NULL)",
+  // The event record for replays: what the colony published, in order (capped at RECORD_KEEP, see recordEvents).
+  "CREATE TABLE IF NOT EXISTS events (seq INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, t TEXT NOT NULL, data TEXT NOT NULL)",
 ];
 /** Registry tables, created only in the registry instance. */
 const REGISTRY_SCHEMA = [
@@ -245,6 +253,20 @@ const LIST_AGENTS_CAP = 10_000;
 const NOTE_EVENT_MS = 1_000;
 /** How long a directive push to an in-platform agent may take before it counts as failed. */
 const PUSH_TIMEOUT_MS = 5_000;
+/** While the colony publishes, its record takes a sample of the live metrics this often. */
+const RECORD_SAMPLE_MS = 3_000;
+/** Metrics the record samples (the live hub's set, plus the totals the top bar shows). */
+const SAMPLED_METRICS: readonly string[] = [...LIVE_METRICS, "landings", "landedIntents", "agents"];
+/** Funnel totals go out this long after a proposal settles (several settling together send one update). */
+const FUNNEL_EMIT_MS = 400;
+/** The funnel's stages, in order. */
+const FUNNEL_STAGES: readonly FunnelStage[] = ["proof", "reflex", "llm", "human"];
+/** Events per page of GET /events at most. */
+const EVENTS_PAGE_MAX = 5_000;
+/** A reconstructed replay is rebuilt at most this often (pages of one replay share it). */
+const RECON_TTL_MS = 10 * 60_000;
+/** Rows a reconstruction reads per table at most. */
+const RECON_ROWS = 20_000;
 
 /** A directive for one agent to deliver, with the agent's kind (in-platform agents get it pushed). */
 type Notice = { directive: Directive; kind: string; intent?: Intent };
@@ -426,6 +448,23 @@ export class ColonyDO extends DurableObject<Env> {
   private readonly cochange = new NeighborCache(
     (paths) => this.trunkStub().neighbors(paths, COCHANGE_K) as unknown as Promise<Record<Path, Neighbor[]>>,
   );
+  /** The event record for replays: everything published, written in batches (see publish, recordEvents). */
+  private readonly recorder = new EventRecorder(
+    (events) => this.recordEvents(events),
+    undefined,
+    undefined,
+    () => this.sampleMetrics(Date.now()),
+  );
+  private recordedSinceTrim = 0;
+  /** Live metric values the record last sampled, when, and the trailing sample after the last write. */
+  private readonly sampledMetrics = new Map<string, number>();
+  private lastSampleAt = 0;
+  private sampleTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Funnel totals last published, and the pending publish after proposals settle (see scheduleFunnel). */
+  private readonly funnelSent = new Map<string, number>();
+  private funnelTimer: ReturnType<typeof setTimeout> | null = null;
+  /** The last reconstructed replay, shared by the pages that read it. */
+  private reconCache: { key: string; at: number; events: ColonyEvent[] } | null = null;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -441,7 +480,7 @@ export class ColonyDO extends DurableObject<Env> {
       new LagProbe(`colony ${ctx.id.name ?? ctx.id.toString()}`, (line) => {
         console.log(line);
         const worst = (JSON.parse(line) as { worstMs?: number }).worstMs;
-        if (typeof worst === "number") this.hub.push({ t: "metric", at: Date.now(), name: "colony.lagMs", value: worst });
+        if (typeof worst === "number") this.publish({ t: "metric", at: Date.now(), name: "colony.lagMs", value: worst });
       }).start();
     }
     try {
@@ -538,17 +577,19 @@ export class ColonyDO extends DurableObject<Env> {
         a.state = effectiveState(a.state, r.last_seen, r.stopped_at);
         return a;
       });
+    const violations = this.violationTotals();
     return {
       colony,
       files,
       intents,
       agents,
       recentLandings,
-      violations: this.violationTotals(),
+      violations,
       funnel: this.funnelCounts(),
       metrics: this.currentMetrics(now),
       rules: this.sql.exec<RuleRow>("SELECT * FROM rules ORDER BY created_at").toArray().map((r) => this.toRule(r, colony.id)),
       series: this.seriesReport(now),
+      convergence: this.convergence(violations.total),
     };
   }
 
@@ -610,7 +651,7 @@ export class ColonyDO extends DurableObject<Env> {
         violations: d.violations,
       })),
     );
-    this.hub.push(this.violationsEvent(Date.now()));
+    this.publish(this.violationsEvent(Date.now()));
     return { rule, violations: open, intents: intents.length };
   }
 
@@ -799,7 +840,7 @@ export class ColonyDO extends DurableObject<Env> {
     const [n] = await this.deliver([{ directive: d, kind: agent.kind, ...(intent ? { intent: this.toIntent(intent, d.colonyId) } : {}) }]);
     const fresh = this.sql.exec<DirectiveRow>("SELECT * FROM directives WHERE id = ?", d.id).toArray()[0];
     const out = fresh ? toDirective(fresh, d.colonyId) : d;
-    this.hub.push({ t: "directive", at: now, directiveId: d.id, agentId, ...(intentId ? { intentId } : {}), message, by, ...(out.via ? { via: out.via } : {}) });
+    this.publish({ t: "directive", at: now, directiveId: d.id, agentId, ...(intentId ? { intentId } : {}), message, by, ...(out.via ? { via: out.via } : {}) });
     return { ...out, delivery: n?.delivery ?? "failed" };
   }
 
@@ -841,7 +882,7 @@ export class ColonyDO extends DurableObject<Env> {
     if (emitted) {
       if (this.noteEmitted.size > 20_000) this.noteEmitted.clear();
       this.noteEmitted.set(agentId, now);
-      this.hub.push({ t: "status", at: now, agentId, ...(agent.intent_id ? { intentId: agent.intent_id } : {}), note: text });
+      this.publish({ t: "status", at: now, agentId, ...(agent.intent_id ? { intentId: agent.intent_id } : {}), note: text });
     }
     return { note: text, at: now, emitted };
   }
@@ -1105,7 +1146,7 @@ export class ColonyDO extends DurableObject<Env> {
     }
     if (out.length > 0) {
       this.bump("agents", out.length, now);
-      this.hub.push(events);
+      this.publish(events);
     }
     return out;
   }
@@ -1642,6 +1683,7 @@ export class ColonyDO extends DurableObject<Env> {
       now,
     );
     engine.onHumanDecision(p, d, reason, by);
+    this.scheduleFunnel();
     if (d === "approve") {
       if (p.status === "ready") return;
       await this.updateProposals([{ id: proposalId, patch: { status: "ready" } }]);
@@ -1746,7 +1788,7 @@ export class ColonyDO extends DurableObject<Env> {
           })),
       bump: (name, delta) => void this.bump(name, delta, Date.now()),
       setMetric: (name, value) => this.setMetric(name, value, Date.now()),
-      emit: (events) => void this.hub.push(events),
+      emit: (events) => void this.publish(events),
       trunk: () => this.trunkStub() as unknown as TrunkRpc,
       systemCommitted: async (l) => this.noteSystemCommit(l),
       vaccineAgent: () => this.vaccineAgent(),
@@ -1838,7 +1880,7 @@ export class ColonyDO extends DurableObject<Env> {
       this.sql.exec("UPDATE intents SET status = 'abandoned', updated_at = ? WHERE id = ?", now, intent.id);
       events.push({ t: "intent", at: now, intentId: intent.id, status: "abandoned", title: intent.title, footprint: this.footprintOf(intent.id, intent.footprint) });
     }
-    this.hub.push(events);
+    this.publish(events);
   }
 
   /** A FireTrident-authored trunk commit (an antibody) landed: track the trunk head and show it live. */
@@ -1848,7 +1890,7 @@ export class ColonyDO extends DurableObject<Env> {
       this.sql.exec("UPDATE colony SET trunk_sha = ?, last_landing_at = ?", l.trunkSha, l.at);
       this.colonyCache = null;
     }
-    this.hub.push({ t: "landing", at: Date.now(), landingId: l.id, trunkSha: l.trunkSha, proposalIds: [], paths: l.paths });
+    this.publish({ t: "landing", at: Date.now(), landingId: l.id, trunkSha: l.trunkSha, proposalIds: [], paths: l.paths });
   }
 
   // =========================================================================
@@ -1869,7 +1911,217 @@ export class ColonyDO extends DurableObject<Env> {
         break;
       }
     }
-    return { listeners: this.hub.push(list), emitEveryMs: this.emitPace.pace(region, Date.now()) };
+    // The record always listens (it keeps sigma changes), so regions never go quiet while the colony works.
+    return { listeners: Math.max(1, this.publish(list)), emitEveryMs: this.emitPace.pace(region, Date.now()) };
+  }
+
+  /**
+   * Publish events: into the record (replays) and to the live sockets. Every event the colony shows
+   * goes through here, so the record does not depend on who is watching or how delivery is batched.
+   * Returns the number of live listeners.
+   */
+  private publish(events: ColonyEvent | ColonyEvent[]): number {
+    this.recorder.add(events);
+    return this.hub.push(events);
+  }
+
+  /** Write a batch of recorded events, and trim the record to RECORD_KEEP now and then. */
+  private recordEvents(events: ColonyEvent[]): void {
+    if (!this.loadColony()) return;
+    this.sql.exec(
+      "INSERT INTO events (at, t, data) SELECT CAST(json_extract(value, '$.at') AS INTEGER), json_extract(value, '$.t'), value FROM json_each(?)",
+      JSON.stringify(events),
+    );
+    this.recordedSinceTrim += events.length;
+    if (this.recordedSinceTrim >= 2_000) {
+      this.recordedSinceTrim = 0;
+      this.sql.exec("DELETE FROM events WHERE seq <= (SELECT MAX(seq) FROM events) - ?", RECORD_KEEP);
+    }
+  }
+
+  /**
+   * While events are being recorded, sample the live metrics into the record every RECORD_SAMPLE_MS
+   * (only values that changed), plus one trailing sample after the last write, so a replay ends on the
+   * colony's final counts.
+   */
+  private sampleMetrics(now: number): void {
+    if (now - this.lastSampleAt < RECORD_SAMPLE_MS) {
+      if (this.sampleTimer === null) {
+        this.sampleTimer = setTimeout(() => {
+          this.sampleTimer = null;
+          this.sampleMetrics(Date.now());
+        }, RECORD_SAMPLE_MS - (now - this.lastSampleAt) + 50);
+      }
+      return;
+    }
+    this.lastSampleAt = now;
+    if (!this.loadColony()) return;
+    let current: Record<string, number>;
+    try {
+      // Fresh counts (not the live tick's 10 s cache): the last sample is the state a replay ends on.
+      current = this.currentMetrics(now, false);
+    } catch (err) {
+      console.warn(`metrics sample failed: ${errorText(err)}`);
+      return;
+    }
+    const out: ColonyEvent[] = [];
+    for (const name of SAMPLED_METRICS) {
+      const value = current[name];
+      if (typeof value !== "number" || !Number.isFinite(value) || this.sampledMetrics.get(name) === value) continue;
+      this.sampledMetrics.set(name, value);
+      out.push({ t: "metric", at: now, name, value });
+    }
+    if (out.length > 0) this.recorder.add(out);
+  }
+
+  /** Publish the funnel totals soon (a proposal just settled); several settling together send one update. */
+  private scheduleFunnel(): void {
+    if (this.funnelTimer !== null) return;
+    this.funnelTimer = setTimeout(() => {
+      this.funnelTimer = null;
+      try {
+        const now = Date.now();
+        const f = this.funnelCounts();
+        const out: ColonyEvent[] = [];
+        for (const stage of FUNNEL_STAGES) {
+          if (this.funnelSent.get(stage) === f[stage]) continue;
+          this.funnelSent.set(stage, f[stage]);
+          out.push({ t: "metric", at: now, name: `funnel.${stage}`, value: f[stage] });
+        }
+        if (out.length > 0) this.publish(out);
+      } catch (err) {
+        console.warn(`funnel update failed: ${errorText(err)}`);
+      }
+    }, FUNNEL_EMIT_MS);
+  }
+
+  /**
+   * A page of the colony's event record (GET /api/colonies/:id/events): events after sequence number
+   * `after`, oldest first. `source` "auto" serves the recorded events when there are any, else a replay
+   * reconstructed from what the colony stores (colonies that ran before recording began).
+   */
+  async eventsPage(p: { after?: number; limit?: number; source?: "auto" | "recorded" | "reconstructed" } = {}): Promise<EventsPage> {
+    const colony = this.requireColony();
+    this.recorder.flush();
+    const after = Math.max(0, Math.floor(Number(p.after) || 0));
+    const limit = Math.max(1, Math.min(EVENTS_PAGE_MAX, Math.floor(Number(p.limit) || 1_000)));
+    const stats = this.sql.exec<{ n: number; first: number | null; last: number | null }>("SELECT COUNT(*) AS n, MIN(at) AS first, MAX(at) AS last FROM events").one();
+    // The record tells the whole story only when it reaches back to the colony's first rule or intent;
+    // a colony that worked before recording began replays its reconstruction (which covers every run).
+    const began = this.sql
+      .exec<{ at: number | null }>("SELECT MIN(at) AS at FROM (SELECT MIN(created_at) AS at FROM intents WHERE created_by != 'vaccine' UNION ALL SELECT MIN(created_at) FROM rules)")
+      .one().at;
+    const covered = stats.n > 0 && (began === null || (stats.first ?? Number.POSITIVE_INFINITY) <= began + 1_000);
+    const source = p.source === "recorded" || p.source === "reconstructed" ? p.source : covered ? "recorded" : "reconstructed";
+    if (source === "recorded") {
+      const rows = this.sql.exec<{ seq: number; data: string }>("SELECT seq, data FROM events WHERE seq > ? ORDER BY seq LIMIT ?", after, limit + 1).toArray();
+      const more = rows.length > limit;
+      const events: RecordedEvent[] = [];
+      for (const r of rows.slice(0, limit)) {
+        const e = parseJson<ColonyEvent | null>(r.data, null);
+        if (e) events.push({ ...e, seq: r.seq });
+      }
+      const lastSeq = rows[Math.min(rows.length, limit) - 1]?.seq ?? null;
+      return { colonyId: colony.id, source, events, next: more ? lastSeq : null, total: stats.n, first: stats.first, last: stats.last };
+    }
+    const all = this.reconstructed();
+    const events: RecordedEvent[] = all.slice(after, after + limit).map((e, i) => ({ ...e, seq: after + i + 1 }));
+    const end = after + events.length;
+    return { colonyId: colony.id, source, events, next: end < all.length ? end : null, total: all.length, first: all[0]?.at ?? null, last: all[all.length - 1]?.at ?? null };
+  }
+
+  /** The reconstructed replay (cached while the colony's tables stay the same, up to RECON_TTL_MS). */
+  private reconstructed(): ColonyEvent[] {
+    const now = Date.now();
+    const key = [
+      this.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM proposals").one().n,
+      this.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM intents").one().n,
+      this.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM agents").one().n,
+      this.loadColony()?.lastLandingAt ?? 0,
+    ].join("|");
+    if (this.reconCache && this.reconCache.key === key && now - this.reconCache.at < RECON_TTL_MS) return this.reconCache.events;
+    const events = reconstruct(this.reconInput());
+    this.reconCache = { key, at: now, events };
+    return events;
+  }
+
+  /** The rows a reconstruction reads (vaccines left out: they never touch the field or the funnel). */
+  private reconInput(): ReconInput {
+    this.decider(); // its tables (decide outcomes) exist from here on
+    const list = <T>(sql: string, ...args: SqlStorageValue[]): T[] => this.sql.exec(sql, ...args).toArray() as unknown as T[];
+    const strings = (json: string | null): string[] => parseJson<unknown[]>(json, []).filter((x): x is string => typeof x === "string");
+    const vaccine = new Set(list<{ proposal_id: string }>("SELECT proposal_id FROM decide_outcomes WHERE vaccine = 1").map((r) => r.proposal_id));
+    const rules = list<RuleRow>("SELECT * FROM rules ORDER BY created_at").map((r) => ({
+      id: r.id,
+      createdAt: r.created_at,
+      retractedAt: typeof r.retracted_at === "number" ? r.retracted_at : null,
+      retractedBy: r.retracted_by ?? null,
+      retractReason: r.retract_reason ?? null,
+    }));
+    const intents = list<IntentRow>("SELECT * FROM intents WHERE created_by != 'vaccine' ORDER BY created_at LIMIT ?", RECON_ROWS).map((r) => ({
+      id: r.id,
+      title: r.title,
+      footprint: this.footprintOf(r.id, r.footprint),
+      status: r.status as IntentStatus,
+      ruleId: r.rule_id,
+      violations: r.violations,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+      withdrawnReason: r.withdrawn_reason ?? null,
+    }));
+    const agents = list<{ id: string; kind: string; state: string; created_at: number; last_seen: number; stopped_at: number | null }>(
+      "SELECT a.id, a.kind, a.state, a.created_at, a.last_seen, s.at AS stopped_at FROM agents a LEFT JOIN agent_stops s ON s.agent_id = a.id WHERE a.model IS NOT 'vaccine' ORDER BY a.created_at LIMIT ?",
+      RECON_ROWS,
+    ).map((r) => ({ id: r.id, kind: r.kind as AgentKind, state: r.state, createdAt: r.created_at, lastSeen: r.last_seen, stoppedAt: r.stopped_at }));
+    const proposals = list<{ id: string; intent_id: string; agent_id: string; status: string; created_at: number; updated_at: number; reason: string | null; landing_id: string | null; paths: string | null }>(
+      `SELECT id, intent_id, agent_id, status, created_at, updated_at, json_extract(data, '$.reason') AS reason, json_extract(data, '$.landingId') AS landing_id,
+         (SELECT json_group_array(json_extract(w.value, '$.path')) FROM json_each(json_extract(data, '$.writeSet')) w) AS paths
+       FROM proposals ORDER BY created_at LIMIT ?`,
+      RECON_ROWS,
+    )
+      .filter((r) => !vaccine.has(r.id))
+      .map((r) => ({
+        id: r.id,
+        intentId: r.intent_id,
+        agentId: r.agent_id,
+        status: r.status as ProposalStatus,
+        createdAt: r.created_at,
+        updatedAt: r.updated_at,
+        reason: r.reason,
+        landingId: r.landing_id,
+        paths: strings(r.paths),
+      }));
+    const decisions = list<{ id: string; kind: string; subject: string; layer: string; p: number; action: string; at: number }>(
+      "SELECT id, kind, subject, layer, p, action, at FROM decisions ORDER BY at LIMIT ?",
+      RECON_ROWS * 2,
+    )
+      .filter((r) => !vaccine.has(r.subject))
+      .map((r) => ({ id: r.id, kind: r.kind as Decision["kind"], subject: r.subject, layer: r.layer as DecisionLayer, p: r.p, action: r.action, at: r.at }));
+    const outcomes = list<{ proposal_id: string; layer: string; action: string; at: number; human: string | null; human_at: number | null }>(
+      "SELECT proposal_id, layer, action, at, human, human_at FROM decide_outcomes WHERE vaccine = 0",
+    ).map((r) => ({ proposalId: r.proposal_id, layer: r.layer, action: r.action, at: r.at, human: r.human, humanAt: r.human_at }));
+    const landings = list<{ received_at: number; data: string }>("SELECT received_at, data FROM landings ORDER BY received_at").flatMap((r) => {
+      const l = parseJson<Landing | null>(r.data, null);
+      if (!l) return [];
+      return [{ id: l.id, at: r.received_at, trunkSha: l.trunkSha ?? "", proposalIds: l.proposalIds ?? [], intentIds: l.intentIds ?? [], paths: l.paths ?? [] }];
+    });
+    const revisions = list<RevisionRow>("SELECT * FROM intent_revisions ORDER BY at").map((r) => {
+      const v = toRevision(r);
+      const title = typeof v.after.title === "string" ? v.after.title : null;
+      return { intentId: v.intentId, revision: v.revision, at: v.at, by: v.by, reason: v.reason, changed: v.changed, title };
+    });
+    const directives = list<DirectiveRow>("SELECT * FROM directives WHERE kind = 'guidance' ORDER BY at LIMIT ?", RECON_ROWS).map((r) => ({
+      id: r.id,
+      agentId: r.agent_id,
+      intentId: r.intent_id,
+      message: r.message,
+      by: r.by,
+      at: r.at,
+      via: r.via === "push" || r.via === "inbox" ? (r.via as "push" | "inbox") : null,
+    }));
+    const withdrawnBy: Record<Id, string> = {};
+    for (const r of list<{ intent_id: string; by: string }>("SELECT intent_id, by FROM directives WHERE kind = 'withdrawal' AND intent_id IS NOT NULL")) withdrawnBy[r.intent_id] = r.by;
+    return { rules, intents, agents, proposals, decisions, outcomes, landings, revisions, directives, withdrawnBy };
   }
 
   /** WebSocket upgrade for /api/colonies/:id/live (hibernation API). */
@@ -1925,14 +2177,24 @@ export class ColonyDO extends DurableObject<Env> {
     colonyId: Id;
     at: number;
     metrics: Record<string, number>;
-    funnel: Record<DecisionLayer, number>;
+    funnel: Record<FunnelStage, number>;
     violations: { total: number; byRule: Record<Id, number> };
     series: ColonySeries;
+    convergence: Convergence;
   }> {
     const colony = this.requireColony();
     const now = Date.now();
     this.maybeReap(now);
-    return { colonyId: colony.id, at: now, metrics: this.currentMetrics(now), funnel: this.funnelCounts(), violations: this.violationTotals(), series: this.seriesReport(now) };
+    const violations = this.violationTotals();
+    return {
+      colonyId: colony.id,
+      at: now,
+      metrics: this.currentMetrics(now),
+      funnel: this.funnelCounts(),
+      violations,
+      series: this.seriesReport(now),
+      convergence: this.convergence(violations.total),
+    };
   }
 
   /**
@@ -2038,6 +2300,18 @@ export class ColonyDO extends DurableObject<Env> {
     this.pendingSeries.clear();
     if (this.metricsFlush !== null) clearTimeout(this.metricsFlush);
     this.metricsFlush = null;
+    // So do buffered record events, samples and funnel totals.
+    this.recorder.clear();
+    this.sampledMetrics.clear();
+    this.funnelSent.clear();
+    if (this.sampleTimer !== null) clearTimeout(this.sampleTimer);
+    if (this.funnelTimer !== null) clearTimeout(this.funnelTimer);
+    this.sampleTimer = this.funnelTimer = null;
+    this.lastSampleAt = 0;
+    this.recordedSinceTrim = 0;
+    this.reconCache = null;
+    // The decide engine's tables went with the storage; the next use creates them again.
+    this.decideEngine = null;
     await this.ctx.storage.deleteAlarm();
     await this.ctx.storage.deleteAll();
     this.colonyCache = null;
@@ -2109,6 +2383,7 @@ export class ColonyDO extends DurableObject<Env> {
     const full = now - this.lastFullMetricsAt >= METRICS_FULL_MS;
     if (full) this.lastFullMetricsAt = now;
     const changed = changedMetrics(this.currentMetrics(now, true), this.sentMetrics, full);
+    // Live only: the record samples these on its own (sampleMetrics), with or without a viewer.
     if (changed.length > 0) this.hub.push(changed.map((m): ColonyEvent => ({ t: "metric", at: now, name: m.name, value: m.value })));
     await this.ctx.storage.setAlarm(now + METRICS_TICK_MS);
   }
@@ -2148,10 +2423,11 @@ export class ColonyDO extends DurableObject<Env> {
     m["rules"] = this.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM rules").one().n;
     m["regions"] = this.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM regions").one().n;
     const funnel = this.funnelCounts();
+    m["funnel.proof"] = funnel.proof;
     m["funnel.reflex"] = funnel.reflex;
     m["funnel.llm"] = funnel.llm;
     m["funnel.human"] = funnel.human;
-    m["decisions"] = funnel.reflex + funnel.llm + funnel.human;
+    m["decisions"] = funnel.proof + funnel.reflex + funnel.llm + funnel.human;
     return stableMetrics(m);
   }
 
@@ -2289,7 +2565,7 @@ export class ColonyDO extends DurableObject<Env> {
     this.sql.exec("UPDATE agents SET state = 'working', intent_id = ?, workspace = ?, last_seen = ? WHERE id = ?", intent.id, JSON.stringify(lease), now, agentId);
     this.lastRefresh.set(agentId, claimedAt);
     this.waits.done(agentId);
-    this.hub.push([
+    this.publish([
       { t: "intent", at: now, intentId: intent.id, status: "claimed", title: intent.title, footprint: intent.footprint },
       { t: "agent", at: now, agentId, kind, state: "working", intentId: intent.id, paths: intent.footprint },
     ]);
@@ -2574,6 +2850,8 @@ export class ColonyDO extends DurableObject<Env> {
   private transition(p: Proposal, prev: ProposalStatus, now: number, fx: Effects): void {
     if (p.status === prev) return;
     if (PUSHED_STATES.has(p.status)) (fx.outcomes ??= []).push(p);
+    // The decide arc settled it (or a person will): the funnel moves.
+    if (prev === "checking" || p.status === "escalated") this.scheduleFunnel();
     const row = this.proposalRow(p.id);
     const region = row?.region ?? ".";
     const priority = row?.priority ?? 1;
@@ -2666,7 +2944,7 @@ export class ColonyDO extends DurableObject<Env> {
   }
 
   private async flushEffects(fx: Effects): Promise<void> {
-    if (fx.events.length > 0) this.hub.push(fx.events);
+    if (fx.events.length > 0) this.publish(fx.events);
     const jobs: Array<Promise<unknown>> = [this.applyField(fx.batch)];
     for (const [region, ids] of fx.dequeue) {
       jobs.push(
@@ -2839,7 +3117,7 @@ export class ColonyDO extends DurableObject<Env> {
     }
     if (out.length > 0) {
       this.bump("intents", out.length, now);
-      this.hub.push(events);
+      this.publish(events);
       try {
         await this.applyField(batch);
       } finally {
@@ -3001,7 +3279,7 @@ export class ColonyDO extends DurableObject<Env> {
 
   private setAgentState(agentId: Id, state: AgentState, now: number): void {
     const row = this.sql.exec<{ kind: string; state: string }>("UPDATE agents SET state = ? WHERE id = ? AND state != ? RETURNING kind, state", state, agentId, state).toArray()[0];
-    if (row) this.hub.push({ t: "agent", at: now, agentId, kind: row.kind as AgentKind, state });
+    if (row) this.publish({ t: "agent", at: now, agentId, kind: row.kind as AgentKind, state });
   }
 
   private countIntents(status: IntentStatus): number {
@@ -3117,12 +3395,40 @@ export class ColonyDO extends DurableObject<Env> {
     return { t: "violations", at: now, ...totals };
   }
 
-  private funnelCounts(): Record<DecisionLayer, number> {
-    const out: Record<DecisionLayer, number> = { reflex: 0, llm: 0, human: 0 };
-    for (const r of this.sql.exec<{ layer: string; n: number }>("SELECT layer, n FROM funnel")) {
-      if (r.layer === "reflex" || r.layer === "llm" || r.layer === "human") out[r.layer] = r.n;
+  /**
+   * The funnel: proposals settled per stage, each counted once at the stage that settled it. A
+   * deterministic proof that decided alone counts as `proof`; anything escalated counts at `human`
+   * (only a person settles it); vaccines are left out (the vaccination meter reports them).
+   */
+  private funnelCounts(): Record<FunnelStage, number> {
+    const out: Record<FunnelStage, number> = { proof: 0, reflex: 0, llm: 0, human: 0 };
+    this.decider(); // creates the decide tables on first use
+    for (const r of this.sql.exec<{ stage: string; n: number }>(
+      `SELECT CASE WHEN human IS NOT NULL OR action = 'escalate' OR layer = 'human' THEN 'human'
+                   WHEN layer = 'deterministic' THEN 'proof' ELSE layer END AS stage, COUNT(*) AS n
+         FROM decide_outcomes WHERE vaccine = 0 GROUP BY stage`,
+    )) {
+      if (r.stage === "proof" || r.stage === "reflex" || r.stage === "llm" || r.stage === "human") out[r.stage] += r.n;
     }
     return out;
+  }
+
+  /**
+   * Violations since the latest rule change (a rule added or retracted): open right after it, fixed
+   * since (landed fixes of rules still in force), and when the count reached zero.
+   */
+  private convergence(total: number): Convergence {
+    const change = this.sql.exec<{ at: number | null }>("SELECT MAX(MAX(created_at, COALESCE(retracted_at, 0))) AS at FROM rules").one().at;
+    if (change === null || !Number.isFinite(change)) return { since: null, initial: total, fixed: 0, convergedAt: null };
+    const row = this.sql
+      .exec<{ fixed: number; last: number | null }>(
+        `SELECT COALESCE(SUM(i.violations), 0) AS fixed, MAX(i.updated_at) AS last FROM intents i JOIN rules r ON r.id = i.rule_id
+          WHERE i.status = 'landed' AND i.violations > 0 AND i.updated_at >= ? AND r.retracted_at IS NULL AND i.created_by != 'vaccine'`,
+        change,
+      )
+      .one();
+    const fixed = Math.max(0, row.fixed);
+    return { since: change, initial: total + fixed, fixed, convergedAt: total === 0 && fixed > 0 ? row.last : null };
   }
 
   private storeDecision(d: Decision, now: number): void {
@@ -3138,11 +3444,9 @@ export class ColonyDO extends DurableObject<Env> {
       d.at,
       d.escalatedFrom ?? null,
     );
+    // Decisions per layer (a proposal can take several); the funnel counts proposals settled (funnelCounts).
     this.sql.exec("INSERT INTO funnel (layer, n) VALUES (?, 1) ON CONFLICT(layer) DO UPDATE SET n = n + 1", d.layer);
-    this.hub.push([
-      { t: "decision", at: now, decisionId: d.id, kind: d.kind, layer: d.layer, p: d.p, action: d.action, subject: d.subject },
-      { t: "metric", at: now, name: `funnel.${d.layer}`, value: this.funnelCounts()[d.layer] },
-    ]);
+    this.publish({ t: "decision", at: now, decisionId: d.id, kind: d.kind, layer: d.layer, p: d.p, action: d.action, subject: d.subject });
   }
 
   private trunkStub() {

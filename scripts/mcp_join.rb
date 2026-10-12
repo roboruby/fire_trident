@@ -11,7 +11,7 @@
 #   5. check the outcome from the colony's side: the proposal, its landing and the lineage of the changed file
 #
 # Usage:
-#   ruby scripts/mcp_join.rb --url https://m1-firetrident.mattsolt.workers.dev --colony m1-demo --setup [--swarm 1]
+#   ruby scripts/mcp_join.rb --url https://<your deployment> --colony m1-demo --setup [--swarm 1]
 #   ruby scripts/mcp_join.rb --url https://firetrident.mattsolt.workers.dev --colony my-colony
 #
 # Options: --repo URL (with --setup; default sindresorhus/is-plain-obj), --model ID (default claude-sonnet-5-5),
@@ -78,7 +78,7 @@ BASE = opts[:url]
 T0 = Time.now
 
 def redact(text)
-  out = text.to_s.gsub(/art_v\d+_\S+/, "<redacted>")
+  out = text.to_s.gsub(/art_v\d+_[A-Za-z0-9._~+\/=-]+/, "<redacted>")
   SECRETS.each { |s| out = out.gsub(s, "<redacted>") }
   out
 end

@@ -30,7 +30,7 @@
         "name": "ppc-1",
         "description": "fork of work-1",
         "defaultBranch": "main",
-        "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/ppc-1.git",
+        "remote": "https://ACCOUNT_ID.artifacts.cloudflare.net/git/ft-spike-a/ppc-1.git",
         "token": "<redacted>"
       },
       "ops": 4,
@@ -57,7 +57,7 @@
         "name": "ppc-2",
         "description": "fork of work-1",
         "defaultBranch": "main",
-        "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/ppc-2.git",
+        "remote": "https://ACCOUNT_ID.artifacts.cloudflare.net/git/ft-spike-a/ppc-2.git",
         "token": "<redacted>"
       },
       "ops": 4,
@@ -84,7 +84,7 @@
         "name": "ppc-3",
         "description": "fork of work-1",
         "defaultBranch": "main",
-        "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/ppc-3.git",
+        "remote": "https://ACCOUNT_ID.artifacts.cloudflare.net/git/ft-spike-a/ppc-3.git",
         "token": "<redacted>"
       },
       "ops": 4,
@@ -111,7 +111,7 @@
         "name": "ppc-4",
         "description": "fork of work-1",
         "defaultBranch": "main",
-        "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/ppc-4.git",
+        "remote": "https://ACCOUNT_ID.artifacts.cloudflare.net/git/ft-spike-a/ppc-4.git",
         "token": "<redacted>"
       },
       "ops": 4,

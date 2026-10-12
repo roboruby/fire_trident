@@ -9,7 +9,7 @@
 //   node video/render.mjs --samples          the cold open in several voices (voices/<speaker>.mp3)
 //   node video/render.mjs --audio-only       narration, subtitles and timings, no picture
 //
-// Media goes to $FT_VIDEO_OUT (default ~/Desktop/save/firetrident/video), never into the repo.
+// Media goes to $FT_VIDEO_OUT (default ~/.firetrident/video), never into the repo.
 import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -27,7 +27,7 @@ import { FPS, OPENING, PACE, SCENES, VOICE } from "./scenes.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, "..");
-const OUT = resolve(process.env.FT_VIDEO_OUT ?? join(homedir(), "Desktop/save/firetrident/video"));
+const OUT = resolve(process.env.FT_VIDEO_OUT ?? join(homedir(), ".firetrident/video"));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const hash = (s) => createHash("sha256").update(s).digest("hex");
 const log = (...a) => console.log(...a);

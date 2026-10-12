@@ -840,3 +840,140 @@ a.lc:hover .lc-open {
     animation: none;
   }
 }
+
+/* results strip */
+
+.rs-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.rs {
+  display: flex;
+  flex-direction: column;
+  min-height: 260px;
+  padding: 22px 22px 18px;
+  border: 1px solid var(--line-2);
+  border-radius: 14px;
+  background: linear-gradient(180deg, #0d131d, #0a0e15);
+}
+
+.rs-skeleton {
+  background: linear-gradient(90deg, #0b1018, #111823, #0b1018);
+  background-size: 200% 100%;
+  animation: shimmer 1.6s linear infinite;
+}
+
+.rs-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+}
+
+.rs-name {
+  font-size: 15px;
+  font-weight: 650;
+  color: var(--text);
+}
+
+.rs-src {
+  font-size: 12px;
+  color: var(--text-3);
+  overflow-wrap: anywhere;
+}
+
+.rs-headline {
+  margin-top: 18px;
+  font-size: clamp(34px, 3.2vw, 46px);
+  font-weight: 760;
+  line-height: 1.02;
+  letter-spacing: -0.035em;
+  font-variant-numeric: tabular-nums;
+  color: var(--trail);
+  text-shadow: 0 0 26px rgba(31, 224, 142, 0.28);
+  overflow-wrap: anywhere;
+}
+
+.rs-spec .rs-headline {
+  color: var(--accent-2);
+  text-shadow: 0 0 26px rgba(243, 128, 32, 0.25);
+}
+
+.rs-mcp .rs-headline {
+  color: #c9b8ff;
+  text-shadow: 0 0 26px rgba(167, 139, 250, 0.3);
+  font-family: var(--mono);
+  font-size: clamp(26px, 2.4vw, 34px);
+  letter-spacing: -0.02em;
+}
+
+.rs-lede {
+  margin-top: 8px;
+  font-size: 15px;
+  line-height: 1.45;
+  color: var(--text-2);
+}
+
+.rs-details {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+  color: var(--text-3);
+}
+
+.rs-details li::before {
+  content: "·";
+  margin-right: 7px;
+  color: var(--text-4);
+}
+
+.rs-links {
+  display: flex;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 18px;
+}
+
+.rs-links a {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  font-size: 13.5px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.landing .rs-replay {
+  border-color: rgba(167, 139, 250, 0.5);
+  background: rgba(167, 139, 250, 0.14);
+  color: #e1d8ff;
+}
+
+.landing .rs-replay:hover {
+  background: rgba(167, 139, 250, 0.24);
+}
+
+.rs-open:hover {
+  border-color: #3a475e;
+  background: #141c29;
+}
+
+@media (max-width: 1080px) {
+  .rs-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .rs {
+    min-height: 0;
+  }
+}

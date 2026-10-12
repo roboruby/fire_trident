@@ -151,8 +151,8 @@ export function ReviewTab({ store, backend, director = false }: { store: ColonyS
   };
 
   const f = store.funnel;
-  const total = f.reflex + f.llm + f.human;
-  const handled = total ? (f.reflex + f.llm) / total : 1;
+  const total = f.proof + f.reflex + f.llm + f.human;
+  const handled = total ? (f.proof + f.reflex + f.llm) / total : 1;
   const vaccine = store.vaccination();
 
   return (
@@ -163,7 +163,9 @@ export function ReviewTab({ store, backend, director = false }: { store: ColonyS
         </div>
         <div className="review-sub">
           {total
-            ? `Reflex models and LLMs settled ${fmtPct(handled, 1)} of ${fmtInt(total)} decisions. Only the ones they were unsure about reach you.`
+            ? store.settledFunnel
+              ? `Proof, reflex models and LLMs settled ${fmtPct(handled, 1)} of ${fmtInt(total)} proposals. Only the ones they were unsure about reach you.`
+              : `Reflex models and LLMs settled ${fmtPct(handled, 1)} of ${fmtInt(total)} decisions. Only the ones they were unsure about reach you.`
             : "Reflex models and LLMs settle every confident decision. Only the ones they are unsure about reach you."}
         </div>
         {vaccine ? (

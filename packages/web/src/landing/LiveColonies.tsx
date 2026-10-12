@@ -67,7 +67,7 @@ function Card({ c }: { c: ColonyCard }) {
     return undefined;
   };
   const violations = c.violations ?? k("violations") ?? 0;
-  const funnel = (k("funnelreflex") ?? 0) + (k("funnelllm") ?? 0) + (k("funnelhuman") ?? 0);
+  const funnel = (k("funnelproof") ?? 0) + (k("funnelreflex") ?? 0) + (k("funnelllm") ?? 0) + (k("funnelhuman") ?? 0);
   return (
     <a className={`lc lc-${status}`} href={colonyHref(c.id)}>
       <div className="lc-head">

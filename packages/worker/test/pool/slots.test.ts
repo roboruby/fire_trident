@@ -32,9 +32,12 @@ class FakeTokens implements TokenOps {
   minted: string[] = [];
   revoked: string[] = [];
   failRevoke = false;
+  /** Repositories that no longer exist: minting a token for one fails with NOT_FOUND. */
+  gone = new Set<string>();
   private seq = 0;
   constructor(private readonly clock: () => number) {}
   async mint(slot: { name: string }): Promise<SlotToken> {
+    if (this.gone.has(slot.name)) throw Object.assign(new Error(`repository ${slot.name} not found`), { code: "NOT_FOUND" });
     const id = `tok_${++this.seq}`;
     this.minted.push(`${slot.name}:${id}`);
     return { id, token: `secret-${id}`, expiresAt: this.clock() + 2 * 3600_000 };
@@ -134,6 +137,20 @@ describe("SlotBook", () => {
     const b = await lease(p.book, "b");
     expect(b.minted).toBe(true);
     expect(p.tokens.revoked).toEqual(["tok_1"]);
+  });
+
+  it("retires a slot whose repository vanished instead of retrying its chore forever", async () => {
+    const p = pool(2);
+    p.tokens.gone.add("ws-0");
+    expect(await p.book.maintain(10)).toBe(1);
+    const states = p.sql.exec<{ name: string; state: string; error: string | null }>(`SELECT name, state, error FROM ft_pool_ws ORDER BY n`).toArray();
+    expect(states.map((s) => [s.name, s.state])).toEqual([
+      ["ws-0", "failed"],
+      ["ws-1", "ready"],
+    ]);
+    expect(states[0]?.error).toMatch(/workspace vanished/);
+    expect(p.book.readiness().chores).toBe(0);
+    expect((await lease(p.book, "a")).name).toBe("ws-1");
   });
 
   it("a lease during a background clean keeps its own token", async () => {

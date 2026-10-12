@@ -7,7 +7,7 @@
     "name": "base",
     "description": null,
     "defaultBranch": "main",
-    "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/base.git",
+    "remote": "https://ACCOUNT_ID.artifacts.cloudflare.net/git/ft-spike-a/base.git",
     "token": "<redacted>"
   },
   "ready": {

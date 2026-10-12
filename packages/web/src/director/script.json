@@ -1,5 +1,5 @@
 {
-  "$comment": "Director script for ?director=1 (start at a scene with &scene=<n or id>). Keys: → or PageDown next, ← or PageUp previous, space pause, z zoom, c captions, Home first scene. Scene fields: id, caption (required); kicker, sub; title (full-screen card); code (caption in the code font); focus (a directory or file path, a list tried in order, or @hot / @sigma / @landing / @selected; null or absent shows the whole map); highlight (paths or directories to outline, or @landing / @needs; more than 40 files dims the rest); emphasize (hero, stats, sigma, vaccine, funnel, trunk); requires (vaccine, landing, review, sigma: the scene is skipped while the colony has none); tab (events, intents, review, why: opens the side panel); select (a file for the Why tab, or @landing / @hot); duration (seconds, auto-advance). Captions fill {colony} {files} {violations} {fixed} {agents} {working} {landings} {perMin} {decisions} {reflex} {human} {review} {sigma} {recall}.",
+  "$comment": "Director script for ?director=1 (start at a scene with &scene=<n or id>; add &replay=1 to film a finished run, with &speed=, &t= and &delay=). Keys: → or PageDown next, ← or PageUp previous, space pause (a replay pauses too), z zoom, c captions, Home first scene. Scene fields: id, caption (required); kicker, sub; title (full-screen card); code (caption in the code font); focus (a directory or file path, a list tried in order, or @hot / @sigma / @landing / @selected; null or absent shows the whole map); highlight (paths or directories to outline, or @landing / @needs; more than 40 files dims the rest); emphasize (hero, stats, sigma, vaccine, funnel, trunk); requires (vaccine, landing, review, sigma, direction, mcp: the scene is skipped while the colony has none); tab (events, intents, review, why: opens the side panel); select (a file for the Why tab, or @landing / @hot / @mcp); duration (seconds, auto-advance). Captions fill {colony} {files} {violations} {fixed} {fixedLine} {fixedIn} {agents} {working} {landings} {perMin} {decisions} {proof} {proofPct} {reflex} {llm} {human} {review} {sigma} {recall} {amended} {withdrawn} {directives} {direction} {mcpAgent} {mcpFile} {mcpLanded}.",
   "scenes": [
     {
       "id": "open",
@@ -20,7 +20,9 @@
       "kicker": "Shape",
       "caption": "One person declares one architecture rule.",
       "sub": "Every violation becomes a need in the field: {violations} to fix, and no one assigns them.",
-      "highlight": ["@needs"],
+      "highlight": [
+        "@needs"
+      ],
       "emphasize": "hero",
       "focus": null
     },
@@ -29,15 +31,19 @@
       "kicker": "Sense",
       "caption": "Agents read the field, not each other.",
       "sub": "Needs attract, claims repel, trails fade. {working} agents are working right now.",
-      "focus": ["@hot"]
+      "focus": [
+        "@hot"
+      ]
     },
     {
       "id": "decide",
       "kicker": "Decide",
-      "caption": "Each call goes to the cheapest layer that is sure.",
-      "sub": "Clef decision models first, then an LLM, then a person. {reflex} of {decisions} decisions stayed at the reflex layer.",
+      "caption": "Each change goes to the cheapest layer that is sure.",
+      "sub": "{proof} of {decisions} settled by proof, without a model. What proof cannot settle goes to Clef decision models, then an LLM, then a person.",
       "emphasize": "funnel",
-      "focus": ["@hot"]
+      "focus": [
+        "@hot"
+      ]
     },
     {
       "id": "land",
@@ -50,10 +56,21 @@
     {
       "id": "converge",
       "kicker": "Converge",
-      "caption": "{violations} violations left. {fixed} fixed.",
+      "caption": "{violations} violations left. {fixedLine}.",
       "sub": "No queue, no scheduler, no lock. The colony repairs toward the shape it was given.",
       "emphasize": "hero",
       "focus": null
+    },
+    {
+      "id": "direction",
+      "kicker": "Steer",
+      "caption": "People change course mid-flight.",
+      "sub": "{direction}. Needs move, agents re-orient, and work built for the old direction never lands.",
+      "tab": "events",
+      "requires": "direction",
+      "focus": [
+        "@hot"
+      ]
     },
     {
       "id": "review",
@@ -61,7 +78,9 @@
       "caption": "Only uncertainty reaches a person.",
       "sub": "A rejection becomes an antibody, and the next similar change is caught without anyone.",
       "tab": "review",
-      "focus": ["@hot"]
+      "focus": [
+        "@hot"
+      ]
     },
     {
       "id": "vaccine",
@@ -71,7 +90,9 @@
       "tab": "review",
       "emphasize": "vaccine",
       "requires": "vaccine",
-      "focus": ["@hot"]
+      "focus": [
+        "@hot"
+      ]
     },
     {
       "id": "why",
@@ -80,8 +101,27 @@
       "sub": "Intent, rule and approver, agent and model, decisions, checks, and what was not verified, in git notes on Artifacts.",
       "tab": "why",
       "requires": "landing",
-      "select": ["@landing", "@hot"],
-      "focus": ["@selected"]
+      "select": [
+        "@landing",
+        "@hot"
+      ],
+      "focus": [
+        "@selected"
+      ]
+    },
+    {
+      "id": "mcp",
+      "kicker": "Bring your own agent",
+      "caption": "Any agent can join over MCP.",
+      "sub": "{mcpAgent} joined from outside, took an intent, and landed {mcpFile} on the same terms as the colony's own agents.",
+      "tab": "why",
+      "requires": "mcp",
+      "select": [
+        "@mcp"
+      ],
+      "focus": [
+        "@selected"
+      ]
     },
     {
       "id": "sigma",
@@ -89,7 +129,10 @@
       "caption": "When rebases cascade, sigma rises past 1.",
       "sub": "The governor slows the lanes and closes admission until the colony calms. Sigma now: {sigma}.",
       "emphasize": "sigma",
-      "focus": ["@sigma", "@hot"]
+      "focus": [
+        "@sigma",
+        "@hot"
+      ]
     },
     {
       "id": "close",

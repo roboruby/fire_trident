@@ -1981,7 +1981,7 @@
     "kind": "inhibition-live",
     "label": "MEASURED",
     "generatedAt": "2026-10-12T08:44:33.031Z",
-    "url": "https://g5-firetrident.mattsolt.workers.dev",
+    "url": "https://<preview>.workers.dev",
     "method": "X writes [shared, a] (priority 5), Y writes [shared, b] (priority 4); agent A takes first (X with p = 25/26) and B targets the other one. rounds: fresh A and B per round, B takes once, both stop. landing: B tries before and while A's proposal is queued, then after it lands (a real trunk commit). decay: A never heartbeats; B retries every poll seconds until it is assigned.",
     "expected": {
       "withoutInhibition": "B takes Y with p = 3^2 / (3^2 + 1) = 0.9 per try (soft repulsion only)",

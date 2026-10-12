@@ -1,4 +1,4 @@
-import type { DecisionLayer, MarkKind } from "@fire_trident/core";
+import type { DecisionLayer, FunnelStage, MarkKind } from "@fire_trident/core";
 
 /**
  * Decay time constants (ms), mirrored from TAU_MS in packages/core/src/field.ts.
@@ -39,6 +39,12 @@ export const LAYER_COLOR: Readonly<Record<DecisionLayer, string>> = {
   reflex: "#5fd0ff",
   llm: "#a78bfa",
   human: "#f38020",
+};
+
+/** Colors of the funnel's stages: the deterministic proof (no model), then the decision layers. */
+export const STAGE_COLOR: Readonly<Record<FunnelStage, string>> = {
+  proof: "#e6edf7",
+  ...LAYER_COLOR,
 };
 
 /** Brand accent. Used sparingly: the mark, the trunk head, sparks, the active tab. */

@@ -69,7 +69,7 @@ The only writer of trunk. Holds a `@cloudflare/computer` Workspace with trunk cl
 - `landings(limit?: number): Promise<Landing[]>`
 
 ### PoolDO (name: colonyId)
-Keeps a warm pool of workspace forks of trunk across the `ft-ws-*` namespaces, grown by fork trees (fork from existing forks so forks run in parallel across sources), refreshed to the current trunk on lease, and recycled after landing.
+Keeps a warm pool of workspace forks of trunk across the `ft-ws-*` namespaces. Each namespace holds a seed repo that mirrors trunk `main`, and workspaces fork from their namespace's seed (forks cannot cross namespaces, and forking a repo just pushed fails about one time in five: spike/RESULTS.md facts 2 and 3). Workspaces are refreshed to the current trunk on lease and recycled after landing.
 - `init(p: { colonyId: Id; trunk: RepoRef; target: number }): Promise<void>`
 - `lease(agentId: Id, trunkSha: Sha): Promise<WorkspaceLease | null>`
 - `release(agentId: Id): Promise<void>`
@@ -165,16 +165,35 @@ Measured on a preview (`packages/bench/results/2026-10-12-scale/`) with syntheti
 |---|---|---|---|
 | 1,000 | 2,924 | 13.0 / 17.0 s | 0 |
 | 2,000 | 2,714 | 14.8 / 19.5 s | 0 |
-| 5,000 | 2,778 | 12.5 / 17.4 s | 0 (78 of 50,368 bench-client connect errors during the ramp) |
+| 5,000 | 2,778 | 12.5 / 17.4 s | 0 from load; 78 of 50,368 calls failed in the first 33 s: the load generator's own DNS and connection errors, and one reset when the preview's code was updated (`live-n5000.json`) |
 
 Before these changes, 1,000 agents reached 515 landings/min and the run stopped at 60 s with a 38% error rate. The next limit is TrunkDO, the single writer: every 3.4 to 3.9 s commit cycle hits the 200-proposal cap, so throughput no longer grows with agents, and about 6 s of queueing dominates time to land.
+
+## Replay
+
+ColonyDO records every event it publishes (`publish` in ColonyDO, `EventRecorder` in `colony/events.ts`) into a capped `events` table: a sequence number, a time, the event type and the event, the newest 100,000 kept. Field marks are not recorded (the replay derives the field from intents, claims and landings); metrics are sampled every 3 s while events flow, plus one trailing sample. Recording happens where events are published, so it does not depend on who is watching or how live delivery is batched; regions therefore keep emitting while a colony works, even with no viewer.
+
+`GET /api/colonies/:id/events?after=<seq>&limit=<n>` pages the record. A colony that ran before recording existed answers with a timeline rebuilt from what it stores (`colony/replay.ts`: rules, intents with their times, agents, proposals and their decide outcomes, decisions, landings with their files, revisions and directives), labeled `reconstructed`; claim times and the deaths of reaped agents are estimated. The web app's `/c/:id?replay=1` feeds the record through the same reducer as live events, at 1× to 16× with a scrubber; director mode (`?director=1`) works on top of it.
 
 ## New projects (`ft new --spec`)
 
 A spec (see `demo/new-project-spec.md`) declares the project's intents, the files each one builds on, the spec sections every agent receives, an optional model per intent, the architecture rules, and acceptance tests. `ft new` creates a colony with an empty trunk, adds the rules, and posts the intents in dependency order (parents and priorities make foundations land first). An in-platform agent waits until the files its intent builds on have landed, reads them, and writes files that must parse, keep every rule, use only TypeScript that Node can strip, and import only files and names that exist; each file gets up to three attempts with the failure as feedback. `demo/run_new_project.rb` runs the flow and verifies the result from a plain git clone.
 
+## Plain-git access
+
+A colony's trunk can be read with stock git and no account: `git clone https://<host>/git/<colony>.git`, then `git fetch origin refs/notes/firetrident:refs/notes/firetrident` for the lineage notes (`api/git-proxy.ts`, mounted at `/git/*`).
+
+- Only `GET /git/<colony>.git/info/refs?service=git-upload-pack` and `POST /git/<colony>.git/git-upload-pack` are forwarded, to `<colony>--trunk` in `ft-trunk`. `git-receive-pack` (push) gets 403 with a plain-text reason that git prints as `remote: ...`; every other path is 404.
+- Only colonies listed in `FT_PUBLIC_GIT` (comma-separated) are served; empty or unset turns the proxy off. The name in the path must be a colony slug (lowercase letters, digits and single hyphens, at most 48 characters), so no other repo is reachable.
+- Read-only by construction: the Worker mints a read token for the trunk with `mintToken` (30 minutes, replaced 5 minutes before expiry, cached per isolate) and adds it upstream. Clients never see it. When the remote refuses the cached token, the ref advertisement retries once with a fresh one; a 401 is never passed on, because git would ask for a password.
+- Protocol v2 passes through (`Git-Protocol`), and v0 still works. Bodies stream both ways with their content types. Gzip request bodies (git compresses requests over 1 KB) are decoded in the Worker, and a request body is capped at 4 MiB both as sent and after decoding (413).
+- `/git/*` is in `run_worker_first`: without it, static assets answer GET requests under `/git/` with the UI.
+
+Measured on a preview (2026-10-12) with a Hono trunk imported at depth 200 (583 files, 2.4 MB pack) and one landing: clone 1.9 s median over 5 runs; clone, notes fetch and `git log --notes=firetrident -3` together 2.9 s median.
+
 ## Configuration and deployment
 
 - Tuning variables: `FT_COCHANGE_WEIGHT` (co-change repulsion weight, 5 in production) and `FT_LATERAL_INHIBITION` (inhibition threshold as a fraction of a fresh claim, or `off`).
-- Secrets: `FT_ADMIN_TOKEN` (mutating API routes), `FT_MCP_TOKEN` (`/mcp` and `/sse`), `ANTHROPIC_API_KEY` (optional Claude agents).
+- `FT_PUBLIC_GIT`: colonies served read-only over plain git (see "Plain-git access"); production lists `hono,shortlinks,byo-demo`. A preview sets its own with `npx wrangler preview --name <x> --var FT_PUBLIC_GIT:<colony>`.
+- Secrets: `FT_ADMIN_TOKEN` (mutating API routes), `FT_MCP_TOKEN` (`/mcp` and `/sse`), `ANTHROPIC_API_KEY` (optional Claude agents). Without its token, the API refuses writes and `/mcp` refuses connections (fail closed); `FT_OPEN_WRITES=1` lifts that for local development only and is never set on a deployment. A preview gets its own with `npx wrangler preview secret put FT_ADMIN_TOKEN --name <x>`.
 - `wrangler.jsonc` has a `previews` block that mirrors every production binding, so `npx wrangler preview --name <x>` gives an isolated deployment with its own Durable Objects. Previews share the Artifacts namespaces with production, so a preview colony must not reuse a production colony's name.

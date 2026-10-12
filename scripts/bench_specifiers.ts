@@ -13,7 +13,7 @@
  * modules, so the prompt measured is the prompt shipped. Node 24 runs it directly.
  *
  * Usage:
- *   node scripts/bench_specifiers.ts --repo ~/Desktop/save/firetrident/demo-candidates/hono \
+ *   node scripts/bench_specifiers.ts --repo /path/to/a/hono/clone \
  *     --models @cf/moonshotai/kimi-k2.7-code,@cf/zai-org/glm-5.3-flash --n 20 [--seed 7] \
  *     [--concurrency 5] [--out results.jsonl] [--dry]
  *
@@ -257,7 +257,7 @@ async function main(): Promise<void> {
 
 if (import.meta.main) {
   main().catch((e) => {
-    console.error(String((e as Error).message ?? e).replace(/art_v\d+_\S+/g, "<redacted>"));
+    console.error(String((e as Error).message ?? e).replace(/art_v\d+_[A-Za-z0-9._~+/=-]+/g, "<redacted>"));
     process.exitCode = 1;
   });
 }

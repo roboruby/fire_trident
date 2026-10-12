@@ -19,7 +19,7 @@
         "name": "seq-1",
         "description": "fork of base",
         "defaultBranch": "main",
-        "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/seq-1.git",
+        "remote": "https://ACCOUNT_ID.artifacts.cloudflare.net/git/ft-spike-a/seq-1.git",
         "token": "<redacted>"
       },
       "ops": 4,
@@ -46,7 +46,7 @@
         "name": "seq-2",
         "description": "fork of base",
         "defaultBranch": "main",
-        "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/seq-2.git",
+        "remote": "https://ACCOUNT_ID.artifacts.cloudflare.net/git/ft-spike-a/seq-2.git",
         "token": "<redacted>"
       },
       "ops": 4,
@@ -73,7 +73,7 @@
         "name": "seq-3",
         "description": "fork of base",
         "defaultBranch": "main",
-        "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/seq-3.git",
+        "remote": "https://ACCOUNT_ID.artifacts.cloudflare.net/git/ft-spike-a/seq-3.git",
         "token": "<redacted>"
       },
       "ops": 4,
@@ -100,7 +100,7 @@
         "name": "seq-4",
         "description": "fork of base",
         "defaultBranch": "main",
-        "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/seq-4.git",
+        "remote": "https://ACCOUNT_ID.artifacts.cloudflare.net/git/ft-spike-a/seq-4.git",
         "token": "<redacted>"
       },
       "ops": 4,
@@ -127,7 +127,7 @@
         "name": "seq-5",
         "description": "fork of base",
         "defaultBranch": "main",
-        "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/seq-5.git",
+        "remote": "https://ACCOUNT_ID.artifacts.cloudflare.net/git/ft-spike-a/seq-5.git",
         "token": "<redacted>"
       },
       "ops": 4,
@@ -154,7 +154,7 @@
         "name": "seq-6",
         "description": "fork of base",
         "defaultBranch": "main",
-        "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/seq-6.git",
+        "remote": "https://ACCOUNT_ID.artifacts.cloudflare.net/git/ft-spike-a/seq-6.git",
         "token": "<redacted>"
       },
       "ops": 4,
@@ -181,7 +181,7 @@
         "name": "seq-7",
         "description": "fork of base",
         "defaultBranch": "main",
-        "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/seq-7.git",
+        "remote": "https://ACCOUNT_ID.artifacts.cloudflare.net/git/ft-spike-a/seq-7.git",
         "token": "<redacted>"
       },
       "ops": 4,
@@ -208,7 +208,7 @@
         "name": "seq-8",
         "description": "fork of base",
         "defaultBranch": "main",
-        "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/seq-8.git",
+        "remote": "https://ACCOUNT_ID.artifacts.cloudflare.net/git/ft-spike-a/seq-8.git",
         "token": "<redacted>"
       },
       "ops": 4,

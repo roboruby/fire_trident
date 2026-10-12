@@ -52,7 +52,7 @@
       "lastPushAt": null,
       "source": "git:https://github.com/sindresorhus/is-plain-obj",
       "readOnly": false,
-      "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/base.git"
+      "remote": "https://ACCOUNT_ID.artifacts.cloudflare.net/git/ft-spike-a/base.git"
     },
     "errors": []
   },
@@ -376,7 +376,7 @@
           "readOnly": true,
           "status": "ready",
           "jurisdiction": "unrestricted",
-          "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/ro-1.git"
+          "remote": "https://ACCOUNT_ID.artifacts.cloudflare.net/git/ft-spike-a/ro-1.git"
         },
         {
           "id": "0sym7viepb4m38bo",
@@ -390,7 +390,7 @@
           "readOnly": false,
           "status": "ready",
           "jurisdiction": "unrestricted",
-          "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/race-1.git"
+          "remote": "https://ACCOUNT_ID.artifacts.cloudflare.net/git/ft-spike-a/race-1.git"
         }
       ],
       "total": 41,

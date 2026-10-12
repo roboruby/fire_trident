@@ -110,7 +110,7 @@ BASE, TOKEN = load_env
 T0 = Time.now
 
 def redact(text)
-  text.to_s.gsub(/art_v\d+_\S+/, "<redacted>").gsub(TOKEN, "<redacted>")
+  text.to_s.gsub(/art_v\d+_[A-Za-z0-9._~+\/=-]+/, "<redacted>").gsub(TOKEN, "<redacted>")
 end
 
 def say(line)

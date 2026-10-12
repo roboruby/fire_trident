@@ -64,12 +64,17 @@ export async function tokensEqual(a: string, b: string): Promise<boolean> {
   return diff === 0;
 }
 
-/** Mutating routes need `Authorization: Bearer <FT_ADMIN_TOKEN>` when that secret is set. */
+/**
+ * Mutating routes need `Authorization: Bearer <FT_ADMIN_TOKEN>`. Without that secret they refuse
+ * (fail closed), unless FT_OPEN_WRITES is "1", which is for local development only.
+ */
 export const requireAdmin: MiddlewareHandler<ApiEnv> = async (c, next) => {
   const expected = c.env.FT_ADMIN_TOKEN;
   if (expected) {
     const m = /^Bearer\s+(\S+)\s*$/i.exec(c.req.header("Authorization") ?? "");
     if (!m || !(await tokensEqual(m[1] ?? "", expected))) return json({ error: "unauthorized" }, 401, { "WWW-Authenticate": "Bearer" });
+  } else if (c.env.FT_OPEN_WRITES !== "1") {
+    return json({ error: "forbidden: writes need FT_ADMIN_TOKEN configured on the server" }, 403);
   }
   await next();
 };
@@ -147,6 +152,7 @@ async function requireColony(env: Env, colonyId: Id): Promise<void> {
  *   GET    /colonies/:id/live               WebSocket of ColonyEvent (JSON arrays)
  *   GET    /colonies/:id/field              FieldReading[] (all regions, or ?region=)
  *   GET    /colonies/:id/metrics            metrics, funnel, violations, per-minute series
+ *   GET    /colonies/:id/events             the event record for replays (?after=&limit=, paged; ?source=)
  *   POST   /colonies/:id/intents            declare an intent
  *   GET    /colonies/:id/intents/:iid       one intent with its revision history and directives
  *   PATCH  /colonies/:id/intents/:iid       amend an intent (revision + 1; stale work goes back)
@@ -225,6 +231,16 @@ export function createApi(deps: ApiDeps): Hono<ApiEnv> {
   });
 
   app.get("/colonies/:id/metrics", async (c) => json(await colonyStub(c.env, colonyParam(c)).metricsReport()));
+
+  // The event record for replays, oldest first: ?after=<seq>&limit=<n> (paged), ?source=recorded|reconstructed.
+  app.get("/colonies/:id/events", async (c) => {
+    const colonyId = colonyParam(c);
+    const int = (raw: string | undefined, fallback: number): number => (raw !== undefined && /^\d+$/.test(raw) ? Number(raw) : fallback);
+    const raw = c.req.query("source");
+    const source = raw === "recorded" || raw === "reconstructed" ? raw : "auto";
+    const page = await colonyStub(c.env, colonyId).eventsPage({ after: int(c.req.query("after"), 0), limit: int(c.req.query("limit"), 1_000), source });
+    return json(page);
+  });
 
   app.get("/colonies/:id/agents", async (c) => {
     const colonyId = colonyParam(c);

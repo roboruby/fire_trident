@@ -26,7 +26,7 @@
         "name": "work-1",
         "description": "fork of base",
         "defaultBranch": "main",
-        "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/work-1.git",
+        "remote": "https://ACCOUNT_ID.artifacts.cloudflare.net/git/ft-spike-a/work-1.git",
         "token": "<redacted>"
       },
       "ops": 4,
@@ -53,7 +53,7 @@
         "name": "trunk",
         "description": "fork of base",
         "defaultBranch": "main",
-        "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/trunk.git",
+        "remote": "https://ACCOUNT_ID.artifacts.cloudflare.net/git/ft-spike-a/trunk.git",
         "token": "<redacted>"
       },
       "ops": 4,
@@ -162,7 +162,7 @@
         "name": "pp-2",
         "description": "fork of work-1",
         "defaultBranch": "main",
-        "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/pp-2.git",
+        "remote": "https://ACCOUNT_ID.artifacts.cloudflare.net/git/ft-spike-a/pp-2.git",
         "token": "<redacted>"
       },
       "ops": 4,
@@ -189,7 +189,7 @@
         "name": "pp-3",
         "description": "fork of work-1",
         "defaultBranch": "main",
-        "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/pp-3.git",
+        "remote": "https://ACCOUNT_ID.artifacts.cloudflare.net/git/ft-spike-a/pp-3.git",
         "token": "<redacted>"
       },
       "ops": 4,
@@ -216,7 +216,7 @@
         "name": "pp-4",
         "description": "fork of work-1",
         "defaultBranch": "main",
-        "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/pp-4.git",
+        "remote": "https://ACCOUNT_ID.artifacts.cloudflare.net/git/ft-spike-a/pp-4.git",
         "token": "<redacted>"
       },
       "ops": 4,
@@ -309,7 +309,7 @@
       "lastPushAt": null,
       "source": "artifacts:ft-spike-a/base",
       "readOnly": false,
-      "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/trunk.git"
+      "remote": "https://ACCOUNT_ID.artifacts.cloudflare.net/git/ft-spike-a/trunk.git"
     },
     "log": [],
     "serverMs": 61,
@@ -336,7 +336,7 @@
         "name": "fork-allrefs",
         "description": "fork of trunk",
         "defaultBranch": "main",
-        "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/fork-allrefs.git",
+        "remote": "https://ACCOUNT_ID.artifacts.cloudflare.net/git/ft-spike-a/fork-allrefs.git",
         "token": "<redacted>"
       },
       "ops": 4,
@@ -363,7 +363,7 @@
         "name": "fork-defonly",
         "description": "fork of trunk",
         "defaultBranch": "main",
-        "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/fork-defonly.git",
+        "remote": "https://ACCOUNT_ID.artifacts.cloudflare.net/git/ft-spike-a/fork-defonly.git",
         "token": "<redacted>"
       },
       "ops": 4,

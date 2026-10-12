@@ -1,6 +1,6 @@
 # Demo repository candidates
 
-Which real public TypeScript repository the swarm remodels live in the video, and which rule it enforces. Researched 2026-10-12: 54 repos screened through the GitHub API, 18 shallow-cloned to `~/Desktop/save/firetrident/demo-candidates/` and analyzed read-only. No candidate's install, build, test, or other code was run. Suite times below are estimates from test counts and CI config, not measurements.
+Which real public TypeScript repository the swarm remodels live in the video, and which rule it enforces. Researched 2026-10-12: 54 repos screened through the GitHub API, 18 shallow-cloned outside the repository and analyzed read-only. No candidate's install, build, test, or other code was run. Suite times below are estimates from test counts and CI config, not measurements.
 
 Counting follows the checker's semantics: forbid-pattern counts one violation per matching line, forbid-import counts one per import specifier. Every pattern below was re-run with JavaScript `RegExp` semantics on the pinned commits.
 
@@ -210,6 +210,6 @@ Also screened and rejected on shape, size, or runner: unjs/unstorage, unjs/c12, 
 
 ## Reproduce
 
-Clones (shallow, `GIT_LFS_SKIP_SMUDGE=1`, hooks disabled) are in `~/Desktop/save/firetrident/demo-candidates/`. Pinned commits: hono `552ea024250093a48071b3ded9710de4c6e05f14`, OpenSpec `9111a7654d7800391459431fff4eaf66e33a3d2e`.
+Clones (shallow, `GIT_LFS_SKIP_SMUDGE=1`, hooks disabled) were kept outside the repository. Pinned commits: hono `552ea024250093a48071b3ded9710de4c6e05f14`, OpenSpec `9111a7654d7800391459431fff4eaf66e33a3d2e`.
 
 To re-count without the platform, run a short script that reads each file as text and applies `new RegExp(pattern).test(line)`. Do not install or run anything inside a clone. Some clones carry `.tool-versions` and package scripts, so keep the working directory outside them.

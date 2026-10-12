@@ -32,7 +32,7 @@ def git(dir, *args, token: nil)
   cmd += ["-c", "protocol.version=2"]
   cmd += args
   out, err, st = Open3.capture3(*cmd, chdir: dir)
-  raise "git #{args.first} failed: #{err.gsub(/art_v\d+_\S+/, '<redacted>')[0, 300]}" unless st.success?
+  raise "git #{args.first} failed: #{err.gsub(/art_v\d+_[A-Za-z0-9._~+\/=-]+/, '<redacted>')[0, 300]}" unless st.success?
   out.strip
 end
 

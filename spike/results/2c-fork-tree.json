@@ -41,7 +41,7 @@
             "name": "tree-1-1",
             "description": "fork of base",
             "defaultBranch": "main",
-            "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/tree-1-1.git",
+            "remote": "https://ACCOUNT_ID.artifacts.cloudflare.net/git/ft-spike-a/tree-1-1.git",
             "token": "<redacted>"
           },
           "ops": 4,
@@ -92,7 +92,7 @@
             "name": "tree-2-1",
             "description": "fork of base",
             "defaultBranch": "main",
-            "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/tree-2-1.git",
+            "remote": "https://ACCOUNT_ID.artifacts.cloudflare.net/git/ft-spike-a/tree-2-1.git",
             "token": "<redacted>"
           },
           "ops": 4,
@@ -119,7 +119,7 @@
             "name": "tree-2-2",
             "description": "fork of tree-1-1",
             "defaultBranch": "main",
-            "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/tree-2-2.git",
+            "remote": "https://ACCOUNT_ID.artifacts.cloudflare.net/git/ft-spike-a/tree-2-2.git",
             "token": "<redacted>"
           },
           "ops": 4,
@@ -170,7 +170,7 @@
             "name": "tree-3-1",
             "description": "fork of base",
             "defaultBranch": "main",
-            "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/tree-3-1.git",
+            "remote": "https://ACCOUNT_ID.artifacts.cloudflare.net/git/ft-spike-a/tree-3-1.git",
             "token": "<redacted>"
           },
           "ops": 4,
@@ -197,7 +197,7 @@
             "name": "tree-3-2",
             "description": "fork of tree-1-1",
             "defaultBranch": "main",
-            "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/tree-3-2.git",
+            "remote": "https://ACCOUNT_ID.artifacts.cloudflare.net/git/ft-spike-a/tree-3-2.git",
             "token": "<redacted>"
           },
           "ops": 4,
@@ -224,7 +224,7 @@
             "name": "tree-3-3",
             "description": "fork of tree-2-1",
             "defaultBranch": "main",
-            "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/tree-3-3.git",
+            "remote": "https://ACCOUNT_ID.artifacts.cloudflare.net/git/ft-spike-a/tree-3-3.git",
             "token": "<redacted>"
           },
           "ops": 4,
@@ -251,7 +251,7 @@
             "name": "tree-3-4",
             "description": "fork of tree-2-2",
             "defaultBranch": "main",
-            "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/tree-3-4.git",
+            "remote": "https://ACCOUNT_ID.artifacts.cloudflare.net/git/ft-spike-a/tree-3-4.git",
             "token": "<redacted>"
           },
           "ops": 4,
@@ -302,7 +302,7 @@
             "name": "tree-4-1",
             "description": "fork of base",
             "defaultBranch": "main",
-            "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/tree-4-1.git",
+            "remote": "https://ACCOUNT_ID.artifacts.cloudflare.net/git/ft-spike-a/tree-4-1.git",
             "token": "<redacted>"
           },
           "ops": 4,
@@ -329,7 +329,7 @@
             "name": "tree-4-2",
             "description": "fork of tree-1-1",
             "defaultBranch": "main",
-            "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/tree-4-2.git",
+            "remote": "https://ACCOUNT_ID.artifacts.cloudflare.net/git/ft-spike-a/tree-4-2.git",
             "token": "<redacted>"
           },
           "ops": 4,
@@ -356,7 +356,7 @@
             "name": "tree-4-3",
             "description": "fork of tree-2-1",
             "defaultBranch": "main",
-            "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/tree-4-3.git",
+            "remote": "https://ACCOUNT_ID.artifacts.cloudflare.net/git/ft-spike-a/tree-4-3.git",
             "token": "<redacted>"
           },
           "ops": 4,
@@ -383,7 +383,7 @@
             "name": "tree-4-4",
             "description": "fork of tree-2-2",
             "defaultBranch": "main",
-            "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/tree-4-4.git",
+            "remote": "https://ACCOUNT_ID.artifacts.cloudflare.net/git/ft-spike-a/tree-4-4.git",
             "token": "<redacted>"
           },
           "ops": 4,
@@ -410,7 +410,7 @@
             "name": "tree-4-5",
             "description": "fork of tree-3-1",
             "defaultBranch": "main",
-            "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/tree-4-5.git",
+            "remote": "https://ACCOUNT_ID.artifacts.cloudflare.net/git/ft-spike-a/tree-4-5.git",
             "token": "<redacted>"
           },
           "ops": 4,
@@ -437,7 +437,7 @@
             "name": "tree-4-6",
             "description": "fork of tree-3-2",
             "defaultBranch": "main",
-            "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/tree-4-6.git",
+            "remote": "https://ACCOUNT_ID.artifacts.cloudflare.net/git/ft-spike-a/tree-4-6.git",
             "token": "<redacted>"
           },
           "ops": 4,
@@ -464,7 +464,7 @@
             "name": "tree-4-7",
             "description": "fork of tree-3-3",
             "defaultBranch": "main",
-            "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/tree-4-7.git",
+            "remote": "https://ACCOUNT_ID.artifacts.cloudflare.net/git/ft-spike-a/tree-4-7.git",
             "token": "<redacted>"
           },
           "ops": 4,
@@ -491,7 +491,7 @@
             "name": "tree-4-8",
             "description": "fork of tree-3-4",
             "defaultBranch": "main",
-            "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/tree-4-8.git",
+            "remote": "https://ACCOUNT_ID.artifacts.cloudflare.net/git/ft-spike-a/tree-4-8.git",
             "token": "<redacted>"
           },
           "ops": 4,

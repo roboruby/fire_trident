@@ -193,6 +193,7 @@ export class MapRenderer {
   private ripples: Array<{ x: number; y: number; t0: number }> = [];
   private beads: Array<{ size: number; t0: number }> = [];
   private beadsSeeded = false;
+  private fxGen = 0;
   private lastBeadAt = -1e9;
   private lastArriveAt = -1e9;
   private displayedSha = "";
@@ -523,7 +524,7 @@ export class MapRenderer {
 
   /** The region whose branching ratio is highest right now, if any region is near or past critical. */
   private sigmaDir(): Rect | null {
-    const now = Date.now();
+    const now = this.store.now();
     let best: string | null = null;
     let bestSigma = 0.85;
     for (const [region, s] of this.store.sigma) {
@@ -540,13 +541,14 @@ export class MapRenderer {
   /** The directory where the field is most active right now (claims, needs, danger, fresh trails). */
   private hotDir(): Rect | null {
     const L = this.L;
-    const now = Date.now();
+    const now = this.store.now();
+    const wall = Date.now();
     const score = new Float64Array(L.dirs.length);
     for (const cell of this.store.active) {
       const i = this.tileOf(cell);
       if (i < 0) continue;
       const v = (k: number) => decayed(cell.v[k] ?? 0, cell.at[k] ?? 0, k, now);
-      const recent = cell.trailAt ? Math.exp(-(now - cell.trailAt) / 20_000) : 0;
+      const recent = cell.trailAt ? Math.exp(-(wall - cell.trailAt) / 20_000) : 0;
       const w = v(KIND_INDEX.claim) * 1.2 + Math.min(3, v(KIND_INDEX.need)) * 0.6 + v(DANGER) * 2 + v(KIND_INDEX.failure) * 0.6 + recent * 1.5;
       if (!(w > 0)) continue;
       const path = L.paths[i] ?? "";
@@ -768,8 +770,10 @@ export class MapRenderer {
       this.frameMs.push(dtMs);
       if (this.frameMs.length > 120) this.frameMs.shift();
     }
-    const now = Date.now();
+    // Field values decay on the colony's clock (a replay's virtual time); effects run on wall time.
     const s = this.store;
+    const now = s.now();
+    const wall = Date.now();
     if (this.sizeDirty) {
       this.sizeDirty = false;
       this.resize();
@@ -787,7 +791,7 @@ export class MapRenderer {
     if ((s.fieldDirty && (moving || ts - this.lastField > 33)) || (this.fieldAnimating && ts - this.lastField > 33) || ts - this.lastField > 500) {
       s.fieldDirty = false;
       this.lastField = ts;
-      this.drawField(now);
+      this.drawField(now, wall);
     }
     if (this.mouseDirty) {
       this.mouseDirty = false;
@@ -801,10 +805,22 @@ export class MapRenderer {
   /** Drain the store's fx queues: agent changes, landings, new marks. */
   private sync(ts: number): void {
     const s = this.store;
+    if (s.fxGen !== this.fxGen) {
+      // The colony was rebuilt (a replay seeking back): drop effects in flight and restart the rail.
+      this.fxGen = s.fxGen;
+      this.sparks = [];
+      this.flashes = [];
+      this.bursts = [];
+      this.ripples = [];
+      this.beads = [];
+      this.inFlight = 0;
+      this.beadsSeeded = false;
+      this.showSha(s.trunkSha, false);
+    }
     if (!this.beadsSeeded && s.loaded) {
-      // The rail starts with the recent history from the snapshot.
+      // The rail starts with the landings the colony already had (the snapshot's history, or a replay's past).
       this.beadsSeeded = true;
-      for (const l of s.landings.slice(-60)) if (l.receivedAt === l.at) this.beads.push({ size: l.paths.length, t0: -1e9 });
+      for (const l of s.landings.slice(-60)) if (l.history || l.quiet) this.beads.push({ size: l.paths.length, t0: -1e9 });
     }
     if (s.agentChanges.size) {
       for (const id of s.agentChanges) {
@@ -885,7 +901,7 @@ export class MapRenderer {
 
   // -- the field -------------------------------------------------------------
 
-  private drawField(now: number): void {
+  private drawField(now: number, wall: number): void {
     const { L, W, H } = this;
     this.ensureScreen();
     const f = this.fctx;
@@ -901,7 +917,7 @@ export class MapRenderer {
     let animating = false;
     const vals = this.vals;
     const I = this.inten;
-    const pulse = 0.55 + 0.45 * Math.sin(now / 190);
+    const pulse = 0.55 + 0.45 * Math.sin(wall / 190);
     const { SW, SH, VIS } = this;
     for (const cell of this.store.active) {
       let any = false;
@@ -927,7 +943,7 @@ export class MapRenderer {
       let sec = -1;
       let secS = 0;
       // A fresh landing owns the tile for a moment (green flash), then the field underneath shows again.
-      const recency = cell.trailAt ? Math.exp(-(now - cell.trailAt) / 6000) : 0;
+      const recency = cell.trailAt ? Math.exp(-(wall - cell.trailAt) / 6000) : 0;
       for (let k = 0; k < 5; k++) {
         const sc = I[k]! * WEIGHT[k]! * (k === TRAIL ? 1 + 5 * recency : 1);
         if (sc > domS) {
@@ -943,7 +959,7 @@ export class MapRenderer {
       if (dom < 0 || domS < 0.03) continue;
       let alpha = ALPHA0[dom]! + ALPHA1[dom]! * I[dom]!;
       if (cell.popAt) {
-        const u = (now - cell.popAt) / 420;
+        const u = (wall - cell.popAt) / 420;
         if (u < 1 && u >= 0) {
           animating = true;
           alpha *= 0.3 + 0.7 * easeOut(u);
@@ -1124,7 +1140,7 @@ export class MapRenderer {
 
   private drawRegionAlerts(c: CanvasRenderingContext2D, ts: number): void {
     const L = this.L;
-    const now = Date.now();
+    const now = this.store.now();
     for (const [region, s] of this.store.sigma) {
       if (!(s.sigma > 1) || now - s.at > 120_000) continue;
       const di = L.dirIndex.get(region);

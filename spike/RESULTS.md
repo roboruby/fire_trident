@@ -1,6 +1,6 @@
 # FireTrident spike: Artifacts, git in a Durable Object, push triggers, Clef
 
-Measured 2026-10-12 between 04:46 and 04:56 UTC against the live service. Account `a3236b01…58a1`, Worker `ft-spike` (https://ft-spike.mattsolt.workers.dev), namespaces `ft-spike-a` and `ft-spike-b`. Requests from the DO to Artifacts went through IAD (from `cf-ray`). Raw JSON for every number below is in `spike/results/`.
+Measured 2026-10-12 between 04:46 and 04:56 UTC against the live service. Worker `ft-spike` (https://ft-spike.mattsolt.workers.dev), namespaces `ft-spike-a` and `ft-spike-b`. Requests from the DO to Artifacts went through IAD (from `cf-ray`). Raw JSON for every number below is in `spike/results/`.
 
 ## Methodology
 

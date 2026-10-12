@@ -37,6 +37,8 @@ const adminOnly: MiddlewareHandler<DecideEnv> = async (c, next) => {
   if (expected) {
     const m = /^Bearer\s+(\S+)\s*$/i.exec(c.req.header("Authorization") ?? "");
     if (!m || !(await sameSecret(m[1] ?? "", expected))) return json({ error: "unauthorized" }, 401, { "WWW-Authenticate": "Bearer" });
+  } else if (c.env.FT_OPEN_WRITES !== "1") {
+    return json({ error: "forbidden: writes need FT_ADMIN_TOKEN configured on the server" }, 403);
   }
   await next();
 };

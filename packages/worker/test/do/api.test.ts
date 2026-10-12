@@ -21,7 +21,7 @@ describe("POST /api/colonies", () => {
     expect(snap.body.files.map((f) => f.path).sort()).toEqual(["README.md", "docs/guide.md", "src/app/main.ts", "src/lib/util.ts"]);
     expect(snap.body.intents).toEqual([]);
     expect(snap.body.violations).toEqual({ total: 0, byRule: {} });
-    expect(snap.body.funnel).toEqual({ reflex: 0, llm: 0, human: 0 });
+    expect(snap.body.funnel).toEqual({ proof: 0, reflex: 0, llm: 0, human: 0 });
     expect(snap.body.rules).toEqual([]);
   });
 

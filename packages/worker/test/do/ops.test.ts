@@ -50,7 +50,7 @@ describe("snapshot metrics and series", () => {
     expect(sum(m.series.proposals)).toBe(1);
     // A gauge keeps the last value of each minute: the rule and its fix landed in the same one.
     expect(m.series.violations.at(-1)).toBe(0);
-    expect(m.funnel).toEqual({ reflex: 0, llm: 0, human: 0 });
+    expect(m.funnel).toEqual({ proof: 0, reflex: 0, llm: 0, human: 0 });
   });
 
   it("re-sends live metrics to connected sockets on the metrics tick", async () => {

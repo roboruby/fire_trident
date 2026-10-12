@@ -6,6 +6,7 @@ import { colonyHref } from "../route.ts";
 import { HeroColony } from "./HeroColony.tsx";
 import { LiveColonies, rankColonies } from "./LiveColonies.tsx";
 import { Prongs } from "./Prongs.tsx";
+import { Results } from "./Results.tsx";
 import { RunIt, SERVER } from "./RunIt.tsx";
 import "./landing.css";
 
@@ -86,6 +87,7 @@ export function Landing() {
           <span>FireTrident</span>
         </a>
         <nav className="l-links">
+          <a href="#results">Results</a>
           <a href="#colonies">Colonies</a>
           <a href="#how">How it works</a>
           <a href="#run">Run it</a>
@@ -117,6 +119,8 @@ export function Landing() {
           <HeroColony />
         </div>
       </section>
+
+      <Results />
 
       <section className="l-section" id="colonies">
         <div className="l-section-head">

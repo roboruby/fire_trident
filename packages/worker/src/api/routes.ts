@@ -12,6 +12,7 @@ import { createApi } from "./app.ts";
  *   GET    /api/colonies/:id/live             WebSocket of ColonyEvent
  *   GET    /api/colonies/:id/field            FieldReading[] (all regions) or ?region=
  *   GET    /api/colonies/:id/metrics          metrics, funnel, violations, series
+ *   GET    /api/colonies/:id/events           the event record for replays (?after=<seq>&limit=<n>)
  *   POST   /api/colonies/:id/intents          declare an intent
  *   GET    /api/colonies/:id/intents/:iid     one intent with its revisions and directives
  *   PATCH  /api/colonies/:id/intents/:iid     amend an intent (revision + 1)

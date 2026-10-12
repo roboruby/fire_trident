@@ -20,7 +20,7 @@
         "name": "burst-1",
         "description": "fork of base",
         "defaultBranch": "main",
-        "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/burst-1.git",
+        "remote": "https://ACCOUNT_ID.artifacts.cloudflare.net/git/ft-spike-a/burst-1.git",
         "token": "<redacted>"
       },
       "ops": 4,
@@ -47,7 +47,7 @@
         "name": "burst-2",
         "description": "fork of base",
         "defaultBranch": "main",
-        "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/burst-2.git",
+        "remote": "https://ACCOUNT_ID.artifacts.cloudflare.net/git/ft-spike-a/burst-2.git",
         "token": "<redacted>"
       },
       "ops": 4,
@@ -74,7 +74,7 @@
         "name": "burst-3",
         "description": "fork of base",
         "defaultBranch": "main",
-        "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/burst-3.git",
+        "remote": "https://ACCOUNT_ID.artifacts.cloudflare.net/git/ft-spike-a/burst-3.git",
         "token": "<redacted>"
       },
       "ops": 4,
@@ -101,7 +101,7 @@
         "name": "burst-4",
         "description": "fork of base",
         "defaultBranch": "main",
-        "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/burst-4.git",
+        "remote": "https://ACCOUNT_ID.artifacts.cloudflare.net/git/ft-spike-a/burst-4.git",
         "token": "<redacted>"
       },
       "ops": 4,
@@ -128,7 +128,7 @@
         "name": "burst-5",
         "description": "fork of base",
         "defaultBranch": "main",
-        "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/burst-5.git",
+        "remote": "https://ACCOUNT_ID.artifacts.cloudflare.net/git/ft-spike-a/burst-5.git",
         "token": "<redacted>"
       },
       "ops": 4,
@@ -155,7 +155,7 @@
         "name": "burst-6",
         "description": "fork of base",
         "defaultBranch": "main",
-        "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/burst-6.git",
+        "remote": "https://ACCOUNT_ID.artifacts.cloudflare.net/git/ft-spike-a/burst-6.git",
         "token": "<redacted>"
       },
       "ops": 4,
@@ -182,7 +182,7 @@
         "name": "burst-7",
         "description": "fork of base",
         "defaultBranch": "main",
-        "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/burst-7.git",
+        "remote": "https://ACCOUNT_ID.artifacts.cloudflare.net/git/ft-spike-a/burst-7.git",
         "token": "<redacted>"
       },
       "ops": 4,
@@ -209,7 +209,7 @@
         "name": "burst-8",
         "description": "fork of base",
         "defaultBranch": "main",
-        "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/burst-8.git",
+        "remote": "https://ACCOUNT_ID.artifacts.cloudflare.net/git/ft-spike-a/burst-8.git",
         "token": "<redacted>"
       },
       "ops": 4,

@@ -1,0 +1,841 @@
+{
+  "kind": "colony-summary",
+  "note": "Read-only GETs against the live API, summarized by packages/bench/src/evidence.ts; tokens, the account id, emails and local paths redacted.",
+  "colony": "hono",
+  "map": "https://firetrident.mattsolt.workers.dev/c/hono",
+  "api": "https://firetrident.mattsolt.workers.dev/api/colonies/hono",
+  "fetchedAt": "2026-10-12T12:36:23.976Z",
+  "reads": [
+    "GET /api/colonies/hono",
+    "GET /api/colonies/hono/metrics",
+    "GET /api/colonies/hono/agents?all=1&journal=0",
+    "GET /api/colonies/hono/immune",
+    "GET /api/colonies/hono/review",
+    "GET /api/colonies/hono/vaccinate",
+    "GET /api/colonies/hono/why?path=src%2Findex.ts&line=17"
+  ],
+  "source": {
+    "url": "https://github.com/honojs/hono",
+    "branch": "main"
+  },
+  "createdAt": "2026-10-12T09:08:31.353Z",
+  "regionDepth": 3,
+  "trunk": {
+    "repo": "ft-trunk/hono--trunk",
+    "remote": "https://ACCOUNT_ID.artifacts.cloudflare.net/git/ft-trunk/hono--trunk.git",
+    "sha": "6f3279ae6fc3eb8791e5e1387fe2fb258e971002",
+    "files": 583
+  },
+  "counters": {
+    "agents": 81,
+    "agentsActive": 0,
+    "agentsWorking": 0,
+    "agentsIdle": 0,
+    "agentsWaiting": 0,
+    "agentsDead": 81,
+    "intents": 284,
+    "intentsOpen": 0,
+    "intentsClaimed": 0,
+    "intentsProposed": 0,
+    "intentsLanded": 284,
+    "intentsAbandoned": 0,
+    "takes": 284,
+    "proposals": 284,
+    "proposalsInFlight": 0,
+    "reviewQueue": 0,
+    "landedProposals": 284,
+    "returned": 0,
+    "rejected": 0,
+    "escalated": 0,
+    "landings": 194,
+    "landingsPerMin": 0,
+    "landedIntents": 284,
+    "violations": 0,
+    "rules": 1,
+    "regions": 79,
+    "decisions": 4,
+    "funnel.reflex": 2,
+    "funnel.llm": 2,
+    "funnel.human": 0,
+    "alerts.budget": 30,
+    "alerts.lastHour": 0,
+    "antibodies.active": 0,
+    "autonomy.regions": 36,
+    "decide.clef.tokens": 1454,
+    "decide.deterministic.land": 282,
+    "decide.llm.land": 2,
+    "decide.llm.tokensIn": 1271,
+    "decide.llm.tokensOut": 144
+  },
+  "rules": [
+    {
+      "id": "rul_mv51663hu2jmz8",
+      "kind": "forbid-import",
+      "description": "Relative imports in src name their file, so Hono runs on Deno, JSR and Node built-in TypeScript without the unstable sloppy-imports flag.",
+      "approvedBy": "ms",
+      "createdAt": "2026-10-12T09:09:20.861Z",
+      "violationsNow": 0
+    }
+  ],
+  "intents": {
+    "total": 284,
+    "landed": 284,
+    "open": 0,
+    "claimed": 0,
+    "proposed": 0,
+    "abandoned": 0,
+    "listed": 200,
+    "listedNote": "the snapshot lists 200 of 284 intents",
+    "listedByStatus": {
+      "landed": 200
+    },
+    "listedBySource": {
+      "human": 1,
+      "rule": 199
+    },
+    "notFromRules": [
+      {
+        "id": "int_mv517nmgeumthh",
+        "title": "Publish to JSR without sloppy imports",
+        "source": "human",
+        "status": "landed",
+        "createdBy": "matt",
+        "createdAt": "2026-10-12T09:10:30.232Z"
+      }
+    ]
+  },
+  "proposals": {
+    "total": 284,
+    "landed": 284,
+    "returned": 0,
+    "rejected": 0,
+    "escalated": 0,
+    "inFlight": 0,
+    "reviewQueue": 0
+  },
+  "landings": {
+    "total": 194,
+    "note": "recent lists the snapshot's most recent landings (the API returns 20); every landing is a trunk commit with FT-* trailers and a note under refs/notes/firetrident",
+    "recent": [
+      {
+        "id": "lnd_mv518fj2lm4qx5",
+        "at": "2026-10-12T09:11:06.398Z",
+        "trunkSha": "6f3279ae6fc3eb8791e5e1387fe2fb258e971002",
+        "parentSha": "e428a38b8b7c529f70c736f0e583a42d7be9c3cb",
+        "proposals": 1,
+        "intents": 1,
+        "paths": [
+          "jsr.json"
+        ]
+      },
+      {
+        "id": "lnd_mv517htym4tqh4",
+        "at": "2026-10-12T09:10:22.726Z",
+        "trunkSha": "e428a38b8b7c529f70c736f0e583a42d7be9c3cb",
+        "parentSha": "91a485cde7b58c661ca7ff4f75056800897c67f6",
+        "proposals": 1,
+        "intents": 1,
+        "paths": [
+          "src/utils/buffer.ts"
+        ]
+      },
+      {
+        "id": "lnd_mv517hc5f485z4",
+        "at": "2026-10-12T09:10:22.085Z",
+        "trunkSha": "91a485cde7b58c661ca7ff4f75056800897c67f6",
+        "parentSha": "1f440f3d159238d98c5aeb672f6f471e0d113816",
+        "proposals": 1,
+        "intents": 1,
+        "paths": [
+          "src/jsx/intrinsic-element/components.ts"
+        ]
+      },
+      {
+        "id": "lnd_mv517gdc1ua9ti",
+        "at": "2026-10-12T09:10:20.832Z",
+        "trunkSha": "1f440f3d159238d98c5aeb672f6f471e0d113816",
+        "parentSha": "f3ab8d988c9ea34f5b42aad542cf5c69d37c2560",
+        "proposals": 1,
+        "intents": 1,
+        "paths": [
+          "src/utils/buffer.test.ts"
+        ]
+      },
+      {
+        "id": "lnd_mv517e84rpnoeu",
+        "at": "2026-10-12T09:10:18.052Z",
+        "trunkSha": "f3ab8d988c9ea34f5b42aad542cf5c69d37c2560",
+        "parentSha": "3de9ab560aa430e92b2a7d5cfe30bb860f7c66a2",
+        "proposals": 1,
+        "intents": 1,
+        "paths": [
+          "src/router/trie-router/node.ts"
+        ]
+      },
+      {
+        "id": "lnd_mv517d57i2yosf",
+        "at": "2026-10-12T09:10:16.651Z",
+        "trunkSha": "3de9ab560aa430e92b2a7d5cfe30bb860f7c66a2",
+        "parentSha": "27a4b75001a41b8172fbde9ef7c91fb3a5047f47",
+        "proposals": 1,
+        "intents": 1,
+        "paths": [
+          "src/utils/body.ts"
+        ]
+      },
+      {
+        "id": "lnd_mv517cttpvxhc8",
+        "at": "2026-10-12T09:10:16.241Z",
+        "trunkSha": "27a4b75001a41b8172fbde9ef7c91fb3a5047f47",
+        "parentSha": "0aceff5682cfadd8afd216def7acb10956a1665c",
+        "proposals": 1,
+        "intents": 1,
+        "paths": [
+          "src/jsx/streaming.ts"
+        ]
+      },
+      {
+        "id": "lnd_mv517bpoxga1d1",
+        "at": "2026-10-12T09:10:14.796Z",
+        "trunkSha": "0aceff5682cfadd8afd216def7acb10956a1665c",
+        "parentSha": "344c5eb90ec684e6630400a2bbb7feda65b78a5b",
+        "proposals": 1,
+        "intents": 1,
+        "paths": [
+          "src/router/common.case.test.ts"
+        ]
+      },
+      {
+        "id": "lnd_mv517bbe0fx8yu",
+        "at": "2026-10-12T09:10:14.282Z",
+        "trunkSha": "344c5eb90ec684e6630400a2bbb7feda65b78a5b",
+        "parentSha": "97109d884175ad40206b9959041f528b0c868638",
+        "proposals": 1,
+        "intents": 1,
+        "paths": [
+          "src/utils/stream.test.ts"
+        ]
+      },
+      {
+        "id": "lnd_mv517a6ja1w2zh",
+        "at": "2026-10-12T09:10:12.811Z",
+        "trunkSha": "97109d884175ad40206b9959041f528b0c868638",
+        "parentSha": "7d06b5ab94fd826ae1fd9dba60bce0f37291bf21",
+        "proposals": 1,
+        "intents": 1,
+        "paths": [
+          "src/jsx/streaming.test.tsx"
+        ]
+      },
+      {
+        "id": "lnd_mv5179x0t9s6uz",
+        "at": "2026-10-12T09:10:12.468Z",
+        "trunkSha": "7d06b5ab94fd826ae1fd9dba60bce0f37291bf21",
+        "parentSha": "ce9a9caf91bf43918e1ef1a12812cd140f2f07cf",
+        "proposals": 1,
+        "intents": 1,
+        "paths": [
+          "src/middleware/language/index.test.ts"
+        ]
+      },
+      {
+        "id": "lnd_mv5179n209b35i",
+        "at": "2026-10-12T09:10:12.111Z",
+        "trunkSha": "ce9a9caf91bf43918e1ef1a12812cd140f2f07cf",
+        "parentSha": "894e28f3a90d6d9dc39439987ddbd257ca2b992e",
+        "proposals": 1,
+        "intents": 1,
+        "paths": [
+          "src/jsx/intrinsic-element/components.test.tsx"
+        ]
+      },
+      {
+        "id": "lnd_mv5179n29ewghb",
+        "at": "2026-10-12T09:10:12.110Z",
+        "trunkSha": "894e28f3a90d6d9dc39439987ddbd257ca2b992e",
+        "parentSha": "d2710dcdb287f008c3bf0a403d38a7d56bfa6d9b",
+        "proposals": 1,
+        "intents": 1,
+        "paths": [
+          "src/middleware/secure-headers/secure-headers.ts"
+        ]
+      },
+      {
+        "id": "lnd_mv5179e5a5jnj3",
+        "at": "2026-10-12T09:10:11.789Z",
+        "trunkSha": "d2710dcdb287f008c3bf0a403d38a7d56bfa6d9b",
+        "parentSha": "055b06d9c49d2490a4e47d09a106ad75c0d2403b",
+        "proposals": 5,
+        "intents": 5,
+        "paths": [
+          "src/utils/body.test.ts",
+          "src/utils/ipaddr.test.ts",
+          "src/utils/mime.test.ts",
+          "src/utils/types.test.ts",
+          "src/utils/url.test.ts"
+        ]
+      },
+      {
+        "id": "lnd_mv5178t22agded",
+        "at": "2026-10-12T09:10:11.030Z",
+        "trunkSha": "055b06d9c49d2490a4e47d09a106ad75c0d2403b",
+        "parentSha": "2c80df02f3fbdd088a87045a0dffe2df4fe69033",
+        "proposals": 1,
+        "intents": 1,
+        "paths": [
+          "src/router/reg-exp-router/router.ts"
+        ]
+      },
+      {
+        "id": "lnd_mv517839yr0sig",
+        "at": "2026-10-12T09:10:10.101Z",
+        "trunkSha": "2c80df02f3fbdd088a87045a0dffe2df4fe69033",
+        "parentSha": "a30104341d57b19b7b0ab9231ad98de3cecf6878",
+        "proposals": 2,
+        "intents": 2,
+        "paths": [
+          "src/utils/cookie.ts",
+          "src/utils/handler.ts"
+        ]
+      },
+      {
+        "id": "lnd_mv5177qtohbihh",
+        "at": "2026-10-12T09:10:09.653Z",
+        "trunkSha": "a30104341d57b19b7b0ab9231ad98de3cecf6878",
+        "parentSha": "c1f66f182f010d6309a401b1c22def07d7591987",
+        "proposals": 1,
+        "intents": 1,
+        "paths": [
+          "src/jsx/dom/server.test.tsx"
+        ]
+      },
+      {
+        "id": "lnd_mv5176uhh7uhki",
+        "at": "2026-10-12T09:10:08.489Z",
+        "trunkSha": "c1f66f182f010d6309a401b1c22def07d7591987",
+        "parentSha": "20d58a84d32de4c6c7f256e2f60c2b4a8eb176b9",
+        "proposals": 1,
+        "intents": 1,
+        "paths": [
+          "src/router/trie-router/node.test.ts"
+        ]
+      },
+      {
+        "id": "lnd_mv5176nahf2v2b",
+        "at": "2026-10-12T09:10:08.230Z",
+        "trunkSha": "20d58a84d32de4c6c7f256e2f60c2b4a8eb176b9",
+        "parentSha": "7edd422e14196c3991ca91522432d155da6f3d33",
+        "proposals": 1,
+        "intents": 1,
+        "paths": [
+          "src/validator/validator.ts"
+        ]
+      },
+      {
+        "id": "lnd_mv5176g6sc7r2j",
+        "at": "2026-10-12T09:10:07.974Z",
+        "trunkSha": "7edd422e14196c3991ca91522432d155da6f3d33",
+        "parentSha": "423971c35285498021a68d5e1034b90600cb2af6",
+        "proposals": 4,
+        "intents": 4,
+        "paths": [
+          "src/utils/concurrent.test.ts",
+          "src/utils/filepath.test.ts",
+          "src/utils/html.test.ts",
+          "src/utils/ipaddr.ts"
+        ]
+      }
+    ]
+  },
+  "violations": {
+    "total": 0,
+    "byRule": {
+      "rul_mv51663hu2jmz8": 0
+    }
+  },
+  "decide": {
+    "funnel": {
+      "reflex": 2,
+      "llm": 2,
+      "human": 0
+    },
+    "decisions": [
+      {
+        "layer": "deterministic",
+        "action": "land",
+        "n": 282
+      },
+      {
+        "layer": "llm",
+        "action": "land",
+        "n": 2
+      }
+    ],
+    "counters": {
+      "funnel.reflex": 2,
+      "funnel.llm": 2,
+      "funnel.human": 0,
+      "alerts.budget": 30,
+      "alerts.lastHour": 0,
+      "antibodies.active": 0,
+      "autonomy.regions": 36,
+      "decide.clef.tokens": 1454,
+      "decide.deterministic.land": 282,
+      "decide.llm.land": 2,
+      "decide.llm.tokensIn": 1271,
+      "decide.llm.tokensOut": 144
+    },
+    "policy": {
+      "enabled": true,
+      "deterministic": true,
+      "reflexModel": "@cf/cloudflare/clef",
+      "secondOpinionModels": [
+        "@cf/google/gemma-4-26b-a4b-it",
+        "@cf/openai/gpt-oss-120b",
+        "@cf/zai-org/glm-4.7-flash"
+      ],
+      "confidence": 0.8,
+      "hit": 0.5,
+      "needsHuman": 0.5,
+      "alertsPerHour": 30,
+      "budgetRiskFloor": 2,
+      "autonomyAfter": 3,
+      "probation": {
+        "advisory": 0.1,
+        "off": 0.25,
+        "minFires": 5
+      },
+      "maxAntibodies": 60,
+      "llmConcurrency": 8,
+      "llmPerMinute": 120,
+      "dangerAllow": []
+    },
+    "antibodies": [],
+    "detectors": [],
+    "autonomyEarnedRegions": 36,
+    "reviewQueue": [],
+    "vaccination": {
+      "n": 0,
+      "note": "no vaccination batch on this colony"
+    }
+  },
+  "agents": {
+    "total": 81,
+    "byKind": {
+      "internal": 81
+    },
+    "byState": {
+      "dead": 81
+    },
+    "byModel": {
+      "@cf/google/gemma-4-26b-a4b-it": 76,
+      "@cf/moonshotai/kimi-k2.7-code": 5
+    }
+  },
+  "lineage": {
+    "target": "src/index.ts:17",
+    "entries": [
+      {
+        "landing": {
+          "id": "lnd_mv516qrl89pu9f",
+          "colonyId": "hono",
+          "trunkSha": "c71f62d07adf047dacec22ade42613b243beb5b9",
+          "parentSha": "b2faa77b6c873761f5c02b518461ea7fb55a9304",
+          "proposalIds": [
+            "prp_mv516pzujc0gvf",
+            "prp_mv516q89lp5kwr",
+            "prp_mv516qcx1l7m8v",
+            "prp_mv516qk8owmel0"
+          ],
+          "intentIds": [
+            "int_mv5166dl9he4p8",
+            "int_mv5166dlnya2kq",
+            "int_mv5166dlsvtn99",
+            "int_mv5166dljmm75j"
+          ],
+          "paths": [
+            "src/hono.test.ts",
+            "src/http-exception.test.ts",
+            "src/http-exception.ts",
+            "src/index.ts"
+          ],
+          "regions": [
+            "src"
+          ],
+          "at": 1791796187649
+        },
+        "note": {
+          "colonyId": "hono",
+          "landingId": "lnd_mv516qrl89pu9f",
+          "proposals": [
+            {
+              "agentId": "agt_mv5169ommfwm27",
+              "agentKind": "internal",
+              "decisions": [],
+              "evidence": {
+                "checks": [
+                  {
+                    "detail": "1 -> 0 violations; 1 specifier(s) rewritten, every new path exists in trunk (model @cf/google/gemma-4-26b-a4b-it, attempt 1)",
+                    "ms": 4139,
+                    "name": "recheck src/http-exception.test.ts",
+                    "ok": true
+                  },
+                  {
+                    "detail": "@cf/google/gemma-4-26b-a4b-it: 1 call(s), 628 input / 24 output tokens, 6.4 neurons",
+                    "ms": 4139,
+                    "name": "agent model usage",
+                    "ok": true
+                  },
+                  {
+                    "detail": "fetch 0.2 KB down; push 2.5 KB up; built on base of the workspace's last push",
+                    "ms": 310,
+                    "name": "agent git transfer",
+                    "ok": true
+                  },
+                  {
+                    "detail": "1 file(s) read",
+                    "ms": 76,
+                    "name": "innate: blobs",
+                    "ok": true
+                  },
+                  {
+                    "detail": "src/http-exception.test.ts 1→0",
+                    "ms": 0,
+                    "name": "innate: rule rul_mv51663hu2jmz8",
+                    "ok": true
+                  },
+                  {
+                    "detail": "every write is inside the intent's footprint",
+                    "ms": 0,
+                    "name": "innate: footprint",
+                    "ok": true
+                  },
+                  {
+                    "detail": "No tests, type checks or builds were run. Checked by the agent against the trunk tree: the rule reports 0 violations after the edit; every rewritten import names an existing file, the one TypeScript r",
+                    "ms": 0,
+                    "name": "innate: not-verified",
+                    "ok": true
+                  },
+                  {
+                    "detail": "1/1 changed relative specifier(s) resolve in the trunk tree to the same module",
+                    "ms": 18,
+                    "name": "deterministic: imports resolve",
+                    "ok": true
+                  },
+                  {
+                    "detail": "pass: 1 file proven: only import specifiers changed, each still resolving to the same file (or exactly the rule's replacement); inside the footprint; no sensitive path; rule re-check passes",
+                    "ms": 0,
+                    "name": "deterministic: mechanical proof",
+                    "ok": true
+                  },
+                  {
+                    "detail": "D3 innate+proof → land by deterministic at head 91fab22596d8 (confirmations: innate + deterministic): deterministic proof: 1 file proven: only import specifiers changed, each still resolving to the same file (or exactly the rule's replacement); inside the footprint; no sensitive path; rule re-check passes",
+                    "ms": 0,
+                    "name": "gate",
+                    "ok": true
+                  }
+                ],
+                "notVerified": "No tests, type checks or builds were run. Checked by the agent against the trunk tree: the rule reports 0 violations after the edit; every rewritten import names an existing file, the one TypeScript resolved before (x.ts before x/index.ts). Edited by model @cf/google/gemma-4-26b-a4b-it. Based on trunk 552ea024250093a48071b3ded9710de4c6e05f14, which the workspace already held; every footprint file matched current trunk when the work started.",
+                "residual": []
+              },
+              "id": "prp_mv516pzujc0gvf",
+              "intent": {
+                "id": "int_mv5166dl9he4p8",
+                "ruleId": "rul_mv51663hu2jmz8",
+                "title": "Relative imports in src name their file, so Hono runs on Deno, JSR and Node built-in TypeScript without the unstable sloppy-imports flag in src/http-exception.test.ts",
+                "why": "Relative imports in src name their file, so Hono runs on Deno, JSR and Node built-in TypeScript without the unstable sloppy-imports flag.\nHint: Name the file in every relative import: ./x becomes ./x.ts when x.ts exists; a directory ./d becomes ./d/index.ts (\".\", \"..\" and \"../..\" are directories). Check the tree. Change nothing else.\nViolation on line 1."
+              },
+              "model": "@cf/google/gemma-4-26b-a4b-it",
+              "readSet": [
+                {
+                  "blob": "75becdba92efa229291fed9955a4095f8c56493b",
+                  "path": "src/http-exception.test.ts"
+                }
+              ],
+              "writeSet": [
+                {
+                  "blob": "972193a01678d2f946b867cf93d92bb7c0a71f80",
+                  "path": "src/http-exception.test.ts"
+                }
+              ]
+            },
+            {
+              "agentId": "agt_mv5169om8ek8r0",
+              "agentKind": "internal",
+              "decisions": [],
+              "evidence": {
+                "checks": [
+                  {
+                    "detail": "6 -> 0 violations; 6 specifier(s) rewritten, every new path exists in trunk (model @cf/google/gemma-4-26b-a4b-it, attempt 1)",
+                    "ms": 741,
+                    "name": "recheck src/index.ts",
+                    "ok": true
+                  },
+                  {
+                    "detail": "@cf/google/gemma-4-26b-a4b-it: 1 call(s), 855 input / 92 output tokens, 10.3 neurons",
+                    "ms": 741,
+                    "name": "agent model usage",
+                    "ok": true
+                  },
+                  {
+                    "detail": "fetch 0.2 KB down; push 2.5 KB up; built on base of the workspace's last push",
+                    "ms": 286,
+                    "name": "agent git transfer",
+                    "ok": true
+                  },
+                  {
+                    "detail": "1 file(s) read",
+                    "ms": 75,
+                    "name": "innate: blobs",
+                    "ok": true
+                  },
+                  {
+                    "detail": "src/index.ts 6→0",
+                    "ms": 0,
+                    "name": "innate: rule rul_mv51663hu2jmz8",
+                    "ok": true
+                  },
+                  {
+                    "detail": "every write is inside the intent's footprint",
+                    "ms": 0,
+                    "name": "innate: footprint",
+                    "ok": true
+                  },
+                  {
+                    "detail": "No tests, type checks or builds were run. Checked by the agent against the trunk tree: the rule reports 0 violations after the edit; every rewritten import names an existing file, the one TypeScript r",
+                    "ms": 0,
+                    "name": "innate: not-verified",
+                    "ok": true
+                  },
+                  {
+                    "detail": "6/6 changed relative specifier(s) resolve in the trunk tree to the same module",
+                    "ms": 60,
+                    "name": "deterministic: imports resolve",
+                    "ok": true
+                  },
+                  {
+                    "detail": "pass: 1 file proven: only import specifiers changed, each still resolving to the same file (or exactly the rule's replacement); inside the footprint; no sensitive path; rule re-check passes",
+                    "ms": 0,
+                    "name": "deterministic: mechanical proof",
+                    "ok": true
+                  },
+                  {
+                    "detail": "D3 innate+proof → land by deterministic at head 05c848a1b4a8 (confirmations: innate + deterministic): deterministic proof: 1 file proven: only import specifiers changed, each still resolving to the same file (or exactly the rule's replacement); inside the footprint; no sensitive path; rule re-check passes",
+                    "ms": 0,
+                    "name": "gate",
+                    "ok": true
+                  }
+                ],
+                "notVerified": "No tests, type checks or builds were run. Checked by the agent against the trunk tree: the rule reports 0 violations after the edit; every rewritten import names an existing file, the one TypeScript resolved before (x.ts before x/index.ts); directories name their index file: ./client -> ./client/index.ts; a file beats the same-named directory: ./request -> ./request.ts. Edited by model @cf/google/gemma-4-26b-a4b-it. Based on trunk 552ea024250093a48071b3ded9710de4c6e05f14, which the workspace already held; every footprint file matched current trunk when the work started.",
+                "residual": []
+              },
+              "id": "prp_mv516q89lp5kwr",
+              "intent": {
+                "id": "int_mv5166dlnya2kq",
+                "ruleId": "rul_mv51663hu2jmz8",
+                "title": "Relative imports in src name their file, so Hono runs on Deno, JSR and Node built-in TypeScript without the unstable sloppy-imports flag in src/index.ts",
+                "why": "Relative imports in src name their file, so Hono runs on Deno, JSR and Node built-in TypeScript without the unstable sloppy-imports flag.\nHint: Name the file in every relative import: ./x becomes ./x.ts when x.ts exists; a directory ./d becomes ./d/index.ts (\".\", \"..\" and \"../..\" are directories). Check the tree. Change nothing else.\n6 violations on lines 17, 35, 39, 40, 44, 48."
+              },
+              "model": "@cf/google/gemma-4-26b-a4b-it",
+              "readSet": [
+                {
+                  "blob": "23a65ee1f6f18455e73795ab0bed7189d1b277ba",
+                  "path": "src/index.ts"
+                }
+              ],
+              "writeSet": [
+                {
+                  "blob": "6d9a21fb1dbbb390e0bf7755a0b70178fdb14c33",
+                  "path": "src/index.ts"
+                }
+              ]
+            },
+            {
+              "agentId": "agt_mv5169om3v50lm",
+              "agentKind": "internal",
+              "decisions": [],
+              "evidence": {
+                "checks": [
+                  {
+                    "detail": "1 -> 0 violations; 1 specifier(s) rewritten, every new path exists in trunk (model @cf/google/gemma-4-26b-a4b-it, attempt 1)",
+                    "ms": 958,
+                    "name": "recheck src/http-exception.ts",
+                    "ok": true
+                  },
+                  {
+                    "detail": "@cf/google/gemma-4-26b-a4b-it: 1 call(s), 774 input / 30 output tokens (128 cached), 7.3 neurons",
+                    "ms": 958,
+                    "name": "agent model usage",
+                    "ok": true
+                  },
+                  {
+                    "detail": "fetch 0.2 KB down; push 2.8 KB up; built on base of the workspace's last push",
+                    "ms": 267,
+                    "name": "agent git transfer",
+                    "ok": true
+                  },
+                  {
+                    "detail": "1 file(s) read",
+                    "ms": 102,
+                    "name": "innate: blobs",
+                    "ok": true
+                  },
+                  {
+                    "detail": "src/http-exception.ts 1→0",
+                    "ms": 0,
+                    "name": "innate: rule rul_mv51663hu2jmz8",
+                    "ok": true
+                  },
+                  {
+                    "detail": "every write is inside the intent's footprint",
+                    "ms": 0,
+                    "name": "innate: footprint",
+                    "ok": true
+                  },
+                  {
+                    "detail": "No tests, type checks or builds were run. Checked by the agent against the trunk tree: the rule reports 0 violations after the edit; every rewritten import names an existing file, the one TypeScript r",
+                    "ms": 0,
+                    "name": "innate: not-verified",
+                    "ok": true
+                  },
+                  {
+                    "detail": "1/1 changed relative specifier(s) resolve in the trunk tree to the same module",
+                    "ms": 6,
+                    "name": "deterministic: imports resolve",
+                    "ok": true
+                  },
+                  {
+                    "detail": "pass: 1 file proven: only import specifiers changed, each still resolving to the same file (or exactly the rule's replacement); inside the footprint; no sensitive path; rule re-check passes",
+                    "ms": 0,
+                    "name": "deterministic: mechanical proof",
+                    "ok": true
+                  },
+                  {
+                    "detail": "D3 innate+proof → land by deterministic at head 9e099abbbb93 (confirmations: innate + deterministic): deterministic proof: 1 file proven: only import specifiers changed, each still resolving to the same file (or exactly the rule's replacement); inside the footprint; no sensitive path; rule re-check passes",
+                    "ms": 0,
+                    "name": "gate",
+                    "ok": true
+                  }
+                ],
+                "notVerified": "No tests, type checks or builds were run. Checked by the agent against the trunk tree: the rule reports 0 violations after the edit; every rewritten import names an existing file, the one TypeScript resolved before (x.ts before x/index.ts). Edited by model @cf/google/gemma-4-26b-a4b-it. Based on trunk 552ea024250093a48071b3ded9710de4c6e05f14, which the workspace already held; every footprint file matched current trunk when the work started.",
+                "residual": []
+              },
+              "id": "prp_mv516qcx1l7m8v",
+              "intent": {
+                "id": "int_mv5166dlsvtn99",
+                "ruleId": "rul_mv51663hu2jmz8",
+                "title": "Relative imports in src name their file, so Hono runs on Deno, JSR and Node built-in TypeScript without the unstable sloppy-imports flag in src/http-exception.ts",
+                "why": "Relative imports in src name their file, so Hono runs on Deno, JSR and Node built-in TypeScript without the unstable sloppy-imports flag.\nHint: Name the file in every relative import: ./x becomes ./x.ts when x.ts exists; a directory ./d becomes ./d/index.ts (\".\", \"..\" and \"../..\" are directories). Check the tree. Change nothing else.\nViolation on line 6."
+              },
+              "model": "@cf/google/gemma-4-26b-a4b-it",
+              "readSet": [
+                {
+                  "blob": "8fe9c2bb3d078787cfd233634ef8905b5b5d2ccf",
+                  "path": "src/http-exception.ts"
+                }
+              ],
+              "writeSet": [
+                {
+                  "blob": "9b7162b271491d5ce9b2035dfbfd734dad9664c2",
+                  "path": "src/http-exception.ts"
+                }
+              ]
+            },
+            {
+              "agentId": "agt_mv5169omf3jja7",
+              "agentKind": "internal",
+              "decisions": [],
+              "evidence": {
+                "checks": [
+                  {
+                    "detail": "12 -> 0 violations; 12 specifier(s) rewritten, every new path exists in trunk (model @cf/google/gemma-4-26b-a4b-it, attempt 1)",
+                    "ms": 5823,
+                    "name": "recheck src/hono.test.ts",
+                    "ok": true
+                  },
+                  {
+                    "detail": "@cf/google/gemma-4-26b-a4b-it: 1 call(s), 1621 input / 228 output tokens (128 cached), 20.4 neurons",
+                    "ms": 5823,
+                    "name": "agent model usage",
+                    "ok": true
+                  },
+                  {
+                    "detail": "fetch 0.2 KB down; push 16.3 KB up; built on base of the workspace's last push",
+                    "ms": 620,
+                    "name": "agent git transfer",
+                    "ok": true
+                  },
+                  {
+                    "detail": "1 file(s) read",
+                    "ms": 71,
+                    "name": "innate: blobs",
+                    "ok": true
+                  },
+                  {
+                    "detail": "src/hono.test.ts 12→0",
+                    "ms": 0,
+                    "name": "innate: rule rul_mv51663hu2jmz8",
+                    "ok": true
+                  },
+                  {
+                    "detail": "every write is inside the intent's footprint",
+                    "ms": 0,
+                    "name": "innate: footprint",
+                    "ok": true
+                  },
+                  {
+                    "detail": "No tests, type checks or builds were run. Checked by the agent against the trunk tree: the rule reports 0 violations after the edit; every rewritten import names an existing file, the one TypeScript r",
+                    "ms": 0,
+                    "name": "innate: not-verified",
+                    "ok": true
+                  },
+                  {
+                    "detail": "12/12 changed relative specifier(s) resolve in the trunk tree to the same module",
+                    "ms": 16,
+                    "name": "deterministic: imports resolve",
+                    "ok": true
+                  },
+                  {
+                    "detail": "pass: 1 file proven: only import specifiers changed, each still resolving to the same file (or exactly the rule's replacement); inside the footprint; no sensitive path; rule re-check passes",
+                    "ms": 0,
+                    "name": "deterministic: mechanical proof",
+                    "ok": true
+                  },
+                  {
+                    "detail": "D3 innate+proof → land by deterministic at head 9cc35388798d (confirmations: innate + deterministic): deterministic proof: 1 file proven: only import specifiers changed, each still resolving to the same file (or exactly the rule's replacement); inside the footprint; no sensitive path; rule re-check passes",
+                    "ms": 0,
+                    "name": "gate",
+                    "ok": true
+                  }
+                ],
+                "notVerified": "No tests, type checks or builds were run. Checked by the agent against the trunk tree: the rule reports 0 violations after the edit; every rewritten import names an existing file, the one TypeScript resolved before (x.ts before x/index.ts); directories name their index file: ./client -> ./client/index.ts, ./middleware/logger -> ./middleware/logger/index.ts. Edited by model @cf/google/gemma-4-26b-a4b-it. Based on trunk 552ea024250093a48071b3ded9710de4c6e05f14, which the workspace already held; every footprint file matched current trunk when the work started.",
+                "residual": []
+              },
+              "id": "prp_mv516qk8owmel0",
+              "intent": {
+                "id": "int_mv5166dljmm75j",
+                "ruleId": "rul_mv51663hu2jmz8",
+                "title": "Relative imports in src name their file, so Hono runs on Deno, JSR and Node built-in TypeScript without the unstable sloppy-imports flag in src/hono.test.ts",
+                "why": "Relative imports in src name their file, so Hono runs on Deno, JSR and Node built-in TypeScript without the unstable sloppy-imports flag.\nHint: Name the file in every relative import: ./x becomes ./x.ts when x.ts exists; a directory ./d becomes ./d/index.ts (\".\", \"..\" and \"../..\" are directories). Check the tree. Change nothing else.\n12 violations on lines 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15."
+              },
+              "model": "@cf/google/gemma-4-26b-a4b-it",
+              "readSet": [
+                {
+                  "blob": "01a51dbf9902f446fd43bb319eef183b661a85fa",
+                  "path": "src/hono.test.ts"
+                }
+              ],
+              "writeSet": [
+                {
+                  "blob": "4b7689ea1347a3450ce3a5fedfc3917b8021c606",
+                  "path": "src/hono.test.ts"
+                }
+              ]
+            }
+          ],
+          "schema": "firetrident.lineage/v1"
+        }
+      }
+    ]
+  }
+}

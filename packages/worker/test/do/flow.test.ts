@@ -352,7 +352,7 @@ describe("review", () => {
     expect((await api("POST", `/colonies/${c.id}/review/${pb.id}`, { decision: "maybe" })).status).toBe(400);
 
     const snap = await api<ColonySnapshot>("GET", `/colonies/${c.id}`);
-    expect(snap.body.funnel).toEqual({ reflex: 0, llm: 0, human: 2 });
+    expect(snap.body.funnel).toEqual({ proof: 0, reflex: 0, llm: 0, human: 2 });
     expect((await api("GET", `/colonies/${c.id}/review`)).body).toEqual([]);
   });
 });

@@ -7,6 +7,7 @@ import type {
   DecisionKind,
   DecisionLayer,
   FieldReading,
+  FunnelStage,
   Id,
   IntentSource,
   IntentStatus,
@@ -19,7 +20,40 @@ import { parseSeries, type Series } from "./series.ts";
 import { KIND_INDEX, KINDS, decayed } from "./theme.ts";
 
 /** Connection state shown in the top bar. */
-export type ConnState = "connecting" | "live" | "reconnecting" | "error" | "mock";
+export type ConnState = "connecting" | "live" | "reconnecting" | "error" | "mock" | "replay";
+
+/** What a replay shows in the top bar: when the run started, and whether its events were recorded or rebuilt. */
+export interface ReplayInfo {
+  /** Time of the run's first event. */
+  startedAt: number;
+  source: "recorded" | "reconstructed";
+}
+
+/** The violations counter since the latest rule change (a rule added or retracted). */
+export interface Baseline {
+  /** When the change happened (null: before anything this page knows of). */
+  since: number | null;
+  /** Violations open right after it. */
+  initial: number;
+  /** When the count reached zero after it, or null while violations remain. */
+  convergedAt: number | null;
+}
+
+/** Changes of direction this page knows of (from the snapshot and the stream). */
+export interface DirectionCounts {
+  amended: number;
+  withdrawn: number;
+  retracted: number;
+  directives: number;
+}
+
+/** A change an outside agent (kind "external", joined over MCP) landed. */
+export interface OutsideLanding {
+  agentId: Id;
+  landingId: Id;
+  paths: string[];
+  at: number;
+}
 
 /** Field values on one path. Values are stored as of `at` and decayed on read. */
 export interface FieldCell {
@@ -85,6 +119,10 @@ export interface LandingView {
   paths: string[];
   at: number;
   receivedAt: number;
+  /** From the snapshot (it landed before this page opened), not the stream. */
+  history?: boolean;
+  /** Applied without animation (a replay seeking past it). */
+  quiet?: boolean;
 }
 
 export interface LoggedEvent {
@@ -100,6 +138,9 @@ export interface MarkFx {
   path: string;
   kind: MarkKind;
 }
+
+/** The funnel's stages, in order: the deterministic proof, then the decision layers. */
+export const STAGES: readonly FunnelStage[] = ["proof", "reflex", "llm", "human"];
 
 /** One decision as the UI remembers it (the decision path of a proposal or intent). */
 export interface DecisionView {
@@ -148,7 +189,7 @@ const LOG_CAP = 2000;
 const FX_CAP = 3000;
 const DECISION_SUBJECTS = 6000;
 const CLAIM = KIND_INDEX.claim;
-const FUNNEL_METRIC: Readonly<Record<string, DecisionLayer>> = { funnelreflex: "reflex", funnelllm: "llm", funnelhuman: "human" };
+const FUNNEL_METRIC: Readonly<Record<string, FunnelStage>> = { funnelproof: "proof", funnelreflex: "reflex", funnelllm: "llm", funnelhuman: "human" };
 const TRAIL = KIND_INDEX.trail;
 
 /** True if `x` looks like a ColonyEvent this UI understands. */
@@ -199,7 +240,24 @@ export class ColonyStore {
   error: string | null = null;
   retryAt = 0;
   loaded = false;
-  readonly startedAt = Date.now();
+  /**
+   * The colony's clock for data (decay, rates, windows): wall time live, the replay's virtual time in
+   * a replay. Animation timestamps (pop-ins, glows, flashes) stay on wall time, so effects keep their
+   * on-screen length at any replay speed.
+   */
+  now: () => number = () => Date.now();
+  /** When this view of the colony began (the start of the rate windows). */
+  startedAt = Date.now();
+  /** Set while replaying a finished run (the top bar shows it instead of "Live"). */
+  replay: ReplayInfo | null = null;
+  /** What the loading overlay says while a replay loads (null: the default text). */
+  loadingText: string | null = null;
+  /** Paths seen in events but missing from the file list join the map on their own (a replay adds them as they land). */
+  autoMergeFiles = true;
+  /** While true, applied events update state without queueing animations (a replay seeking). */
+  fxMuted = false;
+  /** Bumped when the colony is rebuilt from scratch (a replay seeking back): the map drops effects in flight. */
+  fxGen = 0;
 
   readonly field = new Map<string, FieldCell>();
   readonly active = new Set<FieldCell>();
@@ -229,12 +287,26 @@ export class ColonyStore {
   greenSha = "";
 
   violations: { total: number; byRule: Record<Id, number> } = { total: 0, byRule: {} };
-  /** Violations fixed since the total was last zero (or since load). */
+  /** Violations fixed since the total was last zero (or since load), for servers that send no baseline. */
   fixedRun = 0;
   private fixes: Array<[number, number]> = [];
+  /** The counter since the latest rule change (null until the server or the stream says where it starts). */
+  baseline: Baseline | null = null;
+  /** A retraction arrived: the next violations total starts a new baseline instead of counting as fixes. */
+  private retractPending = false;
 
-  funnel: Record<DecisionLayer, number> = { reflex: 0, llm: 0, human: 0 };
-  readonly lastDecisionAt: Record<DecisionLayer, number> = { reflex: 0, llm: 0, human: 0 };
+  /** Proposals settled per stage of the reflex arc (or decisions per layer on servers without the proof stage). */
+  funnel: Record<FunnelStage, number> = { proof: 0, reflex: 0, llm: 0, human: 0 };
+  /** True when the server reports settled proposals per stage (funnel.* totals); else decision events count. */
+  settledFunnel = false;
+  /** Wall time each stage last moved (the funnel flashes). */
+  readonly lastDecisionAt: Record<FunnelStage, number> = { proof: 0, reflex: 0, llm: 0, human: 0 };
+  /** Changes of direction: amendments, withdrawals, retracted rules, directives. */
+  readonly direction: DirectionCounts = { amended: 0, withdrawn: 0, retracted: 0, directives: 0 };
+  /** Every agent's kind, including agents that have stopped (outside agents' landings are told apart by it). */
+  readonly agentKinds = new Map<Id, AgentKind>();
+  /** Changes outside agents (over MCP) landed, oldest first. */
+  outside: OutsideLanding[] = [];
   /** Decisions per subject (proposal, intent, or region id), oldest first. */
   readonly decisions = new Map<Id, DecisionView[]>();
   /** Antibodies minted while this page was open (decision events of kind "antibody"). */
@@ -287,7 +359,7 @@ export class ColonyStore {
 
   /** Replace everything with a snapshot from the server or the simulator. */
   applySnapshot(s: ColonySnapshot): void {
-    const now = Date.now();
+    const now = this.now();
     this.colony = s.colony;
     this.trunkSha = s.colony.trunkSha ?? "";
     this.greenSha = s.colony.greenSha ?? "";
@@ -325,6 +397,7 @@ export class ColonyStore {
     for (const a of s.agents ?? []) {
       if (!a || typeof a.id !== "string") continue;
       this.agentNames.set(a.id, a.name || a.id);
+      if (a.kind) this.agentKinds.set(a.id, a.kind);
       if (a.state === "dead" || !AGENT_STATES.has(a.state)) continue;
       this.agents.set(a.id, {
         id: a.id,
@@ -344,7 +417,7 @@ export class ColonyStore {
     }
 
     const recent = (s.recentLandings ?? []).filter((l) => l && typeof l.at === "number").sort((a, b) => a.at - b.at);
-    this.landings = recent.map((l) => ({ id: l.id, trunkSha: l.trunkSha, proposalIds: l.proposalIds ?? [], paths: l.paths ?? [], at: l.at, receivedAt: l.at }));
+    this.landings = recent.map((l) => ({ id: l.id, trunkSha: l.trunkSha, proposalIds: l.proposalIds ?? [], paths: l.paths ?? [], at: l.at, receivedAt: l.at, history: true }));
     this.landingTimes = recent.filter((l) => now - l.at < 60_000).map((l) => l.at);
     if (this.seq === 0) {
       // The log opens with the recent landings, so a quiet colony still shows its history.
@@ -358,7 +431,28 @@ export class ColonyStore {
     this.violations = { total: Math.max(0, finite(s.violations?.total)), byRule: s.violations?.byRule ?? {} };
     this.fixedRun = 0;
     this.fixes = [];
-    this.funnel = { reflex: Math.max(0, finite(s.funnel?.reflex)), llm: Math.max(0, finite(s.funnel?.llm)), human: Math.max(0, finite(s.funnel?.human)) };
+    this.retractPending = false;
+    const c = s.convergence;
+    this.baseline =
+      c && typeof c === "object"
+        ? {
+            since: typeof c.since === "number" && Number.isFinite(c.since) ? c.since : null,
+            initial: Math.max(0, finite(c.initial, this.violations.total)),
+            convergedAt: typeof c.convergedAt === "number" && Number.isFinite(c.convergedAt) ? c.convergedAt : null,
+          }
+        : null;
+    const f = s.funnel as (Partial<Record<FunnelStage, number>> & object) | undefined;
+    this.settledFunnel = !!f && typeof f.proof === "number";
+    this.funnel = { proof: Math.max(0, finite(f?.proof)), reflex: Math.max(0, finite(f?.reflex)), llm: Math.max(0, finite(f?.llm)), human: Math.max(0, finite(f?.human)) };
+    this.direction.amended = 0;
+    this.direction.withdrawn = 0;
+    this.direction.retracted = 0;
+    this.direction.directives = 0;
+    for (const it of this.intents.values()) {
+      this.direction.amended += Math.max(0, it.revision - 1);
+      if (it.status === "withdrawn") this.direction.withdrawn++;
+    }
+    for (const r of this.rules.values()) if (r.retractedAt) this.direction.retracted++;
     this.metrics.clear();
     for (const [k, v] of Object.entries(s.metrics ?? {})) if (typeof v === "number" && Number.isFinite(v)) this.metrics.set(metricKey(k), v);
     this.series = parseSeries((s as { series?: unknown }).series);
@@ -386,7 +480,7 @@ export class ColonyStore {
           if (typeof v === "number" && v > 0) this.setMark(path, kind, v, r.at, false);
         }
       }
-      if (typeof r.sigma === "number" && Number.isFinite(r.sigma)) this.sigma.set(r.region, { sigma: r.sigma, at: Date.now() });
+      if (typeof r.sigma === "number" && Number.isFinite(r.sigma)) this.sigma.set(r.region, { sigma: r.sigma, at: this.now() });
     }
     this.bump();
   }
@@ -401,7 +495,7 @@ export class ColonyStore {
 
   /** Apply a batch of live events. */
   applyEvents(evs: readonly unknown[]): void {
-    const now = Date.now();
+    const now = this.now();
     let n = 0;
     for (const ev of evs) {
       if (!isColonyEvent(ev)) continue;
@@ -414,7 +508,8 @@ export class ColonyStore {
       n++;
     }
     this.eventsApplied += n;
-    if (this.unknown.size && now - this.lastFileMerge > 15_000) this.mergeUnknownFiles(now);
+    const wall = Date.now();
+    if (this.autoMergeFiles && this.unknown.size && wall - this.lastFileMerge > 15_000) this.mergeUnknownFiles(wall);
     if (n) this.bump();
   }
 
@@ -443,24 +538,34 @@ export class ColonyStore {
         if (typeof ev.sigma === "number" && Number.isFinite(ev.sigma)) this.sigma.set(ev.region, { sigma: ev.sigma, at: now });
         break;
       case "violations":
-        delta = this.onViolations(ev.total, ev.byRule, now);
+        delta = this.onViolations(ev.total, ev.byRule, now, finite(ev.at, now));
         break;
       case "metric": {
         if (typeof ev.name !== "string" || typeof ev.value !== "number" || !Number.isFinite(ev.value)) break;
         const key = metricKey(ev.name);
         this.metrics.set(key, ev.value);
-        // Authoritative funnel totals (funnel.reflex, funnel.llm, funnel.human) correct the running count.
-        const layer = FUNNEL_METRIC[key];
-        if (layer) this.funnel[layer] = Math.max(0, ev.value);
+        // Authoritative funnel totals (funnel.proof, funnel.reflex, ...) set the stages; a proof total means settled counting.
+        const stage = FUNNEL_METRIC[key];
+        if (stage) {
+          if (stage === "proof") this.settledFunnel = true;
+          const value = Math.max(0, ev.value);
+          if (value > this.funnel[stage] && !this.fxMuted) this.lastDecisionAt[stage] = Date.now();
+          this.funnel[stage] = value;
+        }
         break;
       }
       case "amended":
       case "withdrawn":
+        if (ev.t === "amended") this.direction.amended++;
+        else this.direction.withdrawn++;
         this.onDirection(ev, now);
         break;
       case "retracted": {
         const rule = this.rules.get(ev.ruleId);
         if (rule) this.rules.set(ev.ruleId, { ...rule, retractedAt: finite(ev.at, now), retractedBy: ev.by, retractReason: ev.reason });
+        this.direction.retracted++;
+        // Its violations stop counting: the totals that follow start a new baseline, they are not fixes.
+        this.retractPending = true;
         this.intentsVersion++;
         break;
       }
@@ -473,7 +578,8 @@ export class ColonyStore {
         break;
       }
       case "directive":
-        break; // shown in the log only
+        this.direction.directives++;
+        break; // otherwise shown in the log only
     }
     this.ring[this.ringHead] = { seq: ++this.seq, ev, delta };
     this.ringHead = (this.ringHead + 1) % LOG_CAP;
@@ -482,8 +588,10 @@ export class ColonyStore {
 
   private onDecision(ev: Extract<ColonyEvent, { t: "decision" }>, now: number): void {
     if (LAYERS.has(ev.layer)) {
-      this.funnel[ev.layer] = (this.funnel[ev.layer] ?? 0) + 1;
-      this.lastDecisionAt[ev.layer] = now;
+      // Servers that report settled proposals per stage move the funnel with funnel.* totals: a proposal
+      // can take several decisions but counts once. Older servers and the simulator count decisions.
+      if (!this.settledFunnel) this.funnel[ev.layer] = (this.funnel[ev.layer] ?? 0) + 1;
+      if (!this.fxMuted) this.lastDecisionAt[ev.layer] = Date.now();
     }
     if (ev.kind === "antibody") this.antibodiesSeen++;
     if (typeof ev.subject !== "string" || !ev.subject) return;
@@ -508,6 +616,7 @@ export class ColonyStore {
     if (typeof ev.agentId !== "string") return;
     let a = this.agents.get(ev.agentId);
     this.agentChanges.add(ev.agentId);
+    if (ev.kind) this.agentKinds.set(ev.agentId, ev.kind);
     if (ev.state === "dead" || !AGENT_STATES.has(ev.state)) {
       if (a) {
         tally(this.agentsByState, a.state, -1, AGENT_STATES);
@@ -516,7 +625,7 @@ export class ColonyStore {
       return;
     }
     if (!a) {
-      a = { id: ev.agentId, kind: ev.kind, state: ev.state, name: this.agentNames.get(ev.agentId) ?? ev.agentId, paths: [], seen: now, bornAt: now };
+      a = { id: ev.agentId, kind: ev.kind, state: ev.state, name: this.agentNames.get(ev.agentId) ?? ev.agentId, paths: [], seen: now, bornAt: this.fxMuted ? 0 : Date.now() };
       this.agents.set(a.id, a);
       tally(this.agentsByState, ev.state, 1, AGENT_STATES);
     } else if (a.state !== ev.state) {
@@ -541,7 +650,7 @@ export class ColonyStore {
   setMark(path: string, kind: MarkKind, value: number, at: number, live: boolean): void {
     const k = KIND_INDEX[kind];
     if (k === undefined || typeof path !== "string" || !path) return;
-    const now = Date.now();
+    const now = this.now();
     let cell = this.field.get(path);
     if (!cell) {
       if (!(value > 0)) return;
@@ -552,9 +661,10 @@ export class ColonyStore {
     const next = typeof value === "number" && Number.isFinite(value) ? Math.max(0, value) : 0;
     cell.v[k] = next;
     cell.at[k] = Math.min(typeof at === "number" && Number.isFinite(at) && at > 0 ? at : now, now);
-    if (live && next > prev + 0.05) {
-      cell.popAt = now;
-      if (k === TRAIL) cell.trailAt = now;
+    if (live && !this.fxMuted && next > prev + 0.05) {
+      const wall = Date.now();
+      cell.popAt = wall;
+      if (k === TRAIL) cell.trailAt = wall;
       if (this.markFx.length < FX_CAP) this.markFx.push({ path, kind });
     }
     if (next > 0) this.active.add(cell);
@@ -647,12 +757,14 @@ export class ColonyStore {
       paths: Array.isArray(ev.paths) ? ev.paths : [],
       at: finite(ev.at, now),
       receivedAt: now,
+      ...(this.fxMuted ? { quiet: true } : {}),
     };
     this.landings.push(view);
     if (this.landings.length > 400) this.landings.splice(0, this.landings.length - 300);
     this.landingTimes.push(now);
     this.landingsSeen++;
     if (view.trunkSha) this.trunkSha = view.trunkSha;
+    const wall = Date.now();
     // Landed paths: claims there are spent, and a trail is laid. Explicit mark events that follow win.
     for (const path of view.paths) {
       const cell = this.field.get(path);
@@ -660,14 +772,16 @@ export class ColonyStore {
       const cur = cell ? decayed(cell.v[TRAIL] ?? 0, cell.at[TRAIL] ?? 0, TRAIL, now) : 0;
       this.setMark(path, "trail", Math.max(cur, 1), now, false);
       const c = this.field.get(path);
-      if (c) {
-        c.trailAt = now;
-        c.popAt = now;
+      if (c && !this.fxMuted) {
+        c.trailAt = wall;
+        c.popAt = wall;
       }
     }
+    let outside: Id | null = null;
     for (const pid of view.proposalIds) {
       const p = this.proposals.get(pid);
       if (!p) continue;
+      if (this.agentKinds.get(p.agentId) === "external") outside = p.agentId;
       this.setProposalStatus(p, "landed");
       p.updatedAt = now;
       const it = this.intents.get(p.intentId);
@@ -679,17 +793,25 @@ export class ColonyStore {
         this.intentsVersion++;
       }
     }
-    if (this.landingFx.length < 400) this.landingFx.push(view);
+    if (outside !== null) {
+      this.outside.push({ agentId: outside, landingId: view.id, paths: view.paths, at: view.at });
+      if (this.outside.length > 200) this.outside.splice(0, this.outside.length - 100);
+    }
+    if (!this.fxMuted && this.landingFx.length < 400) this.landingFx.push(view);
   }
 
-  private onViolations(total: number, byRule: Record<Id, number> | undefined, now: number): number {
+  private onViolations(total: number, byRule: Record<Id, number> | undefined, now: number, at: number): number {
     const next = Math.max(0, finite(total, this.violations.total));
     const prev = this.violations.total;
-    if (next < prev) {
+    if (this.retractPending || next > prev) {
+      // A rule change (a retraction, or a new rule's violations): the counter starts again from here.
+      this.retractPending = false;
+      this.baseline = { since: at, initial: next, convergedAt: null };
+      if (prev === 0 && next > 0) this.fixedRun = 0;
+    } else if (next < prev) {
       this.fixedRun += prev - next;
       this.fixes.push([now, prev - next]);
-    } else if (prev === 0 && next > 0) {
-      this.fixedRun = 0;
+      if (this.baseline && next === 0 && this.baseline.initial > 0) this.baseline.convergedAt = at;
     }
     this.violations = { total: next, byRule: byRule && typeof byRule === "object" ? byRule : {} };
     return next - prev;
@@ -700,6 +822,59 @@ export class ColonyStore {
     this.known = new Set(this.files.map((f) => f.path));
     this.unknown.clear();
     this.filesVersion++;
+  }
+
+  /** Add files to the map (a replay adds a new project's files as they land); known paths are skipped. */
+  addFiles(list: ReadonlyArray<{ path: string; size: number }>): void {
+    let added = 0;
+    for (const f of list) {
+      if (!f || typeof f.path !== "string" || !f.path || this.known.has(f.path)) continue;
+      this.files.push({ path: f.path, size: Math.max(1, finite(f.size, 1)) });
+      this.known.add(f.path);
+      this.unknown.delete(f.path);
+      added++;
+    }
+    if (added) {
+      this.filesVersion++;
+      this.fieldDirty = true;
+    }
+  }
+
+  /**
+   * Forget everything that happened (a replay seeking back rebuilds the colony from its start): the
+   * field, agents, intents, proposals, landings, decisions, the event log and every counter. The colony
+   * record, rules and file list come back with the next applySnapshot.
+   */
+  reset(): void {
+    for (const id of this.agents.keys()) this.agentChanges.add(id);
+    this.field.clear();
+    this.active.clear();
+    this.fieldDirty = true;
+    this.agents.clear();
+    for (const k of Object.keys(this.agentsByState) as AgentState[]) this.agentsByState[k] = 0;
+    this.intents.clear();
+    for (const k of Object.keys(this.intentsByStatus) as IntentStatus[]) this.intentsByStatus[k] = 0;
+    this.intentsVersion++;
+    this.proposals.clear();
+    this.inFlight = 0;
+    this.escalated = 0;
+    this.reviewVersion++;
+    this.landings = [];
+    this.landingTimes = [];
+    this.landingsSeen = 0;
+    this.decisions.clear();
+    this.antibodiesSeen = 0;
+    this.metrics.clear();
+    this.sigma.clear();
+    this.ring = new Array<LoggedEvent | undefined>(LOG_CAP);
+    this.ringHead = 0;
+    this.seq = 0;
+    this.typeCounts.clear();
+    this.landingFx = [];
+    this.markFx = [];
+    this.outside = [];
+    for (const k of STAGES) this.lastDecisionAt[k] = 0;
+    this.fxGen++;
   }
 
   /** Paths seen in events but missing from the snapshot join the map (debounced, it re-lays out the treemap). */
@@ -719,7 +894,7 @@ export class ColonyStore {
   }
 
   /** Current field values (decayed to `now`) on a path. */
-  fieldValues(path: string, now = Date.now()): Record<MarkKind, number> {
+  fieldValues(path: string, now = this.now()): Record<MarkKind, number> {
     const out: Record<MarkKind, number> = { need: 0, claim: 0, trail: 0, failure: 0, danger: 0 };
     const cell = this.field.get(path);
     if (!cell) return out;
@@ -749,7 +924,7 @@ export class ColonyStore {
   }
 
   /** Landings per minute over a sliding window (server metric wins when present). */
-  landingsPerMin(now = Date.now()): number {
+  landingsPerMin(now = this.now()): number {
     const m = this.metric("landingsPerMin");
     if (m !== undefined) return Math.max(0, m);
     const cutoff = now - 60_000;
@@ -762,7 +937,7 @@ export class ColonyStore {
 
   /** Every landing the colony has made (server metric), else the ones this page has seen. */
   landingsTotal(): number {
-    return Math.max(0, this.metric("landings") ?? this.landingsSeen + this.landings.filter((l) => l.receivedAt === l.at).length);
+    return Math.max(0, this.metric("landings") ?? this.landingsSeen + this.landings.filter((l) => l.history).length);
   }
 
   /** Proposals pending, checking, in a lane, or waiting for a human. */
@@ -776,14 +951,23 @@ export class ColonyStore {
   }
 
   /**
-   * Violations fixed: a server total when one exists, else the larger of what this page has
-   * watched fall and the fall from the peak of the server's per-minute window.
+   * Violations fixed since the latest rule change: what was open right after it minus what is open
+   * now. Without a baseline (the simulator, older servers), the larger of what this page has watched
+   * fall and the fall from the peak of the server's per-minute window.
    */
   violationsFixed(): number {
+    if (this.baseline) return Math.max(0, this.baseline.initial - this.violations.total);
     const m = this.metric("violationsFixed", "fixed", "violationsFixedTotal");
     if (m !== undefined) return Math.max(0, m);
     const peak = this.series ? Math.max(0, ...this.series.violations) : 0;
     return Math.max(this.fixedRun, peak - this.violations.total, 0);
+  }
+
+  /** The convergence stat once every violation since the latest rule change is fixed: how many, and how long it took. */
+  convergedIn(): { fixed: number; ms: number } | null {
+    const b = this.baseline;
+    if (!b || this.violations.total !== 0 || b.initial <= 0 || b.since === null || b.convergedAt === null) return null;
+    return { fixed: b.initial, ms: Math.max(0, b.convergedAt - b.since) };
   }
 
   /** Intents the colony has landed (server metric wins when present). */
@@ -792,7 +976,7 @@ export class ColonyStore {
   }
 
   /** Violations fixed per minute over a sliding window. */
-  fixRate(now = Date.now()): number {
+  fixRate(now = this.now()): number {
     const cutoff = now - 60_000;
     while (this.fixes.length && (this.fixes[0]?.[0] ?? 0) < cutoff) this.fixes.shift();
     let sum = 0;
@@ -802,7 +986,7 @@ export class ColonyStore {
   }
 
   /** The hottest region's branching ratio (server metric "sigma" wins when present). */
-  sigmaMax(now = Date.now()): { value: number; region: string | null } {
+  sigmaMax(now = this.now()): { value: number; region: string | null } {
     const m = this.metric("sigma", "sigmaMax");
     if (m !== undefined) return { value: Math.max(0, m), region: null };
     let value = 0;

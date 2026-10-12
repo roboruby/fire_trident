@@ -2,7 +2,7 @@
   "kind": "notes-audit",
   "at": "2026-10-12T11:25:16Z",
   "colony": "g6-scale5k",
-  "url": "https://g6-firetrident.mattsolt.workers.dev",
+  "url": "https://<preview>.workers.dev",
   "note": "Fetched trunk main and refs/notes/firetrident from the Artifacts trunk repo with stock git after the runs: each commit with an FT-Landing trailer must carry a lineage note naming that landing; `git notes --ref firetrident show` reads sampled notes through the 2-character fanout layout.",
   "result": {
     "commits_on_main": 6094,

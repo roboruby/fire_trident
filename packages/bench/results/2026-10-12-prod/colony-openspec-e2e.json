@@ -1,0 +1,413 @@
+{
+  "kind": "colony-summary",
+  "note": "Read-only GETs against the live API, summarized by packages/bench/src/evidence.ts; tokens, the account id, emails and local paths redacted.",
+  "colony": "openspec-e2e",
+  "map": "https://firetrident.mattsolt.workers.dev/c/openspec-e2e",
+  "api": "https://firetrident.mattsolt.workers.dev/api/colonies/openspec-e2e",
+  "fetchedAt": "2026-10-12T12:36:27.164Z",
+  "reads": [
+    "GET /api/colonies/openspec-e2e",
+    "GET /api/colonies/openspec-e2e/metrics",
+    "GET /api/colonies/openspec-e2e/agents?all=1&journal=0",
+    "GET /api/colonies/openspec-e2e/immune",
+    "GET /api/colonies/openspec-e2e/review",
+    "GET /api/colonies/openspec-e2e/vaccinate"
+  ],
+  "source": {
+    "url": "https://github.com/Fission-AI/OpenSpec",
+    "branch": "main"
+  },
+  "createdAt": "2026-10-12T05:52:20.800Z",
+  "regionDepth": 3,
+  "trunk": {
+    "repo": "ft-trunk/openspec-e2e--trunk",
+    "remote": "https://ACCOUNT_ID.artifacts.cloudflare.net/git/ft-trunk/openspec-e2e--trunk.git",
+    "sha": "cbd5a6fb93f293b1def502b29c1881a264bfeb52",
+    "files": 1287
+  },
+  "counters": {
+    "agents": 21,
+    "agentsActive": 0,
+    "agentsWorking": 0,
+    "agentsIdle": 0,
+    "agentsWaiting": 0,
+    "agentsDead": 21,
+    "intents": 74,
+    "intentsOpen": 0,
+    "intentsClaimed": 0,
+    "intentsProposed": 0,
+    "intentsLanded": 74,
+    "intentsAbandoned": 0,
+    "takes": 74,
+    "proposals": 74,
+    "proposalsInFlight": 0,
+    "reviewQueue": 0,
+    "landedProposals": 74,
+    "returned": 0,
+    "rejected": 0,
+    "escalated": 0,
+    "landings": 43,
+    "landingsPerMin": 0,
+    "landedIntents": 74,
+    "violations": 0,
+    "rules": 1,
+    "regions": 13,
+    "decisions": 0,
+    "funnel.reflex": 0,
+    "funnel.llm": 0,
+    "funnel.human": 0
+  },
+  "rules": [
+    {
+      "id": "rul_mv4u4yd2uwx4e5",
+      "kind": "forbid-pattern",
+      "description": "Node built-ins are imported with the node: protocol",
+      "approvedBy": "ms",
+      "createdAt": "2026-10-12T05:52:26.870Z",
+      "violationsNow": 0
+    }
+  ],
+  "intents": {
+    "total": 74,
+    "landed": 74,
+    "open": 0,
+    "claimed": 0,
+    "proposed": 0,
+    "abandoned": 0,
+    "listed": 74,
+    "listedByStatus": {
+      "landed": 74
+    },
+    "listedBySource": {
+      "rule": 74
+    },
+    "notFromRules": []
+  },
+  "proposals": {
+    "total": 74,
+    "landed": 74,
+    "returned": 0,
+    "rejected": 0,
+    "escalated": 0,
+    "inFlight": 0,
+    "reviewQueue": 0
+  },
+  "landings": {
+    "total": 43,
+    "note": "recent lists the snapshot's most recent landings (the API returns 20); every landing is a trunk commit with FT-* trailers and a note under refs/notes/firetrident",
+    "recent": [
+      {
+        "id": "lnd_mv4ub37nmkelq9",
+        "at": "2026-10-12T05:57:13.091Z",
+        "trunkSha": "cbd5a6fb93f293b1def502b29c1881a264bfeb52",
+        "parentSha": "2e843629b1013d08e87f041aedce90acb9f05943",
+        "proposals": 1,
+        "intents": 1,
+        "paths": [
+          "src/core/command-generation/invocation.ts"
+        ]
+      },
+      {
+        "id": "lnd_mv4ub2ib9viw0a",
+        "at": "2026-10-12T05:57:12.179Z",
+        "trunkSha": "2e843629b1013d08e87f041aedce90acb9f05943",
+        "parentSha": "3931bbc833a817bcde93f8022a2946f9058879f1",
+        "proposals": 4,
+        "intents": 4,
+        "paths": [
+          "src/core/command-generation/adapters/pi.ts",
+          "src/core/command-generation/adapters/qoder.ts",
+          "src/core/command-generation/adapters/roocode.ts",
+          "src/core/command-generation/adapters/zcode.ts"
+        ]
+      },
+      {
+        "id": "lnd_mv4ub1o0hurcr0",
+        "at": "2026-10-12T05:57:11.088Z",
+        "trunkSha": "3931bbc833a817bcde93f8022a2946f9058879f1",
+        "parentSha": "c6ad0425ac584794e9d9fd8deaea19b1cb2b07d9",
+        "proposals": 1,
+        "intents": 1,
+        "paths": [
+          "src/core/command-generation/adapters/trae.ts"
+        ]
+      },
+      {
+        "id": "lnd_mv4ub0p73p61f0",
+        "at": "2026-10-12T05:57:09.835Z",
+        "trunkSha": "c6ad0425ac584794e9d9fd8deaea19b1cb2b07d9",
+        "parentSha": "199eec6790b023cac4f5d03984f9895e2d4f78a9",
+        "proposals": 6,
+        "intents": 6,
+        "paths": [
+          "src/core/command-generation/adapters/junie.ts",
+          "src/core/command-generation/adapters/kilocode.ts",
+          "src/core/command-generation/adapters/lingma.ts",
+          "src/core/command-generation/adapters/oh-my-pi.ts",
+          "src/core/command-generation/adapters/opencode.ts",
+          "src/core/command-generation/adapters/qwen.ts"
+        ]
+      },
+      {
+        "id": "lnd_mv4ub014kdvk0g",
+        "at": "2026-10-12T05:57:08.968Z",
+        "trunkSha": "199eec6790b023cac4f5d03984f9895e2d4f78a9",
+        "parentSha": "6cd6435b0cb2ea97d51057b2f5bef887f1d7346c",
+        "proposals": 3,
+        "intents": 3,
+        "paths": [
+          "src/core/command-generation/adapters/gemini.ts",
+          "src/core/command-generation/adapters/gigacode.ts",
+          "src/core/command-generation/adapters/kiro.ts"
+        ]
+      },
+      {
+        "id": "lnd_mv4uax5e6irwt9",
+        "at": "2026-10-12T05:57:05.234Z",
+        "trunkSha": "6cd6435b0cb2ea97d51057b2f5bef887f1d7346c",
+        "parentSha": "f54029000346d5ceb0a7537770b861f389866608",
+        "proposals": 2,
+        "intents": 2,
+        "paths": [
+          "src/core/update.ts",
+          "src/core/view.ts"
+        ]
+      },
+      {
+        "id": "lnd_mv4uatxfwz6sgr",
+        "at": "2026-10-12T05:57:01.059Z",
+        "trunkSha": "f54029000346d5ceb0a7537770b861f389866608",
+        "parentSha": "23013944ba3cd78dccdab491595c7a00fc1be64e",
+        "proposals": 4,
+        "intents": 4,
+        "paths": [
+          "src/core/command-generation/adapters/easycode.ts",
+          "src/core/command-generation/adapters/factory.ts",
+          "src/core/command-generation/adapters/github-copilot.ts",
+          "src/core/command-generation/adapters/iflow.ts"
+        ]
+      },
+      {
+        "id": "lnd_mv4uasrqbt6q8b",
+        "at": "2026-10-12T05:56:59.558Z",
+        "trunkSha": "23013944ba3cd78dccdab491595c7a00fc1be64e",
+        "parentSha": "e2cdaa84055c526add1bde70926b90dc6d20bf1f",
+        "proposals": 1,
+        "intents": 1,
+        "paths": [
+          "src/core/version-check.ts"
+        ]
+      },
+      {
+        "id": "lnd_mv4uarm9r24d91",
+        "at": "2026-10-12T05:56:58.065Z",
+        "trunkSha": "e2cdaa84055c526add1bde70926b90dc6d20bf1f",
+        "parentSha": "47a96f01833b89146a0248912af0202af206e397",
+        "proposals": 4,
+        "intents": 4,
+        "paths": [
+          "src/core/command-generation/adapters/costrict.ts",
+          "src/core/command-generation/adapters/crush.ts",
+          "src/core/command-generation/adapters/cursor.ts",
+          "src/core/command-generation/adapters/devin.ts"
+        ]
+      },
+      {
+        "id": "lnd_mv4uapbs6jy859",
+        "at": "2026-10-12T05:56:55.096Z",
+        "trunkSha": "47a96f01833b89146a0248912af0202af206e397",
+        "parentSha": "8255f51e712741a16d4ba1c4bc7dc1d67356b49b",
+        "proposals": 1,
+        "intents": 1,
+        "paths": [
+          "src/utils/task-progress.ts"
+        ]
+      },
+      {
+        "id": "lnd_mv4uaorsc4qsag",
+        "at": "2026-10-12T05:56:54.376Z",
+        "trunkSha": "8255f51e712741a16d4ba1c4bc7dc1d67356b49b",
+        "parentSha": "2ccc89ce50ea74809dc0adb86c1b7ced12b1ee72",
+        "proposals": 1,
+        "intents": 1,
+        "paths": [
+          "src/core/specs-apply.ts"
+        ]
+      },
+      {
+        "id": "lnd_mv4uaoaw1r5dha",
+        "at": "2026-10-12T05:56:53.768Z",
+        "trunkSha": "2ccc89ce50ea74809dc0adb86c1b7ced12b1ee72",
+        "parentSha": "dec6d862a7cffaa944c37df4e2d6f5e88003e6bb",
+        "proposals": 2,
+        "intents": 2,
+        "paths": [
+          "src/core/command-generation/adapters/command-code.ts",
+          "src/core/command-generation/adapters/continue.ts"
+        ]
+      },
+      {
+        "id": "lnd_mv4uamq9wgf5dv",
+        "at": "2026-10-12T05:56:51.729Z",
+        "trunkSha": "dec6d862a7cffaa944c37df4e2d6f5e88003e6bb",
+        "parentSha": "a61d2995e55635145ef82948c7ec1deb86cfcabd",
+        "proposals": 1,
+        "intents": 1,
+        "paths": [
+          "src/utils/nested-change.ts"
+        ]
+      },
+      {
+        "id": "lnd_mv4uajuvzqye1w",
+        "at": "2026-10-12T05:56:48.007Z",
+        "trunkSha": "a61d2995e55635145ef82948c7ec1deb86cfcabd",
+        "parentSha": "c5fa89d92a395bd2441f572ce46daa7404683a5e",
+        "proposals": 3,
+        "intents": 3,
+        "paths": [
+          "src/core/profile-sync-drift.ts",
+          "src/core/project-config.ts",
+          "src/core/shared-skill-target.ts"
+        ]
+      },
+      {
+        "id": "lnd_mv4uain59j356a",
+        "at": "2026-10-12T05:56:46.433Z",
+        "trunkSha": "c5fa89d92a395bd2441f572ce46daa7404683a5e",
+        "parentSha": "c69019fa2e71e87ba82e0e9a179a147e8534acde",
+        "proposals": 3,
+        "intents": 3,
+        "paths": [
+          "src/core/command-generation/adapters/cline.ts",
+          "src/core/command-generation/adapters/codebuddy.ts",
+          "src/core/command-generation/adapters/codestudio.ts"
+        ]
+      },
+      {
+        "id": "lnd_mv4uahcyo11lg8",
+        "at": "2026-10-12T05:56:44.770Z",
+        "trunkSha": "c69019fa2e71e87ba82e0e9a179a147e8534acde",
+        "parentSha": "4d9148db3e2aee82f8c5f5fcc775c257a21dfad5",
+        "proposals": 1,
+        "intents": 1,
+        "paths": [
+          "src/utils/spec-discovery.ts"
+        ]
+      },
+      {
+        "id": "lnd_mv4uag8iwe4eos",
+        "at": "2026-10-12T05:56:43.314Z",
+        "trunkSha": "4d9148db3e2aee82f8c5f5fcc775c257a21dfad5",
+        "parentSha": "b5846f9d7831c0f61c8f73c65d93d91343b7a551",
+        "proposals": 2,
+        "intents": 2,
+        "paths": [
+          "src/core/list.ts",
+          "src/core/migration.ts"
+        ]
+      },
+      {
+        "id": "lnd_mv4uaen3n0sd1u",
+        "at": "2026-10-12T05:56:41.247Z",
+        "trunkSha": "b5846f9d7831c0f61c8f73c65d93d91343b7a551",
+        "parentSha": "74b13c893ac477a02ac69da79d75c9b7b97cb82e",
+        "proposals": 3,
+        "intents": 3,
+        "paths": [
+          "src/core/command-generation/adapters/auggie.ts",
+          "src/core/command-generation/adapters/bob.ts",
+          "src/core/command-generation/adapters/claude.ts"
+        ]
+      },
+      {
+        "id": "lnd_mv4uadg37mnp5k",
+        "at": "2026-10-12T05:56:39.699Z",
+        "trunkSha": "74b13c893ac477a02ac69da79d75c9b7b97cb82e",
+        "parentSha": "1e2a1af8705177c5959c6e0b353f9e28d2a5b5de",
+        "proposals": 2,
+        "intents": 2,
+        "paths": [
+          "src/utils/change-utils.ts",
+          "src/utils/file-system.ts"
+        ]
+      },
+      {
+        "id": "lnd_mv4uaarqrr73km",
+        "at": "2026-10-12T05:56:36.230Z",
+        "trunkSha": "1e2a1af8705177c5959c6e0b353f9e28d2a5b5de",
+        "parentSha": "077e2486de870c02812a91310dc0fd68f8091b23",
+        "proposals": 1,
+        "intents": 1,
+        "paths": [
+          "src/telemetry/index.ts"
+        ]
+      }
+    ]
+  },
+  "violations": {
+    "total": 0,
+    "byRule": {
+      "rul_mv4u4yd2uwx4e5": 0
+    }
+  },
+  "decide": {
+    "funnel": {
+      "reflex": 0,
+      "llm": 0,
+      "human": 0
+    },
+    "decisions": [],
+    "counters": {
+      "funnel.reflex": 0,
+      "funnel.llm": 0,
+      "funnel.human": 0
+    },
+    "policy": {
+      "enabled": true,
+      "deterministic": true,
+      "reflexModel": "@cf/cloudflare/clef",
+      "secondOpinionModels": [
+        "@cf/google/gemma-4-26b-a4b-it",
+        "@cf/openai/gpt-oss-120b",
+        "@cf/zai-org/glm-4.7-flash"
+      ],
+      "confidence": 0.8,
+      "hit": 0.5,
+      "needsHuman": 0.5,
+      "alertsPerHour": 30,
+      "budgetRiskFloor": 2,
+      "autonomyAfter": 3,
+      "probation": {
+        "advisory": 0.1,
+        "off": 0.25,
+        "minFires": 5
+      },
+      "maxAntibodies": 60,
+      "llmConcurrency": 8,
+      "llmPerMinute": 120,
+      "dangerAllow": []
+    },
+    "antibodies": [],
+    "detectors": [],
+    "autonomyEarnedRegions": 0,
+    "reviewQueue": [],
+    "vaccination": {
+      "n": 0,
+      "note": "no vaccination batch on this colony"
+    }
+  },
+  "agents": {
+    "total": 21,
+    "byKind": {
+      "synthetic": 20,
+      "external": 1
+    },
+    "byState": {
+      "dead": 21
+    },
+    "byModel": {
+      "@cf/zai-org/glm-5.3-flash": 20,
+      "rule-replacement": 1
+    }
+  }
+}

@@ -19,7 +19,7 @@
         "name": "race-1",
         "description": "fork of base",
         "defaultBranch": "main",
-        "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/race-1.git",
+        "remote": "https://ACCOUNT_ID.artifacts.cloudflare.net/git/ft-spike-a/race-1.git",
         "token": "<redacted>"
       },
       "ops": 4,
@@ -46,7 +46,7 @@
         "name": "ro-1",
         "description": "fork of base",
         "defaultBranch": "main",
-        "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/ro-1.git",
+        "remote": "https://ACCOUNT_ID.artifacts.cloudflare.net/git/ft-spike-a/ro-1.git",
         "token": "<redacted>"
       },
       "ops": 4,
@@ -125,7 +125,7 @@
       "lastPushAt": null,
       "source": "artifacts:ft-spike-a/base",
       "readOnly": false,
-      "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/race-1.git"
+      "remote": "https://ACCOUNT_ID.artifacts.cloudflare.net/git/ft-spike-a/race-1.git"
     },
     "log": [],
     "serverMs": 55,
@@ -169,7 +169,7 @@
       "lastPushAt": null,
       "source": "artifacts:ft-spike-a/base",
       "readOnly": false,
-      "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/race-1.git"
+      "remote": "https://ACCOUNT_ID.artifacts.cloudflare.net/git/ft-spike-a/race-1.git"
     },
     "log": [],
     "serverMs": 67,
@@ -230,7 +230,7 @@
       "lastPushAt": null,
       "source": "artifacts:ft-spike-a/base",
       "readOnly": false,
-      "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/race-1.git"
+      "remote": "https://ACCOUNT_ID.artifacts.cloudflare.net/git/ft-spike-a/race-1.git"
     },
     "log": [],
     "serverMs": 46,
@@ -265,7 +265,7 @@
       "lastPushAt": null,
       "source": "artifacts:ft-spike-a/base",
       "readOnly": true,
-      "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/ro-1.git"
+      "remote": "https://ACCOUNT_ID.artifacts.cloudflare.net/git/ft-spike-a/ro-1.git"
     },
     "log": [],
     "serverMs": 41,

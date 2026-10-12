@@ -11,14 +11,14 @@ export type ReviewDecision = "approve" | "reject" | "return";
 
 /** Where the UI gets its colony from: the Worker API or the built-in simulator. */
 export interface Backend {
-  readonly mode: "live" | "mock";
+  readonly mode: "live" | "mock" | "replay";
   /** Load the snapshot, open the live stream, and keep `store` current until stop(). */
   start(store: ColonyStore): void;
   stop(): void;
   why(path: string): Promise<WhyEntry[]>;
   review(): Promise<Proposal[]>;
   decide(proposalId: string, decision: ReviewDecision, reason: string): Promise<void>;
-  /** Freeze the colony's clock (the simulator only; a live colony keeps running). */
+  /** Freeze the colony's clock (the simulator and replays; a live colony keeps running). */
   setPaused?(paused: boolean): void;
 }
 

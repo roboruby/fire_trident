@@ -54,6 +54,7 @@ export const METRIC_KEYS: readonly string[] = [
   "rules",
   "regions",
   "decisions",
+  "funnel.proof",
   "funnel.reflex",
   "funnel.llm",
   "funnel.human",

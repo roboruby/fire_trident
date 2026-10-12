@@ -1,0 +1,317 @@
+{
+  "kind": "colony-summary",
+  "note": "Read-only GETs against the live API, summarized by packages/bench/src/evidence.ts; tokens, the account id, emails and local paths redacted.",
+  "colony": "byo-demo",
+  "map": "https://firetrident.mattsolt.workers.dev/c/byo-demo",
+  "api": "https://firetrident.mattsolt.workers.dev/api/colonies/byo-demo",
+  "fetchedAt": "2026-10-12T12:36:25.988Z",
+  "reads": [
+    "GET /api/colonies/byo-demo",
+    "GET /api/colonies/byo-demo/metrics",
+    "GET /api/colonies/byo-demo/agents?all=1&journal=0",
+    "GET /api/colonies/byo-demo/immune",
+    "GET /api/colonies/byo-demo/review",
+    "GET /api/colonies/byo-demo/vaccinate",
+    "GET /api/colonies/byo-demo/why?path=benchmark.js"
+  ],
+  "source": {
+    "url": "https://github.com/sindresorhus/is-plain-obj",
+    "branch": "main"
+  },
+  "createdAt": "2026-10-12T09:25:27.761Z",
+  "regionDepth": 1,
+  "trunk": {
+    "repo": "ft-trunk/byo-demo--trunk",
+    "remote": "https://ACCOUNT_ID.artifacts.cloudflare.net/git/ft-trunk/byo-demo--trunk.git",
+    "sha": "8fbe556265698732c5934903e8f534d123e8220e",
+    "files": 14
+  },
+  "counters": {
+    "agents": 2,
+    "agentsActive": 0,
+    "agentsWorking": 0,
+    "agentsIdle": 0,
+    "agentsWaiting": 0,
+    "agentsDead": 2,
+    "intents": 3,
+    "intentsOpen": 0,
+    "intentsClaimed": 0,
+    "intentsProposed": 0,
+    "intentsLanded": 3,
+    "intentsAbandoned": 0,
+    "takes": 3,
+    "proposals": 3,
+    "proposalsInFlight": 0,
+    "reviewQueue": 0,
+    "landedProposals": 3,
+    "returned": 0,
+    "rejected": 0,
+    "escalated": 0,
+    "landings": 3,
+    "landingsPerMin": 0,
+    "landedIntents": 3,
+    "violations": 0,
+    "rules": 1,
+    "regions": 2,
+    "decisions": 0,
+    "funnel.reflex": 0,
+    "funnel.llm": 0,
+    "funnel.human": 0,
+    "alerts.budget": 30,
+    "alerts.lastHour": 0,
+    "antibodies.active": 0,
+    "autonomy.regions": 0,
+    "decide.deterministic.land": 3
+  },
+  "rules": [
+    {
+      "id": "rul_mv51qwr1iv2wb2",
+      "kind": "forbid-pattern",
+      "description": "JavaScript strings use double quotes",
+      "approvedBy": "mcp_join",
+      "createdAt": "2026-10-12T09:25:28.525Z",
+      "violationsNow": 0
+    }
+  ],
+  "intents": {
+    "total": 3,
+    "landed": 3,
+    "open": 0,
+    "claimed": 0,
+    "proposed": 0,
+    "abandoned": 0,
+    "listed": 3,
+    "listedByStatus": {
+      "landed": 3
+    },
+    "listedBySource": {
+      "rule": 3
+    },
+    "notFromRules": []
+  },
+  "proposals": {
+    "total": 3,
+    "landed": 3,
+    "returned": 0,
+    "rejected": 0,
+    "escalated": 0,
+    "inFlight": 0,
+    "reviewQueue": 0
+  },
+  "landings": {
+    "total": 3,
+    "note": "recent lists the snapshot's most recent landings (the API returns 20); every landing is a trunk commit with FT-* trailers and a note under refs/notes/firetrident",
+    "recent": [
+      {
+        "id": "lnd_mv51rqpw2c7pal",
+        "at": "2026-10-12T09:26:07.364Z",
+        "trunkSha": "8fbe556265698732c5934903e8f534d123e8220e",
+        "parentSha": "1a578044dd5a9d3b23b59c092264237ad21eff1d",
+        "proposals": 1,
+        "intents": 1,
+        "paths": [
+          "benchmark.js"
+        ]
+      },
+      {
+        "id": "lnd_mv51rj07ckuse4",
+        "at": "2026-10-12T09:25:57.367Z",
+        "trunkSha": "1a578044dd5a9d3b23b59c092264237ad21eff1d",
+        "parentSha": "a5c3ecea3f1ff740847334b26bce7c3f34585f3d",
+        "proposals": 1,
+        "intents": 1,
+        "paths": [
+          "index.js"
+        ]
+      },
+      {
+        "id": "lnd_mv51r7a8tlhyza",
+        "at": "2026-10-12T09:25:42.176Z",
+        "trunkSha": "a5c3ecea3f1ff740847334b26bce7c3f34585f3d",
+        "parentSha": "666df7c10035f7e26f27ec214fe5ae3173435f34",
+        "proposals": 1,
+        "intents": 1,
+        "paths": [
+          "test.js"
+        ]
+      }
+    ]
+  },
+  "violations": {
+    "total": 0,
+    "byRule": {
+      "rul_mv51qwr1iv2wb2": 0
+    }
+  },
+  "decide": {
+    "funnel": {
+      "reflex": 0,
+      "llm": 0,
+      "human": 0
+    },
+    "decisions": [
+      {
+        "layer": "deterministic",
+        "action": "land",
+        "n": 3
+      }
+    ],
+    "counters": {
+      "funnel.reflex": 0,
+      "funnel.llm": 0,
+      "funnel.human": 0,
+      "alerts.budget": 30,
+      "alerts.lastHour": 0,
+      "antibodies.active": 0,
+      "autonomy.regions": 0,
+      "decide.deterministic.land": 3
+    },
+    "policy": {
+      "enabled": true,
+      "deterministic": true,
+      "reflexModel": "@cf/cloudflare/clef",
+      "secondOpinionModels": [
+        "@cf/google/gemma-4-26b-a4b-it",
+        "@cf/openai/gpt-oss-120b",
+        "@cf/zai-org/glm-4.7-flash"
+      ],
+      "confidence": 0.8,
+      "hit": 0.5,
+      "needsHuman": 0.5,
+      "alertsPerHour": 30,
+      "budgetRiskFloor": 2,
+      "autonomyAfter": 3,
+      "probation": {
+        "advisory": 0.1,
+        "off": 0.25,
+        "minFires": 5
+      },
+      "maxAntibodies": 60,
+      "llmConcurrency": 8,
+      "llmPerMinute": 120,
+      "dangerAllow": []
+    },
+    "antibodies": [],
+    "detectors": [],
+    "autonomyEarnedRegions": 1,
+    "reviewQueue": [],
+    "vaccination": {
+      "n": 0,
+      "note": "no vaccination batch on this colony"
+    }
+  },
+  "agents": {
+    "total": 2,
+    "byKind": {
+      "synthetic": 1,
+      "external": 1
+    },
+    "byState": {
+      "dead": 2
+    },
+    "byModel": {
+      "@cf/google/gemma-4-26b-a4b-it": 1,
+      "claude-sonnet-5-5": 1
+    }
+  },
+  "lineage": {
+    "target": "benchmark.js",
+    "entries": [
+      {
+        "landing": {
+          "id": "lnd_mv51rqpw2c7pal",
+          "colonyId": "byo-demo",
+          "trunkSha": "8fbe556265698732c5934903e8f534d123e8220e",
+          "parentSha": "1a578044dd5a9d3b23b59c092264237ad21eff1d",
+          "proposalIds": [
+            "prp_mv51rlub8exo6x"
+          ],
+          "intentIds": [
+            "int_mv51qwrhbackzi"
+          ],
+          "paths": [
+            "benchmark.js"
+          ],
+          "regions": [
+            "."
+          ],
+          "at": 1791797167364
+        },
+        "note": {
+          "colonyId": "byo-demo",
+          "landingId": "lnd_mv51rqpw2c7pal",
+          "proposals": [
+            {
+              "agentId": "agt_mv51r2f72a0w8y",
+              "agentKind": "external",
+              "decisions": [],
+              "evidence": {
+                "checks": [
+                  {
+                    "detail": "1 file(s) read",
+                    "ms": 45,
+                    "name": "innate: blobs",
+                    "ok": true
+                  },
+                  {
+                    "detail": "benchmark.js 8→0",
+                    "ms": 0,
+                    "name": "innate: rule rul_mv51qwr1iv2wb2",
+                    "ok": true
+                  },
+                  {
+                    "detail": "every write is inside the intent's footprint",
+                    "ms": 0,
+                    "name": "innate: footprint",
+                    "ok": true
+                  },
+                  {
+                    "detail": "Not verified: Did not run the benchmark, linter, or tests (instructed not to execute repo content). Checked only that no single quotes remain in the file.",
+                    "ms": 0,
+                    "name": "innate: not-verified",
+                    "ok": true
+                  },
+                  {
+                    "detail": "pass: 1 file proven: only import specifiers changed, each still resolving to the same file (or exactly the rule's replacement); inside the footprint; no sensitive path; rule re-check passes",
+                    "ms": 0,
+                    "name": "deterministic: mechanical proof",
+                    "ok": true
+                  },
+                  {
+                    "detail": "D3 innate+proof → land by deterministic at head 9a7220a8f2f2 (confirmations: innate + deterministic): deterministic proof: 1 file proven: only import specifiers changed, each still resolving to the same file (or exactly the rule's replacement); inside the footprint; no sensitive path; rule re-check passes",
+                    "ms": 0,
+                    "name": "gate",
+                    "ok": true
+                  }
+                ],
+                "notVerified": "Not verified: Did not run the benchmark, linter, or tests (instructed not to execute repo content). Checked only that no single quotes remain in the file.",
+                "residual": []
+              },
+              "id": "prp_mv51rlub8exo6x",
+              "intent": {
+                "id": "int_mv51qwrhbackzi",
+                "ruleId": "rul_mv51qwr1iv2wb2",
+                "title": "JavaScript strings use double quotes in benchmark.js",
+                "why": "JavaScript strings use double quotes.\nHint: Write string literals with double quotes: 'x' becomes \"x\". Change nothing else.\n8 violations on lines 1, 2, 3, 25, 27, 38, 43, 54."
+              },
+              "model": "claude-sonnet-5-5",
+              "readSet": [
+                {
+                  "blob": "4dbc605d9619af78d22c87d13cbb00776bd7534a",
+                  "path": "benchmark.js"
+                }
+              ],
+              "writeSet": [
+                {
+                  "blob": "b22377d424b988cf9bb89c9bb7beed7e9d98ddd0",
+                  "path": "benchmark.js"
+                }
+              ]
+            }
+          ],
+          "schema": "firetrident.lineage/v1"
+        }
+      }
+    ]
+  }
+}

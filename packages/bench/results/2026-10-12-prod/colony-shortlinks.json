@@ -1,0 +1,650 @@
+{
+  "kind": "colony-summary",
+  "note": "Read-only GETs against the live API, summarized by packages/bench/src/evidence.ts; tokens, the account id, emails and local paths redacted.",
+  "colony": "shortlinks",
+  "map": "https://firetrident.mattsolt.workers.dev/c/shortlinks",
+  "api": "https://firetrident.mattsolt.workers.dev/api/colonies/shortlinks",
+  "fetchedAt": "2026-10-12T12:36:24.638Z",
+  "reads": [
+    "GET /api/colonies/shortlinks",
+    "GET /api/colonies/shortlinks/metrics",
+    "GET /api/colonies/shortlinks/agents?all=1&journal=0",
+    "GET /api/colonies/shortlinks/immune",
+    "GET /api/colonies/shortlinks/review",
+    "GET /api/colonies/shortlinks/vaccinate",
+    "GET /api/colonies/shortlinks/why?path=src%2Findex.ts"
+  ],
+  "source": null,
+  "createdAt": "2026-10-12T09:11:56.240Z",
+  "regionDepth": 2,
+  "trunk": {
+    "repo": "ft-trunk/shortlinks--trunk",
+    "remote": "https://ACCOUNT_ID.artifacts.cloudflare.net/git/ft-trunk/shortlinks--trunk.git",
+    "sha": "f923e700bfef023b65e71c15e3fefa2b86a192e4",
+    "files": 23
+  },
+  "counters": {
+    "agents": 6,
+    "agentsActive": 0,
+    "agentsWorking": 0,
+    "agentsIdle": 0,
+    "agentsWaiting": 0,
+    "agentsDead": 6,
+    "intents": 13,
+    "intentsOpen": 0,
+    "intentsClaimed": 0,
+    "intentsProposed": 0,
+    "intentsLanded": 13,
+    "intentsAbandoned": 0,
+    "takes": 13,
+    "proposals": 13,
+    "proposalsInFlight": 0,
+    "reviewQueue": 0,
+    "landedProposals": 13,
+    "returned": 0,
+    "rejected": 0,
+    "escalated": 0,
+    "landings": 13,
+    "landingsPerMin": 0,
+    "landedIntents": 13,
+    "violations": 0,
+    "rules": 5,
+    "regions": 5,
+    "decisions": 26,
+    "funnel.reflex": 13,
+    "funnel.llm": 13,
+    "funnel.human": 0,
+    "alerts.budget": 30,
+    "alerts.lastHour": 0,
+    "antibodies.active": 0,
+    "autonomy.regions": 2,
+    "decide.clef.tokens": 28215,
+    "decide.llm.land": 13,
+    "decide.llm.tokensIn": 26919,
+    "decide.llm.tokensOut": 4326
+  },
+  "rules": [
+    {
+      "id": "rul_mv519icht0d9zz",
+      "kind": "forbid-import",
+      "description": "Relative imports name the .ts file",
+      "approvedBy": "ms",
+      "createdAt": "2026-10-12T09:11:56.705Z",
+      "violationsNow": 0
+    },
+    {
+      "id": "rul_mv519if1zle5zg",
+      "kind": "forbid-import",
+      "description": "Worker code uses web APIs, not Node built-ins",
+      "approvedBy": "ms",
+      "createdAt": "2026-10-12T09:11:56.797Z",
+      "violationsNow": 0
+    },
+    {
+      "id": "rul_mv519ihd829rdc",
+      "kind": "forbid-import",
+      "description": "Route handlers depend on the Store interface, not a store",
+      "approvedBy": "ms",
+      "createdAt": "2026-10-12T09:11:56.881Z",
+      "violationsNow": 0
+    },
+    {
+      "id": "rul_mv519ilyl5rp2x",
+      "kind": "forbid-pattern",
+      "description": "Responses are built by src/http.ts",
+      "approvedBy": "ms",
+      "createdAt": "2026-10-12T09:11:57.046Z",
+      "violationsNow": 0
+    },
+    {
+      "id": "rul_mv519io8etg4td",
+      "kind": "forbid-pattern",
+      "description": "Randomness and time are injected",
+      "approvedBy": "ms",
+      "createdAt": "2026-10-12T09:11:57.128Z",
+      "violationsNow": 0
+    }
+  ],
+  "intents": {
+    "total": 13,
+    "landed": 13,
+    "open": 0,
+    "claimed": 0,
+    "proposed": 0,
+    "abandoned": 0,
+    "listed": 13,
+    "listedByStatus": {
+      "landed": 13
+    },
+    "listedBySource": {
+      "human": 13
+    },
+    "notFromRules": [
+      {
+        "id": "int_mv519lbxblpb0h",
+        "title": "Acceptance suite A1 to A7",
+        "source": "human",
+        "status": "landed",
+        "createdBy": "ms",
+        "createdAt": "2026-10-12T09:12:00.573Z"
+      },
+      {
+        "id": "int_mv519l99q188a8",
+        "title": "Worker entry: routes, error boundary, store selection",
+        "source": "human",
+        "status": "landed",
+        "createdBy": "ms",
+        "createdAt": "2026-10-12T09:12:00.477Z"
+      },
+      {
+        "id": "int_mv519jz15snosu",
+        "title": "Router with params, 404, and 405",
+        "source": "human",
+        "status": "landed",
+        "createdBy": "ms",
+        "createdAt": "2026-10-12T09:11:58.813Z"
+      },
+      {
+        "id": "int_mv519kmoep5ydz",
+        "title": "Route: POST /api/links creates a short link",
+        "source": "human",
+        "status": "landed",
+        "createdBy": "ms",
+        "createdAt": "2026-10-12T09:11:59.664Z"
+      },
+      {
+        "id": "int_mv519l6f7co3pi",
+        "title": "Routes: GET and DELETE /api/links/:slug",
+        "source": "human",
+        "status": "landed",
+        "createdBy": "ms",
+        "createdAt": "2026-10-12T09:12:00.375Z"
+      },
+      {
+        "id": "int_mv519l3ddxihrr",
+        "title": "Route: GET /:slug redirects and counts",
+        "source": "human",
+        "status": "landed",
+        "createdBy": "ms",
+        "createdAt": "2026-10-12T09:12:00.265Z"
+      },
+      {
+        "id": "int_mv519jhsx35k7i",
+        "title": "HTTP helpers: json, error, readJson",
+        "source": "human",
+        "status": "landed",
+        "createdBy": "ms",
+        "createdAt": "2026-10-12T09:11:58.192Z"
+      },
+      {
+        "id": "int_mv519kf54sk8h9",
+        "title": "KV store",
+        "source": "human",
+        "status": "landed",
+        "createdBy": "ms",
+        "createdAt": "2026-10-12T09:11:59.393Z"
+      },
+      {
+        "id": "int_mv519k1hk6eiuz",
+        "title": "In-memory store",
+        "source": "human",
+        "status": "landed",
+        "createdBy": "ms",
+        "createdAt": "2026-10-12T09:11:58.901Z"
+      },
+      {
+        "id": "int_mv519jwhjj6tp2",
+        "title": "Target URL validation",
+        "source": "human",
+        "status": "landed",
+        "createdBy": "ms",
+        "createdAt": "2026-10-12T09:11:58.721Z"
+      },
+      {
+        "id": "int_mv519iq0c84orz",
+        "title": "Scaffold the Worker project",
+        "source": "human",
+        "status": "landed",
+        "createdBy": "ms",
+        "createdAt": "2026-10-12T09:11:57.192Z"
+      },
+      {
+        "id": "int_mv519jth0rmzpo",
+        "title": "Slug generation and validation",
+        "source": "human",
+        "status": "landed",
+        "createdBy": "ms",
+        "createdAt": "2026-10-12T09:11:58.613Z"
+      },
+      {
+        "id": "int_mv519j31bvnz0l",
+        "title": "Shared types: Link, Store, KVLike, Env, Deps, Handler",
+        "source": "human",
+        "status": "landed",
+        "createdBy": "ms",
+        "createdAt": "2026-10-12T09:11:57.661Z"
+      }
+    ]
+  },
+  "proposals": {
+    "total": 13,
+    "landed": 13,
+    "returned": 0,
+    "rejected": 0,
+    "escalated": 0,
+    "inFlight": 0,
+    "reviewQueue": 0
+  },
+  "landings": {
+    "total": 13,
+    "note": "recent lists the snapshot's most recent landings (the API returns 20); every landing is a trunk commit with FT-* trailers and a note under refs/notes/firetrident",
+    "recent": [
+      {
+        "id": "lnd_mv51jg9382585b",
+        "at": "2026-10-12T09:19:40.551Z",
+        "trunkSha": "f923e700bfef023b65e71c15e3fefa2b86a192e4",
+        "parentSha": "26492d2ee667ddae24c05d05745cec4a610370ec",
+        "proposals": 1,
+        "intents": 1,
+        "paths": [
+          "test/acceptance.test.ts"
+        ]
+      },
+      {
+        "id": "lnd_mv51hthjarvo7b",
+        "at": "2026-10-12T09:18:24.391Z",
+        "trunkSha": "26492d2ee667ddae24c05d05745cec4a610370ec",
+        "parentSha": "76fcc50d093e0a1980ac26ef59c87f85f41fe497",
+        "proposals": 1,
+        "intents": 1,
+        "paths": [
+          "src/index.ts"
+        ]
+      },
+      {
+        "id": "lnd_mv51h24b2lg896",
+        "at": "2026-10-12T09:17:48.923Z",
+        "trunkSha": "76fcc50d093e0a1980ac26ef59c87f85f41fe497",
+        "parentSha": "43c9fef9269f340bbb622e19e0b2a240068b3271",
+        "proposals": 1,
+        "intents": 1,
+        "paths": [
+          "src/router.ts",
+          "test/router.test.ts"
+        ]
+      },
+      {
+        "id": "lnd_mv51fefaudqf19",
+        "at": "2026-10-12T09:16:31.558Z",
+        "trunkSha": "43c9fef9269f340bbb622e19e0b2a240068b3271",
+        "parentSha": "a345319341f9aa8cde32bdcf7058463b2b2ca392",
+        "proposals": 1,
+        "intents": 1,
+        "paths": [
+          "src/routes/create.ts"
+        ]
+      },
+      {
+        "id": "lnd_mv51f24a9lf79e",
+        "at": "2026-10-12T09:16:15.610Z",
+        "trunkSha": "a345319341f9aa8cde32bdcf7058463b2b2ca392",
+        "parentSha": "d2c8d2fe1f7aa7b6af562778ec9e13c9b35210a9",
+        "proposals": 1,
+        "intents": 1,
+        "paths": [
+          "src/routes/links.ts"
+        ]
+      },
+      {
+        "id": "lnd_mv51dzajjhkhn3",
+        "at": "2026-10-12T09:15:25.291Z",
+        "trunkSha": "d2c8d2fe1f7aa7b6af562778ec9e13c9b35210a9",
+        "parentSha": "7392ad367effcb2b9e41643986b26ce8f9176ab1",
+        "proposals": 1,
+        "intents": 1,
+        "paths": [
+          "src/routes/resolve.ts"
+        ]
+      },
+      {
+        "id": "lnd_mv51dlhjddsp1k",
+        "at": "2026-10-12T09:15:07.399Z",
+        "trunkSha": "7392ad367effcb2b9e41643986b26ce8f9176ab1",
+        "parentSha": "dc08d2391586bbcb8ea040d9c6bbf1ca038a8be7",
+        "proposals": 1,
+        "intents": 1,
+        "paths": [
+          "src/http.ts",
+          "test/http.test.ts"
+        ]
+      },
+      {
+        "id": "lnd_mv51db56vhixxk",
+        "at": "2026-10-12T09:14:53.994Z",
+        "trunkSha": "dc08d2391586bbcb8ea040d9c6bbf1ca038a8be7",
+        "parentSha": "35cd268705ee9b6c1c7464665a2f6bc8c2f3cac8",
+        "proposals": 1,
+        "intents": 1,
+        "paths": [
+          "src/store/kv.ts",
+          "test/store.kv.test.ts"
+        ]
+      },
+      {
+        "id": "lnd_mv51bzklspcbv2",
+        "at": "2026-10-12T09:13:52.341Z",
+        "trunkSha": "35cd268705ee9b6c1c7464665a2f6bc8c2f3cac8",
+        "parentSha": "634747f399d6f438d858c071fe2e392a11d42830",
+        "proposals": 1,
+        "intents": 1,
+        "paths": [
+          "src/store/memory.ts",
+          "test/store.memory.test.ts"
+        ]
+      },
+      {
+        "id": "lnd_mv51b97av7ufss",
+        "at": "2026-10-12T09:13:18.166Z",
+        "trunkSha": "634747f399d6f438d858c071fe2e392a11d42830",
+        "parentSha": "82695775c49dda44dd5614e8b21e550a58211834",
+        "proposals": 1,
+        "intents": 1,
+        "paths": [
+          "src/validate.ts",
+          "test/validate.test.ts"
+        ]
+      },
+      {
+        "id": "lnd_mv51b5os5t2er0",
+        "at": "2026-10-12T09:13:13.612Z",
+        "trunkSha": "82695775c49dda44dd5614e8b21e550a58211834",
+        "parentSha": "2c096bcda58cbc6db1078a16c85f4a080d9883d9",
+        "proposals": 1,
+        "intents": 1,
+        "paths": [
+          ".gitignore",
+          "README.md",
+          "package.json",
+          "tsconfig.json",
+          "wrangler.jsonc"
+        ]
+      },
+      {
+        "id": "lnd_mv51adsyep3n75",
+        "at": "2026-10-12T09:12:37.474Z",
+        "trunkSha": "2c096bcda58cbc6db1078a16c85f4a080d9883d9",
+        "parentSha": "469780c5be131406ebe5ed4ac2376e275af4b2d5",
+        "proposals": 1,
+        "intents": 1,
+        "paths": [
+          "src/slug.ts",
+          "test/slug.test.ts"
+        ]
+      },
+      {
+        "id": "lnd_mv51a29r96trjj",
+        "at": "2026-10-12T09:12:22.527Z",
+        "trunkSha": "469780c5be131406ebe5ed4ac2376e275af4b2d5",
+        "parentSha": "df6155233f8e90e87385a04e5a8967c8fbe53b98",
+        "proposals": 1,
+        "intents": 1,
+        "paths": [
+          "src/types.ts"
+        ]
+      }
+    ]
+  },
+  "violations": {
+    "total": 0,
+    "byRule": {
+      "rul_mv519icht0d9zz": 0,
+      "rul_mv519if1zle5zg": 0,
+      "rul_mv519ihd829rdc": 0,
+      "rul_mv519ilyl5rp2x": 0,
+      "rul_mv519io8etg4td": 0
+    }
+  },
+  "decide": {
+    "funnel": {
+      "reflex": 13,
+      "llm": 13,
+      "human": 0
+    },
+    "decisions": [
+      {
+        "layer": "llm",
+        "action": "land",
+        "n": 13
+      }
+    ],
+    "counters": {
+      "funnel.reflex": 13,
+      "funnel.llm": 13,
+      "funnel.human": 0,
+      "alerts.budget": 30,
+      "alerts.lastHour": 0,
+      "antibodies.active": 0,
+      "autonomy.regions": 2,
+      "decide.clef.tokens": 28215,
+      "decide.llm.land": 13,
+      "decide.llm.tokensIn": 26919,
+      "decide.llm.tokensOut": 4326
+    },
+    "policy": {
+      "enabled": true,
+      "deterministic": true,
+      "reflexModel": "@cf/cloudflare/clef",
+      "secondOpinionModels": [
+        "@cf/google/gemma-4-26b-a4b-it",
+        "@cf/openai/gpt-oss-120b",
+        "@cf/zai-org/glm-4.7-flash"
+      ],
+      "confidence": 0.8,
+      "hit": 0.5,
+      "needsHuman": 0.5,
+      "alertsPerHour": 30,
+      "budgetRiskFloor": 2,
+      "autonomyAfter": 3,
+      "probation": {
+        "advisory": 0.1,
+        "off": 0.25,
+        "minFires": 5
+      },
+      "maxAntibodies": 60,
+      "llmConcurrency": 8,
+      "llmPerMinute": 120,
+      "dangerAllow": []
+    },
+    "antibodies": [],
+    "detectors": [
+      {
+        "id": "clef:touches_sensitive",
+        "fires": 1,
+        "useful": 0,
+        "notUseful": 1,
+        "state": "active"
+      }
+    ],
+    "autonomyEarnedRegions": 2,
+    "reviewQueue": [],
+    "vaccination": {
+      "n": 0,
+      "note": "no vaccination batch on this colony"
+    }
+  },
+  "agents": {
+    "total": 6,
+    "byKind": {
+      "internal": 6
+    },
+    "byState": {
+      "dead": 6
+    },
+    "byModel": {
+      "@cf/google/gemma-4-26b-a4b-it": 3,
+      "@cf/moonshotai/kimi-k2.7-code": 3
+    }
+  },
+  "lineage": {
+    "target": "src/index.ts",
+    "entries": [
+      {
+        "landing": {
+          "id": "lnd_mv51hthjarvo7b",
+          "colonyId": "shortlinks",
+          "trunkSha": "26492d2ee667ddae24c05d05745cec4a610370ec",
+          "parentSha": "76fcc50d093e0a1980ac26ef59c87f85f41fe497",
+          "proposalIds": [
+            "prp_mv51hrbflff5u6"
+          ],
+          "intentIds": [
+            "int_mv519l99q188a8"
+          ],
+          "paths": [
+            "src/index.ts"
+          ],
+          "regions": [
+            "src"
+          ],
+          "at": 1791796704391
+        },
+        "note": {
+          "colonyId": "shortlinks",
+          "landingId": "lnd_mv51hthjarvo7b",
+          "proposals": [
+            {
+              "agentId": "agt_mv519lma9nf0b8",
+              "agentKind": "internal",
+              "decisions": [],
+              "evidence": {
+                "checks": [
+                  {
+                    "detail": "syntax ok, 5 rule(s), 0 violations, erasable TypeScript, 10 relative import(s) resolve, imported names match the modules' exports (model @cf/moonshotai/kimi-k2.7-code, attempt 2)",
+                    "ms": 6410,
+                    "name": "write src/index.ts",
+                    "ok": true
+                  },
+                  {
+                    "detail": "@cf/moonshotai/kimi-k2.7-code: 2 call(s), 13713 input / 1735 output tokens (9920 cached), 1129.8 neurons",
+                    "ms": 29320,
+                    "name": "agent model usage",
+                    "ok": true
+                  },
+                  {
+                    "detail": "fetch 14.3 KB down; workspace probe 1 request(s); push 1.2 KB up; built on base of the workspace's last push",
+                    "ms": 476,
+                    "name": "agent git transfer",
+                    "ok": true
+                  },
+                  {
+                    "detail": "1 file(s) read",
+                    "ms": 294,
+                    "name": "innate: blobs",
+                    "ok": true
+                  },
+                  {
+                    "detail": "every write is inside the intent's footprint",
+                    "ms": 0,
+                    "name": "innate: footprint",
+                    "ok": true
+                  },
+                  {
+                    "detail": "Complete files (each parses); a diff ending in \"… (truncated)\" is a display limit, not the file. Checked by the agent before proposing: the colony's 5 rule(s) hold, the TypeScript is erasable (Node ru",
+                    "ms": 0,
+                    "name": "innate: not-verified",
+                    "ok": true
+                  },
+                  {
+                    "detail": "10/10 changed relative specifier(s) resolve in the trunk tree to the same module",
+                    "ms": 7,
+                    "name": "deterministic: imports resolve",
+                    "ok": true
+                  },
+                  {
+                    "detail": "inconclusive: the intent has no rule to prove against",
+                    "ms": 0,
+                    "name": "deterministic: mechanical proof",
+                    "ok": false
+                  },
+                  {
+                    "detail": "needs_human 0.40, touches_sensitive 0.40, off_intent 0.15, risk 1.86; confidence 0.21",
+                    "ms": 323,
+                    "name": "reflex: @cf/cloudflare/clef",
+                    "ok": true
+                  },
+                  {
+                    "detail": "approve, needs_human 0: The code correctly wires the routes, error boundary, and dependency injection for the Cloudflare Worker as intended.",
+                    "ms": 1849,
+                    "name": "llm: @cf/google/gemma-4-26b-a4b-it",
+                    "ok": true
+                  },
+                  {
+                    "detail": "L3 innate+llm → land by llm at head 1c4dc99d0502 (confirmations: innate + llm): @cf/google/gemma-4-26b-a4b-it approves: The code correctly wires the routes, error boundary, and dependency injection for the Cloudflare Worker as intended.",
+                    "ms": 0,
+                    "name": "gate",
+                    "ok": true
+                  }
+                ],
+                "notVerified": "Complete files (each parses); a diff ending in \"… (truncated)\" is a display limit, not the file. Checked by the agent before proposing: the colony's 5 rule(s) hold, the TypeScript is erasable (Node runs it by stripping types), and each relative import names a file in trunk or in this change and only names it exports. No tests, type checks or builds were run. Written by model @cf/moonshotai/kimi-k2.7-code from the intent and its spec context. Built on the landed src/types.ts, src/http.ts, src/router.ts, src/store/memory.ts and 4 more. Based on trunk 76fcc50d093e0a1980ac26ef59c87f85f41fe497, the tip once those files had landed.",
+                "residual": []
+              },
+              "id": "prp_mv51hrbflff5u6",
+              "intent": {
+                "id": "int_mv519l99q188a8",
+                "parentId": "int_mv519kmoep5ydz",
+                "title": "Worker entry: routes, error boundary, store selection",
+                "why": "Wires the modules into a deployable Worker.\n\nScope: this intent writes src/index.ts. It is one of 13 intents that build \"shortlinks: a link shortener Worker built from demo/new-project-spec.md\"; the other files are other intents' work.\nBuilds on: src/types.ts, src/http.ts, src/router.ts, src/store/memory.ts, src/store/kv.ts, src/routes/create.ts, src/routes/resolve.ts, src/routes/links.ts\nModel: default\n\nSpec context (demo/new-project-spec.md):\n## What it is\n\nA Cloudflare Worker that shortens URLs:\n\n- JSON API with one error shape.\n- KV storage in production and in-memory storage in tests.\n- Time and randomness are injected, so every test is deterministic.\n\nConventions every module follows:\n\n- Erasable TypeScript only: no `enum`, no `namespace`, no constructor parameter properties. Node strips the types and runs the file.\n- Relative imports name the `.ts` file (`import { json } from \"./http.ts\"`).\n- Strict mode. No `any`. Import types with `import type` (Node strips types, so a type imported as a value fails at load time).\n- Narrow a result union before reading it: `const r = await readJson(request); if (!r.ok) return r.response;` then use `r.value`.\n- Tests use `node:test` and `node:assert/strict`. Test files are `test/*.test.ts`. Expected values use the platform's normal forms: `new URL(\"https://example.com\").href` is `\"https://example.com/\"`, and `new Request(url, { method: \"get\" }).method` is `\"GET\"`. Build boundary inputs (a body of exactly `MAX_BODY_BYTES` bytes) by measuring the encoded bytes, not by counting characters.\n\n## HTTP API\n\n| Method | Path | Success | Errors |\n| --- | --- | --- | --- |\n| POST | `/api/links` | 201 `{ slug, url, shortUrl, createdAt }` | 400 `invalid_json`, `invalid_url`, `invalid_slug`; 409 `slug_taken`; 413 `payload_too_large` |\n| GET | `/:slug` | 302 with `Location: <url>` and `cache-control: no-store`; adds one click | 404 `not_found` |\n| GET | `/api/links/:slug` | 200 `{ slug, url, clicks, createdAt }` | 404 `not_found` |\n| DELETE | `/api/links/:slug` | 204, empty body | 401 `unauthorized` (missing or wrong `Authorization: Bearer <ADMIN_TOKEN>`); 404 `not_found` |\n| GET | `/healthz` | 200 `{ ok: true }` | none |\n\nEvery error is `{\"error\":{\"code\":\"<code>\",\"message\":\"<text>\"}}` with `content-type: application/json; charset=utf-8`. Codes and statuses: `invalid_json` 400, `invalid_url` 400, `invalid_slug` 400, `slug_taken` 409, `not_found` 404, `method_not_allowed` 405 (with an `Allow` header), `unauthorized` 401, `payload_too_large` 413, `internal` 500.\n\n`POST /api/links` takes `{ \"url\": string, \"slug\"?: string }`. `shortUrl` is the request origin plus `/` plus the slug. Without a custom slug the handler calls `makeSlug(deps.random)` and retries up to 5 times on collision, then answers 500 `internal`.\n\n## Module contracts\n\nBuild each module against these contracts, not against whatever other files exist yet. That is what lets every intent be worked at the same time.\n\n### `src/types.ts`\n\n```ts\nexport interface Link {\n  slug: string;\n  url: string; // normalized absolute http(s) URL (URL.href)\n  createdAt: number; // ms since epoch, from deps.now()\n  clicks: number;\n}\n\n/** Storage port. MemoryStore (tests, dev) and KvStore (production) implement it. */\nexport interface Store {\n  get(slug: string): Promise<Link | null>;\n  /** Insert. Resolves false and changes nothing when the slug exists. */\n  create(link: Link): Promise<boolean>;\n  /** Add one click. Resolves false when the slug does not exist. */\n  hit(slug: string): Promise<boolean>;\n  /** Remove. Resolves false when the slug does not exist. */\n  delete(slug: string): Promise<boolean>;\n}\n\n/** The slice of a KV namespace the app uses. */\nexport interface KVLike {\n  get(key: string): Promise<string | null>;\n  put(key: string, value: string): Promise<void>;\n  delete(key: string): Promise<void>;\n}\n\nexport interface Env {\n  LINKS?: KVLike;\n  ADMIN_TOKEN?: string;\n}\n\n/** Everything a handler needs, injected so tests control time and randomness. */\nexport interface Deps {\n  store: Store;\n  random: () => number; // uniform in [0, 1)\n  now: () => number;\n  adminToken?: string;\n}\n\nexport type Params = Record<string, string>;\nexport type Handler = (request: Request, params: Params, deps: Deps) => Promise<Response>;\n```\n\n### `src/http.ts`\n\n```ts\nexport type ErrorCode =\n  | \"invalid_json\" | \"invalid_url\" | \"invalid_slug\" | \"slug_taken\" | \"not_found\"\n  | \"method_not_allowed\" | \"unauthorized\" | \"payload_too_large\" | \"internal\";\nexport const MAX_BODY_BYTES = 4096;\n/** JSON response, content-type application/json; charset=utf-8. Default status 200. */\nexport function json(data: unknown, status?: number, headers?: Record<string, string>): Response;\n/** Error response with body {\"error\":{\"code\",\"message\"}}. */\nexport function error(status: number, code: ErrorCode, message: string, headers?: Record<string, string>): Response;\n/** Read a JSON body: 413 payload_too_large past MAX_BODY_BYTES (measured in bytes), 400 invalid_json if unparsable. */\nexport function readJson(request: Request): Promise<{ ok: true; value: unknown } | { ok: false; response: Response }>;\n```\n\n### `src/slug.ts`\n\n```ts\nexport const SLUG_ALPHABET = \"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz\";\nexport const SLUG_LENGTH = 7;\nexport const RESERVED_SLUGS: readonly string[]; // [\"api\", \"healthz\"]\n/** Each character is SLUG_ALPHABET[Math.floor(random() * 62)]. With random = () => 0.5 the slug is \"VVVVVVV\". */\nexport function makeSlug(random: () => number, length?: number): string;\n/** Custom slugs: 3 to 32 of [A-Za-z0-9_-], not reserved (case-insensitive). */\nexport function isValidSlug(value: unknown): value is string;\n```\n\n### `src/validate.ts`\n\n```ts\nexport const MAX_URL_LENGTH = 2048;\n/** Accept absolute http: or https: URLs up to MAX_URL_LENGTH characters with no username or password. Returns URL.href (normalized: \"https://example.com\" becomes \"https://example.com/\"). */\nexport function parseTargetUrl(input: unknown): { ok: true; url: string } | { ok: false; reason: string };\n```\n\n### `src/router.ts`\n\n```ts\nexport interface Route { method: string; pattern: string; handler: Handler }\n/**\n * Patterns are literal segments and \":name\" params, e.g. \"/api/links/:slug\".\n * The first route whose pattern and method match wins. A trailing slash is ignored.\n * Params are URI-decoded. If a pattern matches but no method does: 405\n * method_not_allowed with an Allow header (matching methods, sorted, joined by \", \").\n * If no pattern matches: 404 not_found.\n */\nexport function createRouter(routes: Route[]): (request: Request, deps: Deps) => Promise<Response>;\n```\n\n### `src/store/memory.ts` and `src/store/kv.ts`\n\n```ts\nexport class MemoryStore implements Store {} // Map-backed; get() returns a copy\nexport class KvStore implements Store {\n  constructor(kv: KVLike); // assign to a field: no parameter properties\n  // Each Link is stored as JSON under the key \"link:<slug>\". create() checks before it puts\n  // (KV has no compare-and-set; a race is acceptable here). hit() is read, increment, put.\n}\n```\n\n### Routes\n\n```ts\n// src/routes/create.ts\nexport const createLink: Handler; // POST /api/links\n// src/routes/resolve.ts\nexport const resolveLink: Handler; // GET /:slug\n// src/routes/links.ts\nexport const getLink: Handler; // GET /api/links/:slug\nexport const deleteLink: Handler; // DELETE /api/links/:slug\n```\n\n### `src/index.ts`\n\n```ts\n/** In this order: GET /healthz, POST /api/links, GET /api/links/:slug, DELETE /api/links/:slug, GET /:slug. */\nexport const routes: Route[];\n/** Router plus an error boundary: an unexpected throw becomes 500 internal. */\nexport function createApp(deps: Deps): (request: Request) => Promise<Response>;\n/**\n * Worker entry. Store: KvStore(env.LINKS) when bound, else one module-level MemoryStore.\n * random: crypto.getRandomValues(new Uint32Array(1))[0] / 2 ** 32. now: Date.now. adminToken: env.ADMIN_TOKEN.\n */\ndeclare const worker: { fetch(request: Request, env: Env): Promise<Response> };\nexport default worker;\n```\n\n## Morphology: the rules\n\nFireTrident checks every proposal against these before it lands, and `ft status` counts violations on trunk. An agent whose change breaks a rule gets it back with the hint.\n\n| # | Rule | Kind | Why |\n| --- | --- | --- | --- |\n| 1 | Relative imports name the `.ts` file | forbid-import | Node runs the files directly and does not guess extensions |\n| 2 | Worker code uses web APIs, not Node built-ins | forbid-import | `src/` ships to the Workers runtime |\n| 3 | Route handlers depend on the Store interface, not a store | forbid-import | Keeps routes testable with any store; only `src/index.ts` chooses |\n| 4 | Responses are built by `src/http.ts` | forbid-pattern | One content type, one error shape |\n| 5 | Randomness and time are injected | forbid-pattern | Deterministic tests; only `src/index.ts` touches `Math.random` or `Date.now` sources |\n\n## Acceptance tests\n\n`test/acceptance.test.ts` drives `createApp` with `new MemoryStore()`, `now: () => 1_700_000_000_000`, `adminToken: \"test-admin\"`, and requests to `https://sho.rt`. Each scenario starts from a fresh app and store. Unless a scenario says otherwise, `random` cycles through `0.1, 0.2, ..., 0.9`.\n\n| # | Scenario | Expect |\n| --- | --- | --- |\n| A1 | `POST /api/links {\"url\":\"https://example.com/docs?a=1\"}` with `random = () => 0.5` | 201; `slug` is `\"VVVVVVV\"`; `url` is `\"https://example.com/docs?a=1\"`; `shortUrl` is `\"https://sho.rt/VVVVVVV\"`; `createdAt` is 1700000000000; JSON content type |\n| A2 | `GET /<slug>` twice, then `GET /api/links/<slug>` | 302 with `Location` equal to the URL, both times; then 200 with `clicks: 2` |\n| A3 | `POST` with url `\"ftp://example.com\"`, `\"not a url\"`, a missing url, `\"https://user:<email>\"`; a body of `{`; a 5,000-byte body | 400 `invalid_url` four times; 400 `invalid_json`; 413 `payload_too_large` |\n| A4 | `POST {\"url\":\"https://example.com\",\"slug\":\"docs\"}` twice; then slugs `\"a b\"` and `\"api\"` | 201 with slug `docs`; 409 `slug_taken`; 400 `invalid_slug` twice |\n| A5 | `GET /nope123`; `PUT /api/links`; `GET /healthz`; after creating slug `docs`, `GET /api/links/docs/` | 404 `not_found`; 405 `method_not_allowed` with `Allow: POST`; 200 `{ ok: true }`; 200 (trailing slash ignored) |\n| A6 | After creating slug `docs`: `DELETE /api/links/docs` with no auth, with `Bearer <redacted>`, with `Bearer <redacted>`; then `GET /docs` | 401, 401, 204 with an empty body; then 404 |\n| A7 | Every error response above | Body is exactly `{ error: { code, message } }` with a non-empty message |\n\nDone means `node --test` passes from a clean clone (module tests plus A1 to A7) and the colony reports 0 violations of rules 1 to 5.\n\nHow FireTrident should verify, so parallel work does not trip over itself: a module intent's proposal runs the morphology check and its own test file only (`node --test test/<module>.test.ts`). The full suite, including the acceptance tests, gates the colony goal. The acceptance suite has the lowest priority, so it lands after the modules it drives."
+              },
+              "model": "@cf/moonshotai/kimi-k2.7-code",
+              "readSet": [
+                {
+                  "blob": null,
+                  "path": "src/index.ts"
+                },
+                {
+                  "blob": "257dec72fdd87ea1a8863950825d122cfb82525a",
+                  "path": "src/types.ts"
+                },
+                {
+                  "blob": "ccc0c3628c6483b29cc69faf4edc2825ed99dad0",
+                  "path": "src/http.ts"
+                },
+                {
+                  "blob": "b48c527f7ec39028704a00cd89cb2e7e56181600",
+                  "path": "src/router.ts"
+                },
+                {
+                  "blob": "82cda3e5111827598c31161524c159ae6a40040e",
+                  "path": "src/store/memory.ts"
+                },
+                {
+                  "blob": "95a40eb064532aa2c833a16438431e36e6490d2f",
+                  "path": "src/store/kv.ts"
+                },
+                {
+                  "blob": "20286c73150f397db4a496299201218583f24b5d",
+                  "path": "src/routes/create.ts"
+                },
+                {
+                  "blob": "dd2d5729ec4c380ec939164d847b503c5b569ccf",
+                  "path": "src/routes/resolve.ts"
+                },
+                {
+                  "blob": "5411aa622efe92413b71354da023b113326b5d8e",
+                  "path": "src/routes/links.ts"
+                }
+              ],
+              "writeSet": [
+                {
+                  "blob": "b5a994f2b3c52e04697e547bbea3f9938891dda4",
+                  "path": "src/index.ts"
+                }
+              ]
+            }
+          ],
+          "schema": "firetrident.lineage/v1"
+        }
+      }
+    ]
+  }
+}

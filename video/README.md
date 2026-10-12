@@ -6,7 +6,7 @@ Narration, picture and the final cut for the submission video, from one command:
 node video/render.mjs
 ```
 
-The result is `~/Desktop/save/firetrident/video/out/firetrident-roughcut-v0.mp4` (H.264 1080p30, AAC 48 kHz, loudness-normalized to about -16 LUFS), with an `.srt` subtitle file and a `.timeline.json` of every scene and shot next to it. All media (speech, recorded shots, the cut) goes to `$FT_VIDEO_OUT`, default `~/Desktop/save/firetrident/video`. The script refuses to write media inside a notes folder that holds this repository, because Obsidian indexes every file on disk.
+The result is `~/.firetrident/video/out/firetrident-roughcut-v0.mp4` (H.264 1080p30, AAC 48 kHz, loudness-normalized to about -16 LUFS), with an `.srt` subtitle file and a `.timeline.json` of every scene and shot next to it. All media (speech, recorded shots, the cut) goes to `$FT_VIDEO_OUT`, default `~/.firetrident/video`. The script refuses to write media inside a notes folder that holds this repository, because Obsidian indexes every file on disk.
 
 ## What it does
 

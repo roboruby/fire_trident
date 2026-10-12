@@ -2,7 +2,7 @@
   "kind": "live",
   "note": "MEASURED, real landings: synthetic API agents (no model, no agent-side git); every landed proposal is a real trunk commit built by the trunk writer from a blob read out of the agent's workspace fork.",
   "label": "n10",
-  "url": "https://g1-firetrident.mattsolt.workers.dev",
+  "url": "https://<preview>.workers.dev",
   "colony": "g1-bench",
   "agents": 10,
   "durationS": 60,

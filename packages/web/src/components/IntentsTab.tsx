@@ -39,7 +39,7 @@ export function IntentsTab({ store, onPick }: { store: ColonyStore; onPick: (pat
   const segments: Segment[] = groups.withdrawn.length > 0 ? ["open", "claimed", "landed", "withdrawn"] : ["open", "claimed", "landed"];
   const current: Segment = segments.includes(seg) ? seg : "open";
   const list = groups[current];
-  const now = Date.now();
+  const now = store.now();
   return (
     <div className="intents">
       <div className="segments" role="tablist">

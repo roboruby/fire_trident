@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Backend } from "../api.ts";
 import type { Tab } from "../components/SidePanel.tsx";
 import { TridentMark } from "../components/TopBar.tsx";
-import { fmtInt, fmtPct } from "../format.ts";
+import { basename, fmtDuration, fmtInt, fmtPct } from "../format.ts";
 import type { MapRenderer } from "../map/renderer.ts";
 import type { ColonyStore } from "../store.ts";
 import { KIND_INDEX, decayed } from "../theme.ts";
@@ -25,7 +25,7 @@ export interface Scene {
   emphasize?: string;
   /** Set the caption in the code font (a command, a path). */
   code?: boolean;
-  /** Data the scene needs (vaccine, landing, review, sigma); scenes without it are skipped. */
+  /** Data the scene needs (vaccine, landing, review, sigma, direction, mcp); scenes without it are skipped. */
   requires?: string;
 }
 
@@ -66,12 +66,13 @@ const asList = (x: string | string[] | undefined | null): string[] => (x === und
 
 /** The file with the most activity right now (claims, needs, danger, fresh trails). */
 function hottestFile(store: ColonyStore): string | null {
-  const now = Date.now();
+  const now = store.now();
+  const wall = Date.now();
   let best: string | null = null;
   let bestW = 0;
   for (const cell of store.active) {
     const v = (k: number) => decayed(cell.v[k] ?? 0, cell.at[k] ?? 0, k, now);
-    const recent = cell.trailAt ? Math.exp(-(now - cell.trailAt) / 20_000) : 0;
+    const recent = cell.trailAt ? Math.exp(-(wall - cell.trailAt) / 20_000) : 0;
     const w = v(KIND_INDEX.claim) * 1.2 + v(KIND_INDEX.need) * 0.6 + v(KIND_INDEX.danger) * 2 + recent;
     if (w > bestW) {
       bestW = w;
@@ -93,6 +94,12 @@ function resolveSelect(spec: string | string[] | undefined, store: ColonyStore):
     } else if (s === "@hot") {
       const p = hottestFile(store);
       if (p) return p;
+    } else if (s === "@mcp") {
+      // The latest change an outside agent (over MCP) landed.
+      for (let i = store.outside.length - 1; i >= 0; i--) {
+        const p = store.outside[i]?.paths.find((x) => known.has(x));
+        if (p) return p;
+      }
     } else if (known.has(s)) {
       return s;
     }
@@ -103,7 +110,7 @@ function resolveSelect(spec: string | string[] | undefined, store: ColonyStore):
 /** Files to outline: listed files, every file under a listed directory, or a computed set. */
 function resolveHighlight(spec: string | string[] | undefined, store: ColonyStore): string[] {
   const out = new Set<string>();
-  const now = Date.now();
+  const now = store.now();
   for (const s of asList(spec)) {
     if (s === "@landing") {
       for (const p of store.landings[store.landings.length - 1]?.paths ?? []) out.add(p);
@@ -123,26 +130,52 @@ function resolveHighlight(spec: string | string[] | undefined, store: ColonyStor
   return [...out];
 }
 
+/** "2 intents amended, 1 withdrawn, 3 directives" (only what happened), or "no change of course". */
+function directionLine(store: ColonyStore): string {
+  const d = store.direction;
+  const parts: string[] = [];
+  if (d.amended) parts.push(`${fmtInt(d.amended)} ${d.amended === 1 ? "intent" : "intents"} amended`);
+  if (d.withdrawn) parts.push(`${fmtInt(d.withdrawn)} withdrawn`);
+  if (d.retracted) parts.push(`${fmtInt(d.retracted)} ${d.retracted === 1 ? "rule" : "rules"} retracted`);
+  if (d.directives) parts.push(`${fmtInt(d.directives)} ${d.directives === 1 ? "directive" : "directives"} to agents`);
+  return parts.length ? parts.join(", ") : "no change of course";
+}
+
 /** Live values for caption placeholders such as {violations}. */
 function fill(text: string, store: ColonyStore): string {
   const f = store.funnel;
-  const decisions = f.reflex + f.llm + f.human;
+  const decisions = f.proof + f.reflex + f.llm + f.human;
   const v = store.vaccination();
+  const converged = store.convergedIn();
+  const fixed = store.violationsFixed();
+  const outside = store.outside[store.outside.length - 1];
   const values: Record<string, string> = {
     colony: store.colony?.name ?? store.colonyId,
     files: fmtInt(store.files.length),
     violations: fmtInt(store.violations.total),
-    fixed: fmtInt(store.violationsFixed()),
+    fixed: fmtInt(fixed),
+    fixedLine: converged ? `${fmtInt(converged.fixed)} fixed in ${fmtDuration(converged.ms)}` : `${fmtInt(fixed)} fixed`,
+    fixedIn: converged ? fmtDuration(converged.ms) : "",
     agents: fmtInt(store.agentsActive()),
     working: fmtInt(store.agentsWorking()),
     landings: fmtInt(store.landingsTotal()),
     perMin: fmtInt(store.landingsPerMin()),
     decisions: fmtInt(decisions),
+    proof: fmtInt(f.proof),
+    proofPct: decisions ? fmtPct(f.proof / decisions, 1) : "0%",
     reflex: decisions ? fmtPct(f.reflex / decisions, 1) : "100%",
+    llm: fmtInt(f.llm),
     human: fmtInt(f.human),
     review: fmtInt(store.reviewQueue()),
     sigma: store.sigmaMax().value.toFixed(2),
     recall: v?.recall != null ? fmtPct(v.recall) : "n/a",
+    amended: fmtInt(store.direction.amended),
+    withdrawn: fmtInt(store.direction.withdrawn),
+    directives: fmtInt(store.direction.directives),
+    direction: directionLine(store),
+    mcpAgent: outside ? store.agentName(outside.agentId) : "an outside agent",
+    mcpFile: outside?.paths[0] ? basename(outside.paths[0]) : "a change",
+    mcpLanded: fmtInt(store.outside.length),
   };
   return text.replace(/\{(\w+)\}/g, (m, k: string) => values[k] ?? m);
 }
@@ -159,6 +192,12 @@ function available(scene: Scene | undefined, store: ColonyStore): boolean {
       return store.reviewQueue() > 0;
     case "sigma":
       return store.sigmaMax().value >= 0.85;
+    case "direction": {
+      const d = store.direction;
+      return d.amended + d.withdrawn + d.retracted + d.directives > 0;
+    }
+    case "mcp":
+      return store.outside.length > 0;
     default:
       return true;
   }

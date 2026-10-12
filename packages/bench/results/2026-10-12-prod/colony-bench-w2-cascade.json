@@ -1,0 +1,416 @@
+{
+  "kind": "colony-summary",
+  "note": "Read-only GETs against the live API, summarized by packages/bench/src/evidence.ts; tokens, the account id, emails and local paths redacted.",
+  "colony": "bench-w2-cascade",
+  "map": "https://firetrident.mattsolt.workers.dev/c/bench-w2-cascade",
+  "api": "https://firetrident.mattsolt.workers.dev/api/colonies/bench-w2-cascade",
+  "fetchedAt": "2026-10-12T12:36:29.800Z",
+  "reads": [
+    "GET /api/colonies/bench-w2-cascade",
+    "GET /api/colonies/bench-w2-cascade/metrics",
+    "GET /api/colonies/bench-w2-cascade/agents?all=1&journal=0",
+    "GET /api/colonies/bench-w2-cascade/immune",
+    "GET /api/colonies/bench-w2-cascade/review",
+    "GET /api/colonies/bench-w2-cascade/vaccinate"
+  ],
+  "source": {
+    "url": "https://github.com/Fission-AI/OpenSpec",
+    "branch": "main"
+  },
+  "createdAt": "2026-10-12T06:49:40.946Z",
+  "regionDepth": 3,
+  "trunk": {
+    "repo": "ft-trunk/bench-w2-cascade--trunk",
+    "remote": "https://ACCOUNT_ID.artifacts.cloudflare.net/git/ft-trunk/bench-w2-cascade--trunk.git",
+    "sha": "813ff39530b7d40ff9e21c8f756121c2d47c623c",
+    "files": 1318
+  },
+  "counters": {
+    "agents": 32,
+    "agentsActive": 0,
+    "agentsWorking": 0,
+    "agentsIdle": 0,
+    "agentsWaiting": 0,
+    "agentsDead": 32,
+    "intents": 32,
+    "intentsOpen": 0,
+    "intentsClaimed": 0,
+    "intentsProposed": 0,
+    "intentsLanded": 32,
+    "intentsAbandoned": 0,
+    "takes": 32,
+    "proposals": 62,
+    "proposalsInFlight": 0,
+    "reviewQueue": 0,
+    "landedProposals": 32,
+    "returned": 30,
+    "rejected": 0,
+    "escalated": 0,
+    "landings": 7,
+    "landingsPerMin": 0,
+    "landedIntents": 32,
+    "violations": 0,
+    "rules": 0,
+    "regions": 2,
+    "decisions": 0,
+    "funnel.reflex": 0,
+    "funnel.llm": 0,
+    "funnel.human": 0
+  },
+  "rules": [],
+  "intents": {
+    "total": 32,
+    "landed": 32,
+    "open": 0,
+    "claimed": 0,
+    "proposed": 0,
+    "abandoned": 0,
+    "listed": 32,
+    "listedByStatus": {
+      "landed": 32
+    },
+    "listedBySource": {
+      "human": 32
+    },
+    "notFromRules": [
+      {
+        "id": "int_mv4w6rbfu6qz8l",
+        "title": "cascade: reader 19 adds src/core/cascade-mv4w6qcs-r19.txt",
+        "source": "human",
+        "status": "landed",
+        "createdBy": "bench-cascade",
+        "createdAt": "2026-10-12T06:49:50.283Z"
+      },
+      {
+        "id": "int_mv4w6r4aaps94u",
+        "title": "cascade: reader 13 adds src/core/cascade-mv4w6qcs-r13.txt",
+        "source": "human",
+        "status": "landed",
+        "createdBy": "bench-cascade",
+        "createdAt": "2026-10-12T06:49:50.026Z"
+      },
+      {
+        "id": "int_mv4w6rh7otw9gb",
+        "title": "cascade: reader 10 adds src/core/cascade-mv4w6qcs-r10.txt",
+        "source": "human",
+        "status": "landed",
+        "createdBy": "bench-cascade",
+        "createdAt": "2026-10-12T06:49:50.491Z"
+      },
+      {
+        "id": "int_mv4w6rdng132nu",
+        "title": "cascade: reader 24 adds src/core/cascade-mv4w6qcs-r24.txt",
+        "source": "human",
+        "status": "landed",
+        "createdBy": "bench-cascade",
+        "createdAt": "2026-10-12T06:49:50.363Z"
+      },
+      {
+        "id": "int_mv4w6rd03uug2b",
+        "title": "cascade: reader 29 adds src/core/cascade-mv4w6qcs-r29.txt",
+        "source": "human",
+        "status": "landed",
+        "createdBy": "bench-cascade",
+        "createdAt": "2026-10-12T06:49:50.340Z"
+      },
+      {
+        "id": "int_mv4w6rctlrqbsm",
+        "title": "cascade: reader 26 adds src/core/cascade-mv4w6qcs-r26.txt",
+        "source": "human",
+        "status": "landed",
+        "createdBy": "bench-cascade",
+        "createdAt": "2026-10-12T06:49:50.333Z"
+      },
+      {
+        "id": "int_mv4w6rbpp2dnn6",
+        "title": "cascade: reader 15 adds src/core/cascade-mv4w6qcs-r15.txt",
+        "source": "human",
+        "status": "landed",
+        "createdBy": "bench-cascade",
+        "createdAt": "2026-10-12T06:49:50.293Z"
+      },
+      {
+        "id": "int_mv4w6r4an47juz",
+        "title": "cascade: reader 30 adds src/core/cascade-mv4w6qcs-r30.txt",
+        "source": "human",
+        "status": "landed",
+        "createdBy": "bench-cascade",
+        "createdAt": "2026-10-12T06:49:50.026Z"
+      },
+      {
+        "id": "int_mv4w6r4al2ldfh",
+        "title": "cascade: reader 12 adds src/core/cascade-mv4w6qcs-r12.txt",
+        "source": "human",
+        "status": "landed",
+        "createdBy": "bench-cascade",
+        "createdAt": "2026-10-12T06:49:50.026Z"
+      },
+      {
+        "id": "int_mv4w6r4a52td4a",
+        "title": "cascade: reader 8 adds src/core/cascade-mv4w6qcs-r8.txt",
+        "source": "human",
+        "status": "landed",
+        "createdBy": "bench-cascade",
+        "createdAt": "2026-10-12T06:49:50.026Z"
+      },
+      {
+        "id": "int_mv4w6r4aqmmqui",
+        "title": "cascade: reader 20 adds src/core/cascade-mv4w6qcs-r20.txt",
+        "source": "human",
+        "status": "landed",
+        "createdBy": "bench-cascade",
+        "createdAt": "2026-10-12T06:49:50.026Z"
+      },
+      {
+        "id": "int_mv4w6r4amaye67",
+        "title": "cascade: reader 27 adds src/core/cascade-mv4w6qcs-r27.txt",
+        "source": "human",
+        "status": "landed",
+        "createdBy": "bench-cascade",
+        "createdAt": "2026-10-12T06:49:50.026Z"
+      },
+      {
+        "id": "int_mv4w6r4awd8hsn",
+        "title": "cascade: reader 18 adds src/core/cascade-mv4w6qcs-r18.txt",
+        "source": "human",
+        "status": "landed",
+        "createdBy": "bench-cascade",
+        "createdAt": "2026-10-12T06:49:50.026Z"
+      },
+      {
+        "id": "int_mv4w6r4a8x9qls",
+        "title": "cascade: reader 4 adds src/core/cascade-mv4w6qcs-r4.txt",
+        "source": "human",
+        "status": "landed",
+        "createdBy": "bench-cascade",
+        "createdAt": "2026-10-12T06:49:50.026Z"
+      },
+      {
+        "id": "int_mv4w6r4axdkqx7",
+        "title": "cascade: reader 3 adds src/core/cascade-mv4w6qcs-r3.txt",
+        "source": "human",
+        "status": "landed",
+        "createdBy": "bench-cascade",
+        "createdAt": "2026-10-12T06:49:50.026Z"
+      },
+      {
+        "id": "int_mv4w6r4a4pp30b",
+        "title": "cascade: reader 7 adds src/core/cascade-mv4w6qcs-r7.txt",
+        "source": "human",
+        "status": "landed",
+        "createdBy": "bench-cascade",
+        "createdAt": "2026-10-12T06:49:50.026Z"
+      },
+      {
+        "id": "int_mv4w6rfvm9v4n4",
+        "title": "cascade: reader 11 adds src/core/cascade-mv4w6qcs-r11.txt",
+        "source": "human",
+        "status": "landed",
+        "createdBy": "bench-cascade",
+        "createdAt": "2026-10-12T06:49:50.443Z"
+      },
+      {
+        "id": "int_mv4w6rckfhv1fo",
+        "title": "cascade: reader 21 adds src/core/cascade-mv4w6qcs-r21.txt",
+        "source": "human",
+        "status": "landed",
+        "createdBy": "bench-cascade",
+        "createdAt": "2026-10-12T06:49:50.324Z"
+      },
+      {
+        "id": "int_mv4w6rc3t56ezm",
+        "title": "cascade: reader 25 adds src/core/cascade-mv4w6qcs-r25.txt",
+        "source": "human",
+        "status": "landed",
+        "createdBy": "bench-cascade",
+        "createdAt": "2026-10-12T06:49:50.307Z"
+      },
+      {
+        "id": "int_mv4w6r4au9akmh",
+        "title": "cascade: reader 22 adds src/core/cascade-mv4w6qcs-r22.txt",
+        "source": "human",
+        "status": "landed",
+        "createdBy": "bench-cascade",
+        "createdAt": "2026-10-12T06:49:50.026Z"
+      }
+    ]
+  },
+  "proposals": {
+    "total": 62,
+    "landed": 32,
+    "returned": 30,
+    "rejected": 0,
+    "escalated": 0,
+    "inFlight": 0,
+    "reviewQueue": 0
+  },
+  "landings": {
+    "total": 7,
+    "note": "recent lists the snapshot's most recent landings (the API returns 20); every landing is a trunk commit with FT-* trailers and a note under refs/notes/firetrident",
+    "recent": [
+      {
+        "id": "lnd_mv4w7o0llcjsw8",
+        "at": "2026-10-12T06:50:32.661Z",
+        "trunkSha": "813ff39530b7d40ff9e21c8f756121c2d47c623c",
+        "parentSha": "d8add4725c4c90b366b7c0ffdafc68b0a68e2c58",
+        "proposals": 2,
+        "intents": 2,
+        "paths": [
+          "src/core/cascade-mv4w6qcs-r13.txt",
+          "src/core/cascade-mv4w6qcs-r19.txt"
+        ]
+      },
+      {
+        "id": "lnd_mv4w7l0b5m0non",
+        "at": "2026-10-12T06:50:28.763Z",
+        "trunkSha": "d8add4725c4c90b366b7c0ffdafc68b0a68e2c58",
+        "parentSha": "94bdfc0aca40cd1474355d894b99c755e07b2c25",
+        "proposals": 2,
+        "intents": 2,
+        "paths": [
+          "src/core/cascade-mv4w6qcs-r10.txt",
+          "src/core/cascade-mv4w6qcs-r24.txt"
+        ]
+      },
+      {
+        "id": "lnd_mv4w7ilzot9zzs",
+        "at": "2026-10-12T06:50:25.655Z",
+        "trunkSha": "94bdfc0aca40cd1474355d894b99c755e07b2c25",
+        "parentSha": "43a29a1af8df665543f68e83ceb6e677c1b3df3e",
+        "proposals": 12,
+        "intents": 12,
+        "paths": [
+          "src/core/cascade-mv4w6qcs-r12.txt",
+          "src/core/cascade-mv4w6qcs-r15.txt",
+          "src/core/cascade-mv4w6qcs-r18.txt",
+          "src/core/cascade-mv4w6qcs-r20.txt",
+          "src/core/cascade-mv4w6qcs-r26.txt",
+          "src/core/cascade-mv4w6qcs-r27.txt",
+          "src/core/cascade-mv4w6qcs-r29.txt",
+          "src/core/cascade-mv4w6qcs-r3.txt",
+          "src/core/cascade-mv4w6qcs-r30.txt",
+          "src/core/cascade-mv4w6qcs-r4.txt",
+          "src/core/cascade-mv4w6qcs-r7.txt",
+          "src/core/cascade-mv4w6qcs-r8.txt"
+        ]
+      },
+      {
+        "id": "lnd_mv4w7czd2jphhn",
+        "at": "2026-10-12T06:50:18.361Z",
+        "trunkSha": "43a29a1af8df665543f68e83ceb6e677c1b3df3e",
+        "parentSha": "c86e3983a4ef7712725123e3d1e5c66646f8c82d",
+        "proposals": 12,
+        "intents": 12,
+        "paths": [
+          "src/core/cascade-mv4w6qcs-r1.txt",
+          "src/core/cascade-mv4w6qcs-r11.txt",
+          "src/core/cascade-mv4w6qcs-r14.txt",
+          "src/core/cascade-mv4w6qcs-r16.txt",
+          "src/core/cascade-mv4w6qcs-r17.txt",
+          "src/core/cascade-mv4w6qcs-r2.txt",
+          "src/core/cascade-mv4w6qcs-r21.txt",
+          "src/core/cascade-mv4w6qcs-r22.txt",
+          "src/core/cascade-mv4w6qcs-r23.txt",
+          "src/core/cascade-mv4w6qcs-r25.txt",
+          "src/core/cascade-mv4w6qcs-r28.txt",
+          "src/core/cascade-mv4w6qcs-r5.txt"
+        ]
+      },
+      {
+        "id": "lnd_mv4w75sq1tkorp",
+        "at": "2026-10-12T06:50:09.050Z",
+        "trunkSha": "c86e3983a4ef7712725123e3d1e5c66646f8c82d",
+        "parentSha": "a89151b90204a301b1b130f5baca440e61c3ecef",
+        "proposals": 2,
+        "intents": 2,
+        "paths": [
+          "src/core/cascade-mv4w6qcs-r6.txt",
+          "src/core/cascade-mv4w6qcs-r9.txt"
+        ]
+      },
+      {
+        "id": "lnd_mv4w6xu7drdrea",
+        "at": "2026-10-12T06:49:58.735Z",
+        "trunkSha": "a89151b90204a301b1b130f5baca440e61c3ecef",
+        "parentSha": "280b39bfcd5239e78c60ae66a172fa4365a64367",
+        "proposals": 1,
+        "intents": 1,
+        "paths": [
+          "src/core/config.ts"
+        ]
+      },
+      {
+        "id": "lnd_mv4w6ou72etmcp",
+        "at": "2026-10-12T06:49:47.071Z",
+        "trunkSha": "280b39bfcd5239e78c60ae66a172fa4365a64367",
+        "parentSha": "9111a7654d7800391459431fff4eaf66e33a3d2e",
+        "proposals": 1,
+        "intents": 1,
+        "paths": [
+          "bench/probe/probe-mv4w6nas.txt"
+        ]
+      }
+    ]
+  },
+  "violations": {
+    "total": 0,
+    "byRule": {}
+  },
+  "decide": {
+    "funnel": {
+      "reflex": 0,
+      "llm": 0,
+      "human": 0
+    },
+    "decisions": [],
+    "counters": {
+      "funnel.reflex": 0,
+      "funnel.llm": 0,
+      "funnel.human": 0
+    },
+    "policy": {
+      "enabled": false,
+      "deterministic": true,
+      "reflexModel": "@cf/cloudflare/clef",
+      "secondOpinionModels": [
+        "@cf/openai/gpt-oss-120b",
+        "@cf/zai-org/glm-5.3"
+      ],
+      "confidence": 0.8,
+      "hit": 0.5,
+      "needsHuman": 0.5,
+      "alertsPerHour": 30,
+      "budgetRiskFloor": 2,
+      "autonomyAfter": 3,
+      "probation": {
+        "advisory": 0.1,
+        "off": 0.25,
+        "minFires": 5
+      },
+      "maxAntibodies": 60,
+      "llmConcurrency": 8,
+      "llmPerMinute": 120,
+      "dangerAllow": []
+    },
+    "antibodies": [],
+    "detectors": [],
+    "autonomyEarnedRegions": 0,
+    "reviewQueue": [],
+    "vaccination": {
+      "n": 0,
+      "note": "no vaccination batch on this colony"
+    }
+  },
+  "agents": {
+    "total": 32,
+    "byKind": {
+      "synthetic": 32
+    },
+    "byState": {
+      "dead": 32
+    },
+    "byModel": {
+      "unknown": 32
+    }
+  }
+}

@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useLayoutEffect, useState, type ReactNode } from "react";
 import { HttpBackend, saveToken, type Backend } from "./api.ts";
 import { PerfReadout } from "./components/PerfReadout.tsx";
+import { ReplayBar } from "./components/ReplayBar.tsx";
 import { SidePanel, TABS, type Tab } from "./components/SidePanel.tsx";
 import { TopBar, TridentMark } from "./components/TopBar.tsx";
 import { Director } from "./director/Director.tsx";
 import { ColonyMap } from "./map/ColonyMap.tsx";
 import type { MapRenderer } from "./map/renderer.ts";
 import { MockBackend, mockOptionsFrom } from "./mock.ts";
-import type { Route } from "./route.ts";
+import { ReplayBackend } from "./replay.ts";
+import { colonyHref, type Route } from "./route.ts";
 import { ColonyStore } from "./store.ts";
 import { useThrottledVersion } from "./useStore.ts";
 
@@ -30,13 +32,17 @@ function boot(route: ColonyRoute): Boot {
     history.replaceState(null, "", `${location.pathname}${rest ? `?${rest}` : ""}${location.hash}`);
   }
   const store = new ColonyStore(route.colonyId);
-  const backend: Backend = route.mock ? new MockBackend(route.colonyId, mockOptionsFrom(params)) : new HttpBackend(route.colonyId);
+  const backend: Backend = route.mock
+    ? new MockBackend(route.colonyId, mockOptionsFrom(params))
+    : route.replay
+      ? new ReplayBackend(route.colonyId, route.replay)
+      : new HttpBackend(route.colonyId);
   // Dev builds (and ?debug=1) expose the store for inspection from the console.
   if (import.meta.env.DEV || route.debug) (window as unknown as { ftStore?: ColonyStore }).ftStore = store;
   return { store, backend };
 }
 
-function StatusOverlay({ store, mockHref }: { store: ColonyStore; mockHref: string }) {
+function StatusOverlay({ store, mockHref, replay }: { store: ColonyStore; mockHref: string; replay: boolean }) {
   useThrottledVersion(store, 500);
   if (store.loaded && store.conn !== "error" && store.conn !== "reconnecting") return null;
   if (store.loaded) {
@@ -52,13 +58,25 @@ function StatusOverlay({ store, mockHref }: { store: ColonyStore; mockHref: stri
     <div className="overlay">
       <div className="overlay-card">
         <TridentMark size={44} />
-        <div className="overlay-title">{store.conn === "error" ? "Can't reach the colony" : `Connecting to ${store.colonyId}`}</div>
-        <div className="overlay-text">{store.conn === "error" ? `${store.error ?? ""} Retrying${retryIn ? ` in ${retryIn}s` : ""}.` : "Loading the snapshot and opening the live stream."}</div>
+        <div className="overlay-title">{store.conn === "error" ? (replay ? "Can't replay this colony" : "Can't reach the colony") : replay ? `Replaying ${store.colonyId}` : `Connecting to ${store.colonyId}`}</div>
+        <div className="overlay-text">
+          {store.conn === "error"
+            ? replay
+              ? (store.error ?? "")
+              : `${store.error ?? ""} Retrying${retryIn ? ` in ${retryIn}s` : ""}.`
+            : (store.loadingText ?? "Loading the snapshot and opening the live stream.")}
+        </div>
         {store.conn === "error" ? (
           <div className="overlay-actions">
-            <a className="btn btn-approve" href={mockHref}>
-              Open the simulator
-            </a>
+            {replay ? (
+              <a className="btn btn-approve" href={colonyHref(store.colonyId)}>
+                Open the live colony
+              </a>
+            ) : (
+              <a className="btn btn-approve" href={mockHref}>
+                Open the simulator
+              </a>
+            )}
             <a className="btn" href="/">
               All colonies
             </a>
@@ -154,9 +172,10 @@ export function App({ route }: { route: ColonyRoute }) {
 
   useThrottledVersion(store, 2000);
   const name = store.colony?.name;
+  const replaying = !!route.replay;
   useEffect(() => {
-    document.title = name ? `${name} · FireTrident` : "FireTrident";
-  }, [name]);
+    document.title = name ? `${name}${replaying ? " · Replay" : ""} · FireTrident` : "FireTrident";
+  }, [name, replaying]);
 
   const mockHref = `/c/${encodeURIComponent(route.colonyId)}?mock=1`;
   return (
@@ -166,7 +185,8 @@ export function App({ route }: { route: ColonyRoute }) {
         <main className="main">
           <div className="map-col">
             <ColonyMap store={store} onPick={pick} onRenderer={setRenderer} director={director} />
-            <StatusOverlay store={store} mockHref={mockHref} />
+            {backend instanceof ReplayBackend && !director ? <ReplayBar backend={backend} colonyId={route.colonyId} /> : null}
+            <StatusOverlay store={store} mockHref={mockHref} replay={!!route.replay} />
           </div>
           <SidePanel store={store} backend={backend} tab={tab} onTab={setTab} onPick={pick} director={director} open={!director || panelOpen} />
           {director ? <Director store={store} backend={backend} renderer={renderer} onTab={setTab} onPanel={setPanelOpen} panelOpen={panelOpen} /> : null}

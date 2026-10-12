@@ -8,7 +8,7 @@
         "name": "trig-1",
         "description": "ft-spike",
         "defaultBranch": "main",
-        "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-b/trig-1.git",
+        "remote": "https://ACCOUNT_ID.artifacts.cloudflare.net/git/ft-spike-b/trig-1.git",
         "token": "<redacted>"
       },
       "ready": {
@@ -29,7 +29,7 @@
         "name": "trig-2",
         "description": "ft-spike",
         "defaultBranch": "main",
-        "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-b/trig-2.git",
+        "remote": "https://ACCOUNT_ID.artifacts.cloudflare.net/git/ft-spike-b/trig-2.git",
         "token": "<redacted>"
       },
       "ready": {
@@ -50,7 +50,7 @@
         "name": "trig-3",
         "description": "ft-spike",
         "defaultBranch": "main",
-        "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-b/trig-3.git",
+        "remote": "https://ACCOUNT_ID.artifacts.cloudflare.net/git/ft-spike-b/trig-3.git",
         "token": "<redacted>"
       },
       "ready": {

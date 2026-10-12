@@ -20,7 +20,7 @@
  *   declare       add a follow-up intent
  *
  * Usage:
- *   node scripts/mcp_e2e.ts [--url https://m1-firetrident.mattsolt.workers.dev] [--colony m1-e2e-<stamp>]
+ *   node scripts/mcp_e2e.ts --url https://<your deployment> [--colony m1-e2e-<stamp>]
  *     [--repo https://github.com/sindresorhus/is-plain-obj] [--branch main] [--scratch DIR]
  *     [--reuse] [--timeout 300] [--no-extras] [--human] [--json out.json]
  *
@@ -76,7 +76,11 @@ function stamp(): string {
   return new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14);
 }
 
-const URL_BASE = (arg("url", process.env.FT_URL_PREVIEW ?? "https://m1-firetrident.mattsolt.workers.dev") ?? "").replace(/\/+$/, "");
+const URL_BASE = (arg("url", process.env.FT_URL) ?? "").replace(/\/+$/, "");
+if (!URL_BASE) {
+  console.error("Pass --url https://<your deployment> or set FT_URL.");
+  process.exit(2);
+}
 const HUMAN = arg("human") === "true";
 const COLONY = arg("colony", `${HUMAN ? "m1-rev" : "m1-e2e"}-${stamp()}`) ?? "";
 const REPO = arg("repo", "https://github.com/sindresorhus/is-plain-obj") ?? "";
@@ -93,7 +97,7 @@ const ADMIN_TOKEN = process.env.FT_ADMIN_TOKEN ?? "";
 const secrets = new Set<string>([MCP_TOKEN, ADMIN_TOKEN].filter((s) => s.length >= 8));
 
 function redact(text: string): string {
-  let out = text.replace(/art_v\d+_\S+/g, "<redacted>");
+  let out = text.replace(/art_v\d+_[A-Za-z0-9._~+/=-]+/g, "<redacted>");
   for (const s of secrets) out = out.split(s).join("<redacted>");
   return out;
 }

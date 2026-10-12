@@ -9,7 +9,7 @@
     "directory": "../web/dist",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api", "/api/*", "/mcp", "/mcp/*", "/sse", "/sse/*", "/healthz"]
+    "run_worker_first": ["/api", "/api/*", "/mcp", "/mcp/*", "/sse", "/sse/*", "/healthz", "/git/*"]
   },
   "durable_objects": {
     "bindings": [
@@ -38,9 +38,9 @@
     { "name": "ft-verify", "binding": "VERIFY", "class_name": "VerifyWorkflow" }
   ],
   "analytics_engine_datasets": [{ "binding": "METRICS", "dataset": "firetrident_metrics" }],
-  "vars": { "FT_PUBLIC_URL": "https://firetrident.mattsolt.workers.dev", "FT_DEFAULT_MODEL": "@cf/moonshotai/kimi-k2.7-code", "FT_BULK_MODEL": "@cf/google/gemma-4-26b-a4b-it", "FT_REFLEX_MODEL": "@cf/cloudflare/clef", "FT_COCHANGE_WEIGHT": "5" },
+  "vars": { "FT_PUBLIC_URL": "https://firetrident.mattsolt.workers.dev", "FT_DEFAULT_MODEL": "@cf/moonshotai/kimi-k2.7-code", "FT_BULK_MODEL": "@cf/google/gemma-4-26b-a4b-it", "FT_REFLEX_MODEL": "@cf/cloudflare/clef", "FT_COCHANGE_WEIGHT": "5", "FT_PUBLIC_GIT": "hono,shortlinks,byo-demo" },
   "previews": {
-    "vars": { "FT_PUBLIC_URL": "https://firetrident.mattsolt.workers.dev", "FT_DEFAULT_MODEL": "@cf/moonshotai/kimi-k2.7-code", "FT_BULK_MODEL": "@cf/google/gemma-4-26b-a4b-it", "FT_REFLEX_MODEL": "@cf/cloudflare/clef", "FT_COCHANGE_WEIGHT": "5" },
+    "vars": { "FT_PUBLIC_URL": "https://firetrident.mattsolt.workers.dev", "FT_DEFAULT_MODEL": "@cf/moonshotai/kimi-k2.7-code", "FT_BULK_MODEL": "@cf/google/gemma-4-26b-a4b-it", "FT_REFLEX_MODEL": "@cf/cloudflare/clef", "FT_COCHANGE_WEIGHT": "5", "FT_PUBLIC_GIT": "hono,shortlinks,byo-demo" },
     "ai": { "binding": "AI" },
     "artifacts": [
       { "binding": "ARTIFACTS", "namespace": "ft-trunk" },

@@ -96,6 +96,33 @@ export function fmtMs(ms: number): string {
   return `${(v / 1000).toFixed(v < 10_000 ? 1 : 0)} s`;
 }
 
+/** A span of time for people: "62 s", "7 min 44 s", "1 h 5 min". */
+export function fmtDuration(ms: number): string {
+  const s = Math.max(0, Math.round(finite(ms) / 1000));
+  if (s < 60) return `${s} s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return s % 60 ? `${m} min ${s % 60} s` : `${m} min`;
+  const h = Math.floor(m / 60);
+  return m % 60 ? `${h} h ${m % 60} min` : `${h} h`;
+}
+
+/** A replay clock position: "0:42", "12:05", "1:02:09". */
+export function fmtClock(ms: number): string {
+  const s = Math.max(0, Math.floor(finite(ms) / 1000));
+  const p = (x: number) => String(x).padStart(2, "0");
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  return h ? `${h}:${p(m)}:${p(s % 60)}` : `${m}:${p(s % 60)}`;
+}
+
+/** A day and time for labels: "Oct 12, 05:09" (local time). */
+export function fmtWhen(at: number): string {
+  const d = new Date(finite(at, Date.now()));
+  const day = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  const p = (x: number) => String(x).padStart(2, "0");
+  return `${day}, ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
 /** "1 file", "3 files". */
 export function plural(n: number, word: string, many = `${word}s`): string {
   const v = count(n);

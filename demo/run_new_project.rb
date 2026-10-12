@@ -49,7 +49,7 @@ CLEF_PER_M = 0.24 # @cf/cloudflare/clef, input tokens only
 SECOND_OPINION = [0.35, 0.75].freeze
 
 opts = { spec: "demo/new-project-spec.md", name: nil, agents: 6, model: "default=3,bulk", approve: false, timeout: 2400, stall: 600,
-         attach: false, keep: false, out: nil, reference: File.expand_path("~/Desktop/save/firetrident/shortlinks-reference") }
+         attach: false, keep: false, out: nil, reference: File.expand_path("shortlinks-reference", __dir__) }
 OptionParser.new do |o|
   o.banner = "Usage: ruby demo/run_new_project.rb [options]"
   o.on("--spec FILE", "Spec (default demo/new-project-spec.md)") { |v| opts[:spec] = v }
@@ -60,7 +60,7 @@ OptionParser.new do |o|
   o.on("--timeout S", Integer, "Give up after S seconds (default 2400)") { |v| opts[:timeout] = v }
   o.on("--stall S", Integer, "Give up when nothing lands for S seconds (default 600)") { |v| opts[:stall] = v }
   o.on("--attach", "Follow an existing colony (no ft new, no swarm)") { opts[:attach] = true }
-  o.on("--reference DIR", "Reference build whose test/acceptance.test.ts judges the result") { |v| opts[:reference] = File.expand_path(v) }
+  o.on("--reference DIR", "Directory whose test/acceptance.test.ts judges the result (default demo/shortlinks-reference)") { |v| opts[:reference] = File.expand_path(v) }
   o.on("--out DIR", "Where to clone trunk (default: a temporary directory)") { |v| opts[:out] = File.expand_path(v) }
   o.on("--keep-running", "Leave the swarm running at the end") { opts[:keep] = true }
 end.parse!
@@ -83,7 +83,7 @@ BASE, TOKEN = load_env
 T0 = Time.now
 
 def redact(text)
-  out = text.to_s.gsub(/art_v\d+_\S+/, "<redacted>")
+  out = text.to_s.gsub(/art_v\d+_[A-Za-z0-9._~+\/=-]+/, "<redacted>")
   TOKEN.empty? ? out : out.gsub(TOKEN, "<redacted>")
 end
 

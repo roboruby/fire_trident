@@ -172,3 +172,103 @@ export class EventHub {
     }
   }
 }
+
+// ---------------------------------------------------------------------------
+// The persisted record (replay)
+// ---------------------------------------------------------------------------
+
+/** Events a colony's record keeps at most; the oldest are pruned first. */
+export const RECORD_KEEP = 100_000;
+/** Buffered record events are written this often. */
+export const RECORD_FLUSH_MS = 500;
+/** A region's sigma is recorded when it moved at least this much since its last record, or crossed 1. */
+export const SIGMA_STEP = 0.05;
+/** Events buffered between two writes at most (oldest dropped beyond it). */
+const RECORD_BUFFER_MAX = 50_000;
+/** Metrics never recorded: per-cycle trunk statistics, lane tuning and load-test probes (high rate, not shown in the UI). */
+const UNRECORDED_METRIC = /^(trunk\.|inhibition:|laneDelayMs:|colony\.)/;
+
+/** True for events worth keeping in the record: everything but field marks and internal metrics. */
+export function recordable(e: ColonyEvent): boolean {
+  if (e.t === "mark") return false;
+  if (e.t === "metric") return typeof e.name === "string" && !UNRECORDED_METRIC.test(e.name);
+  return true;
+}
+
+/** Keep the last value of each metric name in a batch (at its last position); every other event stays. */
+export function coalesceMetrics(events: ColonyEvent[]): ColonyEvent[] {
+  const last = new Map<string, number>();
+  events.forEach((e, i) => {
+    if (e.t === "metric") last.set(e.name, i);
+  });
+  if (last.size === 0) return events;
+  return events.filter((e, i) => e.t !== "metric" || last.get(e.name) === i);
+}
+
+/**
+ * Records what a colony publishes, at the source and independent of live delivery: events are
+ * buffered and written in one batch at most every RECORD_FLUSH_MS. Marks are skipped (a replay
+ * derives the field from intents, claims and landings), metric values coalesce per name within a
+ * batch, and a region's sigma is kept only when it moved by SIGMA_STEP or crossed 1.
+ */
+export class EventRecorder {
+  private buffer: ColonyEvent[] = [];
+  private readonly sigma = new Map<string, number>();
+  private scheduled = false;
+
+  constructor(
+    private readonly write: (events: ColonyEvent[]) => void,
+    private readonly intervalMs = RECORD_FLUSH_MS,
+    private readonly schedule: (fn: () => void, ms: number) => unknown = (fn, ms) => setTimeout(fn, ms),
+    private readonly afterFlush: (written: number) => void = () => undefined,
+  ) {}
+
+  /** Events waiting for the next write. */
+  get pending(): number {
+    return this.buffer.length;
+  }
+
+  /** Queue events for the record (the ones worth keeping). */
+  add(events: ColonyEvent | ColonyEvent[]): void {
+    const list = Array.isArray(events) ? events : [events];
+    let added = 0;
+    for (const e of list) {
+      if (!recordable(e)) continue;
+      if (e.t === "sigma") {
+        if (typeof e.sigma !== "number" || !Number.isFinite(e.sigma)) continue;
+        const prev = this.sigma.get(e.region);
+        if (prev !== undefined && Math.abs(e.sigma - prev) < SIGMA_STEP && (prev > 1) === (e.sigma > 1)) continue;
+        this.sigma.set(e.region, e.sigma);
+      }
+      this.buffer.push(e);
+      added++;
+    }
+    if (added === 0) return;
+    if (this.buffer.length > RECORD_BUFFER_MAX) this.buffer = this.buffer.slice(-Math.floor(RECORD_BUFFER_MAX * 0.9));
+    if (!this.scheduled) {
+      this.scheduled = true;
+      this.schedule(() => this.flush(), this.intervalMs);
+    }
+  }
+
+  /** Write everything buffered now (the timer calls it; reads call it so the record is current). */
+  flush(): void {
+    this.scheduled = false;
+    const events = coalesceMetrics(this.buffer);
+    this.buffer = [];
+    if (events.length === 0) return;
+    try {
+      this.write(events);
+    } catch (err) {
+      console.error(`event record write failed (${events.length} events): ${err instanceof Error ? err.message : String(err)}`);
+      return;
+    }
+    this.afterFlush(events.length);
+  }
+
+  /** Drop everything buffered and forget recorded sigma values (the colony was erased). */
+  clear(): void {
+    this.buffer = [];
+    this.sigma.clear();
+  }
+}

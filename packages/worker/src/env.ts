@@ -39,6 +39,13 @@ export interface Env {
   FT_LATERAL_INHIBITION?: string;
   /** Optional (load tests only): when set, ColonyDO logs event-loop lag and streams it as colony.lagMs. */
   FT_LAG_PROBE?: string;
+  /**
+   * Optional: colonies whose trunk anyone may clone and fetch read-only with plain git at
+   * /git/<colony>.git (comma-separated colony ids). Empty or unset turns the proxy off.
+   */
+  FT_PUBLIC_GIT?: string;
+  /** Local development only: "1" lets writes and MCP through when their tokens are not configured. Never set it on a deployment. */
+  FT_OPEN_WRITES?: string;
   /** Secret (optional): token MCP clients must present at /mcp and /sse. */
   FT_MCP_TOKEN?: string;
   /** Secret (optional): enables Claude agents via AI Gateway / Anthropic. */

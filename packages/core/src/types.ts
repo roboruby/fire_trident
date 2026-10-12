@@ -365,6 +365,12 @@ export interface LineageNote {
 export type DecisionLayer = "reflex" | "llm" | "human";
 export type DecisionKind = "collision" | "triage" | "antibody" | "conflict" | "overlap" | "admission";
 
+/**
+ * A stage of the reflex arc that settles proposals: the deterministic proof (no model), then the
+ * decision layers. The funnel counts each proposal once, at the stage that settled it.
+ */
+export type FunnelStage = "proof" | DecisionLayer;
+
 export interface Decision {
   id: Id;
   colonyId: Id;
@@ -434,6 +440,21 @@ export interface ColonySeries {
   landedIntents: number[];
 }
 
+/**
+ * The violations counter since the latest rule change (a rule added or retracted): how many were
+ * open right after it, how many are fixed, and when the colony reached zero.
+ */
+export interface Convergence {
+  /** When the latest rule change happened; null while the colony has no rules. */
+  since: Millis | null;
+  /** Violations open right after that change. */
+  initial: number;
+  /** Violations resolved since then (landed fixes; a retraction is a change, not a fix). */
+  fixed: number;
+  /** When the open count reached zero after the change, or null while violations remain (or none were open). */
+  convergedAt: Millis | null;
+}
+
 /** Snapshot the UI loads before applying live events. */
 export interface ColonySnapshot {
   colony: Colony;
@@ -443,8 +464,38 @@ export interface ColonySnapshot {
   agents: AgentInfo[];
   recentLandings: Landing[];
   violations: { total: number; byRule: Record<Id, number> };
-  funnel: Record<DecisionLayer, number>;
+  /**
+   * Proposals settled per stage of the reflex arc, each counted once at the stage that settled it
+   * (`proof`: the deterministic proof alone; an escalation counts at `human`). Older servers sent
+   * decisions per layer and no `proof`.
+   */
+  funnel: Record<DecisionLayer, number> & { proof?: number };
   metrics: Record<string, number>;
   /** Per-minute series (served by the Worker; absent in mocks). */
   series?: ColonySeries;
+  /** Violations fixed since the latest rule change, and when the colony converged (served by the Worker). */
+  convergence?: Convergence;
+}
+
+// ---------------------------------------------------------------------------
+// Replay (the persisted event record)
+// ---------------------------------------------------------------------------
+
+/** One event of a colony's record, with its sequence number. */
+export type RecordedEvent = ColonyEvent & { seq: number };
+
+/**
+ * A page of GET /api/colonies/:id/events. `recorded` events were persisted as they happened;
+ * `reconstructed` ones were rebuilt from what the colony stores (runs from before recording).
+ */
+export interface EventsPage {
+  colonyId: Id;
+  source: "recorded" | "reconstructed";
+  events: RecordedEvent[];
+  /** Pass as `after` for the next page; null once this page reached the end. */
+  next: number | null;
+  /** The whole record: how many events, and the time of the first and the last. */
+  total: number;
+  first: Millis | null;
+  last: Millis | null;
 }

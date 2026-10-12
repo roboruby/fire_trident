@@ -2,7 +2,7 @@
   "kind": "cochange-live",
   "label": "MEASURED",
   "generatedAt": "2026-10-12T08:14:05.956Z",
-  "url": "https://g4-firetrident.mattsolt.workers.dev",
+  "url": "https://<preview>.workers.dev",
   "method": "Per round: fresh agent A takes X (priority 5), fresh agent B takes (Y 2.5 vs Z 2), both stop. Coupled colony: Y = src/jsx/streaming.ts, which co-changes with X = src/jsx/components.ts in hono's last 200 commits; control colony: Y = src/router/reg-exp-router/node.ts, which never did. Z = src/utils/body.ts in both.",
   "files": {
     "x": "src/jsx/components.ts",

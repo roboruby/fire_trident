@@ -177,7 +177,8 @@ export class SlotBook {
    * out of circulation, revoke it if an agent ever held it, and mint a clean one. A slot leased
    * meanwhile keeps what its lease gave it (the clean token is then revoked). A revoke that fails
    * leaves the slot without a usable token, so its next lease by another agent revokes again
-   * before minting. Returns how many slots got a clean token.
+   * before minting. A slot whose repository no longer exists is retired (state 'failed'), as a
+   * lease retires it, so it stops coming back as a chore. Returns how many slots got a clean token.
    */
   async maintain(limit: number, concurrency = 8): Promise<number> {
     const rows = this.chores(limit);
@@ -207,7 +208,13 @@ export class SlotBook {
           if (ok > 0) done++;
           else await this.ops.revoke(row, t.id).catch(() => undefined);
         } catch (e) {
-          console.warn(`pool: token chore for ${row.name} failed: ${e instanceof Error ? e.message : String(e)}`);
+          const message = e instanceof Error ? e.message : String(e);
+          if ((e as { code?: unknown } | null)?.code === "NOT_FOUND") {
+            this.sql.exec(`UPDATE ft_pool_ws SET state = 'failed', error = ? WHERE n = ? AND state = 'ready'`, `workspace vanished: ${message}`, row.n);
+            this.touched();
+          } else {
+            console.warn(`pool: token chore for ${row.name} failed: ${message}`);
+          }
         }
       }
     };

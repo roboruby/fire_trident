@@ -101,7 +101,7 @@ export const SCENES = {
   land: {
     shots: [
       { at: 0, kind: "page", url: sim("land"), skipMs: 16000, badge: SIMULATOR, hideSub: true },
-      { at: "The writer lands them", kind: "terminal", t: "git-land", cues: [0.3] },
+      { at: "The writer lands every", kind: "terminal", t: "git-land", cues: [0.3] },
       { at: "Sometimes one change", kind: "page", url: BENCH, local: true, ready: "complete", scroll: { keys: [{ at: 0, to: "text:The seizure detector", offset: -70 }, { at: "When that number climbs", to: "text:The seizure detector", offset: 60, dur: 2.4 }] } },
     ],
   },
@@ -140,8 +140,8 @@ export const SCENES = {
   "a-new-project": {
     shots: [
       { at: 0, kind: "terminal", t: "shortlinks-new", cues: [0.3, "Agents wait for"], blockLps: [30, 3.2] },
-      { at: "and the colony converges", kind: "page", url: dir("shortlinks", "map"), badge: prod("grown from a spec, 2026-10-12") },
-      { at: "Clone the result", kind: "terminal", t: "shortlinks-test", lps: 6, mark: ["node --test: 60 tests, 60 pass, 0 fail", "reference acceptance: 7/7 pass"] },
+      { at: "and write the rest", kind: "page", url: dir("shortlinks", "map"), badge: prod("grown from a spec, 2026-10-12") },
+      { at: "Eight minutes later", kind: "terminal", t: "shortlinks-test", lps: 6, mark: ["node --test: 60 tests, 60 pass, 0 fail", "reference acceptance: 7/7 pass"] },
     ],
   },
 
@@ -164,7 +164,7 @@ export const SCENES = {
 
   scale: {
     shots: [
-      { at: 0, kind: "page", url: BENCH, local: true, ready: "complete", scroll: { keys: [{ at: 0, y: 0 }, { at: "In simulation", to: "text:Throughput on the live workload", offset: 200, dur: 1.6 }] } },
+      { at: 0, kind: "page", url: BENCH, local: true, ready: "complete", scroll: { keys: [{ at: 0, y: 0 }, { at: "Those were synthetic agents", to: "text:Throughput on the live workload", offset: 200, dur: 1.6 }] } },
       {
         at: "Optimism has a cost",
         kind: "card",

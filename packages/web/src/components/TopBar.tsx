@@ -1,8 +1,8 @@
-import type { DecisionLayer } from "@fire_trident/core";
-import { fmtInt, fmtPct } from "../format.ts";
-import type { ColonyStore, ConnState } from "../store.ts";
+import type { FunnelStage } from "@fire_trident/core";
+import { fmtDuration, fmtInt, fmtPct, fmtWhen } from "../format.ts";
+import { STAGES, type ColonyStore, type ConnState, type ReplayInfo } from "../store.ts";
 import { sparkPoints, type Series } from "../series.ts";
-import { LAYER_COLOR } from "../theme.ts";
+import { STAGE_COLOR } from "../theme.ts";
 import { useThrottledVersion } from "../useStore.ts";
 import { AnimatedNumber } from "./AnimatedNumber.tsx";
 import { ColonyPicker } from "./ColonyPicker.tsx";
@@ -39,9 +39,21 @@ const CONN_LABEL: Record<ConnState, string> = {
   reconnecting: "Reconnecting",
   error: "Offline",
   mock: "Simulated",
+  replay: "Replay",
 };
 
-function ConnPill({ conn }: { conn: ConnState }) {
+function ConnPill({ conn, replay }: { conn: ConnState; replay: ReplayInfo | null }) {
+  if (replay) {
+    const rebuilt = replay.source === "reconstructed";
+    const title = `A replay of the run that started ${new Date(replay.startedAt).toLocaleString()}${rebuilt ? ", reconstructed from what the colony stores (claim times are estimated)" : ", from the events the colony recorded as it happened"}.`;
+    return (
+      <span className="conn conn-replay" title={title}>
+        <i />
+        Replay · {fmtWhen(replay.startedAt)}
+        {rebuilt ? <b className="conn-tag">reconstructed</b> : null}
+      </span>
+    );
+  }
   return (
     <span className={`conn conn-${conn}`}>
       <i />
@@ -112,40 +124,55 @@ function BurnDown({ series, live }: { series: Series; live: number }) {
   );
 }
 
-const LAYERS: readonly DecisionLayer[] = ["reflex", "llm", "human"];
-const LAYER_LABEL: Record<DecisionLayer, string> = { reflex: "Reflex", llm: "LLM", human: "Human" };
+const STAGE_LABEL: Record<FunnelStage, string> = { proof: "Proof", reflex: "Reflex", llm: "LLM", human: "Human" };
 
-function Funnel({ funnel, last }: { funnel: Record<DecisionLayer, number>; last: Record<DecisionLayer, number> }) {
-  const W = 240;
+/**
+ * The reflex arc. With a server that reports settled proposals, four stages: each proposal counts
+ * once, at the stage that settled it (a deterministic proof first, no model). Older servers and the
+ * simulator report decisions per layer: three stages.
+ */
+function Funnel({ funnel, last, settled }: { funnel: Record<FunnelStage, number>; last: Record<FunnelStage, number>; settled: boolean }) {
+  const stages = settled ? STAGES : STAGES.filter((s) => s !== "proof");
+  const W = settled ? 256 : 240;
   const H = 26;
-  const n = (l: DecisionLayer) => Math.max(0, Number.isFinite(funnel[l]) ? funnel[l] : 0);
-  const max = Math.max(1, ...LAYERS.map(n));
-  const total = LAYERS.reduce((a, l) => a + n(l), 0);
+  const n = (l: FunnelStage) => Math.max(0, Number.isFinite(funnel[l]) ? funnel[l] : 0);
+  const max = Math.max(1, ...stages.map(n));
+  const total = stages.reduce((a, l) => a + n(l), 0);
   const height = (x: number) => 7 + (H - 7) * (Math.log10(x + 1) / Math.log10(max + 1));
-  const hs = LAYERS.map((l) => height(n(l)));
-  const seg = W / 3;
+  const hs = stages.map((l) => height(n(l)));
+  const seg = W / stages.length;
   const now = Date.now();
+  const share = !total
+    ? settled
+      ? "nothing settled yet"
+      : "no decisions yet"
+    : settled && n("proof") > 0
+      ? `${fmtPct(n("proof") / total, 1)} by proof`
+      : `${fmtPct(n("reflex") / total, 1)} at reflex`;
+  const title = settled
+    ? "Each proposal counts once, at the stage that settled it: a deterministic proof first (no model), then calibrated reflex models, then an LLM, then a person."
+    : "Every decision goes to the cheapest layer that is confident: calibrated reflex models first, then an LLM, then a human.";
   return (
-    <div className="funnel" title="Every decision goes to the cheapest layer that is confident: calibrated reflex models first, then an LLM, then a human.">
+    <div className="funnel" title={title}>
       <div className="stat-k">
-        Reflex arc <span className="funnel-share">{total ? `${fmtPct(n("reflex") / total, 1)} at reflex` : "no decisions yet"}</span>
+        Reflex arc <span className="funnel-share">{share}</span>
       </div>
       <svg viewBox={`0 0 ${W} ${H}`} width={W} height={H} className="funnel-svg" aria-hidden="true">
-        {LAYERS.map((l, i) => {
+        {stages.map((l, i) => {
           const hl = hs[i] ?? 8;
-          const hr = i < 2 ? (hs[i + 1] ?? 8) : hl * 0.72;
+          const hr = i < stages.length - 1 ? (hs[i + 1] ?? 8) : hl * 0.72;
           const x0 = i * seg + (i ? 2 : 0);
           const x1 = (i + 1) * seg - 2;
           const d = `M${x0} ${(H - hl) / 2} L${x1} ${(H - hr) / 2} L${x1} ${(H + hr) / 2} L${x0} ${(H + hl) / 2} Z`;
           const hot = now - last[l] < 700;
-          return <path key={`${l}-${hot ? last[l] : 0}`} d={d} className={`funnel-seg${hot ? " is-hot" : ""}`} style={{ fill: LAYER_COLOR[l], stroke: LAYER_COLOR[l] }} />;
+          return <path key={`${l}-${hot ? last[l] : 0}`} d={d} className={`funnel-seg${hot ? " is-hot" : ""}`} style={{ fill: STAGE_COLOR[l], stroke: STAGE_COLOR[l] }} />;
         })}
       </svg>
-      <div className="funnel-row">
-        {LAYERS.map((l) => (
+      <div className="funnel-row" style={{ gridTemplateColumns: `repeat(${stages.length}, 1fr)`, width: W }}>
+        {stages.map((l) => (
           <div className="funnel-cell" key={l}>
-            <span className="funnel-label" style={{ color: LAYER_COLOR[l] }}>
-              {LAYER_LABEL[l]}
+            <span className="funnel-label" style={{ color: STAGE_COLOR[l] }}>
+              {STAGE_LABEL[l]}
             </span>
             <AnimatedNumber className="funnel-num" value={n(l)} duration={400} />
           </div>
@@ -158,9 +185,10 @@ function Funnel({ funnel, last }: { funnel: Record<DecisionLayer, number>; last:
 /** The top bar: brand and colony, the hero violations counter, live stats, sigma, vaccination, and the reflex funnel. */
 export function TopBar({ store, director = false, mock = false }: { store: ColonyStore; director?: boolean; mock?: boolean }) {
   useThrottledVersion(store, 200);
-  const now = Date.now();
+  const now = store.now();
   const total = store.violations.total;
   const fixed = store.violationsFixed();
+  const converged = store.convergedIn();
   const progress = fixed + total > 0 ? fixed / (fixed + total) : store.loaded ? 1 : 0;
   const rate = store.fixRate(now);
   const sigma = store.sigmaMax(now);
@@ -183,7 +211,7 @@ export function TopBar({ store, director = false, mock = false }: { store: Colon
           <div className="brand-name">FireTrident</div>
           <div className="brand-colony">
             {director ? <span className="mono brand-colony-name">{label}</span> : <ColonyPicker current={store.colonyId} label={label} mock={mock} />}
-            <ConnPill conn={store.conn} />
+            <ConnPill conn={store.conn} replay={store.replay} />
           </div>
         </div>
       </div>
@@ -195,7 +223,9 @@ export function TopBar({ store, director = false, mock = false }: { store: Colon
           </span>
           <div className="hero-side">
             <div className="hero-rate">{clean ? "clean" : rate >= 1 ? `−${fmtInt(rate)}/min` : "·"}</div>
-            <div className="hero-fixed">{fixed > 0 || !landedIntents ? `${fmtInt(fixed)} fixed` : `${fmtInt(landedIntents)} intents landed`}</div>
+            <div className={`hero-fixed${converged ? " is-converged" : ""}`} title={converged ? "Every violation found since the latest rule change, fixed: the time runs from the rule change to the last fix landing." : undefined}>
+              {converged ? `${fmtInt(converged.fixed)} fixed in ${fmtDuration(converged.ms)}` : fixed > 0 || !landedIntents ? `${fmtInt(fixed)} fixed` : `${fmtInt(landedIntents)} intents landed`}
+            </div>
           </div>
         </div>
         {store.series && store.series.violations.some((v) => v > 0) ? (
@@ -213,7 +243,7 @@ export function TopBar({ store, director = false, mock = false }: { store: Colon
       </div>
       <SigmaGauge value={sigma.value} region={sigma.region} />
       {vaccine ? <VaccineMeter v={vaccine} /> : null}
-      <Funnel funnel={store.funnel} last={store.lastDecisionAt} />
+      <Funnel funnel={store.funnel} last={store.lastDecisionAt} settled={store.settledFunnel} />
     </header>
   );
 }
