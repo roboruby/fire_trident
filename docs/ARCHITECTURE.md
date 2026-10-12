@@ -81,7 +81,7 @@ An in-platform agent built on `@cloudflare/computer` (workspace + AI SDK tools) 
 - `stop(): Promise<void>`, `status(): Promise<AgentInfo>`
 
 ### FireTridentMcp
-An `agents/mcp` McpAgent exposing tools for external agents (Claude Code, Codex, Cursor): `join`, `sense`, `take`, `declare`, `checkout`, `read`, `propose`, `inbox`, `why`.
+An `agents/mcp` McpAgent exposing tools for external agents (any MCP client): `join`, `sense`, `take`, `declare`, `checkout`, `read`, `propose`, `inbox`, `release`, `why`. Every tool call heartbeats the agent's claims, so a slow external agent keeps its work; an agent silent for ten minutes loses its intent to the colony. `take` and `inbox` accept `wait` (the server waits for work or for the proposal's outcome). `take` returns git steps that need no shell state (no `cd` or `export`), and `propose` records the agent's `notVerified` statement for review. Session state tolerates parallel tool calls.
 
 ## Artifacts layout
 
