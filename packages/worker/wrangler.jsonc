@@ -38,5 +38,32 @@
     { "name": "ft-verify", "binding": "VERIFY", "class_name": "VerifyWorkflow" }
   ],
   "analytics_engine_datasets": [{ "binding": "METRICS", "dataset": "firetrident_metrics" }],
-  "vars": { "FT_PUBLIC_URL": "https://firetrident.mattsolt.workers.dev", "FT_DEFAULT_MODEL": "@cf/moonshotai/kimi-k2.7-code", "FT_BULK_MODEL": "@cf/google/gemma-4-26b-a4b-it", "FT_REFLEX_MODEL": "@cf/cloudflare/clef" }
+  "vars": { "FT_PUBLIC_URL": "https://firetrident.mattsolt.workers.dev", "FT_DEFAULT_MODEL": "@cf/moonshotai/kimi-k2.7-code", "FT_BULK_MODEL": "@cf/google/gemma-4-26b-a4b-it", "FT_REFLEX_MODEL": "@cf/cloudflare/clef" },
+  "previews": {
+    "vars": { "FT_PUBLIC_URL": "https://firetrident.mattsolt.workers.dev", "FT_DEFAULT_MODEL": "@cf/moonshotai/kimi-k2.7-code", "FT_BULK_MODEL": "@cf/google/gemma-4-26b-a4b-it", "FT_REFLEX_MODEL": "@cf/cloudflare/clef" },
+    "ai": { "binding": "AI" },
+    "artifacts": [
+      { "binding": "ARTIFACTS", "namespace": "ft-trunk" },
+      { "binding": "WS0", "namespace": "ft-ws-0" },
+      { "binding": "WS1", "namespace": "ft-ws-1" },
+      { "binding": "WS2", "namespace": "ft-ws-2" },
+      { "binding": "WS3", "namespace": "ft-ws-3" },
+      { "binding": "SESSIONS", "namespace": "ft-sessions" }
+    ],
+    "analytics_engine_datasets": [{ "binding": "METRICS", "dataset": "firetrident_metrics" }],
+    "durable_objects": {
+      "bindings": [
+        { "name": "COLONY", "class_name": "ColonyDO" },
+        { "name": "REGION", "class_name": "RegionDO" },
+        { "name": "TRUNK", "class_name": "TrunkDO" },
+        { "name": "POOL", "class_name": "PoolDO" },
+        { "name": "AGENT", "class_name": "AgentDO" },
+        { "name": "MCP", "class_name": "FireTridentMcp" }
+      ]
+    },
+    "workflows": [
+      { "name": "ft-ingest", "binding": "INGEST", "class_name": "IngestWorkflow" },
+      { "name": "ft-verify", "binding": "VERIFY", "class_name": "VerifyWorkflow" }
+    ]
+  }
 }
