@@ -93,3 +93,13 @@ Facts the design relies on (from the docs and the spike): each repo is one Durab
 ## Live events
 
 `ColonyEvent` (see `packages/core/src/types.ts`) is the single event shape for the UI and for internal fan-out. The UI first loads `ColonySnapshot`, then applies events from the WebSocket.
+
+## Additional RPCs (as built)
+
+- ColonyDO: `getColony`, `listRegions`, `getIntent`, `getAgent`, `registerAgents` (batch), `abandon(agentId, reason)`, `inbox(agentId, limit)`, `updateProposals` (batch), `recordDecision`, `landContext(intentIds, agentIds)` (compact lineage context for lanes).
+- RegionDO: `reading(opts)` (optionally filtered by paths), `apply`, `dequeue`, `status`.
+- TrunkDO: `init` accepts an optional `regionDepth`; `land(batch, ctx?)` takes compact lineage context (lanes pass it, so the writer never pulls a snapshot); `stats`, `flushNotes` (re-pushes any note whose push failed after its landing), `mirrorTo`, `refreshTokenIfNeeded`. TrunkDO does not call `onLanding`; the lane does.
+- PoolDO: `stats`, `teardown`. Forks cannot cross namespaces, so each `ft-ws-N` namespace holds a seed repo `<colony>--seed` that workspaces fork from.
+- AgentDO: `start({ colonyId, agentId, model?, kind?, name?, delayMs? })`; `status()` returns AgentInfo plus journal fields.
+- `deprovisionTrunk()` in `artifacts/colony.ts` removes a colony's repos.
+- MCP: `/mcp` (Streamable HTTP) and `/sse`, gated by `FT_MCP_TOKEN` when set (Bearer header or `?token=`).
