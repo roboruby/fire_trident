@@ -4,12 +4,13 @@ import type { Intent, Rule, WorkspaceLease } from "@fire_trident/core";
 export const SERVER_INSTRUCTIONS = [
   "FireTrident coordinates many coding agents on one codebase (a colony). You never push to trunk; you push to your own workspace and propose.",
   "1. join with the colony id. You get an agent id for this session.",
-  "2. take: you receive an intent (what to change and why, with a predicted footprint of paths), the rule behind it if any, and a workspace lease with two short-lived tokens: a read token for trunk and a write token for your workspace. If take says wait, wait retryInMs and take again.",
-  "3. Clone trunk with the read token and check out the lease base commit. Call read for every file your change depends on: it returns the file at the base and records it in your read set, which is how conflicts with other agents are detected.",
-  "4. Edit only paths in the footprint. Commit on top of the base commit and force-push to refs/heads/main of your workspace with the write token.",
-  "5. propose with the head commit id. The server computes your write set from the commits; nothing you report about files is trusted.",
-  "6. inbox shows outcomes: landed, returned (trunk moved under your reads; take again), rejected, or escalated (waiting for a human).",
-  "Use sense to see where other agents are working before you start, declare to add a follow-up intent, and why to ask which intent produced a line on trunk.",
+  "2. take: you receive an intent (what to change and why, with a predicted footprint of paths), the rule behind it if any, and a workspace lease with two short-lived tokens: a read token for trunk and a write token for your workspace. If take says wait, call take again with wait (seconds) and the server waits for work.",
+  "3. Run the git commands take returns: each one stands alone (no cd, no environment variables), so they work in any shell. Replace <trunkRead> and <workspaceWrite> with the two tokens and never print or store the tokens anywhere else.",
+  "4. Call read for every file your change depends on: it returns the file at the lease base and records it in your read set, which is how conflicts with other agents are detected.",
+  "5. Edit only paths in the footprint. Commit on top of the base commit and force-push to refs/heads/main of your workspace.",
+  "6. propose with the head commit id and a notVerified statement (what you did not check). The server computes your write set from the commits; nothing you report about files is trusted.",
+  "7. inbox with wait (seconds) blocks until the proposal is decided: landed, returned (trunk moved under your reads or review sent it back: take again), rejected, or escalated (waiting for a human). Repeat it until the proposal is final.",
+  "Any tool call keeps your claim alive; an agent silent for ten minutes loses its intent. Use sense to see where other agents work, declare to add a follow-up intent, release to give back work you cannot finish, and why to ask which intent produced a line on trunk.",
 ].join("\n");
 
 /** Shell-safe single-quoted string. */
@@ -23,21 +24,23 @@ function cloneDir(intent: Pick<Intent, "id">): string {
 }
 
 /**
- * Step-by-step git commands for an external agent holding `lease`. Tokens are
- * referenced through FT_TRUNK_TOKEN and FT_WS_TOKEN (returned separately) so they
- * stay out of command lines that may be logged.
+ * Step-by-step git commands for an external agent holding `lease`. Each command stands alone
+ * (`git -C <dir>`, no `cd` or environment variables), so it runs in agents whose shell does not
+ * keep state between calls and under permission rules that allow only `git`. Tokens appear as the
+ * placeholders <trunkRead> and <workspaceWrite> (returned separately), never inline.
  */
 export function gitInstructions(lease: WorkspaceLease, intent: Pick<Intent, "id" | "title" | "footprint">): string[] {
   const dir = cloneDir(intent);
   const title = intent.title.replace(/\s+/g, " ").trim() || intent.id;
   return [
-    `export FT_TRUNK_TOKEN=<tokens.trunkRead>  FT_WS_TOKEN=<tokens.workspaceWrite>`,
-    `git -c http.extraHeader="Authorization: Bearer $FT_TRUNK_TOKEN" clone ${sq(lease.trunk.remote)} ${dir}`,
-    `cd ${dir} && git checkout -B ft-work ${lease.baseSha}`,
-    `# edit only: ${intent.footprint.join(", ")} (call the read tool for each file you rely on)`,
-    `git add -A && git commit -m ${sq(title)} -m ${sq(`FT-Intent: ${intent.id}`)}`,
-    `git -c http.extraHeader="Authorization: Bearer $FT_WS_TOKEN" push --force ${sq(lease.repo.remote)} HEAD:refs/heads/main`,
-    `# then call propose with headSha = $(git rev-parse HEAD)`,
+    `git -c http.extraHeader="Authorization: Bearer <trunkRead>" clone ${sq(lease.trunk.remote)} ${dir}`,
+    `git -C ${dir} checkout -B ft-work ${lease.baseSha}`,
+    `# edit only ${intent.footprint.join(", ")} inside ${dir}/ with your file editing tools; call the read tool for each file you rely on`,
+    `git -C ${dir} add -A`,
+    `git -C ${dir} commit -m ${sq(title)} -m ${sq(`FT-Intent: ${intent.id}`)}`,
+    `git -C ${dir} -c http.extraHeader="Authorization: Bearer <workspaceWrite>" push --force ${sq(lease.repo.remote)} HEAD:refs/heads/main`,
+    `git -C ${dir} rev-parse HEAD`,
+    `# then call propose with that commit id as headSha`,
   ];
 }
 

@@ -1,7 +1,7 @@
 import { regionOf } from "@fire_trident/core";
-import type { AgentInfo, FieldReading, FileVersion, Id, Intent, Path, RepoRef, Rule, Sha, WorkspaceLease } from "@fire_trident/core";
+import type { AgentInfo, FieldReading, FileVersion, Id, Intent, Path, Proposal, ProposalStatus, RepoRef, Rule, Sha, WorkspaceLease } from "@fire_trident/core";
 import { cleanPath } from "../agents/change.ts";
-import type { ColonyRpc, RegionRpc, TrunkRpc } from "../agents/rpc.ts";
+import type { ColonyRpc, RegionRpc, TakeResult, TrunkRpc } from "../agents/rpc.ts";
 import { diffTrees, onFirstParentChain, readFileAt } from "./gitread.ts";
 import type { ReadBlob, ReadCommit, ReadTree } from "./gitread.ts";
 import { gitInstructions, ruleBrief } from "./instructions.ts";
@@ -18,6 +18,8 @@ export interface Session {
   /** Read set of the current intent: path -> blob seen at the lease base (null = absent). */
   reads: Record<Path, Sha | null>;
   proposals: Array<{ id: Id; intentId: Id; headSha: Sha; at: number }>;
+  /** Last heartbeat sent to the colony for this agent. */
+  lastBeat?: number;
 }
 
 /** Read access to one Artifacts repo through the binding. */
@@ -28,24 +30,46 @@ export interface RepoReader {
   release(): void;
 }
 
+/** ColonyDO methods the MCP tools use: the agent surface plus the colony's region list. */
+export type McpColonyRpc = ColonyRpc & { listRegions(): Promise<string[]> };
+
 /** Everything the tools touch, injected by the Durable Object (or a test). */
 export interface ToolContext {
-  colony(colonyId: Id): ColonyRpc;
+  colony(colonyId: Id): McpColonyRpc;
   region(colonyId: Id, region: string): RegionRpc;
   trunk(colonyId: Id): TrunkRpc;
   repo(ref: Pick<RepoRef, "namespace" | "name">): Promise<RepoReader>;
   load(): Promise<Session>;
   save(s: Session): Promise<void>;
   now(): number;
+  /** Wait (server-side long polls). Defaults to a timer. */
+  sleep?(ms: number): Promise<void>;
 }
 
 /** Largest file the read tool returns (bytes). */
 export const MAX_READ_BYTES = 1_000_000;
 /** Commits walked from head looking for the lease base. */
 export const MAX_ANCESTRY = 64;
+/** Longest server-side wait of take and inbox (seconds): below the 60 s request timeout most MCP clients use. */
+export const MAX_WAIT_S = 45;
+/**
+ * Heartbeat period: any tool call at least this long after the last one refreshes the agent's
+ * claims and last-seen time. Without it a slow external agent's claims decay (they stop
+ * inhibiting other agents after a few minutes) and the colony reaps it after ten silent minutes,
+ * reopening its intent and revoking its workspace token.
+ */
+export const HEARTBEAT_EVERY_MS = 15_000;
+/** Poll period of the server-side waits. */
+const POLL_MS = 1_000;
 /** Regions one sense call reads. */
 const MAX_SENSE_REGIONS = 16;
 const SHA = /^[0-9a-f]{40}$/;
+/** Colony ids are slugs (same rule as the REST API). */
+const COLONY_ID = /^[a-z0-9](?:[a-z0-9-]{0,46}[a-z0-9])?$/;
+/** Proposal states after which nothing more happens to a proposal. */
+const FINAL: ReadonlySet<ProposalStatus> = new Set<ProposalStatus>(["landed", "returned", "rejected"]);
+/** The gap statement used when the agent does not state one. */
+export const EXTERNAL_NOT_VERIFIED = "Not verified: external agent over MCP; no check it ran is visible to the platform.";
 
 function fail(status: number, message: string): never {
   throw new Error(`[ft:${status}] ${message}`);
@@ -53,6 +77,11 @@ function fail(status: number, message: string): never {
 
 function round(n: number): number {
   return Math.round(n * 1000) / 1000;
+}
+
+/** Seconds to wait, clamped to [0, MAX_WAIT_S]. */
+function waitSeconds(w: number | undefined): number {
+  return typeof w === "number" && Number.isFinite(w) ? Math.max(0, Math.min(MAX_WAIT_S, w)) : 0;
 }
 
 /** A field reading trimmed for an agent's context window. */
@@ -72,14 +101,88 @@ function compactReading(r: FieldReading): Record<string, unknown> {
   };
 }
 
-/** The MCP tools' behavior, independent of the transport. Every method returns JSON-able data or throws. */
+/** One proposal as the inbox shows it. */
+function proposalView(p: Proposal): Record<string, unknown> {
+  return {
+    id: p.id,
+    intentId: p.intentId,
+    status: p.status,
+    reason: p.reason ?? null,
+    landingId: p.landingId ?? null,
+    headSha: p.headSha,
+    createdAt: new Date(p.createdAt).toISOString(),
+  };
+}
+
+/** What an agent should do next, given its proposal's status. */
+function nextFor(status: ProposalStatus): string {
+  switch (status) {
+    case "landed":
+      return "Landed. Call why on a changed path for its lineage, or take for more work.";
+    case "returned":
+      return "Returned: read the reason, then take again (you get a fresh lease on the current trunk) and redo the change.";
+    case "rejected":
+      return "Rejected by review: read the reason. Take for other work.";
+    case "escalated":
+      return "Waiting for a human reviewer: call inbox with wait again (it returns when the human decides), or take other work meanwhile.";
+    default:
+      return "Still in review or queued to land: call inbox with wait again.";
+  }
+}
+
+/**
+ * The MCP tools' behavior, independent of the transport. Every method returns JSON-able data or
+ * throws. Use one instance per session: it serializes the session's writes.
+ */
 export class FireTridentTools {
+  /** Tail of the session write queue (see update). */
+  private writes: Promise<unknown> = Promise.resolve();
+
   constructor(private readonly ctx: ToolContext) {}
+
+  private sleep(ms: number): Promise<void> {
+    return this.ctx.sleep ? this.ctx.sleep(ms) : new Promise((r) => setTimeout(r, ms));
+  }
+
+  /**
+   * Change the stored session: load the latest copy, apply `fn` (which may return a replacement),
+   * save. Updates run one at a time on this instance (one instance per session object), so
+   * concurrent tool calls never interleave between a load and a save. Every write goes through
+   * here, never a save of a copy loaded before other I/O: agents call tools in parallel, and a
+   * stale save would drop another call's read-set entry or lease.
+   */
+  private update(fn: (s: Session) => Session | void): Promise<Session> {
+    const run = this.writes.then(async () => {
+      const cur = await this.ctx.load();
+      const next = fn(cur) ?? cur;
+      await this.ctx.save(next);
+      return next;
+    });
+    this.writes = run.catch(() => undefined);
+    return run;
+  }
 
   private async joined(): Promise<Session & { colonyId: Id; agentId: Id }> {
     const s = await this.ctx.load();
     if (!s.colonyId || !s.agentId) fail(400, "call join first");
-    return s as Session & { colonyId: Id; agentId: Id };
+    const j = s as Session & { colonyId: Id; agentId: Id };
+    await this.beat(j);
+    return j;
+  }
+
+  /** Keep the agent alive in the colony (claims refreshed, not reaped) while it works through tool calls. */
+  private async beat(s: Session & { colonyId: Id; agentId: Id }): Promise<void> {
+    const now = this.ctx.now();
+    if (now - (s.lastBeat ?? 0) < HEARTBEAT_EVERY_MS) return;
+    try {
+      await this.ctx.colony(s.colonyId).heartbeat(s.agentId);
+      s.lastBeat = now;
+      await this.update((x) => {
+        if (x.agentId === s.agentId) x.lastBeat = now;
+      });
+    } catch {
+      // Best effort: a missed heartbeat only shortens the claim's life.
+    }
   }
 
   private async leased(): Promise<Session & { colonyId: Id; agentId: Id; intent: Intent; lease: WorkspaceLease }> {
@@ -99,8 +202,9 @@ export class FireTridentTools {
 
   /** Join a colony as an external agent (or resume an existing external agent id). */
   async join(a: { colony: string; name?: string; model?: string; agentId?: string }): Promise<unknown> {
-    const colonyId = a.colony.trim();
+    const colonyId = a.colony.trim().toLowerCase();
     if (!colonyId) fail(400, "colony is required");
+    if (!COLONY_ID.test(colonyId)) fail(400, `invalid colony id ${a.colony}: colony ids are lowercase slugs such as my-colony`);
     const colony = this.ctx.colony(colonyId);
     const c = await colony.getColony();
     if (!c) fail(404, `colony ${colonyId} not found`);
@@ -112,27 +216,39 @@ export class FireTridentTools {
     } else if (prev.agentId && prev.colonyId === colonyId) {
       agent = await colony.getAgent(prev.agentId);
     }
+    let registered = false;
     if (!agent) {
       const reg: { kind: "external"; name: string; model?: string } = { kind: "external", name: (a.name ?? "").trim().slice(0, 100) || "mcp-agent" };
       if (a.model?.trim()) reg.model = a.model.trim().slice(0, 200);
       agent = await colony.registerAgent(reg);
+      registered = true;
     }
     const resumed = prev.agentId === agent.id && prev.colonyId === colonyId;
-    const s: Session = resumed ? prev : { reads: {}, proposals: [] };
-    s.colonyId = colonyId;
-    s.agentId = agent.id;
-    s.regionDepth = c.regionDepth;
-    s.trunk = c.trunk;
-    await this.ctx.save(s);
+    const id = agent.id;
+    // A returning agent comes back to life (heartbeat); a registration is a sign of life on its own.
+    if (!registered) await this.ctx.colony(colonyId).heartbeat(id).catch(() => undefined);
+    const now = this.ctx.now();
+    await this.update((x) => {
+      const s: Session = x.agentId === id && x.colonyId === colonyId ? x : { reads: {}, proposals: [] };
+      s.colonyId = colonyId;
+      s.agentId = id;
+      s.regionDepth = c.regionDepth;
+      s.trunk = c.trunk;
+      s.lastBeat = now;
+      return s;
+    });
     return {
       agentId: agent.id,
       resumed,
       colony: { id: c.id, name: c.name, trunkSha: c.trunkSha, regionDepth: c.regionDepth },
-      next: "Call take to receive an intent and a workspace lease.",
+      next: "Call take to receive an intent and a workspace lease (sense first to see where others work).",
     };
   }
 
-  /** Field readings for the regions of the given paths (or the given regions, or the held intent's footprint). */
+  /**
+   * Field readings for the regions of the given paths, or the given regions, or the held intent's
+   * footprint; with none of these, the colony's regions (the whole field, up to 16 regions).
+   */
   async sense(a: { paths?: string[]; regions?: string[] }): Promise<unknown> {
     const s = await this.joined();
     const depth = s.regionDepth ?? 1;
@@ -145,19 +261,25 @@ export class FireTridentTools {
       byRegion.set(r, list);
     }
     for (const r of a.regions ?? []) if (r.trim()) byRegion.set(r.trim(), byRegion.get(r.trim()) ?? []);
-    if (byRegion.size === 0) fail(400, "give paths or regions (or take an intent first)");
+    let scope = "paths";
+    if (byRegion.size === 0) {
+      // Nothing named and nothing held: the colony's own region list (a query never creates a region).
+      scope = "colony";
+      for (const r of await this.ctx.colony(s.colonyId).listRegions()) byRegion.set(r, []);
+      if (byRegion.size === 0) return { regionDepth: depth, scope, readings: [], truncated: false, note: "the colony has no regions yet" };
+    }
     const picked = [...byRegion].slice(0, MAX_SENSE_REGIONS);
     const readings = await Promise.all(
       picked.map(async ([region, ps]) => {
         try {
           const r = await this.ctx.region(s.colonyId, region).reading(ps.length > 0 ? { paths: ps } : {});
-          return compactReading(r);
+          return compactReading({ ...r, region });
         } catch (e) {
           return { region, error: e instanceof Error ? e.message : String(e) };
         }
       }),
     );
-    return { regionDepth: depth, readings, truncated: byRegion.size > picked.length };
+    return { regionDepth: depth, scope, readings, truncated: byRegion.size > picked.length };
   }
 
   private leaseView(s: Session & { intent: Intent; lease: WorkspaceLease }): Record<string, unknown> {
@@ -182,22 +304,37 @@ export class FireTridentTools {
       },
       tokens: { trunkRead: lease.trunk.token, workspaceWrite: lease.token },
       git: gitInstructions(lease, intent),
-      next: "Read the files you depend on with read, edit only the footprint, push, then call propose with your head commit id.",
+      next: "Call read for every file you depend on, edit only the footprint, commit and push with the git commands, then call propose with the head commit id.",
     };
   }
 
-  /** Self-assign work: an intent plus a workspace lease, or a wait hint. */
-  async take(): Promise<unknown> {
+  /**
+   * Self-assign work: an intent plus a workspace lease, or a wait hint. With `wait` (seconds,
+   * at most MAX_WAIT_S) the server keeps asking while the colony says wait, so an agent with no
+   * sleep tool can still wait for work.
+   */
+  async take(a: { wait?: number } = {}): Promise<unknown> {
     const s = await this.joined();
-    const res = await this.ctx.colony(s.colonyId).take(s.agentId);
-    if ("wait" in res) return { wait: true, retryInMs: res.retryInMs, reason: res.reason };
-    const changed = s.intent?.id !== res.intent.id;
-    s.intent = res.intent;
-    s.lease = res.lease;
-    s.rule = res.rule ?? null;
-    if (changed) s.reads = {};
-    await this.ctx.save(s);
-    return this.leaseView(s as Session & { intent: Intent; lease: WorkspaceLease });
+    const colony = this.ctx.colony(s.colonyId);
+    const deadline = this.ctx.now() + waitSeconds(a.wait) * 1000;
+    let res: TakeResult = await colony.take(s.agentId);
+    while ("wait" in res && this.ctx.now() + POLL_MS <= deadline) {
+      await this.sleep(Math.min(Math.max(res.retryInMs, POLL_MS), deadline - this.ctx.now()));
+      res = await colony.take(s.agentId);
+    }
+    if ("wait" in res) {
+      return { wait: true, retryInMs: res.retryInMs, reason: res.reason, next: `No work for you yet. Call take again (with wait up to ${MAX_WAIT_S} the server waits for you).` };
+    }
+    const got = res;
+    const now = this.ctx.now();
+    const next = await this.update((x) => {
+      if (x.intent?.id !== got.intent.id) x.reads = {};
+      x.intent = got.intent;
+      x.lease = got.lease;
+      x.rule = got.rule ?? null;
+      x.lastBeat = now; // a take deposits fresh claims
+    });
+    return this.leaseView(next as Session & { intent: Intent; lease: WorkspaceLease });
   }
 
   /** The current lease and git instructions again. */
@@ -238,18 +375,26 @@ export class FireTridentTools {
     } finally {
       repo.release();
     }
-    s.reads[path] = file.blob;
-    await this.ctx.save(s);
-    return { ...file, baseSha: s.lease.baseSha, recorded: true };
+    // Record into the latest session: parallel reads each add their own entry.
+    const intentId = s.intent.id;
+    const blob = file.blob;
+    let recorded = false;
+    await this.update((x) => {
+      if (x.intent?.id !== intentId) return; // the intent was proposed or released meanwhile
+      x.reads[path] = blob;
+      recorded = true;
+    });
+    return { ...file, baseSha: s.lease.baseSha, recorded };
   }
 
   /**
    * Propose the commit `headSha` already pushed to the workspace. The write set is
    * computed here by diffing the head tree against the lease base tree in the
    * workspace repo; the read set is what this session read. Head must descend
-   * from the base on its first-parent chain.
+   * from the base on its first-parent chain. `notVerified` is the agent's own
+   * statement of what it did not check (recorded as evidence and shown to review).
    */
-  async propose(a: { headSha: string; summary?: string }): Promise<unknown> {
+  async propose(a: { headSha: string; summary?: string; notVerified?: string }): Promise<unknown> {
     const s = await this.leased();
     const headSha = a.headSha.trim().toLowerCase();
     if (!SHA.test(headSha)) fail(400, "headSha must be a full 40-character commit id");
@@ -269,7 +414,11 @@ export class FireTridentTools {
       ws.release();
     }
     if (writeSet.length === 0) fail(400, "the head commit changes nothing relative to the base");
-    const readSet: FileVersion[] = Object.entries(s.reads).map(([path, blob]) => ({ path, blob }));
+    // The freshest read set (a read may have finished while the workspace was being diffed).
+    const latest = await this.ctx.load();
+    const reads = latest.intent?.id === intent.id ? latest.reads : s.reads;
+    const readSet: FileVersion[] = Object.entries(reads).map(([path, blob]) => ({ path, blob }));
+    const stated = (a.notVerified ?? "").trim().slice(0, 5_000);
     const proposal = await this.ctx.colony(s.colonyId).propose({
       colonyId: s.colonyId,
       intentId: intent.id,
@@ -280,39 +429,75 @@ export class FireTridentTools {
       writeSet,
       readSet,
       declared: { footprint: intent.footprint, summary: (a.summary ?? "").trim() || intent.title },
-      evidence: { notVerified: "External agent over MCP: no checks ran on the agent's side that the platform can verify." },
+      evidence: { notVerified: stated === "" ? EXTERNAL_NOT_VERIFIED : /^not verified/i.test(stated) ? stated : `Not verified: ${stated}` },
     });
-    s.proposals = [...s.proposals.slice(-49), { id: proposal.id, intentId: intent.id, headSha, at: this.ctx.now() }];
-    const done: Session = s;
-    delete done.intent;
-    delete done.lease;
-    delete done.rule;
-    done.reads = {};
-    await this.ctx.save(done);
+    const at = this.ctx.now();
+    await this.update((x) => {
+      x.proposals = [...x.proposals.slice(-49), { id: proposal.id, intentId: intent.id, headSha, at }];
+      if (x.intent?.id !== intent.id) return; // a newer take replaced it meanwhile
+      delete x.intent;
+      delete x.lease;
+      delete x.rule;
+      x.reads = {};
+    });
     return {
       proposal: { id: proposal.id, status: proposal.status, reason: proposal.reason ?? null, residual: proposal.evidence?.residual ?? [] },
       writeSet,
       readSet: readSet.length,
-      next: "Call inbox to follow the outcome, and take for more work.",
+      next: `Call inbox with wait: ${MAX_WAIT_S} to wait for the outcome (repeat until it settles), then take for more work.`,
     };
   }
 
-  /** Outcomes of this agent's proposals, newest first. */
-  async inbox(a: { limit?: number }): Promise<unknown> {
+  /**
+   * Outcomes of this agent's proposals, newest first. With `wait` (seconds, at most MAX_WAIT_S)
+   * the server first waits on `proposalId` (default: this session's latest proposal) until it is
+   * final (landed, returned, rejected) or newly escalated to a human; a proposal already waiting
+   * for a human is waited on until the human decides.
+   */
+  async inbox(a: { limit?: number; proposalId?: string; wait?: number }): Promise<unknown> {
     const s = await this.joined();
-    const list = await this.ctx.colony(s.colonyId).inbox(s.agentId, Math.max(1, Math.min(50, a.limit ?? 20)));
+    const colony = this.ctx.colony(s.colonyId);
+    const wait = waitSeconds(a.wait);
+    let watched: { id: Id; status: ProposalStatus; final: boolean; reason: string | null; landingId: Id | null; waitedMs: number } | null = null;
+    if (wait > 0 || a.proposalId) {
+      const id = a.proposalId?.trim() || s.proposals.at(-1)?.id;
+      if (!id) fail(400, "you have no proposals in this session to wait for (pass proposalId)");
+      const t0 = this.ctx.now();
+      const deadline = t0 + wait * 1000;
+      let p = await colony.getProposal(id);
+      if (!p || p.agentId !== s.agentId) fail(404, `proposal ${id} is not one of yours`);
+      const startedAs = p.status;
+      const news = (st: ProposalStatus): boolean => FINAL.has(st) || (st === "escalated" && startedAs !== "escalated");
+      while (!news(p.status) && this.ctx.now() + POLL_MS <= deadline) {
+        await this.sleep(POLL_MS);
+        p = (await colony.getProposal(id)) ?? p;
+      }
+      watched = { id, status: p.status, final: FINAL.has(p.status), reason: p.reason ?? null, landingId: p.landingId ?? null, waitedMs: this.ctx.now() - t0 };
+    }
+    const list = await colony.inbox(s.agentId, Math.max(1, Math.min(50, a.limit ?? 20)));
     return {
-      proposals: list.map((p) => ({
-        id: p.id,
-        intentId: p.intentId,
-        status: p.status,
-        reason: p.reason ?? null,
-        landingId: p.landingId ?? null,
-        headSha: p.headSha,
-        createdAt: new Date(p.createdAt).toISOString(),
-      })),
+      ...(watched ? { watching: watched, next: nextFor(watched.status) } : {}),
+      proposals: list.map(proposalView),
       holding: s.intent ? { intentId: s.intent.id, title: s.intent.title } : null,
     };
+  }
+
+  /**
+   * Give back the intent this agent holds without proposing: it reopens for other agents, the
+   * claims clear, a failure mark is left, and the workspace lease is revoked.
+   */
+  async release(a: { reason?: string }): Promise<unknown> {
+    const s = await this.joined();
+    const reason = (a.reason ?? "").trim().slice(0, 500) || "released by an external agent";
+    await this.ctx.colony(s.colonyId).abandon(s.agentId, reason);
+    const held = s.intent ? { intentId: s.intent.id, title: s.intent.title } : null;
+    await this.update((x) => {
+      delete x.intent;
+      delete x.lease;
+      delete x.rule;
+      x.reads = {};
+    });
+    return { released: held, next: "Call take for other work." };
   }
 
   /** Lineage of a trunk path (optionally one line): the landings and intents behind it. */

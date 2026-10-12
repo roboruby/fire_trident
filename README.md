@@ -86,13 +86,40 @@ ft swarm shortlinks --agents 6
 
 ### Bring your own agent
 
-Any MCP client can join a colony next to the in-platform agents: sense the field, take an intent, edit with plain git in its own workspace, propose, and land with lineage.
+Any coding agent that speaks MCP can join a colony and work next to the in-platform agents. It gets the same coordination and review and leaves the same lineage. It never holds a trunk write token. It edits with plain git in its own workspace, and the platform decides what lands.
 
-```json
-{ "mcpServers": { "firetrident": { "type": "http", "url": "https://<your-worker>.workers.dev/mcp", "headers": { "Authorization": "Bearer <FT_MCP_TOKEN>" } } } }
+Point your client at the colony's MCP endpoint, either Streamable HTTP at `/mcp` or legacy SSE at `/sse`:
+
+```sh
+claude mcp add --transport http firetrident https://<your-host>/mcp
+# when the server sets FT_MCP_TOKEN:
+claude mcp add --transport http firetrident https://<your-host>/mcp --header "Authorization: Bearer $FT_MCP_TOKEN"
 ```
 
-Set `FT_MCP_TOKEN` with `npx wrangler secret put FT_MCP_TOKEN` to require the token.
+Then ask for one thing: *"Join the FireTrident colony `my-colony`, take one intent, make the change, propose it, and wait until it lands."* The server's instructions and tool descriptions handle the rest:
+
+| Tool | What it does |
+| --- | --- |
+| `join` | Registers this session as an external agent (or resumes one by `agentId`). |
+| `sense` | Reads the field (claims, needs, trails, failures, admission) for paths, regions, your footprint, or the whole colony. |
+| `take` | Self-assigns an intent and returns a workspace lease: a trunk read token, a workspace write token, and git commands that need no other shell state. Pass `wait` and the server waits for work. |
+| `checkout` | Returns the current lease again. |
+| `read` | Returns a file at the lease base and records it in your read set, which is how stale work is caught at landing. |
+| `propose` | Proposes your pushed head commit. The server computes the write set from the commits and records your `notVerified` statement for review. |
+| `inbox` | Shows your outcomes. Pass `wait` and it blocks until the proposal lands, is returned, is rejected, or goes to a human. |
+| `release` | Gives back work you can't finish. |
+| `declare` | Adds a follow-up intent. |
+| `why` | Shows the lineage of a path or line: landing, intent, agent, model, read and write sets, review checks. |
+
+Every tool call heartbeats your claim, so a slow agent keeps its work. An agent silent for ten minutes loses its intent to the colony.
+
+Try it end to end. `scripts/mcp_join.rb` imports a small repo, declares a rule, runs Claude Code headless as the external agent, and releases an in-platform agent next to it:
+
+```sh
+ruby scripts/mcp_join.rb --url https://<your-host> --colony byo-demo --setup --swarm 1
+```
+
+We ran it four times on a preview with Claude Code (Sonnet 5.5). Each session took 33 to 50 s, 11 to 23 turns and $0.14 to $0.19. In the fastest, Claude joined at 6 s, took an intent at 10 s and proposed at 24 s. The proposal landed at 28 s, on top of a landing the in-platform agent had made meanwhile. Every run landed all three of the colony's intents. `node scripts/mcp_e2e.ts` runs the same loop with a scripted MCP client and checks the trailers and the `refs/notes/firetrident` note from a plain git clone.
 
 ## How it uses Cloudflare
 

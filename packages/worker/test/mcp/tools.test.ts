@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { AgentInfo, Colony, FieldReading, Id, Intent, Proposal, Rule, WorkspaceLease } from "@fire_trident/core";
-import type { ColonyRpc, ProposeInput, TakeResult } from "../../src/agents/rpc.ts";
-import { FireTridentTools } from "../../src/mcp/tools.ts";
-import type { RepoReader, Session, ToolContext } from "../../src/mcp/tools.ts";
+import type { AgentInfo, Colony, FieldReading, Id, Intent, Proposal, ProposalStatus, Rule, WorkspaceLease } from "@fire_trident/core";
+import type { ProposeInput, TakeResult } from "../../src/agents/rpc.ts";
+import { EXTERNAL_NOT_VERIFIED, FireTridentTools, HEARTBEAT_EVERY_MS, MAX_WAIT_S } from "../../src/mcp/tools.ts";
+import type { McpColonyRpc, RepoReader, Session, ToolContext } from "../../src/mcp/tools.ts";
 import type { TreeEntryLike } from "../../src/mcp/gitread.ts";
 
 const sha = (c: string): string => c.repeat(40).slice(0, 40);
@@ -90,10 +90,19 @@ function repos() {
   return { trunk, ws };
 }
 
-class FakeColony implements Partial<ColonyRpc> {
+class FakeColony implements Partial<McpColonyRpc> {
   agents: AgentInfo[] = [];
   proposals: ProposeInput[] = [];
   intents: Array<Omit<Intent, "id" | "status" | "createdAt">> = [];
+  heartbeats: Id[] = [];
+  abandoned: Array<{ agentId: Id; reason?: string }> = [];
+  takes = 0;
+  /** Takes answered with wait before work appears. */
+  waitsBeforeWork = 0;
+  regions = ["src", "."];
+  /** Statuses getProposal walks through, one per call (the last repeats). */
+  statuses: ProposalStatus[] = ["ready"];
+  statusCalls = 0;
   async getColony(): Promise<Colony | null> {
     return colonyInfo;
   }
@@ -105,13 +114,30 @@ class FakeColony implements Partial<ColonyRpc> {
     this.agents.push(info);
     return info;
   }
+  /** When set, the first heartbeat waits for it (a slow heartbeat racing other tool calls). */
+  firstHeartbeatGate: Promise<void> | null = null;
+  async heartbeat(agentId: Id): Promise<void> {
+    this.heartbeats.push(agentId);
+    if (this.firstHeartbeatGate && this.heartbeats.length === 1) await this.firstHeartbeatGate;
+  }
+  async listRegions(): Promise<string[]> {
+    return this.regions;
+  }
   async take(): Promise<TakeResult> {
+    this.takes++;
+    if (this.takes <= this.waitsBeforeWork) return { wait: true, retryInMs: 5_000, reason: "no open intents" };
     const rule: Rule = { id: "rul_1", colonyId: "col", kind: "forbid-pattern", spec: { pattern: "x", hint: "h" }, description: "d", approvedBy: "t", createdAt: 0 };
     return { intent: theIntent, lease, rule };
   }
   async propose(p: ProposeInput): Promise<Proposal> {
     this.proposals.push(p);
-    return { ...p, id: "prp_1", status: "ready", createdAt: 0, evidence: { checks: [], residual: ["src/new.ts"], notVerified: "n" } };
+    return { ...p, id: "prp_1", status: "checking", createdAt: 0, evidence: { checks: [], residual: ["src/new.ts"], notVerified: "n" } };
+  }
+  async getProposal(id: Id): Promise<Proposal | null> {
+    const p = this.proposals[0];
+    if (!p || id !== "prp_1") return null;
+    const status = this.statuses[Math.min(this.statusCalls++, this.statuses.length - 1)] ?? "ready";
+    return { ...p, id, status, createdAt: 0, evidence: { checks: [] }, ...(status === "landed" ? { landingId: "lnd_1" } : {}) };
   }
   async inbox(): Promise<Proposal[]> {
     return [];
@@ -120,6 +146,9 @@ class FakeColony implements Partial<ColonyRpc> {
     this.intents.push(i);
     return { ...i, id: "int_2", status: "open", createdAt: 0 };
   }
+  async abandon(agentId: Id, reason?: string): Promise<void> {
+    this.abandoned.push({ agentId, ...(reason !== undefined ? { reason } : {}) });
+  }
 }
 
 function setup() {
@@ -127,8 +156,9 @@ function setup() {
   const { trunk, ws } = repos();
   let session: Session = { reads: {}, proposals: [] };
   const readings: Array<{ region: string; opts: unknown }> = [];
+  const clock = { now: 1_000_000, slept: 0 };
   const ctx: ToolContext = {
-    colony: () => colony as unknown as ColonyRpc,
+    colony: () => colony as unknown as McpColonyRpc,
     region: (_c, region) => ({
       reading: async (opts) => {
         readings.push({ region, opts });
@@ -141,9 +171,13 @@ function setup() {
     save: async (s) => {
       session = structuredClone(s);
     },
-    now: () => 42,
+    now: () => clock.now,
+    sleep: async (ms) => {
+      clock.now += ms;
+      clock.slept += ms;
+    },
   };
-  return { tools: new FireTridentTools(ctx), colony, session: () => session, readings, ws };
+  return { tools: new FireTridentTools(ctx), colony, session: () => session, readings, ws, clock };
 }
 
 describe("MCP tools", () => {
@@ -156,12 +190,18 @@ describe("MCP tools", () => {
     const { tools, colony } = setup();
     expect(await tools.join({ colony: "col", name: "laptop" })).toMatchObject({ agentId: "agt_1", resumed: false, colony: { id: "col", regionDepth: 1 } });
     expect(colony.agents[0]).toMatchObject({ kind: "external", name: "laptop" });
-    expect(await tools.join({ colony: "col" })).toMatchObject({ agentId: "agt_1", resumed: true });
+    expect(await tools.join({ colony: " COL " })).toMatchObject({ agentId: "agt_1", resumed: true });
     expect(colony.agents).toHaveLength(1);
     await expect(tools.join({ colony: "col", agentId: "agt_404" })).rejects.toThrow(/no external agent/);
   });
 
-  it("take returns the lease, both tokens and git commands that use them", async () => {
+  it("join refuses ids that cannot name a colony", async () => {
+    const { tools } = setup();
+    await expect(tools.join({ colony: "../col" })).rejects.toThrow(/lowercase slugs/);
+    await expect(tools.join({ colony: "a b" })).rejects.toThrow(/lowercase slugs/);
+  });
+
+  it("take returns the lease, both tokens and self-contained git commands that use them", async () => {
     const { tools } = setup();
     await tools.join({ colony: "col" });
     const t = (await tools.take()) as Record<string, any>;
@@ -169,10 +209,34 @@ describe("MCP tools", () => {
     expect(t.lease).toMatchObject({ baseSha: BASE, workspace: { remote: lease.repo.remote } });
     expect(JSON.stringify(t.lease)).not.toContain("fixture-");
     expect(t.rule).toMatchObject({ id: "rul_1", hint: "h", pattern: "x" });
-    expect(t.git.join("\n")).toContain(`git checkout -B ft-work ${BASE}`);
-    expect(t.git.join("\n")).toContain("push --force 'https://ws.invalid/col--ws-2.git' HEAD:refs/heads/main");
-    expect(t.git.join("\n")).not.toContain("fixture-");
+    const git = (t.git as string[]).join("\n");
+    expect(git).toContain(`checkout -B ft-work ${BASE}`);
+    expect(git).toContain("push --force 'https://ws.invalid/col--ws-2.git' HEAD:refs/heads/main");
+    expect(git).toContain('http.extraHeader="Authorization: Bearer <trunkRead>"');
+    expect(git).toContain('http.extraHeader="Authorization: Bearer <workspaceWrite>"');
+    expect(git).not.toContain("fixture-");
+    // Each command stands alone: no shell state, nothing but git (agents with per-call shells and git-only permissions).
+    for (const line of t.git as string[]) if (!line.startsWith("#")) expect(line).toMatch(/^git /);
+    expect(git).not.toMatch(/\bcd |export |\$FT_/);
     expect(await tools.checkout()).toEqual(t);
+  });
+
+  it("take with wait keeps asking while the colony has no work, without wait it hands back the hint", async () => {
+    const { tools, colony, clock } = setup();
+    await tools.join({ colony: "col" });
+    colony.waitsBeforeWork = 1;
+    expect(await tools.take()).toMatchObject({ wait: true, retryInMs: 5_000, reason: "no open intents" });
+    colony.takes = 0;
+    colony.waitsBeforeWork = 2;
+    const t = (await tools.take({ wait: 30 })) as Record<string, any>;
+    expect(t.intent).toMatchObject({ id: "int_1" });
+    expect(colony.takes).toBe(3);
+    expect(clock.slept).toBe(10_000);
+    colony.takes = 0;
+    colony.waitsBeforeWork = 100;
+    clock.slept = 0;
+    expect(await tools.take({ wait: 999 })).toMatchObject({ wait: true });
+    expect(clock.slept).toBeLessThanOrEqual(MAX_WAIT_S * 1000);
   });
 
   it("read returns the file at the lease base and records it in the read set", async () => {
@@ -185,12 +249,38 @@ describe("MCP tools", () => {
     await expect(tools.read({ path: "../etc/passwd" })).rejects.toThrow(/invalid path/);
   });
 
+  it("parallel reads each land in the read set (no tool saves a stale session)", async () => {
+    const { tools, colony, session } = setup();
+    await tools.join({ colony: "col" });
+    await tools.take();
+    await Promise.all([tools.read({ path: "src/lib/util.ts" }), tools.read({ path: "README.md" }), tools.read({ path: "src/gone.ts" })]);
+    expect(session().reads).toEqual({ "src/lib/util.ts": sha("a"), "README.md": sha("e"), "src/gone.ts": null });
+    await tools.propose({ headSha: sha("c") });
+    expect(colony.proposals[0]?.readSet).toHaveLength(3);
+  });
+
+  it("a slow heartbeat does not undo a lease taken while it was in flight", async () => {
+    const { tools, colony, clock } = setup();
+    await tools.join({ colony: "col" });
+    clock.now += HEARTBEAT_EVERY_MS;
+    let open = (): void => undefined;
+    colony.firstHeartbeatGate = new Promise<void>((r) => {
+      open = r;
+    });
+    const sensing = tools.sense({ regions: ["src"] }); // loads the session (no lease), then its heartbeat stalls
+    await new Promise((r) => setTimeout(r, 0));
+    await tools.take(); // heartbeats and stores the lease meanwhile
+    open();
+    await sensing;
+    expect(await tools.checkout()).toMatchObject({ intent: { id: "int_1" } });
+  });
+
   it("propose computes the write set from the workspace commits and sends the session's read set", async () => {
     const { tools, colony, session } = setup();
     await tools.join({ colony: "col" });
     await tools.take();
     await tools.read({ path: "src/lib/util.ts" });
-    const out = (await tools.propose({ headSha: sha("c").toUpperCase(), summary: "rename" })) as Record<string, any>;
+    const out = (await tools.propose({ headSha: sha("c").toUpperCase(), summary: "rename", notVerified: "tests were not run" })) as Record<string, any>;
     expect(colony.proposals).toHaveLength(1);
     expect(colony.proposals[0]).toMatchObject({
       colonyId: "col",
@@ -205,10 +295,23 @@ describe("MCP tools", () => {
       ],
       readSet: [{ path: "src/lib/util.ts", blob: sha("a") }],
       declared: { footprint: ["src/lib/util.ts"], summary: "rename" },
+      evidence: { notVerified: "Not verified: tests were not run" },
     });
-    expect(out.proposal).toMatchObject({ id: "prp_1", status: "ready", residual: ["src/new.ts"] });
-    expect(session()).toMatchObject({ reads: {}, proposals: [{ id: "prp_1", intentId: "int_1", headSha: sha("c"), at: 42 }] });
+    expect(out.proposal).toMatchObject({ id: "prp_1", status: "checking", residual: ["src/new.ts"] });
+    expect(session()).toMatchObject({ reads: {}, proposals: [{ id: "prp_1", intentId: "int_1", headSha: sha("c"), at: 1_000_000 }] });
     expect(session().lease).toBeUndefined();
+  });
+
+  it("propose keeps an agent's own Not verified statement and falls back to the platform's", async () => {
+    const { tools, colony } = setup();
+    await tools.join({ colony: "col" });
+    await tools.take();
+    await tools.propose({ headSha: sha("c"), notVerified: "Not verified: Windows paths" });
+    expect(colony.proposals[0]?.evidence?.notVerified).toBe("Not verified: Windows paths");
+    colony.proposals = [];
+    await tools.take();
+    await tools.propose({ headSha: sha("c") });
+    expect(colony.proposals[0]?.evidence?.notVerified).toBe(EXTERNAL_NOT_VERIFIED);
   });
 
   it("propose refuses commits that are missing or do not build on the lease base", async () => {
@@ -222,9 +325,59 @@ describe("MCP tools", () => {
     expect(colony.proposals).toHaveLength(0);
   });
 
-  it("sense reads the regions of the given paths, or of the held footprint", async () => {
+  it("inbox with wait blocks until the latest proposal is final", async () => {
+    const { tools, colony, clock } = setup();
+    await tools.join({ colony: "col" });
+    await tools.take();
+    await tools.propose({ headSha: sha("c") });
+    colony.statuses = ["checking", "checking", "ready", "landed"];
+    const out = (await tools.inbox({ wait: 30 })) as Record<string, any>;
+    expect(out.watching).toMatchObject({ id: "prp_1", status: "landed", final: true, landingId: "lnd_1" });
+    expect(out.next).toMatch(/^Landed/);
+    expect(clock.slept).toBe(3_000);
+    await expect(tools.inbox({ wait: 5, proposalId: "prp_other" })).rejects.toThrow(/not one of yours/);
+  });
+
+  it("inbox with wait returns when a proposal is escalated, then waits for the human's decision", async () => {
+    const { tools, colony, clock } = setup();
+    await tools.join({ colony: "col" });
+    await tools.take();
+    await tools.propose({ headSha: sha("c") });
+    colony.statuses = ["checking", "escalated"];
+    expect(await tools.inbox({ wait: 30 })).toMatchObject({ watching: { status: "escalated", final: false } });
+    colony.statusCalls = 0;
+    colony.statuses = ["escalated"];
+    clock.slept = 0;
+    expect(await tools.inbox({ wait: 10 })).toMatchObject({ watching: { status: "escalated", final: false } });
+    expect(clock.slept).toBe(10_000);
+    await expect(setup().tools.inbox({ wait: 1 })).rejects.toThrow(/call join first/);
+  });
+
+  it("tool calls heartbeat the agent at most every 15 s, so a slow agent keeps its claim", async () => {
+    const { tools, colony, clock } = setup();
+    await tools.join({ colony: "col" });
+    await tools.take();
+    await tools.read({ path: "src/lib/util.ts" });
+    expect(colony.heartbeats).toEqual([]);
+    clock.now += HEARTBEAT_EVERY_MS;
+    await tools.read({ path: "src/lib/util.ts" });
+    await tools.sense({});
+    expect(colony.heartbeats).toEqual(["agt_1"]);
+    clock.now += HEARTBEAT_EVERY_MS;
+    await tools.checkout();
+    expect(colony.heartbeats).toEqual(["agt_1", "agt_1"]);
+  });
+
+  it("sense reads the regions of the given paths, or of the held footprint, or the whole colony", async () => {
     const { tools, readings } = setup();
     await tools.join({ colony: "col" });
+    const all = (await tools.sense({})) as Record<string, any>;
+    expect(all.scope).toBe("colony");
+    expect(readings).toEqual([
+      { region: "src", opts: {} },
+      { region: ".", opts: {} },
+    ]);
+    readings.length = 0;
     const out = (await tools.sense({ paths: ["src/a.ts", "src/b.ts", "README.md"] })) as Record<string, any>;
     expect(readings).toEqual([
       { region: "src", opts: { paths: ["src/a.ts", "src/b.ts"] } },
@@ -242,5 +395,15 @@ describe("MCP tools", () => {
     await tools.take();
     await tools.declare({ title: "Follow-up", why: "found more", footprint: ["src/lib/", "../x"] });
     expect(colony.intents[0]).toMatchObject({ colonyId: "col", source: "agent", footprint: ["src/lib/"], createdBy: "agt_1", parentId: "int_1", priority: 1 });
+  });
+
+  it("release gives the held intent back to the colony and forgets the lease", async () => {
+    const { tools, colony, session } = setup();
+    await tools.join({ colony: "col" });
+    await tools.take();
+    expect(await tools.release({ reason: "cannot reproduce" })).toMatchObject({ released: { intentId: "int_1" } });
+    expect(colony.abandoned).toEqual([{ agentId: "agt_1", reason: "cannot reproduce" }]);
+    expect(session().lease).toBeUndefined();
+    await expect(tools.checkout()).rejects.toThrow(/hold no intent/);
   });
 });
