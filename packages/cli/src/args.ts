@@ -20,7 +20,12 @@ export type Command =
   | { name: "review-list"; colony: string }
   | { name: "review-decide"; colony: string; proposalId: string; decision: ReviewDecision; reason: string; by?: string }
   | { name: "watch"; colony: string; only: string[] }
-  | { name: "new"; specPath: string; colonyName?: string; by?: string };
+  | { name: "new"; specPath: string; colonyName?: string; by?: string }
+  | { name: "colonies"; scan: boolean }
+  | { name: "agents"; colony: string; all: boolean; journal: boolean }
+  | { name: "stop"; colony: string; agentId?: string; all: boolean; reason?: string }
+  | { name: "delete"; colony: string }
+  | { name: "vaccinate"; colony: string; count: number };
 
 /** Options every command accepts. */
 export interface GlobalFlags {
@@ -62,6 +67,11 @@ const COMMAND_OPTIONS: Record<string, Record<string, OptionSpec>> = {
   review: { reason: { type: "string" }, by: { type: "string" } },
   watch: { only: { type: "string", multiple: true } },
   new: { spec: { type: "string" }, name: { type: "string" }, by: { type: "string" } },
+  colonies: { scan: { type: "boolean" } },
+  agents: { all: { type: "boolean" }, "no-journal": { type: "boolean" } },
+  stop: { all: { type: "boolean" }, reason: { type: "string" } },
+  delete: { yes: { type: "boolean" } },
+  vaccinate: { count: { type: "string" } },
   help: {},
 };
 
@@ -298,6 +308,44 @@ function build(word: string, v: Record<string, unknown>, p: string[]): Command {
       if (by) cmd.by = by;
       return cmd;
     }
+    case "colonies": {
+      noExtras(p, 0, "ft colonies [--scan]");
+      return { name: "colonies", scan: v.scan === true };
+    }
+    case "agents": {
+      const usage = "ft agents <colony> [--all] [--no-journal]";
+      noExtras(p, 1, usage);
+      return { name: "agents", colony: colonyArg(p[0], usage), all: v.all === true, journal: v["no-journal"] !== true };
+    }
+    case "stop": {
+      const usage = "ft stop <colony> <agentId> | ft stop <colony> --all";
+      noExtras(p, 2, usage);
+      const colony = colonyArg(p[0], usage);
+      const agentId = p[1]?.trim();
+      const all = v.all === true;
+      if (agentId && all) fail(`give an agent id or --all, not both. Usage: ${usage}`);
+      if (!agentId && !all) fail(`say which agent to stop, or --all for every in-platform agent. Usage: ${usage}`);
+      const cmd: Command = { name: "stop", colony, all };
+      if (agentId) cmd.agentId = agentId;
+      const reason = str(v.reason)?.trim();
+      if (reason) cmd.reason = reason;
+      return cmd;
+    }
+    case "delete": {
+      const usage = "ft delete <colony> --yes";
+      noExtras(p, 1, usage);
+      const colony = colonyArg(p[0], usage);
+      if (v.yes !== true && v["dry-run"] !== true) {
+        fail(`deleting ${colony} stops its agents and removes its trunk, workspaces and history for good; add --yes to confirm`);
+      }
+      return { name: "delete", colony };
+    }
+    case "vaccinate": {
+      const usage = "ft vaccinate <colony> --count <n>";
+      noExtras(p, 1, usage);
+      const colony = colonyArg(p[0], usage);
+      return { name: "vaccinate", colony, count: positiveInt(required(v.count, "count"), "--count", 64) };
+    }
     default:
       return fail(`unknown command "${word}"`);
   }
@@ -366,16 +414,21 @@ Usage
   ft <command> [options]
 
 Commands
+  colonies                         List every colony with live counters
   import <git-url>                 Import a public repository as a new colony
   new --spec <file>                Start a colony from a spec: empty trunk, rules, intents
   status <colony>                  Summarize trunk, intents, agents, and violations
   rule add <colony>                Forbid a pattern; every match becomes a need
   rule import-boundary <colony>    Forbid imports across a boundary
   swarm <colony> --agents <n>      Spawn in-platform agents
+  agents <colony>                  List agents: state, intent, model, current step
+  stop <colony> <agentId>|--all    Stop one agent, or every in-platform agent
+  vaccinate <colony> --count <n>   Inject planted bad changes to test the immune layer
   why <colony> <path[:line]>       Show the lineage behind a file or line
   review <colony>                  List proposals escalated to a human
   review <colony> <id> <decision>  Approve, reject, or return a proposal
   watch <colony>                   Stream live colony events
+  delete <colony> --yes            Delete a colony: agents, repos, and history
 
 Global options
   --json         Machine-readable output (one JSON object per line for watch)
@@ -389,6 +442,8 @@ Environment
   FT_TOKEN    Bearer token sent with every request
   FT_USER     Name recorded as rule approver and review decider (default: your login)
   NO_COLOR    Disable colors (FORCE_COLOR=1 forces them)
+  When FT_URL or FT_TOKEN is unset, ft reads ~/.config/firetrident/env
+  (KEY=value lines). Its token is only sent to the server named in that file.
 `;
 
 const HELP: Record<string, string> = {
@@ -481,5 +536,41 @@ Reconnects automatically; Ctrl-C to stop.
 
 Example
   ft watch web --only landing,proposal,violations
+`,
+  colonies: `
+ft colonies [--scan]
+
+List every colony: trunk commit, agents, open intents, landings, violations,
+age, and source. --scan also looks for colonies created before the registry.
+`,
+  agents: `
+ft agents <colony> [--all] [--no-journal]
+
+List a colony's agents: kind, state, the step each in-platform agent is on, the
+intent it holds, its model, and when it was last seen.
+
+  --all          Include dead and stopped agents
+  --no-journal   Skip each agent's own journal (faster for large swarms)
+`,
+  stop: `
+ft stop <colony> <agentId> [--reason <text>]
+ft stop <colony> --all [--reason <text>]
+
+Stop one agent, or every in-platform agent in the colony. A stopped agent gives
+back the intent it claimed; a proposal already in a lane stands.
+`,
+  delete: `
+ft delete <colony> --yes
+
+Delete a colony for good: stop its agents, delete its trunk, workspace, seed and
+session repos, clear its objects' storage, and drop it from the registry.
+Safe to repeat; a repeat finishes anything a failed delete left behind.
+`,
+  vaccinate: `
+ft vaccinate <colony> --count <n>
+
+Inject n vaccine proposals (1 to 64): planted bad changes of known threat
+classes (secret-log, test-weakened, forbidden-import, off-intent) that the
+decide layer must catch. The vaccination meter reports recall per class.
 `,
 };

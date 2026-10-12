@@ -301,6 +301,24 @@ export type ColonyEvent =
   | { t: "violations"; at: Millis; total: number; byRule: Record<Id, number> }
   | { t: "metric"; at: Millis; name: string; value: number };
 
+/** Per-minute history for sparklines and the violations burn-down. */
+export interface ColonySeries {
+  /** Bucket width (ms). */
+  bucketMs: number;
+  /** Start of the first bucket. Bucket i covers [start + i * bucketMs, start + (i + 1) * bucketMs); the last is the current minute. */
+  start: Millis;
+  /** Landings per bucket. */
+  landings: number[];
+  /** Open violations at the end of each bucket (the last bucket is the current total). */
+  violations: number[];
+  /** Proposals received per bucket. */
+  proposals: number[];
+  /** Proposals sent back to their agents (stale or conflicting) per bucket. */
+  returned: number[];
+  /** Intents landed per bucket. */
+  landedIntents: number[];
+}
+
 /** Snapshot the UI loads before applying live events. */
 export interface ColonySnapshot {
   colony: Colony;
@@ -312,4 +330,6 @@ export interface ColonySnapshot {
   violations: { total: number; byRule: Record<Id, number> };
   funnel: Record<DecisionLayer, number>;
   metrics: Record<string, number>;
+  /** Per-minute series (served by the Worker; absent in mocks). */
+  series?: ColonySeries;
 }

@@ -64,6 +64,18 @@ beforeAll(async () => {
         return importPolls < 3 ? json(409, { error: "import in progress" }) : json(200, { ...snapshot, colony: { ...snapshot.colony, id: "col_new", name: "repo" } });
       case "POST /api/colonies/web/rules":
         return json(200, { rule: { id: "rule_9" }, violations: 214, intents: 214 });
+      case "GET /api/colonies":
+        return json(200, { total: 1, colonies: [{ id: "web", name: "web", createdAt: 0, trunkSha: "a".repeat(40), counters: { agentsActive: 2, intentsOpen: 1, landings: 7 } }] });
+      case "GET /api/colonies/web/agents":
+        return json(200, { total: 1, agents: [{ id: "agt_1", kind: "synthetic", state: "waiting", model: "m1", lastSeen: 60_000, running: true }] });
+      case "POST /api/colonies/web/swarm/stop":
+        return json(200, { ok: true, considered: 2, stopped: ["agt_1", "agt_2"], failed: [], retired: 2 });
+      case "DELETE /api/colonies/web":
+        return json(200, { colonyId: "web", found: true, ok: true, agents: { stopped: 2, failed: [] }, repos: { deleted: ["ft-trunk/web--trunk"], failed: [] }, objects: [{ object: "ColonyDO web", cleared: true }], unregistered: true });
+      case "POST /api/colonies/web/vaccinate": {
+        const n = (body as { count: number }).count;
+        return json(202, { batch: "vb_1", requested: n, started: n, vaccines: Array.from({ length: n }, () => ({ proposalId: "prp_v", cls: "secret-log", paths: [] })), skipped: [] });
+      }
       case "GET /api/colonies/web/review":
         return json(200, []);
       case "POST /api/colonies/web/review/prp_1":
@@ -226,6 +238,49 @@ describe("ft against a server", () => {
     expect(t.out).toHaveLength(2);
     expect(t.out[0]).toMatch(/landing\s+bbbbbbb 1 proposal, 1 path src\/a\.ts$/);
     expect(t.out[1]).toMatch(/violations 0 left \(rule_1 0\)$/);
+  });
+
+  it("lists colonies and agents, stops a swarm, vaccinates, and deletes", async () => {
+    const t = io();
+    expect(await main(["colonies"], t)).toBe(0);
+    expect(t.out.join("\n")).toMatch(/web\s+2\s+1\s+0\s+7\s+0\s+0\s+aaaaaaa/);
+    expect(await main(["agents", "web"], t)).toBe(0);
+    expect(t.out.join("\n")).toMatch(/agt_1\s+synthetic\s+waiting\s+take\s+-\s+m1\s+just now/);
+    expect(await main(["stop", "web", "--all"], t)).toBe(0);
+    expect(seen.at(-1)).toMatchObject({ method: "POST", url: "/api/colonies/web/swarm/stop", body: {}, auth: "Bearer tok" });
+    expect(await main(["vaccinate", "web", "--count", "3"], t)).toBe(0);
+    expect(seen.at(-1)).toMatchObject({ method: "POST", url: "/api/colonies/web/vaccinate", body: { count: 3 } });
+    expect(await main(["delete", "web"], t)).toBe(2);
+    expect(await main(["delete", "web", "--yes"], t)).toBe(0);
+    expect(seen.at(-1)).toMatchObject({ method: "DELETE", url: "/api/colonies/web", auth: "Bearer tok" });
+    const text = t.out.join("\n");
+    expect(text).toContain("✓ Stopped 2 agents in web");
+    expect(text).toContain("✓ Vaccinated web: 3 of 3 vaccines started (batch vb_1)");
+    expect(text).toContain("✓ Deleted colony web");
+  });
+
+  it("falls back to ~/.config/firetrident/env for the server and token", async () => {
+    const files: string[] = [];
+    const config = `FT_URL=${base}\nFT_TOKEN=filetok\n`;
+    const readFile = async (p: string) => {
+      files.push(p);
+      if (p === "/home/t/.config/firetrident/env") return config;
+      throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+    };
+    const t = io({ env: { HOME: "/home/t", NO_COLOR: "1", FT_USER: "tester" }, readFile });
+    expect(await main(["colonies"], t)).toBe(0);
+    expect(files).toEqual(["/home/t/.config/firetrident/env"]);
+    expect(seen.at(-1)).toMatchObject({ url: "/api/colonies", auth: "Bearer filetok" });
+
+    // The file's token never goes to another server.
+    const other = io({ env: { HOME: "/home/t", NO_COLOR: "1", FT_URL: base.replace("127.0.0.1", "localhost") }, readFile });
+    expect(await main(["colonies"], other)).toBe(0);
+    expect(seen.at(-1)?.auth).toBeUndefined();
+
+    // A missing file is fine.
+    const none = io({ env: { HOME: "/nowhere", NO_COLOR: "1", FT_URL: base }, readFile });
+    expect(await main(["colonies"], none)).toBe(0);
+    expect(seen.at(-1)?.auth).toBeUndefined();
   });
 
   it("streams raw JSON lines with --json", async () => {

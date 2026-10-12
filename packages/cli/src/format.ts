@@ -100,8 +100,25 @@ function quote(s: string, max = 72): string {
 const INTENT_ORDER: readonly IntentStatus[] = ["open", "claimed", "proposed", "landed", "abandoned"];
 const AGENT_ORDER: readonly AgentState[] = ["working", "proposing", "waiting", "idle", "dead"];
 
-/** A snapshot as the CLI reads it: every list optional, plus rules when the server sends them. */
-export type SnapshotLike = Partial<Omit<ColonySnapshot, "colony">> & { colony: ColonySnapshot["colony"]; rules?: Rule[] };
+/** Per-minute history the server adds to the snapshot (the last 30 minutes, oldest first). */
+export interface SeriesLike {
+  bucketMs?: number;
+  start?: number;
+  landings?: number[];
+  violations?: number[];
+}
+
+/** A snapshot as the CLI reads it: every list optional, plus rules and series when the server sends them. */
+export type SnapshotLike = Partial<Omit<ColonySnapshot, "colony">> & { colony: ColonySnapshot["colony"]; rules?: Rule[]; series?: SeriesLike };
+
+const BARS = "▁▂▃▄▅▆▇█";
+
+/** A one-line bar chart of `values` (the lowest bar for zero; any positive value shows at least the second). */
+export function sparkline(values: readonly number[]): string {
+  const finite = values.map((v) => (Number.isFinite(v) && v > 0 ? v : 0));
+  const max = Math.max(0, ...finite);
+  return finite.map((v) => (max <= 0 || v <= 0 ? BARS[0] : BARS[Math.min(7, Math.max(1, Math.ceil((v / max) * 7)))])).join("");
+}
 
 /** Compact human summary of a colony snapshot. */
 export function formatStatus(s: SnapshotLike, c: Colors, now: number): string {
@@ -142,7 +159,227 @@ export function formatStatus(s: SnapshotLike, c: Colors, now: number): string {
   } else {
     row("landings", c.dim("none yet"));
   }
+  const m = s.metrics;
+  if (m && typeof m.proposalsInFlight === "number") {
+    const review = m.reviewQueue ? ` · ${num(m.reviewQueue)} awaiting review` : "";
+    const rate = typeof m.landingsPerMin === "number" ? c.dim(` · ${num(m.landingsPerMin)} landings/min`) : "";
+    row("in flight", `${num(m.proposalsInFlight)} proposal${m.proposalsInFlight === 1 ? "" : "s"}${review}${rate}`);
+  }
+  const series = s.series;
+  if (series && Array.isArray(series.landings) && series.landings.length > 0) {
+    const total = series.landings.reduce((a, b) => a + (Number.isFinite(b) ? b : 0), 0);
+    const vs = Array.isArray(series.violations) ? series.violations : [];
+    const first = vs[0];
+    const last = vs[vs.length - 1];
+    const trend = first !== undefined && last !== undefined && first !== last ? `${c.dim(" · violations ")}${num(first)} → ${num(last)}` : "";
+    row("last 30m", `${total > 0 ? `${sparkline(series.landings)} ${num(total)} landing${total === 1 ? "" : "s"}` : c.dim("no landings")}${trend}`);
+  }
   return out.join("\n");
+}
+
+/** One row of GET /api/colonies as the CLI reads it. */
+export interface ColonyRow {
+  id: string;
+  name?: string;
+  source?: { url: string; branch?: string };
+  createdAt?: number;
+  trunkSha?: string;
+  lastLandingAt?: number | null;
+  counters?: Record<string, number>;
+  error?: string;
+}
+
+/** One row of GET /api/colonies/:id/agents as the CLI reads it. */
+export interface AgentRow {
+  id: string;
+  kind?: string;
+  name?: string;
+  model?: string;
+  state?: string;
+  intentId?: string;
+  intentTitle?: string;
+  lastSeen?: number;
+  step?: string;
+  running?: boolean;
+  attempts?: number;
+  lastError?: string;
+  stopReason?: string;
+  journalError?: string;
+  /** The agent's own counters (taken, proposed, landed, returned, waits, ...). */
+  counters?: Record<string, number>;
+}
+
+/** Visible width of a string (ANSI color codes do not count). */
+function width(s: string): number {
+  return [...s.replace(/\u001b\[[0-9;]*m/g, "")].length;
+}
+
+function cut(s: string, max: number): string {
+  const chars = [...s];
+  return chars.length > max ? `${chars.slice(0, max - 1).join("")}…` : s;
+}
+
+/** Aligned columns: `right` holds the indexes of right-aligned (numeric) columns; the header is dimmed. */
+export function table(header: string[], rows: string[][], right: ReadonlySet<number>, c: Colors): string[] {
+  const widths = header.map((h, i) => Math.max(width(h), ...rows.map((r) => width(r[i] ?? ""))));
+  const line = (cells: string[]) =>
+    cells
+      .map((cell, i) => {
+        const pad = " ".repeat(Math.max(0, (widths[i] ?? 0) - width(cell)));
+        return right.has(i) ? pad + cell : i === cells.length - 1 ? cell : cell + pad;
+      })
+      .join("  ")
+      .trimEnd();
+  return [c.dim(line(header)), ...rows.map(line)];
+}
+
+/** "github.com/org/repo" for a source URL. */
+export function shortSource(url: string | undefined): string {
+  if (!url) return "-";
+  return url.replace(/^https?:\/\//i, "").replace(/\.git$/i, "").replace(/\/+$/, "");
+}
+
+/** The colony list: counters, trunk, age, and source per colony. */
+export function formatColonies(rows: ColonyRow[], c: Colors, now: number): string {
+  if (rows.length === 0) return c.dim("No colonies yet. Start one: ft import <git-url>   or   ft new --spec <file>");
+  const n = (r: ColonyRow, k: string) => num(r.counters?.[k] ?? 0);
+  const age = (r: ColonyRow) => (typeof r.createdAt === "number" ? ago(r.createdAt, now) : "-");
+  const body = rows.map((r) =>
+    r.error
+      ? [r.id, "?", "?", "?", "?", "?", "?", "-", age(r), c.red(`unreachable: ${cut(r.error, 60)}`)]
+      : [
+          r.id,
+          n(r, "agentsActive"),
+          n(r, "intentsOpen"),
+          n(r, "intentsLanded"),
+          n(r, "landings"),
+          n(r, "landingsPerMin"),
+          n(r, "violations"),
+          shortSha(r.trunkSha),
+          age(r),
+          shortSource(r.source?.url),
+        ],
+  );
+  const lines = table(["COLONY", "AGENTS", "OPEN", "LANDED", "LANDINGS", "/MIN", "VIOLATIONS", "TRUNK", "CREATED", "SOURCE"], body, new Set([1, 2, 3, 4, 5, 6]), c);
+  return [`${c.bold(String(rows.length))} ${rows.length === 1 ? "colony" : "colonies"}`, ...lines].join("\n");
+}
+
+/** What an agent is doing right now, from its journal when it has one (a running agent without a job is polling take). */
+function agentStep(a: AgentRow): string {
+  if (a.state === "dead") return a.running ? "stopping" : "-";
+  if (a.step) return a.attempts && a.attempts > 1 ? `${a.step} (try ${a.attempts})` : a.step;
+  if (a.running === false) return "stopped";
+  return a.running ? "take" : "-";
+}
+
+/** A colony's agents: kind, state, step, intent, model, last seen, and any error. */
+export function formatAgents(colony: string, rows: AgentRow[], c: Colors, now: number): string {
+  if (rows.length === 0) return `${c.bold(colony)}  ${c.dim("no agents (ft swarm <colony> --agents <n> starts some; --all shows stopped ones)")}`;
+  const states = breakdown(countBy(rows, (a) => a.state ?? "?"), AGENT_ORDER, c);
+  const notes = rows.map((a) => a.lastError ?? (a.state === "dead" ? a.stopReason : undefined) ?? a.journalError ?? "");
+  const withNotes = notes.some(Boolean);
+  const withLanded = rows.some((a) => a.counters !== undefined);
+  const body = rows.map((a, i) => {
+    const state = c[AGENT_COLOR[a.state as AgentState] ?? "dim"](a.state ?? "?");
+    const intent = a.intentTitle ? quote(a.intentTitle, 40) : (a.intentId ?? "-");
+    const cells = [a.id, a.kind ?? "-", state, agentStep(a), intent, a.model ?? "-"];
+    if (withLanded) cells.push(a.counters ? num(a.counters.landed ?? 0) : "-");
+    cells.push(typeof a.lastSeen === "number" ? ago(a.lastSeen, now) : "-");
+    if (withNotes) cells.push(notes[i] ? c.dim(cut(notes[i] ?? "", 60)) : "");
+    return cells;
+  });
+  const header = ["AGENT", "KIND", "STATE", "STEP", "INTENT", "MODEL", ...(withLanded ? ["LANDED"] : []), "SEEN", ...(withNotes ? ["NOTE"] : [])];
+  return [`${c.bold(colony)}  ${num(rows.length)} agent${rows.length === 1 ? "" : "s"}: ${states}`, ...table(header, body, withLanded ? new Set([6]) : new Set(), c)].join("\n");
+}
+
+/** What POST .../stop and .../swarm/stop answered. */
+export interface StopResult {
+  ok?: boolean;
+  agentId?: string;
+  considered?: number;
+  stopped?: string[];
+  failed?: Array<{ agentId: string; error: string }>;
+  retired?: number;
+}
+
+/** The outcome of `ft stop`. */
+export function formatStop(colony: string, agentId: string | undefined, res: StopResult, c: Colors): string {
+  const stopped = res.stopped ?? [];
+  const failed = res.failed ?? [];
+  const out: string[] = [];
+  if (agentId) {
+    out.push(stopped.includes(agentId) ? `${c.green("✓")} Stopped ${c.bold(agentId)} in ${colony}` : `${c.red("✗")} ${agentId} did not stop`);
+    if (stopped.includes(agentId)) out.push(c.dim("  Its claimed intent is open again; a proposal already in a lane stands."));
+  } else if (stopped.length === 0 && failed.length === 0) {
+    out.push(`${c.green("✓")} No running in-platform agents in ${colony}`);
+  } else {
+    out.push(`${c.green("✓")} Stopped ${num(stopped.length)} agent${stopped.length === 1 ? "" : "s"} in ${c.bold(colony)}`);
+  }
+  for (const f of failed.slice(0, 10)) out.push(`  ${c.red("✗")} ${f.agentId}: ${f.error}`);
+  if (failed.length > 10) out.push(c.dim(`  +${failed.length - 10} more failures`));
+  return out.join("\n");
+}
+
+/** What DELETE /api/colonies/:id answered. */
+export interface DeleteResult {
+  found?: boolean;
+  ok?: boolean;
+  agents?: { stopped?: number; failed?: Array<{ agentId: string; error: string }> };
+  repos?: { deleted?: string[]; failed?: Array<{ repo: string; error: string }> };
+  objects?: Array<{ object: string; cleared: boolean; detail?: string }>;
+  unregistered?: boolean;
+}
+
+/** The outcome of `ft delete`: agents stopped, repos deleted per namespace, object storage cleared. */
+export function formatDelete(colony: string, res: DeleteResult, c: Colors): string {
+  const deleted = res.repos?.deleted ?? [];
+  const objects = res.objects ?? [];
+  if (!res.found && deleted.length === 0 && objects.length === 0) {
+    return `${c.green("✓")} Nothing left of ${c.bold(colony)}: no colony record and no repos${res.unregistered ? " (dropped its registry entry)" : ""}`;
+  }
+  const out = [`${c.green("✓")} Deleted colony ${c.bold(colony)}${res.found ? "" : c.dim(" (leftovers of a colony without a record)")}`];
+  const row = (label: string, value: string) => out.push(`  ${c.dim(label.padEnd(9))}${value}`);
+  row("agents", `${num(res.agents?.stopped ?? 0)} stopped`);
+  const perNs = countBy(deleted, (r) => r.split("/")[0] ?? "?");
+  row("repos", deleted.length ? `${num(deleted.length)} deleted ${c.dim(`(${[...perNs].map(([ns, n]) => `${ns} ${n}`).join(", ")})`)}` : "none left");
+  const kinds = new Map<string, { cleared: number; total: number; detail?: string }>();
+  for (const o of objects) {
+    const kind = o.object.split(" ")[0] ?? o.object;
+    const k = kinds.get(kind) ?? { cleared: 0, total: 0 };
+    k.total++;
+    if (o.cleared) k.cleared++;
+    else k.detail ??= o.detail;
+    kinds.set(kind, k);
+  }
+  const parts = [...kinds].map(([kind, k]) => (k.cleared === k.total ? `${kind} ${k.total > 1 ? `${k.cleared}/${k.total} ` : ""}${c.green("cleared")}` : `${kind} ${k.cleared}/${k.total} ${c.yellow("cleared")}${k.detail ? c.dim(` (${cut(k.detail, 50)})`) : ""}`));
+  if (parts.length) row("storage", parts.join(c.dim(" · ")));
+  if (res.unregistered) row("registry", "removed");
+  return out.join("\n");
+}
+
+/**
+ * The outcome of `ft vaccinate`: `{ batch, requested, started, vaccines: [{ cls, ... }], skipped: [{ cls, reason }] }`,
+ * read defensively (any other shape prints its numeric fields).
+ */
+export function formatVaccinate(colony: string, count: number, res: unknown, c: Colors): string {
+  const o = res && typeof res === "object" && !Array.isArray(res) ? (res as Record<string, unknown>) : {};
+  const vaccines = Array.isArray(o.vaccines) ? (o.vaccines as Array<{ cls?: unknown }>) : null;
+  const skipped = Array.isArray(o.skipped) ? (o.skipped as Array<{ cls?: unknown; reason?: unknown }>) : [];
+  if (vaccines) {
+    const started = typeof o.started === "number" ? o.started : vaccines.length;
+    const batch = typeof o.batch === "string" ? c.dim(` (batch ${o.batch})`) : "";
+    const out = [`${c.green("✓")} Vaccinated ${c.bold(colony)}: ${num(started)} of ${num(typeof o.requested === "number" ? o.requested : count)} vaccine${started === 1 ? "" : "s"} started${batch}`];
+    const byClass = countBy(vaccines, (v) => (typeof v.cls === "string" ? v.cls : "?"));
+    if (byClass.size) out.push(`  ${[...byClass].map(([cls, n]) => `${cls} ${num(n)}`).join(c.dim(" · "))}`);
+    for (const s of skipped.slice(0, 5)) out.push(c.dim(`  skipped ${typeof s.cls === "string" ? s.cls : "?"}: ${typeof s.reason === "string" ? s.reason : "no reason given"}`));
+    out.push(c.dim(`  Watch the meter: ft watch ${colony} --only decision`));
+    return out.join("\n");
+  }
+  const extra = Object.entries(o)
+    .filter(([, v]) => typeof v === "number")
+    .map(([k, v]) => `${k} ${num(v as number)}`);
+  const head = `${c.green("✓")} Vaccinated ${c.bold(colony)}: asked for ${num(count)}`;
+  return extra.length ? `${head}\n  ${c.dim(extra.join(" · "))}` : head;
 }
 
 function checkLine(checks: CheckResult[] | undefined, c: Colors): string {

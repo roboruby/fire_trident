@@ -4,8 +4,23 @@ import type { Command, GlobalFlags } from "./args.ts";
 import { helpText, parseCommand } from "./args.ts";
 import { ApiError, VERSION, asArray, liveUrl, pickColony, planRequest, resolveBaseUrl, send } from "./api.ts";
 import type { ApiRequest, HttpConfig } from "./api.ts";
-import { colorEnabled, colors, eventsFromMessage, formatEvent, formatReview, formatStatus, formatWhy, num } from "./format.ts";
-import type { Colors, SnapshotLike } from "./format.ts";
+import { configPath, parseEnvFile, withConfig } from "./config.ts";
+import {
+  colorEnabled,
+  colors,
+  eventsFromMessage,
+  formatAgents,
+  formatColonies,
+  formatDelete,
+  formatEvent,
+  formatReview,
+  formatStatus,
+  formatStop,
+  formatVaccinate,
+  formatWhy,
+  num,
+} from "./format.ts";
+import type { AgentRow, ColonyRow, Colors, DeleteResult, SnapshotLike, StopResult } from "./format.ts";
 import { extractSpec, planNew } from "./spec.ts";
 import type { Intent, Landing, LineageNote, Proposal, Rule } from "@fire_trident/core";
 
@@ -80,10 +95,11 @@ export async function main(argv: readonly string[], io: Io = nodeIo()): Promise<
     return 0;
   }
   try {
-    const token = io.env.FT_TOKEN?.trim();
-    const http: HttpConfig = { baseUrl: resolveBaseUrl(flags.url, io.env), fetch: io.fetch };
+    const env = await loadEnv(io, flags.url);
+    const token = env.FT_TOKEN?.trim();
+    const http: HttpConfig = { baseUrl: resolveBaseUrl(flags.url, env), fetch: io.fetch };
     if (token) http.token = token;
-    const ctx: Ctx = { io, flags, http, c: colors(colorEnabled(io.env, io.isTTY, flags.json)), by: resolveUser(io.env) };
+    const ctx: Ctx = { io, flags, http, c: colors(colorEnabled(env, io.isTTY, flags.json)), by: resolveUser(env) };
     return await execute(command, ctx);
   } catch (e) {
     if (e instanceof ApiError) {
@@ -93,6 +109,20 @@ export async function main(argv: readonly string[], io: Io = nodeIo()): Promise<
     io.stderr(`ft: ${(e as Error).message ?? String(e)}`);
     return 1;
   }
+}
+
+/** The environment plus ~/.config/firetrident/env when FT_URL or FT_TOKEN is unset (see config.ts). A missing file is fine. */
+async function loadEnv(io: Io, flagUrl: string | undefined): Promise<Record<string, string | undefined>> {
+  if (io.env.FT_URL?.trim() && io.env.FT_TOKEN?.trim()) return io.env;
+  const path = configPath(io.env);
+  if (!path) return io.env;
+  let text: string;
+  try {
+    text = await io.readFile(path);
+  } catch {
+    return io.env;
+  }
+  return withConfig(io.env, parseEnvFile(text), flagUrl);
 }
 
 function printJson(ctx: Ctx, value: unknown): void {
@@ -189,6 +219,36 @@ async function execute(cmd: Command, ctx: Ctx): Promise<number> {
         if (cmd.decision === "reject") io.stdout(c.dim("  The rejection is recorded; it can mint an antibody for similar changes."));
         if (cmd.decision === "return") io.stdout(c.dim("  Sent back to its agent with your reason."));
       }
+      return 0;
+    }
+    case "colonies": {
+      const res = await send<unknown>(ctx.http, req, 60_000);
+      if (ctx.flags.json) printJson(ctx, res);
+      else io.stdout(formatColonies(asArray<ColonyRow>(res, ["colonies"]), c, io.now()));
+      return 0;
+    }
+    case "agents": {
+      const res = await send<unknown>(ctx.http, req, 60_000);
+      if (ctx.flags.json) printJson(ctx, res);
+      else io.stdout(formatAgents(cmd.colony, asArray<AgentRow>(res, ["agents"]), c, io.now()));
+      return 0;
+    }
+    case "stop": {
+      const res = await send<StopResult>(ctx.http, req, 120_000);
+      if (ctx.flags.json) printJson(ctx, res);
+      else io.stdout(formatStop(cmd.colony, cmd.agentId, res ?? {}, c));
+      return 0;
+    }
+    case "delete": {
+      const res = await send<DeleteResult>(ctx.http, req, 300_000);
+      if (ctx.flags.json) printJson(ctx, res);
+      else io.stdout(formatDelete(cmd.colony, res ?? {}, c));
+      return 0;
+    }
+    case "vaccinate": {
+      const res = await send<unknown>(ctx.http, req, 120_000);
+      if (ctx.flags.json) printJson(ctx, res);
+      else io.stdout(formatVaccinate(cmd.colony, cmd.count, res, c));
       return 0;
     }
     default:

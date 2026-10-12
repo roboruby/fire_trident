@@ -87,6 +87,17 @@ export const SwarmBody = z
   })
   .refine((b) => b.count !== undefined || b.agents !== undefined, { message: "count is required (1..1000)", path: ["count"] });
 
+/** POST /api/colonies/:id/agents/:aid/stop (the body is optional). */
+export const StopBody = z.object({
+  reason: z.string().trim().min(1).max(500).optional(),
+});
+
+/** POST /api/colonies/:id/swarm/stop (the body is optional). `all` also re-stops agents already stopped. */
+export const SwarmStopBody = z.object({
+  reason: z.string().trim().min(1).max(500).optional(),
+  all: z.boolean().optional(),
+});
+
 /** GET /api/colonies/:id/why */
 export const WhyQuery = z.object({
   path: PathString,

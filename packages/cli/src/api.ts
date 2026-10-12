@@ -14,6 +14,12 @@ import type { Command } from "./args.ts";
  *   GET  /api/colonies/:id/review       Proposal[] (escalated)
  *   POST /api/colonies/:id/review/:pid  { decision: "approve" | "reject" | "return", reason, by }
  *   GET  /api/colonies/:id/live         WebSocket of ColonyEvent JSON (one event or an array per message)
+ *   GET  /api/colonies                  { colonies: [{ id, name, source?, createdAt, trunkSha, lastLandingAt, counters }] }
+ *   GET  /api/colonies/:id/agents       { total, byState, agents: [AgentInfo + intentTitle?, step?, running?, ...] }  (?all=1, ?journal=0)
+ *   POST /api/colonies/:id/agents/:aid/stop   { reason? }  -> { ok, stopped, failed, retired }
+ *   POST /api/colonies/:id/swarm/stop   { reason? }  -> { ok, considered, stopped, failed, retired }
+ *   POST /api/colonies/:id/vaccinate    { count }
+ *   DELETE /api/colonies/:id            -> { found, ok, agents, repos, objects, unregistered }
  *
  * Every request carries `Authorization: Bearer $FT_TOKEN` when the token is set.
  */
@@ -26,7 +32,7 @@ export const VERSION = "0.0.1";
 
 /** One planned HTTP call. `path` includes any query string. */
 export interface ApiRequest {
-  method: "GET" | "POST";
+  method: "GET" | "POST" | "DELETE";
   path: string;
   body?: unknown;
 }
@@ -126,6 +132,24 @@ export function planRequest(cmd: Command, by: string): ApiRequest | null {
         path: colonyPath(cmd.colony, `/review/${encodeURIComponent(cmd.proposalId)}`),
         body: { decision: cmd.decision, reason: cmd.reason, by: cmd.by ?? by },
       };
+    case "colonies":
+      return { method: "GET", path: `/api/colonies${cmd.scan ? "?scan=1" : ""}` };
+    case "agents": {
+      const q = new URLSearchParams();
+      if (cmd.all) q.set("all", "1");
+      if (!cmd.journal) q.set("journal", "0");
+      const query = q.toString();
+      return { method: "GET", path: `${colonyPath(cmd.colony, "/agents")}${query ? `?${query}` : ""}` };
+    }
+    case "stop": {
+      const body = cmd.reason ? { reason: cmd.reason } : {};
+      if (cmd.agentId) return { method: "POST", path: colonyPath(cmd.colony, `/agents/${encodeURIComponent(cmd.agentId)}/stop`), body };
+      return { method: "POST", path: colonyPath(cmd.colony, "/swarm/stop"), body };
+    }
+    case "delete":
+      return { method: "DELETE", path: colonyPath(cmd.colony) };
+    case "vaccinate":
+      return { method: "POST", path: colonyPath(cmd.colony, "/vaccinate"), body: { count: cmd.count } };
     default:
       return null;
   }

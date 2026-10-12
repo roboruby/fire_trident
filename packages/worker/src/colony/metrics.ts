@@ -1,4 +1,4 @@
-import type { AgentInfo, AgentState, Colony, ColonySnapshot, Id, Millis, Sha } from "@fire_trident/core";
+import type { AgentInfo, AgentState, Colony, ColonySeries, ColonySnapshot, Id, Millis, Sha } from "@fire_trident/core";
 
 /**
  * Metrics, per-minute series, the colony registry, and agent listings: the
@@ -18,23 +18,7 @@ export const COUNTER_SERIES: ReadonlySet<string> = new Set(["landings", "proposa
 /** Gauge series: the last value recorded in each minute. */
 export const GAUGE_SERIES: ReadonlySet<string> = new Set(["violations"]);
 
-/** Per-minute history for sparklines and the violations burn-down. */
-export interface ColonySeries {
-  /** Bucket width (ms). */
-  bucketMs: number;
-  /** Start of the first bucket. Bucket i covers [start + i * bucketMs, start + (i + 1) * bucketMs); the last is the current minute. */
-  start: Millis;
-  /** Landings per bucket. */
-  landings: number[];
-  /** Open violations at the end of each bucket (the last bucket is the current total). */
-  violations: number[];
-  /** Proposals received per bucket. */
-  proposals: number[];
-  /** Proposals sent back to their agents (stale or conflicting) per bucket. */
-  returned: number[];
-  /** Intents landed per bucket. */
-  landedIntents: number[];
-}
+export type { ColonySeries } from "@fire_trident/core";
 
 /** The snapshot as served: the core contract plus the per-minute series. */
 export interface SnapshotWithSeries extends ColonySnapshot {
