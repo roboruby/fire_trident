@@ -38,5 +38,5 @@
     { "name": "ft-verify", "binding": "VERIFY", "class_name": "VerifyWorkflow" }
   ],
   "analytics_engine_datasets": [{ "binding": "METRICS", "dataset": "firetrident_metrics" }],
-  "vars": { "FT_PUBLIC_URL": "https://firetrident.mattsolt.workers.dev", "FT_DEFAULT_MODEL": "@cf/moonshotai/kimi-k2.7-code", "FT_BULK_MODEL": "@cf/zai-org/glm-5.3-flash", "FT_REFLEX_MODEL": "@cf/cloudflare/clef" }
+  "vars": { "FT_PUBLIC_URL": "https://firetrident.mattsolt.workers.dev", "FT_DEFAULT_MODEL": "@cf/moonshotai/kimi-k2.7-code", "FT_BULK_MODEL": "@cf/google/gemma-4-26b-a4b-it", "FT_REFLEX_MODEL": "@cf/cloudflare/clef" }
 }

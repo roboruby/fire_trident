@@ -14,6 +14,7 @@ import type {
   Proposal,
   ProposalStatus,
   Rule,
+  Sha,
   WorkspaceLease,
 } from "@fire_trident/core";
 import type { Env } from "../env.ts";
@@ -61,6 +62,12 @@ export interface TrunkRpc {
   why(path: Path, line?: number): Promise<Array<{ landing: Landing; note: LineageNote }>>;
 }
 
+/** TrunkDO reads an agent uses. */
+export interface TrunkBlobsRpc {
+  /** Current trunk blob of each path (null when absent). */
+  blobsFor(paths: Path[]): Promise<Record<Path, Sha | null>>;
+}
+
 /** Parameters of AgentDO.start. */
 export interface AgentStartParams {
   colonyId: Id;
@@ -95,6 +102,11 @@ export function regionStub(env: Pick<Env, "REGION">, colonyId: Id, region: strin
 /** RPC stub of a colony's TrunkDO. */
 export function trunkStub(env: Pick<Env, "TRUNK">, colonyId: Id): TrunkRpc {
   return env.TRUNK.get(env.TRUNK.idFromName(colonyId)) as unknown as TrunkRpc;
+}
+
+/** RPC stub of a colony's TrunkDO for blob reads. */
+export function trunkBlobsStub(env: Pick<Env, "TRUNK">, colonyId: Id): TrunkBlobsRpc {
+  return env.TRUNK.get(env.TRUNK.idFromName(colonyId)) as unknown as TrunkBlobsRpc;
 }
 
 /** RPC stub of an in-platform agent's AgentDO (named by agent id). */

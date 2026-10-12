@@ -1,9 +1,9 @@
 import { Workspace } from "@cloudflare/computer";
 import { create as createVfs, VirtualProvider } from "@platformatic/vfs";
 import git from "isomorphic-git";
-import gitHttp from "isomorphic-git/http/web";
+import type { GitHttpRequest, GitHttpResponse, HttpClient } from "isomorphic-git";
 import type { FileVersion, Path, Sha } from "@fire_trident/core";
-import type { BaseFile, GitOps } from "./loop.ts";
+import type { BaseFile, GitOps, NetStats } from "./loop.ts";
 
 /**
  * Git for one agent, inside its Durable Object: isomorphic-git over the SQLite
@@ -62,7 +62,75 @@ export function buildIsoFs(provider: unknown): any {
 
 const auth = (token: string): Record<string, string> => (token ? { Authorization: `Bearer ${token}` } : {});
 const LOCAL_BRANCH = "refs/heads/ft-work";
+/**
+ * The newest trunk commit this clone holds. isomorphic-git offers the local ref
+ * named like the fetched branch as a "have", so keeping it current makes every
+ * later fetch send only what trunk gained since (not the whole tree again).
+ */
+const TRUNK_HAVE = "refs/heads/main";
 const DEEPEN = 64;
+/** Email domain of in-platform agent commits (see change.ts agentIdentity). */
+const AGENT_EMAIL = "@agents.firetrident.dev";
+
+/** A zeroed NetStats. */
+export function emptyNet(): NetStats {
+  return { requests: 0, sentBytes: 0, receivedBytes: 0, ms: 0 };
+}
+
+async function collectBody(body: unknown): Promise<Uint8Array> {
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  const add = (c: unknown): void => {
+    if (c instanceof Uint8Array) {
+      chunks.push(c);
+      size += c.byteLength;
+    }
+  };
+  if (body instanceof Uint8Array) add(body);
+  else if (body && typeof (body as AsyncIterable<unknown>)[Symbol.asyncIterator] === "function") for await (const c of body as AsyncIterable<unknown>) add(c);
+  else if (body && typeof (body as Iterable<unknown>)[Symbol.iterator] === "function") for (const c of body as Iterable<unknown>) add(c);
+  const out = new Uint8Array(size);
+  let at = 0;
+  for (const c of chunks) {
+    out.set(c, at);
+    at += c.byteLength;
+  }
+  return out;
+}
+
+/**
+ * An isomorphic-git HTTP client (same contract as isomorphic-git/http/web) that
+ * buffers each request and response and adds their sizes and durations to `stats`.
+ */
+export function meteredHttp(stats: NetStats): HttpClient {
+  return {
+    async request(req: GitHttpRequest): Promise<GitHttpResponse> {
+      const t0 = Date.now();
+      const method = req.method ?? "GET";
+      const body = req.body ? await collectBody(req.body) : undefined;
+      const res = await fetch(req.url, {
+        method,
+        headers: req.headers ?? {},
+        ...(body ? { body } : {}),
+        ...(req.signal ? { signal: req.signal as AbortSignal } : {}),
+      });
+      const bytes = new Uint8Array(await res.arrayBuffer());
+      stats.requests += 1;
+      stats.sentBytes += body?.byteLength ?? 0;
+      stats.receivedBytes += bytes.byteLength;
+      stats.ms += Date.now() - t0;
+      const headers: Record<string, string> = {};
+      res.headers.forEach((v, k) => {
+        headers[k] = v;
+      });
+      return { url: res.url, method, statusCode: res.status, statusMessage: res.statusText, body: once(bytes), headers };
+    },
+  };
+}
+
+async function* once(bytes: Uint8Array): AsyncIterableIterator<Uint8Array> {
+  yield bytes;
+}
 
 interface TreeEntry {
   mode: string;
@@ -85,6 +153,8 @@ export class WorkspaceGit implements GitOps {
   private fsClient: any = null;
   private cache: Record<string, unknown> = {};
   private initialized = false;
+  private net: NetStats = emptyNet();
+  private readonly http = meteredHttp(this.net);
 
   constructor(storage: DurableObjectStorage, private readonly dir = "/repo") {
     // The Workspace's options type wants its own storage-like interface; the DO storage satisfies it.
@@ -139,29 +209,54 @@ export class WorkspaceGit implements GitOps {
     else await fs.promises.writeFile(path, `${keep.join("\n")}\n`);
   }
 
+  /**
+   * Fetch `ref` (a branch name or a commit id) from trunk. The haves are the
+   * TRUNK_HAVE ref (when its commit is present), so trunk sends only objects
+   * that commit lacks. Fetching "main" moves TRUNK_HAVE to the fetched tip.
+   */
   private async fetch(remote: string, token: string, ref: string, depth: number): Promise<string | null> {
     const fs = this.fs();
     // fetch needs a configured remote for its refspec (a bare url has none).
     await git.addRemote({ fs, dir: this.dir, remote: "origin", url: remote, force: true });
+    // isomorphic-git takes its haves from the local ref named by `ref`, so `ref` stays "main"
+    // (TRUNK_HAVE) and a commit id goes in `remoteRef`, which is what gets wanted.
+    const byId = /^[0-9a-f]{40}$/.test(ref);
     const r = await git.fetch({
       fs,
-      http: gitHttp,
+      http: this.http,
       dir: this.dir,
       remote: "origin",
-      ref,
+      ref: "main",
+      remoteRef: ref,
       singleBranch: true,
       depth,
       tags: false,
       headers: auth(token),
       cache: this.cache,
     });
-    return r.fetchHead ?? null;
+    const head = r.fetchHead ?? null;
+    if (!byId && ref === "main" && head && (await this.hasCommit(head))) {
+      await git.writeRef({ fs, dir: this.dir, ref: TRUNK_HAVE, value: head, force: true });
+    }
+    return head;
+  }
+
+  /** Network cost of the git calls since the last call to this method (then resets it). */
+  takeNetStats(): NetStats {
+    const out = { ...this.net };
+    this.net.requests = 0;
+    this.net.sentBytes = 0;
+    this.net.receivedBytes = 0;
+    this.net.ms = 0;
+    return out;
   }
 
   /**
    * Make `baseSha` available: already present, or the trunk tip at depth 1 (the
    * usual case: the lease was just issued), or a direct want of the commit, or a
    * deeper fetch. When none reaches it the tip is used and `fallback` is set.
+   * Fetches are incremental: trunk sends only what changed since the newest trunk
+   * commit this clone already holds.
    */
   async ensureBase(p: { remote: string; token: string; baseSha: Sha }): Promise<{ baseSha: Sha; fallback: boolean }> {
     await this.init();
@@ -193,6 +288,53 @@ export class WorkspaceGit implements GitOps {
   /** Every file path in the commit's tree. */
   async listFiles(baseSha: Sha): Promise<Path[]> {
     return git.listFiles({ fs: this.fs(), dir: this.dir, ref: baseSha, cache: this.cache });
+  }
+
+  /** The commit `refs/heads/main` of a remote repo points at (null when the branch does not exist). */
+  async remoteHead(p: { remote: string; token: string }): Promise<Sha | null> {
+    let refs: Array<{ ref: string; oid: string }>;
+    try {
+      refs = await git.listServerRefs({ http: this.http, url: p.remote, headers: auth(p.token), forPush: true, protocolVersion: 1, prefix: "refs/heads/main" });
+    } catch (e) {
+      throw httpError(e, "list workspace refs");
+    }
+    return refs.find((r) => r.ref === "refs/heads/main")?.oid ?? null;
+  }
+
+  /**
+   * Fetch one trunk commit by id (shallow; only objects the clone lacks travel).
+   * True when the commit is present afterwards; false when trunk does not serve it.
+   */
+  async fetchCommit(p: { remote: string; token: string; sha: Sha }): Promise<boolean> {
+    await this.init();
+    if (await this.hasCommit(p.sha)) return true;
+    await this.repairShallow();
+    try {
+      await this.fetch(p.remote, p.token, p.sha, 1);
+    } catch {
+      return false;
+    }
+    return this.hasCommit(p.sha);
+  }
+
+  /** Parents of a local commit and whether an in-platform agent made it (null when absent). */
+  async commitInfo(sha: Sha): Promise<{ parents: Sha[]; byAgent: boolean } | null> {
+    try {
+      const { commit } = await git.readCommit({ fs: this.fs(), dir: this.dir, oid: sha, cache: this.cache });
+      return { parents: commit.parent, byAgent: commit.author.email.endsWith(AGENT_EMAIL) };
+    } catch {
+      return null;
+    }
+  }
+
+  /** Blob id of each path at a local commit (null when absent or not a file). */
+  async blobsAt(sha: Sha, paths: Path[]): Promise<Map<Path, Sha | null>> {
+    const out = new Map<Path, Sha | null>();
+    for (const path of paths) {
+      const e = await this.entryAt(sha, path);
+      out.set(path, e && e.type === "blob" ? e.oid : null);
+    }
+    return out;
   }
 
   private async entryAt(baseSha: Sha, path: Path): Promise<TreeEntry | null> {
@@ -275,7 +417,7 @@ export class WorkspaceGit implements GitOps {
     try {
       r = await git.push({
         fs,
-        http: gitHttp,
+        http: this.http,
         dir: this.dir,
         url: p.remote,
         ref: LOCAL_BRANCH,

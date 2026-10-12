@@ -6,15 +6,19 @@ import { SqlJournal } from "./journal.ts";
 import { modelClient, resolveModel } from "./llm.ts";
 import { DEFAULT_TICK_BUDGET_MS, agentState, stopAgent, tick } from "./loop.ts";
 import type { AgentConfig, HistoryEntry, JobStep, LoopDeps, StepLogEntry } from "./loop.ts";
-import { colonyStub, errorMessage } from "./rpc.ts";
+import { colonyStub, errorMessage, trunkBlobsStub } from "./rpc.ts";
 import type { AgentStartParams } from "./rpc.ts";
 
 /** Re-arm time set at the start of every tick, so a killed tick resumes within a minute. */
 const WATCHDOG_MS = 60_000;
 /** Longest first-step delay a caller may ask for. */
 const MAX_START_DELAY_MS = 60_000;
-/** Recycle the local clone after this many finished jobs (reclaims storage). */
-const RESET_CLONE_EVERY = 25;
+/**
+ * Recycle the local clone after this many finished jobs (reclaims storage). Until then
+ * the clone is kept across jobs: its objects make each trunk fetch incremental and let a
+ * push to a workspace this agent used before carry only the new objects.
+ */
+const RESET_CLONE_EVERY = 200;
 
 /** AgentInfo plus the agent's own view of its work. Tokens never appear here. */
 export interface AgentStatus extends AgentInfo {
@@ -57,11 +61,13 @@ export class AgentDO extends DurableObject<Env> {
     if (!this.git) this.git = new WorkspaceGit(this.ctx.storage);
     return {
       colony: colonyStub(this.env, colonyId),
+      trunk: trunkBlobsStub(this.env, colonyId),
       git: this.git,
       model: modelClient(this.env),
       journal: this.journal,
       now: () => Date.now(),
       log: (line) => console.log(`agent ${this.journal.config()?.agentId ?? "?"}: ${line}`),
+      metric: (record) => console.log(JSON.stringify({ ft: "agent-job", ...record })),
     };
   }
 

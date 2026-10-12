@@ -1,8 +1,9 @@
 import { checkFile, ruleApplies } from "@fire_trident/core";
 import type { AgentKind, AgentState, CheckResult, FileVersion, Id, Intent, Path, Proposal, ProposalStatus, Rule, Sha, WorkspaceLease } from "@fire_trident/core";
-import { agentIdentity, applyReplacement, changeSummary, commitMessage, decodeText, expandFootprint, isLiteralPath, recheck, ruleReplacement } from "./change.ts";
-import { buildEditMessages, maxTokensFor, parseFileReply, retryMessages, violationProblem } from "./prompt.ts";
-import type { ChatMessage } from "./prompt.ts";
+import { agentIdentity, applyReplacement, changeSummary, cleanPath, commitMessage, decodeText, expandFootprint, isLiteralPath, recheck, ruleReplacement } from "./change.ts";
+import { TreeIndex, applySpecifierEdits, isImportRule, parseSpecifierEdits, specifierFacts } from "./context.ts";
+import { buildEditMessages, buildSpecifierMessages, maxTokensFor, parseFileReply, retryMessages, specifierRetryMessages, violationProblem } from "./prompt.ts";
+import type { ChatMessage, TokenUsage } from "./prompt.ts";
 import { TERMINAL_STATUSES, errorMessage, errorStatus } from "./rpc.ts";
 import type { ColonyRpc, TakeResult } from "./rpc.ts";
 
@@ -77,12 +78,44 @@ export interface Job {
   headSha?: Sha;
   writeSet?: FileVersion[];
   summary?: string;
+  /** Commit the change was built on: the lease base, or an equivalent trunk commit the workspace already holds. */
+  parentSha?: Sha;
+  /** Why that parent was chosen (telemetry). */
+  parentHow?: string;
+  /** Model usage of this job. */
+  usage?: JobUsage;
+  /** Git network cost of this job, by phase. */
+  net?: { fetch?: NetStats; probe?: NetStats; push?: NetStats };
   proposalId?: Id;
   proposedAt?: number;
   pollMs?: number;
   lastStatus?: ProposalStatus;
   lastHeartbeatAt: number;
   lastError?: string;
+  /** Times a step waited because the model provider throttled it (does not count as a failed attempt). */
+  throttled?: number;
+  /** Directory imports the agent rewrote to their index file, after checking the tree (for the evidence). */
+  directoryRewrites?: string[];
+  /** Imports that name a file beside a same-named directory (the file wins resolution), for the evidence. */
+  fileOverDirectory?: string[];
+}
+
+/** Model calls, tokens and time spent by one job. */
+export interface JobUsage {
+  calls: number;
+  input: number;
+  output: number;
+  cached: number;
+  neurons: number;
+  ms: number;
+}
+
+/** Bytes and time the git network calls cost (accumulated until taken). */
+export interface NetStats {
+  requests: number;
+  sentBytes: number;
+  receivedBytes: number;
+  ms: number;
 }
 
 /** One finished job. */
@@ -98,6 +131,9 @@ export interface HistoryEntry {
   llmCalls: number;
   method?: string;
   files: number;
+  usage?: JobUsage;
+  net?: Job["net"];
+  parentHow?: string;
 }
 
 /** One journaled step. */
@@ -147,12 +183,25 @@ export interface GitOps {
   }): Promise<{ headSha: Sha; writeSet: FileVersion[] }>;
   /** Force-push `headSha` to `main` of the workspace. Throws `[ft:401]`/`[ft:403]` when the token is refused. */
   push(p: { remote: string; token: string; headSha: Sha }): Promise<void>;
+  /** The commit `main` of a remote repo points at (optional: lets a change be built on what the workspace holds). */
+  remoteHead?(p: { remote: string; token: string }): Promise<Sha | null>;
+  /** Fetch one trunk commit by id; true when it is present afterwards. */
+  fetchCommit?(p: { remote: string; token: string; sha: Sha }): Promise<boolean>;
+  /** Parents of a local commit and whether an in-platform agent made it (null when absent). */
+  commitInfo?(sha: Sha): Promise<{ parents: Sha[]; byAgent: boolean } | null>;
+  /** Blob id of each path at a local commit (null when absent). */
+  blobsAt?(sha: Sha, paths: Path[]): Promise<Map<Path, Sha | null>>;
+  /** Network cost since the last call (then reset). */
+  takeNetStats?(): NetStats;
 }
 
 /** A model reply. */
 export interface ModelReply {
   text: string | null;
   finishReason?: string;
+  usage?: TokenUsage;
+  /** Wall time of the call. */
+  ms?: number;
 }
 
 /** Text generation, whichever provider serves the model. */
@@ -170,12 +219,16 @@ export interface LoopDeps {
   rand?(): number;
   /** Optional sink for one-line progress logs (failures and outcomes). */
   log?(line: string): void;
+  /** Optional sink for one structured record per finished job (telemetry). */
+  metric?(record: Record<string, unknown>): void;
+  /** Current trunk blobs (TrunkDO.blobsFor); lets a job reuse a base the workspace already holds. */
+  trunk?: { blobsFor(paths: Path[]): Promise<Record<Path, Sha | null>> };
 }
 
 export const MAX_STEP_ATTEMPTS = 4;
 export const HEARTBEAT_EVERY_MS = 45_000;
 export const FIRST_POLL_MS = 1_500;
-export const MAX_POLL_MS = 15_000;
+export const MAX_POLL_MS = 5_000;
 export const ESCALATED_POLL_MS = 30_000;
 export const AWAIT_TIMEOUT_MS = 30 * 60_000;
 export const ABANDON_PAUSE_MS = 3_000;
@@ -186,6 +239,8 @@ export const MAX_FILES = 20;
 export const MAX_MODEL_CHARS = 120_000;
 /** Largest file the deterministic replacement edits (characters; journal rows stay under 2 MB). */
 export const MAX_EDIT_CHARS = 1_500_000;
+/** Output budget of one specifier-edit call: the reply is a few lines, the rest is room for reasoning. */
+export const SPECIFIER_MAX_TOKENS = 8_192;
 const TOKEN_SLACK_MS = 10_000;
 const MIN_WAIT_MS = 200;
 const MAX_WAIT_MS = 60_000;
@@ -290,6 +345,7 @@ async function stepOnce(deps: LoopDeps, cfg: AgentConfig): Promise<StepResult> {
     if (e instanceof Halt) throw e;
     const msg = errorMessage(e);
     deps.journal.log({ at: deps.now(), intentId: job.intentId, step, ok: false, ms: deps.now() - t0, detail: msg });
+    if (errorStatus(e) === 429) return throttled(deps, cfg, job, msg);
     deps.journal.bump("errors");
     deps.log?.(`${step} failed (attempt ${job.attempts}) on ${job.intentId}: ${msg}`);
     if (isGone(e)) return halt(deps, cfg, msg);
@@ -300,6 +356,32 @@ async function stepOnce(deps: LoopDeps, cfg: AgentConfig): Promise<StepResult> {
     }
     return { sleepMs: backoffMs(job.attempts, deps.rand) };
   }
+}
+
+/** Throttled waits one job may take before it gives its intent back (about half an hour). */
+export const MAX_THROTTLED = 40;
+
+/** Wait after the n-th throttle: 4 s, 8 s, 16 s, 32 s, then 60 s, each +-50% so agents spread out. */
+export function throttleWaitMs(n: number, rand: () => number = Math.random): number {
+  const base = Math.min(MAX_WAIT_MS, 4_000 * 2 ** (Math.min(Math.max(n, 1), 5) - 1));
+  return Math.round(base * (0.5 + rand()));
+}
+
+/**
+ * The model provider throttled a step (rate limit or no capacity). That is not the
+ * agent's failure: the attempt is given back and the step waits with jittered
+ * backoff. Only a job throttled MAX_THROTTLED times gives its intent back.
+ */
+async function throttled(deps: LoopDeps, cfg: AgentConfig, job: Job, msg: string): Promise<StepResult> {
+  deps.journal.bump("throttled");
+  const fresh = deps.journal.job();
+  if (!fresh || fresh.intentId !== job.intentId) return { sleepMs: throttleWaitMs(1, deps.rand) };
+  fresh.throttled = (fresh.throttled ?? 0) + 1;
+  fresh.attempts = Math.max(0, fresh.attempts - 1);
+  fresh.lastError = msg;
+  save(deps, cfg, fresh);
+  if (fresh.throttled > MAX_THROTTLED) return abandon(deps, cfg, fresh, `the model stayed throttled through ${MAX_THROTTLED} waits: ${msg}`);
+  return { sleepMs: throttleWaitMs(fresh.throttled, deps.rand) };
 }
 
 async function runStep(deps: LoopDeps, cfg: AgentConfig, job: Job): Promise<StepResult> {
@@ -384,10 +466,61 @@ async function takeWork(deps: LoopDeps, cfg: AgentConfig): Promise<StepResult> {
 }
 
 async function fetchStep(deps: LoopDeps, cfg: AgentConfig, job: Job): Promise<StepResult> {
-  const r = await deps.git.ensureBase({ remote: job.lease.trunk.remote, token: job.lease.trunk.token, baseSha: job.lease.baseSha });
-  job.baseSha = r.baseSha;
-  if (r.fallback) job.baseFallback = true;
+  deps.git.takeNetStats?.();
+  const reuse = await workspaceBase(deps, job);
+  if (reuse) {
+    job.baseSha = reuse.sha;
+    job.parentSha = reuse.sha;
+    job.parentHow = reuse.how;
+  } else {
+    const r = await deps.git.ensureBase({ remote: job.lease.trunk.remote, token: job.lease.trunk.token, baseSha: job.lease.baseSha });
+    job.baseSha = r.baseSha;
+    if (r.fallback) job.baseFallback = true;
+  }
+  const net = deps.git.takeNetStats?.();
+  if (net) job.net = { ...job.net, fetch: net };
   return advance(deps, cfg, job, "read");
+}
+
+/**
+ * The trunk commit the leased workspace already holds, when this job can work on it:
+ * the base behind this agent's last push there (lease affinity), or the seed a fresh
+ * workspace was forked from. The work is valid there when every footprint path has
+ * the same blob as current trunk (one TrunkDO.blobsFor call); the lane re-checks that
+ * against trunk before landing anyway. Building on it means no fetch at all when the
+ * clone already has it (the git server sends whole trees, whatever the client holds)
+ * and a push of only the new objects. Null: fetch the lease base as usual.
+ */
+async function workspaceBase(deps: LoopDeps, job: Job): Promise<{ sha: Sha; how: string } | null> {
+  const g = deps.git;
+  if (!deps.trunk || !g.remoteHead || !g.commitInfo || !g.blobsAt || !g.fetchCommit) return null;
+  const footprint = job.intent.footprint ?? [];
+  if (footprint.length === 0 || !footprint.every(isLiteralPath)) return null;
+  const paths = [...new Set(footprint.map(cleanPath))];
+  try {
+    const tip = await g.remoteHead({ remote: job.lease.repo.remote, token: job.lease.token });
+    if (!tip) return null;
+    let info = await g.commitInfo(tip);
+    let fetched = false;
+    if (!info) {
+      // A fresh workspace sits at its seed, a trunk commit. Fetch it from the workspace itself: the same bytes as
+      // fetching the lease base from trunk, but a swarm starting at once spreads over its workspaces, not one trunk repo.
+      if (!(await g.fetchCommit({ remote: job.lease.repo.remote, token: job.lease.token, sha: tip }))) return null;
+      fetched = true;
+      info = await g.commitInfo(tip);
+      if (!info) return null;
+    }
+    const candidate = info.byAgent ? (info.parents[0] ?? null) : tip;
+    if (candidate === null) return null;
+    const cinfo = candidate === tip ? info : await g.commitInfo(candidate);
+    if (!cinfo || cinfo.byAgent) return null;
+    const [current, have] = await Promise.all([deps.trunk.blobsFor(paths), g.blobsAt(candidate, paths)]);
+    for (const p of paths) if ((current[p] ?? null) !== (have.get(p) ?? null)) return null;
+    return { sha: candidate, how: info.byAgent ? "base of the workspace's last push" : fetched ? "workspace seed (fetched)" : "workspace tip" };
+  } catch (e) {
+    if (e instanceof Halt) throw e;
+    return null;
+  }
 }
 
 async function readStep(deps: LoopDeps, cfg: AgentConfig, job: Job): Promise<StepResult> {
@@ -418,9 +551,12 @@ type FileOutcome = { kind: "change"; content: string } | { kind: "skip" } | { ki
 async function produceStep(deps: LoopDeps, cfg: AgentConfig, job: Job): Promise<StepResult> {
   const baseSha = requireBase(job);
   const done = new Set(job.produced ?? []);
+  // The base tree's listing, read once per step and only when a file needs it.
+  let tree: TreeIndex | null = null;
+  const treeAt = async (): Promise<TreeIndex> => (tree ??= new TreeIndex(await deps.git.listFiles(baseSha)));
   for (const f of job.reads ?? []) {
     if (done.has(f.path)) continue;
-    const out = await produceFile(deps, cfg, job, baseSha, f);
+    const out = await produceFile(deps, cfg, job, baseSha, f, treeAt);
     if (out.kind === "abandon") return abandon(deps, cfg, job, out.reason);
     guard(deps, cfg.epoch);
     if (out.kind === "change") deps.journal.putChange(f.path, out.content);
@@ -434,7 +570,7 @@ async function produceStep(deps: LoopDeps, cfg: AgentConfig, job: Job): Promise<
   return advance(deps, cfg, job, "commit");
 }
 
-async function produceFile(deps: LoopDeps, cfg: AgentConfig, job: Job, baseSha: Sha, f: FileRead): Promise<FileOutcome> {
+async function produceFile(deps: LoopDeps, cfg: AgentConfig, job: Job, baseSha: Sha, f: FileRead, treeAt: () => Promise<TreeIndex>): Promise<FileOutcome> {
   if (!f.text) return { kind: "skip" };
   let original: string | null = null;
   if (f.blob !== null) {
@@ -457,6 +593,11 @@ async function produceFile(deps: LoopDeps, cfg: AgentConfig, job: Job, baseSha: 
       job.method = "replacement";
       if (!rc.ok) return { kind: "abandon", reason: `the rule's replacement leaves ${rc.after} violation(s) in ${f.path}` };
       return updated === original ? { kind: "skip" } : { kind: "change", content: updated };
+    }
+    if (isImportRule(rule)) {
+      const r = await specifierEdit(deps, cfg, job, f.path, original, await treeAt());
+      if (!r.ok) return { kind: "abandon", reason: r.reason };
+      return r.content === original ? { kind: "skip" } : { kind: "change", content: r.content };
     }
     const r = await modelEdit(deps, cfg, job, f.path, original, before);
     if (!r.ok) return { kind: "abandon", reason: r.reason };
@@ -507,10 +648,7 @@ async function modelEdit(
     await maybeHeartbeat(deps, cfg, job);
     const t0 = deps.now();
     const reply = await deps.model.complete({ model: cfg.model, messages, maxTokens });
-    job.llmCalls += 1;
-    job.method = "model";
-    save(deps, cfg, job);
-    deps.journal.bump("llmCalls");
+    countCall(deps, cfg, job, reply, deps.now() - t0);
     const text = reply.text ?? "";
     const v = judgeReply(job.rule, path, original, text, reply.finishReason);
     if (v.ok) {
@@ -524,14 +662,100 @@ async function modelEdit(
   return { ok: false, reason: `the model did not produce a valid change for ${path}: ${problem}` };
 }
 
+/** Book one model call on the job (calls, tokens, time) and in the agent's counters. */
+function countCall(deps: LoopDeps, cfg: AgentConfig, job: Job, reply: ModelReply, ms: number): void {
+  job.llmCalls += 1;
+  job.method = "model";
+  const u = job.usage ?? { calls: 0, input: 0, output: 0, cached: 0, neurons: 0, ms: 0 };
+  u.calls += 1;
+  u.ms += reply.ms ?? ms;
+  if (reply.usage) {
+    u.input += reply.usage.input;
+    u.output += reply.usage.output;
+    u.cached += reply.usage.cached;
+    u.neurons += reply.usage.neurons;
+    deps.journal.bump("tokensIn", reply.usage.input);
+    deps.journal.bump("tokensOut", reply.usage.output);
+  }
+  job.usage = u;
+  save(deps, cfg, job);
+  deps.journal.bump("llmCalls");
+}
+
+/**
+ * Fix an import rule's violations in one file by asking the model only for
+ * specifier rewrites (see context.ts): it sees the flagged lines, what the trunk
+ * tree holds for each specifier, and the sibling listings. The agent applies the
+ * rewrites itself, then re-checks with the rule and verifies every new path
+ * exists. One retry with the problems as feedback; otherwise the file is given up.
+ */
+async function specifierEdit(
+  deps: LoopDeps,
+  cfg: AgentConfig,
+  job: Job,
+  path: Path,
+  original: string,
+  tree: TreeIndex,
+): Promise<{ ok: true; content: string } | { ok: false; reason: string }> {
+  const rule = job.rule;
+  if (!rule) return { ok: false, reason: "no rule" };
+  const facts = specifierFacts(rule, path, original, tree);
+  if (facts.length === 0) return { ok: true, content: original };
+  const first = buildSpecifierMessages({ intent: job.intent, rule, path, content: original, facts, tree });
+  let messages = first;
+  let problems: string[] = [];
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await maybeHeartbeat(deps, cfg, job);
+    const t0 = deps.now();
+    const reply = await deps.model.complete({ model: cfg.model, messages, maxTokens: SPECIFIER_MAX_TOKENS });
+    countCall(deps, cfg, job, reply, deps.now() - t0);
+    const text = reply.text ?? "";
+    const parsed = parseSpecifierEdits(text);
+    if (!parsed.ok) {
+      problems = [reply.finishReason === "length" ? "the reply was cut off before </edits>; reply with only the <edits> block" : parsed.reason];
+    } else {
+      const applied = applySpecifierEdits(rule, path, original, facts, parsed.edits, tree);
+      if (applied.problems.length === 0) {
+        const rc = recheck(rule, path, original, applied.content);
+        const dirs = applied.rewrites.filter((r) => r.directory).map((r) => `${r.from} -> ${r.to}`);
+        if (dirs.length > 0) job.directoryRewrites = [...new Set([...(job.directoryRewrites ?? []), ...dirs])];
+        const beside = applied.rewrites.filter((r) => r.besideDirectory).map((r) => `${r.from} -> ${r.to}`);
+        if (beside.length > 0) job.fileOverDirectory = [...new Set([...(job.fileOverDirectory ?? []), ...beside])];
+        addCheck(job, {
+          name: `recheck ${path}`,
+          ok: rc.ok,
+          ms: deps.now() - t0,
+          detail: `${rc.before} -> ${rc.after} violations; ${applied.changed} specifier(s) rewritten, every new path exists in trunk (model ${cfg.model}, attempt ${attempt + 1})`,
+        });
+        return { ok: true, content: applied.content };
+      }
+      problems = applied.problems;
+    }
+    messages = specifierRetryMessages(first, text, problems);
+  }
+  const why = problems.join("; ");
+  addCheck(job, { name: `recheck ${path}`, ok: false, ms: 0, detail: why.slice(0, 500) });
+  return { ok: false, reason: `the model did not produce a valid change for ${path}: ${why}` };
+}
+
 async function commitStep(deps: LoopDeps, cfg: AgentConfig, job: Job): Promise<StepResult> {
   const changes = deps.journal.changes().sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
   if (changes.length === 0) return abandon(deps, cfg, job, "nothing to commit");
   // The clone lives in durable storage, but make sure the base is still there after a restart.
   const base = await deps.git.ensureBase({ remote: job.lease.trunk.remote, token: job.lease.trunk.token, baseSha: requireBase(job) });
   if (base.baseSha !== job.baseSha) throw new Error(`base ${job.baseSha} is no longer reachable`);
+  if (!job.parentSha) {
+    deps.git.takeNetStats?.();
+    const paths = [...new Set([...changes.map((c) => c.path), ...(job.reads ?? []).map((f) => f.path)])];
+    const choice = await chooseParent(deps, job, paths);
+    job.parentSha = choice.parent;
+    job.parentHow = choice.how;
+    const probe = deps.git.takeNetStats?.();
+    if (probe && probe.requests > 0) job.net = { ...job.net, probe };
+    save(deps, cfg, job);
+  }
   const r = await deps.git.commit({
-    baseSha: base.baseSha,
+    baseSha: job.parentSha,
     changes,
     message: commitMessage(job.intent, cfg.agentId),
     author: agentIdentity(cfg.agentId),
@@ -542,8 +766,49 @@ async function commitStep(deps: LoopDeps, cfg: AgentConfig, job: Job): Promise<S
   return advance(deps, cfg, job, "push");
 }
 
+/**
+ * The commit to build the change on. A pooled workspace already holds some trunk
+ * commit: the seed it was forked from, or (behind this agent's own last push) the
+ * base of that push. When every path this job read or wrote has the same blob
+ * there as at the lease base, building on that commit makes the push carry only
+ * the new objects (a commit, the trees on the changed paths, the new blobs)
+ * instead of the whole tree. The lane's optimistic concurrency check compares
+ * those paths with current trunk either way, so the older parent is just as valid.
+ * Falls back to the lease base whenever anything is uncertain.
+ */
+export async function chooseParent(deps: Pick<LoopDeps, "git">, job: Job, paths: Path[]): Promise<{ parent: Sha; how: string }> {
+  const leaseBase = requireBase(job);
+  const g = deps.git;
+  if (!g.remoteHead || !g.commitInfo || !g.blobsAt) return { parent: leaseBase, how: "lease base" };
+  let tip: Sha | null;
+  try {
+    tip = await g.remoteHead({ remote: job.lease.repo.remote, token: job.lease.token });
+  } catch {
+    return { parent: leaseBase, how: "lease base (workspace refs unreadable)" };
+  }
+  if (tip === null) return { parent: leaseBase, how: "lease base (empty workspace)" };
+  if (tip === leaseBase) return { parent: leaseBase, how: "lease base (workspace at base)" };
+  let info = await g.commitInfo(tip);
+  if (!info && g.fetchCommit) {
+    // A fresh workspace sits at its seed, a trunk commit that trunk serves cheaply.
+    if (await g.fetchCommit({ remote: job.lease.trunk.remote, token: job.lease.trunk.token, sha: tip })) info = await g.commitInfo(tip);
+  }
+  if (!info) return { parent: leaseBase, how: "lease base (workspace tip unknown)" };
+  // Behind an agent commit sits the trunk commit it was built on.
+  const candidate = info.byAgent ? (info.parents[0] ?? null) : tip;
+  if (candidate === null || candidate === leaseBase) return { parent: leaseBase, how: "lease base" };
+  const cinfo = info.byAgent ? await g.commitInfo(candidate) : info;
+  if (!cinfo || cinfo.byAgent) return { parent: leaseBase, how: "lease base (workspace base unknown)" };
+  const [want, have] = await Promise.all([g.blobsAt(leaseBase, paths), g.blobsAt(candidate, paths)]);
+  for (const p of paths) {
+    if ((want.get(p) ?? null) !== (have.get(p) ?? null)) return { parent: leaseBase, how: "lease base (files differ in the workspace)" };
+  }
+  return { parent: candidate, how: info.byAgent ? "base of the workspace's last push" : "workspace tip" };
+}
+
 async function pushStep(deps: LoopDeps, cfg: AgentConfig, job: Job): Promise<StepResult> {
   if (deps.now() > job.lease.tokenExpiresAt - TOKEN_SLACK_MS) return abandon(deps, cfg, job, "the workspace token expired before the push");
+  deps.git.takeNetStats?.();
   try {
     await deps.git.push({ remote: job.lease.repo.remote, token: job.lease.token, headSha: requireHead(job) });
   } catch (e) {
@@ -551,8 +816,41 @@ async function pushStep(deps: LoopDeps, cfg: AgentConfig, job: Job): Promise<Ste
     if (status === 401 || status === 403) return abandon(deps, cfg, job, `the workspace refused the push: ${errorMessage(e)}`);
     throw e;
   }
+  const net = deps.git.takeNetStats?.();
+  if (net) {
+    job.net = { ...job.net, push: net };
+    deps.journal.bump("pushBytes", net.sentBytes);
+  }
   deps.journal.bump("pushed");
   return advance(deps, cfg, job, "propose");
+}
+
+function kb(bytes: number): string {
+  return bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${(bytes / 1024).toFixed(1)} KB`;
+}
+
+/** Telemetry checks for the evidence: model usage and git transfer (only what was measured). */
+function telemetryChecks(cfg: AgentConfig, job: Job): CheckResult[] {
+  const out: CheckResult[] = [];
+  const u = job.usage;
+  if (u && (u.input > 0 || u.output > 0)) {
+    out.push({
+      name: "agent model usage",
+      ok: true,
+      ms: u.ms,
+      detail: `${cfg.model}: ${u.calls} call(s), ${u.input} input / ${u.output} output tokens${u.cached ? ` (${u.cached} cached)` : ""}${u.neurons ? `, ${u.neurons.toFixed(1)} neurons` : ""}`,
+    });
+  }
+  const n = job.net;
+  if (n && (n.fetch || n.push)) {
+    const parts: string[] = [];
+    if (n.fetch) parts.push(`fetch ${kb(n.fetch.receivedBytes)} down`);
+    if (n.probe) parts.push(`workspace probe ${n.probe.requests} request(s)`);
+    if (n.push) parts.push(`push ${kb(n.push.sentBytes)} up`);
+    if (job.parentHow) parts.push(`built on ${job.parentHow}`);
+    out.push({ name: "agent git transfer", ok: true, ms: (n.fetch?.ms ?? 0) + (n.probe?.ms ?? 0) + (n.push?.ms ?? 0), detail: parts.join("; ") });
+  }
+  return out;
 }
 
 async function proposeStep(deps: LoopDeps, cfg: AgentConfig, job: Job): Promise<StepResult> {
@@ -565,10 +863,24 @@ async function proposeStep(deps: LoopDeps, cfg: AgentConfig, job: Job): Promise<
   }
   if (!proposal) {
     const readSet: FileVersion[] = (job.reads ?? []).filter((f) => f.text).map((f) => ({ path: f.path, blob: f.blob }));
+    // Reviewers read the start of this statement (the decide stream's second opinion keeps 400 characters),
+    // so for import rules it leads with what was and was not checked, naming any directory rewrites.
+    const importEdit = isImportRule(job.rule) && job.method === "model";
+    const dirs = job.directoryRewrites ?? [];
     const notVerified = [
-      job.method === "replacement" ? "Deterministic replacement re-checked against the rule only." : `Edited by model ${cfg.model}; re-checked against the rule only.`,
-      "No tests, type checks or builds were run by the agent.",
+      importEdit
+        ? `No tests, type checks or builds were run. Checked by the agent against the trunk tree: the rule reports 0 violations after the edit; every rewritten import names an existing file, the one TypeScript resolved before (x.ts before x/index.ts)${
+            dirs.length > 0 ? `; directories name their index file: ${dirs.slice(0, 2).join(", ")}` : ""
+          }${(job.fileOverDirectory ?? []).length > 0 ? `; a file beats the same-named directory: ${(job.fileOverDirectory ?? []).slice(0, 2).join(", ")}` : ""}. Edited by model ${cfg.model}.`
+        : job.method === "replacement"
+          ? "Deterministic replacement re-checked against the rule only."
+          : `Edited by model ${cfg.model}; re-checked against the rule only.`,
+      importEdit ? "" : "No tests, type checks or builds were run by the agent.",
       job.baseFallback ? `Based on trunk ${job.baseSha} because the leased base was unreachable.` : "",
+      job.parentSha && job.parentSha !== job.baseSha ? `Built on trunk ${job.parentSha} (already in the workspace), where every file read or written matches the leased base ${job.baseSha}.` : "",
+      !job.baseFallback && job.baseSha && job.baseSha !== job.lease.baseSha && job.parentSha === job.baseSha
+        ? `Based on trunk ${job.baseSha}, which the workspace already held; every footprint file matched current trunk when the work started.`
+        : "",
     ]
       .filter(Boolean)
       .join(" ");
@@ -577,12 +889,12 @@ async function proposeStep(deps: LoopDeps, cfg: AgentConfig, job: Job): Promise<
       intentId: job.intentId,
       agentId: cfg.agentId,
       workspace: job.lease.repo,
-      baseSha: requireBase(job),
+      baseSha: job.parentSha ?? requireBase(job),
       headSha,
       writeSet: job.writeSet ?? [],
       readSet,
       declared: { footprint: job.intent.footprint, summary: job.summary ?? job.intent.title },
-      evidence: { checks: job.checks ?? [], notVerified },
+      evidence: { checks: [...(job.checks ?? []), ...telemetryChecks(cfg, job)], notVerified },
     });
     deps.journal.bump("proposed");
   }
@@ -631,9 +943,39 @@ function finishJob(deps: LoopDeps, cfg: AgentConfig, job: Job, outcome: Outcome,
   if (job.proposalId) entry.proposalId = job.proposalId;
   if (job.headSha) entry.headSha = job.headSha;
   if (job.method) entry.method = job.method;
+  if (job.usage) entry.usage = job.usage;
+  if (job.net) entry.net = job.net;
+  if (job.parentHow) entry.parentHow = job.parentHow;
   deps.journal.finish(entry);
   deps.journal.bump(outcome);
   deps.log?.(`${outcome} ${job.intentId} after ${entry.ms} ms${reason ? `: ${reason}` : ""}`);
+  deps.metric?.({
+    colonyId: cfg.colonyId,
+    agentId: cfg.agentId,
+    model: cfg.model,
+    kind: cfg.kind,
+    intentId: job.intentId,
+    path: job.intent.footprint[0] ?? null,
+    outcome,
+    reason: reason ? reason.slice(0, 300) : null,
+    ms: entry.ms,
+    proposedAfterMs: job.proposedAt ? job.proposedAt - job.takenAt : null,
+    method: job.method ?? null,
+    calls: job.usage?.calls ?? job.llmCalls,
+    throttled: job.throttled ?? 0,
+    tokensIn: job.usage?.input ?? 0,
+    tokensOut: job.usage?.output ?? 0,
+    tokensCached: job.usage?.cached ?? 0,
+    neurons: job.usage ? Math.round(job.usage.neurons * 100) / 100 : 0,
+    llmMs: job.usage?.ms ?? 0,
+    fetchDown: job.net?.fetch?.receivedBytes ?? null,
+    fetchMs: job.net?.fetch?.ms ?? null,
+    probeMs: job.net?.probe?.ms ?? null,
+    pushUp: job.net?.push?.sentBytes ?? null,
+    pushMs: job.net?.push?.ms ?? null,
+    parent: job.parentHow ?? null,
+    workspace: job.lease.repo.name,
+  });
   deps.journal.setJob(null);
   deps.journal.log({ at: now, intentId: job.intentId, step: "done", ok: outcome === "landed", ms: now - job.takenAt, detail: reason ? `${outcome}: ${reason}` : outcome });
   return { sleepMs: outcome === "landed" ? 0 : Math.round(500 + (deps.rand ?? Math.random)() * 500) };

@@ -87,6 +87,10 @@ export class PoolDO extends DurableObject<Env> {
     );
     this.sql.exec(`CREATE INDEX IF NOT EXISTS ft_pool_ws_state ON ft_pool_ws (state)`);
     this.sql.exec(`CREATE INDEX IF NOT EXISTS ft_pool_ws_agent ON ft_pool_ws (agent_id)`);
+    // Lease affinity: the agent that last held a slot (pools created before this column get it added).
+    if (!this.sql.exec<{ name: string }>(`PRAGMA table_info(ft_pool_ws)`).toArray().some((c) => c.name === "last_agent")) {
+      this.sql.exec(`ALTER TABLE ft_pool_ws ADD COLUMN last_agent TEXT`);
+    }
     this.sql.exec(`CREATE TABLE IF NOT EXISTS ft_pool_seeds (shard INTEGER PRIMARY KEY, name TEXT NOT NULL, remote TEXT NOT NULL, sha TEXT, pushed_at INTEGER)`);
   }
 
@@ -119,7 +123,10 @@ export class PoolDO extends DurableObject<Env> {
   /**
    * Lease a ready workspace to `agentId` (the same one again if it already holds a lease)
    * with a fresh workspace write token and a read-only trunk token, both valid for an hour.
-   * Forks one on demand when none is ready and raises the target; null if that fails.
+   * Affinity: an agent gets back the workspace it last held when that one is ready, else a
+   * never-used one, else the longest idle. Its local clone already has that workspace's
+   * objects, so its next push carries only what is new. Forks one on demand when none is
+   * ready and raises the target; null if that fails.
    */
   async lease(agentId: Id, trunkSha: Sha): Promise<WorkspaceLease | null> {
     const st = this.state();
@@ -127,7 +134,13 @@ export class PoolDO extends DurableObject<Env> {
       let row: SlotRow | null | undefined = this.sql.exec<SlotRow>(`SELECT * FROM ft_pool_ws WHERE agent_id = ? AND state = 'leased' LIMIT 1`, agentId).toArray()[0];
       if (!row) {
         const now = Date.now();
-        row = this.sql.exec<SlotRow>(`SELECT * FROM ft_pool_ws WHERE state = 'ready' ORDER BY COALESCE(released_at, 0), n LIMIT 1`).toArray()[0];
+        row = this.sql
+          .exec<SlotRow>(
+            `SELECT * FROM ft_pool_ws WHERE state = 'ready'
+             ORDER BY CASE WHEN last_agent = ? THEN 0 WHEN last_agent IS NULL THEN 1 ELSE 2 END, COALESCE(released_at, 0), n LIMIT 1`,
+            agentId,
+          )
+          .toArray()[0];
         if (row) {
           this.sql.exec(`UPDATE ft_pool_ws SET state = 'leased', agent_id = ?, leased_at = ? WHERE n = ?`, agentId, now, row.n);
           row = { ...row, state: "leased", agent_id: agentId, leased_at: now };
@@ -172,7 +185,7 @@ export class PoolDO extends DurableObject<Env> {
     const rows = this.sql.exec<SlotRow>(`SELECT * FROM ft_pool_ws WHERE agent_id = ? AND state = 'leased'`, agentId).toArray();
     const now = Date.now();
     for (const r of rows) {
-      this.sql.exec(`UPDATE ft_pool_ws SET state = 'ready', agent_id = NULL, token_id = NULL, leased_at = NULL, released_at = ? WHERE n = ?`, now, r.n);
+      this.sql.exec(`UPDATE ft_pool_ws SET state = 'ready', agent_id = NULL, last_agent = ?, token_id = NULL, leased_at = NULL, released_at = ? WHERE n = ?`, agentId, now, r.n);
     }
     await Promise.all(
       rows
