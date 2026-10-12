@@ -17,7 +17,7 @@ FireTrident is a git platform for very large numbers of concurrent coding agents
 
 1. `ColonyDO.registerAgent` gives the agent an id.
 2. `ColonyDO.take(agentId)` builds candidates from open intents, reads the field from the relevant `RegionDO`s (repulsion from other agents' claims, admission), and picks one with the response-threshold rule (`core/threshold.ts`). It deposits `claim` marks on the intent's footprint and asks `PoolDO.lease` for a workspace.
-3. The agent (`AgentDO`) clones its workspace into a `@cloudflare/computer` Workspace, reads files (each read is recorded with its blob id), edits with an LLM, commits, and pushes to its workspace repo.
+3. The agent (`AgentDO`) clones trunk at `lease.baseSha` into a `@cloudflare/computer` Workspace using the read-only trunk token, reads files (each read is recorded with its blob id), edits with an LLM, commits, and force-pushes its commit to `main` of its own workspace repo with the workspace write token. The fork's prior content never matters. (At very large scale agents read from trunk mirrors instead of trunk, to respect per-repo git request limits.)
 4. `ColonyDO.propose` records the proposal, computes the residual (paths changed outside the declared footprint), runs innate checks, and enqueues it in the lane of the proposal's primary region (`RegionDO.enqueue`).
 5. On each lane tick (`RegionDO` alarm, interval from `core/batch.ts#laneIntervalMs`), the region asks `TrunkDO.blobsFor` for current trunk blobs, validates proposals with `core/occ.ts`, selects a batch with `core/batch.ts#selectBatch`, and calls `TrunkDO.land(batch)`. Stale proposals are returned to their agents with the exact delta.
 6. `TrunkDO.land` reads each proposal's new blobs from its workspace repo (`readBlob` on the binding), writes them into its own git workspace, builds the new tree by replacing only the changed paths, commits with `FT-*` trailers, adds the lineage note, and pushes trunk and `refs/notes/firetrident` with the expected old value (compare-and-swap). It then reports the `Landing` to `ColonyDO.onLanding`, which updates intents, deposits `trail` marks, reinforces the agent's threshold for the region, and broadcasts events.
@@ -33,7 +33,9 @@ Owns colony config, intents, rules, agents, proposals index, review queue, antib
 - `addIntent(i: Omit<Intent, "id" | "status" | "createdAt">): Promise<Intent>` (also deposits `need` marks)
 - `addRule(r: Omit<Rule, "id" | "createdAt">): Promise<{ rule: Rule; violations: number; intents: number }>`
 - `registerAgent(a: { kind: AgentKind; name: string; model?: string }): Promise<AgentInfo>`
-- `take(agentId: Id): Promise<{ intent: Intent; lease: WorkspaceLease } | { wait: true; retryInMs: number; reason: string }>`
+- `take(agentId: Id): Promise<{ intent: Intent; lease: WorkspaceLease; rule?: Rule } | { wait: true; retryInMs: number; reason: string }>`
+- `getProposal(id: Id): Promise<Proposal | null>` (agents poll their outcome)
+- `getRule(id: Id): Promise<Rule | null>`
 - `heartbeat(agentId: Id): Promise<void>` (refreshes claim marks)
 - `propose(p: Omit<Proposal, "id" | "status" | "createdAt" | "evidence"> & { evidence?: Partial<Evidence> }): Promise<Proposal>`
 - `updateProposal(id: Id, patch: Partial<Proposal>): Promise<void>` (called by RegionDO/TrunkDO)
@@ -84,7 +86,9 @@ An `agents/mcp` McpAgent exposing tools for external agents (Claude Code, Codex,
 - `ft-ws-0..3` namespaces (bindings `WS0..WS3`): workspaces `<colony>--ws-<n>`, sharded by `n % 4` to spread the per-namespace control-plane limit.
 - `ft-sessions` namespace (binding `SESSIONS`): one repo per in-platform agent session.
 
-Facts the design relies on (from the docs and a spike): each repo is one Durable Object; git requests are limited per repo and control-plane calls per namespace; the binding reads but cannot write files, so writes go through git; there is no server-side merge, hook, or branch protection; Artifacts accepts non-fast-forward pushes, so only TrunkDO ever holds a trunk write token and it pushes with an expected old value.
+Measured in the spike (spike/RESULTS.md): import and fork are synchronous (about 1.3 s per fork, parallel even from one source); about 20% of forks issued within ~0.1 s of a push to the source fail with INTERNAL_ERROR and must be retried; git inside a Durable Object via `@cloudflare/computer` clones in ~350 ms, commits in ~90 ms, and pushes in ~300 ms; a commit built by tree surgery takes ~40 ms; forks copy every ref including notes (`defaultBranchOnly` is ignored); binding read calls need `main` or a full commit id (`HEAD` and `refs/...` return null); the server rejects pushes whose expected old value is stale (compare-and-swap) but accepts forced non-fast-forward pushes; the namespace push trigger starts a Workflow for every repo in the namespace (~0.5 s to instance, ~2.3 s to `run()`).
+
+Facts the design relies on (from the docs and the spike): each repo is one Durable Object; git requests are limited per repo and control-plane calls per namespace; the binding reads but cannot write files, so writes go through git; there is no server-side merge, hook, or branch protection; Artifacts accepts non-fast-forward pushes, so only TrunkDO ever holds a trunk write token and it pushes with an expected old value.
 
 ## Live events
 

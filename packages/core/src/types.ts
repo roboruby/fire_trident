@@ -105,7 +105,7 @@ export type RuleKind = "forbid-pattern" | "forbid-import";
 
 /**
  * One declared architecture rule. Violations become `need` marks and intents.
- * - forbid-pattern: spec { pattern: string (RegExp source), flags?: string, include?: string[] (globs), exclude?: string[], hint: string }
+ * - forbid-pattern: spec { pattern: string (RegExp source), flags?: string, include?: string[] (globs), exclude?: string[], hint: string, replacement?: string (deterministic fix for synthetic agents) }
  * - forbid-import:  spec { from: string[] (globs of importing files), module: string (RegExp source of forbidden specifier), hint: string }
  */
 export interface Rule {
@@ -147,13 +147,19 @@ export interface AgentInfo {
   lastSeen: Millis;
 }
 
-/** An Artifacts fork leased to one agent. Tokens are workspace-scoped and short-lived. */
+/**
+ * An Artifacts fork leased to one agent. Tokens are short-lived. The agent clones
+ * trunk at `baseSha` with the read-only trunk token, commits, and force-pushes its
+ * commit to its own workspace (`repo`) with the workspace write token. Agents never
+ * hold a trunk write token.
+ */
 export interface WorkspaceLease {
   repo: RepoRef;
   token: string;
   tokenExpiresAt: Millis;
   baseSha: Sha;
   leasedAt: Millis;
+  trunk: { remote: string; token: string; sha: Sha };
 }
 
 // ---------------------------------------------------------------------------
