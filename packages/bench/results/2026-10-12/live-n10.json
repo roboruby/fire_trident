@@ -1,0 +1,178 @@
+{
+  "kind": "live",
+  "note": "MEASURED, real landings: synthetic API agents (no model, no agent-side git); every landed proposal is a real trunk commit built by the trunk writer from a blob read out of the agent's workspace fork.",
+  "label": "n10",
+  "url": "https://firetrident.mattsolt.workers.dev",
+  "colony": "bench-w2-load",
+  "agents": 10,
+  "durationS": 60,
+  "workMs": 0,
+  "regions": 64,
+  "startedAt": "2026-10-12T06:18:56.123Z",
+  "elapsedS": 66.12859354199999,
+  "stoppedEarly": null,
+  "ops": [
+    {
+      "op": "snapshot",
+      "calls": 3,
+      "errors": 0,
+      "n": 3,
+      "min": 101.0815419999999,
+      "p50": 110.24929200000042,
+      "p90": 630.378375,
+      "p99": 630.378375,
+      "max": 630.378375,
+      "mean": 280.5697363333334
+    },
+    {
+      "op": "intent",
+      "calls": 400,
+      "errors": 0,
+      "n": 400,
+      "min": 72.52983399999994,
+      "p50": 120.26400000000012,
+      "p90": 527.332208,
+      "p99": 1035.4332920000002,
+      "max": 1145.5994580000001,
+      "mean": 219.32237623750004
+    },
+    {
+      "op": "register",
+      "calls": 10,
+      "errors": 0,
+      "n": 10,
+      "min": 55.67925000000014,
+      "p50": 59.155917000000045,
+      "p90": 67.68845899999997,
+      "p99": 460.12541599999986,
+      "max": 460.12541599999986,
+      "mean": 101.01559179999995
+    },
+    {
+      "op": "take",
+      "calls": 100,
+      "errors": 0,
+      "n": 100,
+      "min": 227.4170840000006,
+      "p50": 353.40049999999974,
+      "p90": 527.911374999996,
+      "p99": 687.7367080000004,
+      "max": 767.9566250000062,
+      "mean": 390.1748333499998
+    },
+    {
+      "op": "propose",
+      "calls": 100,
+      "errors": 0,
+      "n": 100,
+      "min": 97.53604199999972,
+      "p50": 114.65537500000028,
+      "p90": 165.05404100000305,
+      "p99": 323.50904199999786,
+      "max": 334.47191600000224,
+      "mean": 129.69193374000014
+    },
+    {
+      "op": "poll",
+      "calls": 245,
+      "errors": 0,
+      "n": 245,
+      "min": 33.849874999999884,
+      "p50": 49.53208300000006,
+      "p90": 143.3926250000004,
+      "p99": 212.83970799999952,
+      "max": 225.2687500000029,
+      "mean": 76.67794745714296
+    },
+    {
+      "op": "heartbeat",
+      "calls": 10,
+      "errors": 0,
+      "n": 10,
+      "min": 54.57758399999875,
+      "p50": 60.45375000000058,
+      "p90": 66.47179200000392,
+      "p99": 123.96420800000487,
+      "max": 123.96420800000487,
+      "mean": 67.16180840000015
+    }
+  ],
+  "takeAssigned": {
+    "n": 100,
+    "min": 227.43720799999937,
+    "p50": 353.5141250000015,
+    "p90": 527.9808340000018,
+    "p99": 687.7562500000004,
+    "max": 768.0694590000057,
+    "mean": 390.2280891600005
+  },
+  "takeWait": {
+    "n": 0,
+    "min": null,
+    "p50": null,
+    "p90": null,
+    "p99": null,
+    "max": null,
+    "mean": null
+  },
+  "counts": {
+    "registered": 10,
+    "assigned": 100,
+    "waits": {},
+    "proposals": 100,
+    "landed": 100,
+    "returned": 0,
+    "rejected": 0,
+    "unresolved": 0
+  },
+  "returns": {},
+  "window": {
+    "fromS": 15.2,
+    "toS": 60,
+    "commits": 69,
+    "landedProposals": 69,
+    "landedPerMin": 92.41071428571429,
+    "commitsPerMin": 92.41071428571429,
+    "source": "live WebSocket landing events"
+  },
+  "snapshotDelta": {
+    "landings": 100,
+    "landedProposals": 100,
+    "proposals": 100,
+    "takes": 100
+  },
+  "timeToLandMs": {
+    "n": 100,
+    "min": 627,
+    "p50": 4073,
+    "p90": 5477,
+    "p99": 6090,
+    "max": 6606,
+    "mean": 3995.23
+  },
+  "batchSize": {
+    "n": 100,
+    "min": 1,
+    "p50": 1,
+    "p90": 1,
+    "p99": 1,
+    "max": 1,
+    "mean": 1
+  },
+  "commitGapMs": {
+    "n": 99,
+    "min": 394,
+    "p50": 551,
+    "p90": 898,
+    "p99": 1426,
+    "max": 1426,
+    "mean": 640.5151515151515
+  },
+  "feed": {
+    "connected": true,
+    "events": 1540,
+    "sigmaMax": 0,
+    "sigmaEvents": 99
+  },
+  "errors": []
+}

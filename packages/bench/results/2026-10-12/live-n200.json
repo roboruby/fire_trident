@@ -1,0 +1,181 @@
+{
+  "kind": "live",
+  "note": "MEASURED, real landings: synthetic API agents (no model, no agent-side git); every landed proposal is a real trunk commit built by the trunk writer from a blob read out of the agent's workspace fork.",
+  "label": "n200",
+  "url": "https://firetrident.mattsolt.workers.dev",
+  "colony": "bench-w2-load",
+  "agents": 200,
+  "durationS": 90,
+  "workMs": 0,
+  "regions": 64,
+  "startedAt": "2026-10-12T06:24:00.955Z",
+  "elapsedS": 135.72858133300002,
+  "stoppedEarly": null,
+  "ops": [
+    {
+      "op": "snapshot",
+      "calls": 3,
+      "errors": 0,
+      "n": 3,
+      "min": 105.40425000000005,
+      "p50": 274.5302500000107,
+      "p90": 639.04375,
+      "p99": 639.04375,
+      "max": 639.04375,
+      "mean": 339.65941666667027
+    },
+    {
+      "op": "intent",
+      "calls": 352,
+      "errors": 0,
+      "n": 352,
+      "min": 79.03974999999991,
+      "p50": 114.84299999999985,
+      "p90": 398.86808299999984,
+      "p99": 964.7989580000001,
+      "max": 1072.347042,
+      "mean": 200.96580253124992
+    },
+    {
+      "op": "register",
+      "calls": 200,
+      "errors": 0,
+      "n": 200,
+      "min": 50.883584000000155,
+      "p50": 67.7856670000001,
+      "p90": 146.76616699999977,
+      "p99": 425.538458,
+      "max": 450.4294580000005,
+      "mean": 96.54190853
+    },
+    {
+      "op": "take",
+      "calls": 401,
+      "errors": 0,
+      "n": 401,
+      "min": 59.41691699999865,
+      "p50": 945.306208,
+      "p90": 6298.947834,
+      "p99": 7056.557583000001,
+      "max": 7207.781083000001,
+      "mean": 2314.4678412443895
+    },
+    {
+      "op": "propose",
+      "calls": 352,
+      "errors": 0,
+      "n": 352,
+      "min": 79.35137499999837,
+      "p50": 127.41279100000065,
+      "p90": 193.68775000000005,
+      "p99": 648.3185830000002,
+      "max": 3148.4000829999986,
+      "mean": 159.0927040795458
+    },
+    {
+      "op": "poll",
+      "calls": 2794,
+      "errors": 0,
+      "n": 2794,
+      "min": 32.24370799999451,
+      "p50": 47.44825000000128,
+      "p90": 143.90283399999953,
+      "p99": 465.09404200000426,
+      "max": 721.3214999999982,
+      "mean": 81.45307163636345
+    },
+    {
+      "op": "heartbeat",
+      "calls": 90,
+      "errors": 0,
+      "n": 90,
+      "min": 53.120333999992,
+      "p50": 60.819625000003725,
+      "p90": 137.14879199999996,
+      "p99": 439.4895419999957,
+      "max": 439.4895419999957,
+      "mean": 79.76975142222243
+    }
+  ],
+  "takeAssigned": {
+    "n": 352,
+    "min": 241.70954199999687,
+    "p50": 1086.374875,
+    "p90": 6343.918208000001,
+    "p99": 7141.308042000001,
+    "max": 7207.795,
+    "mean": 2617.5666882329547
+  },
+  "takeWait": {
+    "n": 49,
+    "min": 59.430749999999534,
+    "p50": 123.9222080000036,
+    "p90": 211.1904169999998,
+    "p99": 452.96666600000117,
+    "max": 452.96666600000117,
+    "mean": 137.47698553061204
+  },
+  "counts": {
+    "registered": 200,
+    "assigned": 352,
+    "waits": {
+      "admission closed in every candidate region": 47,
+      "no intent accepted at this agent's thresholds": 2
+    },
+    "proposals": 352,
+    "landed": 244,
+    "returned": 0,
+    "rejected": 0,
+    "unresolved": 108
+  },
+  "returns": {},
+  "window": {
+    "fromS": 19,
+    "toS": 90,
+    "commits": 85,
+    "landedProposals": 149,
+    "landedPerMin": 125.91549295774647,
+    "commitsPerMin": 71.83098591549296,
+    "source": "live WebSocket landing events"
+  },
+  "snapshotDelta": {
+    "landings": 167,
+    "landedProposals": 246,
+    "proposals": 352,
+    "takes": 352
+  },
+  "timeToLandMs": {
+    "n": 247,
+    "min": 819,
+    "p50": 54339,
+    "p90": 97153,
+    "p99": 108794,
+    "max": 110031,
+    "mean": 55462.044534412955
+  },
+  "batchSize": {
+    "n": 168,
+    "min": 1,
+    "p50": 1,
+    "p90": 2,
+    "p99": 3,
+    "max": 3,
+    "mean": 1.4702380952380953
+  },
+  "commitGapMs": {
+    "n": 167,
+    "min": 389,
+    "p50": 805,
+    "p90": 1056,
+    "p99": 1974,
+    "max": 3701,
+    "mean": 811.0119760479042
+  },
+  "feed": {
+    "connected": true,
+    "events": 4284,
+    "sigmaMax": 0,
+    "sigmaEvents": 166
+  },
+  "errors": []
+}

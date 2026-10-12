@@ -1,0 +1,30 @@
+{
+  "source": "Live runs 2026-10-12 06:18-06:42 UTC against https://firetrident.mattsolt.workers.dev (colony bench-w2-load, OpenSpec trunk, regionDepth 3). See results/2026-10-12/summary.md (Calibration) for the derivation.",
+  "inPlatform": {
+    "takeMs": 250,
+    "proposeMs": 30,
+    "laneOverheadMs": 100,
+    "commitBaseMs": 620,
+    "commitPerProposalMs": 72,
+    "landMs": 692,
+    "rebaseMs": 350,
+    "testMs": 0
+  },
+  "client": {
+    "10": { "takeMs": 354, "proposeMs": 115 },
+    "50": { "takeMs": 487, "proposeMs": 123 },
+    "200": { "takeMs": 1086, "proposeMs": 127 },
+    "1000": { "takeMs": 714, "proposeMs": 155 }
+  },
+  "clientDefault": { "takeMs": 450, "proposeMs": 125 },
+  "notes": {
+    "takeMs": "in-platform take: laptop p50 at N=10 (354 ms) minus the laptop round trip (~100 ms)",
+    "proposeMs": "laptop p50 115-155 ms minus ~100 ms round trip",
+    "laneOverheadMs": "trunk blobs, base blobs and lineage-context RPCs before TrunkDO.land; from the batch-cost intercept (first proposal to landing receipt ~1.06 s) minus the commit intercept",
+    "commitBaseMs": "trunk writer time per commit independent of batch size: commit gaps p50 551-829 ms at mean batch 1.0-2.0 in the swarm runs, minus 72 ms per proposal (drifts from ~480 to ~700 ms as load and trunk history grow; 620 is the middle)",
+    "commitPerProposalMs": "slope of landing time vs batch size in the batch-cost runs (k = 2, 8, 24, 49 in one region): 71.8 ms per proposal (pull blob from the workspace, verify, write)",
+    "landMs": "baseline merge queue: one change landed by the same writer = commitBaseMs + commitPerProposalMs",
+    "rebaseMs": "baseline rebase of a stale change on Artifacts: fetch trunk (spike: 230-247 ms) + replay and commit (spike: 91 ms) = ~350 ms; checks re-run separately (testMs)",
+    "testMs": "0: checks cost nothing in the headline runs (most favourable to the baseline, which re-runs them serially after every rebase)"
+  }
+}

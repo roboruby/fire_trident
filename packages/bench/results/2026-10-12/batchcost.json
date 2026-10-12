@@ -1,0 +1,73 @@
+{
+  "kind": "batchcost",
+  "label": "MEASURED",
+  "colony": "bench-w2-load",
+  "at": "2026-10-12T06:42:00.932Z",
+  "note": "times are ColonyDO receipt of each landing relative to the first proposal's createdAt",
+  "rows": [
+    {
+      "k": 2,
+      "proposed": 2,
+      "proposeSpreadMs": 7,
+      "commits": [
+        {
+          "landingId": "lnd_mv4vvy8us37lr5",
+          "size": 2,
+          "atMs": 1118
+        }
+      ]
+    },
+    {
+      "k": 10,
+      "proposed": 10,
+      "proposeSpreadMs": 362,
+      "commits": [
+        {
+          "landingId": "lnd_mv4vw3cg4ut51d",
+          "size": 8,
+          "atMs": 1508
+        },
+        {
+          "landingId": "lnd_mv4vw5bifp5lph",
+          "size": 2,
+          "atMs": 3974
+        }
+      ]
+    },
+    {
+      "k": 25,
+      "proposed": 25,
+      "proposeSpreadMs": 304,
+      "commits": [
+        {
+          "landingId": "lnd_mv4vwc45duo6ui",
+          "size": 24,
+          "atMs": 3157
+        },
+        {
+          "landingId": "lnd_mv4vwcou8sg43s",
+          "size": 1,
+          "atMs": 4186
+        }
+      ]
+    },
+    {
+      "k": 50,
+      "proposed": 50,
+      "proposeSpreadMs": 291,
+      "commits": [
+        {
+          "landingId": "lnd_mv4vwks27rcw2l",
+          "size": 49,
+          "atMs": 4420
+        },
+        {
+          "landingId": "lnd_mv4vwlypjuvu69",
+          "size": 1,
+          "atMs": 6096
+        }
+      ]
+    }
+  ],
+  "errors": []
+}

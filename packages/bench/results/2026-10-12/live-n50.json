@@ -1,0 +1,178 @@
+{
+  "kind": "live",
+  "note": "MEASURED, real landings: synthetic API agents (no model, no agent-side git); every landed proposal is a real trunk commit built by the trunk writer from a blob read out of the agent's workspace fork.",
+  "label": "n50",
+  "url": "https://firetrident.mattsolt.workers.dev",
+  "colony": "bench-w2-load",
+  "agents": 50,
+  "durationS": 75,
+  "workMs": 0,
+  "regions": 64,
+  "startedAt": "2026-10-12T06:20:34.322Z",
+  "elapsedS": 95.63377495900001,
+  "stoppedEarly": null,
+  "ops": [
+    {
+      "op": "snapshot",
+      "calls": 3,
+      "errors": 0,
+      "n": 3,
+      "min": 237.47133299999405,
+      "p50": 299.27125000000024,
+      "p90": 1053.320958,
+      "p99": 1053.320958,
+      "max": 1053.320958,
+      "mean": 530.0211803333315
+    },
+    {
+      "op": "intent",
+      "calls": 100,
+      "errors": 0,
+      "n": 100,
+      "min": 87.21308299999964,
+      "p50": 209.0830840000001,
+      "p90": 526.1210829999998,
+      "p99": 805.512708,
+      "max": 914.8305829999999,
+      "mean": 302.6851216
+    },
+    {
+      "op": "register",
+      "calls": 50,
+      "errors": 0,
+      "n": 50,
+      "min": 57.02933299999995,
+      "p50": 70.14966700000014,
+      "p90": 140.34649999999965,
+      "p99": 213.07120899999973,
+      "max": 213.07120899999973,
+      "mean": 87.95496504000002
+    },
+    {
+      "op": "take",
+      "calls": 152,
+      "errors": 0,
+      "n": 152,
+      "min": 216.73729200000525,
+      "p50": 486.6310830000002,
+      "p90": 2050.4421249999996,
+      "p99": 3402.368334,
+      "max": 4543.119666999999,
+      "mean": 740.3592513421055
+    },
+    {
+      "op": "propose",
+      "calls": 152,
+      "errors": 0,
+      "n": 152,
+      "min": 85.4601249999996,
+      "p50": 122.87191699999948,
+      "p90": 196.99341600000025,
+      "p99": 498.0666250000004,
+      "max": 503.7383750000008,
+      "mean": 140.74985773026285
+    },
+    {
+      "op": "poll",
+      "calls": 800,
+      "errors": 0,
+      "n": 800,
+      "min": 33.62600000000384,
+      "p50": 49.832416999997804,
+      "p90": 132.76591599998937,
+      "p99": 428.690042000002,
+      "max": 856.7774170000012,
+      "mean": 80.41552529124982
+    },
+    {
+      "op": "heartbeat",
+      "calls": 45,
+      "errors": 0,
+      "n": 45,
+      "min": 53.50083399999858,
+      "p50": 63.90941700000258,
+      "p90": 120.69166700000642,
+      "p99": 140.87166699999943,
+      "max": 140.87166699999943,
+      "mean": 74.75618340000008
+    }
+  ],
+  "takeAssigned": {
+    "n": 152,
+    "min": 216.84858299999905,
+    "p50": 486.71233400000347,
+    "p90": 2050.5260829999997,
+    "p99": 3402.447416,
+    "max": 4543.162459000001,
+    "mean": 740.4246748947367
+  },
+  "takeWait": {
+    "n": 0,
+    "min": null,
+    "p50": null,
+    "p90": null,
+    "p99": null,
+    "max": null,
+    "mean": null
+  },
+  "counts": {
+    "registered": 50,
+    "assigned": 152,
+    "waits": {},
+    "proposals": 152,
+    "landed": 139,
+    "returned": 0,
+    "rejected": 0,
+    "unresolved": 13
+  },
+  "returns": {},
+  "window": {
+    "fromS": 16,
+    "toS": 75,
+    "commits": 83,
+    "landedProposals": 83,
+    "landedPerMin": 84.40677966101696,
+    "commitsPerMin": 84.40677966101696,
+    "source": "live WebSocket landing events"
+  },
+  "snapshotDelta": {
+    "landings": 141,
+    "landedProposals": 142,
+    "proposals": 152,
+    "takes": 152
+  },
+  "timeToLandMs": {
+    "n": 143,
+    "min": 1072,
+    "p50": 24745,
+    "p90": 31156,
+    "p99": 44279,
+    "max": 44977,
+    "mean": 23040.23776223776
+  },
+  "batchSize": {
+    "n": 142,
+    "min": 1,
+    "p50": 1,
+    "p90": 1,
+    "p99": 1,
+    "max": 2,
+    "mean": 1.0070422535211268
+  },
+  "commitGapMs": {
+    "n": 141,
+    "min": 378,
+    "p50": 600,
+    "p90": 951,
+    "p99": 1720,
+    "max": 2662,
+    "mean": 677.9858156028369
+  },
+  "feed": {
+    "connected": true,
+    "events": 2270,
+    "sigmaMax": 0,
+    "sigmaEvents": 137
+  },
+  "errors": []
+}

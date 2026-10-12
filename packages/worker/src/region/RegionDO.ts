@@ -1,5 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
-import { admissionOpen, aggregate, branchingRatio, isExpired, markValue, selectBatch, validateProposal } from "@fire_trident/core";
+import { admissionOpen, aggregate, inhibitionFactor, isExpired, markValue, selectBatch, validateProposal } from "@fire_trident/core";
 import type { CausalEvent, ColonyEvent, FieldReading, FileVersion, Id, Landing, Mark, MarkKind, OccResult, Path, Proposal, Sha } from "@fire_trident/core";
 import type { Env } from "../env.ts";
 import { errorText } from "../colony/errors.ts";
@@ -49,9 +49,12 @@ const LANE_SCAN = 50;
 const MAX_LAND_ATTEMPTS = 5;
 /** Window for flux (enqueues/min) and landings/min. */
 const RATE_WINDOW_MS = 60_000;
-/** Branching-ratio window (matches the core default) and how long cause events are kept. */
+/** Branching-ratio window and settle time (the core defaults) and how long cause events are kept. */
 const SIGMA_WINDOW_MS = 60_000;
+const SIGMA_SETTLE_MS = 5_000;
 const SIGMA_KEEP_MS = 10 * 60_000;
+/** With an empty lane, sigma is re-evaluated and re-sent this often while a cascade settles or inhibits. */
+const SIGMA_WATCH_MS = 2_000;
 const LOG_KEEP_MS = 15 * 60_000;
 const PATH_LANDING_KEEP_MS = 60 * 60_000;
 const GC_EVERY_MS = 10_000;
@@ -136,6 +139,30 @@ function round4(n: number): number {
   return Math.round(n * 10_000) / 10_000;
 }
 
+/** Cause-event ids of stale returns (see recordReturn). */
+const RETURN_EVENT = "ret:";
+
+/**
+ * Branching ratio of the lane's causal graph: children per parent, with parents
+ * in [now - windowMs, now - settleMs] (both inclusive) and children at any time,
+ * as in core `branchingRatio`, except that returns are never parents. A returned
+ * proposal changed nothing on trunk, so it cannot make anything stale; counting
+ * returns as parents would pin a burst of N returns from one landing at
+ * N / (N + 1) and hide every cascade. Sigma is therefore the stale returns caused
+ * per landed proposal: above 1, each landing invalidates more in-flight work
+ * than it delivers.
+ */
+export function cascadeSigma(events: CausalEvent[], now: number, windowMs = SIGMA_WINDOW_MS, settleMs = SIGMA_SETTLE_MS): number {
+  const from = now - windowMs;
+  const to = now - settleMs;
+  const parents = new Set<string>();
+  for (const e of events) if (e.at >= from && e.at <= to && !e.id.startsWith(RETURN_EVENT)) parents.add(e.id);
+  if (parents.size === 0) return 0;
+  let children = 0;
+  for (const e of events) if (e.causeId !== undefined && parents.has(e.causeId)) children++;
+  return children / parents.size;
+}
+
 /**
  * One region of a colony: its stigmergic field (decaying marks) and its
  * integration lane. Named `${colonyId}:${region}`.
@@ -154,6 +181,8 @@ export class RegionDO extends DurableObject<Env> {
   private outbox: ColonyEvent[] = [];
   private flushTimer: ReturnType<typeof setTimeout> | null = null;
   private quietUntil = 0;
+  /** Last inhibition factor sent to the colony (so the return to 1 is sent once). */
+  private sentInhibition = 1;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -268,6 +297,7 @@ export class RegionDO extends DurableObject<Env> {
   /** Queue a ready proposal in this region's lane (re-enqueue replaces). Priority comes from its intent. */
   async enqueue(p: Proposal, priority = 1): Promise<void> {
     const now = Date.now();
+    const wasEmpty = this.laneSize() === 0;
     this.sql.exec(
       `INSERT INTO lane (id, priority, created_at, enqueued_at, attempts, data) VALUES (?, ?, ?, ?, 0, ?)
        ON CONFLICT(id) DO UPDATE SET priority = excluded.priority, enqueued_at = excluded.enqueued_at, attempts = 0, data = excluded.data`,
@@ -278,7 +308,7 @@ export class RegionDO extends DurableObject<Env> {
       JSON.stringify(p),
     );
     this.log(`enq:${p.id}:${now}`, "enq", now);
-    await this.ensureAlarm(now);
+    await this.ensureAlarm(now, wasEmpty);
   }
 
   /** Drop proposals from the lane (rejected or returned elsewhere). Returns how many were queued. */
@@ -306,7 +336,8 @@ export class RegionDO extends DurableObject<Env> {
     if (this.ticking) return;
     this.ticking = true;
     const started = Date.now();
-    this.lastTickAt = started;
+    // Only a tick with proposals to examine sets the cadence; a report retry or sigma watch does not.
+    if (this.laneSize() > 0) this.lastTickAt = started;
     let retryMs: number | null = null;
     try {
       if (this.colonyId !== null) await this.retryReports(this.colonyId);
@@ -322,7 +353,10 @@ export class RegionDO extends DurableObject<Env> {
       await this.ctx.storage.setAlarm(retryMs !== null ? now + retryMs : nextTickAt(now, this.lastTickAt, this.delayMs(now)));
     } else if (this.pendingReports() > 0) {
       await this.ctx.storage.setAlarm(now + REPORT_RETRY_MS);
+    } else if (this.watchingSigma(now)) {
+      await this.ctx.storage.setAlarm(now + SIGMA_WATCH_MS);
     }
+    this.emitSigma(now);
   }
 
   // -------------------------------------------------------------------------
@@ -471,7 +505,7 @@ export class RegionDO extends DurableObject<Env> {
     )) {
       events.push(r.cause_id !== null ? { id: r.id, causeId: r.cause_id, at: r.at } : { id: r.id, at: r.at });
     }
-    const sigma = branchingRatio(events, now, SIGMA_WINDOW_MS);
+    const sigma = cascadeSigma(events, now, SIGMA_WINDOW_MS, SIGMA_SETTLE_MS);
     this.sigmaCache = { at: now, sigma };
     return sigma;
   }
@@ -571,12 +605,41 @@ export class RegionDO extends DurableObject<Env> {
     return laneDelayMs(this.count("enq", now - RATE_WINDOW_MS), this.sigma(now));
   }
 
-  /** Schedule the next tick, or pull a far-off one closer when rising flux shortens the cadence. */
-  private async ensureAlarm(now: number): Promise<void> {
+  /**
+   * Schedule the next tick, or pull a far-off one closer when rising flux shortens the cadence.
+   * A lane that was empty has no tick scheduled, only a report retry or a sigma watch, so its
+   * alarm is replaced: an early watch alarm must not run the tick before the (inhibited) cadence.
+   */
+  private async ensureAlarm(now: number, replace = false): Promise<void> {
     if (this.ticking) return; // the running tick reschedules when it finishes
     const want = nextTickAt(now, this.lastTickAt, this.delayMs(now));
     const current = await this.ctx.storage.getAlarm();
-    if (current === null || current > want) await this.ctx.storage.setAlarm(want);
+    if (current === null || current > want || (replace && current !== want)) await this.ctx.storage.setAlarm(want);
+  }
+
+  /**
+   * Keep an empty lane's alarm alive while sigma is above 1 (to report its fall) or while a
+   * recent return may still raise it once its cause settles.
+   */
+  private watchingSigma(now: number): boolean {
+    if (this.sigma(now) > 1) return true;
+    const recent = this.sql
+      .exec<{ n: number }>("SELECT COUNT(*) AS n FROM causes WHERE id LIKE 'ret:%' AND at > ?", now - SIGMA_SETTLE_MS - SIGMA_WATCH_MS)
+      .one().n;
+    return recent > 0;
+  }
+
+  /** Send sigma, and the lane inhibition while it applies (and once when it lifts), to the colony. */
+  private emitSigma(now: number): void {
+    const region = this.region ?? "";
+    const sigma = this.sigma(now);
+    this.queueEvent({ t: "sigma", at: now, region, sigma: round4(sigma) });
+    const factor = inhibitionFactor(sigma);
+    if (factor !== 1 || this.sentInhibition !== 1) {
+      this.queueEvent({ t: "metric", at: now, name: `inhibition:${region}`, value: round4(factor) });
+      this.queueEvent({ t: "metric", at: now, name: `laneDelayMs:${region}`, value: this.delayMs(now) });
+      this.sentInhibition = factor;
+    }
   }
 
   /** One lane cycle. Returns a retry delay after a landing failure, else null (normal cadence). */
@@ -687,8 +750,7 @@ export class RegionDO extends DurableObject<Env> {
     // 5. Report to the colony (landing first so intents settle before returns reopen anything).
     if (landing) await this.report(colonyId, { kind: "landing", landing });
     if (updates.length > 0) await this.report(colonyId, { kind: "updates", updates });
-    this.sigmaCache = null;
-    this.queueEvent({ t: "sigma", at: now, region: this.region ?? "", sigma: this.sigma(now) });
+    this.sigmaCache = null; // alarm() sends the new sigma
     return retryMs;
   }
 

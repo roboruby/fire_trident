@@ -1,0 +1,198 @@
+{
+  "kind": "live",
+  "note": "MEASURED, real landings: synthetic API agents (no model, no agent-side git); every landed proposal is a real trunk commit built by the trunk writer from a blob read out of the agent's workspace fork.",
+  "label": "n1000",
+  "url": "https://firetrident.mattsolt.workers.dev",
+  "colony": "bench-w2-load",
+  "agents": 1000,
+  "durationS": 90,
+  "workMs": 0,
+  "regions": 64,
+  "startedAt": "2026-10-12T06:29:29.652Z",
+  "elapsedS": 151.40693520800002,
+  "stoppedEarly": null,
+  "ops": [
+    {
+      "op": "snapshot",
+      "calls": 3,
+      "errors": 0,
+      "n": 3,
+      "min": 239.16041700000642,
+      "p50": 382.5749590000014,
+      "p90": 409.37237500000003,
+      "p99": 409.37237500000003,
+      "max": 409.37237500000003,
+      "mean": 343.7025836666692
+    },
+    {
+      "op": "intent",
+      "calls": 2752,
+      "errors": 0,
+      "n": 2752,
+      "min": 75.05991699999868,
+      "p50": 93.9280830000007,
+      "p90": 176.73925000000008,
+      "p99": 568.6455000000005,
+      "max": 954.3788749999999,
+      "mean": 125.71696354505815
+    },
+    {
+      "op": "register",
+      "calls": 1000,
+      "errors": 0,
+      "n": 1000,
+      "min": 50.104041999999026,
+      "p50": 89.51741699999911,
+      "p90": 167.47383400000035,
+      "p99": 365.36933299999873,
+      "max": 684.5956670000014,
+      "mean": 108.66254473300008
+    },
+    {
+      "op": "take",
+      "calls": 21831,
+      "errors": 0,
+      "n": 21831,
+      "min": 50.642416999999114,
+      "p50": 134.65858299999672,
+      "p90": 267.70316700000694,
+      "p99": 1429.4702499999985,
+      "max": 3859.002375,
+      "mean": 179.28758596220973
+    },
+    {
+      "op": "propose",
+      "calls": 392,
+      "errors": 0,
+      "n": 392,
+      "min": 83.56645899999421,
+      "p50": 154.6689170000027,
+      "p90": 252.99825000000055,
+      "p99": 523.5816669999986,
+      "max": 531.4787080000024,
+      "mean": 182.61563809438786
+    },
+    {
+      "op": "poll",
+      "calls": 3198,
+      "errors": 0,
+      "n": 3198,
+      "min": 34.569209000008414,
+      "p50": 76.37745899999572,
+      "p90": 159.7589169999992,
+      "p99": 472.3288750000065,
+      "max": 1388.768000000011,
+      "mean": 104.67894197686037
+    },
+    {
+      "op": "heartbeat",
+      "calls": 131,
+      "errors": 0,
+      "n": 131,
+      "min": 53.045249999995576,
+      "p50": 76.89795800000138,
+      "p90": 141.82629100000486,
+      "p99": 183.37545799999498,
+      "max": 406.64029100000334,
+      "mean": 91.23453398473343
+    }
+  ],
+  "takeAssigned": {
+    "n": 392,
+    "min": 260.502999999997,
+    "p50": 713.771624999994,
+    "p90": 3442.3477500000026,
+    "p99": 3617.2940830000007,
+    "max": 3859.014874999997,
+    "mean": 1635.7201091403067
+  },
+  "takeWait": {
+    "n": 21439,
+    "min": 50.67029200000252,
+    "p50": 132.8882910000102,
+    "p90": 255.68908399999782,
+    "p99": 426.18962499999907,
+    "max": 1527.0833330000023,
+    "mean": 152.67059815289858
+  },
+  "counts": {
+    "registered": 1000,
+    "assigned": 392,
+    "waits": {
+      "admission closed in every candidate region": 21360,
+      "no intent accepted at this agent's thresholds": 79
+    },
+    "proposals": 392,
+    "landed": 291,
+    "returned": 16,
+    "rejected": 0,
+    "unresolved": 85
+  },
+  "returns": {
+    "stale": 3,
+    "already landed in lnd_mv4vgy22wdm56n": 1,
+    "already landed in lnd_mv4vh42plopdbc": 1,
+    "already landed in lnd_mv4vgw1npszkh8": 1,
+    "already landed in lnd_mv4vh2mxvwrctm": 1,
+    "already landed in lnd_mv4vh4k95bwhl8": 1,
+    "already landed in lnd_mv4vgwi7hj0x8v": 1,
+    "already landed in lnd_mv4vgwymhqksl2": 1,
+    "already landed in lnd_mv4vgyhj5spnvj": 1,
+    "already landed in lnd_mv4vgxl1iqwx0o": 1,
+    "already landed in lnd_mv4vh25bw0ko31": 1,
+    "already landed in lnd_mv4vh1ozwouxgi": 1,
+    "already landed in lnd_mv4vh33msncdyd": 1,
+    "already landed in lnd_mv4vh3m40v2f5l": 1
+  },
+  "window": {
+    "fromS": 25,
+    "toS": 90,
+    "commits": 69,
+    "landedProposals": 150,
+    "landedPerMin": 138.46153846153845,
+    "commitsPerMin": 63.69230769230769,
+    "source": "live WebSocket landing events"
+  },
+  "snapshotDelta": {
+    "landings": 148,
+    "landedProposals": 294,
+    "proposals": 392,
+    "returned": 16,
+    "rejected": 0,
+    "takes": 392
+  },
+  "timeToLandMs": {
+    "n": 294,
+    "min": 2017,
+    "p50": 61555,
+    "p90": 84137,
+    "p99": 127895,
+    "max": 129281,
+    "mean": 58474.30612244898
+  },
+  "batchSize": {
+    "n": 148,
+    "min": 1,
+    "p50": 2,
+    "p90": 3,
+    "p99": 4,
+    "max": 4,
+    "mean": 1.9864864864864864
+  },
+  "commitGapMs": {
+    "n": 147,
+    "min": 486,
+    "p50": 829,
+    "p90": 1303,
+    "p99": 5771,
+    "max": 6535,
+    "mean": 1007.156462585034
+  },
+  "feed": {
+    "connected": true,
+    "events": 6905,
+    "sigmaMax": 0,
+    "sigmaEvents": 179
+  },
+  "errors": []
+}

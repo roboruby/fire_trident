@@ -1,0 +1,539 @@
+/**
+ * FireTrident coordination model, mirroring the deployed code paths:
+ *  - take = ColonyDO.takeFor: the 200 oldest open intents are candidates; repulsion is the
+ *    other agents' claims on the footprint; admission per region is core admissionOpen(active
+ *    claim holders, landing commits in the last minute); core chooseIntent picks.
+ *  - each proposal goes to the lane of its primary region (RegionDO): on a tick it is validated
+ *    with core validateProposal against current trunk, core selectBatch picks the batch, and the
+ *    trunk writer lands it; the next tick waits core laneIntervalMs(flux) times
+ *    inhibitionFactor(sigma), with sigma from recorded causes (returns are never parents).
+ *  - there is ONE trunk writer per colony (TrunkDO, a serial chain): every lane's batch is one
+ *    commit, served first-come first-served, and each batch is re-validated when its turn comes.
+ *  - "firetrident-group" (PROPOSED, not built): the trunk writer folds every batch waiting in its
+ *    queue into the commit it is building (group commit), still re-validating each proposal.
+ */
+import {
+  admissionOpen,
+  branchingRatio,
+  chooseIntent,
+  inhibitionFactor,
+  laneIntervalMs,
+  reinforceThreshold,
+  selectBatch,
+  stimulus,
+  validateProposal,
+} from "@fire_trident/core";
+import type { CausalEvent, Candidate, FileVersion } from "@fire_trident/core";
+import { SimBase, type SimParams } from "./common.ts";
+import type { SimTask, TaskSource } from "./workloads.ts";
+
+const CANDIDATE_CAP = 200;
+const LANE_SCAN = 50;
+const RATE_WINDOW_MS = 60_000;
+const SIGMA_KEEP_MS = 10 * 60_000;
+const SIGMA_TTL_MS = 1_000;
+const READING_TTL_MS = 250;
+const HEARTBEAT_MS = 45_000;
+const RETRY = { idle: 5_000, closed: 3_000, declined: 1_500 };
+
+interface Agent {
+  id: number;
+  thresholds: Record<string, number>;
+  task: SimTask | null;
+  claimedAt: number;
+}
+
+interface Prop {
+  id: string;
+  seq: number;
+  task: SimTask;
+  agent: Agent;
+  writeSet: FileVersion[];
+  readSet: FileVersion[];
+  baseWrites: FileVersion[];
+  submittedAt: number;
+  attemptMs: number;
+  lane: Region;
+  /** Trunk commits before the claim: proposals with the same value share a base commit. */
+  base: number;
+}
+
+interface EvalCache {
+  version: number;
+  at: number;
+  open: Array<Candidate & { task: SimTask }>;
+  nextViableAt: number;
+}
+
+interface Region {
+  name: string;
+  holders: Map<number, number>;
+  landTimes: number[];
+  enqTimes: number[];
+  lane: Prop[];
+  ticking: boolean;
+  lastTickAt: number;
+  alarmAt: number | null;
+  alarmGen: number;
+  causes: CausalEvent[];
+  sigmaCache: { at: number; sigma: number } | null;
+  pathLanding: Map<string, Map<string, { id: string; at: number }>>;
+  intentReturns: Map<number, string>;
+}
+
+/** Drop timestamps older than the window from the front of an ascending array. */
+function prune(times: number[], since: number): number {
+  let i = 0;
+  while (i < times.length && times[i]! <= since) i++;
+  if (i > 0) times.splice(0, i);
+  return times.length;
+}
+
+/** FireTrident as deployed (or with the proposed group commit). */
+export class FireSim extends SimBase {
+  private readonly group: boolean;
+  private readonly initial: (path: string) => string | null;
+  private readonly agents: Agent[] = [];
+  private readonly regions = new Map<string, Region>();
+  private readonly trunk = new Map<string, string>();
+  private readonly claimCount = new Map<string, number>();
+  private blobSeq = 0;
+  private propSeq = 0;
+  private landingSeq = 0;
+  /** Version of everything take() depends on except time (open set, claims, landings). */
+  private stateVersion = 0;
+  private evalCache: EvalCache | null = null;
+  private readingsAt = -Infinity;
+  private candidateRegions: { version: number; n: number } = { version: -1, n: 0 };
+  private readonly trunkQueue: Array<{ region: Region; batch: Prop[]; done: (res: { landed: Prop[]; returned: Prop[]; landingId: string | null }) => void }> = [];
+  private trunkBusy = false;
+
+  constructor(p: SimParams, source: TaskSource, initial: (path: string) => string | null) {
+    super(p, source);
+    this.group = p.model === "firetrident-group";
+    this.initial = initial;
+  }
+
+  protected backlogAtEnd(): number {
+    let n = 0;
+    for (const r of this.regions.values()) n += r.lane.length;
+    return n + this.trunkQueue.reduce((a, b) => a + b.batch.length, 0);
+  }
+
+  protected start(): void {
+    for (let i = 0; i < this.p.agents; i++) {
+      const a: Agent = { id: i, thresholds: {}, task: null, claimedAt: 0 };
+      this.agents.push(a);
+      const t0 = this.p.agents > 1 ? (i * this.p.rampMs) / this.p.agents : 0;
+      this.q.at(t0, () => this.take(a));
+    }
+  }
+
+  private region(name: string): Region {
+    let r = this.regions.get(name);
+    if (!r) {
+      r = {
+        name,
+        holders: new Map(),
+        landTimes: [],
+        enqTimes: [],
+        lane: [],
+        ticking: false,
+        lastTickAt: -Infinity,
+        alarmAt: null,
+        alarmGen: 0,
+        causes: [],
+        sigmaCache: null,
+        pathLanding: new Map(),
+        intentReturns: new Map(),
+      };
+      this.regions.set(name, r);
+    }
+    return r;
+  }
+
+  private blob(path: string): string | null {
+    const v = this.trunk.get(path);
+    return v !== undefined ? v : this.initial(path);
+  }
+
+  private landingsPerMin(r: Region, now: number): number {
+    return prune(r.landTimes, now - RATE_WINDOW_MS);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Self-assignment (ColonyDO.takeFor)
+  // ---------------------------------------------------------------------------
+
+  private take(a: Agent): void {
+    const now = this.q.now;
+    this.m.msg(now, "take", 1, true);
+    if (this.open.size === 0) {
+      this.m.wait(now, "no open intents");
+      this.q.after(this.p.timings.takeMs + this.rng.jitter(RETRY.idle), () => this.take(a));
+      return;
+    }
+    this.countReadings(now);
+    let ev = this.evalCache;
+    if (ev === null || ev.version !== this.stateVersion || now - ev.at >= READING_TTL_MS) ev = this.evaluate(now);
+    if (ev.open.length === 0) {
+      this.m.wait(now, "admission closed in every candidate region");
+      this.q.after(this.p.timings.takeMs + this.rng.jitter(RETRY.closed), () => this.take(a));
+      return;
+    }
+    // Candidates whose stimulus is still 0 (repelled more than their age offsets) have p = 0 in
+    // chooseIntent; leaving them out changes nothing but the number of random draws.
+    const viable = now < ev.nextViableAt ? [] : ev.open.filter((c) => stimulus(c.intent, now, c.repulsion) > 0);
+    const pick = viable.length > 0 ? (chooseIntent(viable, a.thresholds, now, this.rng.fn()) as (Candidate & { task: SimTask }) | null) : null;
+    if (!pick) {
+      this.m.wait(now, "no intent accepted at this agent's thresholds");
+      this.q.after(this.p.timings.takeMs + this.rng.jitter(RETRY.declined), () => this.take(a));
+      return;
+    }
+    this.claim(a, pick.task, now);
+  }
+
+  /**
+   * What takeFor computes for the top 200 open intents: repulsion from other agents' claims and
+   * admission of every region they touch. Valid until the state changes (claims, landings, the
+   * open set) or the field reading it stands for is older than the ColonyDO's 250 ms reading TTL.
+   */
+  private evaluate(now: number): EvalCache {
+    const open: Array<Candidate & { task: SimTask }> = [];
+    const openRegion = new Map<string, boolean>();
+    let nextViableAt = Number.POSITIVE_INFINITY;
+    for (const t of this.open.top(CANDIDATE_CAP)) {
+      let rep = 0;
+      for (const w of t.writes) rep += this.claimCount.get(w) ?? 0;
+      let ok = true;
+      for (const rn of t.regions) {
+        let o = openRegion.get(rn);
+        if (o === undefined) {
+          const r = this.regions.get(rn);
+          o = r ? admissionOpen(r.holders.size, this.landingsPerMin(r, now)) : admissionOpen(0, 0);
+          openRegion.set(rn, o);
+        }
+        if (!o) ok = false;
+      }
+      if (!ok) continue;
+      open.push({ intent: t.intent, region: t.primary, repulsion: rep, admissionOpen: true, task: t });
+      // stimulus = 1 + ageMinutes / 10 - repulsion is positive once age > 10 min * (repulsion - 1).
+      const viableAt = rep < 1 ? Number.NEGATIVE_INFINITY : t.createdAt + 600_000 * (rep - 1);
+      if (viableAt < nextViableAt) nextViableAt = viableAt;
+    }
+    const ev: EvalCache = { version: this.stateVersion, at: now, open, nextViableAt };
+    this.evalCache = ev;
+    return ev;
+  }
+
+  /** Field readings a take triggers: every candidate region once per reading TTL (shared by concurrent takes). */
+  private countReadings(now: number): void {
+    if (now - this.readingsAt < READING_TTL_MS) return;
+    this.readingsAt = now;
+    if (this.candidateRegions.version !== this.open.version) {
+      const set = new Set<string>();
+      for (const t of this.open.top(CANDIDATE_CAP)) for (const r of t.regions) set.add(r);
+      this.candidateRegions = { version: this.open.version, n: set.size };
+    }
+    this.m.msg(now, "fieldReading", this.candidateRegions.n);
+  }
+
+  private claim(a: Agent, t: SimTask, now: number): void {
+    this.open.remove(t);
+    this.refill();
+    t.status = "claimed";
+    t.attempts++;
+    if (t.firstClaimAt < 0) t.firstClaimAt = now;
+    a.task = t;
+    a.claimedAt = now;
+    for (const w of t.writes) this.claimCount.set(w, (this.claimCount.get(w) ?? 0) + 1);
+    for (const rn of t.regions) {
+      const r = this.region(rn);
+      r.holders.set(a.id, (r.holders.get(a.id) ?? 0) + 1);
+    }
+    this.stateVersion++;
+    this.m.msg(now, "poolLease", 1);
+    this.m.msg(now, "claimDeposit", t.regions.length);
+    // The agent reads at the lease base: trunk as of now.
+    const readSet = t.reads.map((path) => ({ path, blob: this.blob(path) }));
+    const baseWrites = t.writes.map((path) => ({ path, blob: this.blob(path) }));
+    const attemptMs = t.attempts === 1 ? t.workMs : t.workMs * this.p.rework;
+    this.work(t, attemptMs, t.attempts > 1);
+    const ready = now + this.p.timings.takeMs + attemptMs + this.p.timings.testMs;
+    const base = this.landingSeq;
+    this.q.at(ready, () => this.propose(a, t, readSet, baseWrites, attemptMs, base));
+  }
+
+  private propose(a: Agent, t: SimTask, readSet: FileVersion[], baseWrites: FileVersion[], attemptMs: number, base: number): void {
+    const now = this.q.now;
+    this.m.msg(now, "propose", 1, true);
+    this.m.msg(now, "heartbeat", Math.floor((now - a.claimedAt) / HEARTBEAT_MS), true);
+    const at = now + this.p.timings.proposeMs;
+    this.q.at(at, () => {
+      const id = `p${this.propSeq++}`;
+      const writeSet = t.writes.map((path) => ({ path, blob: `b${this.blobSeq++}` }));
+      const p: Prop = { id, seq: this.propSeq, task: t, agent: a, writeSet, readSet, baseWrites, submittedAt: this.q.now, attemptMs, lane: this.region(t.primary), base };
+      t.status = "proposed";
+      if (t.firstSubmitAt < 0) t.firstSubmitAt = this.q.now;
+      if (this.m.on(this.q.now)) this.m.submitted++;
+      this.m.msg(this.q.now, "enqueue", 1);
+      this.enqueue(p);
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Lanes (RegionDO)
+  // ---------------------------------------------------------------------------
+
+  private sigma(r: Region, now: number): number {
+    if (r.sigmaCache && now - r.sigmaCache.at < SIGMA_TTL_MS) return r.sigmaCache.sigma;
+    let i = 0;
+    while (i < r.causes.length && r.causes[i]!.at < now - SIGMA_KEEP_MS) i++;
+    if (i > 0) r.causes.splice(0, i);
+    // RegionDO.cascadeSigma through core branchingRatio: a return is never a parent, so it is
+    // passed with an infinite time (outside every parent window) and still counts as a child.
+    const events = r.causes.map((e) => (e.id.startsWith("ret:") ? { ...e, at: Number.POSITIVE_INFINITY } : e));
+    const sigma = branchingRatio(events, now);
+    r.sigmaCache = { at: now, sigma };
+    if (sigma > this.m.sigmaMax && this.m.on(now)) this.m.sigmaMax = sigma;
+    return sigma;
+  }
+
+  private delayMs(r: Region, now: number): number {
+    const flux = prune(r.enqTimes, now - RATE_WINDOW_MS);
+    return Math.round(laneIntervalMs(flux) * inhibitionFactor(this.sigma(r, now)));
+  }
+
+  private setAlarm(r: Region, at: number): void {
+    r.alarmAt = at;
+    const gen = ++r.alarmGen;
+    this.q.at(at, () => {
+      if (gen !== r.alarmGen) return;
+      r.alarmAt = null;
+      this.tick(r);
+    });
+  }
+
+  private enqueue(p: Prop): void {
+    const r = p.lane;
+    const now = this.q.now;
+    const wasEmpty = r.lane.length === 0;
+    r.lane.push(p);
+    r.enqTimes.push(now);
+    if (r.ticking) return;
+    const want = Math.max(now, r.lastTickAt + this.delayMs(r, now));
+    if (r.alarmAt === null || r.alarmAt > want || (wasEmpty && r.alarmAt !== want)) this.setAlarm(r, want);
+  }
+
+  private tick(r: Region): void {
+    if (r.ticking || r.lane.length === 0) return;
+    const now = this.q.now;
+    r.ticking = true;
+    r.lastTickAt = now;
+    if (this.m.on(now)) {
+      this.m.ticks++;
+      if (inhibitionFactor(this.sigma(r, now)) > 1) this.m.inhibitedTicks++;
+    }
+    const rows = r.lane.slice(0, LANE_SCAN);
+    // blobsFor, plus one baseBlobs call per distinct base commit.
+    this.m.msg(now, "laneRpc", 1 + new Set(rows.map((p) => p.base)).size);
+    this.q.after(this.p.timings.laneOverheadMs, () => {
+      const valid: Prop[] = [];
+      const stale: Array<{ p: Prop; occ: ReturnType<typeof validateProposal> }> = [];
+      for (const p of rows) {
+        const occ = validateProposal(p, (path) => this.blob(path), p.baseWrites);
+        if (occ.eligible) valid.push(p);
+        else stale.push({ p, occ });
+      }
+      const { batch } = selectBatch(valid, LANE_SCAN);
+      if (batch.length === 0) {
+        this.finishTick(r, null, [], stale, []);
+        return;
+      }
+      this.m.msg(this.q.now, "laneRpc", 2); // landContext + land
+      this.trunkQueue.push({ region: r, batch, done: (res) => this.finishTick(r, res.landingId, res.landed, stale, res.returned) });
+      this.serveTrunk();
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // The trunk writer (TrunkDO serial chain)
+  // ---------------------------------------------------------------------------
+
+  private serveTrunk(): void {
+    if (this.trunkBusy || this.trunkQueue.length === 0) return;
+    this.trunkBusy = true;
+    const jobs = this.group ? this.trunkQueue.splice(0, this.trunkQueue.length) : [this.trunkQueue.shift()!];
+    // Screen in order against current trunk, as TrunkDO.screen does (also across folded batches).
+    const writes = new Set<string>();
+    const reads = new Set<string>();
+    const staged: Prop[] = [];
+    const returned = new Map<Region, Prop[]>();
+    let n = 0;
+    for (const job of jobs) {
+      for (const p of job.batch) {
+        n++;
+        const occ = validateProposal(p, (path) => this.blob(path), p.baseWrites);
+        const clash = p.writeSet.some((w) => writes.has(w.path) || reads.has(w.path)) || p.readSet.some((f) => writes.has(f.path));
+        if (!occ.eligible || clash) {
+          const list = returned.get(job.region) ?? [];
+          list.push(p);
+          returned.set(job.region, list);
+          continue;
+        }
+        staged.push(p);
+        for (const w of p.writeSet) writes.add(w.path);
+        for (const f of p.readSet) reads.add(f.path);
+      }
+    }
+    const t = this.p.timings;
+    const service = staged.length > 0 ? t.commitBaseMs + t.commitPerProposalMs * n : t.commitPerProposalMs * n;
+    this.q.after(service, () => {
+      const now = this.q.now;
+      if (this.m.on(now)) this.m.trunkBusyMs += Math.min(service, now - this.p.warmupMs);
+      let landingId: string | null = null;
+      if (staged.length > 0) {
+        landingId = `L${this.landingSeq++}`;
+        for (const p of staged) for (const w of p.writeSet) this.trunk.set(w.path, w.blob!);
+        const touched = new Set<string>();
+        for (const p of staged) for (const rn of p.task.writeRegions) touched.add(rn);
+        for (const rn of touched) this.region(rn).landTimes.push(now);
+        this.m.msg(now, "landingApply", touched.size);
+        if (this.m.on(now)) {
+          this.m.commits++;
+          this.m.batch.push(staged.length);
+        }
+        this.stateVersion++;
+      }
+      this.trunkBusy = false;
+      for (const job of jobs) {
+        const mine = new Set(job.batch);
+        job.done({ landed: staged.filter((p) => mine.has(p)), returned: returned.get(job.region) ?? [], landingId: staged.some((p) => mine.has(p)) ? landingId : null });
+      }
+      this.serveTrunk();
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Tick bookkeeping (RegionDO.tick steps 4-5, recordLanding, recordReturn) and colony effects
+  // ---------------------------------------------------------------------------
+
+  private finishTick(r: Region, landingId: string | null, landed: Prop[], stale: Array<{ p: Prop; occ: ReturnType<typeof validateProposal> }>, trunkReturned: Prop[]): void {
+    const now = this.q.now;
+    const remove = new Set<Prop>();
+    if (landingId !== null && landed.length > 0) {
+      for (const p of landed) {
+        const eventId = `land:${landingId}:${p.id}`;
+        const prior = r.intentReturns.get(p.task.id);
+        r.intentReturns.delete(p.task.id);
+        r.causes.push(prior !== undefined ? { id: eventId, causeId: prior, at: now } : { id: eventId, at: now });
+        for (const w of p.writeSet) {
+          let m = r.pathLanding.get(w.path);
+          if (!m) {
+            m = new Map();
+            r.pathLanding.set(w.path, m);
+          }
+          m.set(w.blob!, { id: eventId, at: now });
+        }
+        remove.add(p);
+        this.landedEffects(p, now);
+      }
+      this.m.msg(now, "laneRpc", 1); // report landing
+    }
+    let updates = 0;
+    for (const { p, occ } of stale) {
+      let cause: string | undefined;
+      for (const s of occ.stale) {
+        const hit = r.pathLanding.get(s.path)?.get(s.actual ?? "");
+        if (hit) {
+          cause = hit.id;
+          break;
+        }
+      }
+      this.recordReturn(r, p, cause, now);
+      remove.add(p);
+      updates++;
+      this.returnedEffects(p, now, occ.stale.some((s) => p.writeSet.some((w) => w.path === s.path)));
+    }
+    for (const p of trunkReturned) {
+      let cause: string | undefined;
+      let best = -Infinity;
+      for (const w of p.writeSet) {
+        const m = r.pathLanding.get(w.path);
+        if (!m) continue;
+        for (const v of m.values()) if (v.at > now - RATE_WINDOW_MS && v.at > best) {
+          best = v.at;
+          cause = v.id;
+        }
+      }
+      this.recordReturn(r, p, cause, now);
+      remove.add(p);
+      updates++;
+      this.returnedEffects(p, now, true);
+    }
+    if (updates > 0) this.m.msg(now, "laneRpc", 1); // report updates
+    if (remove.size > 0) r.lane = r.lane.filter((p) => !remove.has(p));
+    r.sigmaCache = null;
+    r.ticking = false;
+    if (r.lane.length > 0) this.setAlarm(r, Math.max(now, r.lastTickAt + this.delayMs(r, now)));
+  }
+
+  private recordReturn(r: Region, p: Prop, cause: string | undefined, now: number): void {
+    const eventId = `ret:${p.id}`;
+    r.causes.push(cause !== undefined ? { id: eventId, causeId: cause, at: now } : { id: eventId, at: now });
+    r.intentReturns.set(p.task.id, eventId);
+  }
+
+  private release(p: Prop): void {
+    const a = p.agent;
+    for (const w of p.task.writes) {
+      const n = (this.claimCount.get(w) ?? 1) - 1;
+      if (n <= 0) this.claimCount.delete(w);
+      else this.claimCount.set(w, n);
+    }
+    for (const rn of p.task.regions) {
+      const r = this.region(rn);
+      const n = (r.holders.get(a.id) ?? 1) - 1;
+      if (n <= 0) r.holders.delete(a.id);
+      else r.holders.set(a.id, n);
+    }
+    this.stateVersion++;
+  }
+
+  private landedEffects(p: Prop, now: number): void {
+    const t = p.task;
+    t.status = "landed";
+    this.release(p);
+    p.agent.thresholds = reinforceThreshold(p.agent.thresholds, p.lane.name);
+    this.m.msg(now, "release", 1);
+    if (this.m.on(now)) {
+      this.m.landed++;
+      this.m.ttl.push(now - t.firstSubmitAt);
+      this.m.e2e.push(now - t.firstClaimAt);
+    }
+    this.agentLearns(p, now);
+  }
+
+  private returnedEffects(p: Prop, now: number, writeWrite: boolean): void {
+    this.release(p);
+    this.open.add(p.task);
+    this.stateVersion++;
+    this.m.msg(now, "returnApply", p.task.regions.length);
+    this.m.msg(now, "release", 1);
+    if (this.m.on(now)) {
+      this.m.invalidated++;
+      if (writeWrite) this.m.invalidatedWriteWrite++;
+      this.m.wastedMs += p.attemptMs;
+    }
+    this.agentLearns(p, now);
+  }
+
+  private agentLearns(p: Prop, outcomeAt: number): void {
+    const a = p.agent;
+    const at = this.learnAt(p.submittedAt, outcomeAt);
+    this.m.msg(outcomeAt, "heartbeat", Math.floor((at - p.submittedAt) / HEARTBEAT_MS), true);
+    a.task = null;
+    this.q.at(at, () => this.take(a));
+  }
+}
+

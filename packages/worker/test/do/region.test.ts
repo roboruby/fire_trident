@@ -91,6 +91,17 @@ describe("RegionDO field", () => {
     // Every event in the window is a potential parent: 3 children over 4 events.
     expect(((await r.reading()) as FieldReading).sigma).toBeCloseTo(0.75, 6);
   });
+
+  it("never counts stale returns as parents, so one landing that invalidates four proposals reads sigma 4", async () => {
+    const { r } = await freshRegion();
+    const now = Date.now();
+    await r.recordCause({ id: "land:lnd_1:prp_w", at: now - 20_000 });
+    for (const id of ["a", "b", "c", "d"]) await r.recordCause({ id: `ret:prp_${id}`, causeId: "land:lnd_1:prp_w", at: now - 19_000 });
+    expect(((await r.reading()) as FieldReading).sigma).toBeCloseTo(4, 6);
+    // Their re-landings are parents with no children yet: 4 returns over 5 landed proposals.
+    for (const id of ["a", "b", "c", "d"]) await r.recordCause({ id: `land:lnd_2:prp_${id}2`, causeId: `ret:prp_${id}`, at: now - 10_000 });
+    expect(((await r.reading()) as FieldReading).sigma).toBeCloseTo(0.8, 6);
+  });
 });
 
 describe("RegionDO reports", () => {

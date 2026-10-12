@@ -1,0 +1,795 @@
+{
+  "kind": "cascade",
+  "label": "MEASURED",
+  "colony": "bench-w2-cascade",
+  "region": "src/core",
+  "shared": "src/core/config.ts",
+  "readers": 30,
+  "startedAt": "2026-10-12T06:49:44.378Z",
+  "writerLanding": {
+    "id": "lnd_mv4w6xu7drdrea",
+    "tMs": 14943
+  },
+  "returned": 30,
+  "relandings": [
+    {
+      "tMs": 25334,
+      "landed": 2
+    },
+    {
+      "tMs": 34794,
+      "landed": 12
+    },
+    {
+      "tMs": 42060,
+      "landed": 12
+    },
+    {
+      "tMs": 45113,
+      "landed": 2
+    },
+    {
+      "tMs": 48932,
+      "landed": 2
+    }
+  ],
+  "sigma": {
+    "max": 30,
+    "firstAboveOneMs": 20508,
+    "lastAboveOneMs": 52975,
+    "events": [
+      {
+        "tMs": 14984,
+        "sigma": 0
+      },
+      {
+        "tMs": 15676,
+        "sigma": 0
+      },
+      {
+        "tMs": 16508,
+        "sigma": 0
+      },
+      {
+        "tMs": 18508,
+        "sigma": 0
+      },
+      {
+        "tMs": 20508,
+        "sigma": 30
+      },
+      {
+        "tMs": 25380,
+        "sigma": 30
+      },
+      {
+        "tMs": 34842,
+        "sigma": 10
+      },
+      {
+        "tMs": 42107,
+        "sigma": 2
+      },
+      {
+        "tMs": 45158,
+        "sigma": 2
+      },
+      {
+        "tMs": 48975,
+        "sigma": 1.1111
+      },
+      {
+        "tMs": 50975,
+        "sigma": 1.0345
+      },
+      {
+        "tMs": 52975,
+        "sigma": 1.0345
+      },
+      {
+        "tMs": 54975,
+        "sigma": 0.9677
+      }
+    ],
+    "polled": [
+      {
+        "tMs": 6201,
+        "sigma": 0,
+        "landingsPerMin": 0,
+        "activeAgents": 30
+      },
+      {
+        "tMs": 7279,
+        "sigma": 0,
+        "landingsPerMin": 0,
+        "activeAgents": 30
+      },
+      {
+        "tMs": 8347,
+        "sigma": 0,
+        "landingsPerMin": 0,
+        "activeAgents": 30
+      },
+      {
+        "tMs": 9422,
+        "sigma": 0,
+        "landingsPerMin": 0,
+        "activeAgents": 31
+      },
+      {
+        "tMs": 10487,
+        "sigma": 0,
+        "landingsPerMin": 0,
+        "activeAgents": 31
+      },
+      {
+        "tMs": 11703,
+        "sigma": 0,
+        "landingsPerMin": 0,
+        "activeAgents": 31
+      },
+      {
+        "tMs": 12802,
+        "sigma": 0,
+        "landingsPerMin": 0,
+        "activeAgents": 31
+      },
+      {
+        "tMs": 13876,
+        "sigma": 0,
+        "landingsPerMin": 0,
+        "activeAgents": 31
+      },
+      {
+        "tMs": 14948,
+        "sigma": 0,
+        "landingsPerMin": 1,
+        "activeAgents": 30
+      },
+      {
+        "tMs": 16020,
+        "sigma": 0,
+        "landingsPerMin": 1,
+        "activeAgents": 7
+      },
+      {
+        "tMs": 17088,
+        "sigma": 0,
+        "landingsPerMin": 1,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 18154,
+        "sigma": 0,
+        "landingsPerMin": 1,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 19222,
+        "sigma": 0,
+        "landingsPerMin": 1,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 20286,
+        "sigma": 30,
+        "landingsPerMin": 1,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 21351,
+        "sigma": 30,
+        "landingsPerMin": 1,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 22415,
+        "sigma": 30,
+        "landingsPerMin": 1,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 23485,
+        "sigma": 30,
+        "landingsPerMin": 1,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 24552,
+        "sigma": 30,
+        "landingsPerMin": 1,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 25946,
+        "sigma": 30,
+        "landingsPerMin": 2,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 27017,
+        "sigma": 30,
+        "landingsPerMin": 2,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 28082,
+        "sigma": 30,
+        "landingsPerMin": 2,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 29149,
+        "sigma": 30,
+        "landingsPerMin": 2,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 30214,
+        "sigma": 30,
+        "landingsPerMin": 2,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 31281,
+        "sigma": 10,
+        "landingsPerMin": 2,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 32346,
+        "sigma": 10,
+        "landingsPerMin": 2,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 33413,
+        "sigma": 10,
+        "landingsPerMin": 2,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 34476,
+        "sigma": 10,
+        "landingsPerMin": 2,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 35572,
+        "sigma": 10,
+        "landingsPerMin": 3,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 36675,
+        "sigma": 10,
+        "landingsPerMin": 3,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 37784,
+        "sigma": 10,
+        "landingsPerMin": 3,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 38958,
+        "sigma": 10,
+        "landingsPerMin": 3,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 40112,
+        "sigma": 2,
+        "landingsPerMin": 3,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 41173,
+        "sigma": 2,
+        "landingsPerMin": 3,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 42238,
+        "sigma": 2,
+        "landingsPerMin": 4,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 43303,
+        "sigma": 2,
+        "landingsPerMin": 4,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 44772,
+        "sigma": 2,
+        "landingsPerMin": 4,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 45838,
+        "sigma": 2,
+        "landingsPerMin": 5,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 46903,
+        "sigma": 2,
+        "landingsPerMin": 5,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 47972,
+        "sigma": 1.1111111111111112,
+        "landingsPerMin": 5,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 49040,
+        "sigma": 1.1111111111111112,
+        "landingsPerMin": 6,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 50108,
+        "sigma": 1.0344827586206897,
+        "landingsPerMin": 6,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 51178,
+        "sigma": 1.0344827586206897,
+        "landingsPerMin": 6,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 52246,
+        "sigma": 1.0344827586206897,
+        "landingsPerMin": 6,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 53309,
+        "sigma": 1.0344827586206897,
+        "landingsPerMin": 6,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 54364,
+        "sigma": 0.967741935483871,
+        "landingsPerMin": 6,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 55431,
+        "sigma": 0.967741935483871,
+        "landingsPerMin": 6,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 56496,
+        "sigma": 0.967741935483871,
+        "landingsPerMin": 6,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 57560,
+        "sigma": 0.967741935483871,
+        "landingsPerMin": 6,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 58641,
+        "sigma": 0.967741935483871,
+        "landingsPerMin": 6,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 60036,
+        "sigma": 0.967741935483871,
+        "landingsPerMin": 6,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 61102,
+        "sigma": 0.967741935483871,
+        "landingsPerMin": 6,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 62169,
+        "sigma": 0.967741935483871,
+        "landingsPerMin": 6,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 63243,
+        "sigma": 0.967741935483871,
+        "landingsPerMin": 6,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 64312,
+        "sigma": 0.967741935483871,
+        "landingsPerMin": 6,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 65394,
+        "sigma": 0.967741935483871,
+        "landingsPerMin": 6,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 66465,
+        "sigma": 0.967741935483871,
+        "landingsPerMin": 6,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 67530,
+        "sigma": 0.967741935483871,
+        "landingsPerMin": 6,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 68594,
+        "sigma": 0.967741935483871,
+        "landingsPerMin": 6,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 69663,
+        "sigma": 0.967741935483871,
+        "landingsPerMin": 6,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 70940,
+        "sigma": 0.967741935483871,
+        "landingsPerMin": 6,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 72049,
+        "sigma": 0.967741935483871,
+        "landingsPerMin": 6,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 73109,
+        "sigma": 0.967741935483871,
+        "landingsPerMin": 6,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 74172,
+        "sigma": 0.967741935483871,
+        "landingsPerMin": 6,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 75240,
+        "sigma": 0,
+        "landingsPerMin": 5,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 76307,
+        "sigma": 0,
+        "landingsPerMin": 5,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 77374,
+        "sigma": 0,
+        "landingsPerMin": 5,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 78434,
+        "sigma": 0,
+        "landingsPerMin": 5,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 79497,
+        "sigma": 0,
+        "landingsPerMin": 5,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 80563,
+        "sigma": 0,
+        "landingsPerMin": 5,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 81626,
+        "sigma": 0,
+        "landingsPerMin": 5,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 82692,
+        "sigma": 0,
+        "landingsPerMin": 5,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 83758,
+        "sigma": 0,
+        "landingsPerMin": 5,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 84827,
+        "sigma": 0,
+        "landingsPerMin": 5,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 85894,
+        "sigma": 0,
+        "landingsPerMin": 4,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 86959,
+        "sigma": 0,
+        "landingsPerMin": 4,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 88028,
+        "sigma": 0,
+        "landingsPerMin": 4,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 89091,
+        "sigma": 0,
+        "landingsPerMin": 4,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 90155,
+        "sigma": 0,
+        "landingsPerMin": 4,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 91220,
+        "sigma": 0,
+        "landingsPerMin": 4,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 92291,
+        "sigma": 0,
+        "landingsPerMin": 4,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 93358,
+        "sigma": 0,
+        "landingsPerMin": 4,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 94429,
+        "sigma": 0,
+        "landingsPerMin": 4,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 95576,
+        "sigma": 0,
+        "landingsPerMin": 3,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 96691,
+        "sigma": 0,
+        "landingsPerMin": 3,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 97758,
+        "sigma": 0,
+        "landingsPerMin": 3,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 98833,
+        "sigma": 0,
+        "landingsPerMin": 3,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 99900,
+        "sigma": 0,
+        "landingsPerMin": 3,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 100969,
+        "sigma": 0,
+        "landingsPerMin": 3,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 102039,
+        "sigma": 0,
+        "landingsPerMin": 2,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 103112,
+        "sigma": 0,
+        "landingsPerMin": 2,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 104185,
+        "sigma": 0,
+        "landingsPerMin": 2,
+        "activeAgents": 0
+      },
+      {
+        "tMs": 105276,
+        "sigma": 0,
+        "landingsPerMin": 1,
+        "activeAgents": 0
+      }
+    ]
+  },
+  "inhibition": [
+    {
+      "tMs": 20508,
+      "factor": 8
+    },
+    {
+      "tMs": 25380,
+      "factor": 8
+    },
+    {
+      "tMs": 34842,
+      "factor": 8
+    },
+    {
+      "tMs": 42107,
+      "factor": 4
+    },
+    {
+      "tMs": 45158,
+      "factor": 4
+    },
+    {
+      "tMs": 48975,
+      "factor": 1.2346
+    },
+    {
+      "tMs": 50975,
+      "factor": 1.0702
+    },
+    {
+      "tMs": 52975,
+      "factor": 1.0702
+    },
+    {
+      "tMs": 54975,
+      "factor": 1
+    }
+  ],
+  "laneDelay": [
+    {
+      "tMs": 20508,
+      "ms": 8000
+    },
+    {
+      "tMs": 25380,
+      "ms": 8000
+    },
+    {
+      "tMs": 34842,
+      "ms": 8000
+    },
+    {
+      "tMs": 42107,
+      "ms": 4000
+    },
+    {
+      "tMs": 45158,
+      "ms": 4000
+    },
+    {
+      "tMs": 48975,
+      "ms": 1235
+    },
+    {
+      "tMs": 50975,
+      "ms": 1070
+    },
+    {
+      "tMs": 52975,
+      "ms": 1070
+    },
+    {
+      "tMs": 54975,
+      "ms": 1000
+    }
+  ],
+  "timeline": [
+    {
+      "tMs": 4657,
+      "event": "feed",
+      "detail": {
+        "connected": true,
+        "region": "src/core",
+        "shared": "src/core/config.ts"
+      }
+    },
+    {
+      "tMs": 9309,
+      "event": "readers took work",
+      "detail": {
+        "readers": 30,
+        "of": 30
+      }
+    },
+    {
+      "tMs": 14035,
+      "event": "writer pushed its workspace",
+      "detail": {
+        "oldBlob": "b30e0bbf60",
+        "newBlob": "f406e3fd1d"
+      }
+    },
+    {
+      "tMs": 14144,
+      "event": "writer proposed",
+      "detail": {
+        "proposal": "prp_mv4w6xnkvvh5ih"
+      }
+    },
+    {
+      "tMs": 14958,
+      "event": "writer landed",
+      "detail": {
+        "landing": "lnd_mv4w6xu7drdrea"
+      }
+    },
+    {
+      "tMs": 15655,
+      "event": "readers proposed",
+      "detail": {
+        "proposals": 30
+      }
+    },
+    {
+      "tMs": 16573,
+      "event": "readers returned",
+      "detail": {
+        "returned": 30,
+        "landedInstead": 0,
+        "reasons": [
+          "stale: 1 path changed on trunk since read: src/core/config.ts (expected b30e0bbf"
+        ]
+      }
+    },
+    {
+      "tMs": 46451,
+      "event": "readers re-proposed after rework",
+      "detail": {
+        "proposals": 30
+      }
+    }
+  ],
+  "errors": [
+    "field: 404 unknown region src/core"
+  ],
+  "note": "Readers are synthetic API agents (their writes reuse an existing blob); the writer's change to the shared file is a real git commit pushed to its workspace fork and landed on trunk."
+}
