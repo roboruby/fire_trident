@@ -306,6 +306,7 @@ export interface ColonySnapshot {
   colony: Colony;
   files: Array<{ path: Path; size: number }>;
   intents: Intent[];
+  rules: Rule[];
   agents: AgentInfo[];
   recentLandings: Landing[];
   violations: { total: number; byRule: Record<Id, number> };

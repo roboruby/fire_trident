@@ -4,8 +4,23 @@
   "description": "FireTrident CLI: a colony, not a queue.",
   "license": "MIT",
   "type": "module",
-  "bin": { "ft": "src/ft.ts" },
-  "scripts": { "typecheck": "tsc -p tsconfig.json", "test": "vitest run" },
-  "dependencies": { "@fire_trident/core": "*" },
-  "devDependencies": { "typescript": "7.0.2", "vitest": "4.1.11", "@types/node": "24.19.2" }
+  "bin": {
+    "ft": "dist/ft.js"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "build": "tsc -p tsconfig.build.json"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2",
+    "vitest": "4.1.11",
+    "@types/node": "24.19.2",
+    "@fire_trident/core": "*"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ]
 }

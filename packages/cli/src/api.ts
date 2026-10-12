@@ -1,0 +1,199 @@
+import type { Colony, Rule } from "@fire_trident/core";
+import type { Command } from "./args.ts";
+
+/**
+ * HTTP contract the CLI assumes (routes in packages/worker/src/api/routes.ts).
+ * Bodies mirror the Durable Object RPC inputs in docs/ARCHITECTURE.md:
+ *
+ *   POST /api/colonies                  { name, source?: { url, branch? }, pool?, regionDepth? }  -> Colony | { colony: Colony }
+ *   GET  /api/colonies/:id              ColonySnapshot (an optional `rules: Rule[]` enriches output)
+ *   POST /api/colonies/:id/rules        { colonyId, kind, spec, description, approvedBy }  -> { rule, violations, intents }
+ *   POST /api/colonies/:id/intents      { colonyId, title, why, source, footprint, acceptance?, priority, createdBy }  -> Intent
+ *   POST /api/colonies/:id/swarm        { agents, model?, kind? }
+ *   GET  /api/colonies/:id/why          ?path=&line=  -> Array<{ landing, note }>
+ *   GET  /api/colonies/:id/review       Proposal[] (escalated)
+ *   POST /api/colonies/:id/review/:pid  { decision: "approve" | "reject" | "return", reason, by }
+ *   GET  /api/colonies/:id/live         WebSocket of ColonyEvent JSON (one event or an array per message)
+ *
+ * Every request carries `Authorization: Bearer $FT_TOKEN` when the token is set.
+ */
+
+/** The server used when neither --url nor FT_URL is given. */
+export const DEFAULT_URL = "https://firetrident.mattsolt.workers.dev";
+
+/** CLI version, printed by `ft --version` and sent as the user agent. */
+export const VERSION = "0.0.1";
+
+/** One planned HTTP call. `path` includes any query string. */
+export interface ApiRequest {
+  method: "GET" | "POST";
+  path: string;
+  body?: unknown;
+}
+
+/** A failed call: `status` 0 means the server could not be reached. */
+export class ApiError extends Error {
+  readonly status: number;
+  readonly body: unknown;
+  constructor(status: number, message: string, body: unknown) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.body = body;
+  }
+}
+
+/** What `send` needs: where the server is, the token, and a fetch implementation. */
+export interface HttpConfig {
+  baseUrl: string;
+  token?: string;
+  fetch: typeof fetch;
+}
+
+/** Resolve the server base URL from --url, then FT_URL, then the default. Strips trailing slashes. */
+export function resolveBaseUrl(flag: string | undefined, env: Record<string, string | undefined>): string {
+  const raw = (flag ?? env.FT_URL ?? "").trim() || DEFAULT_URL;
+  let u: URL;
+  try {
+    u = new URL(raw);
+  } catch {
+    throw new ApiError(0, `not a valid server URL: ${raw} (set FT_URL or --url)`, null);
+  }
+  if (u.protocol !== "https:" && u.protocol !== "http:") throw new ApiError(0, `server URL must be http(s): ${raw}`, null);
+  return raw.replace(/\/+$/, "");
+}
+
+/** API path for a colony, with an optional suffix such as `/rules`. */
+export function colonyPath(colony: string, suffix = ""): string {
+  return `/api/colonies/${encodeURIComponent(colony)}${suffix}`;
+}
+
+/** WebSocket URL of a colony's live event stream (http becomes ws, https becomes wss). */
+export function liveUrl(baseUrl: string, colony: string): string {
+  return baseUrl.replace(/^http/i, "ws") + colonyPath(colony, "/live");
+}
+
+/** Body for POST /rules, shared by `ft rule` and `ft new`. */
+export function ruleBody(colony: string, kind: Rule["kind"], spec: Record<string, unknown>, description: string, approvedBy: string): Omit<Rule, "id" | "createdAt"> {
+  return { colonyId: colony, kind, spec, description, approvedBy };
+}
+
+/**
+ * Map a one-shot command to its HTTP call (pure). `by` is the human recorded as
+ * rule approver or review decider. Returns null for commands that are not one call.
+ */
+export function planRequest(cmd: Command, by: string): ApiRequest | null {
+  switch (cmd.name) {
+    case "import": {
+      const source: { url: string; branch?: string } = { url: cmd.url };
+      if (cmd.branch) source.branch = cmd.branch;
+      const body: Record<string, unknown> = { name: cmd.colonyName, source };
+      if (cmd.pool !== undefined) body.pool = cmd.pool;
+      if (cmd.regionDepth !== undefined) body.regionDepth = cmd.regionDepth;
+      return { method: "POST", path: "/api/colonies", body };
+    }
+    case "status":
+      return { method: "GET", path: colonyPath(cmd.colony) };
+    case "rule-add": {
+      const spec: Record<string, unknown> = { pattern: cmd.pattern };
+      if (cmd.flags) spec.flags = cmd.flags;
+      if (cmd.include.length > 0) spec.include = cmd.include;
+      if (cmd.exclude.length > 0) spec.exclude = cmd.exclude;
+      spec.hint = cmd.hint;
+      if (cmd.replacement !== undefined) spec.replacement = cmd.replacement;
+      return { method: "POST", path: colonyPath(cmd.colony, "/rules"), body: ruleBody(cmd.colony, "forbid-pattern", spec, cmd.description, cmd.by ?? by) };
+    }
+    case "rule-import-boundary": {
+      const spec = { from: cmd.from, module: cmd.module, hint: cmd.hint };
+      return { method: "POST", path: colonyPath(cmd.colony, "/rules"), body: ruleBody(cmd.colony, "forbid-import", spec, cmd.description, cmd.by ?? by) };
+    }
+    case "swarm": {
+      const body: Record<string, unknown> = { agents: cmd.agents };
+      if (cmd.model) body.model = cmd.model;
+      if (cmd.kind) body.kind = cmd.kind;
+      return { method: "POST", path: colonyPath(cmd.colony, "/swarm"), body };
+    }
+    case "why": {
+      const q = new URLSearchParams({ path: cmd.path });
+      if (cmd.line !== undefined) q.set("line", String(cmd.line));
+      return { method: "GET", path: `${colonyPath(cmd.colony, "/why")}?${q}` };
+    }
+    case "review-list":
+      return { method: "GET", path: colonyPath(cmd.colony, "/review") };
+    case "review-decide":
+      return {
+        method: "POST",
+        path: colonyPath(cmd.colony, `/review/${encodeURIComponent(cmd.proposalId)}`),
+        body: { decision: cmd.decision, reason: cmd.reason, by: cmd.by ?? by },
+      };
+    default:
+      return null;
+  }
+}
+
+function errorDetail(data: unknown): string {
+  if (data && typeof data === "object") {
+    const o = data as Record<string, unknown>;
+    const msg = o.error ?? o.message;
+    if (typeof msg === "string" && msg) return `: ${msg}`;
+    if (msg && typeof msg === "object" && typeof (msg as Record<string, unknown>).message === "string") return `: ${(msg as Record<string, string>).message}`;
+    return "";
+  }
+  if (typeof data === "string" && data.trim()) return `: ${data.trim().slice(0, 300)}`;
+  return "";
+}
+
+/** Send one request and return the parsed JSON body. Throws ApiError on network or HTTP failure. */
+export async function send<T = unknown>(cfg: HttpConfig, req: ApiRequest, timeoutMs = 30_000): Promise<T> {
+  const headers: Record<string, string> = { accept: "application/json", "user-agent": `ft/${VERSION}` };
+  if (cfg.token) headers.authorization = `Bearer ${cfg.token}`;
+  let body: string | undefined;
+  if (req.body !== undefined) {
+    headers["content-type"] = "application/json";
+    body = JSON.stringify(req.body);
+  }
+  let res: Response;
+  try {
+    res = await cfg.fetch(cfg.baseUrl + req.path, { method: req.method, headers, body, signal: AbortSignal.timeout(timeoutMs) });
+  } catch (e) {
+    const err = e as Error & { cause?: { message?: string; code?: string } };
+    const why = err.name === "TimeoutError" ? `timed out after ${Math.round(timeoutMs / 1000)}s` : err.cause?.code ?? err.cause?.message ?? err.message;
+    throw new ApiError(0, `cannot reach ${cfg.baseUrl}: ${why}`, null);
+  }
+  const text = await res.text();
+  let data: unknown = null;
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = text;
+    }
+  }
+  if (!res.ok) {
+    const auth = res.status === 401 || res.status === 403 ? (cfg.token ? " (check FT_TOKEN)" : " (set FT_TOKEN)") : "";
+    throw new ApiError(res.status, `${req.method} ${req.path.split("?")[0]} failed: ${res.status} ${res.statusText}${errorDetail(data)}${auth}`, data);
+  }
+  return data as T;
+}
+
+/** Pull a Colony out of POST /api/colonies' response, whether bare or wrapped. */
+export function pickColony(res: unknown): (Partial<Colony> & { id: string }) | null {
+  if (!res || typeof res !== "object") return null;
+  const o = res as Record<string, unknown>;
+  const c = (o.colony && typeof o.colony === "object" ? o.colony : o) as Record<string, unknown>;
+  if (typeof c.id === "string" && c.id) return c as Partial<Colony> & { id: string };
+  if (typeof o.id === "string" && o.id) return { ...(c as Partial<Colony>), id: o.id };
+  return null;
+}
+
+/** Read an array from a response that is either the array or an object wrapping it under one of `keys`. */
+export function asArray<T>(res: unknown, keys: string[]): T[] {
+  if (Array.isArray(res)) return res as T[];
+  if (res && typeof res === "object") {
+    for (const k of keys) {
+      const v = (res as Record<string, unknown>)[k];
+      if (Array.isArray(v)) return v as T[];
+    }
+  }
+  return [];
+}
