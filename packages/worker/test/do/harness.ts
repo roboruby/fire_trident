@@ -29,6 +29,8 @@ interface TrunkState {
   failLands: number;
   returnNext: Id[];
   reportLandings: boolean;
+  /** land() calls that land the batch and then throw anyway (the caller never learns). */
+  loseAnswers?: number;
 }
 
 const DEFAULT_FILES: Record<Path, string> = {
@@ -101,6 +103,25 @@ export class TrunkDO extends DurableObject<Env> {
     await this.save(s);
   }
 
+  /**
+   * Test helper: the next n land() calls land their batch and then throw, as when a deploy resets
+   * the trunk object mid-call; with `report` false (the real writer's behavior) nobody tells the colony.
+   */
+  async loseNextAnswers(n: number, report = false): Promise<void> {
+    const s = await this.load();
+    s.loseAnswers = n;
+    s.reportLandings = report;
+    await this.save(s);
+  }
+
+  /** The landing of each proposal that has landed (by proposal id), as the real TrunkDO answers. */
+  async landingsOf(ids: Id[]): Promise<Record<Id, Landing>> {
+    const s = await this.load();
+    const out: Record<Id, Landing> = {};
+    for (const l of s.landings) for (const id of l.proposalIds) if (ids.includes(id)) out[id] = l;
+    return out;
+  }
+
   /** Test helper: current state. */
   async state(): Promise<TrunkState> {
     return this.load();
@@ -166,6 +187,11 @@ export class TrunkDO extends DurableObject<Env> {
     await this.save(s);
     // The real TrunkDO reports landings too; the ColonyDO must treat the second report as a no-op.
     if (s.reportLandings) await this.env.COLONY.get(this.env.COLONY.idFromName(s.colonyId)).onLanding(landing);
+    if ((s.loseAnswers ?? 0) > 0) {
+      s.loseAnswers = (s.loseAnswers ?? 0) - 1;
+      await this.save(s);
+      throw new Error("Durable Object reset because its code was updated.");
+    }
     return { landing, returned };
   }
 
@@ -175,6 +201,13 @@ export class TrunkDO extends DurableObject<Env> {
 
   async landings(limit = 20): Promise<Landing[]> {
     return (await this.load()).landings.slice(-limit).reverse();
+  }
+
+  /** Erase this object (colony deletion), as the real TrunkDO does. */
+  async destroy(): Promise<{ cleared: true }> {
+    await this.ctx.storage.deleteAlarm();
+    await this.ctx.storage.deleteAll();
+    return { cleared: true };
   }
 }
 
@@ -232,6 +265,19 @@ export class PoolDO extends DurableObject<Env> {
   async status(): Promise<{ ready: number; leased: number; forking: number; target: number }> {
     const s = await this.load();
     return { ready: s.empty ? 0 : s.target, leased: s.next - s.released.length, forking: 0, target: s.target };
+  }
+
+  /** Colony teardown: the fake has no repos to delete; it stops leasing. */
+  async teardown(): Promise<{ deleted: number; errors: string[] }> {
+    await this.ctx.storage.put("state", { ...(await this.load()), target: 0, empty: true });
+    return { deleted: 0, errors: [] };
+  }
+
+  /** Erase this object (colony deletion), as the real PoolDO does. */
+  async destroy(): Promise<{ cleared: true }> {
+    await this.ctx.storage.deleteAlarm();
+    await this.ctx.storage.deleteAll();
+    return { cleared: true };
   }
 }
 

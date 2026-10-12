@@ -17,16 +17,19 @@ import type {
 } from "@fire_trident/core";
 import { newId } from "@fire_trident/core";
 import type { Env } from "../env.ts";
-import { runInnateChecks } from "../colony/innate.ts";
+import { runInnateChecks, type InnateResult } from "../colony/innate.ts";
 import { errorText, ftError } from "../colony/errors.ts";
 import { ANTIBODY_DIR, antibodyFile, antibodyPath, calibrateThreshold, cleanQuestion, deriveMatcher, fallbackQuestion, parseAntibodyFile } from "./antibodies.ts";
 import { addedFromHunks, fileDiff, type FileDiff } from "./diff.ts";
 import { gate, type GateVerdict, type ReflexSignals, type SecondOpinion } from "./gate.ts";
-import { pickSecondOpinion, type DecidePolicy } from "./policy.ts";
+import { CallLimiter } from "./limiter.ts";
+import { candidatePaths, mechanicalCheck, type MechanicalResult } from "./mechanical.ts";
+import { pickSecondOpinion, secondOpinionCandidates, type DecidePolicy } from "./policy.ts";
 import { pushQuarantine } from "./quarantine.ts";
 import {
   askClef,
   askSecondOpinion,
+  isThrottled,
   noul,
   readReflex,
   reflexQuestions,
@@ -97,13 +100,19 @@ export interface DecideHost {
   seal(proposalId: Id, reason: string, evidence: Proposal["evidence"]): void;
 }
 
-/** Decide runs in flight per colony (Clef and System 2 calls). */
-const MAX_CONCURRENT = 12;
+/** Decide runs in flight per colony. Most finish in the deterministic stage without a model call. */
+const MAX_CONCURRENT = 64;
 /** A proposal "checking" longer than this with no run in flight is restarted. */
 const STUCK_MS = 120_000;
 const HOUR_MS = 60 * 60_000;
 /** Vaccines per call. */
 const MAX_VACCINES = 64;
+/** How long one proposal may wait for System 2 (slots, rate, throttling) before it counts as unavailable. */
+const LLM_DEADLINE_MS = 90_000;
+/** Throttled System 2 attempts per model before the next model is tried. */
+const LLM_ATTEMPTS = 3;
+/** Trunk paths asked per proposal for import resolution. */
+const MAX_RESOLUTION_PATHS = 4_000;
 
 /** A vaccination batch as started. */
 export interface VaccinationResult {
@@ -121,6 +130,8 @@ export class DecideEngine {
   private readonly queue: Id[] = [];
   private active = 0;
   private syncing: Promise<void> | null = null;
+  /** Admission for System 2 calls (concurrency, per-minute rate per model, cooldown after throttling). */
+  private readonly limiter = new CallLimiter(8, 120);
 
   constructor(private readonly host: DecideHost) {
     this.store = new DecideStore(host.sql);
@@ -206,84 +217,95 @@ export class DecideEngine {
     const added = diffs.flatMap((d) => d.addedLines);
     const matching = this.store.matchingAntibodies(paths, added, policy.maxAntibodies);
 
-    // System 1.
-    const input: ReflexInput = {
-      intent: intent ?? { title: p.declared.summary || p.intentId, why: "" },
-      rule,
-      footprint: intent?.footprint ?? p.declared.footprint,
-      residual: innate.residual,
-      diffs,
-      antibodies: matching.map((s) => s.antibody),
-    };
-    const state = reflexState(input);
+    // Deterministic stage: import resolution against the trunk tree and the mechanical proof. No model.
+    // With policy.deterministic off the facts are still recorded (observed only), but nothing uses them.
+    const observed = await this.mechanical(p, innate, rule);
+    const mech = policy.deterministic ? observed : null;
     const clefStates = this.store.clefStates();
-    const skip = new Set(Object.entries(clefStates).filter(([, s]) => s === "off").map(([k]) => k));
-    let reflex: ReflexSignals | null = null;
-    let clefMs = 0;
-    let clefError = "";
-    try {
-      const r = await askClef(this.ai(), policy.reflexModel, state, reflexQuestions(input.antibodies, skip));
-      reflex = readReflex(
-        r.answers,
-        matching.map((s) => ({ id: s.antibody.id, threshold: s.antibody.threshold, state: s.state })),
-      );
-      clefMs = r.ms;
-      this.host.bump("decide.clef.tokens", r.tokens);
-    } catch (err) {
-      clefError = errorText(err);
-    }
     const base = {
       innate: { ok: innate.ok, failures: innate.failures },
       damage,
-      reflex,
+      ...(mech ? { mechanical: { verdict: mech.result.verdict, reasons: mech.result.reasons } } : {}),
+      antibodies: matching.length,
       autonomy: !vaccine && this.store.approvedLandings(region) >= policy.autonomyAfter,
       alerts: { used: this.store.escalationsSince(Date.now() - HOUR_MS), max: policy.alertsPerHour },
       detectors: clefStates,
       policy,
     };
-    const v1 = gate(base);
-    const d1 = await this.host.recordDecision({
-      kind: "triage",
-      subject: p.id,
-      layer: "reflex",
-      answers: { head: p.headSha, model: policy.reflexModel, ...(reflex ? { reflex } : { error: clefError }), rule: v1.rule, reasons: v1.reasons, damage: v1.damage, confidence: v1.confidence, ...(vaccine ? { vaccine: true } : {}) },
-      p: v1.p,
-      action: v1.action,
-    });
-
-    // System 2 when the reflex does not act alone.
-    let final: GateVerdict = v1;
+    const checks: CheckResult[] = [
+      ...innate.checks,
+      ...observed.result.checks.map((c, i) => ({ ...c, ms: i === 0 ? observed.ms : c.ms, ...(mech ? {} : { detail: `(observed only: policy.deterministic is off) ${c.detail ?? ""}`.slice(0, 1_000) }) })),
+    ];
+    let final: GateVerdict = gate(base);
+    let v1: GateVerdict | null = null;
+    let reflex: ReflexSignals | null | undefined;
     let llm: SecondOpinion | null | undefined;
-    let llmModel = "";
-    let llmMs = 0;
-    let llmError = "";
-    if (v1.action === "consult") {
-      llmModel = pickSecondOpinion(this.host.agent(p.agentId)?.model, policy.secondOpinionModels);
+    let state: Record<string, unknown> | null = null;
+
+    if (final.action === "screen") {
+      // System 1, given the deterministic facts.
+      const input: ReflexInput = {
+        intent: intent ?? { title: p.declared.summary || p.intentId, why: "" },
+        rule,
+        footprint: intent?.footprint ?? p.declared.footprint,
+        residual: innate.residual,
+        diffs,
+        antibodies: matching.map((s) => s.antibody),
+        ...(mech && mech.result.facts.length > 0 ? { facts: mech.result.facts } : {}),
+      };
+      state = reflexState(input);
+      const skip = new Set(Object.entries(clefStates).filter(([, s]) => s === "off").map(([k]) => k));
+      let clefMs = 0;
+      let clefError = "";
       try {
-        const r = await askSecondOpinion(this.ai(), llmModel, secondOpinionMessages(input, p.evidence.notVerified));
-        llm = r.opinion;
-        llmMs = r.ms;
-        this.host.bump("decide.llm.tokensIn", r.tokens.in);
-        this.host.bump("decide.llm.tokensOut", r.tokens.out);
+        const r = await askClef(this.ai(), policy.reflexModel, state, reflexQuestions(input.antibodies, skip));
+        reflex = readReflex(
+          r.answers,
+          matching.map((s) => ({ id: s.antibody.id, threshold: s.antibody.threshold, state: s.state })),
+        );
+        clefMs = r.ms;
+        this.host.bump("decide.clef.tokens", r.tokens);
       } catch (err) {
-        llm = null;
-        llmError = errorText(err);
+        reflex = null;
+        clefError = errorText(err);
       }
-      final = gate({ ...base, llm });
-      await this.host.recordDecision({
-        kind: "triage",
-        subject: p.id,
-        layer: "llm",
-        answers: { head: p.headSha, model: llmModel, ...(llm ? { verdict: llm } : { error: llmError }), rule: final.rule, reasons: final.reasons, damage: final.damage, ...(vaccine ? { vaccine: true } : {}) },
-        p: final.p,
-        action: final.action,
-        escalatedFrom: d1.id,
-      });
+      v1 = gate({ ...base, reflex });
+      final = v1;
+      checks.push({ name: `reflex: ${policy.reflexModel}`, ok: v1.action !== "escalate" && v1.detectors.length === 0, ms: clefMs, detail: reflex ? `${reflexSummary(reflex)}; confidence ${v1.confidence}` : `unavailable: ${clefError}` });
+      // Only decisions a model made go into the funnel; a proof that only needed antibody screening is not one.
+      const d1 =
+        v1.layer === "reflex"
+          ? await this.host.recordDecision({
+              kind: "triage",
+              subject: p.id,
+              layer: "reflex",
+              answers: { head: p.headSha, model: policy.reflexModel, ...(reflex ? { reflex } : { error: clefError }), rule: v1.rule, reasons: v1.reasons, damage: v1.damage, confidence: v1.confidence, ...(vaccine ? { vaccine: true } : {}) },
+              p: v1.p,
+              action: v1.action,
+            })
+          : null;
+
+      // System 2: only when the deterministic stage was inconclusive and the reflex cannot act alone.
+      if (v1.action === "consult") {
+        const so = await this.secondOpinion(p, input, policy);
+        llm = so.opinion;
+        final = gate({ ...base, reflex, llm });
+        checks.push({ name: `llm: ${so.model}`, ok: llm?.verdict === "approve", ms: so.ms, detail: llm ? `${llm.verdict}, needs_human ${llm.needsHuman}: ${llm.reason}` : `unavailable: ${so.error}` });
+        await this.host.recordDecision({
+          kind: "triage",
+          subject: p.id,
+          layer: "llm",
+          answers: { head: p.headSha, model: so.model, ...(llm ? { verdict: llm } : { error: so.error }), rule: final.rule, reasons: final.reasons, damage: final.damage, ...(vaccine ? { vaccine: true } : {}) },
+          p: final.p,
+          action: final.action,
+          ...(d1 ? { escalatedFrom: d1.id } : {}),
+        });
+      }
     }
 
     const now = Date.now();
     this.host.bump(`decide.${final.layer}.${final.action}`, 1);
-    if (!vaccine) this.probation(v1, final, llm, policy, now);
+    if (!vaccine && v1) this.probation(v1, final, llm, policy, now);
     this.store.recordOutcome({
       proposalId: p.id,
       region,
@@ -293,14 +315,11 @@ export class DecideEngine {
       risk: final.risk,
       detectors: final.detectors,
       vaccine: Boolean(vaccine),
-      state: JSON.stringify(state),
+      state: state ? JSON.stringify(state) : null,
       at: now,
     });
 
-    // Evidence: the innate checks and each layer's answer, carried into the lineage note on landing.
-    const checks: CheckResult[] = [...innate.checks];
-    checks.push({ name: `reflex: ${policy.reflexModel}`, ok: v1.action !== "escalate" && v1.detectors.length === 0, ms: clefMs, detail: reflex ? `${reflexSummary(reflex)}; confidence ${v1.confidence}` : `unavailable: ${clefError}` });
-    if (llm !== undefined) checks.push({ name: `llm: ${llmModel}`, ok: llm?.verdict === "approve", ms: llmMs, detail: llm ? `${llm.verdict}, needs_human ${llm.needsHuman}: ${llm.reason}` : `unavailable: ${llmError}` });
+    // Evidence: innate and deterministic checks plus each model's answer, carried into the lineage note on landing.
     checks.push({
       name: "gate",
       ok: final.action === "land",
@@ -319,7 +338,7 @@ export class DecideEngine {
     const reason = final.reasons.join("; ").slice(0, 1_500);
     if (vaccine) {
       // A vaccine stopped only because every model layer was down is not a catch: it is an error.
-      const blind = !reflex && !llm && innate.ok;
+      const blind = reflex === null && !llm && innate.ok && final.layer !== "deterministic";
       const outcome = blind ? "error" : final.action === "land" ? "missed" : final.action === "escalate" ? "escalated" : "returned";
       this.store.settleVaccine(vaccine.intentId, outcome, final.layer, reason, now);
       const verdict =
@@ -339,11 +358,72 @@ export class DecideEngine {
     this.publishMetrics(policy);
   }
 
-  /** Detector bookkeeping: fires, and System 2 overruling a System 1 alarm counts as "not useful". */
+  /**
+   * The deterministic stage for one proposal: every candidate path its changed import specifiers
+   * could resolve to is looked up in one TrunkDO.blobsFor call (the proposal's own writes layered
+   * on top), then the mechanical proof runs.
+   */
+  private async mechanical(p: Proposal, innate: InnateResult, rule: Rule | null): Promise<{ result: MechanicalResult; ms: number }> {
+    const t0 = Date.now();
+    const files = innate.files.map((f) => ({ path: f.path, before: f.before, after: f.after, unreadable: f.unreadable, binary: f.binary }));
+    const wanted = candidatePaths(files).slice(0, MAX_RESOLUTION_PATHS);
+    let trunk: Record<Path, Sha | null> = {};
+    if (wanted.length > 0) {
+      try {
+        trunk = await this.host.trunk().blobsFor(wanted);
+      } catch (err) {
+        const why = `trunk tree unavailable: ${errorText(err)}`;
+        return { result: { verdict: "inconclusive", reasons: [why], changes: [], facts: [], checks: [{ name: "deterministic: mechanical proof", ok: false, ms: 0, detail: `inconclusive: ${why}` }] }, ms: Date.now() - t0 };
+      }
+    }
+    const writes = new Map(p.writeSet.map((w) => [w.path, w.blob !== null]));
+    const existed = (path: Path): boolean => (trunk[path] ?? null) !== null;
+    const exists = (path: Path): boolean => (writes.has(path) ? writes.get(path)! : existed(path));
+    return { result: mechanicalCheck({ files, residual: innate.residual, rule, innateOk: innate.ok, exists, existed }), ms: Date.now() - t0 };
+  }
+
+  /**
+   * System 2 under admission control: a fast model from another family than the author's; on
+   * throttling it backs off (the model cools down for everyone) and then tries the next model.
+   * A proposal waits at most LLM_DEADLINE_MS; nothing else waits behind it.
+   */
+  private async secondOpinion(p: Proposal, input: ReflexInput, policy: DecidePolicy): Promise<{ opinion: SecondOpinion | null; model: string; ms: number; error: string }> {
+    this.limiter.configure(policy.llmConcurrency, policy.llmPerMinute);
+    const models = secondOpinionCandidates(this.host.agent(p.agentId)?.model, policy.secondOpinionModels);
+    const messages = secondOpinionMessages(input, p.evidence.notVerified);
+    const t0 = Date.now();
+    const deadline = t0 + LLM_DEADLINE_MS;
+    let error = "no second-opinion model configured";
+    let last = models[0] ?? "";
+    for (const model of models) {
+      last = model;
+      for (let attempt = 0; attempt < LLM_ATTEMPTS; attempt++) {
+        const release = await this.limiter.acquire(model, deadline);
+        if (!release) return { opinion: null, model, ms: Date.now() - t0, error: `no ${model} slot within ${LLM_DEADLINE_MS / 1000} s (rate limits)` };
+        try {
+          const r = await askSecondOpinion(this.ai(), model, messages);
+          this.host.bump("decide.llm.tokensIn", r.tokens.in);
+          this.host.bump("decide.llm.tokensOut", r.tokens.out);
+          return { opinion: r.opinion, model, ms: Date.now() - t0, error: "" };
+        } catch (err) {
+          error = errorText(err);
+          if (!isThrottled(err)) break;
+          this.host.bump("decide.llm.throttled", 1);
+          this.limiter.cooldown(model, 2_000 * 2 ** attempt);
+        } finally {
+          release();
+        }
+      }
+    }
+    return { opinion: null, model: last, ms: Date.now() - t0, error };
+  }
+
+  /** Detector bookkeeping: fires, and a higher layer overruling a System 1 alarm counts as "not useful". */
   private probation(v1: GateVerdict, final: GateVerdict, llm: SecondOpinion | null | undefined, policy: DecidePolicy, now: number): void {
-    const fired = new Set([...v1.detectors, ...final.detectors].filter((d) => d.startsWith("clef:") || d.startsWith("antibody:")));
+    const overruledByProof = new Set(final.overruled ?? []);
+    const fired = new Set([...v1.detectors, ...final.detectors, ...overruledByProof].filter((d) => d.startsWith("clef:") || d.startsWith("antibody:")));
     for (const id of fired) {
-      const overruled = llm?.verdict === "approve" && final.action === "land";
+      const overruled = overruledByProof.has(id) || (llm?.verdict === "approve" && final.action === "land");
       this.store.markDetector(id, { fires: 1, ...(overruled ? { notUseful: 1 } : {}) }, policy.probation, now);
     }
   }

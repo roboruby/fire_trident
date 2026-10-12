@@ -52,10 +52,13 @@ describe("morphology rules", () => {
     const res = await api("POST", `/colonies/${c.id}/rules`, {
       kind: "forbid-import",
       spec: { from: ["src/app/**"], module: "^\\.\\./lib", hint: "go through the public api" },
-      description: "App code must not reach into lib",
+      description: "App code must not reach into lib.",
     });
     expect(res.status).toBe(201);
     expect(res.body).toMatchObject({ violations: 1, intents: 1 });
+    // The rule's trailing period stays out of the intent title.
+    const snap = (await api<ColonySnapshot>("GET", `/colonies/${c.id}`)).body;
+    expect(snap.intents.map((i) => i.title)).toEqual(["App code must not reach into lib in src/app/main.ts"]);
   });
 
   it("rejects invalid rules with a 400", async () => {

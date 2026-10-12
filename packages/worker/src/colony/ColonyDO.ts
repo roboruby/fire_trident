@@ -721,6 +721,10 @@ export class ColonyDO extends DurableObject<Env> {
     this.requireAgent(input.agentId);
     const intentRow = this.intentRow(input.intentId);
     if (!intentRow) throw ftError(404, `unknown intent ${input.intentId}`);
+    // Idempotent: a retry of the same (agent, intent, head commit) gets the proposal it already made,
+    // even after that proposal landed or went back.
+    const repeat = this.repeatedProposal(input.agentId, intentRow.id, input.headSha);
+    if (repeat) return repeat;
     this.assertProposable(intentRow, input.agentId);
     const writeSet = this.normalizeVersions(input.writeSet);
     if (writeSet.length === 0) throw ftError(400, "proposal write set is empty");
@@ -1054,6 +1058,30 @@ export class ColonyDO extends DurableObject<Env> {
     };
     this.decideEngine = new DecideEngine(host);
     return this.decideEngine;
+  }
+
+  /** Returns that leave a retry of the same commit welcome (nothing was judged wrong with it). */
+  private static readonly TRANSIENT_RETURN = /lane unavailable|landing failed|decide pipeline failed|head commit changed|second opinion unavailable|trunk kept moving/i;
+
+  /**
+   * The proposal this agent already made for this intent at this head commit, if any (agents retry
+   * after timeouts). One sent back for a transient reason does not count: proposing the same commit
+   * again is then a fresh attempt.
+   */
+  private repeatedProposal(agentId: Id, intentId: Id, headSha: string): Proposal | null {
+    if (typeof headSha !== "string" || headSha === "") return null;
+    const row = this.sql
+      .exec<{ data: string }>(
+        "SELECT data FROM proposals WHERE agent_id = ? AND intent_id = ? AND json_extract(data, '$.headSha') = ? ORDER BY created_at DESC LIMIT 1",
+        agentId,
+        intentId,
+        headSha,
+      )
+      .toArray()[0];
+    if (!row) return null;
+    const p = JSON.parse(row.data) as Proposal;
+    if (p.status === "returned" && ColonyDO.TRANSIENT_RETURN.test(p.reason ?? "")) return null;
+    return p;
   }
 
   /** The colony's vaccine agent (registered once, marked seen on every batch so it is never reaped mid-batch). */
@@ -1477,17 +1505,26 @@ export class ColonyDO extends DurableObject<Env> {
     return true;
   }
 
-  /** Lease a workspace for a reserved intent, then deposit claims. Undoes the reservation if the pool is empty. */
+  /**
+   * Admit the agent and claim the intent's footprint in every region it touches (each region
+   * decides atomically, see admitClaims), then lease a workspace. Undoes the reservation and the
+   * claims if a region refuses or the pool is empty.
+   */
   private async leaseAndClaim(agentId: Id, kind: AgentKind, intent: Intent): Promise<TakeResult> {
     const recent = { paths: new Set(intent.footprint), regions: new Set(groupByRegion(intent.footprint, this.requireColony().regionDepth).keys()), doneAt: null as number | null };
     this.recentClaims.set(agentId, recent);
+    const closed = await this.admitClaims(agentId, intent);
+    const claimedAt = Date.now();
+    recent.doneAt = claimedAt; // the claims are in the regions' readings from here on
     let lease: WorkspaceLease | null = null;
-    let failure = "pool empty";
-    try {
-      lease = await this.poolStub().lease(agentId, this.requireColony().trunkSha);
-    } catch (err) {
-      failure = `lease failed: ${errorText(err)}`;
-      console.error(`PoolDO.lease failed for ${agentId}: ${failure}`);
+    let failure = closed.length > 0 ? `admission closed in ${closed.join(", ")}` : "pool empty";
+    if (closed.length === 0) {
+      try {
+        lease = await this.poolStub().lease(agentId, this.requireColony().trunkSha);
+      } catch (err) {
+        failure = `lease failed: ${errorText(err)}`;
+        console.error(`PoolDO.lease failed for ${agentId}: ${failure}`);
+      }
     }
     const colony = this.requireColony();
     const now = Date.now();
@@ -1498,29 +1535,53 @@ export class ColonyDO extends DurableObject<Env> {
       const fx = this.effects(colony.regionDepth);
       if (stillOurs) {
         this.sql.exec("UPDATE intents SET status = 'open', assigned_to = NULL, updated_at = ? WHERE id = ?", now, intent.id);
-        fx.batch.clear(intent.footprint, { agentId, intentId: intent.id, kind: "claim" });
         fx.events.push({ t: "intent", at: now, intentId: intent.id, status: "open", title: intent.title, footprint: intent.footprint });
       }
+      // The claims admission deposited go back with the reservation.
+      fx.batch.clear(intent.footprint, { agentId, intentId: intent.id, kind: "claim" });
       this.sql.exec("UPDATE agents SET intent_id = NULL, workspace = NULL WHERE id = ? AND intent_id = ?", agentId, intent.id);
       this.setAgentState(agentId, "waiting", now);
       if (lease) fx.release.add(agentId);
       await this.flushEffects(fx);
-      return { wait: true, retryInMs: jitter(LEASE_RETRY_MS, this.rand), reason: lease ? "intent was reassigned while leasing" : failure };
+      const retryMs = closed.length > 0 ? CLOSED_RETRY_MS : LEASE_RETRY_MS;
+      return { wait: true, retryInMs: jitter(retryMs, this.rand), reason: lease ? "intent was reassigned while leasing" : failure };
     }
     this.sql.exec("UPDATE agents SET state = 'working', intent_id = ?, workspace = ?, last_seen = ? WHERE id = ?", intent.id, JSON.stringify(lease), now, agentId);
-    this.lastRefresh.set(agentId, now);
-    const batch = new FieldBatch(colony.regionDepth).deposit("claim", intent.footprint, CLAIM_STRENGTH, now, { agentId, intentId: intent.id });
-    try {
-      await this.applyField(batch);
-    } finally {
-      recent.doneAt = Date.now();
-    }
+    this.lastRefresh.set(agentId, claimedAt);
     this.hub.push([
       { t: "intent", at: now, intentId: intent.id, status: "claimed", title: intent.title, footprint: intent.footprint },
       { t: "agent", at: now, agentId, kind, state: "working", intentId: intent.id, paths: intent.footprint },
     ]);
     this.bump("takes", 1, now);
     return this.assignment({ ...intent, status: "claimed", assignedTo: agentId }, lease);
+  }
+
+  /**
+   * Harvester-ant admission, decided by each region the intent touches (RegionDO.admit) in one
+   * step with the claim deposit, so concurrent takes cannot overfill a region whatever their field
+   * views missed. Returns the regions that refused. An unreachable region refuses (fail closed); a
+   * region still on the previous version (mid-deploy) takes a plain claim deposit instead.
+   */
+  private async admitClaims(agentId: Id, intent: Intent): Promise<string[]> {
+    const closed: string[] = [];
+    await Promise.all(
+      [...groupByRegion(intent.footprint, this.requireColony().regionDepth)].map(async ([region, paths]) => {
+        try {
+          const stub = await this.region(region);
+          try {
+            if (!(await stub.admit({ agentId, intentId: intent.id, paths, strength: CLAIM_STRENGTH })).admitted) closed.push(region);
+          } catch (err) {
+            if (!/does not implement/i.test(errorText(err))) throw err;
+            const at = Date.now();
+            await stub.apply({ deposit: paths.map((path) => ({ kind: "claim" as const, path, strength: CLAIM_STRENGTH, at, agentId, intentId: intent.id })) });
+          }
+        } catch (err) {
+          console.error(`admission failed in region ${region} for ${agentId}: ${errorText(err)}`);
+          closed.push(region);
+        }
+      }),
+    );
+    return closed;
   }
 
   /** Recent claims of other agents that a reading started at `since` may not include (prunes old entries). */
@@ -1820,7 +1881,7 @@ export class ColonyDO extends DurableObject<Env> {
     let ready = this.configured.get(region);
     if (!ready) {
       ready = (async () => {
-        await stub.configure({ colonyId, region });
+        await stub.configure({ colonyId, region, regionDepth: this.requireColony().regionDepth });
         this.sql.exec("INSERT OR IGNORE INTO regions (name, created_at) VALUES (?, ?)", region, Date.now());
       })();
       this.configured.set(region, ready);

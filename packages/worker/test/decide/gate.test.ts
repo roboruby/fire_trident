@@ -34,6 +34,48 @@ describe("noulConfidence", () => {
   });
 });
 
+describe("gate: deterministic stage (before any model)", () => {
+  const pass = { verdict: "pass" as const, reasons: ["1 file proven"] };
+  const fail = { verdict: "fail" as const, reasons: ["src/a.ts:1 './x.ts' names nothing"] };
+  const inconclusive = { verdict: "inconclusive" as const, reasons: ["changes more than import specifiers"] };
+
+  it("D3 lands a proven change with two deterministic confirmations and no model", () => {
+    const v = gate(input({ reflex: undefined, mechanical: pass, antibodies: 0 }));
+    expect(v).toMatchObject({ action: "land", layer: "deterministic", rule: "D3 innate+proof", confirmations: ["innate", "deterministic"], p: 1 });
+  });
+
+  it("D1 returns a change whose imports resolve to nothing or to another module", () => {
+    const v = gate(input({ reflex: undefined, mechanical: fail }));
+    expect(v).toMatchObject({ action: "return", layer: "deterministic", rule: "D1 resolution" });
+    expect(v.reasons[0]).toContain("deterministic:");
+  });
+
+  it("D2 returns innate failures without damage at once, but screens them when there is damage", () => {
+    expect(gate(input({ reflex: undefined, innate: { ok: false, failures: ["2 violations left"] } }))).toMatchObject({ action: "return", rule: "D2 innate" });
+    expect(gate(input({ reflex: undefined, innate: { ok: false, failures: ["adds a violation"] }, damage: LOGS_SECRET }))).toMatchObject({ action: "screen" });
+  });
+
+  it("D4 screens inconclusive changes and proofs with antibodies to answer", () => {
+    expect(gate(input({ reflex: undefined, mechanical: inconclusive })).action).toBe("screen");
+    expect(gate(input({ reflex: undefined, mechanical: pass, antibodies: 2 })).action).toBe("screen");
+  });
+
+  it("M1: after screening, a proof lands unless an antibody hit; Clef alarms are only advisory", () => {
+    const alarmed = gate(input({ reflex: { ...CLEAN, needsHuman: 0.97 }, mechanical: pass, antibodies: 1 }));
+    expect(alarmed).toMatchObject({ action: "land", layer: "deterministic", rule: "M1 innate+proof", overruled: ["clef:needs_human"] });
+    expect(alarmed.reasons.join(" ")).toContain("advisory only");
+    const hit = gate(input({ reflex: { ...CLEAN, antibodies: [{ id: "ab_1", p: 0.95, threshold: 0.8, state: "active" }] }, mechanical: pass, antibodies: 1 }));
+    expect(hit).toMatchObject({ action: "return", layer: "reflex", rule: "M1 proof+antibody", detectors: ["antibody:ab_1"] });
+  });
+
+  it("never consults System 2 for a proven or a refuted change", () => {
+    for (const mechanical of [pass, fail]) {
+      const v = gate(input({ reflex: { ...CLEAN, needsHuman: 0.6 }, mechanical }));
+      expect(v.action).not.toBe("consult");
+    }
+  });
+});
+
 describe("gate: System 1 phase", () => {
   it("R1 escalates a confident detector hit with damage without consulting System 2", () => {
     const v = gate(input({ reflex: SECRET, damage: LOGS_SECRET }));

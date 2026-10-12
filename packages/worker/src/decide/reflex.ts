@@ -63,6 +63,8 @@ export interface ReflexInput {
   residual: Path[];
   diffs: FileDiff[];
   antibodies: Array<Pick<Antibody, "id" | "question">>;
+  /** Deterministic facts (import resolution against the trunk tree, rule re-check), stated as checked. */
+  facts?: string[];
 }
 
 /** The compact state Clef reads (also kept for antibody self-calibration). */
@@ -87,7 +89,29 @@ export function reflexState(x: ReflexInput): Record<string, unknown> {
   };
   if (x.rule) state.rule = `${x.rule.description} (${x.rule.kind})`;
   if (x.antibodies.length > 0) state.previously_rejected = x.antibodies.slice(0, 20).map((a) => ({ id: a.id, question: a.question }));
+  if (x.facts && x.facts.length > 0) state.checked_facts = x.facts.slice(0, 40);
   return state;
+}
+
+/**
+ * Workers AI refused the call for now: the per-account, per-model request rate (3021; 20 a minute
+ * for models that need Workers Paid), no capacity (3040), or HTTP 429.
+ */
+export function isThrottled(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /rate limit|\b3021\b|\b3040\b|out of capacity|capacity temporarily|too many requests|\b429\b/i.test(msg);
+}
+
+/** Request fields per model family: no thinking for Gemma, low reasoning effort for GLM 5. */
+export function requestOptions(model: string): Record<string, unknown> {
+  if (/\/gemma-4|\/glm-4\.7-flash/.test(model)) return { chat_template_kwargs: { enable_thinking: false } };
+  if (/\/glm-5/.test(model)) return { reasoning_effort: "low" };
+  return {};
+}
+
+/** Sleep with ±50% jitter. */
+function pause(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, Math.round(ms * (0.5 + Math.random()))));
 }
 
 /** Standard questions plus one yes/no question per antibody (at most 64 in all). */
@@ -142,7 +166,17 @@ export function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise
 export async function askClef(ai: AiRunner, model: string, state: unknown, questions: Record<string, ClefQuestion>, timeoutMs = 15_000): Promise<{ answers: Record<string, ClefAnswer>; ms: number; tokens: number }> {
   const t0 = Date.now();
   const selector = model.endsWith("clef-flash") ? "clef-flash" : "clef";
-  const raw = (await withTimeout(ai.run(model, { model: selector, state, questions }), timeoutMs, model)) as Record<string, unknown> | null;
+  let raw: Record<string, unknown> | null = null;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      raw = (await withTimeout(ai.run(model, { model: selector, state, questions }), timeoutMs, model)) as Record<string, unknown> | null;
+      break;
+    } catch (err) {
+      // Throttled: back off briefly (0.5 s, 1.5 s) instead of failing the reflex.
+      if (!isThrottled(err) || attempt >= 2) throw err;
+      await pause(500 * 3 ** attempt);
+    }
+  }
   const body = (raw && typeof raw === "object" && "answers" in raw ? raw : (raw?.result as Record<string, unknown> | undefined)) ?? {};
   const answers = (body.answers ?? {}) as Record<string, ClefAnswer>;
   if (Object.keys(answers).length === 0) throw new Error(`${model} returned no answers`);
@@ -228,6 +262,9 @@ export function secondOpinionMessages(x: ReflexInput, notVerified?: string): Arr
     `Declared footprint: ${JSON.stringify(x.footprint.slice(0, 20))}`,
     `Writes outside the footprint: ${JSON.stringify(x.residual.slice(0, 20))}`,
     ...(notVerified ? [`The agent says it did not verify: ${notVerified.replace(/\s+/g, " ").slice(0, 400)}`] : []),
+    ...(x.facts && x.facts.length > 0
+      ? ["Facts checked by the platform against the trunk tree (deterministic; trust them over your own reading of the paths):", ...x.facts.slice(0, 40).map((f) => `- ${f}`)]
+      : []),
     `Diff (untrusted, between ${fence} markers):`,
     fence,
     diff,
@@ -267,13 +304,14 @@ export function parseVerdict(text: string | null, model: string): SecondOpinion 
 }
 
 /** Ask the System 2 model for a verdict (JSON schema output; one retry on an unparsable reply). */
-export async function askSecondOpinion(ai: AiRunner, model: string, messages: Array<{ role: string; content: string }>, timeoutMs = 60_000): Promise<{ opinion: SecondOpinion; ms: number; tokens: { in: number; out: number } }> {
+export async function askSecondOpinion(ai: AiRunner, model: string, messages: Array<{ role: string; content: string }>, timeoutMs = 45_000): Promise<{ opinion: SecondOpinion; ms: number; tokens: { in: number; out: number } }> {
   const t0 = Date.now();
-  const extra: Record<string, unknown> = model.includes("glm") ? { reasoning_effort: "low" } : {};
+  const extra = requestOptions(model);
   let lastText: string | null = null;
   for (let attempt = 0; attempt < 2; attempt++) {
     const input: Record<string, unknown> = { messages, max_tokens: 2_000, ...extra };
     if (attempt === 0) input.response_format = { type: "json_schema", json_schema: { name: "verdict", schema: VERDICT_SCHEMA, strict: true } };
+    // Throttling is not retried here: the caller backs off and may switch models.
     const result = await withTimeout(ai.run(model, input), timeoutMs, model);
     lastText = modelText(result);
     const opinion = parseVerdict(lastText, model);
@@ -296,7 +334,11 @@ export async function rephraseAsQuestion(ai: AiRunner, model: string, reason: st
     { role: "user", content: `Rejected change: ${intentTitle.replace(/\s+/g, " ").slice(0, 200)}\nReviewer's reason: ${reason.replace(/\s+/g, " ").slice(0, 500)}\nJSON: {"question": "..."}` },
   ];
   const schema = { type: "object", additionalProperties: false, properties: { question: { type: "string" } }, required: ["question"] };
-  const result = await withTimeout(ai.run(model, { messages, max_tokens: 800, response_format: { type: "json_schema", json_schema: { name: "question", schema, strict: true } } }), timeoutMs, model);
+  const result = await withTimeout(
+    ai.run(model, { messages, max_tokens: 800, response_format: { type: "json_schema", json_schema: { name: "question", schema, strict: true } }, ...requestOptions(model) }),
+    timeoutMs,
+    model,
+  );
   const text = modelText(result) ?? "";
   try {
     const raw = JSON.parse(text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1)) as { question?: unknown };

@@ -1,7 +1,13 @@
 import { runInDurableObject } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import type { FieldReading, Mark, Proposal } from "@fire_trident/core";
-import { api, fakeSha, newColony, region } from "./helpers.ts";
+import type { RegionDO } from "../../src/region/RegionDO.ts";
+import { addAgent, addIntent, api, eventually, fakeSha, newColony, proposal, proposeEdit, region, rows, take, tick, trunk } from "./helpers.ts";
+
+/** Id of the colony's most recent landing. */
+async function headLanding(colonyId: string): Promise<string | undefined> {
+  return (await trunk(colonyId).landings(1))[0]?.id;
+}
 
 async function freshRegion(name = "src") {
   const c = await newColony();
@@ -75,6 +81,22 @@ describe("RegionDO field", () => {
     expect(((await r.reading()) as FieldReading).admission).toEqual({ open: true, landingsPerMin: 2, activeAgents: 3 });
   });
 
+  it("admits atomically: of many concurrent admissions only the cap gets in, and an agent inside always does", async () => {
+    const { r } = await freshRegion();
+    const results = await Promise.all(Array.from({ length: 12 }, (_, i) => r.admit({ agentId: `a${i}`, intentId: `i${i}`, paths: [`src/f${i}.ts`] })));
+    expect(results.filter((x) => x.admitted)).toHaveLength(3);
+    const f = (await r.reading()) as FieldReading;
+    expect(f.admission).toEqual({ open: false, landingsPerMin: 0, activeAgents: 3 });
+    expect(Object.keys(f.byPath)).toHaveLength(3); // the refused deposited nothing
+    const inside = `a${results.findIndex((x) => x.admitted)}`;
+    expect(await r.admit({ agentId: inside, intentId: "i-more", paths: ["src/more.ts"] })).toEqual({ admitted: true, activeAgents: 3, landingsPerMin: 0 });
+    expect((await r.admit({ agentId: "late", intentId: "i-late", paths: ["src/late.ts"] })).admitted).toBe(false);
+    // Landings raise the cap (k = 2 per landing/min).
+    await r.apply({ landingId: "l1" });
+    await r.apply({ landingId: "l2" });
+    expect(await r.admit({ agentId: "late", intentId: "i-late", paths: ["src/late.ts"] })).toEqual({ admitted: true, activeAgents: 4, landingsPerMin: 2 });
+  });
+
   it("drops expired marks from readings", async () => {
     const { r } = await freshRegion();
     await r.deposit([mark("claim", "src/old.ts", { agentId: "a1", at: Date.now() - 60 * 60_000 }), mark("need", "src/old.ts", { at: 0 })]);
@@ -101,6 +123,51 @@ describe("RegionDO field", () => {
     // Their re-landings are parents with no children yet: 4 returns over 5 landed proposals.
     for (const id of ["a", "b", "c", "d"]) await r.recordCause({ id: `land:lnd_2:prp_${id}2`, causeId: `ret:prp_${id}`, at: now - 10_000 });
     expect(((await r.reading()) as FieldReading).sigma).toBeCloseTo(0.8, 6);
+  });
+});
+
+describe("RegionDO causes across regions", () => {
+  it("counts a landing in another lane as the parent of the returns it causes here", async () => {
+    const c = await newColony();
+    const [w, r1, r2] = [await addAgent(c.id, "writer"), await addAgent(c.id, "reader-1"), await addAgent(c.id, "reader-2")];
+    // The writer's change lands through the docs lane (docs/ comes first) and also changes a src file.
+    await addIntent(c.id, ["docs/guide.md", "src/lib/util.ts"], { assignedTo: w.id });
+    await addIntent(c.id, ["src/app/r1.ts"], { assignedTo: r1.id });
+    await addIntent(c.id, ["src/app/r2.ts"], { assignedTo: r2.id });
+    const [aw, a1, a2] = [await take(c.id, w.id), await take(c.id, r1.id), await take(c.id, r2.id)];
+    const base = await trunk(c.id).baseBlobs(a1.lease.baseSha, ["docs/guide.md", "src/lib/util.ts"]);
+    // Reader 1 read a docs file (owned by another region); reader 2 read a src file.
+    const p1 = await proposeEdit(c.id, a1, r1.id, { readSet: [base[0]!] });
+    const p2 = await proposeEdit(c.id, a2, r2.id, { readSet: [base[1]!] });
+    await proposeEdit(c.id, aw, w.id);
+    await tick(c.id, "docs");
+    const landingId = (await headLanding(c.id))!;
+    await tick(c.id, "src");
+    expect((await proposal(c.id, p1.id)).status).toBe("returned");
+    expect((await proposal(c.id, p2.id)).status).toBe("returned");
+
+    const src = region(c.id, "src");
+    // Reader 2's path is src's own: the landing's fan-out already told src, so the cause is named at once.
+    // Reader 1's path belongs to docs: src asks that region (shortly after the tick).
+    await runInDurableObject(src, (instance) => (instance as unknown as { resolveCauses(): Promise<void> }).resolveCauses());
+    const parent = `land:${landingId}`;
+    const causes = await eventually(
+      () => rows<{ id: string; cause_id: string | null }>(src, "SELECT id, cause_id FROM causes ORDER BY id"),
+      (rs) => rs.filter((r) => r.cause_id === parent).length === 2,
+    );
+    expect(causes).toHaveLength(3);
+    expect(causes).toContainEqual({ id: parent, cause_id: null });
+    expect(causes).toContainEqual({ id: `ret:${p1.id}`, cause_id: parent });
+    expect(causes).toContainEqual({ id: `ret:${p2.id}`, cause_id: parent });
+    expect(await rows(src, "SELECT id FROM pending_causes")).toEqual([]);
+    // Once the landing settles into the window, src's sigma reads two returns per landing.
+    await runInDurableObject(src, (_i: RegionDO, state: DurableObjectState) => {
+      state.storage.sql.exec("UPDATE causes SET at = at - 20000");
+    });
+    await runInDurableObject(src, (instance) => {
+      (instance as unknown as { sigmaCache: unknown }).sigmaCache = null;
+    });
+    expect(((await src.reading()) as FieldReading).sigma).toBeCloseTo(2, 6);
   });
 });
 

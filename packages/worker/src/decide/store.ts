@@ -100,11 +100,28 @@ export class DecideStore {
     }
   }
 
-  /** Apply a partial policy; returns the result. */
+  /**
+   * Apply a partial policy; returns the result. Only the keys ever set are stored, so a colony
+   * keeps following the defaults for everything it did not override.
+   */
   setPolicy(patch: unknown): DecidePolicy {
-    const next = mergePolicy(this.policy(), patch);
+    const row = this.sql.exec<{ v: string }>("SELECT v FROM decide_policy WHERE k = 'policy'").toArray()[0];
+    let stored: Record<string, unknown> = {};
+    try {
+      stored = row ? (JSON.parse(row.v) as Record<string, unknown>) : {};
+    } catch {
+      stored = {};
+    }
+    const next: Record<string, unknown> = { ...stored };
+    if (patch && typeof patch === "object") {
+      const known = new Set(Object.keys(DEFAULT_POLICY));
+      for (const [k, v] of Object.entries(patch as Record<string, unknown>)) {
+        if (!known.has(k)) continue;
+        next[k] = k === "probation" && v && typeof v === "object" ? { ...((stored.probation as object | undefined) ?? {}), ...(v as object) } : v;
+      }
+    }
     this.sql.exec("INSERT INTO decide_policy (k, v) VALUES ('policy', ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v", JSON.stringify(next));
-    return next;
+    return mergePolicy(DEFAULT_POLICY, next);
   }
 
   /** A small key-value slot (vaccine agent id, sync markers). */
@@ -186,8 +203,8 @@ export class DecideStore {
   }
 
   /**
-   * Approved landings in a region since its last revocation: proposals a higher layer (System 2 or
-   * a human) approved that then landed. Reads the colony's proposals table.
+   * Approved landings in a region since its last revocation: proposals a deterministic proof,
+   * System 2 or a human approved that then landed. Reads the colony's proposals table.
    */
   approvedLandings(region: string): number {
     const since = this.sql.exec<{ at: number }>("SELECT at FROM autonomy_revocations WHERE region = ?", region).toArray()[0]?.at ?? 0;
@@ -195,7 +212,7 @@ export class DecideStore {
       .exec<{ n: number }>(
         `SELECT COUNT(*) AS n FROM decide_outcomes d JOIN proposals p ON p.id = d.proposal_id
          WHERE d.region = ? AND d.vaccine = 0 AND p.status = 'landed' AND COALESCE(d.human_at, d.at) > ?
-           AND ((d.layer = 'llm' AND d.action = 'land') OR d.human = 'approve')`,
+           AND ((d.layer IN ('llm', 'deterministic') AND d.action = 'land') OR d.human = 'approve')`,
         region,
         since,
       )

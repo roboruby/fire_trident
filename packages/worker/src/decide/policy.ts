@@ -10,6 +10,8 @@ export type DetectorState = "active" | "advisory" | "off";
 export interface DecidePolicy {
   /** Run the reflex arc on proposals (also needs the AI binding). */
   enabled: boolean;
+  /** Let a mechanical proof (decide/mechanical.ts) confirm a change without any model. */
+  deterministic: boolean;
   /** System 1: the decision model asked first. */
   reflexModel: string;
   /** System 2 candidates; the first whose family differs from the authoring agent's is used. */
@@ -30,13 +32,23 @@ export interface DecidePolicy {
   probation: { advisory: number; off: number; minFires: number };
   /** Matching antibodies asked per proposal (one Clef call takes 64 questions; 4 are the standard ones). */
   maxAntibodies: number;
+  /** System 2 calls in flight at once, per colony. */
+  llmConcurrency: number;
+  /** System 2 calls started per minute, per colony and model (Workers AI allows 300, or 20 for models that need Workers Paid). */
+  llmPerMinute: number;
 }
 
-/** Defaults: measured Clef (27B) separates clean from bad changes far better than clef-flash on this task. */
+/**
+ * Defaults. Clef (27B) separates clean from bad changes far better than clef-flash on this task.
+ * System 2 models answer fast and get Workers AI's default 300 requests a minute (models that need
+ * Workers Paid get 20, which stalls a swarm): gemma-4-26b answers in 1-2 s; gpt-oss-120b covers
+ * authors from the Gemma family.
+ */
 export const DEFAULT_POLICY: DecidePolicy = {
   enabled: true,
+  deterministic: true,
   reflexModel: "@cf/cloudflare/clef",
-  secondOpinionModels: ["@cf/openai/gpt-oss-120b", "@cf/zai-org/glm-5.3"],
+  secondOpinionModels: ["@cf/google/gemma-4-26b-a4b-it", "@cf/openai/gpt-oss-120b", "@cf/zai-org/glm-4.7-flash"],
   confidence: 0.8,
   hit: 0.5,
   needsHuman: 0.5,
@@ -45,6 +57,8 @@ export const DEFAULT_POLICY: DecidePolicy = {
   autonomyAfter: 3,
   probation: { advisory: 0.1, off: 0.25, minFires: 5 },
   maxAntibodies: 60,
+  llmConcurrency: 8,
+  llmPerMinute: 120,
 };
 
 function num(v: unknown, lo: number, hi: number, fallback: number): number {
@@ -63,6 +77,7 @@ export function mergePolicy(base: DecidePolicy, patch: unknown): DecidePolicy {
   const models = Array.isArray(p.secondOpinionModels) ? p.secondOpinionModels.map((m) => model(m, "")).filter(Boolean) : [];
   return {
     enabled: typeof p.enabled === "boolean" ? p.enabled : base.enabled,
+    deterministic: typeof p.deterministic === "boolean" ? p.deterministic : base.deterministic,
     reflexModel: model(p.reflexModel, base.reflexModel),
     secondOpinionModels: models.length > 0 ? models.slice(0, 5) : base.secondOpinionModels,
     confidence: num(p.confidence, 0, 1, base.confidence),
@@ -77,6 +92,8 @@ export function mergePolicy(base: DecidePolicy, patch: unknown): DecidePolicy {
       minFires: Math.floor(num(prob.minFires, 1, 10_000, base.probation.minFires)),
     },
     maxAntibodies: Math.floor(num(p.maxAntibodies, 0, 60, base.maxAntibodies)),
+    llmConcurrency: Math.floor(num(p.llmConcurrency, 1, 64, base.llmConcurrency)),
+    llmPerMinute: Math.floor(num(p.llmPerMinute, 1, 3_000, base.llmPerMinute)),
   };
 }
 
@@ -95,8 +112,14 @@ export function modelFamily(id: string | undefined | null): string {
 
 /** The System 2 model for a change written by `authorModel`: the first candidate from a different family. */
 export function pickSecondOpinion(authorModel: string | undefined, candidates: readonly string[]): string {
+  return secondOpinionCandidates(authorModel, candidates)[0] ?? DEFAULT_POLICY.secondOpinionModels[0]!;
+}
+
+/** System 2 models to try, in order: every candidate from a different family than the author's (all of them when none is). */
+export function secondOpinionCandidates(authorModel: string | undefined, candidates: readonly string[]): string[] {
   const author = modelFamily(authorModel);
-  return candidates.find((c) => modelFamily(c) !== author) ?? candidates[0] ?? DEFAULT_POLICY.secondOpinionModels[0]!;
+  const other = candidates.filter((c) => modelFamily(c) !== author);
+  return [...new Set(other.length > 0 ? other : candidates)];
 }
 
 /**

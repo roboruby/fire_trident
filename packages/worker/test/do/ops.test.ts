@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { ColonyEvent, FieldReading, Rule } from "@fire_trident/core";
 import { METRIC_KEYS, SERIES_BUCKETS } from "../../src/colony/metrics.ts";
 import type { AgentListEntry, ColonySummary, SnapshotWithSeries } from "../../src/colony/metrics.ts";
-import { addAgent, addIntent, api, colony, newColony, proposeEdit, take, tick } from "./helpers.ts";
+import { addAgent, addIntent, api, colony, newColony, pool, proposeEdit, region, rows, take, tick, trunk } from "./helpers.ts";
 
 type AgentList = { colonyId: string; total: number; byState: Record<string, number>; agents: AgentListEntry[] };
 const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
@@ -157,5 +157,31 @@ describe("DELETE /api/colonies/:id", () => {
     const back = await api("POST", "/colonies", { name: c.name });
     expect(back.status).toBe(201);
     expect((await api<SnapshotWithSeries>("GET", `/colonies/${c.id}`)).body.intents).toEqual([]);
+  });
+
+  it("destroys every object the colony created: its regions (field, lane, alarm), trunk and pool", async () => {
+    const c = await newColony();
+    const agent = await addAgent(c.id);
+    await addIntent(c.id, ["src/lib/util.ts", "docs/guide.md"]);
+    const a = await take(c.id, agent.id);
+    await proposeEdit(c.id, a, agent.id);
+    const before = await region(c.id, "src").status();
+    expect(before.lane).toBe(1);
+    expect(before.marks).toBeGreaterThan(0);
+    expect(before.nextTickAt).not.toBeNull();
+    expect((await trunk(c.id).state()).head).not.toBe("");
+
+    const res = await api<{ ok: boolean; objects: Array<{ object: string; cleared: boolean; detail?: string }> }>("DELETE", `/colonies/${c.id}`);
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    for (const object of [`RegionDO ${c.id}:src`, `RegionDO ${c.id}:docs`, `TrunkDO ${c.id}`, `PoolDO ${c.id}`, `ColonyDO ${c.id}`]) {
+      expect(res.body.objects).toContainEqual({ object, cleared: true });
+    }
+    for (const name of ["src", "docs"]) {
+      expect(await region(c.id, name).status()).toMatchObject({ lane: 0, marks: 0, fluxPerMin: 0, nextTickAt: null });
+      expect(await rows(region(c.id, name), "SELECT id FROM causes UNION ALL SELECT k FROM meta")).toEqual([]);
+    }
+    expect((await trunk(c.id).state()).head).toBe("");
+    expect((await pool(c.id).state()).next).toBe(0);
   });
 });

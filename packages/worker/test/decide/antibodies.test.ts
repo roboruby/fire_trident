@@ -11,7 +11,7 @@ import {
   fallbackQuestion,
   parseAntibodyFile,
 } from "../../src/decide/antibodies.ts";
-import { DEFAULT_POLICY, mergePolicy, modelFamily, pickSecondOpinion, probationState } from "../../src/decide/policy.ts";
+import { DEFAULT_POLICY, mergePolicy, modelFamily, pickSecondOpinion, probationState, secondOpinionCandidates } from "../../src/decide/policy.ts";
 import { worse } from "../../src/decide/store.ts";
 
 describe("deriveMatcher", () => {
@@ -126,8 +126,10 @@ describe("policy", () => {
     expect(modelFamily("@cf/zai-org/glm-5.3-flash")).toBe("zai-org");
     expect(modelFamily("claude-sonnet-5")).toBe("anthropic");
     const c = DEFAULT_POLICY.secondOpinionModels;
-    expect(pickSecondOpinion("@cf/zai-org/glm-5.3-flash", c)).toBe("@cf/openai/gpt-oss-120b");
-    expect(pickSecondOpinion("@cf/openai/gpt-oss-20b", c)).toBe("@cf/zai-org/glm-5.3");
-    expect(pickSecondOpinion(undefined, c)).toBe("@cf/openai/gpt-oss-120b");
+    expect(pickSecondOpinion("@cf/zai-org/glm-5.3-flash", c)).toBe("@cf/google/gemma-4-26b-a4b-it");
+    expect(pickSecondOpinion("@cf/google/gemma-4-26b-a4b-it", c)).toBe("@cf/openai/gpt-oss-120b");
+    expect(pickSecondOpinion(undefined, c)).toBe("@cf/google/gemma-4-26b-a4b-it");
+    expect(secondOpinionCandidates("@cf/google/gemma-4-26b-a4b-it", c)).toEqual(["@cf/openai/gpt-oss-120b", "@cf/zai-org/glm-4.7-flash"]);
+    expect(secondOpinionCandidates("@cf/google/gemma-4-26b-a4b-it", ["@cf/google/gemma-4-26b-a4b-it"])).toEqual(["@cf/google/gemma-4-26b-a4b-it"]);
   });
 });
