@@ -83,11 +83,17 @@ export function ruleHint(rule: Pick<Rule, "spec">): string {
   return typeof hint === "string" ? hint.trim() : "";
 }
 
+/** Title of a rule's intent for one file: "<description> in <path>", without the description's trailing punctuation. */
+export function ruleIntentTitle(description: string, path: Path): string {
+  const head = description.trim().replace(/[\s.,;:!?…]+$/u, "");
+  return `${head || description.trim()} in ${path}`;
+}
+
 /**
  * Group a rule's violations by file and draft one intent per file: title
- * "<description> in <path>", why = description + hint + violating line numbers.
- * Excerpts are left out on purpose: they are repository content and the why
- * text ends up in agent prompts.
+ * "<description> in <path>" (see ruleIntentTitle), why = description + hint +
+ * violating line numbers. Excerpts are left out on purpose: they are repository
+ * content and the why text ends up in agent prompts.
  */
 export function violationIntents(rule: Pick<Rule, "description" | "spec">, violations: Violation[]): ViolationIntentDraft[] {
   const byPath = new Map<Path, number[]>();
@@ -107,7 +113,7 @@ export function violationIntents(rule: Pick<Rule, "description" | "spec">, viola
     const parts = [description.endsWith(".") ? description : `${description}.`];
     if (hint) parts.push(`Hint: ${hint}`);
     parts.push(`${lines.length === 1 ? "Violation on line" : `${lines.length} violations on lines`} ${shown}.`);
-    drafts.push({ path, title: `${description} in ${path}`, why: parts.join("\n"), violations: lines.length });
+    drafts.push({ path, title: ruleIntentTitle(description, path), why: parts.join("\n"), violations: lines.length });
   }
   return drafts;
 }

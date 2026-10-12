@@ -17,12 +17,12 @@ interface Reading {
 
 declare global {
   interface Window {
-    /** Latest perf reading (?perf=1), for automated checks. */
+    /** Latest perf reading (?debug=1), for automated checks. */
     __ftPerf?: Reading;
   }
 }
 
-/** ?perf=1: frames per second, frame-time p95, events per second, and what the map is drawing. */
+/** ?debug=1: frames per second, frame-time p95, events per second, and what the map is drawing. */
 export function PerfReadout({ store, renderer }: { store: ColonyStore; renderer: MapRenderer | null }) {
   const [r, setR] = useState<Reading | null>(null);
   useEffect(() => {

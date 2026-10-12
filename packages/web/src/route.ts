@@ -8,8 +8,8 @@ export type Route =
       mock: boolean;
       /** ?director=1: the 1920×1080 recording stage with captions from director/script.json. */
       director: boolean;
-      /** ?perf=1: a frame-time readout. */
-      perf: boolean;
+      /** ?debug=1: developer aids (the frame-time and events-per-second readout). Off for everyone else. */
+      debug: boolean;
     };
 
 function flag(params: URLSearchParams, key: string): boolean {
@@ -25,7 +25,7 @@ export function parseRoute(pathname: string, search: string): Route {
   const params = new URLSearchParams(search);
   const mock = flag(params, "mock");
   const director = flag(params, "director");
-  const perf = flag(params, "perf");
+  const debug = flag(params, "debug");
   const m = pathname.match(/^\/c\/([^/]+)/);
   if (m?.[1]) {
     let colonyId = m[1];
@@ -34,9 +34,9 @@ export function parseRoute(pathname: string, search: string): Route {
     } catch {
       // keep the raw segment
     }
-    return { kind: "colony", colonyId, mock, director, perf };
+    return { kind: "colony", colonyId, mock, director, debug };
   }
-  if (mock || director) return { kind: "colony", colonyId: "demo", mock: true, director, perf };
+  if (mock || director) return { kind: "colony", colonyId: "demo", mock: true, director, debug };
   return { kind: "landing" };
 }
 

@@ -117,7 +117,7 @@ export interface MapElements {
   sha: HTMLElement;
 }
 
-/** Frame-time statistics for the perf readout (?perf=1). */
+/** Frame-time statistics for the perf readout (?debug=1). */
 export interface FrameStats {
   fps: number;
   p95: number;

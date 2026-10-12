@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Violation } from "@fire_trident/core";
-import { FieldBatch, groupByRegion, jitter, normalizePath, normalizePaths, overlapCount, primaryRegion, ruleHint, slug, violationIntents } from "../../src/colony/logic.ts";
+import { FieldBatch, groupByRegion, jitter, normalizePath, normalizePaths, overlapCount, primaryRegion, ruleHint, ruleIntentTitle, slug, violationIntents } from "../../src/colony/logic.ts";
 
 describe("paths and regions", () => {
   it("normalizes repository paths", () => {
@@ -44,9 +44,18 @@ describe("violationIntents", () => {
   it("handles missing hints, trailing periods and long line lists", () => {
     const many = Array.from({ length: 25 }, (_, i) => v("x.ts", i + 1));
     const [d] = violationIntents({ description: "Avoid eval.", spec: {} }, many);
+    expect(d!.title).toBe("Avoid eval in x.ts");
     expect(d!.why).toBe(`Avoid eval.\n25 violations on lines ${Array.from({ length: 20 }, (_, i) => i + 1).join(", ")}, and 5 more.`);
     expect(ruleHint({ spec: { hint: 42 } })).toBe("");
     expect(violationIntents({ description: "x", spec: {} }, [])).toEqual([]);
+  });
+
+  it("titles rule intents without the description's trailing punctuation", () => {
+    expect(ruleIntentTitle("Use the shared logger instead of console.log.", "src/a.ts")).toBe("Use the shared logger instead of console.log in src/a.ts");
+    expect(ruleIntentTitle("  No eval! ", "a.ts")).toBe("No eval in a.ts");
+    expect(ruleIntentTitle("Keep imports clean;.. ", "a.ts")).toBe("Keep imports clean in a.ts");
+    expect(ruleIntentTitle("No console.log", "a.ts")).toBe("No console.log in a.ts");
+    expect(ruleIntentTitle("...", "a.ts")).toBe("... in a.ts");
   });
 });
 

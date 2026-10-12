@@ -31,8 +31,8 @@ function boot(route: ColonyRoute): Boot {
   }
   const store = new ColonyStore(route.colonyId);
   const backend: Backend = route.mock ? new MockBackend(route.colonyId, mockOptionsFrom(params)) : new HttpBackend(route.colonyId);
-  // Dev builds (and ?perf=1) expose the store for inspection from the console.
-  if (import.meta.env.DEV || route.perf) (window as unknown as { ftStore?: ColonyStore }).ftStore = store;
+  // Dev builds (and ?debug=1) expose the store for inspection from the console.
+  if (import.meta.env.DEV || route.debug) (window as unknown as { ftStore?: ColonyStore }).ftStore = store;
   return { store, backend };
 }
 
@@ -171,7 +171,7 @@ export function App({ route }: { route: ColonyRoute }) {
           <SidePanel store={store} backend={backend} tab={tab} onTab={setTab} onPick={pick} director={director} open={!director || panelOpen} />
           {director ? <Director store={store} backend={backend} renderer={renderer} onTab={setTab} onPanel={setPanelOpen} panelOpen={panelOpen} /> : null}
         </main>
-        {route.perf ? <PerfReadout store={store} renderer={renderer} /> : null}
+        {route.debug ? <PerfReadout store={store} renderer={renderer} /> : null}
       </div>
     </Stage>
   );

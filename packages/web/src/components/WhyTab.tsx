@@ -197,8 +197,8 @@ function LineageEntry({ entry, path, store, newest }: { entry: WhyEntry; path: s
   );
 }
 
-/** Lowercase, collapsed whitespace, no trailing period: for spotting a line the title already says. */
-const norm = (s: string): string => s.toLowerCase().replace(/\s+/g, " ").replace(/[.\s]+$/, "").trim();
+/** Lowercase, collapsed whitespace, no trailing punctuation (rule intent titles drop it too): for spotting a line the title already says. */
+const norm = (s: string): string => s.toLowerCase().replace(/\s+/g, " ").replace(/[\s.,;:!?…]+$/u, "").trim();
 
 /** The why text, with "Hint:" lines set apart and lines the title already says left out. */
 function WhyText({ text, title }: { text: string; title: string }) {
