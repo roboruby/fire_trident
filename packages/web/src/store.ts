@@ -4,6 +4,7 @@ import type {
   Colony,
   ColonyEvent,
   ColonySnapshot,
+  DecisionKind,
   DecisionLayer,
   FieldReading,
   Id,
@@ -13,6 +14,8 @@ import type {
   ProposalStatus,
   Rule,
 } from "@fire_trident/core";
+import { finite } from "./format.ts";
+import { parseSeries, type Series } from "./series.ts";
 import { KIND_INDEX, KINDS, decayed } from "./theme.ts";
 
 /** Connection state shown in the top bar. */
@@ -28,6 +31,9 @@ export interface FieldCell {
   popAt: number;
   /** Epoch ms of the last live trail deposit (landing glow). */
   trailAt: number;
+  /** Map tile index cached by the renderer, valid while `tileGen` matches its layout. */
+  tile: number;
+  tileGen: number;
 }
 
 export interface AgentView {
@@ -39,6 +45,8 @@ export interface AgentView {
   intentId?: Id;
   paths: string[];
   seen: number;
+  /** Epoch ms the UI first saw this agent (fade-in on the map). */
+  bornAt: number;
 }
 
 export interface IntentView {
@@ -78,6 +86,8 @@ export interface LoggedEvent {
   ev: ColonyEvent;
   /** For `violations` events: change against the previous total. */
   delta?: number;
+  /** From the snapshot (it happened before this page opened), not the live stream. */
+  history?: boolean;
 }
 
 export interface MarkFx {
@@ -85,11 +95,37 @@ export interface MarkFx {
   kind: MarkKind;
 }
 
+/** One decision as the UI remembers it (the decision path of a proposal or intent). */
+export interface DecisionView {
+  kind: DecisionKind;
+  layer: DecisionLayer;
+  p: number;
+  action: string;
+  at: number;
+}
+
+/** What the vaccination meter can show; every field is optional because metrics arrive piecemeal. */
+export interface Vaccination {
+  /** Recall on seeded bad changes in [0, 1]. */
+  recall: number | null;
+  seeded: number | null;
+  caught: number | null;
+  /** 95% interval on recall in [0, 1]: from metrics when present, else Wilson's interval from caught/seeded. */
+  low: number | null;
+  high: number | null;
+  antibodies: number | null;
+  hits: number | null;
+}
+
 const EVENT_TYPES: ReadonlySet<string> = new Set(["agent", "mark", "intent", "proposal", "landing", "decision", "sigma", "violations", "metric"]);
+const AGENT_STATES: ReadonlySet<string> = new Set<AgentState>(["idle", "working", "proposing", "waiting", "dead"]);
+const INTENT_STATUSES: ReadonlySet<string> = new Set<IntentStatus>(["open", "claimed", "proposed", "landed", "abandoned"]);
+const LAYERS: ReadonlySet<string> = new Set<DecisionLayer>(["reflex", "llm", "human"]);
 const IN_FLIGHT: ReadonlySet<ProposalStatus> = new Set<ProposalStatus>(["pending", "checking", "ready", "escalated"]);
 const FINAL: ReadonlySet<ProposalStatus> = new Set<ProposalStatus>(["landed", "returned", "rejected"]);
 const LOG_CAP = 2000;
 const FX_CAP = 3000;
+const DECISION_SUBJECTS = 6000;
 const CLAIM = KIND_INDEX.claim;
 const FUNNEL_METRIC: Readonly<Record<string, DecisionLayer>> = { funnelreflex: "reflex", funnelllm: "llm", funnelhuman: "human" };
 const TRAIL = KIND_INDEX.trail;
@@ -104,6 +140,24 @@ export function isColonyEvent(x: unknown): x is ColonyEvent {
 /** Normalized metric name: lowercase alphanumerics, so agentsActive = agents_active = agents.active. */
 export function metricKey(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+/** Add `d` to a known key of a counter record, never below zero (unknown keys are ignored). */
+function tally<K extends string>(rec: Record<K, number>, key: string, d: number, known: ReadonlySet<string>): void {
+  if (!known.has(key)) return;
+  const k = key as K;
+  rec[k] = Math.max(0, (rec[k] ?? 0) + d);
+}
+
+/** Wilson score interval (95%) for `k` successes in `n` trials. */
+export function wilson(k: number, n: number): [number, number] {
+  if (!(n > 0)) return [0, 1];
+  const z = 1.96;
+  const p = Math.max(0, Math.min(1, k / n));
+  const d = 1 + (z * z) / n;
+  const c = (p + (z * z) / (2 * n)) / d;
+  const h = (z * Math.sqrt((p * (1 - p)) / n + (z * z) / (4 * n * n))) / d;
+  return [Math.max(0, c - h), Math.min(1, c + h)];
 }
 
 /**
@@ -129,12 +183,14 @@ export class ColonyStore {
   readonly field = new Map<string, FieldCell>();
   readonly active = new Set<FieldCell>();
   fieldDirty = true;
-  /** Tiles per kind above the display threshold, written by the map renderer. */
+  /** Files per kind above the display threshold, written by the map renderer. */
   fieldCounts: number[] = [0, 0, 0, 0, 0];
   /** Agent dots on the map, written by the map renderer. */
   dotCount = 0;
 
   readonly agents = new Map<Id, AgentView>();
+  /** Names of every agent the snapshot listed, including ones that have since stopped (lineage). */
+  readonly agentNames = new Map<Id, string>();
   readonly agentsByState: Record<AgentState, number> = { idle: 0, working: 0, proposing: 0, waiting: 0, dead: 0 };
   readonly intents = new Map<Id, IntentView>();
   readonly intentsByStatus: Record<IntentStatus, number> = { open: 0, claimed: 0, proposed: 0, landed: 0, abandoned: 0 };
@@ -158,13 +214,21 @@ export class ColonyStore {
 
   funnel: Record<DecisionLayer, number> = { reflex: 0, llm: 0, human: 0 };
   readonly lastDecisionAt: Record<DecisionLayer, number> = { reflex: 0, llm: 0, human: 0 };
+  /** Decisions per subject (proposal, intent, or region id), oldest first. */
+  readonly decisions = new Map<Id, DecisionView[]>();
+  /** Antibodies minted while this page was open (decision events of kind "antibody"). */
+  antibodiesSeen = 0;
   readonly metrics = new Map<string, number>();
+  /** Per-minute history from the server (null for the simulator and older servers). */
+  series: Series | null = null;
   readonly sigma = new Map<string, { sigma: number; at: number }>();
 
   private ring: Array<LoggedEvent | undefined> = new Array<LoggedEvent | undefined>(LOG_CAP);
   private ringHead = 0;
   private seq = 0;
   readonly typeCounts = new Map<string, number>();
+  /** Events applied since load (for the events-per-second readout). */
+  eventsApplied = 0;
 
   /** Fx queues drained by the map renderer each frame. */
   readonly agentChanges = new Set<Id>();
@@ -204,27 +268,28 @@ export class ColonyStore {
   applySnapshot(s: ColonySnapshot): void {
     const now = Date.now();
     this.colony = s.colony;
-    this.trunkSha = s.colony.trunkSha;
+    this.trunkSha = s.colony.trunkSha ?? "";
     this.greenSha = s.colony.greenSha ?? "";
-    this.setFiles(s.files ?? []);
+    this.setFiles(Array.isArray(s.files) ? s.files : []);
 
     this.intents.clear();
     for (const k of Object.keys(this.intentsByStatus) as IntentStatus[]) this.intentsByStatus[k] = 0;
     for (const i of s.intents ?? []) {
+      if (!i || typeof i.id !== "string") continue;
       this.intents.set(i.id, {
         id: i.id,
-        title: i.title,
+        title: i.title ?? i.id,
         why: i.why,
         status: i.status,
-        footprint: i.footprint ?? [],
+        footprint: Array.isArray(i.footprint) ? i.footprint : [],
         source: i.source,
-        priority: i.priority ?? 1,
-        createdAt: i.createdAt,
-        updatedAt: i.createdAt,
+        priority: finite(i.priority, 1),
+        createdAt: finite(i.createdAt, now),
+        updatedAt: finite(i.createdAt, now),
         assignedTo: i.assignedTo,
         ruleId: i.ruleId,
       });
-      this.intentsByStatus[i.status] = (this.intentsByStatus[i.status] ?? 0) + 1;
+      tally(this.intentsByStatus, i.status, 1, INTENT_STATUSES);
     }
     this.intentsVersion++;
 
@@ -235,7 +300,9 @@ export class ColonyStore {
     this.agents.clear();
     for (const k of Object.keys(this.agentsByState) as AgentState[]) this.agentsByState[k] = 0;
     for (const a of s.agents ?? []) {
-      if (a.state === "dead") continue;
+      if (!a || typeof a.id !== "string") continue;
+      this.agentNames.set(a.id, a.name || a.id);
+      if (a.state === "dead" || !AGENT_STATES.has(a.state)) continue;
       this.agents.set(a.id, {
         id: a.id,
         kind: a.kind,
@@ -244,22 +311,32 @@ export class ColonyStore {
         model: a.model,
         intentId: a.intentId,
         paths: a.intentId ? (this.intents.get(a.intentId)?.footprint ?? []) : [],
-        seen: a.lastSeen ?? now,
+        seen: finite(a.lastSeen, now),
+        bornAt: 0,
       });
-      this.agentsByState[a.state]++;
+      tally(this.agentsByState, a.state, 1, AGENT_STATES);
       this.agentChanges.add(a.id);
     }
 
-    const recent = [...(s.recentLandings ?? [])].sort((a, b) => a.at - b.at);
-    this.landings = recent.map((l) => ({ id: l.id, trunkSha: l.trunkSha, proposalIds: l.proposalIds, paths: l.paths, at: l.at, receivedAt: l.at }));
+    const recent = (s.recentLandings ?? []).filter((l) => l && typeof l.at === "number").sort((a, b) => a.at - b.at);
+    this.landings = recent.map((l) => ({ id: l.id, trunkSha: l.trunkSha, proposalIds: l.proposalIds ?? [], paths: l.paths ?? [], at: l.at, receivedAt: l.at }));
     this.landingTimes = recent.filter((l) => now - l.at < 60_000).map((l) => l.at);
+    if (this.seq === 0) {
+      // The log opens with the recent landings, so a quiet colony still shows its history.
+      for (const l of recent) {
+        const ev: ColonyEvent = { t: "landing", at: l.at, landingId: l.id, trunkSha: l.trunkSha, proposalIds: l.proposalIds ?? [], paths: l.paths ?? [] };
+        this.ring[this.ringHead] = { seq: ++this.seq, ev, history: true };
+        this.ringHead = (this.ringHead + 1) % LOG_CAP;
+      }
+    }
 
-    this.violations = { total: s.violations?.total ?? 0, byRule: s.violations?.byRule ?? {} };
+    this.violations = { total: Math.max(0, finite(s.violations?.total)), byRule: s.violations?.byRule ?? {} };
     this.fixedRun = 0;
     this.fixes = [];
-    this.funnel = { reflex: s.funnel?.reflex ?? 0, llm: s.funnel?.llm ?? 0, human: s.funnel?.human ?? 0 };
+    this.funnel = { reflex: Math.max(0, finite(s.funnel?.reflex)), llm: Math.max(0, finite(s.funnel?.llm)), human: Math.max(0, finite(s.funnel?.human)) };
     this.metrics.clear();
-    for (const [k, v] of Object.entries(s.metrics ?? {})) if (typeof v === "number") this.metrics.set(metricKey(k), v);
+    for (const [k, v] of Object.entries(s.metrics ?? {})) if (typeof v === "number" && Number.isFinite(v)) this.metrics.set(metricKey(k), v);
+    this.series = parseSeries((s as { series?: unknown }).series);
 
     this.loaded = true;
     this.error = null;
@@ -277,15 +354,23 @@ export class ColonyStore {
       for (const cell of this.field.values()) for (let k = 0; k < 5; k++) if ((cell.at[k] ?? 0) <= asOf) cell.v[k] = 0;
     }
     for (const r of readings) {
-      if (!r || typeof r.byPath !== "object") continue;
+      if (!r || typeof r.byPath !== "object" || r.byPath === null) continue;
       for (const [path, vals] of Object.entries(r.byPath)) {
         for (const kind of KINDS) {
           const v = vals?.[kind];
           if (typeof v === "number" && v > 0) this.setMark(path, kind, v, r.at, false);
         }
       }
-      if (typeof r.sigma === "number") this.sigma.set(r.region, { sigma: r.sigma, at: Date.now() });
+      if (typeof r.sigma === "number" && Number.isFinite(r.sigma)) this.sigma.set(r.region, { sigma: r.sigma, at: Date.now() });
     }
+    this.bump();
+  }
+
+  /** Replace the per-minute history (a periodic /metrics refresh). */
+  applySeries(raw: unknown): void {
+    const next = parseSeries(raw);
+    if (!next) return;
+    this.series = next;
     this.bump();
   }
 
@@ -295,9 +380,15 @@ export class ColonyStore {
     let n = 0;
     for (const ev of evs) {
       if (!isColonyEvent(ev)) continue;
-      this.applyOne(ev, now);
+      try {
+        this.applyOne(ev, now);
+      } catch {
+        // One malformed event never stops the stream.
+        continue;
+      }
       n++;
     }
+    this.eventsApplied += n;
     if (this.unknown.size && now - this.lastFileMerge > 15_000) this.mergeUnknownFiles(now);
     if (n) this.bump();
   }
@@ -321,21 +412,21 @@ export class ColonyStore {
         this.onLanding(ev, now);
         break;
       case "decision":
-        this.funnel[ev.layer] = (this.funnel[ev.layer] ?? 0) + 1;
-        this.lastDecisionAt[ev.layer] = now;
+        this.onDecision(ev, now);
         break;
       case "sigma":
-        this.sigma.set(ev.region, { sigma: ev.sigma, at: now });
+        if (typeof ev.sigma === "number" && Number.isFinite(ev.sigma)) this.sigma.set(ev.region, { sigma: ev.sigma, at: now });
         break;
       case "violations":
         delta = this.onViolations(ev.total, ev.byRule, now);
         break;
       case "metric": {
+        if (typeof ev.name !== "string" || typeof ev.value !== "number" || !Number.isFinite(ev.value)) break;
         const key = metricKey(ev.name);
         this.metrics.set(key, ev.value);
         // Authoritative funnel totals (funnel.reflex, funnel.llm, funnel.human) correct the running count.
         const layer = FUNNEL_METRIC[key];
-        if (layer && Number.isFinite(ev.value)) this.funnel[layer] = ev.value;
+        if (layer) this.funnel[layer] = Math.max(0, ev.value);
         break;
       }
     }
@@ -344,23 +435,48 @@ export class ColonyStore {
     this.typeCounts.set(ev.t, (this.typeCounts.get(ev.t) ?? 0) + 1);
   }
 
+  private onDecision(ev: Extract<ColonyEvent, { t: "decision" }>, now: number): void {
+    if (LAYERS.has(ev.layer)) {
+      this.funnel[ev.layer] = (this.funnel[ev.layer] ?? 0) + 1;
+      this.lastDecisionAt[ev.layer] = now;
+    }
+    if (ev.kind === "antibody") this.antibodiesSeen++;
+    if (typeof ev.subject !== "string" || !ev.subject) return;
+    let list = this.decisions.get(ev.subject);
+    if (!list) {
+      list = [];
+      this.decisions.set(ev.subject, list);
+      if (this.decisions.size > DECISION_SUBJECTS) {
+        // Oldest subjects go first (Map keeps insertion order).
+        let drop = this.decisions.size - DECISION_SUBJECTS + 500;
+        for (const k of this.decisions.keys()) {
+          if (drop-- <= 0) break;
+          this.decisions.delete(k);
+        }
+      }
+    }
+    if (list.length < 24) list.push({ kind: ev.kind, layer: ev.layer, p: finite(ev.p), action: String(ev.action ?? ""), at: finite(ev.at, now) });
+    if (ev.layer === "human" || ev.kind === "antibody") this.reviewVersion++;
+  }
+
   private onAgent(ev: Extract<ColonyEvent, { t: "agent" }>, now: number): void {
+    if (typeof ev.agentId !== "string") return;
     let a = this.agents.get(ev.agentId);
     this.agentChanges.add(ev.agentId);
-    if (ev.state === "dead") {
+    if (ev.state === "dead" || !AGENT_STATES.has(ev.state)) {
       if (a) {
-        this.agentsByState[a.state]--;
+        tally(this.agentsByState, a.state, -1, AGENT_STATES);
         this.agents.delete(ev.agentId);
       }
       return;
     }
     if (!a) {
-      a = { id: ev.agentId, kind: ev.kind, state: ev.state, name: ev.agentId, paths: [], seen: now };
+      a = { id: ev.agentId, kind: ev.kind, state: ev.state, name: this.agentNames.get(ev.agentId) ?? ev.agentId, paths: [], seen: now, bornAt: now };
       this.agents.set(a.id, a);
-      this.agentsByState[ev.state]++;
+      tally(this.agentsByState, ev.state, 1, AGENT_STATES);
     } else if (a.state !== ev.state) {
-      this.agentsByState[a.state]--;
-      this.agentsByState[ev.state]++;
+      tally(this.agentsByState, a.state, -1, AGENT_STATES);
+      tally(this.agentsByState, ev.state, 1, AGENT_STATES);
       a.state = ev.state;
     }
     a.kind = ev.kind;
@@ -373,24 +489,24 @@ export class ColonyStore {
       a.intentId = ev.intentId;
       a.paths = this.intents.get(ev.intentId)?.footprint ?? [];
     }
-    if (ev.paths && ev.paths.length) a.paths = ev.paths;
+    if (Array.isArray(ev.paths) && ev.paths.length) a.paths = ev.paths;
   }
 
   /** Set the field value of one kind on one path (set semantics: `value` is the value at `at`). */
   setMark(path: string, kind: MarkKind, value: number, at: number, live: boolean): void {
     const k = KIND_INDEX[kind];
-    if (k === undefined || typeof path !== "string") return;
+    if (k === undefined || typeof path !== "string" || !path) return;
     const now = Date.now();
     let cell = this.field.get(path);
     if (!cell) {
       if (!(value > 0)) return;
-      cell = { path, v: new Float64Array(5), at: new Float64Array(5), popAt: 0, trailAt: 0 };
+      cell = { path, v: new Float64Array(5), at: new Float64Array(5), popAt: 0, trailAt: 0, tile: -1, tileGen: -1 };
       this.field.set(path, cell);
     }
     const prev = decayed(cell.v[k] ?? 0, cell.at[k] ?? 0, k, now);
-    const next = Number.isFinite(value) ? Math.max(0, value) : 0;
+    const next = typeof value === "number" && Number.isFinite(value) ? Math.max(0, value) : 0;
     cell.v[k] = next;
-    cell.at[k] = Math.min(Number.isFinite(at) && at > 0 ? at : now, now);
+    cell.at[k] = Math.min(typeof at === "number" && Number.isFinite(at) && at > 0 ? at : now, now);
     if (live && next > prev + 0.05) {
       cell.popAt = now;
       if (k === TRAIL) cell.trailAt = now;
@@ -402,19 +518,20 @@ export class ColonyStore {
   }
 
   private onIntent(ev: Extract<ColonyEvent, { t: "intent" }>, now: number): void {
+    if (typeof ev.intentId !== "string") return;
     let it = this.intents.get(ev.intentId);
     if (!it) {
-      it = { id: ev.intentId, title: ev.title, status: ev.status, footprint: ev.footprint ?? [], priority: 1, createdAt: ev.at, updatedAt: now };
+      it = { id: ev.intentId, title: ev.title ?? ev.intentId, status: ev.status, footprint: Array.isArray(ev.footprint) ? ev.footprint : [], priority: 1, createdAt: finite(ev.at, now), updatedAt: now };
       this.intents.set(it.id, it);
-      this.intentsByStatus[ev.status]++;
+      tally(this.intentsByStatus, ev.status, 1, INTENT_STATUSES);
     } else {
       if (it.status !== ev.status) {
-        this.intentsByStatus[it.status]--;
-        this.intentsByStatus[ev.status]++;
+        tally(this.intentsByStatus, it.status, -1, INTENT_STATUSES);
+        tally(this.intentsByStatus, ev.status, 1, INTENT_STATUSES);
         it.status = ev.status;
       }
       if (ev.title) it.title = ev.title;
-      if (ev.footprint && ev.footprint.length) it.footprint = ev.footprint;
+      if (Array.isArray(ev.footprint) && ev.footprint.length) it.footprint = ev.footprint;
       it.updatedAt = now;
     }
     if (ev.status === "open") it.assignedTo = undefined;
@@ -422,6 +539,7 @@ export class ColonyStore {
   }
 
   private onProposal(ev: Extract<ColonyEvent, { t: "proposal" }>, now: number): void {
+    if (typeof ev.proposalId !== "string") return;
     let p = this.proposals.get(ev.proposalId);
     const was = p?.status;
     if (!p) {
@@ -442,8 +560,8 @@ export class ColonyStore {
 
   private setProposalStatus(p: ProposalView, s: ProposalStatus): void {
     if (p.status === s) return;
-    if (IN_FLIGHT.has(p.status)) this.inFlight--;
-    if (p.status === "escalated") this.escalated--;
+    if (IN_FLIGHT.has(p.status)) this.inFlight = Math.max(0, this.inFlight - 1);
+    if (p.status === "escalated") this.escalated = Math.max(0, this.escalated - 1);
     if (IN_FLIGHT.has(s)) this.inFlight++;
     if (s === "escalated") this.escalated++;
     p.status = s;
@@ -459,17 +577,17 @@ export class ColonyStore {
   private onLanding(ev: Extract<ColonyEvent, { t: "landing" }>, now: number): void {
     const view: LandingView = {
       id: ev.landingId,
-      trunkSha: ev.trunkSha,
-      proposalIds: ev.proposalIds ?? [],
-      paths: ev.paths ?? [],
-      at: ev.at,
+      trunkSha: ev.trunkSha ?? "",
+      proposalIds: Array.isArray(ev.proposalIds) ? ev.proposalIds : [],
+      paths: Array.isArray(ev.paths) ? ev.paths : [],
+      at: finite(ev.at, now),
       receivedAt: now,
     };
     this.landings.push(view);
     if (this.landings.length > 400) this.landings.splice(0, this.landings.length - 300);
     this.landingTimes.push(now);
     this.landingsSeen++;
-    this.trunkSha = ev.trunkSha;
+    if (view.trunkSha) this.trunkSha = view.trunkSha;
     // Landed paths: claims there are spent, and a trail is laid. Explicit mark events that follow win.
     for (const path of view.paths) {
       const cell = this.field.get(path);
@@ -489,7 +607,7 @@ export class ColonyStore {
       p.updatedAt = now;
       const it = this.intents.get(p.intentId);
       if (it && it.status !== "landed") {
-        this.intentsByStatus[it.status]--;
+        tally(this.intentsByStatus, it.status, -1, INTENT_STATUSES);
         this.intentsByStatus.landed++;
         it.status = "landed";
         it.updatedAt = now;
@@ -500,19 +618,20 @@ export class ColonyStore {
   }
 
   private onViolations(total: number, byRule: Record<Id, number> | undefined, now: number): number {
+    const next = Math.max(0, finite(total, this.violations.total));
     const prev = this.violations.total;
-    if (total < prev) {
-      this.fixedRun += prev - total;
-      this.fixes.push([now, prev - total]);
-    } else if (prev === 0 && total > 0) {
+    if (next < prev) {
+      this.fixedRun += prev - next;
+      this.fixes.push([now, prev - next]);
+    } else if (prev === 0 && next > 0) {
       this.fixedRun = 0;
     }
-    this.violations = { total, byRule: byRule ?? {} };
-    return total - prev;
+    this.violations = { total: next, byRule: byRule && typeof byRule === "object" ? byRule : {} };
+    return next - prev;
   }
 
   private setFiles(list: Array<{ path: string; size: number }>): void {
-    this.files = list.filter((f) => f && typeof f.path === "string" && f.path.length > 0);
+    this.files = list.filter((f) => f && typeof f.path === "string" && f.path.length > 0).map((f) => ({ path: f.path, size: Math.max(0, finite(f.size)) }));
     this.known = new Set(this.files.map((f) => f.path));
     this.unknown.clear();
     this.filesVersion++;
@@ -545,20 +664,29 @@ export class ColonyStore {
     return out;
   }
 
+  /** A metric by any of its spellings (agentsActive, agents.active, agents_active), if present. */
+  metric(...names: string[]): number | undefined {
+    for (const n of names) {
+      const v = this.metrics.get(metricKey(n));
+      if (v !== undefined) return v;
+    }
+    return undefined;
+  }
+
   /** Agents that are registered and alive (server metric wins when present). */
   agentsActive(): number {
-    return this.metrics.get("agentsactive") ?? this.agents.size;
+    return Math.max(0, this.metric("agentsActive") ?? this.agents.size);
   }
 
   /** Agents currently doing work. */
   agentsWorking(): number {
-    return this.metrics.get("agentsworking") ?? this.agentsByState.working + this.agentsByState.proposing;
+    return Math.max(0, this.metric("agentsWorking") ?? this.agentsByState.working + this.agentsByState.proposing);
   }
 
   /** Landings per minute over a sliding window (server metric wins when present). */
   landingsPerMin(now = Date.now()): number {
-    const m = this.metrics.get("landingspermin");
-    if (m !== undefined) return m;
+    const m = this.metric("landingsPerMin");
+    if (m !== undefined) return Math.max(0, m);
     const cutoff = now - 60_000;
     let drop = 0;
     while (drop < this.landingTimes.length && (this.landingTimes[drop] ?? 0) < cutoff) drop++;
@@ -567,9 +695,35 @@ export class ColonyStore {
     return (this.landingTimes.length * 60_000) / window;
   }
 
+  /** Every landing the colony has made (server metric), else the ones this page has seen. */
+  landingsTotal(): number {
+    return Math.max(0, this.metric("landings") ?? this.landingsSeen + this.landings.filter((l) => l.receivedAt === l.at).length);
+  }
+
   /** Proposals pending, checking, in a lane, or waiting for a human. */
   proposalsInFlight(): number {
-    return this.metrics.get("proposalsinflight") ?? Math.max(0, this.inFlight);
+    return Math.max(0, this.metric("proposalsInFlight") ?? this.inFlight);
+  }
+
+  /** Proposals waiting for a human (server metric wins when present). */
+  reviewQueue(): number {
+    return Math.max(0, this.metric("reviewQueue") ?? this.escalated);
+  }
+
+  /**
+   * Violations fixed: a server total when one exists, else the larger of what this page has
+   * watched fall and the fall from the peak of the server's per-minute window.
+   */
+  violationsFixed(): number {
+    const m = this.metric("violationsFixed", "fixed", "violationsFixedTotal");
+    if (m !== undefined) return Math.max(0, m);
+    const peak = this.series ? Math.max(0, ...this.series.violations) : 0;
+    return Math.max(this.fixedRun, peak - this.violations.total, 0);
+  }
+
+  /** Intents the colony has landed (server metric wins when present). */
+  intentsLanded(): number {
+    return Math.max(0, this.metric("landedIntents", "intentsLanded") ?? this.intentsByStatus.landed);
   }
 
   /** Violations fixed per minute over a sliding window. */
@@ -579,13 +733,13 @@ export class ColonyStore {
     let sum = 0;
     for (const [, n] of this.fixes) sum += n;
     const window = Math.min(60_000, Math.max(15_000, now - this.startedAt));
-    return (sum * 60_000) / window;
+    return Math.max(0, (sum * 60_000) / window);
   }
 
   /** The hottest region's branching ratio (server metric "sigma" wins when present). */
   sigmaMax(now = Date.now()): { value: number; region: string | null } {
-    const m = this.metrics.get("sigma");
-    if (m !== undefined) return { value: m, region: null };
+    const m = this.metric("sigma", "sigmaMax");
+    if (m !== undefined) return { value: Math.max(0, m), region: null };
     let value = 0;
     let region: string | null = null;
     for (const [r, s] of this.sigma) {
@@ -596,6 +750,50 @@ export class ColonyStore {
       }
     }
     return { value, region };
+  }
+
+  /**
+   * The vaccination meter's numbers, read generically from metrics whose names mention
+   * vaccines or antibodies (vaccine.recall, vaccineSeeded, antibodies.hits, ...).
+   * Null when the colony reports none of them.
+   */
+  vaccination(): Vaccination | null {
+    const unit = (v: number): number => Math.max(0, Math.min(1, v > 1 ? v / 100 : v));
+    // Overall numbers beat per-class ones (vaccine.all.recall over vaccine.secret-log.recall): the
+    // shortest matching name is the most general one.
+    const pick = (re: RegExp): number | null => {
+      let best: string | null = null;
+      for (const k of this.metrics.keys()) {
+        if (!k.startsWith("vaccin") || k === "vaccines" || !re.test(k.slice(7))) continue;
+        if (best === null || k.length < best.length) best = k;
+      }
+      return best === null ? null : (this.metrics.get(best) ?? null);
+    };
+    const seededRaw = pick(/(^|[a-z])(n|seeded|injected|total|count)$/);
+    const caughtRaw = pick(/(caught|detected|blocked)$/);
+    const recallRaw = pick(/(recall|rate)$/);
+    const lowRaw = pick(/(lo|low|lower)$/);
+    const highRaw = pick(/(hi|high|upper)$/);
+    const seeded = seededRaw === null ? null : Math.max(0, seededRaw);
+    const caught = caughtRaw === null ? null : Math.max(0, caughtRaw);
+    // Nothing settled yet (n = 0): no recall to report, whatever the interval says.
+    const settled = seeded === null || seeded > 0;
+    let recall = settled && recallRaw !== null ? unit(recallRaw) : null;
+    let low = settled && lowRaw !== null ? unit(lowRaw) : null;
+    let high = settled && highRaw !== null ? unit(highRaw) : null;
+    if (recall === null && seeded !== null && caught !== null && seeded > 0) recall = Math.min(1, caught / seeded);
+    if ((low === null || high === null) && seeded !== null && caught !== null && seeded > 0) {
+      const [lo, hi] = wilson(Math.min(caught, seeded), seeded);
+      low ??= lo;
+      high ??= hi;
+    }
+    const ab = this.metric("antibodies.active", "antibodiesActive") ?? this.metric("antibodies");
+    const antibodies = ab === undefined ? null : Math.max(0, ab);
+    const hitsRaw = this.metric("antibodies.hits", "antibodyHits", "antibodies.caught");
+    const hits = hitsRaw === undefined ? null : Math.max(0, hitsRaw);
+    // Show the meter once there is something to show: vaccine results, or antibodies that exist or have fired.
+    if (recall === null && !(seeded && seeded > 0) && !(antibodies && antibodies > 0) && !(hits && hits > 0)) return null;
+    return { recall, seeded, caught, low, high, antibodies, hits };
   }
 
   /** Newest-first events matching `keep`, at most `limit`. */
@@ -611,7 +809,16 @@ export class ColonyStore {
 
   /** Display name of an agent. */
   agentName(id: Id): string {
-    return this.agents.get(id)?.name ?? id;
+    return this.agents.get(id)?.name ?? this.agentNames.get(id) ?? id;
+  }
+
+  /** The most recent landing that touched `path` (newest first), if this page knows one. */
+  lastLandingOn(path: string): LandingView | undefined {
+    for (let i = this.landings.length - 1, n = 0; i >= 0 && n < 120; i--, n++) {
+      const l = this.landings[i];
+      if (l && l.paths.includes(path)) return l;
+    }
+    return undefined;
   }
 
   /** Select a path for the Why panel (null clears). */
@@ -623,6 +830,7 @@ export class ColonyStore {
 
   /** Paths to outline on the map (an intent's footprint under the pointer). */
   setHighlight(paths: string[]): void {
+    if (paths.length === 0 && this.highlight.length === 0) return;
     this.highlight = paths;
     this.bump();
   }

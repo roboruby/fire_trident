@@ -18,6 +18,8 @@ export interface Backend {
   why(path: string): Promise<WhyEntry[]>;
   review(): Promise<Proposal[]>;
   decide(proposalId: string, decision: ReviewDecision, reason: string): Promise<void>;
+  /** Freeze the colony's clock (the simulator only; a live colony keeps running). */
+  setPaused?(paused: boolean): void;
 }
 
 /** An HTTP failure with its status code. */
@@ -83,6 +85,7 @@ export class HttpBackend implements Backend {
   private stopped = false;
   private keepalive = 0;
   private lastMessageAt = 0;
+  private seriesTimer = 0;
 
   constructor(readonly colonyId: string) {}
 
@@ -95,12 +98,21 @@ export class HttpBackend implements Backend {
     this.stopped = false;
     store.setConn("connecting");
     void this.cycle();
+    // The per-minute history (burn-down sparkline) moves on its own clock: refresh it every 30 s.
+    window.clearInterval(this.seriesTimer);
+    this.seriesTimer = window.setInterval(() => {
+      if (this.stopped || !this.store?.loaded || document.hidden) return;
+      this.getJson<{ series?: unknown }>("/metrics")
+        .then((m) => this.store?.applySeries(m?.series))
+        .catch(() => undefined);
+    }, 30_000);
   }
 
   stop(): void {
     this.stopped = true;
     this.gen++;
     window.clearTimeout(this.timer);
+    window.clearInterval(this.seriesTimer);
     this.closeSocket();
   }
 

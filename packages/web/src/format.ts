@@ -1,8 +1,20 @@
 const intFormat = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
 
-/** Integer with thousands separators. */
+/** A finite number, or `fallback` for NaN, Infinity, and non-numbers. */
+export function finite(n: unknown, fallback = 0): number {
+  return typeof n === "number" && Number.isFinite(n) ? n : fallback;
+}
+
+/** A count for display: finite and never below zero. */
+export function count(n: unknown): number {
+  const v = finite(n);
+  return v > 0 ? v : 0;
+}
+
+/** Integer with thousands separators (NaN and Infinity render as 0). */
 export function fmtInt(n: number): string {
-  return intFormat.format(Math.round(n));
+  const v = Math.round(finite(n));
+  return intFormat.format(Object.is(v, -0) ? 0 : v);
 }
 
 /** A rate or ratio with fixed decimals. */
@@ -25,6 +37,7 @@ export function shortId(id: string): string {
 
 /** Human time distance from `at` to `now`. */
 export function timeAgo(at: number, now = Date.now()): string {
+  if (!Number.isFinite(at) || at <= 0) return "";
   const s = Math.max(0, Math.round((now - at) / 1000));
   if (s < 5) return "just now";
   if (s < 60) return `${s}s ago`;
@@ -37,7 +50,7 @@ export function timeAgo(at: number, now = Date.now()): string {
 
 /** Wall-clock HH:MM:SS for an epoch time. */
 export function clock(at: number): string {
-  const d = new Date(at);
+  const d = new Date(finite(at, Date.now()));
   const p = (x: number) => String(x).padStart(2, "0");
   return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
@@ -63,17 +76,39 @@ export function regionOf(path: string, depth = 1): string {
 
 /** Byte count as B / KB / MB. */
 export function fmtBytes(n: number): string {
-  if (n < 1024) return `${Math.round(n)} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(n < 10 * 1024 ? 1 : 0)} KB`;
-  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+  const v = count(n);
+  if (v < 1024) return `${Math.round(v)} B`;
+  if (v < 1024 * 1024) return `${(v / 1024).toFixed(v < 10 * 1024 ? 1 : 0)} KB`;
+  return `${(v / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-/** Probability as a percentage string. */
+/** Probability as a percentage string (clamped to 0-100%). */
 export function fmtPct(p: number, digits = 0): string {
-  return `${(p * 100).toFixed(digits)}%`;
+  const v = Math.max(0, Math.min(1, finite(p)));
+  return `${(v * 100).toFixed(digits)}%`;
+}
+
+/** A duration in ms as "<1 ms", "340 ms", or "2.4 s". */
+export function fmtMs(ms: number): string {
+  const v = count(ms);
+  if (v < 1) return "<1 ms";
+  if (v < 1000) return `${Math.round(v)} ms`;
+  return `${(v / 1000).toFixed(v < 10_000 ? 1 : 0)} s`;
+}
+
+/** "1 file", "3 files". */
+export function plural(n: number, word: string, many = `${word}s`): string {
+  const v = count(n);
+  return `${fmtInt(v)} ${v === 1 ? word : many}`;
 }
 
 /** Escape text for safe insertion into HTML built by hand (tooltips). */
 export function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => (c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : c === '"' ? "&quot;" : "&#39;"));
+}
+
+/** A git remote or web URL without the scheme and a trailing ".git", e.g. github.com/org/repo. */
+export function prettyUrl(url: string | undefined | null): string {
+  if (!url) return "";
+  return url.replace(/^[a-z]+:\/\//i, "").replace(/\.git$/, "").replace(/\/$/, "");
 }

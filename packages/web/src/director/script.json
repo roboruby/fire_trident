@@ -1,0 +1,103 @@
+{
+  "$comment": "Director script for ?director=1 (start at a scene with &scene=<n or id>). Keys: → or PageDown next, ← or PageUp previous, space pause, z zoom, c captions, Home first scene. Scene fields: id, caption (required); kicker, sub; title (full-screen card); code (caption in the code font); focus (a directory or file path, a list tried in order, or @hot / @sigma / @landing / @selected; null or absent shows the whole map); highlight (paths or directories to outline, or @landing / @needs; more than 40 files dims the rest); emphasize (hero, stats, sigma, vaccine, funnel, trunk); requires (vaccine, landing, review, sigma: the scene is skipped while the colony has none); tab (events, intents, review, why: opens the side panel); select (a file for the Why tab, or @landing / @hot); duration (seconds, auto-advance). Captions fill {colony} {files} {violations} {fixed} {agents} {working} {landings} {perMin} {decisions} {reflex} {human} {review} {sigma} {recall}.",
+  "scenes": [
+    {
+      "id": "open",
+      "title": true,
+      "kicker": "FireTrident",
+      "caption": "A colony, not a queue.",
+      "sub": "Git coordination for thousands of coding agents, built on Cloudflare Workers, Durable Objects and Artifacts."
+    },
+    {
+      "id": "map",
+      "kicker": "The colony",
+      "caption": "Every tile is a file in {colony}.",
+      "sub": "{files} files. Size is bytes; color is the field the agents read.",
+      "focus": null
+    },
+    {
+      "id": "rule",
+      "kicker": "Shape",
+      "caption": "One person declares one architecture rule.",
+      "sub": "Every violation becomes a need in the field: {violations} to fix, and no one assigns them.",
+      "highlight": ["@needs"],
+      "emphasize": "hero",
+      "focus": null
+    },
+    {
+      "id": "sense",
+      "kicker": "Sense",
+      "caption": "Agents read the field, not each other.",
+      "sub": "Needs attract, claims repel, trails fade. {working} agents are working right now.",
+      "focus": ["@hot"]
+    },
+    {
+      "id": "decide",
+      "kicker": "Decide",
+      "caption": "Each call goes to the cheapest layer that is sure.",
+      "sub": "Clef decision models first, then an LLM, then a person. {reflex} of {decisions} decisions stayed at the reflex layer.",
+      "emphasize": "funnel",
+      "focus": ["@hot"]
+    },
+    {
+      "id": "land",
+      "kicker": "Land",
+      "caption": "Lanes land non-conflicting changes together.",
+      "sub": "Every read is validated against trunk. A stale read goes back with the exact delta. {perMin} landings a minute.",
+      "emphasize": "trunk",
+      "focus": null
+    },
+    {
+      "id": "converge",
+      "kicker": "Converge",
+      "caption": "{violations} violations left. {fixed} fixed.",
+      "sub": "No queue, no scheduler, no lock. The colony repairs toward the shape it was given.",
+      "emphasize": "hero",
+      "focus": null
+    },
+    {
+      "id": "review",
+      "kicker": "Review",
+      "caption": "Only uncertainty reaches a person.",
+      "sub": "A rejection becomes an antibody, and the next similar change is caught without anyone.",
+      "tab": "review",
+      "focus": ["@hot"]
+    },
+    {
+      "id": "vaccine",
+      "kicker": "Vaccine",
+      "caption": "Review is tested with sealed bad changes.",
+      "sub": "The colony seeds deliberately broken changes and measures how many review catches: recall {recall}.",
+      "tab": "review",
+      "emphasize": "vaccine",
+      "requires": "vaccine",
+      "focus": ["@hot"]
+    },
+    {
+      "id": "why",
+      "kicker": "Remember",
+      "caption": "Every commit carries its why.",
+      "sub": "Intent, rule and approver, agent and model, decisions, checks, and what was not verified, in git notes on Artifacts.",
+      "tab": "why",
+      "requires": "landing",
+      "select": ["@landing", "@hot"],
+      "focus": ["@selected"]
+    },
+    {
+      "id": "sigma",
+      "kicker": "Seizure detector",
+      "caption": "When rebases cascade, sigma rises past 1.",
+      "sub": "The governor slows the lanes and closes admission until the colony calms. Sigma now: {sigma}.",
+      "emphasize": "sigma",
+      "focus": ["@sigma", "@hot"]
+    },
+    {
+      "id": "close",
+      "title": true,
+      "code": true,
+      "kicker": "Run it",
+      "caption": "ft import <repo>",
+      "sub": "firetrident.mattsolt.workers.dev"
+    }
+  ]
+}

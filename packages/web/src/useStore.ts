@@ -1,4 +1,4 @@
-import { useCallback, useRef, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { ColonyStore } from "./store.ts";
 
 /**
@@ -33,4 +33,22 @@ export function useThrottledVersion(store: ColonyStore, ms = 250): number {
     [store, ms],
   );
   return useSyncExternalStore(subscribe, () => published.current);
+}
+
+/**
+ * Re-render every `ms` while `read()` returns a different key than last time. For values
+ * that change without a store event, such as decaying field counts written by the renderer.
+ */
+export function usePolled(read: () => string, ms = 500): string {
+  const [key, setKey] = useState(read);
+  const reader = useRef(read);
+  reader.current = read;
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      const next = reader.current();
+      setKey((cur) => (cur === next ? cur : next));
+    }, ms);
+    return () => window.clearInterval(timer);
+  }, [ms]);
+  return key;
 }

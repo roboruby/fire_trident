@@ -71,7 +71,8 @@ function describe(le: LoggedEvent, store: ColonyStore): Line {
         mono: `→ ${shortSha(e.trunkSha)}`,
       };
     case "decision":
-      return { tag: e.layer, color: LAYER_COLOR[e.layer], text: `${e.kind} → ${e.action}`, mono: `p ${fmtFixed(e.p)}` };
+      if (e.kind === "antibody") return { tag: "antibody", color: "#ff7aa8", text: `${e.action} · learned from a rejection`, mono: `p ${fmtFixed(e.p)}` };
+      return { tag: e.layer, color: LAYER_COLOR[e.layer] ?? "#8b97a8", text: `${e.kind} → ${e.action}`, mono: `p ${fmtFixed(e.p)}` };
     case "sigma":
       return { tag: "sigma", color: e.sigma > 1 ? FIELD_COLOR.danger : "#8b97a8", text: `σ ${fmtFixed(e.sigma)} in ${e.region}${e.sigma > 1 ? " · governor engaged" : ""}` };
     case "violations": {
@@ -80,11 +81,13 @@ function describe(le: LoggedEvent, store: ColonyStore): Line {
     }
     case "metric":
       return { tag: "metric", color: "#8b97a8", text: `${e.name} = ${fmtFixed(e.value)}` };
+    default:
+      return { tag: String((e as { t?: unknown }).t ?? "event"), color: "#8b97a8", text: "" };
   }
 }
 
 /** The live event log: newest first, color-coded, filterable; pauses while the pointer is over it. */
-export function EventsTab({ store }: { store: ColonyStore }) {
+export function EventsTab({ store, director = false }: { store: ColonyStore; director?: boolean }) {
   useThrottledVersion(store, 250);
   const [on, setOn] = useState<ReadonlySet<string>>(DEFAULT_ON);
   const [frozen, setFrozen] = useState<LoggedEvent[] | null>(null);
@@ -100,6 +103,7 @@ export function EventsTab({ store }: { store: ColonyStore }) {
   };
   return (
     <div className="events">
+      {director ? null : (
       <div className="chips">
         {FILTERS.map(([t, label, color]) => (
           <button key={t} type="button" className={`chip${on.has(t) ? " is-on" : ""}`} onClick={() => toggle(t)} aria-pressed={on.has(t)}>
@@ -109,17 +113,20 @@ export function EventsTab({ store }: { store: ColonyStore }) {
           </button>
         ))}
       </div>
+      )}
+      {director ? null : (
       <div className="events-status">
         <span>{frozen ? "Paused while you read" : everything ? "Live · every event" : "Live · notable events"}</span>
         <button type="button" className="link" onClick={() => setEverything(!everything)}>
           {everything ? "Notable only" : "Show every event"}
         </button>
       </div>
+      )}
       <ol className="events-list" onMouseEnter={() => setFrozen(live)} onMouseLeave={() => setFrozen(null)}>
         {rows.map((le) => {
           const line = describe(le, store);
           return (
-            <li key={le.seq} className="ev" title={line.title ?? line.text}>
+            <li key={le.seq} className={`ev${le.history ? " is-history" : ""}`} title={le.history ? `Before this page opened · ${line.title ?? line.text}` : (line.title ?? line.text)}>
               <span className="ev-time mono">{clock(le.ev.at)}</span>
               <span className="ev-tag" style={{ color: line.color }}>
                 <i style={{ background: line.color }} />

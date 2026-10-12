@@ -31,7 +31,8 @@ import { TAU_MS } from "./theme.ts";
  * ColonyEvent shapes the Worker sends, and answers why/review/decide.
  *
  * URL knobs: files=<n> (default: a curated ~350-file repo), agents=<n> (64),
- * speed=<x> (1), seed=<n> (7).
+ * speed=<x> (1), seed=<n> (7), stress=<events per second> (0: extra field churn,
+ * agent moves, and decisions, for load testing the UI).
  */
 
 export interface MockOptions {
@@ -39,6 +40,8 @@ export interface MockOptions {
   agents: number;
   speed: number;
   seed: number;
+  /** Extra synthetic events per second (load testing). */
+  stress?: number;
 }
 
 /** Read mock options from the page's query string. */
@@ -53,6 +56,7 @@ export function mockOptionsFrom(params: URLSearchParams): MockOptions {
     agents: Math.round(num("agents", 64, 1, 50_000)),
     speed: num("speed", 1, 0.1, 20),
     seed: Math.round(num("seed", 7, 1, 2 ** 31)),
+    stress: Math.round(num("stress", 0, 0, 100_000)),
   };
 }
 
@@ -455,6 +459,8 @@ export class ColonySim {
   private spike: Spike | null = null;
   private cleanSince = 0;
   private waveNo = 0;
+  private nextVaccineT = 4000;
+  private readonly vaccine = { seeded: 38, caught: 37, antibodies: 4, hits: 11 };
 
   constructor(
     readonly colonyId: string,
@@ -1118,6 +1124,8 @@ export class ColonySim {
     }
     this.finish(sp, "rejected", `Rejected by ${who}: ${reason || "the residual change is out of scope."}`);
     this.decide("antibody", "reflex", 0.99, "learn antibody", sp.p.id);
+    this.vaccine.antibodies++;
+    this.emit({ t: "metric", at: this.now, name: "antibodies", value: this.vaccine.antibodies });
     const si = sp.intent;
     this.releaseClaims(si);
     si.intent.status = "open";
@@ -1241,7 +1249,7 @@ export class ColonySim {
       recentLandings: this.history.slice(-12).map((h) => h.landing),
       violations: { total: this.violations, byRule: { ...this.byRule } },
       funnel: { ...this.funnel },
-      metrics: {},
+      metrics: { "vaccine.seeded": this.vaccine.seeded, "vaccine.caught": this.vaccine.caught, antibodies: this.vaccine.antibodies, "antibodies.hits": this.vaccine.hits },
     };
   }
 
@@ -1283,11 +1291,61 @@ export class ColonySim {
     return [...byRegion.values()];
   }
 
+  // -- vaccination -----------------------------------------------------------
+
+  /** Seed a sealed bad change into review; review catches most of them, and antibodies catch repeats. */
+  private vaccinate(): void {
+    this.nextVaccineT = this.t + this.range(5000, 9000);
+    const v = this.vaccine;
+    v.seeded++;
+    if (this.r() < 0.95) {
+      v.caught++;
+      this.decide("triage", this.r() < 0.8 ? "reflex" : "llm", this.range(0.86, 0.99), "caught seeded change", `vaccine-${v.seeded}`);
+    }
+    if (this.r() < 0.5) {
+      v.hits++;
+      this.decide("antibody", "reflex", this.range(0.9, 0.99), "screened by antibody", `vaccine-${v.seeded}`);
+    }
+    this.emit({ t: "metric", at: this.now, name: "vaccine.seeded", value: v.seeded });
+    this.emit({ t: "metric", at: this.now, name: "vaccine.caught", value: v.caught });
+    this.emit({ t: "metric", at: this.now, name: "antibodies.hits", value: v.hits });
+  }
+
+  /** `n` synthetic events for load tests: marks on random files, agents moving, decisions. */
+  noise(n: number): ColonyEvent[] {
+    const out: ColonyEvent[] = [];
+    const now = Date.now();
+    const kinds: MarkKind[] = ["claim", "need", "trail", "failure"];
+    const layers: DecisionLayer[] = ["reflex", "reflex", "reflex", "llm", "human"];
+    for (let i = 0; i < n; i++) {
+      const roll = this.r();
+      const f = this.files[(this.r() * this.files.length) | 0];
+      if (!f) break;
+      if (roll < 0.6) {
+        out.push({ t: "mark", at: now, region: regionOf(f.path), path: f.path, kind: this.pick(kinds), value: round(this.r() * 2, 2) });
+      } else if (roll < 0.9 && this.agents.length) {
+        const a = this.agents[(this.r() * this.agents.length) | 0];
+        if (a) out.push({ t: "agent", at: now, agentId: a.id, kind: a.kind, state: "working", paths: [f.path] });
+      } else {
+        out.push({ t: "decision", at: now, decisionId: `noise_${i}`, kind: "collision", layer: this.pick(layers), p: round(this.range(0.6, 0.99)), action: "defer", subject: f.path });
+      }
+    }
+    return out;
+  }
+
   // -- the clock -------------------------------------------------------------
 
   private schedule(t: number, fn: () => void): void {
-    this.scheduled.push({ t, fn });
-    this.scheduled.sort((a, b) => a.t - b.t);
+    // Binary insertion keeps the list ordered: a live rule schedules thousands of reveals at once.
+    const list = this.scheduled;
+    let lo = 0;
+    let hi = list.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if ((list[mid]?.t ?? 0) <= t) lo = mid + 1;
+      else hi = mid;
+    }
+    list.splice(lo, 0, { t, fn });
   }
 
   /** Advance the simulation to real time `realNow`; returns the events produced. */
@@ -1298,7 +1356,9 @@ export class ColonySim {
     this.t += dt * this.opts.speed;
     const t = this.t;
 
-    while (this.scheduled.length && (this.scheduled[0]?.t ?? Infinity) <= t) this.scheduled.shift()?.fn();
+    let due = 0;
+    while (due < this.scheduled.length && (this.scheduled[due]?.t ?? Infinity) <= t) due++;
+    if (due) for (const job of this.scheduled.splice(0, due)) job.fn();
 
     if (this.spawned < this.opts.agents) {
       const due = Math.min(this.opts.agents, Math.ceil((this.opts.agents * t) / this.spawnMs));
@@ -1326,6 +1386,7 @@ export class ColonySim {
     }
     for (const lane of this.lanes.values()) if (lane.queue.length && t >= lane.next) this.tickLane(lane);
     if (t >= this.nextSigmaT) this.updateSigma();
+    if (t >= this.nextVaccineT) this.vaccinate();
     if (t >= this.nextFeatureT) {
       this.addFeature();
       this.nextFeatureT = t + this.range(22_000, 40_000);
@@ -1358,9 +1419,13 @@ export class MockBackend implements Backend {
   readonly mode = "mock" as const;
   private readonly sim: ColonySim;
   private timer = 0;
+  private paused = false;
+  private readonly stress: number;
+  private debt = 0;
 
   constructor(colonyId: string, opts: MockOptions) {
     this.sim = new ColonySim(colonyId, opts);
+    this.stress = opts.stress ?? 0;
   }
 
   start(store: ColonyStore): void {
@@ -1369,7 +1434,14 @@ export class MockBackend implements Backend {
     store.setConn("mock", null);
     window.clearInterval(this.timer);
     this.timer = window.setInterval(() => {
+      if (this.paused) return;
       const evs = this.sim.step(Date.now());
+      if (this.stress > 0) {
+        this.debt += this.stress / 20;
+        const n = Math.floor(this.debt);
+        this.debt -= n;
+        if (n) evs.push(...this.sim.noise(n));
+      }
       if (evs.length) store.applyEvents(evs);
     }, 50);
   }
@@ -1377,6 +1449,11 @@ export class MockBackend implements Backend {
   stop(): void {
     window.clearInterval(this.timer);
     this.timer = 0;
+  }
+
+  /** Freeze the simulated clock (director mode, space). */
+  setPaused(paused: boolean): void {
+    this.paused = paused;
   }
 
   async why(path: string): Promise<WhyEntry[]> {

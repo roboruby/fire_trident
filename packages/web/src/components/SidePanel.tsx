@@ -18,19 +18,22 @@ interface Props {
   tab: Tab;
   onTab: (t: Tab) => void;
   onPick: (path: string | null) => void;
+  /** Director mode: the panel is a drawer over the map, without developer controls. */
+  director?: boolean;
+  open?: boolean;
 }
 
 /** The side panel: the event log, intents, the human review queue, and lineage. */
-export function SidePanel({ store, backend, tab, onTab, onPick }: Props) {
+export function SidePanel({ store, backend, tab, onTab, onPick, director = false, open = true }: Props) {
   useThrottledVersion(store, 300);
   const badge: Record<Tab, number> = {
     events: 0,
     intents: store.intentsByStatus.open,
-    review: store.escalated,
+    review: store.reviewQueue(),
     why: 0,
   };
   return (
-    <aside className="side">
+    <aside className={`side${director ? " is-director" : ""}${open ? " is-open" : " is-closed"}`} aria-hidden={!open}>
       <nav className="tabs" role="tablist">
         {TABS.map((t, i) => (
           <button key={t} type="button" role="tab" aria-selected={tab === t} className={`tab${tab === t ? " is-on" : ""}`} onClick={() => onTab(t)} title={`${LABEL[t]} (${i + 1})`}>
@@ -40,10 +43,10 @@ export function SidePanel({ store, backend, tab, onTab, onPick }: Props) {
         ))}
       </nav>
       <div className="tab-body">
-        {tab === "events" ? <EventsTab store={store} /> : null}
+        {tab === "events" ? <EventsTab store={store} director={director} /> : null}
         {tab === "intents" ? <IntentsTab store={store} onPick={onPick} /> : null}
-        {tab === "review" ? <ReviewTab store={store} backend={backend} /> : null}
-        {tab === "why" ? <WhyTab store={store} backend={backend} /> : null}
+        {tab === "review" ? <ReviewTab store={store} backend={backend} director={director} /> : null}
+        {tab === "why" ? <WhyTab store={store} backend={backend} director={director} /> : null}
       </div>
     </aside>
   );
