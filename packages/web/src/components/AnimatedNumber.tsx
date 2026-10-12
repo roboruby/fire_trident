@@ -27,9 +27,13 @@ export function AnimatedNumber({ value, format = fmtInt, duration = 750, classNa
     a.to = value;
     a.start = performance.now();
     cancelAnimationFrame(a.raf);
-    const tick = (now: number) => {
-      const u = Math.min(1, (now - a.start) / duration);
-      a.shown = a.from + (a.to - a.from) * (1 - (1 - u) ** 3);
+    const tick = () => {
+      // Read the clock here rather than trusting the rAF timestamp: it can precede `start`
+      // or lag performance.now(), and an unclamped cubic ease extrapolates into nonsense.
+      const now = performance.now();
+      const u = Math.max(0, Math.min(1, (now - a.start) / duration));
+      const next = a.from + (a.to - a.from) * (1 - (1 - u) ** 3);
+      a.shown = Number.isFinite(next) ? next : a.to;
       if (ref.current) ref.current.textContent = format(a.shown);
       if (u < 1) a.raf = requestAnimationFrame(tick);
     };
