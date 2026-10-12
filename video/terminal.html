@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>FireTrident terminal replay</title>
+<meta name="viewport" content="width=1920, initial-scale=1">
+<style>
+  :root {
+    --bg: #05070b; --panel: #0a0e14; --panel-2: #0d121a; --line: #19202b; --line-2: #242d3b;
+    --text: #e9eef6; --text-2: #aab5c6; --text-3: #6d7a8e; --text-4: #4b5568;
+    --accent: #f38020; --accent-2: #ffb469; --trail: #1fe08e; --claim: #3d8bff; --calm: #5fd0ff; --danger: #ff2e4f; --need: #ffb53d;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    --sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: var(--bg); color: var(--text); -webkit-font-smoothing: antialiased; }
+  body { font-family: var(--sans); }
+  .glow { position: absolute; inset: 0; background: radial-gradient(900px 520px at 22% -8%, rgba(243,128,32,0.10), transparent 70%), radial-gradient(1100px 700px at 100% 110%, rgba(61,139,255,0.06), transparent 70%); }
+  .win { position: absolute; left: 96px; top: 64px; width: 1728px; height: 900px; border-radius: 16px; border: 1px solid var(--line-2); background: linear-gradient(180deg, var(--panel-2), var(--panel)); box-shadow: 0 40px 120px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.02) inset; overflow: hidden; opacity: 0; transform: translateY(14px) scale(0.995); }
+  .bar { height: 54px; display: flex; align-items: center; gap: 18px; padding: 0 22px; border-bottom: 1px solid var(--line); background: rgba(255,255,255,0.012); }
+  .dots { display: flex; gap: 9px; }
+  .dots i { width: 13px; height: 13px; border-radius: 50%; background: #1e2633; display: block; }
+  .title { flex: 1; text-align: center; font: 500 17px/1 var(--mono); color: var(--text-3); letter-spacing: 0.02em; margin-right: 120px; }
+  .tag { font: 600 13px/1 var(--mono); letter-spacing: 0.12em; color: var(--trail); border: 1px solid rgba(31,224,142,0.4); border-radius: 999px; padding: 7px 12px; text-transform: uppercase; white-space: nowrap; }
+  .screen { position: absolute; left: 0; right: 0; top: 54px; bottom: 0; padding: 26px 34px 30px; display: flex; flex-direction: column; justify-content: flex-start; overflow: hidden; }
+  .screen.full { justify-content: flex-end; }
+  .ln { flex-shrink: 0; font: 400 21px/1.56 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text-2); min-height: 1.56em; }
+  .ln.cmd { color: var(--text); }
+  .ln .ps { color: var(--accent); font-weight: 600; }
+  .ln .ok { color: var(--trail); }
+  .ln .bad { color: var(--danger); }
+  .ln .ts { color: var(--text-4); }
+  .ln .hd { color: var(--accent-2); font-weight: 600; }
+  .ln .dim { color: var(--text-3); }
+  .ln .key { color: var(--calm); }
+  .ln .num { color: var(--text); font-weight: 600; }
+  .ln mark { background: rgba(243,128,32,0); color: inherit; border-radius: 4px; padding: 0 2px; transition: none; }
+  .ln mark.on { background: rgba(243,128,32,0.22); color: var(--accent-2); box-shadow: 0 0 0 1px rgba(243,128,32,0.35); }
+  .cursor { display: inline-block; width: 0.6em; height: 1.15em; vertical-align: -0.2em; background: var(--accent); margin-left: 1px; }
+  .note { position: absolute; left: 98px; top: 990px; font: 400 17px/1.4 var(--mono); color: var(--text-3); opacity: 0; }
+  .note b { color: var(--trail); font-weight: 600; letter-spacing: 0.1em; margin-right: 12px; }
+</style>
+</head>
+<body>
+<div class="glow"></div>
+<div class="win" id="win">
+  <div class="bar"><span class="dots"><i></i><i></i><i></i></span><span class="title" id="title">ft</span><span class="tag">Real output</span></div>
+  <div class="screen" id="screen"></div>
+</div>
+<div class="note" id="note"></div>
+<script>
+(() => {
+  // Params in the hash: {t: transcript name, dur: seconds, cues: [seconds for each command, or null], mark: [substrings], lps, cps}
+  const P = JSON.parse(decodeURIComponent(location.hash.slice(1) || "{}"));
+  const screen = document.getElementById("screen");
+  const win = document.getElementById("win");
+  const note = document.getElementById("note");
+  let steps = null;
+  let t0 = null;
+
+  const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  function paint(line) {
+    let h = esc(line);
+    h = h.replace(/^(\[\s*[\d.]+s\])/, '<span class="ts">$1</span>');
+    h = h.replace(/(== [^<]*)$/, '<span class="hd">$1</span>');
+    h = h.replace(/✓/g, '<span class="ok">✓</span>').replace(/✗/g, '<span class="bad">✗</span>');
+    h = h.replace(/^(\s*)(Next:.*)$/, '$1<span class="dim">$2</span>');
+    h = h.replace(/^(\s*)("[^"]+")(:)/, '$1<span class="key">$2</span>$3');
+    h = h.replace(/^(\s*)(FT-[A-Za-z]+:)/, '$1<span class="key">$2</span>');
+    return h;
+  }
+  function markup(line, marks, on) {
+    let h = paint(line);
+    for (const m of marks) {
+      const e = esc(m);
+      if (h.includes(e)) h = h.split(e).join(`<mark class="${on ? "on" : ""}">${e}</mark>`);
+    }
+    return h;
+  }
+
+  /** Commands and their outputs, then a schedule that fits the duration. */
+  function plan(text) {
+    const lines = text.replace(/\s+$/, "").split("\n");
+    const meta = {};
+    const blocks = [];
+    for (const l of lines) {
+      const m = l.match(/^# (\w+): (.*)$/);
+      if (m && !blocks.length) { meta[m[1]] = m[2]; continue; }
+      if (l.startsWith("$ ")) blocks.push({ cmd: l.slice(2), out: [] });
+      else if (!blocks.length) blocks.push({ cmd: null, out: [l] });
+      else blocks[blocks.length - 1].out.push(l);
+    }
+    const dur = P.dur ?? 10;
+    const cues = P.cues ?? [];
+    const lps = P.lps ?? 28;
+    let t = 0.5;
+    const sched = blocks.map((b, i) => {
+      const cue = cues[i];
+      const start = typeof cue === "number" ? cue : t;
+      const n = b.cmd ? b.cmd.length : 0;
+      const cps = Math.max(P.cps ?? 38, n / (P.maxType ?? 3.2));
+      const typeEnd = b.cmd ? start + n / cps : start;
+      const outStart = b.cmd ? typeEnd + 0.35 : start;
+      const outLps = P.blockLps?.[i] ?? (b.out.length > 14 ? Math.max(lps, b.out.length / 2.2) : lps);
+      const outEnd = outStart + b.out.length / outLps;
+      t = outEnd + 0.7;
+      return { ...b, start, cps, typeEnd, outStart, outLps, outEnd };
+    });
+    // Squeeze uncued timing if the natural pace overruns the shot.
+    const end = sched.length ? sched[sched.length - 1].outEnd : 0;
+    const limit = dur - (P.hold ?? 1.0);
+    if (end > limit && !cues.length) {
+      const f = Math.max(0.2, (limit - 0.4) / (end - 0.4));
+      for (const s of sched) for (const k of ["start", "typeEnd", "outStart", "outEnd"]) s[k] = 0.4 + (s[k] - 0.4) * f;
+      for (const s of sched) { s.cps /= f; s.outLps /= f; }
+    }
+    return { meta, sched };
+  }
+
+  let last = "";
+  function render(t) {
+    if (!steps) return;
+    const marks = P.mark ?? [];
+    const out = [];
+    let cursorDone = false;
+    let lastEnd = 0;
+    for (const s of steps.sched) {
+      if (t < s.start) break;
+      if (s.cmd !== null) {
+        const typed = Math.min(s.cmd.length, Math.floor((t - s.start) * s.cps));
+        const typing = typed < s.cmd.length || t < s.typeEnd + 0.35;
+        out.push(`<div class="ln cmd"><span class="ps">$</span> ${esc(s.cmd.slice(0, typed))}${typing ? '<span class="cursor"></span>' : ""}</div>`);
+        if (typing) { cursorDone = true; break; }
+      }
+      const shown = Math.min(s.out.length, Math.floor((t - s.outStart) * s.outLps) + 1);
+      for (let i = 0; i < shown; i++) {
+        const lineAt = s.outStart + i / s.outLps;
+        out.push(`<div class="ln">${markup(s.out[i], marks, t - lineAt > 0.5)}</div>`);
+      }
+      lastEnd = s.outEnd;
+      if (shown < s.out.length) { cursorDone = true; break; }
+    }
+    if (!cursorDone && t > lastEnd + 0.2) {
+      const blink = Math.floor((t - lastEnd) * 1.6) % 2 === 0;
+      out.push(`<div class="ln cmd"><span class="ps">$</span> ${blink ? '<span class="cursor"></span>' : ""}</div>`);
+    }
+    const html = out.join("");
+    if (html !== last) {
+      screen.innerHTML = html;
+      last = html;
+      screen.classList.toggle("full", screen.scrollHeight > screen.clientHeight + 2);
+    }
+    const a = Math.min(1, t / 0.45);
+    const e = 1 - Math.pow(1 - a, 3);
+    win.style.opacity = String(e);
+    win.style.transform = `translateY(${(1 - e) * 14}px) scale(${0.995 + 0.005 * e})`;
+    note.style.opacity = String(Math.min(1, Math.max(0, (t - 0.3) / 0.5)));
+  }
+
+  function frame() {
+    render(t0 === null ? 0 : (performance.now() - t0) / 1000);
+    requestAnimationFrame(frame);
+  }
+  window.__ftBegin = () => { t0 = performance.now(); };
+  fetch(`transcripts/${encodeURIComponent(P.t)}.txt`).then((r) => r.text()).then((text) => {
+    steps = plan(text);
+    document.getElementById("title").textContent = steps.meta.title ?? "ft";
+    note.innerHTML = `<b>●</b>${esc(steps.meta.note ?? "")}`;
+    document.body.dataset.ready = "1";
+    requestAnimationFrame(frame);
+  });
+})();
+</script>
+</body>
+</html>

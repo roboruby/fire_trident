@@ -1,0 +1,410 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>FireTrident video cards</title>
+<meta name="viewport" content="width=1920, initial-scale=1">
+<style>
+  :root {
+    --bg: #05070b; --panel: #0a0e14; --panel-2: #0d121a; --line: #19202b; --line-2: #242d3b;
+    --text: #e9eef6; --text-2: #aab5c6; --text-3: #6d7a8e; --text-4: #4b5568;
+    --accent: #f38020; --accent-2: #ffb469; --need: #ffb53d; --claim: #3d8bff; --trail: #1fe08e; --danger: #ff2e4f; --calm: #5fd0ff; --llm: #a78bfa;
+    --sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: var(--bg); color: var(--text); -webkit-font-smoothing: antialiased; font-family: var(--sans); }
+  .glow { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(1000px 560px at 50% -12%, rgba(243,128,32,0.12), transparent 70%), radial-gradient(1200px 700px at 100% 115%, rgba(61,139,255,0.07), transparent 70%); }
+  .r { opacity: 0; will-change: opacity, transform; }
+  .kicker { display: flex; align-items: center; gap: 16px; font: 700 20px/1 var(--sans); letter-spacing: 0.22em; text-transform: uppercase; color: var(--accent); }
+  .kicker::before { content: ""; width: 44px; height: 2px; background: var(--accent); border-radius: 2px; }
+  .pill { display: inline-flex; align-items: center; gap: 10px; font: 600 15px/1 var(--mono); letter-spacing: 0.12em; text-transform: uppercase; border-radius: 999px; padding: 9px 15px; border: 1px solid var(--line-2); color: var(--text-3); white-space: nowrap; }
+  .pill i { width: 8px; height: 8px; border-radius: 50%; background: currentColor; display: block; }
+  .pill.m { color: var(--accent); border-color: rgba(243,128,32,0.5); }
+  .pill.s { color: var(--calm); border-color: rgba(95,208,255,0.45); }
+  .pill.p { color: var(--need); border-color: rgba(255,181,61,0.5); }
+  .pill.i { color: var(--text-3); }
+  .abs { position: absolute; }
+  /* title and end cards */
+  .center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+  .wm { display: flex; align-items: center; gap: 26px; }
+  .wm-name { font: 700 92px/1 var(--sans); letter-spacing: -0.035em; }
+  .tagline { margin-top: 34px; font: 800 64px/1.05 var(--sans); letter-spacing: -0.035em; color: var(--text); }
+  .tagline em { font-style: normal; color: var(--accent); }
+  .subline { margin-top: 26px; font: 400 28px/1.4 var(--sans); color: var(--text-2); }
+  .url { margin-top: 40px; font: 600 30px/1 var(--mono); color: var(--accent-2); }
+  .fine { margin-top: 26px; font: 500 20px/1.4 var(--mono); color: var(--text-3); letter-spacing: 0.04em; }
+  /* headed cards */
+  .head { position: absolute; left: 140px; top: 120px; right: 140px; }
+  .h1 { margin-top: 26px; font: 800 62px/1.08 var(--sans); letter-spacing: -0.03em; max-width: 1500px; }
+  .h1 .dim { color: var(--text-3); }
+  .lede { margin-top: 22px; font: 400 28px/1.45 var(--sans); color: var(--text-2); max-width: 1400px; }
+  .corner { position: absolute; right: 140px; top: 120px; }
+  .foot { position: absolute; left: 140px; right: 140px; bottom: 88px; display: flex; align-items: center; gap: 20px; }
+  .src { font: 400 17px/1.4 var(--mono); color: var(--text-3); }
+  /* stat items */
+  .items { position: absolute; left: 140px; right: 140px; top: 470px; display: grid; gap: 34px; }
+  .item { border: 1px solid var(--line-2); border-radius: 18px; background: linear-gradient(180deg, var(--panel-2), var(--panel)); padding: 34px 36px 32px; }
+  .item .v { font: 700 88px/1 var(--mono); letter-spacing: -0.03em; color: var(--text); white-space: nowrap; }
+  .item .v small { font-size: 40px; color: var(--text-3); letter-spacing: 0; margin-left: 6px; }
+  .item .v .to { color: var(--text-4); font-size: 60px; margin: 0 14px; }
+  .item .l { margin-top: 18px; font: 600 26px/1.3 var(--sans); color: var(--text); }
+  .item .s { margin-top: 10px; font: 400 21px/1.45 var(--sans); color: var(--text-2); }
+  .item.accent .v { color: var(--accent-2); }
+  .item.green .v { color: var(--trail); }
+  .item.blue .v { color: var(--calm); }
+  /* pending */
+  .beats { position: absolute; left: 140px; top: 480px; display: grid; gap: 22px; }
+  .beat { display: flex; align-items: baseline; gap: 22px; font: 500 34px/1.35 var(--sans); color: var(--text); }
+  .beat b { font: 600 22px/1 var(--mono); color: var(--text-4); width: 44px; }
+  /* stack */
+  .rows { position: absolute; left: 140px; right: 140px; top: 400px; display: grid; gap: 22px; }
+  .row { display: grid; grid-template-columns: 420px 1fr; align-items: center; border: 1px solid var(--line-2); border-radius: 16px; background: linear-gradient(180deg, var(--panel-2), var(--panel)); padding: 30px 36px; }
+  .row .n { font: 750 40px/1 var(--sans); letter-spacing: -0.02em; color: var(--accent-2); }
+  .row .t { font: 400 30px/1.35 var(--sans); color: var(--text); }
+  .row .t span { color: var(--text-3); }
+  /* nature */
+  .cols { position: absolute; left: 120px; right: 120px; top: 300px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 40px; }
+  .col { border: 1px solid var(--line-2); border-radius: 20px; background: linear-gradient(180deg, var(--panel-2), var(--panel)); padding: 30px 34px 36px; height: 520px; }
+  .col svg { display: block; width: 100%; height: 250px; }
+  .col .n { margin-top: 18px; font: 750 40px/1.1 var(--sans); letter-spacing: -0.02em; }
+  .col .t { margin-top: 14px; font: 400 26px/1.4 var(--sans); color: var(--text-2); }
+  .bottom { position: absolute; left: 120px; right: 120px; top: 880px; display: flex; align-items: center; gap: 24px; }
+  .bottom .q { font: 750 40px/1 var(--sans); letter-spacing: -0.02em; margin-right: 18px; }
+  .chip { font: 600 24px/1 var(--sans); padding: 15px 22px; border-radius: 999px; border: 1px solid var(--line-2); background: var(--panel); color: var(--text); }
+  .chip.a { border-color: rgba(255,181,61,0.45); }
+  .chip.b { border-color: rgba(95,208,255,0.45); }
+  .chip.c { border-color: rgba(31,224,142,0.45); }
+  /* queue chart */
+  canvas { position: absolute; left: 0; top: 0; }
+  .moves { position: absolute; left: 0; right: 0; bottom: 70px; display: flex; justify-content: center; gap: 22px; }
+  .move { display: flex; align-items: center; gap: 14px; font: 700 34px/1 var(--sans); padding: 18px 28px; border-radius: 14px; border: 1px solid var(--line-2); background: rgba(10,14,20,0.9); }
+  .move b { font: 600 20px/1 var(--mono); color: var(--text-4); }
+  .counter { position: absolute; font: 700 72px/1 var(--mono); letter-spacing: -0.03em; }
+  .counter small { display: block; margin-top: 12px; font: 600 18px/1 var(--sans); letter-spacing: 0.16em; text-transform: uppercase; color: var(--text-3); }
+  .lbl { position: absolute; font: 600 20px/1.2 var(--sans); letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-3); }
+  .panel-title { position: absolute; font: 750 40px/1 var(--sans); letter-spacing: -0.02em; }
+  .stages { position: absolute; left: 140px; top: 300px; display: flex; align-items: center; gap: 16px; }
+  .stage { font: 600 24px/1 var(--sans); padding: 13px 20px; border-radius: 12px; border: 1px solid var(--line-2); background: var(--panel); color: var(--text); }
+  .arr { font: 400 26px/1 var(--sans); font-style: normal; color: var(--text-4); }
+</style>
+</head>
+<body>
+<div class="glow"></div>
+<div id="root"></div>
+<script>
+(() => {
+  const P = JSON.parse(decodeURIComponent(location.hash.slice(1) || "{}"));
+  const root = document.getElementById("root");
+  const beats = P.beats ?? [];
+  const beat = (i, fallback) => (typeof beats[i] === "number" ? beats[i] : fallback);
+  const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
+  const ease = (x) => 1 - Math.pow(1 - clamp(x), 3);
+  const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const MARK = (size) => `<svg viewBox="0 0 32 32" width="${size}" height="${size}" aria-hidden="true"><defs><linearGradient id="ftm" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffb469"/><stop offset="1" stop-color="#f38020"/></linearGradient></defs><g fill="none" stroke="url(#ftm)" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M16 6.5V29"/><path d="M7.5 9v4a8.5 8.5 0 0 0 17 0V9"/></g><g fill="url(#ftm)"><path d="M16 1.6l3.1 5h-6.2z"/><path d="M7.5 4.2l2.7 4.6H4.8z"/><path d="M24.5 4.2l2.7 4.6h-5.4z"/></g></svg>`;
+  const TAG = { measured: "m", simulated: "s", pending: "p", illustration: "i", production: "m" };
+  const tag = (t) => (t ? `<span class="pill ${TAG[t.kind] ?? "i"}"><i></i>${esc(t.text)}</span>` : "");
+
+  /** Elements with data-at="<seconds>" fade up when the clock passes them. */
+  function reveal(t) {
+    for (const el of document.querySelectorAll("[data-at]")) {
+      const at = Number(el.dataset.at);
+      const e = ease((t - at) / 0.55);
+      el.style.opacity = String(e);
+      el.style.transform = `translateY(${(1 - e) * 18}px)`;
+    }
+  }
+
+  const cards = {};
+  let tick = () => {};
+
+  cards.title = () => {
+    root.innerHTML = `<div class="center">
+      <div class="wm r" data-at="0.15">${MARK(110)}<span class="wm-name">FireTrident</span></div>
+      <div class="tagline r" data-at="0.7">A colony, <em>not a queue.</em></div>
+      <div class="subline r" data-at="1.25">${esc(P.sub ?? "Git coordination for thousands of coding agents")}</div>
+    </div>`;
+  };
+
+  cards.end = () => {
+    root.innerHTML = `<div class="center">
+      <div class="wm r" data-at="0.1">${MARK(96)}<span class="wm-name">FireTrident</span></div>
+      <div class="tagline r" data-at="0.45">A colony, <em>not a queue.</em></div>
+      <div class="url r" data-at="${beat(0, 1.4)}">firetrident.mattsolt.workers.dev</div>
+      <div class="fine r" data-at="${beat(1, 1.9)}">Cloudflare Workers · Durable Objects · Artifacts · Workers AI · MIT license</div>
+    </div>`;
+  };
+
+  cards.stat = () => {
+    const items = P.items ?? [];
+    root.innerHTML = `
+      <div class="head"><div class="kicker r" data-at="0.05">${esc(P.kicker ?? "")}</div><div class="h1 r" data-at="0.2">${P.title ?? ""}</div>${P.lede ? `<div class="lede r" data-at="0.35">${P.lede}</div>` : ""}</div>
+      <div class="items" style="grid-template-columns: repeat(${items.length}, 1fr); top: ${P.top ?? 420}px">${items
+        .map((it, i) => `<div class="item r ${it.tone ?? ""}" data-at="${beat(i, 0.6 + i * 0.5)}"><div class="v">${it.value}</div><div class="l">${esc(it.label)}</div>${it.sub ? `<div class="s">${it.sub}</div>` : ""}</div>`)
+        .join("")}</div>
+      <div class="foot r" data-at="${P.tagAt ?? 0.4}">${tag(P.tag)}<span class="src">${esc(P.source ?? "")}</span></div>`;
+  };
+
+  cards.pending = () => {
+    root.innerHTML = `
+      <div class="head"><div class="kicker r" data-at="0.05">${esc(P.kicker ?? "")}</div><div class="h1 r" data-at="0.2">${P.title ?? ""}</div></div>
+      <div class="corner r" data-at="0.3">${tag({ kind: "pending", text: P.pending ?? "Footage pending" })}</div>
+      <div class="beats">${(P.lines ?? []).map((l, i) => `<div class="beat r" data-at="${beat(i, 0.6 + i * 0.6)}"><b>${String(i + 1).padStart(2, "0")}</b><span>${l}</span></div>`).join("")}</div>
+      <div class="foot r" data-at="0.5"><span class="src">${esc(P.source ?? "")}</span></div>`;
+  };
+
+  cards.stack = () => {
+    root.innerHTML = `
+      <div class="head"><div class="kicker r" data-at="0.05">${esc(P.kicker ?? "Built on Cloudflare")}</div><div class="h1 r" data-at="0.2">${P.title ?? ""}</div></div>
+      <div class="rows">${(P.rows ?? []).map((r, i) => `<div class="row r" data-at="${beat(i, 0.6 + i * 0.6)}"><div class="n">${esc(r.name)}</div><div class="t">${r.text}</div></div>`).join("")}</div>`;
+  };
+
+  // -- nature: three systems that coordinate with no queue ----------------------
+  cards.nature = () => {
+    root.innerHTML = `
+      <div class="head" style="top: 110px"><div class="kicker r" data-at="0.05">Nature solved this</div></div>
+      <div class="cols">
+        <div class="col r" data-at="${beat(0, 0.5)}"><svg id="ants" viewBox="0 0 500 250"></svg><div class="n" style="color: var(--need)">Ant colony</div><div class="t">Millions of workers and no manager.</div></div>
+        <div class="col r" data-at="${beat(1, 3)}"><svg id="slime" viewBox="0 0 500 250"></svg><div class="n" style="color: var(--trail)">Slime mold</div><div class="t">Finds the shortest path through a maze without a map.</div></div>
+        <div class="col r" data-at="${beat(2, 6)}"><svg id="immune" viewBox="0 0 500 250"></svg><div class="n" style="color: var(--calm)">Immune system</div><div class="t">Checks billions of cells and remembers every attack.</div></div>
+      </div>
+      <div class="bottom"><span class="q r" data-at="${beat(3, 9)}">No queue.</span><span class="chip a r" data-at="${beat(4, 11)}">Signals left in the environment</span><span class="chip b r" data-at="${beat(5, 11.6)}">Local decisions</span><span class="chip c r" data-at="${beat(6, 12.2)}">Parallel work</span></div>`;
+    const ants = document.getElementById("ants");
+    const slime = document.getElementById("slime");
+    const immune = document.getElementById("immune");
+    // Ant trail: a wavy pheromone path from nest to food, ants walking both ways.
+    const trail = "M40 200 C 120 60, 200 230, 270 120 S 420 40, 460 70";
+    ants.innerHTML = `<path d="${trail}" fill="none" stroke="rgba(255,181,61,0.25)" stroke-width="10" stroke-linecap="round"/><path id="antpath" d="${trail}" fill="none" stroke="rgba(255,181,61,0.55)" stroke-width="2" stroke-dasharray="3 9"/><circle cx="40" cy="200" r="16" fill="rgba(255,181,61,0.18)" stroke="#ffb53d" stroke-width="2"/><circle cx="460" cy="70" r="12" fill="#ffb53d" opacity="0.85"/>${Array.from({ length: 14 }, (_, i) => `<circle class="ant" r="4.2" fill="#ffd18a"/>`).join("")}`;
+    const antPath = ants.querySelector("#antpath");
+    const len = antPath.getTotalLength();
+    // Slime mold: a network of tubes from food sources, the shortest path thickening.
+    const nodes = [[40, 130], [150, 118], [150, 210], [255, 128], [355, 115], [345, 212], [460, 125], [250, 38]];
+    const edges = [[0, 1], [1, 3], [3, 4], [4, 6], [0, 2], [2, 5], [5, 6], [1, 7], [7, 4], [2, 3], [3, 5], [7, 3]];
+    const best = new Set(["0-1", "1-3", "3-4", "4-6"]);
+    slime.innerHTML = edges.map(([a, b]) => `<line class="tube" data-best="${best.has(`${a}-${b}`) ? 1 : 0}" x1="${nodes[a][0]}" y1="${nodes[a][1]}" x2="${nodes[b][0]}" y2="${nodes[b][1]}" stroke="#1fe08e" stroke-linecap="round"/>`).join("") + nodes.map(([x, y], i) => `<circle cx="${x}" cy="${y}" r="${i === 0 || i === 6 ? 13 : 6}" fill="${i === 0 || i === 6 ? "#1fe08e" : "rgba(31,224,142,0.35)"}"/>`).join("");
+    // Immune system: cells drifting past a sentinel; one marked cell gets tagged.
+    immune.innerHTML = Array.from({ length: 16 }, (_, i) => `<circle class="cell" r="${i === 5 ? 15 : 12}" fill="${i === 5 ? "rgba(255,46,79,0.25)" : "rgba(95,208,255,0.14)"}" stroke="${i === 5 ? "#ff2e4f" : "rgba(95,208,255,0.55)"}" stroke-width="2"/>`).join("") +
+      `<g id="ab" stroke="#5fd0ff" stroke-width="4" stroke-linecap="round" fill="none"><path d="M0 22 V2 M0 2 L-12 -14 M0 2 L12 -14"/></g>`;
+    const tubes = [...slime.querySelectorAll(".tube")];
+    const antEls = [...ants.querySelectorAll(".ant")];
+    const cells = [...immune.querySelectorAll(".cell")];
+    const ab = immune.querySelector("#ab");
+    tick = (t) => {
+      antEls.forEach((el, i) => {
+        const dir = i % 2 ? 1 : -1;
+        let u = ((t * 0.09 + i / antEls.length) % 1 + 1) % 1;
+        if (dir < 0) u = 1 - u;
+        const p = antPath.getPointAtLength(u * len);
+        el.setAttribute("cx", p.x.toFixed(1));
+        el.setAttribute("cy", p.y.toFixed(1));
+      });
+      const g = clamp((t - beat(1, 3)) / 4);
+      tubes.forEach((el) => {
+        const isBest = el.dataset.best === "1";
+        const w = isBest ? 3 + 9 * g : 3 * (1 - 0.8 * g);
+        el.setAttribute("stroke-width", w.toFixed(2));
+        el.setAttribute("stroke-opacity", (isBest ? 0.5 + 0.5 * g : 0.5 * (1 - 0.7 * g)).toFixed(2));
+      });
+      cells.forEach((el, i) => {
+        const row = i % 4;
+        const x = ((i * 97 + t * (26 + row * 7)) % 560) - 30;
+        const y = 40 + row * 55 + Math.sin(t * 0.8 + i) * 6;
+        el.setAttribute("cx", x.toFixed(1));
+        el.setAttribute("cy", y.toFixed(1));
+        if (i === 5) ab.setAttribute("transform", `translate(${(x + 6).toFixed(1)} ${(y - 36).toFixed(1)}) scale(${(0.9 + 0.1 * Math.sin(t * 4)).toFixed(3)})`);
+      });
+    };
+  };
+
+  // -- the queue chart: one queue (left), many lanes (right, in "compare" mode) ---------
+  cards.queue = () => {
+    const compare = P.mode === "compare";
+    root.innerHTML = `<canvas id="cv" width="1920" height="1080"></canvas>
+      <div class="head" style="top: 96px"><div class="kicker r" data-at="0.05">${esc(P.kicker ?? "The problem")}</div></div>
+      <div class="corner r" data-at="0.3" style="top: 96px">${tag({ kind: "illustration", text: "Illustration, not data" })}</div>
+      ${compare
+        ? `<div class="panel-title r" data-at="0.15" style="left: 140px; top: 210px">One queue</div><div class="panel-title r" data-at="${beat(0, 0.6)}" style="left: 1010px; top: 210px; color: var(--trail)">A colony</div>
+           <div class="moves">${["Sense", "Decide", "Land", "Remember"].map((m, i) => `<div class="move r" data-at="${beat(i + 1, 2 + i * 0.6)}"><b>0${i + 1}</b>${m}</div>`).join("")}</div>`
+        : `<div class="panel-title r" data-at="0.15" style="left: 140px; top: 210px">One queue</div>
+           <div class="stages" id="stages">${["branch", "pull request", "review", "merge queue"].map((s, i) => `${i ? `<i class="arr r" data-at="${beat(3 + i, 1 + i)}">→</i>` : ""}<span class="stage r" data-at="${beat(3 + i, 1 + i)}">${s}</span>`).join("")}</div>`}
+      <div class="counter r" id="waiting" data-at="${compare ? 0.2 : beat(1, 6)}" style="left: ${compare ? 600 : 1160}px; top: ${compare ? 196 : 190}px; color: var(--danger); text-align: right; width: 300px">0<small>waiting</small></div>
+      ${compare ? `<div class="counter r" id="landedR" data-at="${beat(0, 0.6)}" style="left: 1480px; top: 196px; color: var(--trail); text-align: right; width: 300px">0<small>landed</small></div>` : ""}
+      <div class="lbl r" data-at="0.3" id="lblIn" style="left: 140px; top: ${compare ? 880 : 900}px">${compare ? "proposals" : "people"}</div>
+      <div class="lbl r" data-at="0.3" style="left: ${compare ? 770 : 1500}px; top: ${compare ? 880 : 900}px">trunk</div>`;
+    const cv = document.getElementById("cv");
+    const ctx = cv.getContext("2d");
+    const waitingEl = document.getElementById("waiting");
+    const landedEl = document.getElementById("landedR");
+    const lblIn = document.getElementById("lblIn");
+    // Deterministic arrivals: rate(t) per second, integrated to arrival times.
+    let seed = 7;
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    const rateQ = (t) => {
+      if (compare) return 26;
+      const b1 = beat(1, 6), b2 = beat(2, 12);
+      if (t < b1) return 0.35;
+      if (t < b2) return 0.35 + 12 * clamp((t - b1) / 1.5);
+      return 12.35 + 80 * clamp((t - b2) / 2.5);
+    };
+    const total = (P.dur ?? 30) + 2;
+    const arrivals = [];
+    for (let t = compare ? -40 : 0, acc = 0; t < total; t += 0.01) {
+      acc += rateQ(Math.max(0, t)) * 0.01;
+      while (acc >= 1) {
+        acc -= 1;
+        arrivals.push({ s: t, y: rnd(), lane: Math.floor(rnd() * 8), j: rnd() });
+      }
+    }
+    // Left panel geometry.
+    const L = compare ? { x0: 140, x1: 900, gate: 760, trunk: 860, cy: 560, h: 520 } : { x0: 140, x1: 1780, gate: 1420, trunk: 1660, cy: 560, h: 560 };
+    const svc = 1.4;
+    const travel = compare ? 1.6 : 2.4;
+    let free = -1e9;
+    for (const a of arrivals) {
+      a.at = a.s + travel;
+      a.enter = Math.max(a.at, free);
+      a.done = a.enter + svc;
+      free = a.done;
+    }
+    // Right panel (compare): lanes batch every ~1.1 s, offset per lane.
+    const R = { x0: 1010, x1: 1780, gate: 1600, trunk: 1720, top: 330, bottom: 800 };
+    const laneY = (k) => R.top + ((R.bottom - R.top) * (k + 0.5)) / 8;
+    if (compare) for (const a of arrivals) {
+      const arrive = a.s + 1.1;
+      const period = 1.1;
+      const off = (a.lane * 0.137) % period;
+      a.rLand = Math.ceil((arrive - off) / period) * period + off;
+      a.rArrive = arrive;
+    }
+    const rows = 11;
+    const sp = 17;
+    function spot(k) {
+      const col = Math.floor(k / rows);
+      const row = k % rows;
+      return [L.gate - 46 - col * sp, L.cy + (row - (rows - 1) / 2) * sp];
+    }
+    tick = (t) => {
+      ctx.clearRect(0, 0, 1920, 1080);
+      // Left: gate, trunk, and the pile.
+      ctx.strokeStyle = "rgba(36,45,59,1)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(L.gate + 30, L.cy);
+      ctx.lineTo(L.trunk, L.cy);
+      ctx.stroke();
+      ctx.fillStyle = "rgba(243,128,32,0.12)";
+      ctx.strokeStyle = "rgba(243,128,32,0.7)";
+      ctx.beginPath();
+      ctx.roundRect(L.gate - 22, L.cy - 120, 44, 240, 10);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = "#6d7a8e";
+      ctx.font = "600 18px system-ui";
+      ctx.textAlign = "center";
+      ctx.fillText("REVIEW · MERGE QUEUE", L.gate, L.cy + 160);
+      ctx.beginPath();
+      ctx.arc(L.trunk, L.cy, 16, 0, Math.PI * 2);
+      ctx.strokeStyle = "rgba(31,224,142,0.8)";
+      ctx.stroke();
+      let entered = 0;
+      for (const a of arrivals) if (a.enter <= t) entered++;
+      let waiting = 0;
+      let landed = 0;
+      for (let i = 0; i < arrivals.length; i++) {
+        const a = arrivals[i];
+        if (a.s > t) break;
+        if (a.done + 0.9 < t) { landed++; continue; }
+        let x, y, alpha = 1, color = "#ffb53d";
+        const start = [L.x0 - 20, L.cy + (a.y - 0.5) * L.h];
+        if (t < a.enter) {
+          const k = i - entered;
+          waiting++;
+          const [qx, qy] = spot(Math.max(0, k));
+          const u = ease((t - a.s) / travel);
+          x = start[0] + (qx - start[0]) * u;
+          y = start[1] + (qy - start[1]) * u;
+          if (qx < L.x0 - 10) alpha = 0;
+        } else if (t < a.done) {
+          x = L.gate; y = L.cy; color = "#f38020";
+        } else {
+          const u = clamp((t - a.done) / 0.9);
+          x = L.gate + (L.trunk - L.gate) * u; y = L.cy; alpha = 1 - u * 0.6; color = "#1fe08e";
+          if (u >= 1) landed++;
+        }
+        if (alpha <= 0) continue;
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(x, y, 5.2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+      waitingEl.firstChild.nodeValue = waiting.toLocaleString("en-US");
+      if (!compare) {
+        lblIn.textContent = t < beat(1, 6) ? "people" : "agents";
+        document.getElementById("stages").style.opacity = String(1 - 0.7 * clamp((t - beat(1, 6)) / 1.2));
+      }
+      if (compare) {
+        // Right: eight lanes into one trunk; batches land together.
+        let landedR = 0;
+        for (let k = 0; k < 8; k++) {
+          const y = laneY(k);
+          ctx.strokeStyle = "rgba(36,45,59,1)";
+          ctx.beginPath();
+          ctx.moveTo(R.x0, y);
+          ctx.lineTo(R.gate, y);
+          ctx.stroke();
+          ctx.strokeStyle = "rgba(31,224,142,0.35)";
+          ctx.beginPath();
+          ctx.moveTo(R.gate, y);
+          ctx.quadraticCurveTo(R.gate + 70, y, R.trunk, (R.top + R.bottom) / 2);
+          ctx.stroke();
+        }
+        ctx.beginPath();
+        ctx.arc(R.trunk, (R.top + R.bottom) / 2, 16, 0, Math.PI * 2);
+        ctx.strokeStyle = "rgba(31,224,142,0.9)";
+        ctx.stroke();
+        for (const a of arrivals) {
+          if (a.s > t) break;
+          if (a.rLand + 0.8 < t) { if (a.s >= 0) landedR++; continue; }
+          let x, y, color = "#3d8bff";
+          const y0 = laneY(a.lane);
+          if (t < a.rArrive) {
+            const u = ease((t - a.s) / 1.1);
+            x = R.x0 + (R.gate - 40 - R.x0) * u * (0.85 + 0.15 * a.j);
+            y = y0;
+          } else if (t < a.rLand) {
+            x = R.gate - 18 - a.j * 30; y = y0; color = "#5fd0ff";
+          } else {
+            const u = clamp((t - a.rLand) / 0.8);
+            x = R.gate + (R.trunk - R.gate) * u;
+            y = y0 + ((R.top + R.bottom) / 2 - y0) * u * u;
+            color = "#1fe08e";
+          }
+          ctx.fillStyle = color;
+          ctx.globalAlpha = 0.95;
+          ctx.beginPath();
+          ctx.arc(x, y, 5.2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+        landedEl.firstChild.nodeValue = landedR.toLocaleString("en-US");
+      }
+    };
+  };
+
+  (cards[P.card] ?? cards.title)();
+  let t0 = null;
+  function frame() {
+    const t = t0 === null ? 0 : (performance.now() - t0) / 1000;
+    reveal(t);
+    tick(t);
+    requestAnimationFrame(frame);
+  }
+  window.__ftBegin = () => { t0 = performance.now(); };
+  document.body.dataset.ready = "1";
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

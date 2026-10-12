@@ -1,0 +1,4 @@
+{
+  "$comment": "Respellings for the synthesizer only; the narration text is unchanged. Checked with Whisper: plain \"Hono\" is heard as \"Hano\".",
+  "Hono": "Hohno"
+}

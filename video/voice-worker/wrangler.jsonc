@@ -1,0 +1,14 @@
+{
+  // ft-voice: text to speech for the FireTrident video (Workers AI, Deepgram Aura-2).
+  // Separate from the `firetrident` Worker on purpose: it only narrates the video.
+  // Deploy: cd video/voice-worker && npx wrangler deploy
+  // Secret: printf %s "$FT_VOICE_TOKEN" | npx wrangler secret put VOICE_TOKEN
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "ft-voice",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-11",
+  "workers_dev": true,
+  "preview_urls": false,
+  "ai": { "binding": "AI" },
+  "observability": { "enabled": true }
+}

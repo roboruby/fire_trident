@@ -1,0 +1,15 @@
+# title: ft · production
+# note: Real output · ft why on the production hono colony, 2026-10-12
+$ ft why hono src/index.ts:17
+src/index.ts:17  1 landing, newest first
+
+● landing lnd_mv516qrl89pu9f  c71f62d ← b2faa77  2026-10-12 09:09Z (25m ago)
+  3 other proposal(s) in this landing touched other files
+  proposal prp_mv516q89lp5kwr by agt_mv5169om8ek8r0 (internal · @cf/google/gemma-4-26b-a4b-it)
+  intent   int_mv5166dlnya2kq "Relative imports in src name their file, so Hono runs on Deno, JSR and …"
+  why      Relative imports in src name their file, so Hono runs on Deno, JSR and Node built-in TypeScript without the unstable sloppy-imports flag. Hint: Name the file in every relative import: ./x becomes ./x.ts when x.ts exists; a directory ./d becomes ./d/index.ts (".", ".." and "../.." are directories). Check the tree. Change nothing else. 6 violations on lines 17, 35, 39, 40, 44, 48.
+  rule     rul_mv51663hu2jmz8 "Relative imports in src name their file, so Hono runs on Deno, JSR and …" approved by ms
+  checks   ✓ recheck src/index.ts 741ms  ✓ agent model usage 741ms  ✓ agent git transfer 286ms  ✓ innate: blobs 75ms  ✓ innate: rule rul_mv51663hu2jmz8 0ms  ✓ innate: footprint 0ms  ✓ innate: not-verified 0ms  ✓ deterministic: imports resolve 60ms  ✓ deterministic: mechanical proof 0ms  ✓ gate 0ms
+  unproven No tests, type checks or builds were run. Checked by the agent against the trunk tree: the rule reports 0 violations after the edit; every rewritten import names an existing file, the one TypeScript resolved before (x.ts before x/index.ts); directories name their index file: ./client -> ./client/index.ts; a file beats the same-named directory: ./request -> ./request.ts. Edited by model @cf/google/gemma-4-26b-a4b-it. Based on trunk 552ea024250093a48071b3ded9710de4c6e05f14, which the workspace already held; every footprint file matched current trunk when the work started.
+  wrote    src/index.ts
+  read     src/index.ts

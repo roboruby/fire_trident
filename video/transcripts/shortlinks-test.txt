@@ -1,0 +1,14 @@
+# title: demo/run_new_project.rb · production
+# note: Real output · a plain git clone of the colony's trunk, tested with nothing installed, 2026-10-12
+[  480.1s] == Plain git clone of trunk
+[  481.7s] cloned 23 files to …/shortlinks (trunk f923e70, 14 commits)
+[  481.7s] == node --test (the colony's own suite, nothing installed)
+[  481.9s] node --test: 60 tests, 60 pass, 0 fail in 144 ms
+[  481.9s] == Reference acceptance suite A1-A7 against the colony's code
+[  482.0s] reference acceptance: 7/7 pass in 87 ms
+[  482.0s] == The spec's rules on every file of trunk
+[  482.0s] rule 1 Relative imports name the .ts file                         18 file(s) checked, 0 violation(s)
+[  482.0s] rule 2 Worker code uses web APIs, not Node built-ins              11 file(s) checked, 0 violation(s)
+[  482.0s] rule 3 Route handlers depend on the Store interface, not a store  3 file(s) checked, 0 violation(s)
+[  482.0s] rule 4 Responses are built by src/http.ts                         10 file(s) checked, 0 violation(s)
+[  482.0s] rule 5 Randomness and time are injected                           10 file(s) checked, 0 violation(s)

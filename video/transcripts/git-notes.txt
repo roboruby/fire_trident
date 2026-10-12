@@ -1,0 +1,45 @@
+# title: git · hono trunk on Artifacts
+# note: Real output · git 2.55 and jq on a plain clone of the hono trunk and its notes, 2026-10-12
+$ git log -1 --format='%h %s%n%n%(trailers)' c71f62d
+c71f62d Land 4 changes: Relative imports in src name their file, so Hono runs o…
+
+FT-Landing: lnd_mv516qrl89pu9f
+FT-Intent: int_mv5166dl9he4p8
+FT-Intent: int_mv5166dlnya2kq
+FT-Intent: int_mv5166dlsvtn99
+FT-Intent: int_mv5166dljmm75j
+FT-Proposal: prp_mv516pzujc0gvf
+FT-Proposal: prp_mv516q89lp5kwr
+FT-Proposal: prp_mv516qcx1l7m8v
+FT-Proposal: prp_mv516qk8owmel0
+FT-Agent: agt_mv5169ommfwm27
+FT-Agent: agt_mv5169om8ek8r0
+FT-Agent: agt_mv5169om3v50lm
+FT-Agent: agt_mv5169omf3jja7
+
+$ git notes --ref=firetrident show c71f62d | jq ".proposals[1] | {intent: .intent.title, rule: .intent.ruleId, agent: .agentId, model, decisions, read: [.readSet[].path], wrote: [.writeSet[].path], checks: [.evidence.checks[].name]}"
+{
+  "intent": "Relative imports in src name their file, so Hono runs on Deno, JSR and Node built-in TypeScript without the unstable sloppy-imports flag in src/index.ts",
+  "rule": "rul_mv51663hu2jmz8",
+  "agent": "agt_mv5169om8ek8r0",
+  "model": "@cf/google/gemma-4-26b-a4b-it",
+  "decisions": [],
+  "read": [
+    "src/index.ts"
+  ],
+  "wrote": [
+    "src/index.ts"
+  ],
+  "checks": [
+    "recheck src/index.ts",
+    "agent model usage",
+    "agent git transfer",
+    "innate: blobs",
+    "innate: rule rul_mv51663hu2jmz8",
+    "innate: footprint",
+    "innate: not-verified",
+    "deterministic: imports resolve",
+    "deterministic: mechanical proof",
+    "gate"
+  ]
+}

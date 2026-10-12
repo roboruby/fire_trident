@@ -1,0 +1,6 @@
+# title: ft · production
+# note: Real output · production run on honojs/hono, 2026-10-12
+$ ft rule import-boundary hono --from 'src/**/*.ts' --from 'src/**/*.tsx' --module '^\.\.?(?:/.*)?(?<!\.ts|\.tsx|\.json)$' --hint 'Name the file in every relative import: ./x becomes ./x.ts when x.ts exists; a directory ./d becomes ./d/index.ts (".", ".." and "../.." are directories). Check the tree. Change nothing else.' --description 'Relative imports in src name their file, so Hono runs on Deno, JSR and Node built-in TypeScript without the unstable sloppy-imports flag.'
+✓ rul_mv51663hu2jmz8 added (forbid-import, approved by ms)
+  958 violations → 282 intents in the field
+  Next: ft swarm hono --agents 50   then   ft watch hono

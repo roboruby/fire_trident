@@ -1,0 +1,40 @@
+# title: ft · production
+# note: Real output · ft new, then the demo script's progress lines (excerpt, verbatim), 2026-10-12
+$ ft new --spec demo/new-project-spec.md --name shortlinks
+✓ Colony shortlinks shortlinks created from demo/new-project-spec.md
+  ✓ rule rul_mv519icht0d9zz Relative imports name the .ts file
+  ✓ rule rul_mv519if1zle5zg Worker code uses web APIs, not Node built-ins
+  ✓ rule rul_mv519ihd829rdc Route handlers depend on the Store interface, not a store
+  ✓ rule rul_mv519ilyl5rp2x Responses are built by src/http.ts
+  ✓ rule rul_mv519io8etg4td Randomness and time are injected
+  ✓ intent int_mv519iq0c84orz p5 Scaffold the Worker project
+  ✓ intent int_mv519j31bvnz0l p5 Shared types: Link, Store, KVLike, Env, Deps, Handler
+  ✓ intent int_mv519jhsx35k7i p4 HTTP helpers: json, error, readJson
+  ✓ intent int_mv519jth0rmzpo p4 Slug generation and validation
+  ✓ intent int_mv519jwhjj6tp2 p4 Target URL validation
+  ✓ intent int_mv519jz15snosu p4 Router with params, 404, and 405 ← builds on "HTTP helpers: json, error, readJson"
+  ✓ intent int_mv519k1hk6eiuz p4 In-memory store ← builds on "Shared types: Link, Store, KVLike, Env, Deps, Handler"
+  ✓ intent int_mv519kf54sk8h9 p4 KV store ← builds on "Shared types: Link, Store, KVLike, Env, Deps, Handler"
+  ✓ intent int_mv519kmoep5ydz p3 Route: POST /api/links creates a short link ← builds on "HTTP helpers: json, error, readJson"
+  ✓ intent int_mv519l3ddxihrr p3 Route: GET /:slug redirects and counts ← builds on "HTTP helpers: json, error, readJson"
+  ✓ intent int_mv519l6f7co3pi p3 Routes: GET and DELETE /api/links/:slug ← builds on "HTTP helpers: json, error, readJson"
+  ✓ intent int_mv519l99q188a8 p2 Worker entry: routes, error boundary, store selection ← builds on "Route: POST /api/links creates a short link"
+  ✓ intent int_mv519lbxblpb0h p1 Acceptance suite A1 to A7 ← builds on "Worker entry: routes, error boundary, store selection"
+
+5 rules and 13 intents painted into the field, in 5 waves (priority 5 to 1).
+  Each intent carries the spec's contracts (11,047 characters at most); an agent waits for the files its intent builds on, then reads them.
+  Next: ft swarm shortlinks --agents 6   then   ft watch shortlinks
+$ ft swarm shortlinks --agents 6 --model default=3,bulk
+✓ 6 internal agents joining shortlinks (default=3,bulk)
+  They self-assign from the field. Watch: ft watch shortlinks
+[   20.7s] intents landed  0/13  claimed 6  proposed 0  open 7 | landings 0, returned 0, review 0, files 1
+[   38.4s] intents landed  1/13  claimed 6  proposed 0  open 6 | landings 1, returned 0, review 0, files 2
+[   55.5s] intents landed  2/13  claimed 6  proposed 0  open 5 | landings 2, returned 0, review 0, files 4
+[   88.7s] intents landed  3/13  claimed 5  proposed 1  open 4 | landings 3, returned 0, review 0, files 8
+[   94.1s] intents landed  4/13  claimed 6  proposed 0  open 3 | landings 4, returned 0, review 0, files 10
+[  188.3s] intents landed  6/13  claimed 5  proposed 0  open 2 | landings 6, returned 0, review 0, files 14
+[  289.0s] intents landed 10/13  claimed 3  proposed 0  open 0 | landings 10, returned 0, review 0, files 19
+[  362.7s] intents landed 10/13  claimed 2  proposed 1  open 0 | landings 11, returned 0, review 0, files 21
+[  401.1s] intents landed 12/13  claimed 1  proposed 0  open 0 | landings 12, returned 0, review 0, files 22
+[  479.1s] intents landed 13/13  claimed 0  proposed 0  open 0 | landings 13, returned 0, review 0, files 23
+[  480.1s] all 13 intents landed 479.1 s after ft new

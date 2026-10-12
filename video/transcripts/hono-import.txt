@@ -1,0 +1,17 @@
+# title: ft · production
+# note: Real output · production run on honojs/hono, 2026-10-12 · source host elided
+$ ft import https://…/honojs/hono --name hono --branch main --region-depth 3 --pool 84 --timeout 900
+✓ Importing https://…/honojs/hono (main) as hono hono
+hono hono  from https://…/honojs/hono (main)
+trunk      552ea02  green not certified yet
+files      583 in 127 regions
+intents    none
+agents     none
+violations 0 left
+decisions  reflex 0 · llm 0 · human 0
+landings   none yet
+in flight  0 proposals · 0 landings/min
+last 30m   no landings
+
+  Next: ft rule add hono --pattern <regex> --hint <text> --description <text>
+        ft watch hono
