@@ -1,0 +1,91 @@
+# FireTrident architecture
+
+FireTrident is a git platform for very large numbers of concurrent coding agents, built on Cloudflare Workers and Artifacts. It coordinates agents the way colonies do: through signals left in a shared environment, local decisions, and parallel integration, instead of locks and one merge queue.
+
+## The model in one screen
+
+- **Colony**: one codebase. A trunk repository in Artifacts plus the coordination state around it.
+- **Field**: decaying marks on regions of the code (claim, need, trail, failure, danger). Agents read the field instead of messaging each other. Reading it costs the same no matter how many agents there are.
+- **Intent**: what should change and why, declared before any code is written, with a predicted footprint (the paths it expects to touch).
+- **Rule (morphology)**: a declared architecture rule. Every violation becomes a need in the field and an intent.
+- **Workspace**: an Artifacts fork leased to one agent with a short-lived, workspace-scoped token. Agents never hold a trunk write token.
+- **Proposal**: an intent's change: base and head commits in the workspace, the files written (write set), the files read (read set), declared footprint, and evidence.
+- **Lane**: a region's integration queue. Each cycle it picks the largest set of non-conflicting, still-valid proposals and hands them to the trunk writer, which lands them as one commit.
+- **Lineage**: every landed commit carries `FT-*` trailers and a JSON note under `refs/notes/firetrident` with the intent chain, read and write sets, decisions, and evidence.
+
+## Request flow (an in-platform agent)
+
+1. `ColonyDO.registerAgent` gives the agent an id.
+2. `ColonyDO.take(agentId)` builds candidates from open intents, reads the field from the relevant `RegionDO`s (repulsion from other agents' claims, admission), and picks one with the response-threshold rule (`core/threshold.ts`). It deposits `claim` marks on the intent's footprint and asks `PoolDO.lease` for a workspace.
+3. The agent (`AgentDO`) clones its workspace into a `@cloudflare/computer` Workspace, reads files (each read is recorded with its blob id), edits with an LLM, commits, and pushes to its workspace repo.
+4. `ColonyDO.propose` records the proposal, computes the residual (paths changed outside the declared footprint), runs innate checks, and enqueues it in the lane of the proposal's primary region (`RegionDO.enqueue`).
+5. On each lane tick (`RegionDO` alarm, interval from `core/batch.ts#laneIntervalMs`), the region asks `TrunkDO.blobsFor` for current trunk blobs, validates proposals with `core/occ.ts`, selects a batch with `core/batch.ts#selectBatch`, and calls `TrunkDO.land(batch)`. Stale proposals are returned to their agents with the exact delta.
+6. `TrunkDO.land` reads each proposal's new blobs from its workspace repo (`readBlob` on the binding), writes them into its own git workspace, builds the new tree by replacing only the changed paths, commits with `FT-*` trailers, adds the lineage note, and pushes trunk and `refs/notes/firetrident` with the expected old value (compare-and-swap). It then reports the `Landing` to `ColonyDO.onLanding`, which updates intents, deposits `trail` marks, reinforces the agent's threshold for the region, and broadcasts events.
+
+## Durable Objects and their RPC contracts
+
+All are SQLite-backed (`new_sqlite_classes`). Callers use RPC on stubs (`env.COLONY.get(env.COLONY.idFromName(colonyId)).take(agentId)`). Types come from `@fire_trident/core`.
+
+### ColonyDO (name: colonyId)
+Owns colony config, intents, rules, agents, proposals index, review queue, antibodies, decision counters (the funnel), metrics, and the live WebSocket hub (hibernation API) for the UI.
+- `init(p: { colonyId; name; trunk: RepoRef; trunkSha: Sha; source?; regionDepth? }): Promise<Colony>`
+- `snapshot(): Promise<ColonySnapshot>`
+- `addIntent(i: Omit<Intent, "id" | "status" | "createdAt">): Promise<Intent>` (also deposits `need` marks)
+- `addRule(r: Omit<Rule, "id" | "createdAt">): Promise<{ rule: Rule; violations: number; intents: number }>`
+- `registerAgent(a: { kind: AgentKind; name: string; model?: string }): Promise<AgentInfo>`
+- `take(agentId: Id): Promise<{ intent: Intent; lease: WorkspaceLease } | { wait: true; retryInMs: number; reason: string }>`
+- `heartbeat(agentId: Id): Promise<void>` (refreshes claim marks)
+- `propose(p: Omit<Proposal, "id" | "status" | "createdAt" | "evidence"> & { evidence?: Partial<Evidence> }): Promise<Proposal>`
+- `updateProposal(id: Id, patch: Partial<Proposal>): Promise<void>` (called by RegionDO/TrunkDO)
+- `onLanding(l: Landing): Promise<void>`
+- `review(): Promise<Proposal[]>`, `decide(proposalId: Id, d: "approve" | "reject" | "return", reason: string, by: string): Promise<void>`
+- `emit(e: ColonyEvent): Promise<void>` (broadcast to UI sockets; also used by other DOs)
+- `fetch(req)`: WebSocket upgrade for `/api/colonies/:id/live`
+
+### RegionDO (name: `${colonyId}:${region}`)
+Owns the field for one region and that region's lane.
+- `configure(p: { colonyId: Id; region: string }): Promise<void>`
+- `deposit(marks: Array<Omit<Mark, "id">>): Promise<void>`
+- `clear(filter: { agentId?: Id; intentId?: Id; kind?: MarkKind; paths?: Path[] }): Promise<number>`
+- `reading(): Promise<FieldReading>`
+- `enqueue(p: Proposal): Promise<void>`
+- `recordCause(e: { id: string; causeId?: string; at: number }): Promise<void>` (criticality governor)
+- `alarm()`: lane tick
+
+### TrunkDO (name: colonyId)
+The only writer of trunk. Holds a `@cloudflare/computer` Workspace with trunk cloned, an index of trunk paths to blob ids, and the lineage tables.
+- `init(p: { colonyId: Id; trunk: RepoRef }): Promise<{ trunkSha: Sha; files: number }>`
+- `files(): Promise<Array<{ path: Path; size: number; blob: Sha }>>`
+- `blobsFor(paths: Path[]): Promise<Record<Path, Sha | null>>`
+- `readFile(path: Path): Promise<string | null>`
+- `baseBlobs(baseSha: Sha, paths: Path[]): Promise<FileVersion[]>`
+- `land(batch: Proposal[]): Promise<{ landing?: Landing; returned: Array<{ proposalId: Id; reason: string }> }>`
+- `why(path: Path, line?: number): Promise<Array<{ landing: Landing; note: LineageNote }>>`
+- `landings(limit?: number): Promise<Landing[]>`
+
+### PoolDO (name: colonyId)
+Keeps a warm pool of workspace forks of trunk across the `ft-ws-*` namespaces, grown by fork trees (fork from existing forks so forks run in parallel across sources), refreshed to the current trunk on lease, and recycled after landing.
+- `init(p: { colonyId: Id; trunk: RepoRef; target: number }): Promise<void>`
+- `lease(agentId: Id, trunkSha: Sha): Promise<WorkspaceLease | null>`
+- `release(agentId: Id): Promise<void>`
+- `status(): Promise<{ ready: number; leased: number; forking: number; target: number }>`
+
+### AgentDO (name: agentId)
+An in-platform agent built on `@cloudflare/computer` (workspace + AI SDK tools) and Workers AI (or Claude when `ANTHROPIC_API_KEY` is set). It loops: take, work, propose, wait, repeat. Its `read` tool records the read set. It journals each step so a killed agent resumes.
+- `start(p: { colonyId: Id; agentId: Id; model: string }): Promise<void>`
+- `stop(): Promise<void>`, `status(): Promise<AgentInfo>`
+
+### FireTridentMcp
+An `agents/mcp` McpAgent exposing tools for external agents (Claude Code, Codex, Cursor): `join`, `sense`, `take`, `declare`, `checkout`, `read`, `propose`, `inbox`, `why`.
+
+## Artifacts layout
+
+- `ft-trunk` namespace (binding `ARTIFACTS`): `<colony>--trunk` and, later, lane repos `<colony>--lane-<region>`.
+- `ft-ws-0..3` namespaces (bindings `WS0..WS3`): workspaces `<colony>--ws-<n>`, sharded by `n % 4` to spread the per-namespace control-plane limit.
+- `ft-sessions` namespace (binding `SESSIONS`): one repo per in-platform agent session.
+
+Facts the design relies on (from the docs and a spike): each repo is one Durable Object; git requests are limited per repo and control-plane calls per namespace; the binding reads but cannot write files, so writes go through git; there is no server-side merge, hook, or branch protection; Artifacts accepts non-fast-forward pushes, so only TrunkDO ever holds a trunk write token and it pushes with an expected old value.
+
+## Live events
+
+`ColonyEvent` (see `packages/core/src/types.ts`) is the single event shape for the UI and for internal fan-out. The UI first loads `ColonySnapshot`, then applies events from the WebSocket.

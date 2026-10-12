@@ -1,0 +1,9 @@
+{
+  "name": "@fire_trident/bench",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": { "test": "vitest run", "typecheck": "tsc -p tsconfig.json" },
+  "dependencies": { "@fire_trident/core": "*" },
+  "devDependencies": { "typescript": "7.0.2", "vitest": "4.1.11", "@types/node": "24.19.2" }
+}

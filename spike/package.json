@@ -1,0 +1,22 @@
+{
+  "name": "ft-spike",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@cloudflare/computer": "0.5.0",
+    "isomorphic-git": "1.43.3",
+    "ai": "7.0.137",
+    "zod": "4.6.6",
+    "@platformatic/vfs": "0.4.1"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20261012.1",
+    "typescript": "7.0.2",
+    "wrangler": "4.149.0"
+  }
+}

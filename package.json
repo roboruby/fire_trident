@@ -1,0 +1,16 @@
+{
+  "name": "fire_trident-monorepo",
+  "private": true,
+  "type": "module",
+  "workspaces": ["packages/core", "packages/worker", "packages/web", "packages/cli", "packages/bench", "spike"],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "deploy": "npm run build -w @fire_trident/web && npm run deploy -w @fire_trident/worker"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2",
+    "vitest": "4.1.11"
+  }
+}
