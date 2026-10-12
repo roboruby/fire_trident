@@ -18,6 +18,9 @@ import { damageLabels } from "./signals.ts";
  *
  * Rules, first match wins (D = deterministic stage, before any model; R = System 1; L = after System 2)
  * - D1 an import resolves to nothing or to a different module → return (deterministic)
+ * - P0 a danger pattern that needs a human, in a change failing its checks → return (deterministic)
+ * - P1 a danger pattern that needs a human (auth, secret, unrequested capability, not allowed by
+ *      policy or an antibody)                                 → escalate (deterministic; in every phase)
  * - D2 innate checks fail and there is no damage               → return (deterministic)
  * - D3 mechanical proof and no antibody to screen               → land (deterministic)
  * - D4 anything else                                            → screen with System 1
@@ -68,6 +71,11 @@ export interface GateInput {
   damage: DamageSignals;
   /** Deterministic stage; absent counts as inconclusive. */
   mechanical?: MechanicalSignal;
+  /**
+   * Danger patterns (decide/danger.ts): `mustHuman` hits (auth, secrets, unrequested capabilities
+   * not explicitly allowed) always go to a human; `signals` count as damage.
+   */
+  danger?: { mustHuman: string[]; signals: string[] };
   /** Matching antibodies that only System 1 can answer. */
   antibodies?: number;
   /** System 1 answers: undefined before it is asked (deterministic stage), null when Clef was unavailable. */
@@ -156,9 +164,10 @@ export function gate(input: GateInput): GateVerdict {
   const llm = input.llm ?? null;
   const r = input.reflex ?? null;
 
-  // Damage: deterministic facts plus scope judgments.
-  const facts = damageLabels(input.damage);
+  // Damage: deterministic facts (danger signals among them) plus scope judgments.
+  const facts = [...damageLabels(input.damage), ...(input.danger?.signals ?? []).map((s) => `danger: ${s}`)];
   const damage = [...facts];
+  const mustHuman = input.danger?.mustHuman ?? [];
   if (r && active(input.detectors, "clef:off_intent") && r.offIntent >= policy.hit) damage.push(`off-intent (Clef ${r2(r.offIntent)})`);
   if (llm?.offIntent) damage.push(`off-intent (${llm.model})`);
   if (llm?.sensitive) damage.push(`touches sensitive code (${llm.model})`);
@@ -194,17 +203,37 @@ export function gate(input: GateInput): GateVerdict {
   };
   const proof = (input.mechanical?.reasons ?? []).join("; ");
 
+  /**
+   * P0/P1: a recognized danger pattern (auth, secret, unrequested capability) always reaches a
+   * human: no confirmation can land it. A change that also fails its checks goes back first, so
+   * the reviewer only ever sees a version that passes them.
+   */
+  const danger = (): GateVerdict | null => {
+    if (mustHuman.length === 0) return null;
+    if (!input.innate.ok) {
+      return verdict("return", "deterministic", "P0 danger+innate", 1, [...input.innate.failures.map((f) => `innate: ${f}`), `danger patterns need a human once the checks pass: ${mustHuman.join("; ")}`], []);
+    }
+    risk = 3;
+    return escalate("deterministic", "P1 danger pattern", 1, [`danger patterns need a human: ${mustHuman.join("; ")}`], mustHuman.map((m) => `danger:${m.split(" ")[0]}`));
+  };
+
   // Deterministic stage: facts first, no model.
   if (!asked) {
     if (mech === "fail") return verdict("return", "deterministic", "D1 resolution", 1, (input.mechanical?.reasons ?? []).map((x) => `deterministic: ${x}`), []);
+    const gated = danger();
+    if (gated) return gated;
     if (!input.innate.ok && facts.length === 0) return verdict("return", "deterministic", "D2 innate", 1, input.innate.failures.map((f) => `innate: ${f}`), []);
-    if (mech === "pass" && (input.antibodies ?? 0) === 0) return verdict("land", "deterministic", "D3 innate+proof", 1, [`deterministic proof: ${proof}`], [], ["innate", "deterministic"]);
+    if (mech === "pass" && facts.length === 0 && (input.antibodies ?? 0) === 0) return verdict("land", "deterministic", "D3 innate+proof", 1, [`deterministic proof: ${proof}`], [], ["innate", "deterministic"]);
     return verdict("screen", "deterministic", "D4 screen", 1, [mech === "pass" ? "proof holds; matching antibodies need System 1" : `deterministic stage inconclusive: ${proof || "no proof attempted"}`], []);
   }
 
   if (!consulted) {
+    if (mech !== "fail") {
+      const gated = danger();
+      if (gated) return gated;
+    }
     // M1: a proven change only answers to antibodies (learned from humans); Clef's other alarms are advisory.
-    if (mech === "pass") {
+    if (mech === "pass" && facts.length === 0) {
       const ab = s1.filter((h) => h.antibody);
       if (ab.length > 0) return verdict("return", "reflex", "M1 proof+antibody", Math.max(...ab.map((h) => h.p)), [`a reviewer rejected similar changes: ${ab.map((h) => h.label).join(", ")}`], ab.map((h) => h.id));
       const advisory = [...s1.map((h) => h.label), ...(r === null && (input.antibodies ?? 0) > 0 ? ["antibodies not screened (System 1 unavailable)"] : [])];
@@ -236,7 +265,12 @@ export function gate(input: GateInput): GateVerdict {
     return verdict("consult", "reflex", "R4 consult", 1 - confidence, [why], s1.map((h) => h.id));
   }
 
-  // After System 2: unconfident System 1 alarms give way to the second opinion.
+  // After System 2: a danger pattern still needs a human, whatever the second opinion said.
+  if (mech !== "fail") {
+    const gated = danger();
+    if (gated) return gated;
+  }
+  // Unconfident System 1 alarms give way to the second opinion.
   const kept = s1.filter((h) => h.confidence >= policy.confidence);
   const detectors = kept.map((h) => h.id);
   const labels = kept.map((h) => h.label);

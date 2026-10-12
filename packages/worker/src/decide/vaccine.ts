@@ -214,7 +214,8 @@ export interface RecallRow {
   recall: number;
   lo: number;
   hi: number;
-  byLayer: Partial<Record<DecisionLayer, number>>;
+  /** Catches by the layer that made them (deterministic, reflex, llm, human). */
+  byLayer: Record<string, number>;
 }
 
 /** Recall per class and overall, with Wilson 95% intervals; pending and errored vaccines are left out of n. */
@@ -235,7 +236,7 @@ export function recallReport(rows: ReadonlyArray<{ cls: string; outcome: Vaccine
           x.caught++;
           if (r.outcome === "escalated") x.escalated++;
           else x.returned++;
-          if (r.layer === "reflex" || r.layer === "llm" || r.layer === "human") x.byLayer[r.layer] = (x.byLayer[r.layer] ?? 0) + 1;
+          if (r.layer) x.byLayer[r.layer] = (x.byLayer[r.layer] ?? 0) + 1;
         }
       }
     }

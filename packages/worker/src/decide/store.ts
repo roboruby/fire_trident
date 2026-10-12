@@ -1,5 +1,6 @@
 import type { Antibody, Id, Path } from "@fire_trident/core";
-import { antibodyMatches } from "./antibodies.ts";
+import { antibodyAllows, antibodyMatches } from "./antibodies.ts";
+import type { DangerClass } from "./danger.ts";
 import type { DecidePolicy, DetectorState } from "./policy.ts";
 import { DEFAULT_POLICY, mergePolicy, probationState } from "./policy.ts";
 import type { VaccineOutcome } from "./vaccine.ts";
@@ -319,10 +320,21 @@ export class DecideStore {
     if (limit <= 0) return [];
     const out: Array<StoredAntibody & { state: Exclude<DetectorState, "off"> }> = [];
     for (const s of this.antibodies()) {
-      if (s.state === "off") continue;
+      if (s.state === "off" || antibodyAllows(s.antibody).length > 0) continue;
       if (!antibodyMatches(s.antibody, paths, addedLines)) continue;
       out.push(s as StoredAntibody & { state: Exclude<DetectorState, "off"> });
       if (out.length >= limit) break;
+    }
+    return out;
+  }
+
+  /** Tolerating antibodies (`allows`) whose matcher applies to this change. */
+  allowingAntibodies(paths: readonly Path[], addedLines: readonly string[]): Array<{ id: string; allows: DangerClass[]; paths: string[] }> {
+    const out: Array<{ id: string; allows: DangerClass[]; paths: string[] }> = [];
+    for (const s of this.antibodies()) {
+      const allows = antibodyAllows(s.antibody);
+      if (s.state === "off" || allows.length === 0 || !antibodyMatches(s.antibody, paths, addedLines)) continue;
+      out.push({ id: s.antibody.id, allows, paths: s.antibody.matcher.paths });
     }
     return out;
   }

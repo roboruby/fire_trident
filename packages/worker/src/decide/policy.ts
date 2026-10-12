@@ -1,3 +1,5 @@
+import type { DangerClass } from "./danger.ts";
+
 /**
  * Tunables of the Decide prong (reflex arc and immune review), one set per colony.
  * Pure: no I/O.
@@ -36,6 +38,11 @@ export interface DecidePolicy {
   llmConcurrency: number;
   /** System 2 calls started per minute, per colony and model (Workers AI allows 300, or 20 for models that need Workers Paid). */
   llmPerMinute: number;
+  /**
+   * Danger classes a human explicitly allows without review, optionally only under some paths
+   * (globs). Allowed hits stay danger signals: a reviewer's approval is still needed to land.
+   */
+  dangerAllow: Array<{ cls: DangerClass; paths?: string[] }>;
 }
 
 /**
@@ -59,7 +66,25 @@ export const DEFAULT_POLICY: DecidePolicy = {
   maxAntibodies: 60,
   llmConcurrency: 8,
   llmPerMinute: 120,
+  dangerAllow: [],
 };
+
+const DANGER_CLASSES: readonly DangerClass[] = ["auth", "secret", "capability", "crypto", "ci", "dependency", "test-weakening"];
+
+/** Valid allowance entries of a policy patch (unknown classes and non-string globs dropped). */
+function allowances(v: unknown, fallback: DecidePolicy["dangerAllow"]): DecidePolicy["dangerAllow"] {
+  if (!Array.isArray(v)) return fallback;
+  const out: DecidePolicy["dangerAllow"] = [];
+  for (const e of v.slice(0, 50)) {
+    if (!e || typeof e !== "object") continue;
+    const cls = (e as { cls?: unknown }).cls;
+    if (typeof cls !== "string" || !(DANGER_CLASSES as readonly string[]).includes(cls)) continue;
+    const paths = (e as { paths?: unknown }).paths;
+    const globs = Array.isArray(paths) ? paths.filter((g): g is string => typeof g === "string" && g.trim() !== "").slice(0, 20) : [];
+    out.push(globs.length > 0 ? { cls: cls as DangerClass, paths: globs } : { cls: cls as DangerClass });
+  }
+  return out;
+}
 
 function num(v: unknown, lo: number, hi: number, fallback: number): number {
   return typeof v === "number" && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : fallback;
@@ -94,6 +119,7 @@ export function mergePolicy(base: DecidePolicy, patch: unknown): DecidePolicy {
     maxAntibodies: Math.floor(num(p.maxAntibodies, 0, 60, base.maxAntibodies)),
     llmConcurrency: Math.floor(num(p.llmConcurrency, 1, 64, base.llmConcurrency)),
     llmPerMinute: Math.floor(num(p.llmPerMinute, 1, 3_000, base.llmPerMinute)),
+    dangerAllow: allowances(p.dangerAllow, base.dangerAllow),
   };
 }
 

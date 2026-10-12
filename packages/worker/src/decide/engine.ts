@@ -22,6 +22,7 @@ import { errorText, ftError } from "../colony/errors.ts";
 import { ANTIBODY_DIR, antibodyFile, antibodyPath, calibrateThreshold, cleanQuestion, deriveMatcher, fallbackQuestion, parseAntibodyFile } from "./antibodies.ts";
 import { addedFromHunks, fileDiff, type FileDiff } from "./diff.ts";
 import { gate, type GateVerdict, type ReflexSignals, type SecondOpinion } from "./gate.ts";
+import { applyAllowances, dangerLabels, scanDanger, triageDanger, type DangerAllowance } from "./danger.ts";
 import { CallLimiter } from "./limiter.ts";
 import { candidatePaths, mechanicalCheck, type MechanicalResult } from "./mechanical.ts";
 import { pickSecondOpinion, secondOpinionCandidates, type DecidePolicy } from "./policy.ts";
@@ -220,6 +221,42 @@ export class DecideEngine {
     const added = diffs.flatMap((d) => d.addedLines);
     const matching = this.store.matchingAntibodies(paths, added, policy.maxAntibodies);
 
+    // Danger patterns: fixed receptors over added lines and paths. Auth, secrets and unrequested
+    // capabilities reach a human unless the policy or a tolerating antibody explicitly allows them.
+    const intentText = intent ? [intent.title, intent.why, ...(intent.acceptance ?? [])].join("\n") : p.declared.summary;
+    const allowances: DangerAllowance[] = [
+      ...policy.dangerAllow.map((a) => ({ cls: a.cls, ...(a.paths ? { paths: a.paths } : {}), by: "policy" })),
+      ...this.store.allowingAntibodies(paths, added).flatMap((a) => a.allows.map((cls) => ({ cls, paths: a.paths, by: `antibody ${a.id}` }))),
+    ];
+    const dangerHits = applyAllowances(
+      scanDanger(
+        innate.files.map((f) => ({ path: f.path, before: f.before, after: f.afterBlob === null ? null : (f.after ?? ""), deleted: f.afterBlob === null })),
+        intentText,
+      ),
+      allowances,
+    );
+    const danger = triageDanger(dangerHits);
+    for (const cls of new Set([...danger.mustHuman, ...danger.signals].map((h) => h.cls))) this.host.bump(`decide.danger.${cls}`, 1);
+    const dangerCheck: CheckResult = {
+      name: "danger patterns",
+      ok: danger.mustHuman.length === 0,
+      ms: 0,
+      detail:
+        dangerHits.length === 0
+          ? "no danger pattern in the added lines or the paths"
+          : [
+              danger.mustHuman.length > 0 ? `needs a human: ${dangerLabels(danger.mustHuman).join("; ")}` : "",
+              danger.signals.length > 0 ? `danger signals: ${dangerLabels(danger.signals).join("; ")}` : "",
+              danger.recorded.length > 0 ? `asked for by the intent: ${dangerLabels(danger.recorded).join("; ")}` : "",
+            ]
+              .filter(Boolean)
+              .join(" | ")
+              .slice(0, 1_500),
+    };
+    // CI and dependency hits are already damage through their sensitive paths.
+    const dangerSignals = dangerLabels(danger.signals.filter((h) => h.cls !== "ci" && h.cls !== "dependency"));
+    const dangerFacts = [...dangerLabels(danger.signals), ...dangerLabels(danger.recorded)].map((l) => `danger pattern (deterministic): ${l}`);
+
     // Deterministic stage: import resolution against the trunk tree and the mechanical proof. No model.
     // With policy.deterministic off the facts are still recorded (observed only), but nothing uses them.
     const observed = await this.mechanical(p, innate, rule);
@@ -229,6 +266,7 @@ export class DecideEngine {
       innate: { ok: innate.ok, failures: innate.failures },
       damage,
       ...(mech ? { mechanical: { verdict: mech.result.verdict, reasons: mech.result.reasons } } : {}),
+      danger: { mustHuman: dangerLabels(danger.mustHuman), signals: dangerSignals },
       antibodies: matching.length,
       autonomy: !vaccine && this.store.approvedLandings(region) >= policy.autonomyAfter,
       alerts: { used: this.store.escalationsSince(Date.now() - HOUR_MS), max: policy.alertsPerHour },
@@ -238,6 +276,7 @@ export class DecideEngine {
     const checks: CheckResult[] = [
       ...innate.checks,
       ...observed.result.checks.map((c, i) => ({ ...c, ms: i === 0 ? observed.ms : c.ms, ...(mech ? {} : { detail: `(observed only: policy.deterministic is off) ${c.detail ?? ""}`.slice(0, 1_000) }) })),
+      dangerCheck,
     ];
     let final: GateVerdict = gate(base);
     let v1: GateVerdict | null = null;
@@ -254,7 +293,7 @@ export class DecideEngine {
         residual: innate.residual,
         diffs,
         antibodies: matching.map((s) => s.antibody),
-        ...(mech && mech.result.facts.length > 0 ? { facts: mech.result.facts } : {}),
+        ...((mech ? mech.result.facts : []).length + dangerFacts.length > 0 ? { facts: [...(mech ? mech.result.facts : []), ...dangerFacts] } : {}),
       };
       state = reflexState(input);
       const skip = new Set(Object.entries(clefStates).filter(([, s]) => s === "off").map(([k]) => k));

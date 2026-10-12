@@ -1,5 +1,6 @@
 import type { Antibody, Path } from "@fire_trident/core";
 import { globMatch } from "@fire_trident/core";
+import type { DangerClass } from "./danger.ts";
 import type { DetectorState } from "./policy.ts";
 import { CAPABILITY_PATTERNS } from "./signals.ts";
 
@@ -120,6 +121,7 @@ export function antibodyFile(ab: Antibody, origin: { reason: string; by: string;
     createdAt: new Date(ab.createdAt).toISOString(),
     createdFrom: ab.createdFrom ?? origin.proposalId,
     rejected: { proposal: origin.proposalId, reason: origin.reason, by: origin.by, ...(origin.intentTitle ? { intent: origin.intentTitle } : {}) },
+    ...(antibodyAllows(ab).length > 0 ? { allows: antibodyAllows(ab) } : {}),
   });
 }
 
@@ -149,5 +151,22 @@ export function parseAntibodyFile(text: string, colonyId: string): Antibody | nu
   };
   if (typeof m.pattern === "string" && m.pattern) ab.matcher.pattern = m.pattern;
   if (typeof raw.createdFrom === "string") ab.createdFrom = raw.createdFrom;
+  const allows = antibodyAllows(raw);
+  if (allows.length > 0) (ab as AllowingAntibody).allows = allows;
   return ab;
+}
+
+const DANGER_CLASSES: readonly DangerClass[] = ["auth", "secret", "capability", "crypto", "ci", "dependency", "test-weakening"];
+
+/**
+ * An antibody that tolerates instead of attacking: a reviewed file under .firetrident/antibodies/
+ * with `"allows": ["auth", ...]` lets matching changes carry those danger classes without a human
+ * gate (they stay danger signals). It is never asked as a Clef question.
+ */
+export type AllowingAntibody = Antibody & { allows?: DangerClass[] };
+
+/** The danger classes an antibody record or file allows. */
+export function antibodyAllows(x: unknown): DangerClass[] {
+  const v = (x as { allows?: unknown } | null)?.allows;
+  return Array.isArray(v) ? v.filter((c): c is DangerClass => typeof c === "string" && (DANGER_CLASSES as readonly string[]).includes(c)) : [];
 }

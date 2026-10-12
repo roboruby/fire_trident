@@ -76,6 +76,36 @@ describe("gate: deterministic stage (before any model)", () => {
   });
 });
 
+describe("gate: danger patterns", () => {
+  const auth = { mustHuman: ["auth (authorization-header) at src/routes/links.ts:4: …"], signals: [] };
+  const pass = { verdict: "pass" as const, reasons: ["proven"] };
+
+  it("P1 escalates a must-human danger pattern before any model, whatever else confirms the change", () => {
+    const v = gate(input({ reflex: undefined, danger: auth, mechanical: pass, autonomy: true }));
+    expect(v).toMatchObject({ action: "escalate", layer: "deterministic", rule: "P1 danger pattern", risk: 3, detectors: ["danger:auth"] });
+    // Even a System 2 approval cannot land it.
+    expect(gate(input({ danger: auth, llm: opinion() }))).toMatchObject({ action: "escalate", rule: "P1 danger pattern" });
+    expect(gate(input({ danger: auth, autonomy: true }))).toMatchObject({ action: "escalate", rule: "P1 danger pattern" });
+  });
+
+  it("P1 ignores the alert budget: danger always reaches a human", () => {
+    expect(gate(input({ reflex: undefined, danger: auth, alerts: { used: 99, max: 30 } })).action).toBe("escalate");
+  });
+
+  it("P0 returns a dangerous change that fails its checks, so the human sees a fixed version", () => {
+    const v = gate(input({ reflex: undefined, danger: auth, innate: { ok: false, failures: ["rule left 2 violations"] } }));
+    expect(v).toMatchObject({ action: "return", rule: "P0 danger+innate" });
+    expect(v.reasons.at(-1)).toContain("need a human once the checks pass");
+  });
+
+  it("danger signals are damage: no deterministic or autonomous landing, but a second opinion can approve", () => {
+    const crypto = { mustHuman: [], signals: ["crypto (primitive) at src/index.ts:26: …"] };
+    expect(gate(input({ reflex: undefined, danger: crypto, mechanical: pass })).action).toBe("screen");
+    expect(gate(input({ danger: crypto, autonomy: true })).action).toBe("consult");
+    expect(gate(input({ danger: crypto, llm: opinion() })).action).toBe("land");
+  });
+});
+
 describe("gate: System 1 phase", () => {
   it("R1 escalates a confident detector hit with damage without consulting System 2", () => {
     const v = gate(input({ reflex: SECRET, damage: LOGS_SECRET }));
