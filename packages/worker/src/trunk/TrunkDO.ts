@@ -192,6 +192,21 @@ export class TrunkDO extends DurableObject<Env> {
   }
 
   /**
+   * Commit files to trunk as FireTrident itself (colony memory such as antibodies under
+   * .firetrident/): one commit on current main, message plus an FT-Landing trailer, pushed with
+   * compare-and-swap and rebuilt on a moved trunk. It is recorded like a landing with no proposals
+   * (index, `why`, and `note` as its lineage note), so its history explains itself.
+   */
+  async systemCommit(p: { files: Array<{ path: Path; content: string | null }>; message: string; note: LineageNote & Record<string, unknown> }): Promise<Landing> {
+    const landing = await this.serial(() => this.systemCommitNow(p));
+    if (this.pendingNotes() > 0) {
+      await this.armAlarm(NOTES_RETRY_MS);
+      void this.serial(() => this.flushNotesNow()).catch(() => undefined);
+    }
+    return landing;
+  }
+
+  /**
    * Landings that changed `path`, newest first, with their lineage notes. With `line`
    * (1-based, in the current file), the landing that last changed that line comes first;
    * the order is unchanged when the line predates every landing.
@@ -571,6 +586,86 @@ export class TrunkDO extends DurableObject<Env> {
     }
     await this.finalize(data);
     return { landing };
+  }
+
+  /** Build, push and record one system commit (see systemCommit); up to MAX_REBUILDS retries on a moved trunk. */
+  private async systemCommitNow(p: { files: Array<{ path: Path; content: string | null }>; message: string; note: LineageNote & Record<string, unknown> }): Promise<Landing> {
+    this.state();
+    await this.recoverJournal();
+    if (!Array.isArray(p.files) || p.files.length === 0) throw new Error("system commit has no files");
+    for (const f of p.files) {
+      const bad = pathProblem(f.path);
+      if (bad) throw new Error(bad);
+    }
+    const enc = new TextEncoder();
+    for (let attempt = 0; ; attempt++) {
+      const st = this.state();
+      const g = this.repo();
+      const parent = st.trunkSha;
+      const changes = new Map<Path, StagedChange>();
+      for (const f of p.files) {
+        const before = this.indexBlob(f.path);
+        if (f.content === null) {
+          if (before !== null) changes.set(f.path, { blob: null, before });
+          continue;
+        }
+        const bytes = enc.encode(f.content);
+        const blob = await writeLocalBlob(g, bytes);
+        if (blob !== before) changes.set(f.path, { blob, mode: this.indexMode(f.path) ?? NEW_FILE_MODE, size: bytes.length, before });
+      }
+      if (changes.size === 0) throw new Error("system commit changes nothing");
+      const treeChanges = new Map<Path, PathChange>();
+      for (const [path, c] of changes) treeChanges.set(path, c.blob === null ? null : { blob: c.blob, mode: c.mode });
+      const parentTree = await commitTree(g, parent);
+      if (parentTree === null) throw new Error(`trunk commit ${parent} is missing locally`);
+      const tree = await applyTreeChanges(g, parentTree, treeChanges);
+      const at = Date.now();
+      const id = newId("lnd_");
+      const message = `${p.message.replace(/\s+$/, "")}\nFT-Landing: ${id}`;
+      const commit = await writeCommitObject(g, { tree, parents: [parent], message, at });
+      const paths = [...changes.keys()].sort();
+      const landing: Landing = {
+        id,
+        colonyId: st.colonyId,
+        trunkSha: commit,
+        parentSha: parent,
+        proposalIds: [],
+        intentIds: [],
+        paths,
+        regions: unique(paths.map((path) => regionOf(path, st.regionDepth))).sort(),
+        at,
+      };
+      const note = serializeNote({ ...p.note, landingId: id, colonyId: st.colonyId });
+      const data: JournalData = { landing, note, changes: [...changes] };
+      this.sql.exec(
+        `INSERT INTO ft_journal (landing_id, state, commit_sha, parent_sha, data, created_at, updated_at) VALUES (?, 'pushing', ?, ?, ?, ?, ?)`,
+        id,
+        commit,
+        parent,
+        JSON.stringify(data),
+        at,
+        at,
+      );
+      await setRef(g, STAGING_REF, commit);
+      let outcome: PushOutcome;
+      try {
+        outcome = await this.authed((token) => pushRef(g, { url: st.trunk.remote, token, localRef: STAGING_REF, remoteRef: MAIN_REF, expectedOld: parent }));
+      } catch (e) {
+        const head = await this.remoteHead().catch(() => null);
+        if (head !== commit) {
+          this.dropJournal(id);
+          throw new Error(`system commit push failed: ${errorText(e)}`);
+        }
+        outcome = { ok: true };
+      }
+      if (outcome.ok) {
+        await this.finalize(data);
+        return landing;
+      }
+      this.dropJournal(id);
+      if (!outcome.stale || attempt >= MAX_REBUILDS) throw new Error(`system commit push rejected: ${outcome.detail}`);
+      await this.resync();
+    }
   }
 
   /** Record a pushed landing: index, lineage tables, trunk sha, and the journal moves to pending_note. */

@@ -6,7 +6,10 @@ import type { z } from "zod";
 import type { Env } from "../env.ts";
 import { decodeError, ftError } from "../colony/errors.ts";
 import { slug } from "../colony/logic.ts";
-import { AgentBody, CreateColonyBody, DecisionBody, IntentBody, ProposalBody, RuleBody, SwarmBody, WhyQuery } from "./schemas.ts";
+import { flag, isUnsupportedRpc, mapLimit, messageOf } from "./logic.ts";
+import { UPGRADING, deleteColony, listAgents, listColonies, registerColony, stopAgents, stopSwarm } from "./ops.ts";
+import { AgentBody, CreateColonyBody, DecisionBody, IntentBody, ProposalBody, RuleBody, StopBody, SwarmBody, SwarmStopBody, WhyQuery } from "./schemas.ts";
+import { decideApi } from "./vaccinate.ts";
 
 /** Hono environment of the API. */
 export type ApiEnv = { Bindings: Env };
@@ -28,6 +31,8 @@ export interface ApiDeps {
 export const DEFAULT_POOL_TARGET = 16;
 /** Regions read per GET /field (all-regions form). */
 const MAX_FIELD_REGIONS = 500;
+/** Region readings in flight at once for GET /field. */
+const FIELD_CONCURRENCY = 50;
 
 function json(body: unknown, status = 200, headers: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json; charset=utf-8", ...headers } });
@@ -53,6 +58,25 @@ export const requireAdmin: MiddlewareHandler<ApiEnv> = async (c, next) => {
   }
   await next();
 };
+
+/** Destructive routes always need the admin token: they refuse outright when FT_ADMIN_TOKEN is not configured. */
+export const requireAdminStrict: MiddlewareHandler<ApiEnv> = async (c, next) => {
+  if (!c.env.FT_ADMIN_TOKEN) return json({ error: "forbidden: this route needs FT_ADMIN_TOKEN configured on the server" }, 403);
+  return requireAdmin(c, next);
+};
+
+/** Parse and validate an optional JSON body (empty means `{}`); throws a 400 with the zod issues. */
+async function optionalBody<S extends z.ZodType>(c: Context<ApiEnv>, schema: S): Promise<z.output<S>> {
+  const text = await c.req.text();
+  if (!text.trim()) return validate(schema, {});
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch {
+    throw ftError(400, "body must be JSON");
+  }
+  return validate(schema, raw);
+}
 
 /** Parse and validate a JSON body; throws a 400 with the zod issues. */
 async function body<S extends z.ZodType>(c: Context<ApiEnv>, schema: S): Promise<z.output<S>> {
@@ -101,27 +125,35 @@ async function requireColony(env: Env, colonyId: Id): Promise<void> {
 
 /**
  * Build the REST API (mounted at /api). Route table:
- *   POST /colonies                          create/import a colony
- *   GET  /colonies/:id                      ColonySnapshot (+ rules)
- *   GET  /colonies/:id/live                 WebSocket of ColonyEvent (JSON arrays)
- *   GET  /colonies/:id/field                FieldReading[] (all regions, or ?region=)
- *   POST /colonies/:id/intents              declare an intent
- *   POST /colonies/:id/rules                add a morphology rule (creates needs)
- *   POST /colonies/:id/agents               register an agent
- *   POST /colonies/:id/agents/:aid/take     self-assign work + workspace lease
- *   POST /colonies/:id/agents/:aid/heartbeat
- *   POST /colonies/:id/proposals            propose a change
- *   GET  /colonies/:id/proposals/:pid       one proposal (poll its outcome)
- *   GET  /colonies/:id/why                  ?path=&line=
- *   GET  /colonies/:id/review               review queue
- *   POST /colonies/:id/review/:pid          approve | reject | return
- *   POST /colonies/:id/swarm                spawn in-platform agents
- * POST routes require the admin bearer token when FT_ADMIN_TOKEN is set.
+ *   GET    /colonies                        every colony with live counters (?scan=1 re-scans trunks)
+ *   POST   /colonies                        create/import a colony
+ *   GET    /colonies/:id                    ColonySnapshot (+ rules, series)
+ *   DELETE /colonies/:id                    stop agents, delete repos and object storage, unregister
+ *   GET    /colonies/:id/live               WebSocket of ColonyEvent (JSON arrays)
+ *   GET    /colonies/:id/field              FieldReading[] (all regions, or ?region=)
+ *   GET    /colonies/:id/metrics            metrics, funnel, violations, per-minute series
+ *   POST   /colonies/:id/intents            declare an intent
+ *   POST   /colonies/:id/rules              add a morphology rule (creates needs)
+ *   GET    /colonies/:id/agents             agents with state, intent, model, journal step (?all=1, ?journal=0)
+ *   POST   /colonies/:id/agents             register an agent
+ *   POST   /colonies/:id/agents/:aid/take   self-assign work + workspace lease
+ *   POST   /colonies/:id/agents/:aid/heartbeat
+ *   POST   /colonies/:id/agents/:aid/stop   stop one agent (claims released)
+ *   POST   /colonies/:id/proposals          propose a change
+ *   GET    /colonies/:id/proposals/:pid     one proposal (poll its outcome)
+ *   GET    /colonies/:id/why                ?path=&line=
+ *   GET    /colonies/:id/review             review queue
+ *   POST   /colonies/:id/review/:pid        approve | reject | return
+ *   POST   /colonies/:id/swarm              spawn in-platform agents
+ *   POST   /colonies/:id/swarm/stop         stop every running in-platform agent
+ * POST routes require the admin bearer token when FT_ADMIN_TOKEN is set; DELETE always does.
  */
 export function createApi(deps: ApiDeps): Hono<ApiEnv> {
   const app = new Hono<ApiEnv>();
 
   app.onError((err, c) => {
+    // Deploys reach Durable Objects gradually: an object still on the previous class lacks new methods for a while.
+    if (isUnsupportedRpc(err)) return json({ error: `${UPGRADING} (${messageOf(err)})` }, 503, { "Retry-After": "30" });
     const { status, message } = decodeError(err);
     if (status >= 500) console.error(`${c.req.method} ${c.req.path} failed: ${message}`);
     return json({ error: message }, status);
@@ -130,13 +162,21 @@ export function createApi(deps: ApiDeps): Hono<ApiEnv> {
 
   app.get("/", () => json({ service: "firetrident", version: "0.0.1" }));
 
+  app.get("/colonies", async (c) => {
+    const res = await listColonies(c.env, { scan: flag(c.req.query("scan")) });
+    return json({ total: res.colonies.length, scanned: res.scanned, colonies: res.colonies });
+  });
+
   app.post("/colonies", requireAdmin, async (c) => {
     const b = await body(c, CreateColonyBody);
     const colonyId = slug(b.name);
     if (!colonyId) throw ftError(400, "name must contain letters or digits");
     const colony = colonyStub(c.env, colonyId);
     const existing = await colony.getColony();
-    if (existing) return json({ error: `colony ${colonyId} already exists`, colony: existing }, 409);
+    if (existing) {
+      await registerColony(c.env, { id: existing.id, name: existing.name, ...(existing.source ? { source: existing.source } : {}), createdAt: existing.createdAt });
+      return json({ error: `colony ${colonyId} already exists`, colony: existing }, 409);
+    }
     const provisioned = await deps.provisionTrunk(c.env, colonyId, b.source);
     const trunk = provisioned.trunk;
     const initialized = await trunkStub(c.env, colonyId).init({ colonyId, trunk });
@@ -149,10 +189,62 @@ export function createApi(deps: ApiDeps): Hono<ApiEnv> {
       ...(b.source ? { source: b.source } : {}),
       ...(b.regionDepth !== undefined ? { regionDepth: b.regionDepth } : {}),
     });
+    await registerColony(c.env, { id: created.id, name: created.name, ...(created.source ? { source: created.source } : {}), createdAt: created.createdAt });
     return json(created, 201);
   });
 
   app.get("/colonies/:id", async (c) => json(await colonyStub(c.env, colonyParam(c)).snapshot()));
+
+  app.delete("/colonies/:id", requireAdminStrict, async (c) => {
+    const report = await deleteColony(c.env, colonyParam(c));
+    if (report.ok) return json(report);
+    const failed = [...report.agents.failed.map((f) => `agent ${f.agentId}: ${f.error}`), ...report.repos.failed.map((f) => `repo ${f.repo}: ${f.error}`)];
+    return json({ ...report, error: `delete incomplete (retry to finish): ${failed.slice(0, 5).join("; ")}` }, 502);
+  });
+
+  app.get("/colonies/:id/metrics", async (c) => json(await colonyStub(c.env, colonyParam(c)).metricsReport()));
+
+  app.get("/colonies/:id/agents", async (c) => {
+    const colonyId = colonyParam(c);
+    const limitRaw = c.req.query("limit");
+    const limit = limitRaw !== undefined && /^\d+$/.test(limitRaw) ? Math.max(1, Number(limitRaw)) : undefined;
+    const journal = c.req.query("journal");
+    const agents = await listAgents(c.env, colonyId, {
+      includeDead: flag(c.req.query("all")),
+      journal: journal === undefined || flag(journal),
+      ...(limit !== undefined ? { limit } : {}),
+    });
+    const byState: Record<string, number> = {};
+    const byKind: Record<string, number> = {};
+    for (const a of agents) {
+      byState[a.state] = (byState[a.state] ?? 0) + 1;
+      byKind[a.kind] = (byKind[a.kind] ?? 0) + 1;
+    }
+    return json({ colonyId, total: agents.length, byState, byKind, agents });
+  });
+
+  app.post("/colonies/:id/agents/:aid/stop", requireAdmin, async (c) => {
+    const colonyId = colonyParam(c);
+    const agentId = c.req.param("aid");
+    const b = await optionalBody(c, StopBody);
+    const agent = await colonyStub(c.env, colonyId).getAgent(agentId);
+    if (!agent) throw ftError(404, `unknown agent ${agentId}`);
+    const report = await stopAgents(c.env, colonyId, [{ id: agent.id, kind: agent.kind }], b.reason ?? "stopped by request");
+    const failure = report.failed[0];
+    if (failure) return json({ ok: false, agentId, ...report, error: `agent ${agentId} did not stop: ${failure.error}` }, 502);
+    return json({ ok: true, agentId, kind: agent.kind, ...report });
+  });
+
+  app.post("/colonies/:id/swarm/stop", requireAdmin, async (c) => {
+    const colonyId = colonyParam(c);
+    const b = await optionalBody(c, SwarmStopBody);
+    await requireColony(c.env, colonyId);
+    const report = await stopSwarm(c.env, colonyId, b.reason ?? "swarm stopped by request", b.all === true);
+    if (report.failed.length > 0) {
+      return json({ ok: false, colonyId, ...report, error: `${report.failed.length} agent(s) did not stop: ${report.failed.slice(0, 3).map((f) => `${f.agentId}: ${f.error}`).join("; ")}` }, 502);
+    }
+    return json({ ok: true, colonyId, ...report });
+  });
 
   app.get("/colonies/:id/live", async (c) => {
     const colonyId = colonyParam(c);
@@ -164,14 +256,19 @@ export function createApi(deps: ApiDeps): Hono<ApiEnv> {
     const colonyId = colonyParam(c);
     const colony = colonyStub(c.env, colonyId);
     await requireColony(c.env, colonyId);
+    // Only regions the colony has touched: a query never creates a region object.
+    const known = await colony.listRegions();
     const only = c.req.query("region");
-    const regions = only !== undefined ? [only] : (await colony.listRegions()).slice(0, MAX_FIELD_REGIONS);
-    const readings = await Promise.all(
-      regions.map(async (region) => {
-        const reading = (await regionStub(c.env, colonyId, region).reading()) as FieldReading;
-        return reading.region ? reading : { ...reading, region };
-      }),
-    );
+    if (only !== undefined && !known.includes(only)) throw ftError(404, `unknown region ${only}`);
+    const regions = only !== undefined ? [only] : known.slice(0, MAX_FIELD_REGIONS);
+    const results = await mapLimit(regions, FIELD_CONCURRENCY, async (region) => (await regionStub(c.env, colonyId, region).reading()) as FieldReading);
+    const readings: FieldReading[] = [];
+    results.forEach((r, i) => {
+      const region = regions[i] ?? "";
+      // The colony's region name (a directory path, "." for root files) labels the reading and its sigma.
+      if (r.status === "fulfilled") readings.push({ ...r.value, region });
+      else console.warn(`field: region ${region} of ${colonyId} unreadable: ${messageOf(r.reason)}`);
+    });
     return json(readings);
   });
 
@@ -272,6 +369,8 @@ export function createApi(deps: ApiDeps): Hono<ApiEnv> {
     const res = await deps.spawnSwarm(c.env, colonyId, { count, ...(b.kind ? { kind: b.kind } : {}), ...(b.model ? { model: b.model } : {}) });
     return json(res ?? { ok: true }, 202);
   });
+
+  app.route("/", decideApi); // Decide prong: vaccination meter, immune state, decide policy, detector feedback (api/vaccinate.ts)
 
   // Unknown API paths answer JSON here instead of falling through to the static UI.
   app.all("*", (c) => json({ error: `no route for ${c.req.method} ${c.req.path}` }, 404));

@@ -103,3 +103,16 @@ Facts the design relies on (from the docs and the spike): each repo is one Durab
 - AgentDO: `start({ colonyId, agentId, model?, kind?, name?, delayMs? })`; `status()` returns AgentInfo plus journal fields.
 - `deprovisionTrunk()` in `artifacts/colony.ts` removes a colony's repos.
 - MCP: `/mcp` (Streamable HTTP) and `/sse`, gated by `FT_MCP_TOKEN` when set (Bearer header or `?token=`).
+
+## Decide: the reflex arc and the immune review (packages/worker/src/decide/)
+
+A proposal enters `checking` and the decide engine routes it:
+
+1. **Innate checks**: the rule re-check on the changed files, residual paths (changed but not in the declared footprint), and a mandatory "Not verified:" statement.
+2. **System 1 (reflex)**: one Clef call (`@cf/cloudflare/clef`, typed noul/choice/score questions: needs_human, risk, touches_sensitive, off_intent, plus every matching antibody question). Confident answers act; uncertain ones escalate.
+3. **System 2 (LLM)**: a second opinion from a different model family than the authoring agent (for example `@cf/openai/gpt-oss-120b`), strict JSON verdict.
+4. **System 3 (human)**: the review queue.
+
+**Two-signal gate**: a proposal lands without a human only with two independent confirmations bound to the same head commit (innate checks plus a System-2 approval or earned path autonomy) and a low p(needs_human). One signal returns it to its agent. Escalation to a human needs a detector hit plus damage or a capability change. **Regulation**: an alert budget caps human pages per hour; a detector marked not useful ≥10% goes advisory and >25% goes off. **Antibodies**: a human rejection mints an antibody (path matcher + yes/no question + threshold), committed to trunk as `.firetrident/antibodies/<id>.json` by `TrunkDO.systemCommit` with a lineage note; every later matching proposal is screened. **Vaccination meter**: `POST /api/colonies/:id/vaccinate {count}` injects sealed bad proposals of several threat classes through the normal path; they can never land, and recall per class is reported with a Wilson 95% interval (`GET /api/colonies/:id/vaccinate`).
+
+Routes: `POST|GET /api/colonies/:id/vaccinate`, `GET /api/colonies/:id/immune`, `POST /api/colonies/:id/decide/policy`, `POST /api/colonies/:id/detectors/:did` (useful / not useful feedback). ColonyDO: `vaccinate`, `vaccineReport`, `immune`, `setDecidePolicy`, `detectorFeedback`. Every decision is recorded (`recordDecision`) and emitted, so the UI funnel shows reflex / LLM / human counts.

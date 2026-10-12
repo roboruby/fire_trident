@@ -32,8 +32,29 @@ import { scanRule } from "../morph/scan.ts";
 import type { RegionDO } from "../region/RegionDO.ts";
 import { errorText, ftError } from "./errors.ts";
 import { EventHub } from "./events.ts";
-import { runInnateChecks } from "./innate.ts";
+import { DecideEngine, type DecideHost, type TrunkRpc, type VaccinationResult } from "../decide/engine.ts";
+import type { DecidePolicy } from "../decide/policy.ts";
+import type { DetectorStats } from "../decide/store.ts";
 import { DEFAULT_NOT_VERIFIED, FieldBatch, groupByRegion, jitter, normalizePath, normalizePaths, overlapCount, primaryRegion, violationIntents } from "./logic.ts";
+import {
+  BUCKET_MS,
+  COUNTER_SERIES,
+  GAUGE_SERIES,
+  REGISTRY_NAME,
+  SERIES_BUCKETS,
+  SERIES_KEEP_MINUTES,
+  STOP_GRACE_MS,
+  agentCounters,
+  changedMetrics,
+  counterBuckets,
+  effectiveState,
+  gaugeBuckets,
+  minuteOf,
+  seriesStart,
+  stableMetrics,
+  summaryOf,
+} from "./metrics.ts";
+import type { AgentListEntry, ColonySeries, ColonySummary, RegistryEntry, SnapshotWithSeries } from "./metrics.ts";
 
 /** Result of ColonyDO.take: an assignment, or advice to wait and retry. */
 export type TakeResult = { intent: Intent; lease: WorkspaceLease; rule?: Rule } | { wait: true; retryInMs: number; reason: string };
@@ -120,6 +141,24 @@ const SCHEMA = [
   "CREATE INDEX IF NOT EXISTS landings_by_received ON landings(received_at)",
   "CREATE TABLE IF NOT EXISTS regions (name TEXT PRIMARY KEY, created_at INTEGER NOT NULL)",
 ];
+
+/** Operations tables: per-minute series (counters and gauges) and agents stopped through the API. */
+const OPS_SCHEMA = [
+  "CREATE TABLE IF NOT EXISTS series (name TEXT NOT NULL, minute INTEGER NOT NULL, value REAL NOT NULL, PRIMARY KEY (name, minute))",
+  "CREATE TABLE IF NOT EXISTS agent_stops (agent_id TEXT PRIMARY KEY, at INTEGER NOT NULL, reason TEXT NOT NULL)",
+];
+/** Registry tables, created only in the registry instance. */
+const REGISTRY_SCHEMA = [
+  "CREATE TABLE IF NOT EXISTS registry (id TEXT PRIMARY KEY, name TEXT NOT NULL, source TEXT, created_at INTEGER NOT NULL, registered_at INTEGER NOT NULL)",
+  "CREATE TABLE IF NOT EXISTS registry_meta (k TEXT PRIMARY KEY, v TEXT NOT NULL)",
+];
+/** While UI sockets are connected, live metrics are re-sent this often (only those that changed)... */
+const METRICS_TICK_MS = 3_000;
+/** ...and all of them this often. */
+const METRICS_FULL_MS = 30_000;
+const SERIES_PRUNE_EVERY_MS = 10 * 60_000;
+/** Agents listed by listAgents at most. */
+const LIST_AGENTS_CAP = 10_000;
 
 type ColonyRow = {
   id: string;
@@ -257,17 +296,32 @@ export class ColonyDO extends DurableObject<Env> {
   private lastReap = 0;
   /** Randomness for self-assignment; tests may replace it. */
   protected rand: () => number = Math.random;
+  /** Live metric values last broadcast by the metrics tick. */
+  private readonly sentMetrics = new Map<string, number>();
+  private lastFullMetricsAt = 0;
+  private lastSeriesPrune = 0;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.sql = ctx.storage.sql;
     for (const stmt of SCHEMA) this.sql.exec(stmt);
+    for (const stmt of OPS_SCHEMA) this.sql.exec(stmt);
+    this.backfillSeries();
     this.hub = new EventHub(() => this.ctx.getWebSockets());
     try {
       ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"));
     } catch {
       // Older runtimes: webSocketMessage answers pings instead.
     }
+    // The decide engine runs in memory, so an eviction orphans proposals in "checking".
+    // Restart all of them as soon as the object wakes (the future `now` treats every one as stuck).
+    queueMicrotask(() => {
+      try {
+        this.decider().sweep(Date.now() + 24 * 60 * 60_000);
+      } catch {
+        // No colony yet, or Workers AI unbound: nothing to resume.
+      }
+    });
   }
 
   // =========================================================================
@@ -305,8 +359,11 @@ export class ColonyDO extends DurableObject<Env> {
     return this.sql.exec<{ name: string }>("SELECT name FROM regions ORDER BY name").toArray().map((r) => r.name);
   }
 
-  /** Everything the UI needs before applying live events. Lease tokens are redacted. */
-  async snapshot(): Promise<ColonySnapshot> {
+  /**
+   * Everything the UI needs before applying live events. Lease tokens are redacted.
+   * `metrics` always carries every METRIC_KEYS entry; `series` holds the last 30 minutes.
+   */
+  async snapshot(): Promise<SnapshotWithSeries> {
     const colony = this.requireColony();
     const now = Date.now();
     this.maybeReap(now);
@@ -334,16 +391,17 @@ export class ColonyDO extends DurableObject<Env> {
         .toArray(),
     ].map((r) => this.toIntent(r, colony.id));
     const agents = this.sql
-      .exec<AgentRow>("SELECT * FROM agents WHERE state != 'dead' OR last_seen > ? ORDER BY last_seen DESC LIMIT ?", now - 60 * 60_000, SNAPSHOT_AGENT_CAP)
+      .exec<AgentRow & { stopped_at: number | null }>(
+        "SELECT a.*, s.at AS stopped_at FROM agents a LEFT JOIN agent_stops s ON s.agent_id = a.id WHERE a.state != 'dead' OR a.last_seen > ? ORDER BY a.last_seen DESC LIMIT ?",
+        now - 60 * 60_000,
+        SNAPSHOT_AGENT_CAP,
+      )
       .toArray()
-      .map((r) => this.toAgent(r, colony.id, true));
-    const metrics = this.metricsRecord();
-    metrics["landingsPerMin"] = this.landingsPerMin(now);
-    metrics["intentsOpen"] = this.countIntents("open");
-    metrics["intentsClaimed"] = this.countIntents("claimed");
-    metrics["intentsProposed"] = this.countIntents("proposed");
-    metrics["agentsActive"] = this.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM agents WHERE state != 'dead'").one().n;
-    metrics["reviewQueue"] = this.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM proposals WHERE status = 'escalated'").one().n;
+      .map((r) => {
+        const a = this.toAgent(r, colony.id, true);
+        a.state = effectiveState(a.state, r.last_seen, r.stopped_at);
+        return a;
+      });
     return {
       colony,
       files,
@@ -352,8 +410,9 @@ export class ColonyDO extends DurableObject<Env> {
       recentLandings,
       violations: this.violationTotals(),
       funnel: this.funnelCounts(),
-      metrics,
+      metrics: this.currentMetrics(now),
       rules: this.sql.exec<RuleRow>("SELECT * FROM rules ORDER BY created_at").toArray().map((r) => this.toRule(r, colony.id)),
+      series: this.seriesReport(now),
     };
   }
 
@@ -692,20 +751,13 @@ export class ColonyDO extends DurableObject<Env> {
       createdAt: now,
     };
 
-    // HOOK: innate checks and triage (colony/innate.ts).
-    const checked = await runInnateChecks(draft, { env: this.env, colony });
-    const proposal: Proposal = {
-      ...checked,
-      id: draft.id,
-      colonyId: draft.colonyId,
-      intentId: draft.intentId,
-      agentId: draft.agentId,
-      createdAt: draft.createdAt,
-      status: OPEN_LIKE.has(checked.status) ? "ready" : checked.status,
-    };
-    if (!proposal.evidence.notVerified) proposal.evidence = { ...proposal.evidence, notVerified: DEFAULT_NOT_VERIFIED };
+    // Decide prong (decide/engine.ts): with Workers AI bound, the proposal waits in "checking" while
+    // innate checks, the reflex arc and the two-signal gate decide where it goes; without it, it
+    // goes straight to its lane. A sealed vaccine always takes the decide path, so it can never reach a lane.
+    const engine = this.decider();
+    const deciding = engine.enabled() || engine.store.vaccineByIntent(intentRow.id) !== null;
+    const proposal: Proposal = { ...draft, status: deciding ? "checking" : OPEN_LIKE.has(draft.status) ? "ready" : draft.status };
 
-    // State may have moved while the hook ran.
     const fresh = this.intentRow(proposal.intentId);
     if (!fresh) throw ftError(404, `unknown intent ${proposal.intentId}`);
     this.assertProposable(fresh, proposal.agentId);
@@ -726,7 +778,16 @@ export class ColonyDO extends DurableObject<Env> {
     this.bump("proposals", 1, now);
     const fx = this.effects(colony.regionDepth);
     this.transition(proposal, "pending", now, fx);
+    if (deciding && fresh.status === "claimed") {
+      // A proposal under review holds its intent as proposed, so the reaper never reopens it mid-review.
+      this.sql.exec("UPDATE intents SET status = 'proposed', updated_at = ? WHERE id = ? AND status = 'claimed'", now, fresh.id);
+      fx.events.push({ t: "intent", at: now, intentId: fresh.id, status: "proposed", title: fresh.title, footprint: this.footprintOf(fresh.id, fresh.footprint) });
+    }
     await this.flushEffects(fx);
+    if (deciding) {
+      engine.start(proposal.id);
+      engine.sweep(now);
+    }
     return this.getProposalSync(proposal.id) ?? proposal;
   }
 
@@ -826,11 +887,16 @@ export class ColonyDO extends DurableObject<Env> {
     await this.flushEffects(fx);
   }
 
-  /** The human review queue: escalated proposals, oldest first. */
+  /** The human review queue: escalated proposals, highest risk first, then oldest first. */
   async review(): Promise<Proposal[]> {
     this.requireColony();
+    const engine = this.decider();
+    engine.sweep();
     return this.sql
-      .exec<{ data: string }>("SELECT data FROM proposals WHERE status = 'escalated' ORDER BY created_at ASC LIMIT 500")
+      .exec<{ data: string }>(
+        `SELECT p.data AS data FROM proposals p LEFT JOIN decide_outcomes d ON d.proposal_id = p.id
+         WHERE p.status = 'escalated' ORDER BY COALESCE(d.risk, 0) DESC, p.created_at ASC LIMIT 500`,
+      )
       .toArray()
       .map((r) => JSON.parse(r.data) as Proposal);
   }
@@ -843,11 +909,27 @@ export class ColonyDO extends DurableObject<Env> {
     if (!row) throw ftError(404, `unknown proposal ${proposalId}`);
     const p = JSON.parse(row.data) as Proposal;
     if (p.status === "landed" || p.status === "rejected" || p.status === "returned") throw ftError(409, `proposal is already ${p.status}`);
+    const engine = this.decider();
+    if (d === "approve" && engine.store.vaccineByIntent(p.intentId)) throw ftError(409, "vaccine proposals are sealed and can never land");
     const now = Date.now();
+    // The human decision continues the proposal's decision chain and is bound to its head commit.
+    const prior = this.sql.exec<{ id: string }>("SELECT id FROM decisions WHERE subject = ? ORDER BY at DESC LIMIT 1", proposalId).toArray()[0]?.id;
     this.storeDecision(
-      { id: newId("dec_"), colonyId: colony.id, kind: "triage", subject: proposalId, layer: "human", answers: { decision: d, reason, by }, p: 1, action: d, at: now },
+      {
+        id: newId("dec_"),
+        colonyId: colony.id,
+        kind: "triage",
+        subject: proposalId,
+        layer: "human",
+        answers: { decision: d, reason, by, head: p.headSha },
+        p: 1,
+        action: d,
+        at: now,
+        ...(prior ? { escalatedFrom: prior } : {}),
+      },
       now,
     );
+    engine.onHumanDecision(p, d, reason, by);
     if (d === "approve") {
       if (p.status === "ready") return;
       await this.updateProposals([{ id: proposalId, patch: { status: "ready" } }]);
@@ -863,6 +945,175 @@ export class ColonyDO extends DurableObject<Env> {
     const decision: Decision = { ...d, id: newId("dec_"), colonyId: colony.id, at };
     this.storeDecision(decision, at);
     return decision;
+  }
+
+  // =========================================================================
+  // Decide prong: reflex arc, immune review, vaccination meter (decide/engine.ts)
+  // =========================================================================
+
+  private decideEngine: DecideEngine | null = null;
+
+  /** Start a vaccination batch: sealed bad proposals through the normal propose path. */
+  async vaccinate(p: { count?: number; classes?: string[] }): Promise<VaccinationResult> {
+    this.requireColony();
+    return this.decider().vaccinate(p ?? {});
+  }
+
+  /** The vaccination meter: recall per threat class with Wilson 95% intervals. */
+  async vaccineReport(): Promise<Record<string, unknown>> {
+    this.requireColony();
+    const engine = this.decider();
+    engine.sweep();
+    return engine.vaccineReport();
+  }
+
+  /** Immune state: antibodies, detector probation, earned autonomy, alert budget, policy. */
+  async immune(): Promise<Record<string, unknown>> {
+    this.requireColony();
+    return this.decider().immune();
+  }
+
+  /** Change the colony's decide policy (partial; numbers are clamped). */
+  async setDecidePolicy(patch: unknown): Promise<DecidePolicy> {
+    this.requireColony();
+    return this.decider().store.setPolicy(patch);
+  }
+
+  /** Mark a detector (clef:<question> or antibody:<id>) useful or not useful. */
+  async detectorFeedback(id: string, useful: boolean): Promise<DetectorStats> {
+    this.requireColony();
+    return this.decider().detectorFeedback(id, useful);
+  }
+
+  /** The decide pipeline, with this colony as its host (created on first use). */
+  private decider(): DecideEngine {
+    if (this.decideEngine) return this.decideEngine;
+    const host: DecideHost = {
+      env: this.env,
+      sql: this.sql,
+      waitUntil: (p) => this.ctx.waitUntil(p),
+      colony: () => this.requireColony(),
+      intent: (id) => {
+        const r = this.intentRow(id);
+        return r ? this.toIntent(r, this.requireColony().id) : null;
+      },
+      rules: () => {
+        const colonyId = this.requireColony().id;
+        return this.sql.exec<RuleRow>("SELECT * FROM rules ORDER BY created_at").toArray().map((r) => this.toRule(r, colonyId));
+      },
+      agent: (id) => {
+        const r = this.agentRow(id);
+        return r ? { kind: r.kind as AgentKind, name: r.name, ...(r.model ? { model: r.model } : {}) } : null;
+      },
+      proposal: (id) => this.getProposalSync(id),
+      proposalRegion: (id) => this.proposalRow(id)?.region ?? ".",
+      stuckChecking: (before) =>
+        this.sql
+          .exec<{ id: string }>("SELECT id FROM proposals WHERE status = 'checking' AND created_at < ? ORDER BY created_at LIMIT 50", before)
+          .toArray()
+          .map((r) => r.id),
+      updateProposals: (items) => this.updateProposals(items),
+      recordDecision: (d) => this.recordDecision(d),
+      decisionsFor: (subject) =>
+        this.sql
+          .exec<{ id: string; kind: string; subject: string; layer: string; answers: string; p: number; action: string; at: number; escalated_from: string | null }>(
+            "SELECT * FROM decisions WHERE subject = ? ORDER BY at",
+            subject,
+          )
+          .toArray()
+          .map((r) => ({
+            id: r.id,
+            colonyId: this.requireColony().id,
+            kind: r.kind as Decision["kind"],
+            subject: r.subject,
+            layer: r.layer as DecisionLayer,
+            answers: parseJson<Record<string, unknown>>(r.answers, {}),
+            p: r.p,
+            action: r.action,
+            at: r.at,
+            ...(r.escalated_from ? { escalatedFrom: r.escalated_from } : {}),
+          })),
+      bump: (name, delta) => void this.bump(name, delta, Date.now()),
+      setMetric: (name, value) => this.setMetric(name, value, Date.now()),
+      emit: (events) => void this.hub.push(events),
+      trunk: () => this.trunkStub() as unknown as TrunkRpc,
+      systemCommitted: async (l) => this.noteSystemCommit(l),
+      vaccineAgent: () => this.vaccineAgent(),
+      vaccineTargets: (limit) =>
+        this.sql
+          .exec<{ id: string; title: string; why: string; footprint: string; rule_id: string | null }>(
+            `SELECT id, title, why, footprint, rule_id FROM intents WHERE rule_id IS NOT NULL AND created_by != 'vaccine'
+             ORDER BY CASE status WHEN 'open' THEN 0 WHEN 'claimed' THEN 1 WHEN 'proposed' THEN 2 ELSE 3 END, created_at LIMIT ?`,
+            limit,
+          )
+          .toArray()
+          .map((r) => ({ title: r.title, why: r.why, footprint: this.footprintOf(r.id, r.footprint), ...(r.rule_id ? { ruleId: r.rule_id } : {}) })),
+      sealedIntent: (i) => this.sealedIntent(i),
+      propose: (input) => this.propose(input),
+      seal: (id, reason, evidence) => this.sealProposal(id, reason, evidence),
+    };
+    this.decideEngine = new DecideEngine(host);
+    return this.decideEngine;
+  }
+
+  /** The colony's vaccine agent (registered once, marked seen on every batch so it is never reaped mid-batch). */
+  private async vaccineAgent(): Promise<Id> {
+    const store = this.decider().store;
+    const known = store.meta("vaccineAgent");
+    if (known && this.agentRow(known)) {
+      this.sql.exec("UPDATE agents SET last_seen = ?, state = 'idle' WHERE id = ?", Date.now(), known);
+      return known;
+    }
+    const [agent] = await this.registerAgents([{ kind: "synthetic", name: "vaccine", model: "vaccine" }]);
+    if (!agent) throw ftError(500, "vaccine agent was not registered");
+    store.setMeta("vaccineAgent", agent.id);
+    return agent.id;
+  }
+
+  /** A claimed intent for the vaccine agent: no need or claim marks, invisible to self-assignment. */
+  private sealedIntent(i: { title: string; why: string; footprint: Path[]; ruleId?: Id; agentId: Id }): Id {
+    const id = newId("int_");
+    const now = Date.now();
+    this.sql.exec(
+      `INSERT INTO intents (id, title, why, source, rule_id, parent_id, footprint, acceptance, priority, status, created_at, created_by, assigned_to, violations, updated_at)
+       VALUES (?, ?, ?, 'agent', ?, NULL, ?, NULL, 0, 'claimed', ?, 'vaccine', ?, 0, ?)`,
+      id,
+      i.title,
+      i.why,
+      i.ruleId ?? null,
+      JSON.stringify(normalizePaths(i.footprint)),
+      now,
+      i.agentId,
+      now,
+    );
+    return id;
+  }
+
+  /** Finish a sealed vaccine: rejected with its outcome, intent abandoned; no lane, no field effects. */
+  private sealProposal(id: Id, reason: string, evidence: Evidence): void {
+    const row = this.proposalRow(id);
+    if (!row) return;
+    const prev = JSON.parse(row.data) as Proposal;
+    if (prev.status === "landed") return;
+    const now = Date.now();
+    this.writeProposal({ ...prev, status: "rejected", reason, evidence }, now);
+    const events: ColonyEvent[] = [{ t: "proposal", at: now, proposalId: id, intentId: prev.intentId, agentId: prev.agentId, status: "rejected", reason }];
+    const intent = this.intentRow(prev.intentId);
+    if (intent && intent.status !== "landed") {
+      this.sql.exec("UPDATE intents SET status = 'abandoned', updated_at = ? WHERE id = ?", now, intent.id);
+      events.push({ t: "intent", at: now, intentId: intent.id, status: "abandoned", title: intent.title, footprint: this.footprintOf(intent.id, intent.footprint) });
+    }
+    this.hub.push(events);
+  }
+
+  /** A FireTrident-authored trunk commit (an antibody) landed: track the trunk head and show it live. */
+  private noteSystemCommit(l: Landing): void {
+    const cached = this.loadColony();
+    if (l.trunkSha && l.at >= (cached?.lastLandingAt ?? 0)) {
+      this.sql.exec("UPDATE colony SET trunk_sha = ?, last_landing_at = ?", l.trunkSha, l.at);
+      this.colonyCache = null;
+    }
+    this.hub.push({ t: "landing", at: Date.now(), landingId: l.id, trunkSha: l.trunkSha, proposalIds: [], paths: l.paths });
   }
 
   // =========================================================================
@@ -884,6 +1135,7 @@ export class ColonyDO extends DurableObject<Env> {
     const client = pair[0];
     const server = pair[1];
     this.ctx.acceptWebSocket(server, ["live"]);
+    await this.armMetricsTick();
     return new Response(null, { status: 101, webSocket: client });
   }
 
@@ -909,6 +1161,307 @@ export class ColonyDO extends DurableObject<Env> {
 
   /** Errors close the socket; nothing to clean up (the runtime drops it). */
   async webSocketError(_ws: WebSocket, _error: unknown): Promise<void> {}
+
+  // =========================================================================
+  // Operations: summary, metrics, agent listing and control, teardown, registry
+  // =========================================================================
+
+  /** Identity and live counters for GET /api/colonies, or null before init. Calls no other object. */
+  async summary(): Promise<ColonySummary | null> {
+    const loaded = this.loadColony();
+    if (!loaded) return null;
+    return summaryOf(loaded.colony, loaded.lastLandingAt, this.currentMetrics(Date.now()));
+  }
+
+  /** Metrics, funnel, violations and the per-minute series without the snapshot's lists (GET /api/colonies/:id/metrics). */
+  async metricsReport(): Promise<{
+    colonyId: Id;
+    at: number;
+    metrics: Record<string, number>;
+    funnel: Record<DecisionLayer, number>;
+    violations: { total: number; byRule: Record<Id, number> };
+    series: ColonySeries;
+  }> {
+    const colony = this.requireColony();
+    const now = Date.now();
+    this.maybeReap(now);
+    return { colonyId: colony.id, at: now, metrics: this.currentMetrics(now), funnel: this.funnelCounts(), violations: this.violationTotals(), series: this.seriesReport(now) };
+  }
+
+  /**
+   * Agents for listings, most recently seen first, with the title of the intent each holds.
+   * Dead agents (reaped, or stopped and not seen since) only with `includeDead`. Tokens are redacted.
+   */
+  async listAgents(opts: { includeDead?: boolean; kinds?: AgentKind[]; limit?: number } = {}): Promise<AgentListEntry[]> {
+    const colony = this.requireColony();
+    const limit = Math.max(1, Math.min(LIST_AGENTS_CAP, Math.floor(opts.limit ?? LIST_AGENTS_CAP)));
+    const where: string[] = [];
+    const args: SqlStorageValue[] = [];
+    if (!opts.includeDead) {
+      where.push("a.state != 'dead' AND NOT (s.at IS NOT NULL AND s.at + ? >= a.last_seen)");
+      args.push(STOP_GRACE_MS);
+    }
+    if (opts.kinds && opts.kinds.length > 0) {
+      where.push("a.kind IN (SELECT value FROM json_each(?))");
+      args.push(JSON.stringify(opts.kinds));
+    }
+    const rows = this.sql
+      .exec<AgentRow & { stopped_at: number | null; stop_reason: string | null; intent_title: string | null }>(
+        `SELECT a.*, s.at AS stopped_at, s.reason AS stop_reason, i.title AS intent_title
+           FROM agents a LEFT JOIN agent_stops s ON s.agent_id = a.id LEFT JOIN intents i ON i.id = a.intent_id
+          ${where.length > 0 ? `WHERE ${where.join(" AND ")}` : ""}
+          ORDER BY a.last_seen DESC LIMIT ?`,
+        ...args,
+        limit,
+      )
+      .toArray();
+    return rows.map((r) => {
+      const entry: AgentListEntry = { ...this.toAgent(r, colony.id, true), createdAt: r.created_at };
+      entry.state = effectiveState(entry.state, r.last_seen, r.stopped_at);
+      if (r.intent_title) entry.intentTitle = r.intent_title;
+      if (r.stopped_at !== null && entry.state === "dead") {
+        entry.stoppedAt = r.stopped_at;
+        if (r.stop_reason) entry.stopReason = r.stop_reason;
+      }
+      return entry;
+    });
+  }
+
+  /**
+   * Record that agents were stopped (agent stop, swarm stop, colony deletion). Each one's claimed
+   * intents reopen (claims cleared, a failure mark left) and its lease goes back to the pool unless
+   * one of its proposals is still in flight (that proposal stands). It counts as dead until it is
+   * seen again. Returns the ids that belong to this colony.
+   */
+  async retireAgents(agentIds: Id[], reason = "stopped"): Promise<Id[]> {
+    const colony = this.requireColony();
+    const now = Date.now();
+    const fx = this.effects(colony.regionDepth);
+    const out: Id[] = [];
+    for (const id of new Set(agentIds)) {
+      const agent = this.agentRow(id);
+      if (!agent) continue;
+      out.push(id);
+      for (const h of this.sql.exec<IntentRow>("SELECT * FROM intents WHERE assigned_to = ? AND status = 'claimed'", id).toArray()) {
+        const fp = this.footprintOf(h.id, h.footprint);
+        this.sql.exec("UPDATE intents SET status = 'open', assigned_to = NULL, updated_at = ? WHERE id = ?", now, h.id);
+        fx.batch.clear(fp, { agentId: id, intentId: h.id, kind: "claim" }).deposit("failure", fp, FAILURE_STRENGTH, now, { agentId: id, intentId: h.id });
+        fx.events.push({ t: "intent", at: now, intentId: h.id, status: "open", title: h.title, footprint: fp });
+      }
+      const proposing = this.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM intents WHERE assigned_to = ? AND status = 'proposed'", id).one().n > 0;
+      if (proposing) {
+        this.sql.exec("UPDATE agents SET state = 'dead' WHERE id = ?", id);
+      } else {
+        this.sql.exec("UPDATE agents SET state = 'dead', intent_id = NULL, workspace = NULL WHERE id = ?", id);
+        fx.release.add(id);
+      }
+      this.sql.exec(
+        "INSERT INTO agent_stops (agent_id, at, reason) VALUES (?, ?, ?) ON CONFLICT(agent_id) DO UPDATE SET at = excluded.at, reason = excluded.reason",
+        id,
+        now,
+        (reason || "stopped").slice(0, 500),
+      );
+      this.recentClaims.delete(id);
+      this.lastRefresh.delete(id);
+      fx.events.push({ t: "agent", at: now, agentId: id, kind: agent.kind as AgentKind, state: "dead" });
+    }
+    await this.flushEffects(fx);
+    return out;
+  }
+
+  /**
+   * Erase this object (DELETE /api/colonies/:id): close live sockets, cancel the alarm and delete
+   * all storage. The empty schema is recreated so the object keeps answering, as a colony that
+   * does not exist.
+   */
+  async destroy(): Promise<{ cleared: true }> {
+    for (const ws of this.ctx.getWebSockets()) {
+      try {
+        ws.close(1001, "colony deleted");
+      } catch {
+        // already closed
+      }
+    }
+    await this.ctx.storage.deleteAlarm();
+    await this.ctx.storage.deleteAll();
+    this.colonyCache = null;
+    this.configured.clear();
+    this.recentClaims.clear();
+    this.readingCache.clear();
+    this.taking.clear();
+    this.lastRefresh.clear();
+    this.footprintCache.clear();
+    this.sentMetrics.clear();
+    this.lastReap = 0;
+    this.registryReady = false;
+    for (const stmt of SCHEMA) this.sql.exec(stmt);
+    for (const stmt of OPS_SCHEMA) this.sql.exec(stmt);
+    return { cleared: true };
+  }
+
+  /** Registry instance only: record (or refresh) a colony. */
+  async registerColony(e: { id: Id; name: string; source?: { url: string; branch?: string }; createdAt?: number }): Promise<RegistryEntry> {
+    this.ensureRegistry();
+    const now = Date.now();
+    const source = e.source?.url ? { url: e.source.url, branch: e.source.branch || "main" } : null;
+    this.sql.exec(
+      `INSERT INTO registry (id, name, source, created_at, registered_at) VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET name = excluded.name, source = excluded.source, created_at = excluded.created_at`,
+      e.id,
+      e.name,
+      source ? JSON.stringify(source) : null,
+      typeof e.createdAt === "number" && Number.isFinite(e.createdAt) ? e.createdAt : now,
+      now,
+    );
+    const entry = this.registryEntries("WHERE id = ?", e.id)[0];
+    if (!entry) throw ftError(500, `colony ${e.id} was not registered`);
+    return entry;
+  }
+
+  /** Registry instance only: forget a colony. True when it was registered. */
+  async unregisterColony(id: Id): Promise<boolean> {
+    this.ensureRegistry();
+    return this.sql.exec("DELETE FROM registry WHERE id = ? RETURNING id", id).toArray().length > 0;
+  }
+
+  /** Registry instance only: every registered colony, oldest first. */
+  async listColonies(): Promise<RegistryEntry[]> {
+    this.ensureRegistry();
+    return this.registryEntries("");
+  }
+
+  /** Registry instance only: read a marker, or set it when `value` is given (used for the one-time backfill). */
+  async registryFlag(key: string, value?: string): Promise<string | null> {
+    this.ensureRegistry();
+    if (value !== undefined) this.sql.exec("INSERT INTO registry_meta (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v", key, value);
+    return this.sql.exec<{ v: string }>("SELECT v FROM registry_meta WHERE k = ?", key).toArray()[0]?.v ?? null;
+  }
+
+  /** Metrics tick: while UI sockets are connected, re-send live metrics that changed (all every 30 s) and reap silent agents. */
+  async alarm(): Promise<void> {
+    if (this.ctx.getWebSockets().length === 0 || !this.loadColony()) return;
+    const now = Date.now();
+    this.maybeReap(now);
+    const full = now - this.lastFullMetricsAt >= METRICS_FULL_MS;
+    if (full) this.lastFullMetricsAt = now;
+    const changed = changedMetrics(this.currentMetrics(now), this.sentMetrics, full);
+    if (changed.length > 0) this.hub.push(changed.map((m): ColonyEvent => ({ t: "metric", at: now, name: m.name, value: m.value })));
+    await this.ctx.storage.setAlarm(now + METRICS_TICK_MS);
+  }
+
+  /** Start the metrics tick unless it is already scheduled (a UI socket just connected); its next tick sends every live metric. */
+  private async armMetricsTick(): Promise<void> {
+    this.lastFullMetricsAt = 0;
+    try {
+      if ((await this.ctx.storage.getAlarm()) === null) await this.ctx.storage.setAlarm(Date.now() + METRICS_TICK_MS);
+    } catch (err) {
+      console.warn(`metrics tick not armed: ${errorText(err)}`);
+    }
+  }
+
+  /** Every metric (stored counters plus live gauges for agents, intents, proposals, violations and the funnel), as a stable map. */
+  private currentMetrics(now: number): Record<string, number> {
+    const m = this.metricsRecord();
+    Object.assign(m, this.agentCounts());
+    for (const r of this.sql.exec<{ status: string; n: number }>("SELECT status, COUNT(*) AS n FROM intents GROUP BY status")) {
+      m[`intents${r.status.charAt(0).toUpperCase()}${r.status.slice(1)}`] = r.n;
+    }
+    const p = this.sql
+      .exec<{ inflight: number; escalated: number }>(
+        "SELECT COUNT(*) AS inflight, COALESCE(SUM(CASE WHEN status = 'escalated' THEN 1 ELSE 0 END), 0) AS escalated FROM proposals WHERE status IN ('pending', 'checking', 'ready', 'escalated')",
+      )
+      .one();
+    m["proposalsInFlight"] = p.inflight;
+    m["reviewQueue"] = p.escalated;
+    m["landingsPerMin"] = this.landingsPerMin(now);
+    m["violations"] = this.violationTotals().total;
+    m["rules"] = this.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM rules").one().n;
+    m["regions"] = this.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM regions").one().n;
+    const funnel = this.funnelCounts();
+    m["funnel.reflex"] = funnel.reflex;
+    m["funnel.llm"] = funnel.llm;
+    m["funnel.human"] = funnel.human;
+    m["decisions"] = funnel.reflex + funnel.llm + funnel.human;
+    return stableMetrics(m);
+  }
+
+  /** Agents by effective state (stopped and not seen since counts as dead). */
+  private agentCounts(): Record<string, number> {
+    const byState: Partial<Record<AgentState, number>> = {};
+    for (const r of this.sql.exec<{ st: string; n: number }>(
+      "SELECT CASE WHEN s.at IS NOT NULL AND s.at + ? >= a.last_seen THEN 'dead' ELSE a.state END AS st, COUNT(*) AS n FROM agents a LEFT JOIN agent_stops s ON s.agent_id = a.id GROUP BY st",
+      STOP_GRACE_MS,
+    )) {
+      byState[r.st as AgentState] = r.n;
+    }
+    return agentCounters(byState);
+  }
+
+  /** The last SERIES_BUCKETS minutes of the per-minute series, ending with the current minute. */
+  private seriesReport(now: number): ColonySeries {
+    const end = minuteOf(now);
+    const first = end - SERIES_BUCKETS + 1;
+    const rows = this.sql.exec<{ name: string; minute: number; value: number }>("SELECT name, minute, value FROM series WHERE minute >= ? AND minute <= ?", first, end).toArray();
+    const of = (name: string) => rows.filter((r) => r.name === name);
+    const before = this.sql.exec<{ value: number }>("SELECT value FROM series WHERE name = 'violations' AND minute < ? ORDER BY minute DESC LIMIT 1", first).toArray()[0]?.value ?? null;
+    return {
+      bucketMs: BUCKET_MS,
+      start: seriesStart(end),
+      landings: counterBuckets(of("landings"), end),
+      violations: gaugeBuckets(of("violations"), end, before, this.violationTotals().total),
+      proposals: counterBuckets(of("proposals"), end),
+      returned: counterBuckets(of("returned"), end),
+      landedIntents: counterBuckets(of("landedIntents"), end),
+    };
+  }
+
+  /** Add to (counter) or set (gauge) the current minute of a series; prunes old minutes now and then. */
+  private recordSeries(name: string, value: number, now: number, gauge: boolean): void {
+    if (!Number.isFinite(value)) return;
+    const upsert = gauge
+      ? "INSERT INTO series (name, minute, value) VALUES (?, ?, ?) ON CONFLICT(name, minute) DO UPDATE SET value = excluded.value"
+      : "INSERT INTO series (name, minute, value) VALUES (?, ?, ?) ON CONFLICT(name, minute) DO UPDATE SET value = value + excluded.value";
+    this.sql.exec(upsert, name, minuteOf(now), value);
+    if (now - this.lastSeriesPrune < SERIES_PRUNE_EVERY_MS) return;
+    this.lastSeriesPrune = now;
+    const cutoff = minuteOf(now) - SERIES_KEEP_MINUTES;
+    // Carry each gauge's last value to the cutoff so the line stays continuous after pruning.
+    for (const g of GAUGE_SERIES) {
+      this.sql.exec("INSERT OR IGNORE INTO series (name, minute, value) SELECT name, ?, value FROM series WHERE name = ? AND minute < ? ORDER BY minute DESC LIMIT 1", cutoff, g, cutoff);
+    }
+    this.sql.exec("DELETE FROM series WHERE minute < ?", cutoff);
+  }
+
+  /** Colonies from before the series table: rebuild the landings series from the landings log (once). */
+  private backfillSeries(): void {
+    if (this.sql.exec("SELECT 1 AS x FROM series LIMIT 1").toArray().length > 0) return;
+    this.sql.exec(
+      `INSERT OR IGNORE INTO series (name, minute, value)
+       SELECT 'landings', CAST(received_at / ${BUCKET_MS} AS INTEGER) AS m, COUNT(*) FROM landings GROUP BY m`,
+    );
+  }
+
+  private registryReady = false;
+
+  private ensureRegistry(): void {
+    const name = this.ctx.id.name;
+    if (name !== undefined && name !== REGISTRY_NAME) throw ftError(400, "registry calls go to the registry instance");
+    if (this.registryReady) return;
+    for (const stmt of REGISTRY_SCHEMA) this.sql.exec(stmt);
+    this.registryReady = true;
+  }
+
+  private registryEntries(where: string, ...args: SqlStorageValue[]): RegistryEntry[] {
+    return this.sql
+      .exec<{ id: string; name: string; source: string | null; created_at: number; registered_at: number }>(`SELECT * FROM registry ${where} ORDER BY created_at, id`, ...args)
+      .toArray()
+      .map((r) => {
+        const e: RegistryEntry = { id: r.id, name: r.name, createdAt: r.created_at, registeredAt: r.registered_at };
+        const source = parseJson<{ url: string; branch: string } | null>(r.source, null);
+        if (source) e.source = source;
+        return e;
+      });
+  }
 
   // =========================================================================
   // Internals: take
@@ -1537,6 +2090,7 @@ export class ColonyDO extends DurableObject<Env> {
         now,
       )
       .toArray()[0];
+    if (COUNTER_SERIES.has(name)) this.recordSeries(name, delta, now, false);
     return row?.value ?? delta;
   }
 
@@ -1564,8 +2118,11 @@ export class ColonyDO extends DurableObject<Env> {
     return { total, byRule };
   }
 
+  /** The violations event for the current totals (every change goes through here, so it also samples the series). */
   private violationsEvent(now: number): ColonyEvent {
-    return { t: "violations", at: now, ...this.violationTotals() };
+    const totals = this.violationTotals();
+    this.recordSeries("violations", totals.total, now, true);
+    return { t: "violations", at: now, ...totals };
   }
 
   private funnelCounts(): Record<DecisionLayer, number> {
