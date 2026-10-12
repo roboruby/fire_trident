@@ -630,7 +630,12 @@ export class RegionDO extends DurableObject<Env> {
     let landError: string | null = null;
     if (batch.length > 0) {
       try {
-        const res = await trunk.land(batch);
+        // Lineage context in one small call, so TrunkDO never pulls a full colony snapshot.
+        const colony = this.env.COLONY.get(this.env.COLONY.idFromName(colonyId));
+        const ctx = await colony
+          .landContext(batch.map((p) => p.intentId), batch.map((p) => p.agentId))
+          .catch(() => undefined);
+        const res = await trunk.land(batch, ctx);
         landing = res.landing;
         trunkReturned = res.returned ?? [];
       } catch (err) {

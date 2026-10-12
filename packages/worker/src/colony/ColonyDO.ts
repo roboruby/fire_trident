@@ -479,6 +479,32 @@ export class ColonyDO extends DurableObject<Env> {
   }
 
   /**
+   * The intents and agents a landing's lineage note needs, in one call. Lanes pass
+   * this to TrunkDO.land so the trunk writer never has to pull a full snapshot.
+   */
+  async landContext(intentIds: Id[], agentIds: Id[]): Promise<{
+    intents: Record<Id, { title: string; why: string; ruleId?: Id; parentId?: Id }>;
+    agents: Record<Id, { kind: AgentKind; model?: string }>;
+  }> {
+    const colonyId = this.requireColony().id;
+    const intents: Record<Id, { title: string; why: string; ruleId?: Id; parentId?: Id }> = {};
+    for (const id of new Set(intentIds)) {
+      const row = this.intentRow(id);
+      if (!row) continue;
+      const i = this.toIntent(row, colonyId);
+      intents[id] = { title: i.title, why: i.why, ...(i.ruleId ? { ruleId: i.ruleId } : {}), ...(i.parentId ? { parentId: i.parentId } : {}) };
+    }
+    const agents: Record<Id, { kind: AgentKind; model?: string }> = {};
+    for (const id of new Set(agentIds)) {
+      const row = this.agentRow(id);
+      if (!row) continue;
+      const a = this.toAgent(row, colonyId, false);
+      agents[id] = { kind: a.kind, ...(a.model ? { model: a.model } : {}) };
+    }
+    return { intents, agents };
+  }
+
+  /**
    * Self-assignment. Reads the field of every region the top open intents
    * touch, computes repulsion from other agents' claims, and applies the
    * response-threshold rule. On success: claims the intent, leases a workspace
