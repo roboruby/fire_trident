@@ -1,0 +1,73 @@
+{
+  "out": [
+    {
+      "ref": "main",
+      "path": "readme.md",
+      "readFile": {
+        "size": 55,
+        "type": "text/plain;charset=utf-8",
+        "text": "# is-plain-obj\n\nRewritten by FireTrident tree surgery.\n"
+      },
+      "log": [
+        "a24b5d6c5a597f7fd49c237afd08272c4bca771b"
+      ]
+    },
+    {
+      "ref": "HEAD",
+      "path": "readme.md",
+      "readFile": null,
+      "log": []
+    },
+    {
+      "ref": "refs/heads/main",
+      "path": "readme.md",
+      "readFile": null,
+      "log": []
+    },
+    {
+      "ref": "a24b5d6c5a597f7fd49c237afd08272c4bca771b",
+      "path": "readme.md",
+      "readFile": {
+        "size": 55,
+        "type": "text/plain;charset=utf-8",
+        "text": "# is-plain-obj\n\nRewritten by FireTrident tree surgery.\n"
+      },
+      "log": [
+        "a24b5d6c5a597f7fd49c237afd08272c4bca771b"
+      ]
+    },
+    {
+      "ref": "feature-x",
+      "path": "spike.txt",
+      "readFile": {
+        "size": 43,
+        "type": "text/plain;charset=utf-8",
+        "text": "written by SpikeDO 2026-10-12 04:48:58 UTC\n"
+      },
+      "log": [
+        "87506c28ca116f440a7adb106e719655d488f2ff"
+      ]
+    },
+    {
+      "ref": "refs/notes/firetrident",
+      "path": "a24b5d6c5a597f7fd49c237afd08272c4bca771b",
+      "readFile": null,
+      "log": []
+    },
+    {
+      "ref": "fc7c98323c4526438b1ce77eed7d2087d6965c65",
+      "path": "a24b5d6c5a597f7fd49c237afd08272c4bca771b",
+      "readFile": {
+        "size": 69,
+        "type": "text/plain;charset=utf-8",
+        "text": "{\"ft\":1,\"decision\":\"merged\",\"by\":\"spike\",\"at\":\"2026-10-12T04:49:02Z\"}"
+      },
+      "log": [
+        "fc7c98323c4526438b1ce77eed7d2087d6965c65"
+      ]
+    }
+  ],
+  "serverMs": 384,
+  "httpStatus": 200,
+  "clientMs": 571
+}

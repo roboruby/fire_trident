@@ -1,0 +1,23 @@
+{
+  "name": "base",
+  "tStart": 1791780446648,
+  "callMs": 2396,
+  "result": {
+    "id": "uo571z3oa1y1uuoi",
+    "name": "base",
+    "description": null,
+    "defaultBranch": "main",
+    "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/base.git",
+    "token": "<redacted>"
+  },
+  "ready": {
+    "readyMs": 2437,
+    "polls": 1,
+    "head": "666df7c10035f7e26f27ec214fe5ae3173435f34",
+    "errors": {}
+  },
+  "ops": 3,
+  "serverMs": 2437,
+  "httpStatus": 200,
+  "clientMs": 2825
+}

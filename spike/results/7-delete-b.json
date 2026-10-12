@@ -1,0 +1,23 @@
+{
+  "out": [
+    {
+      "name": "trig-1",
+      "ok": true,
+      "ms": 1280
+    },
+    {
+      "name": "trig-2",
+      "ok": true,
+      "ms": 1023
+    },
+    {
+      "name": "trig-3",
+      "ok": true,
+      "ms": 1028
+    }
+  ],
+  "ops": 3,
+  "serverMs": 3331,
+  "httpStatus": 200,
+  "clientMs": 3448
+}

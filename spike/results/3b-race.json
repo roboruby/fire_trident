@@ -1,0 +1,281 @@
+{
+  "forks": [
+    {
+      "name": "race-1",
+      "source": "base",
+      "tStart": 1791780608226,
+      "tEnd": 1791780609984,
+      "getMs": 22,
+      "forkCallMs": 1670,
+      "callMs": 1692,
+      "ready": {
+        "readyMs": 1758,
+        "polls": 1,
+        "head": "666df7c10035f7e26f27ec214fe5ae3173435f34",
+        "errors": {}
+      },
+      "result": {
+        "id": "0sym7viepb4m38bo",
+        "name": "race-1",
+        "description": "fork of base",
+        "defaultBranch": "main",
+        "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/race-1.git",
+        "token": "<redacted>"
+      },
+      "ops": 4,
+      "serverMs": 1758,
+      "httpStatus": 200,
+      "clientMs": 1922
+    },
+    {
+      "name": "ro-1",
+      "source": "base",
+      "tStart": 1791780608224,
+      "tEnd": 1791780609611,
+      "getMs": 20,
+      "forkCallMs": 1312,
+      "callMs": 1332,
+      "ready": {
+        "readyMs": 1387,
+        "polls": 1,
+        "head": "666df7c10035f7e26f27ec214fe5ae3173435f34",
+        "errors": {}
+      },
+      "result": {
+        "id": "3de0xflvmtmjbwp5",
+        "name": "ro-1",
+        "description": "fork of base",
+        "defaultBranch": "main",
+        "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/ro-1.git",
+        "token": "<redacted>"
+      },
+      "ops": 4,
+      "serverMs": 1387,
+      "httpStatus": 200,
+      "clientMs": 1510
+    }
+  ],
+  "w1Fetch": {
+    "ms": 247,
+    "fetchHead": "666df7c10035f7e26f27ec214fe5ae3173435f34",
+    "defaultBranch": "refs/heads/main",
+    "rpcMs": 366,
+    "ops": 3,
+    "serverMs": 447,
+    "httpStatus": 200,
+    "clientMs": 556
+  },
+  "w2Fetch": {
+    "ms": 230,
+    "fetchHead": "666df7c10035f7e26f27ec214fe5ae3173435f34",
+    "defaultBranch": "refs/heads/main",
+    "rpcMs": 299,
+    "ops": 3,
+    "serverMs": 384,
+    "httpStatus": 200,
+    "clientMs": 489
+  },
+  "staleAdvert": {
+    "ms": 57,
+    "status": 200,
+    "contentType": "application/x-git-receive-pack-advertisement",
+    "text": "001f# service=git-receive-pack\n00000080666df7c10035f7e26f27ec214fe5ae3173435f34 HEAD\u0000report-status delete-refs ofs-delta side-band-64k symref=HEAD:refs/heads/main\n003d666df7c10035f7e26f27ec214fe5ae3173435f34 refs/heads/main\n0000",
+    "ops": 0,
+    "serverMs": 62,
+    "httpStatus": 200,
+    "clientMs": 167
+  },
+  "c1": {
+    "ms": 38,
+    "base": "666df7c10035f7e26f27ec214fe5ae3173435f34",
+    "baseTree": "5d176b98189da7878396a2cffe7590ff35461332",
+    "blob": "8f3fc4abd353e0e738363177963001ce0c68dac4",
+    "tree": "8e030376f8ffed3019575fdac92b33d7582aed49",
+    "commit": "f469bdaa855ac80a51e64361eae8e0f2fdc4ac1d",
+    "rpcMs": 73,
+    "serverMs": 73,
+    "httpStatus": 200,
+    "clientMs": 191
+  },
+  "w1Push": {
+    "ms": 192,
+    "result": {
+      "ok": true,
+      "refs": {
+        "refs/heads/main": {
+          "ok": true,
+          "error": ""
+        }
+      }
+    },
+    "rpcMs": 220,
+    "ops": 3,
+    "serverMs": 312,
+    "httpStatus": 200,
+    "clientMs": 426
+  },
+  "afterW1": {
+    "info": {
+      "id": "0sym7viepb4m38bo",
+      "name": "race-1",
+      "description": "fork of base",
+      "defaultBranch": "main",
+      "createdAt": "2026-10-12T04:50:08.258Z",
+      "updatedAt": "2026-10-12T04:50:09.130Z",
+      "lastPushAt": null,
+      "source": "artifacts:ft-spike-a/base",
+      "readOnly": false,
+      "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/race-1.git"
+    },
+    "log": [],
+    "serverMs": 55,
+    "httpStatus": 200,
+    "clientMs": 158
+  },
+  "c2": {
+    "ms": 36,
+    "base": "666df7c10035f7e26f27ec214fe5ae3173435f34",
+    "baseTree": "5d176b98189da7878396a2cffe7590ff35461332",
+    "blob": "3a25d24552cadc083724a9a26bafb1a78f685ecf",
+    "tree": "868957f5880006e4860c01bc8208de4685b2f9c2",
+    "commit": "f87cdf0a5f62770dd1727bf43408dc9263f576d4",
+    "rpcMs": 69,
+    "serverMs": 69,
+    "httpStatus": 200,
+    "clientMs": 251
+  },
+  "w2StalePush": {
+    "ms": 105,
+    "error": {
+      "name": "GitPushError",
+      "code": "GitPushError",
+      "message": "One or more branches were not updated: \n  - refs/heads/main: stale ref",
+      "data": "{\"prettyDetails\":\"\\n  - refs/heads/main: stale ref\",\"result\":{\"ok\":true,\"refs\":{\"refs/heads/main\":{\"ok\":false,\"error\":\"stale ref\"}},\"headers\":{\"cache-control\":\"no-cache\",\"cf-ray\":\"a4937b7bedafc792-IAD\",\"connection\":\"close\",\"content-type\":\"application/x-git-receive-pack-result\",\"date\":\"Mon, 12 Oct 2026 04:50:11 GMT\",\"server\":\"cloudflare\",\"transfer-encoding\":\"chunked\"}}}"
+    },
+    "rpcMs": 122,
+    "ops": 3,
+    "serverMs": 198,
+    "httpStatus": 200,
+    "clientMs": 380
+  },
+  "afterStale": {
+    "info": {
+      "id": "0sym7viepb4m38bo",
+      "name": "race-1",
+      "description": "fork of base",
+      "defaultBranch": "main",
+      "createdAt": "2026-10-12T04:50:08.258Z",
+      "updatedAt": "2026-10-12T04:50:09.130Z",
+      "lastPushAt": null,
+      "source": "artifacts:ft-spike-a/base",
+      "readOnly": false,
+      "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/race-1.git"
+    },
+    "log": [],
+    "serverMs": 67,
+    "httpStatus": 200,
+    "clientMs": 174
+  },
+  "w2FreshNoForce": {
+    "ms": 49,
+    "error": {
+      "name": "PushRejectedError",
+      "code": "PushRejectedError",
+      "message": "Push rejected because it was not a simple fast-forward. Use \"force: true\" to override.",
+      "data": "{\"reason\":\"not-fast-forward\"}"
+    },
+    "rpcMs": 87,
+    "ops": 3,
+    "serverMs": 162,
+    "httpStatus": 200,
+    "clientMs": 350
+  },
+  "c3": {
+    "ms": 36,
+    "base": "666df7c10035f7e26f27ec214fe5ae3173435f34",
+    "baseTree": "5d176b98189da7878396a2cffe7590ff35461332",
+    "blob": "f32e5b03ed42e343a8bc147c2ecfd27577389f3b",
+    "tree": "3aad60ded26a3aaddafd02a3cdf1a4229221c6ec",
+    "commit": "e30e7d9cdddad49326a60f84ef25fb86b67fb56b",
+    "rpcMs": 71,
+    "serverMs": 71,
+    "httpStatus": 200,
+    "clientMs": 174
+  },
+  "w2ForcePush": {
+    "ms": 222,
+    "result": {
+      "ok": true,
+      "refs": {
+        "refs/heads/main": {
+          "ok": true,
+          "error": ""
+        }
+      }
+    },
+    "rpcMs": 333,
+    "ops": 3,
+    "serverMs": 418,
+    "httpStatus": 200,
+    "clientMs": 528
+  },
+  "afterForce": {
+    "info": {
+      "id": "0sym7viepb4m38bo",
+      "name": "race-1",
+      "description": "fork of base",
+      "defaultBranch": "main",
+      "createdAt": "2026-10-12T04:50:08.258Z",
+      "updatedAt": "2026-10-12T04:50:09.130Z",
+      "lastPushAt": null,
+      "source": "artifacts:ft-spike-a/base",
+      "readOnly": false,
+      "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/race-1.git"
+    },
+    "log": [],
+    "serverMs": 46,
+    "httpStatus": 200,
+    "clientMs": 153
+  },
+  "roPush": {
+    "ms": 188,
+    "result": {
+      "ok": true,
+      "refs": {
+        "refs/heads/main": {
+          "ok": true,
+          "error": ""
+        }
+      }
+    },
+    "rpcMs": 210,
+    "ops": 3,
+    "serverMs": 301,
+    "httpStatus": 200,
+    "clientMs": 406
+  },
+  "roInfo": {
+    "info": {
+      "id": "3de0xflvmtmjbwp5",
+      "name": "ro-1",
+      "description": "fork of base",
+      "defaultBranch": "main",
+      "createdAt": "2026-10-12T04:50:08.258Z",
+      "updatedAt": "2026-10-12T04:50:09.012Z",
+      "lastPushAt": null,
+      "source": "artifacts:ft-spike-a/base",
+      "readOnly": true,
+      "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/ro-1.git"
+    },
+    "log": [],
+    "serverMs": 41,
+    "httpStatus": 200,
+    "clientMs": 155
+  },
+  "oids": {
+    "c0": "666df7c10035f7e26f27ec214fe5ae3173435f34",
+    "c1": "f469bdaa855ac80a51e64361eae8e0f2fdc4ac1d",
+    "c2": "f87cdf0a5f62770dd1727bf43408dc9263f576d4",
+    "c3": "e30e7d9cdddad49326a60f84ef25fb86b67fb56b"
+  }
+}

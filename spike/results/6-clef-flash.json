@@ -1,0 +1,432 @@
+{
+  "model": "clef-flash",
+  "stats": {
+    "n": 10,
+    "min": 179,
+    "p50": 190,
+    "p95": 275,
+    "max": 275,
+    "mean": 203
+  },
+  "raw": [
+    275,
+    190,
+    179,
+    195,
+    191,
+    193,
+    181,
+    264,
+    182,
+    181
+  ],
+  "errors": [],
+  "example": {
+    "model": "clef-flash",
+    "answers": {
+      "safe": {
+        "type": "noul",
+        "noul": 0.4626
+      },
+      "kind": {
+        "type": "choice",
+        "choice": "bugfix",
+        "probabilities": {
+          "bugfix": 0.569,
+          "feature": 0.1739,
+          "refactor": 0.2537,
+          "docs": 0.0034
+        },
+        "confidence": 0.2245
+      },
+      "risk": {
+        "type": "score",
+        "score": 1.446,
+        "legend": {
+          "0": "trivial",
+          "1": "low",
+          "2": "medium",
+          "3": "high",
+          "4": "critical"
+        },
+        "probabilities": {
+          "0": 0.1817,
+          "1": 0.3589,
+          "2": 0.323,
+          "3": 0.1044,
+          "4": 0.032
+        },
+        "confidence": 0.0976
+      }
+    },
+    "usage": {
+      "input_tokens": 553,
+      "output_tokens": 0
+    }
+  },
+  "answers": [
+    {
+      "safe": {
+        "type": "noul",
+        "noul": 0.4626
+      },
+      "kind": {
+        "type": "choice",
+        "choice": "bugfix",
+        "probabilities": {
+          "bugfix": 0.569,
+          "feature": 0.1739,
+          "refactor": 0.2537,
+          "docs": 0.0034
+        },
+        "confidence": 0.2245
+      },
+      "risk": {
+        "type": "score",
+        "score": 1.446,
+        "legend": {
+          "0": "trivial",
+          "1": "low",
+          "2": "medium",
+          "3": "high",
+          "4": "critical"
+        },
+        "probabilities": {
+          "0": 0.1817,
+          "1": 0.3589,
+          "2": 0.323,
+          "3": 0.1044,
+          "4": 0.032
+        },
+        "confidence": 0.0976
+      }
+    },
+    {
+      "safe": {
+        "type": "noul",
+        "noul": 0.4626
+      },
+      "kind": {
+        "type": "choice",
+        "choice": "bugfix",
+        "probabilities": {
+          "bugfix": 0.569,
+          "feature": 0.1739,
+          "refactor": 0.2537,
+          "docs": 0.0034
+        },
+        "confidence": 0.2245
+      },
+      "risk": {
+        "type": "score",
+        "score": 1.446,
+        "legend": {
+          "0": "trivial",
+          "1": "low",
+          "2": "medium",
+          "3": "high",
+          "4": "critical"
+        },
+        "probabilities": {
+          "0": 0.1817,
+          "1": 0.3589,
+          "2": 0.323,
+          "3": 0.1044,
+          "4": 0.032
+        },
+        "confidence": 0.0976
+      }
+    },
+    {
+      "safe": {
+        "type": "noul",
+        "noul": 0.4626
+      },
+      "kind": {
+        "type": "choice",
+        "choice": "bugfix",
+        "probabilities": {
+          "bugfix": 0.569,
+          "feature": 0.1739,
+          "refactor": 0.2537,
+          "docs": 0.0034
+        },
+        "confidence": 0.2245
+      },
+      "risk": {
+        "type": "score",
+        "score": 1.446,
+        "legend": {
+          "0": "trivial",
+          "1": "low",
+          "2": "medium",
+          "3": "high",
+          "4": "critical"
+        },
+        "probabilities": {
+          "0": 0.1817,
+          "1": 0.3589,
+          "2": 0.323,
+          "3": 0.1044,
+          "4": 0.032
+        },
+        "confidence": 0.0976
+      }
+    },
+    {
+      "safe": {
+        "type": "noul",
+        "noul": 0.4626
+      },
+      "kind": {
+        "type": "choice",
+        "choice": "bugfix",
+        "probabilities": {
+          "bugfix": 0.569,
+          "feature": 0.1739,
+          "refactor": 0.2537,
+          "docs": 0.0034
+        },
+        "confidence": 0.2245
+      },
+      "risk": {
+        "type": "score",
+        "score": 1.446,
+        "legend": {
+          "0": "trivial",
+          "1": "low",
+          "2": "medium",
+          "3": "high",
+          "4": "critical"
+        },
+        "probabilities": {
+          "0": 0.1817,
+          "1": 0.3589,
+          "2": 0.323,
+          "3": 0.1044,
+          "4": 0.032
+        },
+        "confidence": 0.0976
+      }
+    },
+    {
+      "safe": {
+        "type": "noul",
+        "noul": 0.4626
+      },
+      "kind": {
+        "type": "choice",
+        "choice": "bugfix",
+        "probabilities": {
+          "bugfix": 0.569,
+          "feature": 0.1739,
+          "refactor": 0.2537,
+          "docs": 0.0034
+        },
+        "confidence": 0.2245
+      },
+      "risk": {
+        "type": "score",
+        "score": 1.446,
+        "legend": {
+          "0": "trivial",
+          "1": "low",
+          "2": "medium",
+          "3": "high",
+          "4": "critical"
+        },
+        "probabilities": {
+          "0": 0.1817,
+          "1": 0.3589,
+          "2": 0.323,
+          "3": 0.1044,
+          "4": 0.032
+        },
+        "confidence": 0.0976
+      }
+    },
+    {
+      "safe": {
+        "type": "noul",
+        "noul": 0.4626
+      },
+      "kind": {
+        "type": "choice",
+        "choice": "bugfix",
+        "probabilities": {
+          "bugfix": 0.569,
+          "feature": 0.1739,
+          "refactor": 0.2537,
+          "docs": 0.0034
+        },
+        "confidence": 0.2245
+      },
+      "risk": {
+        "type": "score",
+        "score": 1.446,
+        "legend": {
+          "0": "trivial",
+          "1": "low",
+          "2": "medium",
+          "3": "high",
+          "4": "critical"
+        },
+        "probabilities": {
+          "0": 0.1817,
+          "1": 0.3589,
+          "2": 0.323,
+          "3": 0.1044,
+          "4": 0.032
+        },
+        "confidence": 0.0976
+      }
+    },
+    {
+      "safe": {
+        "type": "noul",
+        "noul": 0.4626
+      },
+      "kind": {
+        "type": "choice",
+        "choice": "bugfix",
+        "probabilities": {
+          "bugfix": 0.569,
+          "feature": 0.1739,
+          "refactor": 0.2537,
+          "docs": 0.0034
+        },
+        "confidence": 0.2245
+      },
+      "risk": {
+        "type": "score",
+        "score": 1.446,
+        "legend": {
+          "0": "trivial",
+          "1": "low",
+          "2": "medium",
+          "3": "high",
+          "4": "critical"
+        },
+        "probabilities": {
+          "0": 0.1817,
+          "1": 0.3589,
+          "2": 0.323,
+          "3": 0.1044,
+          "4": 0.032
+        },
+        "confidence": 0.0976
+      }
+    },
+    {
+      "safe": {
+        "type": "noul",
+        "noul": 0.4626
+      },
+      "kind": {
+        "type": "choice",
+        "choice": "bugfix",
+        "probabilities": {
+          "bugfix": 0.569,
+          "feature": 0.1739,
+          "refactor": 0.2537,
+          "docs": 0.0034
+        },
+        "confidence": 0.2245
+      },
+      "risk": {
+        "type": "score",
+        "score": 1.446,
+        "legend": {
+          "0": "trivial",
+          "1": "low",
+          "2": "medium",
+          "3": "high",
+          "4": "critical"
+        },
+        "probabilities": {
+          "0": 0.1817,
+          "1": 0.3589,
+          "2": 0.323,
+          "3": 0.1044,
+          "4": 0.032
+        },
+        "confidence": 0.0976
+      }
+    },
+    {
+      "safe": {
+        "type": "noul",
+        "noul": 0.4626
+      },
+      "kind": {
+        "type": "choice",
+        "choice": "bugfix",
+        "probabilities": {
+          "bugfix": 0.569,
+          "feature": 0.1739,
+          "refactor": 0.2537,
+          "docs": 0.0034
+        },
+        "confidence": 0.2245
+      },
+      "risk": {
+        "type": "score",
+        "score": 1.446,
+        "legend": {
+          "0": "trivial",
+          "1": "low",
+          "2": "medium",
+          "3": "high",
+          "4": "critical"
+        },
+        "probabilities": {
+          "0": 0.1817,
+          "1": 0.3589,
+          "2": 0.323,
+          "3": 0.1044,
+          "4": 0.032
+        },
+        "confidence": 0.0976
+      }
+    },
+    {
+      "safe": {
+        "type": "noul",
+        "noul": 0.4626
+      },
+      "kind": {
+        "type": "choice",
+        "choice": "bugfix",
+        "probabilities": {
+          "bugfix": 0.569,
+          "feature": 0.1739,
+          "refactor": 0.2537,
+          "docs": 0.0034
+        },
+        "confidence": 0.2245
+      },
+      "risk": {
+        "type": "score",
+        "score": 1.446,
+        "legend": {
+          "0": "trivial",
+          "1": "low",
+          "2": "medium",
+          "3": "high",
+          "4": "critical"
+        },
+        "probabilities": {
+          "0": 0.1817,
+          "1": 0.3589,
+          "2": 0.323,
+          "3": 0.1044,
+          "4": 0.032
+        },
+        "confidence": 0.0976
+      }
+    }
+  ],
+  "serverMs": 2031,
+  "httpStatus": 200,
+  "clientMs": 2260
+}

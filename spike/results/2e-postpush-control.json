@@ -1,0 +1,123 @@
+{
+  "source": "work-1",
+  "wallMs": 2133,
+  "ok": 4,
+  "errors": [],
+  "callMs": {
+    "n": 4,
+    "min": 1258,
+    "p50": 1277,
+    "p95": 1861,
+    "max": 1861
+  },
+  "rows": [
+    {
+      "name": "ppc-1",
+      "source": "work-1",
+      "tStart": 1791780776053,
+      "tEnd": 1791780777361,
+      "getMs": 17,
+      "forkCallMs": 1241,
+      "callMs": 1258,
+      "ready": {
+        "readyMs": 1308,
+        "polls": 1,
+        "head": "1542a7aebb03b3e703cf6c53eb307b2f8af17ebc",
+        "errors": {}
+      },
+      "result": {
+        "id": "dgfo231km9589bdi",
+        "name": "ppc-1",
+        "description": "fork of work-1",
+        "defaultBranch": "main",
+        "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/ppc-1.git",
+        "token": "<redacted>"
+      },
+      "ops": 4,
+      "serverMs": 1308,
+      "httpStatus": 200,
+      "clientMs": 1476
+    },
+    {
+      "name": "ppc-2",
+      "source": "work-1",
+      "tStart": 1791780776053,
+      "tEnd": 1791780778027,
+      "getMs": 24,
+      "forkCallMs": 1837,
+      "callMs": 1861,
+      "ready": {
+        "readyMs": 1974,
+        "polls": 1,
+        "head": "1542a7aebb03b3e703cf6c53eb307b2f8af17ebc",
+        "errors": {}
+      },
+      "result": {
+        "id": "7qtaulfs0ugkojfp",
+        "name": "ppc-2",
+        "description": "fork of work-1",
+        "defaultBranch": "main",
+        "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/ppc-2.git",
+        "token": "<redacted>"
+      },
+      "ops": 4,
+      "serverMs": 1974,
+      "httpStatus": 200,
+      "clientMs": 2133
+    },
+    {
+      "name": "ppc-3",
+      "source": "work-1",
+      "tStart": 1791780776050,
+      "tEnd": 1791780777391,
+      "getMs": 24,
+      "forkCallMs": 1253,
+      "callMs": 1277,
+      "ready": {
+        "readyMs": 1341,
+        "polls": 1,
+        "head": "1542a7aebb03b3e703cf6c53eb307b2f8af17ebc",
+        "errors": {}
+      },
+      "result": {
+        "id": "bsxbnqtg233chht4",
+        "name": "ppc-3",
+        "description": "fork of work-1",
+        "defaultBranch": "main",
+        "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/ppc-3.git",
+        "token": "<redacted>"
+      },
+      "ops": 4,
+      "serverMs": 1341,
+      "httpStatus": 200,
+      "clientMs": 1476
+    },
+    {
+      "name": "ppc-4",
+      "source": "work-1",
+      "tStart": 1791780776053,
+      "tEnd": 1791780777954,
+      "getMs": 193,
+      "forkCallMs": 1651,
+      "callMs": 1844,
+      "ready": {
+        "readyMs": 1901,
+        "polls": 1,
+        "head": "1542a7aebb03b3e703cf6c53eb307b2f8af17ebc",
+        "errors": {}
+      },
+      "result": {
+        "id": "s00d1ushx2kqe18l",
+        "name": "ppc-4",
+        "description": "fork of work-1",
+        "defaultBranch": "main",
+        "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/ppc-4.git",
+        "token": "<redacted>"
+      },
+      "ops": 4,
+      "serverMs": 1901,
+      "httpStatus": 200,
+      "clientMs": 2063
+    }
+  ]
+}

@@ -11,10 +11,11 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@fire_trident/core": "*",
     "@ai-sdk/anthropic": "4.0.78",
     "@cloudflare/computer": "0.5.0",
+    "@fire_trident/core": "*",
     "@modelcontextprotocol/sdk": "1.30.0",
+    "@platformatic/vfs": "^0.4.1",
     "agents": "0.28.0",
     "ai": "7.0.137",
     "hono": "4.13.13",

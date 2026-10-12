@@ -1,0 +1,203 @@
+{
+  "writeCommit": {
+    "writeMs": 0,
+    "commitMs": 49,
+    "oid": "1542a7aebb03b3e703cf6c53eb307b2f8af17ebc",
+    "rpcMs": 183,
+    "serverMs": 183,
+    "httpStatus": 200,
+    "clientMs": 448
+  },
+  "push": {
+    "ms": 802,
+    "result": {
+      "ok": true,
+      "refs": {
+        "refs/heads/main": {
+          "ok": true,
+          "error": ""
+        }
+      },
+      "headers": {
+        "cache-control": "no-cache",
+        "cf-ray": "a4937f069be1c792-IAD",
+        "connection": "close",
+        "content-type": "application/x-git-receive-pack-result",
+        "date": "Mon, 12 Oct 2026 04:52:37 GMT",
+        "server": "cloudflare",
+        "transfer-encoding": "chunked"
+      }
+    },
+    "rpcMs": 831,
+    "ops": 3,
+    "serverMs": 1212,
+    "httpStatus": 200,
+    "clientMs": 1322
+  },
+  "forks": [
+    {
+      "name": "ppb-1",
+      "source": "work-1",
+      "tStart": 1791780758022,
+      "tEnd": 1791780759759,
+      "getMs": 16,
+      "forkCallMs": 1682,
+      "callMs": 1698,
+      "ready": {
+        "readyMs": 1737,
+        "polls": 1,
+        "head": "1542a7aebb03b3e703cf6c53eb307b2f8af17ebc",
+        "errors": {}
+      },
+      "result": {
+        "id": "s1llpqtwgktjpsps",
+        "name": "ppb-1",
+        "description": "fork of work-1",
+        "defaultBranch": "main",
+        "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/ppb-1.git",
+        "token": "<redacted>"
+      },
+      "ops": 4,
+      "serverMs": 1737,
+      "httpStatus": 200,
+      "clientMs": 1867
+    },
+    {
+      "name": "ppb-2",
+      "source": "work-1",
+      "tStart": 1791780758082,
+      "tEnd": 1791780760308,
+      "getMs": 136,
+      "forkCallMs": 2026,
+      "callMs": 2162,
+      "ready": {
+        "readyMs": 2226,
+        "polls": 1,
+        "head": "1542a7aebb03b3e703cf6c53eb307b2f8af17ebc",
+        "errors": {}
+      },
+      "result": {
+        "id": "kzuj039vrxm4rswm",
+        "name": "ppb-2",
+        "description": "fork of work-1",
+        "defaultBranch": "main",
+        "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/ppb-2.git",
+        "token": "<redacted>"
+      },
+      "ops": 4,
+      "serverMs": 2226,
+      "httpStatus": 200,
+      "clientMs": 2389
+    },
+    {
+      "name": "ppb-3",
+      "source": "work-1",
+      "tStart": 1791780758026,
+      "tEnd": 1791780760043,
+      "getMs": 19,
+      "forkCallMs": 1998,
+      "callMs": 2017,
+      "err": {
+        "name": "ArtifactsError",
+        "code": "INTERNAL_ERROR",
+        "numericCode": 10400,
+        "message": "An internal error occurred."
+      },
+      "ready": null,
+      "ops": 2,
+      "serverMs": 2017,
+      "httpStatus": 200,
+      "clientMs": 2130
+    },
+    {
+      "name": "ppb-4",
+      "source": "work-1",
+      "tStart": 1791780758031,
+      "tEnd": 1791780759774,
+      "getMs": 16,
+      "forkCallMs": 1674,
+      "callMs": 1690,
+      "ready": {
+        "readyMs": 1743,
+        "polls": 1,
+        "head": "1542a7aebb03b3e703cf6c53eb307b2f8af17ebc",
+        "errors": {}
+      },
+      "result": {
+        "id": "rwrihrby9uv7wywc",
+        "name": "ppb-4",
+        "description": "fork of work-1",
+        "defaultBranch": "main",
+        "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/ppb-4.git",
+        "token": "<redacted>"
+      },
+      "ops": 4,
+      "serverMs": 1743,
+      "httpStatus": 200,
+      "clientMs": 1884
+    },
+    {
+      "name": "ppb-5",
+      "source": "work-1",
+      "tStart": 1791780758031,
+      "tEnd": 1791780759771,
+      "getMs": 18,
+      "forkCallMs": 1677,
+      "callMs": 1695,
+      "ready": {
+        "readyMs": 1740,
+        "polls": 1,
+        "head": "1542a7aebb03b3e703cf6c53eb307b2f8af17ebc",
+        "errors": {}
+      },
+      "result": {
+        "id": "j97vr736mqij5spp",
+        "name": "ppb-5",
+        "description": "fork of work-1",
+        "defaultBranch": "main",
+        "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/ppb-5.git",
+        "token": "<redacted>"
+      },
+      "ops": 4,
+      "serverMs": 1740,
+      "httpStatus": 200,
+      "clientMs": 1877
+    },
+    {
+      "name": "ppb-6",
+      "source": "work-1",
+      "tStart": 1791780758156,
+      "tEnd": 1791780759796,
+      "getMs": 67,
+      "forkCallMs": 1519,
+      "callMs": 1586,
+      "ready": {
+        "readyMs": 1640,
+        "polls": 1,
+        "head": "1542a7aebb03b3e703cf6c53eb307b2f8af17ebc",
+        "errors": {}
+      },
+      "result": {
+        "id": "e95mok693rrhbgiy",
+        "name": "ppb-6",
+        "description": "fork of work-1",
+        "defaultBranch": "main",
+        "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/ppb-6.git",
+        "token": "<redacted>"
+      },
+      "ops": 4,
+      "serverMs": 1640,
+      "httpStatus": 200,
+      "clientMs": 1883
+    }
+  ],
+  "wallMs": 2392,
+  "ok": 5,
+  "errors": [
+    {
+      "code": "INTERNAL_ERROR",
+      "numericCode": 10400,
+      "message": "An internal error occurred."
+    }
+  ]
+}

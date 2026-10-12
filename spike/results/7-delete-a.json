@@ -1,0 +1,248 @@
+{
+  "out": [
+    {
+      "name": "burst-1",
+      "ok": true,
+      "ms": 1068
+    },
+    {
+      "name": "burst-2",
+      "ok": true,
+      "ms": 1062
+    },
+    {
+      "name": "burst-3",
+      "ok": true,
+      "ms": 1093
+    },
+    {
+      "name": "burst-4",
+      "ok": true,
+      "ms": 1347
+    },
+    {
+      "name": "burst-5",
+      "ok": true,
+      "ms": 964
+    },
+    {
+      "name": "burst-6",
+      "ok": true,
+      "ms": 1236
+    },
+    {
+      "name": "burst-7",
+      "ok": true,
+      "ms": 774
+    },
+    {
+      "name": "burst-8",
+      "ok": true,
+      "ms": 1079
+    },
+    {
+      "name": "fork-allrefs",
+      "ok": true,
+      "ms": 934
+    },
+    {
+      "name": "fork-defonly",
+      "ok": true,
+      "ms": 1029
+    },
+    {
+      "name": "pp-2",
+      "ok": true,
+      "ms": 1029
+    },
+    {
+      "name": "pp-3",
+      "ok": true,
+      "ms": 928
+    },
+    {
+      "name": "pp-4",
+      "ok": true,
+      "ms": 1202
+    },
+    {
+      "name": "ppb-1",
+      "ok": true,
+      "ms": 886
+    },
+    {
+      "name": "ppb-2",
+      "ok": true,
+      "ms": 1469
+    },
+    {
+      "name": "ppb-4",
+      "ok": true,
+      "ms": 1042
+    },
+    {
+      "name": "ppb-5",
+      "ok": true,
+      "ms": 945
+    },
+    {
+      "name": "ppb-6",
+      "ok": true,
+      "ms": 1037
+    },
+    {
+      "name": "ppc-1",
+      "ok": true,
+      "ms": 966
+    },
+    {
+      "name": "ppc-2",
+      "ok": true,
+      "ms": 1008
+    },
+    {
+      "name": "ppc-3",
+      "ok": true,
+      "ms": 979
+    },
+    {
+      "name": "ppc-4",
+      "ok": true,
+      "ms": 1012
+    },
+    {
+      "name": "race-1",
+      "ok": true,
+      "ms": 1013
+    },
+    {
+      "name": "ro-1",
+      "ok": true,
+      "ms": 967
+    },
+    {
+      "name": "seq-1",
+      "ok": true,
+      "ms": 1152
+    },
+    {
+      "name": "seq-2",
+      "ok": true,
+      "ms": 1424
+    },
+    {
+      "name": "seq-3",
+      "ok": true,
+      "ms": 941
+    },
+    {
+      "name": "seq-4",
+      "ok": true,
+      "ms": 1041
+    },
+    {
+      "name": "seq-5",
+      "ok": true,
+      "ms": 949
+    },
+    {
+      "name": "seq-6",
+      "ok": true,
+      "ms": 1046
+    },
+    {
+      "name": "seq-7",
+      "ok": true,
+      "ms": 1464
+    },
+    {
+      "name": "seq-8",
+      "ok": true,
+      "ms": 1019
+    },
+    {
+      "name": "tree-1-1",
+      "ok": true,
+      "ms": 1134
+    },
+    {
+      "name": "tree-2-1",
+      "ok": true,
+      "ms": 1442
+    },
+    {
+      "name": "tree-2-2",
+      "ok": true,
+      "ms": 952
+    },
+    {
+      "name": "tree-3-1",
+      "ok": true,
+      "ms": 983
+    },
+    {
+      "name": "tree-3-2",
+      "ok": true,
+      "ms": 1024
+    },
+    {
+      "name": "tree-3-3",
+      "ok": true,
+      "ms": 967
+    },
+    {
+      "name": "tree-3-4",
+      "ok": true,
+      "ms": 1052
+    },
+    {
+      "name": "tree-4-1",
+      "ok": true,
+      "ms": 1012
+    },
+    {
+      "name": "tree-4-2",
+      "ok": true,
+      "ms": 1106
+    },
+    {
+      "name": "tree-4-3",
+      "ok": true,
+      "ms": 926
+    },
+    {
+      "name": "tree-4-4",
+      "ok": true,
+      "ms": 1018
+    },
+    {
+      "name": "tree-4-5",
+      "ok": true,
+      "ms": 1074
+    },
+    {
+      "name": "tree-4-6",
+      "ok": true,
+      "ms": 924
+    },
+    {
+      "name": "tree-4-7",
+      "ok": true,
+      "ms": 976
+    },
+    {
+      "name": "tree-4-8",
+      "ok": true,
+      "ms": 1024
+    },
+    {
+      "name": "work-1",
+      "ok": true,
+      "ms": 1115
+    }
+  ],
+  "ops": 48,
+  "serverMs": 50834,
+  "httpStatus": 200,
+  "clientMs": 50960
+}

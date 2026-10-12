@@ -1,0 +1,30 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "ft-spike",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-11",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "artifacts": [
+    { "binding": "A", "namespace": "ft-spike-a" },
+    { "binding": "B", "namespace": "ft-spike-b" }
+  ],
+  "ai": { "binding": "AI" },
+  "durable_objects": {
+    "bindings": [{ "name": "SPIKE_DO", "class_name": "SpikeDO" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["SpikeDO"] }],
+  "workflows": [
+    { "name": "ft-spike-push", "binding": "PUSH_WF", "class_name": "SpikePushWorkflow" }
+  ],
+  "triggers": {
+    "events": [
+      {
+        "type": "cf.artifacts.repo.pushed",
+        "filter": { "namespace": "ft-spike-b" },
+        "targets": [{ "type": "workflow", "workflow_name": "ft-spike-push" }]
+      }
+    ]
+  },
+  "observability": { "enabled": true }
+}

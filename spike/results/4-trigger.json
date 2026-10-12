@@ -1,0 +1,231 @@
+{
+  "creates": [
+    {
+      "name": "trig-1",
+      "callMs": 1722,
+      "result": {
+        "id": "aei3epuncf8alpti",
+        "name": "trig-1",
+        "description": "ft-spike",
+        "defaultBranch": "main",
+        "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-b/trig-1.git",
+        "token": "<redacted>"
+      },
+      "ready": {
+        "readyMs": 1767,
+        "polls": 1,
+        "errors": {}
+      },
+      "ops": 3,
+      "serverMs": 1767,
+      "httpStatus": 200,
+      "clientMs": 2030
+    },
+    {
+      "name": "trig-2",
+      "callMs": 1330,
+      "result": {
+        "id": "bgn44rri95v8dw2u",
+        "name": "trig-2",
+        "description": "ft-spike",
+        "defaultBranch": "main",
+        "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-b/trig-2.git",
+        "token": "<redacted>"
+      },
+      "ready": {
+        "readyMs": 1377,
+        "polls": 1,
+        "errors": {}
+      },
+      "ops": 3,
+      "serverMs": 1377,
+      "httpStatus": 200,
+      "clientMs": 1619
+    },
+    {
+      "name": "trig-3",
+      "callMs": 1311,
+      "result": {
+        "id": "c5g965fwjuee7m1h",
+        "name": "trig-3",
+        "description": "ft-spike",
+        "defaultBranch": "main",
+        "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-b/trig-3.git",
+        "token": "<redacted>"
+      },
+      "ready": {
+        "readyMs": 1354,
+        "polls": 1,
+        "errors": {}
+      },
+      "ops": 3,
+      "serverMs": 1354,
+      "httpStatus": 200,
+      "clientMs": 1619
+    }
+  ],
+  "pushes": [
+    {
+      "repo": "trig-1",
+      "after": "4665c8a26f45820b9304e9bade07a348c5a4eaf1",
+      "pushStart": 1791780657177,
+      "pushEnd": 1791780657902,
+      "pushMs": 725,
+      "ok": true,
+      "refs": {
+        "refs/heads/main": {
+          "ok": true,
+          "error": ""
+        }
+      },
+      "ops": 3,
+      "serverMs": 1206,
+      "httpStatus": 200,
+      "clientMs": 1426
+    },
+    {
+      "repo": "trig-2",
+      "after": "82aea49fdd93ab2d5053468eed1082f2f782ba66",
+      "pushStart": 1791780662378,
+      "pushEnd": 1791780662579,
+      "pushMs": 201,
+      "ok": true,
+      "refs": {
+        "refs/heads/main": {
+          "ok": true,
+          "error": ""
+        }
+      },
+      "ops": 3,
+      "serverMs": 430,
+      "httpStatus": 200,
+      "clientMs": 626
+    },
+    {
+      "repo": "trig-3",
+      "after": "c1df179aad04f5909df984c10790974638af134e",
+      "pushStart": 1791780667054,
+      "pushEnd": 1791780667283,
+      "pushMs": 229,
+      "ok": true,
+      "refs": {
+        "refs/heads/main": {
+          "ok": true,
+          "error": ""
+        }
+      },
+      "ops": 3,
+      "serverMs": 438,
+      "httpStatus": 200,
+      "clientMs": 695
+    },
+    {
+      "repo": "trig-1",
+      "after": "9823146a7ea3e140e1393408cb96b602c254a6fb",
+      "pushStart": 1791780671679,
+      "pushEnd": 1791780671882,
+      "pushMs": 203,
+      "ok": true,
+      "refs": {
+        "refs/heads/main": {
+          "ok": true,
+          "error": ""
+        }
+      },
+      "ops": 3,
+      "serverMs": 410,
+      "httpStatus": 200,
+      "clientMs": 588
+    },
+    {
+      "repo": "trig-2",
+      "after": "dcee989a9829489bc49f3961d13ffeb233dc997b",
+      "pushStart": 1791780676288,
+      "pushEnd": 1791780676472,
+      "pushMs": 184,
+      "ok": true,
+      "refs": {
+        "refs/heads/main": {
+          "ok": true,
+          "error": ""
+        }
+      },
+      "ops": 3,
+      "serverMs": 389,
+      "httpStatus": 200,
+      "clientMs": 585
+    }
+  ],
+  "events": [
+    {
+      "id": 1,
+      "recorded_at": 1791780662638,
+      "namespace": "ft-spike-b",
+      "repo": "trig-1",
+      "ref": "refs/heads/main",
+      "before_oid": "0000000000000000000000000000000000000000",
+      "after_oid": "4665c8a26f45820b9304e9bade07a348c5a4eaf1",
+      "event_ts": null,
+      "wf_created_at": 1791780659434,
+      "wf_started_at": 1791780662321,
+      "instance_id": "e49d6a98-cba4-4ad4-a6cc-dad55f701d4a",
+      "raw": "{\"id\":\"e49d6a98-cba4-4ad4-a6cc-dad55f701d4a\",\"type\":\"cf.artifacts.repo.pushed\",\"source\":{\"namespace\":\"ft-spike-b\",\"repoName\":\"trig-1\"},\"payload\":{\"ref\":\"refs/heads/main\",\"before\":\"0000000000000000000000000000000000000000\",\"after\":\"4665c8a26f45820b9304e9bade07a348c5a4eaf1\",\"commits\":[{\"id\":\"4665c8a26f45820b9304e9bade07a348c5a4eaf1\",\"message\":\"trigger s1\",\"messageTruncated\":false,\"timestamp\":\"2026-10-12T04:50:57.000Z\",\"author\":{\"name\":\"ft-spike\",\"email\":\"spike@firetrident.invalid\"},\"committer\":{\"name\":\"ft-spike\",\"email\":\"spike@firetrident.invalid\"},\"parents\":[]}],\"totalCommitsCount\":1,\"commitsTruncated\":false}}"
+    },
+    {
+      "id": 2,
+      "recorded_at": 1791780665864,
+      "namespace": "ft-spike-b",
+      "repo": "trig-2",
+      "ref": "refs/heads/main",
+      "before_oid": "0000000000000000000000000000000000000000",
+      "after_oid": "82aea49fdd93ab2d5053468eed1082f2f782ba66",
+      "event_ts": null,
+      "wf_created_at": 1791780663722,
+      "wf_started_at": 1791780664890,
+      "instance_id": "46baecfa-2d78-4e58-a357-3da39704bab6",
+      "raw": "{\"id\":\"46baecfa-2d78-4e58-a357-3da39704bab6\",\"type\":\"cf.artifacts.repo.pushed\",\"source\":{\"namespace\":\"ft-spike-b\",\"repoName\":\"trig-2\"},\"payload\":{\"ref\":\"refs/heads/main\",\"before\":\"0000000000000000000000000000000000000000\",\"after\":\"82aea49fdd93ab2d5053468eed1082f2f782ba66\",\"commits\":[{\"id\":\"82aea49fdd93ab2d5053468eed1082f2f782ba66\",\"message\":\"trigger s2\",\"messageTruncated\":false,\"timestamp\":\"2026-10-12T04:51:02.000Z\",\"author\":{\"name\":\"ft-spike\",\"email\":\"spike@firetrident.invalid\"},\"committer\":{\"name\":\"ft-spike\",\"email\":\"spike@firetrident.invalid\"},\"parents\":[]}],\"totalCommitsCount\":1,\"commitsTruncated\":false}}"
+    },
+    {
+      "id": 3,
+      "recorded_at": 1791780670849,
+      "namespace": "ft-spike-b",
+      "repo": "trig-3",
+      "ref": "refs/heads/main",
+      "before_oid": "0000000000000000000000000000000000000000",
+      "after_oid": "c1df179aad04f5909df984c10790974638af134e",
+      "event_ts": null,
+      "wf_created_at": 1791780667738,
+      "wf_started_at": 1791780670632,
+      "instance_id": "14114790-5c26-44bb-90d6-a75d28eefe13",
+      "raw": "{\"id\":\"14114790-5c26-44bb-90d6-a75d28eefe13\",\"type\":\"cf.artifacts.repo.pushed\",\"source\":{\"namespace\":\"ft-spike-b\",\"repoName\":\"trig-3\"},\"payload\":{\"ref\":\"refs/heads/main\",\"before\":\"0000000000000000000000000000000000000000\",\"after\":\"c1df179aad04f5909df984c10790974638af134e\",\"commits\":[{\"id\":\"c1df179aad04f5909df984c10790974638af134e\",\"message\":\"trigger s3\",\"messageTruncated\":false,\"timestamp\":\"2026-10-12T04:51:07.000Z\",\"author\":{\"name\":\"ft-spike\",\"email\":\"spike@firetrident.invalid\"},\"committer\":{\"name\":\"ft-spike\",\"email\":\"spike@firetrident.invalid\"},\"parents\":[]}],\"totalCommitsCount\":1,\"commitsTruncated\":false}}"
+    },
+    {
+      "id": 4,
+      "recorded_at": 1791780673259,
+      "namespace": "ft-spike-b",
+      "repo": "trig-1",
+      "ref": "refs/heads/main",
+      "before_oid": "4665c8a26f45820b9304e9bade07a348c5a4eaf1",
+      "after_oid": "9823146a7ea3e140e1393408cb96b602c254a6fb",
+      "event_ts": null,
+      "wf_created_at": 1791780672416,
+      "wf_started_at": 1791780673013,
+      "instance_id": "b2eec782-ed9f-47ee-a199-a94d477d4cf2",
+      "raw": "{\"id\":\"b2eec782-ed9f-47ee-a199-a94d477d4cf2\",\"type\":\"cf.artifacts.repo.pushed\",\"source\":{\"namespace\":\"ft-spike-b\",\"repoName\":\"trig-1\"},\"payload\":{\"ref\":\"refs/heads/main\",\"before\":\"4665c8a26f45820b9304e9bade07a348c5a4eaf1\",\"after\":\"9823146a7ea3e140e1393408cb96b602c254a6fb\",\"commits\":[{\"id\":\"9823146a7ea3e140e1393408cb96b602c254a6fb\",\"message\":\"trigger s4\",\"messageTruncated\":false,\"timestamp\":\"2026-10-12T04:51:11.000Z\",\"author\":{\"name\":\"ft-spike\",\"email\":\"spike@firetrident.invalid\"},\"committer\":{\"name\":\"ft-spike\",\"email\":\"spike@firetrident.invalid\"},\"parents\":[\"4665c8a26f45820b9304e9bade07a348c5a4eaf1\"]}],\"totalCommitsCount\":1,\"commitsTruncated\":false}}"
+    },
+    {
+      "id": 5,
+      "recorded_at": 1791780678157,
+      "namespace": "ft-spike-b",
+      "repo": "trig-2",
+      "ref": "refs/heads/main",
+      "before_oid": "82aea49fdd93ab2d5053468eed1082f2f782ba66",
+      "after_oid": "dcee989a9829489bc49f3961d13ffeb233dc997b",
+      "event_ts": null,
+      "wf_created_at": 1791780676835,
+      "wf_started_at": 1791780677617,
+      "instance_id": "aa4c9e4e-02f2-41b7-b433-9b4f487c3dac",
+      "raw": "{\"id\":\"aa4c9e4e-02f2-41b7-b433-9b4f487c3dac\",\"type\":\"cf.artifacts.repo.pushed\",\"source\":{\"namespace\":\"ft-spike-b\",\"repoName\":\"trig-2\"},\"payload\":{\"ref\":\"refs/heads/main\",\"before\":\"82aea49fdd93ab2d5053468eed1082f2f782ba66\",\"after\":\"dcee989a9829489bc49f3961d13ffeb233dc997b\",\"commits\":[{\"id\":\"dcee989a9829489bc49f3961d13ffeb233dc997b\",\"message\":\"trigger s5\",\"messageTruncated\":false,\"timestamp\":\"2026-10-12T04:51:16.000Z\",\"author\":{\"name\":\"ft-spike\",\"email\":\"spike@firetrident.invalid\"},\"committer\":{\"name\":\"ft-spike\",\"email\":\"spike@firetrident.invalid\"},\"parents\":[\"82aea49fdd93ab2d5053468eed1082f2f782ba66\"]}],\"totalCommitsCount\":1,\"commitsTruncated\":false}}"
+    }
+  ]
+}

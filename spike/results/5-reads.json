@@ -1,0 +1,404 @@
+{
+  "get": {
+    "stats": {
+      "n": 10,
+      "min": 15,
+      "p50": 19,
+      "p95": 211,
+      "max": 211,
+      "mean": 38
+    },
+    "raw": [
+      27,
+      19,
+      20,
+      23,
+      211,
+      15,
+      16,
+      19,
+      15,
+      16
+    ]
+  },
+  "info": {
+    "stats": {
+      "n": 10,
+      "min": 11,
+      "p50": 12,
+      "p95": 17,
+      "max": 17,
+      "mean": 13
+    },
+    "raw": [
+      15,
+      11,
+      17,
+      13,
+      14,
+      11,
+      12,
+      12,
+      11,
+      16
+    ],
+    "example": {
+      "id": "uo571z3oa1y1uuoi",
+      "name": "base",
+      "description": null,
+      "defaultBranch": "main",
+      "createdAt": "2026-10-12T04:47:27.138Z",
+      "updatedAt": "2026-10-12T04:47:28.338Z",
+      "lastPushAt": null,
+      "source": "git:https://github.com/sindresorhus/is-plain-obj",
+      "readOnly": false,
+      "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/base.git"
+    },
+    "errors": []
+  },
+  "log": {
+    "stats": {
+      "n": 10,
+      "min": 12,
+      "p50": 14,
+      "p95": 55,
+      "max": 55,
+      "mean": 18
+    },
+    "raw": [
+      55,
+      14,
+      12,
+      16,
+      14,
+      12,
+      16,
+      12,
+      14,
+      14
+    ],
+    "example": [
+      {
+        "hash": "666df7c10035f7e26f27ec214fe5ae3173435f34",
+        "treeHash": "5d176b98189da7878396a2cffe7590ff35461332",
+        "message": "Meta tweaks",
+        "author": {
+          "name": "Sindre Sorhus",
+          "email": "sindresorhus@gmail.com"
+        },
+        "committer": {
+          "name": "Sindre Sorhus",
+          "email": "sindresorhus@gmail.com"
+        },
+        "parents": [
+          "97f38e8836f86a642cce98fc6ab3058bc36df181"
+        ],
+        "authoredAt": 1789758565,
+        "committedAt": 1789759571
+      },
+      {
+        "hash": "97f38e8836f86a642cce98fc6ab3058bc36df181",
+        "treeHash": "d56706e56097c6252d0fade3b63b8efb37e5c5f4",
+        "message": "Require Node.js 18 and update `devDependencies` (#19)\n",
+        "author": {
+          "name": "ehmicky",
+          "email": "ehmicky@users.noreply.github.com"
+        },
+        "committer": {
+          "name": "GitHub",
+          "email": "noreply@github.com"
+        },
+        "parents": [
+          "68e8cc77bb1bbd0bf7d629d3574b6ca70289b2cc"
+        ],
+        "authoredAt": 1714848675,
+        "committedAt": 1714848675
+      }
+    ],
+    "errors": []
+  },
+  "readCommit": {
+    "stats": {
+      "n": 10,
+      "min": 11,
+      "p50": 13,
+      "p95": 15,
+      "max": 15,
+      "mean": 14
+    },
+    "raw": [
+      13,
+      15,
+      11,
+      14,
+      15,
+      15,
+      12,
+      15,
+      13,
+      13
+    ],
+    "example": {
+      "hash": "666df7c10035f7e26f27ec214fe5ae3173435f34",
+      "treeHash": "5d176b98189da7878396a2cffe7590ff35461332",
+      "message": "Meta tweaks",
+      "author": {
+        "name": "Sindre Sorhus",
+        "email": "sindresorhus@gmail.com"
+      },
+      "committer": {
+        "name": "Sindre Sorhus",
+        "email": "sindresorhus@gmail.com"
+      },
+      "parents": [
+        "97f38e8836f86a642cce98fc6ab3058bc36df181"
+      ],
+      "authoredAt": 1789758565,
+      "committedAt": 1789759571
+    },
+    "errors": []
+  },
+  "readTree": {
+    "stats": {
+      "n": 10,
+      "min": 11,
+      "p50": 13,
+      "p95": 19,
+      "max": 19,
+      "mean": 13
+    },
+    "raw": [
+      19,
+      13,
+      12,
+      14,
+      11,
+      15,
+      13,
+      12,
+      13,
+      11
+    ],
+    "example": [
+      {
+        "name": ".editorconfig",
+        "mode": "100644",
+        "hash": "1c6314a31833395fd5ff016a6506bdd51860657c",
+        "type": "blob"
+      },
+      {
+        "name": ".gitattributes",
+        "mode": "100644",
+        "hash": "6313b56c57848efce05faa7aa7e901ccfc2886ea",
+        "type": "blob"
+      },
+      {
+        "name": ".github",
+        "mode": "40000",
+        "hash": "7d2a21dabe28b9ba4f9713d7499a3dfff74f4941",
+        "type": "tree"
+      },
+      {
+        "name": ".gitignore",
+        "mode": "100644",
+        "hash": "239ecff1372358a22aa99dcbb375fdad7abba817",
+        "type": "blob"
+      },
+      {
+        "name": ".npmrc",
+        "mode": "100644",
+        "hash": "43c97e719a5a824700932f72e6e7e6748ce45d01",
+        "type": "blob"
+      },
+      {
+        "name": "benchmark.js",
+        "mode": "100644",
+        "hash": "4dbc605d9619af78d22c87d13cbb00776bd7534a",
+        "type": "blob"
+      },
+      {
+        "name": "index.d.ts",
+        "mode": "100644",
+        "hash": "3794c42e44c077ac120fc9c2c87571ca6d3a6d52",
+        "type": "blob"
+      },
+      {
+        "name": "index.js",
+        "mode": "100644",
+        "hash": "92555c3d3916f4868375fa19d7da7ecafe6ee9b3",
+        "type": "blob"
+      },
+      {
+        "name": "index.test-d.ts",
+        "mode": "100644",
+        "hash": "b6818fcc9101bf122222e856dfb9b36abbf246f7",
+        "type": "blob"
+      },
+      {
+        "name": "license",
+        "mode": "100644",
+        "hash": "fa7ceba3eb4a9657a9db7f3ffca4e4e97a9019de",
+        "type": "blob"
+      },
+      {
+        "name": "package.json",
+        "mode": "100644",
+        "hash": "340b4909a6aaa34afe976df2dddaf2017ea5d672",
+        "type": "blob"
+      },
+      {
+        "name": "readme.md",
+        "mode": "100644",
+        "hash": "25212c562cd8f1a6101fc1b85c4627b972d59d00",
+        "type": "blob"
+      },
+      {
+        "name": "test.js",
+        "mode": "100644",
+        "hash": "b6369b2629d4b26ca08f13c90024465ccbb26826",
+        "type": "blob"
+      }
+    ],
+    "errors": []
+  },
+  "readBlob": {
+    "stats": {
+      "n": 10,
+      "min": 13,
+      "p50": 14,
+      "p95": 19,
+      "max": 19,
+      "mean": 15
+    },
+    "raw": [
+      19,
+      14,
+      16,
+      13,
+      14,
+      15,
+      14,
+      14,
+      15,
+      16
+    ],
+    "example": {
+      "size": 175,
+      "type": "",
+      "head": "root = true\n\n[*]\nindent_style = tab\nend_of_line = lf\ncharset = utf-8\ntrim_traili"
+    },
+    "errors": []
+  },
+  "readFile": {
+    "stats": {
+      "n": 10,
+      "min": 12,
+      "p50": 15,
+      "p95": 19,
+      "max": 19,
+      "mean": 15
+    },
+    "raw": [
+      19,
+      19,
+      13,
+      16,
+      15,
+      15,
+      14,
+      14,
+      17,
+      12
+    ],
+    "example": {
+      "size": 175,
+      "type": "text/plain;charset=utf-8",
+      "head": "root = true\n\n[*]\nindent_style = tab\nend_of_line = lf\ncharset = utf-8\ntrim_traili"
+    },
+    "errors": []
+  },
+  "createToken": {
+    "stats": {
+      "n": 10,
+      "min": 44,
+      "p50": 49,
+      "p95": 214,
+      "max": 214,
+      "mean": 77
+    },
+    "raw": [
+      214,
+      45,
+      44,
+      46,
+      175,
+      49,
+      51,
+      49,
+      50,
+      50
+    ],
+    "example": {
+      "id": "oayneb124ephb0ax",
+      "plaintext": "<redacted>",
+      "scope": "read",
+      "expiresAt": "2026-10-12T05:01:57.614Z"
+    },
+    "errors": []
+  },
+  "list": {
+    "stats": {
+      "n": 5,
+      "min": 18,
+      "p50": 21,
+      "p95": 218,
+      "max": 218,
+      "mean": 60
+    },
+    "raw": [
+      218,
+      23,
+      18,
+      21,
+      19
+    ],
+    "example": {
+      "repos": [
+        {
+          "id": "3de0xflvmtmjbwp5",
+          "name": "ro-1",
+          "description": "fork of base",
+          "defaultBranch": "main",
+          "createdAt": "2026-10-12T04:50:08.258Z",
+          "updatedAt": "2026-10-12T04:50:09.012Z",
+          "lastPushAt": null,
+          "source": "artifacts:ft-spike-a/base",
+          "readOnly": true,
+          "status": "ready",
+          "jurisdiction": "unrestricted",
+          "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/ro-1.git"
+        },
+        {
+          "id": "0sym7viepb4m38bo",
+          "name": "race-1",
+          "description": "fork of base",
+          "defaultBranch": "main",
+          "createdAt": "2026-10-12T04:50:08.258Z",
+          "updatedAt": "2026-10-12T04:50:09.130Z",
+          "lastPushAt": null,
+          "source": "artifacts:ft-spike-a/base",
+          "readOnly": false,
+          "status": "ready",
+          "jurisdiction": "unrestricted",
+          "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/race-1.git"
+        }
+      ],
+      "total": 41,
+      "cursor": "eyJ2IjoxNzkxNzgwNDgxNDYxLCJpIjoiaDRla2piamcyOW03NGc4eCIsInMiOiJjcmVhdGVkX2F0In0"
+    }
+  },
+  "ops": 86,
+  "serverMs": 2354,
+  "httpStatus": 200,
+  "clientMs": 2783
+}

@@ -1,0 +1,506 @@
+{
+  "rounds": [
+    {
+      "round": 1,
+      "sources": 1,
+      "attempted": 1,
+      "ok": 1,
+      "wallMs": 1616,
+      "callMs": {
+        "n": 1,
+        "min": 1408,
+        "p50": 1408,
+        "p95": 1408,
+        "max": 1408
+      },
+      "readyMs": {
+        "n": 1,
+        "min": 1462,
+        "p50": 1462,
+        "p95": 1462,
+        "max": 1462
+      },
+      "errors": [],
+      "rows": [
+        {
+          "name": "tree-1-1",
+          "source": "base",
+          "tStart": 1791780477715,
+          "tEnd": 1791780479177,
+          "getMs": 22,
+          "forkCallMs": 1386,
+          "callMs": 1408,
+          "ready": {
+            "readyMs": 1462,
+            "polls": 1,
+            "head": "666df7c10035f7e26f27ec214fe5ae3173435f34",
+            "errors": {}
+          },
+          "result": {
+            "id": "lpbcrfklumds0hz1",
+            "name": "tree-1-1",
+            "description": "fork of base",
+            "defaultBranch": "main",
+            "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/tree-1-1.git",
+            "token": "<redacted>"
+          },
+          "ops": 4,
+          "serverMs": 1462,
+          "httpStatus": 200,
+          "clientMs": 1613
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "sources": 2,
+      "attempted": 2,
+      "ok": 2,
+      "wallMs": 2099,
+      "callMs": {
+        "n": 2,
+        "min": 1360,
+        "p50": 1360,
+        "p95": 1934,
+        "max": 1934
+      },
+      "readyMs": {
+        "n": 2,
+        "min": 1414,
+        "p50": 1414,
+        "p95": 1980,
+        "max": 1980
+      },
+      "errors": [],
+      "rows": [
+        {
+          "name": "tree-2-1",
+          "source": "base",
+          "tStart": 1791780479320,
+          "tEnd": 1791780480734,
+          "getMs": 20,
+          "forkCallMs": 1340,
+          "callMs": 1360,
+          "ready": {
+            "readyMs": 1414,
+            "polls": 1,
+            "head": "666df7c10035f7e26f27ec214fe5ae3173435f34",
+            "errors": {}
+          },
+          "result": {
+            "id": "q5xtm68kizl5k8z9",
+            "name": "tree-2-1",
+            "description": "fork of base",
+            "defaultBranch": "main",
+            "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/tree-2-1.git",
+            "token": "<redacted>"
+          },
+          "ops": 4,
+          "serverMs": 1414,
+          "httpStatus": 200,
+          "clientMs": 1540
+        },
+        {
+          "name": "tree-2-2",
+          "source": "tree-1-1",
+          "tStart": 1791780479314,
+          "tEnd": 1791780481294,
+          "getMs": 17,
+          "forkCallMs": 1917,
+          "callMs": 1934,
+          "ready": {
+            "readyMs": 1980,
+            "polls": 1,
+            "head": "666df7c10035f7e26f27ec214fe5ae3173435f34",
+            "errors": {}
+          },
+          "result": {
+            "id": "zxpumg38vy5szi9u",
+            "name": "tree-2-2",
+            "description": "fork of tree-1-1",
+            "defaultBranch": "main",
+            "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/tree-2-2.git",
+            "token": "<redacted>"
+          },
+          "ops": 4,
+          "serverMs": 1980,
+          "httpStatus": 200,
+          "clientMs": 2099
+        }
+      ]
+    },
+    {
+      "round": 3,
+      "sources": 4,
+      "attempted": 4,
+      "ok": 4,
+      "wallMs": 1920,
+      "callMs": {
+        "n": 4,
+        "min": 1178,
+        "p50": 1183,
+        "p95": 1750,
+        "max": 1750
+      },
+      "readyMs": {
+        "n": 4,
+        "min": 1233,
+        "p50": 1241,
+        "p95": 1807,
+        "max": 1807
+      },
+      "errors": [],
+      "rows": [
+        {
+          "name": "tree-3-1",
+          "source": "base",
+          "tStart": 1791780481425,
+          "tEnd": 1791780482666,
+          "getMs": 34,
+          "forkCallMs": 1149,
+          "callMs": 1183,
+          "ready": {
+            "readyMs": 1241,
+            "polls": 1,
+            "head": "666df7c10035f7e26f27ec214fe5ae3173435f34",
+            "errors": {}
+          },
+          "result": {
+            "id": "kuvedjrw8chnigcz",
+            "name": "tree-3-1",
+            "description": "fork of base",
+            "defaultBranch": "main",
+            "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/tree-3-1.git",
+            "token": "<redacted>"
+          },
+          "ops": 4,
+          "serverMs": 1241,
+          "httpStatus": 200,
+          "clientMs": 1352
+        },
+        {
+          "name": "tree-3-2",
+          "source": "tree-1-1",
+          "tStart": 1791780481424,
+          "tEnd": 1791780482657,
+          "getMs": 30,
+          "forkCallMs": 1148,
+          "callMs": 1178,
+          "ready": {
+            "readyMs": 1233,
+            "polls": 1,
+            "head": "666df7c10035f7e26f27ec214fe5ae3173435f34",
+            "errors": {}
+          },
+          "result": {
+            "id": "nw5y0nfyir3zjptm",
+            "name": "tree-3-2",
+            "description": "fork of tree-1-1",
+            "defaultBranch": "main",
+            "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/tree-3-2.git",
+            "token": "<redacted>"
+          },
+          "ops": 4,
+          "serverMs": 1233,
+          "httpStatus": 200,
+          "clientMs": 1341
+        },
+        {
+          "name": "tree-3-3",
+          "source": "tree-2-1",
+          "tStart": 1791780481424,
+          "tEnd": 1791780483208,
+          "getMs": 18,
+          "forkCallMs": 1720,
+          "callMs": 1738,
+          "ready": {
+            "readyMs": 1784,
+            "polls": 1,
+            "head": "666df7c10035f7e26f27ec214fe5ae3173435f34",
+            "errors": {}
+          },
+          "result": {
+            "id": "02vbzg3jrkrs2uww",
+            "name": "tree-3-3",
+            "description": "fork of tree-2-1",
+            "defaultBranch": "main",
+            "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/tree-3-3.git",
+            "token": "<redacted>"
+          },
+          "ops": 4,
+          "serverMs": 1784,
+          "httpStatus": 200,
+          "clientMs": 1918
+        },
+        {
+          "name": "tree-3-4",
+          "source": "tree-2-2",
+          "tStart": 1791780481426,
+          "tEnd": 1791780483233,
+          "getMs": 27,
+          "forkCallMs": 1723,
+          "callMs": 1750,
+          "ready": {
+            "readyMs": 1807,
+            "polls": 1,
+            "head": "666df7c10035f7e26f27ec214fe5ae3173435f34",
+            "errors": {}
+          },
+          "result": {
+            "id": "h4ekjbjg29m74g8x",
+            "name": "tree-3-4",
+            "description": "fork of tree-2-2",
+            "defaultBranch": "main",
+            "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/tree-3-4.git",
+            "token": "<redacted>"
+          },
+          "ops": 4,
+          "serverMs": 1807,
+          "httpStatus": 200,
+          "clientMs": 1915
+        }
+      ]
+    },
+    {
+      "round": 4,
+      "sources": 8,
+      "attempted": 8,
+      "ok": 8,
+      "wallMs": 2108,
+      "callMs": {
+        "n": 8,
+        "min": 1254,
+        "p50": 1724,
+        "p95": 1781,
+        "max": 1781
+      },
+      "readyMs": {
+        "n": 8,
+        "min": 1293,
+        "p50": 1796,
+        "p95": 1956,
+        "max": 1956
+      },
+      "errors": [],
+      "rows": [
+        {
+          "name": "tree-4-1",
+          "source": "base",
+          "tStart": 1791780483350,
+          "tEnd": 1791780484673,
+          "getMs": 28,
+          "forkCallMs": 1230,
+          "callMs": 1258,
+          "ready": {
+            "readyMs": 1323,
+            "polls": 1,
+            "head": "666df7c10035f7e26f27ec214fe5ae3173435f34",
+            "errors": {}
+          },
+          "result": {
+            "id": "3o9ktpt9tkgdl3yg",
+            "name": "tree-4-1",
+            "description": "fork of base",
+            "defaultBranch": "main",
+            "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/tree-4-1.git",
+            "token": "<redacted>"
+          },
+          "ops": 4,
+          "serverMs": 1323,
+          "httpStatus": 200,
+          "clientMs": 1489
+        },
+        {
+          "name": "tree-4-2",
+          "source": "tree-1-1",
+          "tStart": 1791780483353,
+          "tEnd": 1791780484646,
+          "getMs": 28,
+          "forkCallMs": 1226,
+          "callMs": 1254,
+          "ready": {
+            "readyMs": 1293,
+            "polls": 1,
+            "head": "666df7c10035f7e26f27ec214fe5ae3173435f34",
+            "errors": {}
+          },
+          "result": {
+            "id": "o24k1gnt34az6d3x",
+            "name": "tree-4-2",
+            "description": "fork of tree-1-1",
+            "defaultBranch": "main",
+            "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/tree-4-2.git",
+            "token": "<redacted>"
+          },
+          "ops": 4,
+          "serverMs": 1293,
+          "httpStatus": 200,
+          "clientMs": 1488
+        },
+        {
+          "name": "tree-4-3",
+          "source": "tree-2-1",
+          "tStart": 1791780483355,
+          "tEnd": 1791780485311,
+          "getMs": 211,
+          "forkCallMs": 1540,
+          "callMs": 1751,
+          "ready": {
+            "readyMs": 1956,
+            "polls": 1,
+            "head": "666df7c10035f7e26f27ec214fe5ae3173435f34",
+            "errors": {}
+          },
+          "result": {
+            "id": "q12h2iyee12oy6ql",
+            "name": "tree-4-3",
+            "description": "fork of tree-2-1",
+            "defaultBranch": "main",
+            "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/tree-4-3.git",
+            "token": "<redacted>"
+          },
+          "ops": 4,
+          "serverMs": 1956,
+          "httpStatus": 200,
+          "clientMs": 2106
+        },
+        {
+          "name": "tree-4-4",
+          "source": "tree-2-2",
+          "tStart": 1791780483347,
+          "tEnd": 1791780484692,
+          "getMs": 23,
+          "forkCallMs": 1235,
+          "callMs": 1258,
+          "ready": {
+            "readyMs": 1345,
+            "polls": 1,
+            "head": "666df7c10035f7e26f27ec214fe5ae3173435f34",
+            "errors": {}
+          },
+          "result": {
+            "id": "0uhf9nt6bjn8g7ma",
+            "name": "tree-4-4",
+            "description": "fork of tree-2-2",
+            "defaultBranch": "main",
+            "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/tree-4-4.git",
+            "token": "<redacted>"
+          },
+          "ops": 4,
+          "serverMs": 1345,
+          "httpStatus": 200,
+          "clientMs": 1487
+        },
+        {
+          "name": "tree-4-5",
+          "source": "tree-3-1",
+          "tStart": 1791780483355,
+          "tEnd": 1791780485203,
+          "getMs": 23,
+          "forkCallMs": 1758,
+          "callMs": 1781,
+          "ready": {
+            "readyMs": 1848,
+            "polls": 1,
+            "head": "666df7c10035f7e26f27ec214fe5ae3173435f34",
+            "errors": {}
+          },
+          "result": {
+            "id": "sr3q907ersu12rsu",
+            "name": "tree-4-5",
+            "description": "fork of tree-3-1",
+            "defaultBranch": "main",
+            "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/tree-4-5.git",
+            "token": "<redacted>"
+          },
+          "ops": 4,
+          "serverMs": 1848,
+          "httpStatus": 200,
+          "clientMs": 2012
+        },
+        {
+          "name": "tree-4-6",
+          "source": "tree-3-2",
+          "tStart": 1791780483361,
+          "tEnd": 1791780485189,
+          "getMs": 23,
+          "forkCallMs": 1745,
+          "callMs": 1768,
+          "ready": {
+            "readyMs": 1828,
+            "polls": 1,
+            "head": "666df7c10035f7e26f27ec214fe5ae3173435f34",
+            "errors": {}
+          },
+          "result": {
+            "id": "t1y6xqwytkgmu98g",
+            "name": "tree-4-6",
+            "description": "fork of tree-3-2",
+            "defaultBranch": "main",
+            "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/tree-4-6.git",
+            "token": "<redacted>"
+          },
+          "ops": 4,
+          "serverMs": 1828,
+          "httpStatus": 200,
+          "clientMs": 2012
+        },
+        {
+          "name": "tree-4-7",
+          "source": "tree-3-3",
+          "tStart": 1791780483409,
+          "tEnd": 1791780485205,
+          "getMs": 24,
+          "forkCallMs": 1700,
+          "callMs": 1724,
+          "ready": {
+            "readyMs": 1796,
+            "polls": 1,
+            "head": "666df7c10035f7e26f27ec214fe5ae3173435f34",
+            "errors": {}
+          },
+          "result": {
+            "id": "bl5l7xuwz28j2nwg",
+            "name": "tree-4-7",
+            "description": "fork of tree-3-3",
+            "defaultBranch": "main",
+            "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/tree-4-7.git",
+            "token": "<redacted>"
+          },
+          "ops": 4,
+          "serverMs": 1796,
+          "httpStatus": 200,
+          "clientMs": 2011
+        },
+        {
+          "name": "tree-4-8",
+          "source": "tree-3-4",
+          "tStart": 1791780483453,
+          "tEnd": 1791780485282,
+          "getMs": 25,
+          "forkCallMs": 1745,
+          "callMs": 1770,
+          "ready": {
+            "readyMs": 1829,
+            "polls": 1,
+            "head": "666df7c10035f7e26f27ec214fe5ae3173435f34",
+            "errors": {}
+          },
+          "result": {
+            "id": "k10k0kxipf0psdm3",
+            "name": "tree-4-8",
+            "description": "fork of tree-3-4",
+            "defaultBranch": "main",
+            "remote": "https://<account-id>.artifacts.cloudflare.net/git/ft-spike-a/tree-4-8.git",
+            "token": "<redacted>"
+          },
+          "ops": 4,
+          "serverMs": 1829,
+          "httpStatus": 200,
+          "clientMs": 2044
+        }
+      ]
+    }
+  ],
+  "finalCount": 16
+}
