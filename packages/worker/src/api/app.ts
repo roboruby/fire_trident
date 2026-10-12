@@ -1,0 +1,280 @@
+import { Hono } from "hono";
+import type { Context, MiddlewareHandler } from "hono";
+import { regionKey } from "@fire_trident/core";
+import type { FieldReading, Id, RepoRef, Sha } from "@fire_trident/core";
+import type { z } from "zod";
+import type { Env } from "../env.ts";
+import { decodeError, ftError } from "../colony/errors.ts";
+import { slug } from "../colony/logic.ts";
+import { AgentBody, CreateColonyBody, DecisionBody, IntentBody, ProposalBody, RuleBody, SwarmBody, WhyQuery } from "./schemas.ts";
+
+/** Hono environment of the API. */
+export type ApiEnv = { Bindings: Env };
+
+/** Options for spawning in-platform agents. */
+export interface SwarmOptions {
+  count: number;
+  kind?: "internal" | "synthetic";
+  model?: string;
+}
+
+/** What the API calls outside the Durable Objects (injected so tests can substitute them). */
+export interface ApiDeps {
+  provisionTrunk: (env: Env, colonyId: Id, source?: { url: string; branch?: string }) => Promise<{ trunk: RepoRef; trunkSha: Sha }>;
+  spawnSwarm: (env: Env, colonyId: Id, opts: SwarmOptions) => Promise<unknown>;
+}
+
+/** Default warm-pool size for a new colony. */
+export const DEFAULT_POOL_TARGET = 16;
+/** Regions read per GET /field (all-regions form). */
+const MAX_FIELD_REGIONS = 500;
+
+function json(body: unknown, status = 200, headers: Record<string, string> = {}): Response {
+  return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json; charset=utf-8", ...headers } });
+}
+
+/** Constant-time comparison of two secrets (compares SHA-256 digests). */
+export async function tokensEqual(a: string, b: string): Promise<boolean> {
+  const enc = new TextEncoder();
+  const [da, db] = await Promise.all([crypto.subtle.digest("SHA-256", enc.encode(a)), crypto.subtle.digest("SHA-256", enc.encode(b))]);
+  const x = new Uint8Array(da);
+  const y = new Uint8Array(db);
+  let diff = x.length ^ y.length;
+  for (let i = 0; i < x.length && i < y.length; i++) diff |= (x[i] ?? 0) ^ (y[i] ?? 0);
+  return diff === 0;
+}
+
+/** Mutating routes need `Authorization: Bearer <FT_ADMIN_TOKEN>` when that secret is set. */
+export const requireAdmin: MiddlewareHandler<ApiEnv> = async (c, next) => {
+  const expected = c.env.FT_ADMIN_TOKEN;
+  if (expected) {
+    const m = /^Bearer\s+(\S+)\s*$/i.exec(c.req.header("Authorization") ?? "");
+    if (!m || !(await tokensEqual(m[1] ?? "", expected))) return json({ error: "unauthorized" }, 401, { "WWW-Authenticate": "Bearer" });
+  }
+  await next();
+};
+
+/** Parse and validate a JSON body; throws a 400 with the zod issues. */
+async function body<S extends z.ZodType>(c: Context<ApiEnv>, schema: S): Promise<z.output<S>> {
+  let raw: unknown;
+  try {
+    raw = await c.req.json();
+  } catch {
+    throw ftError(400, "body must be JSON");
+  }
+  return validate(schema, raw);
+}
+
+function validate<S extends z.ZodType>(schema: S, raw: unknown): z.output<S> {
+  const parsed = schema.safeParse(raw);
+  if (parsed.success) return parsed.data;
+  const issues = parsed.error.issues.slice(0, 10).map((i) => `${i.path.map(String).join(".") || "body"}: ${i.message}`);
+  throw ftError(400, `invalid request: ${issues.join("; ")}`);
+}
+
+function colonyStub(env: Env, colonyId: Id) {
+  return env.COLONY.get(env.COLONY.idFromName(colonyId));
+}
+
+function regionStub(env: Env, colonyId: Id, region: string) {
+  return env.REGION.get(env.REGION.idFromName(regionKey(colonyId, region)));
+}
+
+function trunkStub(env: Env, colonyId: Id) {
+  return env.TRUNK.get(env.TRUNK.idFromName(colonyId));
+}
+
+function poolStub(env: Env, colonyId: Id) {
+  return env.POOL.get(env.POOL.idFromName(colonyId));
+}
+
+/** Colony ids are slugs; anything else cannot name a colony. */
+function colonyParam(c: Context<ApiEnv>): Id {
+  const id = c.req.param("id") ?? "";
+  if (!/^[a-z0-9](?:[a-z0-9-]{0,46}[a-z0-9])?$/.test(id)) throw ftError(404, "colony not found");
+  return id;
+}
+
+async function requireColony(env: Env, colonyId: Id): Promise<void> {
+  if (!(await colonyStub(env, colonyId).getColony())) throw ftError(404, "colony not found");
+}
+
+/**
+ * Build the REST API (mounted at /api). Route table:
+ *   POST /colonies                          create/import a colony
+ *   GET  /colonies/:id                      ColonySnapshot (+ rules)
+ *   GET  /colonies/:id/live                 WebSocket of ColonyEvent (JSON arrays)
+ *   GET  /colonies/:id/field                FieldReading[] (all regions, or ?region=)
+ *   POST /colonies/:id/intents              declare an intent
+ *   POST /colonies/:id/rules                add a morphology rule (creates needs)
+ *   POST /colonies/:id/agents               register an agent
+ *   POST /colonies/:id/agents/:aid/take     self-assign work + workspace lease
+ *   POST /colonies/:id/agents/:aid/heartbeat
+ *   POST /colonies/:id/proposals            propose a change
+ *   GET  /colonies/:id/proposals/:pid       one proposal (poll its outcome)
+ *   GET  /colonies/:id/why                  ?path=&line=
+ *   GET  /colonies/:id/review               review queue
+ *   POST /colonies/:id/review/:pid          approve | reject | return
+ *   POST /colonies/:id/swarm                spawn in-platform agents
+ * POST routes require the admin bearer token when FT_ADMIN_TOKEN is set.
+ */
+export function createApi(deps: ApiDeps): Hono<ApiEnv> {
+  const app = new Hono<ApiEnv>();
+
+  app.onError((err, c) => {
+    const { status, message } = decodeError(err);
+    if (status >= 500) console.error(`${c.req.method} ${c.req.path} failed: ${message}`);
+    return json({ error: message }, status);
+  });
+  app.notFound((c) => json({ error: `no route for ${c.req.method} ${c.req.path}` }, 404));
+
+  app.get("/", () => json({ service: "firetrident", version: "0.0.1" }));
+
+  app.post("/colonies", requireAdmin, async (c) => {
+    const b = await body(c, CreateColonyBody);
+    const colonyId = slug(b.name);
+    if (!colonyId) throw ftError(400, "name must contain letters or digits");
+    const colony = colonyStub(c.env, colonyId);
+    const existing = await colony.getColony();
+    if (existing) return json({ error: `colony ${colonyId} already exists`, colony: existing }, 409);
+    const provisioned = await deps.provisionTrunk(c.env, colonyId, b.source);
+    const trunk = provisioned.trunk;
+    const initialized = await trunkStub(c.env, colonyId).init({ colonyId, trunk });
+    await poolStub(c.env, colonyId).init({ colonyId, trunk, target: b.poolTarget ?? b.pool ?? DEFAULT_POOL_TARGET });
+    const created = await colony.init({
+      colonyId,
+      name: b.name,
+      trunk,
+      trunkSha: initialized?.trunkSha || provisioned.trunkSha,
+      ...(b.source ? { source: b.source } : {}),
+      ...(b.regionDepth !== undefined ? { regionDepth: b.regionDepth } : {}),
+    });
+    return json(created, 201);
+  });
+
+  app.get("/colonies/:id", async (c) => json(await colonyStub(c.env, colonyParam(c)).snapshot()));
+
+  app.get("/colonies/:id/live", async (c) => {
+    const colonyId = colonyParam(c);
+    if ((c.req.header("Upgrade") ?? "").toLowerCase() !== "websocket") return json({ error: "expected a WebSocket upgrade" }, 426);
+    return colonyStub(c.env, colonyId).fetch(c.req.raw);
+  });
+
+  app.get("/colonies/:id/field", async (c) => {
+    const colonyId = colonyParam(c);
+    const colony = colonyStub(c.env, colonyId);
+    await requireColony(c.env, colonyId);
+    const only = c.req.query("region");
+    const regions = only !== undefined ? [only] : (await colony.listRegions()).slice(0, MAX_FIELD_REGIONS);
+    const readings = await Promise.all(
+      regions.map(async (region) => {
+        const reading = (await regionStub(c.env, colonyId, region).reading()) as FieldReading;
+        return reading.region ? reading : { ...reading, region };
+      }),
+    );
+    return json(readings);
+  });
+
+  app.post("/colonies/:id/intents", requireAdmin, async (c) => {
+    const colonyId = colonyParam(c);
+    const b = await body(c, IntentBody);
+    const intent = await colonyStub(c.env, colonyId).addIntent({
+      colonyId,
+      title: b.title,
+      why: b.why,
+      source: b.source,
+      footprint: b.footprint,
+      priority: b.priority,
+      createdBy: b.createdBy ?? "api",
+      ...(b.acceptance ? { acceptance: b.acceptance } : {}),
+      ...(b.parentId ? { parentId: b.parentId } : {}),
+      ...(b.ruleId ? { ruleId: b.ruleId } : {}),
+      ...(b.assignedTo ? { assignedTo: b.assignedTo } : {}),
+    });
+    return json(intent, 201);
+  });
+
+  app.post("/colonies/:id/rules", requireAdmin, async (c) => {
+    const colonyId = colonyParam(c);
+    const b = await body(c, RuleBody);
+    const res = await colonyStub(c.env, colonyId).addRule({ colonyId, kind: b.kind, spec: b.spec, description: b.description, approvedBy: b.approvedBy ?? "api" });
+    return json(res, 201);
+  });
+
+  app.post("/colonies/:id/agents", requireAdmin, async (c) => {
+    const colonyId = colonyParam(c);
+    const b = await body(c, AgentBody);
+    const agent = await colonyStub(c.env, colonyId).registerAgent({ kind: b.kind, name: b.name, ...(b.model ? { model: b.model } : {}) });
+    return json(agent, 201);
+  });
+
+  app.post("/colonies/:id/agents/:aid/take", requireAdmin, async (c) => {
+    return json(await colonyStub(c.env, colonyParam(c)).take(c.req.param("aid")));
+  });
+
+  app.post("/colonies/:id/agents/:aid/heartbeat", requireAdmin, async (c) => {
+    await colonyStub(c.env, colonyParam(c)).heartbeat(c.req.param("aid"));
+    return json({ ok: true });
+  });
+
+  app.post("/colonies/:id/proposals", requireAdmin, async (c) => {
+    const colonyId = colonyParam(c);
+    const b = await body(c, ProposalBody);
+    const evidence = b.evidence
+      ? {
+          ...(b.evidence.checks ? { checks: b.evidence.checks.map((k) => ({ name: k.name, ok: k.ok, ms: k.ms, ...(k.detail !== undefined ? { detail: k.detail } : {}) })) } : {}),
+          ...(b.evidence.notVerified !== undefined ? { notVerified: b.evidence.notVerified } : {}),
+          ...(b.evidence.previewUrl !== undefined ? { previewUrl: b.evidence.previewUrl } : {}),
+        }
+      : undefined;
+    const proposal = await colonyStub(c.env, colonyId).propose({
+      colonyId,
+      intentId: b.intentId,
+      agentId: b.agentId,
+      workspace: b.workspace,
+      baseSha: b.baseSha,
+      headSha: b.headSha,
+      writeSet: b.writeSet,
+      readSet: b.readSet,
+      declared: b.declared,
+      ...(evidence ? { evidence } : {}),
+    });
+    return json(proposal, 201);
+  });
+
+  app.get("/colonies/:id/proposals/:pid", async (c) => {
+    const proposal = await colonyStub(c.env, colonyParam(c)).getProposal(c.req.param("pid"));
+    if (!proposal) throw ftError(404, "proposal not found");
+    return json(proposal);
+  });
+
+  app.get("/colonies/:id/why", async (c) => {
+    const colonyId = colonyParam(c);
+    const q = validate(WhyQuery, { path: c.req.query("path"), line: c.req.query("line") });
+    await requireColony(c.env, colonyId);
+    return json(await trunkStub(c.env, colonyId).why(q.path, q.line));
+  });
+
+  app.get("/colonies/:id/review", async (c) => json(await colonyStub(c.env, colonyParam(c)).review()));
+
+  app.post("/colonies/:id/review/:pid", requireAdmin, async (c) => {
+    const colonyId = colonyParam(c);
+    const b = await body(c, DecisionBody);
+    await colonyStub(c.env, colonyId).decide(c.req.param("pid"), b.decision, b.reason, b.by ?? "human");
+    return json({ ok: true });
+  });
+
+  app.post("/colonies/:id/swarm", requireAdmin, async (c) => {
+    const colonyId = colonyParam(c);
+    const b = await body(c, SwarmBody);
+    await requireColony(c.env, colonyId);
+    const count = b.count ?? b.agents ?? 1;
+    const res = await deps.spawnSwarm(c.env, colonyId, { count, ...(b.kind ? { kind: b.kind } : {}), ...(b.model ? { model: b.model } : {}) });
+    return json(res ?? { ok: true }, 202);
+  });
+
+  // Unknown API paths answer JSON here instead of falling through to the static UI.
+  app.all("*", (c) => json({ error: `no route for ${c.req.method} ${c.req.path}` }, 404));
+
+  return app;
+}
