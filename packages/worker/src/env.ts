@@ -33,6 +33,8 @@ export interface Env {
   FT_REFLEX_MODEL: string;
   /** Secret: bearer token for mutating API routes. */
   FT_ADMIN_TOKEN?: string;
+  /** Secret (optional): token MCP clients must present at /mcp and /sse. */
+  FT_MCP_TOKEN?: string;
   /** Secret (optional): enables Claude agents via AI Gateway / Anthropic. */
   ANTHROPIC_API_KEY?: string;
 }
