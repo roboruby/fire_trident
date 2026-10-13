@@ -107,6 +107,32 @@ export interface Intent {
   revision?: number;
   /** Why it was withdrawn (status "withdrawn"). */
   withdrawnReason?: string;
+  /**
+   * Contest mode: how many agents may hold this intent at once (2 to 4). Each builds its own change and
+   * the colony lands one of them; the others are kept as alternatives in the winner's lineage. Absent or 1:
+   * one holder, as usual.
+   */
+  contest?: number;
+  /**
+   * An agent reported that the intent cannot be done as written. While unresolved, no agent takes the
+   * intent; a person resolves it (amend, withdraw or dismiss).
+   */
+  escalation?: IntentEscalation;
+}
+
+/** What an agent can report instead of working around it. */
+export type EscalationKind = "broken-test" | "contradictory-spec" | "impossible" | "other";
+
+/** An agent's report that an intent cannot be done as written, and a person's answer. */
+export interface IntentEscalation {
+  kind: EscalationKind;
+  /** The agent's report, in its own words (untrusted text). */
+  report: string;
+  /** The agent that reported it. */
+  by: Id;
+  at: Millis;
+  /** The person's answer; absent while the intent waits for one. */
+  resolved?: { by: string; at: Millis; decision: "amend" | "withdraw" | "dismiss"; note: string };
 }
 
 /** Intent fields an amendment may change. */
@@ -134,7 +160,20 @@ export interface IntentRevision {
  * Directives change an agent's course. `guidance` is free text from a human; `revision` and
  * `withdrawal` are the colony telling the agent that the intent it holds was amended or called off.
  */
-export type DirectiveKind = "guidance" | "revision" | "withdrawal";
+export type DirectiveKind = "guidance" | "revision" | "withdrawal" | "landing";
+
+/**
+ * A landing notice: files an agent read or holds changed on trunk while it worked. Facts it can check
+ * (paths, blobs, the landing and its intent), never instructions.
+ */
+export interface LandingNotice {
+  landingId: Id;
+  trunkSha: Sha;
+  paths: Array<{ path: Path; before: Sha | null; after: Sha | null }>;
+  /** The intent the landing completed, and its why. */
+  intentTitle: string;
+  why: string;
+}
 
 /** A change of direction for one agent. In-platform agents get it pushed; external agents read it in their inbox. */
 export interface Directive {
@@ -154,6 +193,8 @@ export interface Directive {
   /** When and how it reached the agent: pushed to an in-platform agent, or read from the inbox. */
   deliveredAt?: Millis;
   via?: "push" | "inbox";
+  /** Landing notices: what landed (kind "landing"). */
+  landing?: LandingNotice;
 }
 
 /**
@@ -291,6 +332,12 @@ export interface Evidence {
   direction?: Direction;
 }
 
+/** The names a change imports from one trunk file (see Proposal.nameAssumptions). */
+export interface NameAssumption {
+  path: Path;
+  names: string[];
+}
+
 export interface Proposal {
   id: Id;
   colonyId: Id;
@@ -310,6 +357,14 @@ export interface Proposal {
    * another change landing in the same cycle relies on.
    */
   assumptions?: Path[];
+  /**
+   * Name assumptions: for each trunk file this change's relative imports resolve to, the names it imports from
+   * it. When only files it read changed under it, the change can still land if every name is still exported
+   * (assumption revalidation); otherwise it goes back as usual.
+   */
+  nameAssumptions?: NameAssumption[];
+  /** Contest mode: the proposal that won this intent's contest instead of this one. */
+  supersededBy?: Id;
   declared: { footprint: Path[]; summary: string };
   evidence: Evidence;
   status: ProposalStatus;
@@ -365,6 +420,10 @@ export interface LineageNote {
     decisions: NoteDecision[];
     /** Includes `direction` (intent revision, directives, status note) for changes built under one. */
     evidence: Evidence;
+    /** Contest mode: the other attempts at the same intent, and why each lost. */
+    alternatives?: Array<{ proposalId: Id; agentId: Id; model?: string; reason: string }>;
+    /** Assumption revalidation: files that changed after this change read them, and the names it relies on that still held. */
+    revalidated?: Array<{ path: Path; read: Sha | null; landedOn: Sha | null; names: string[] }>;
   }>;
   /** The project's own tests on this commit, when trunk certification ran on it (added after landing). */
   certification?: NoteCertification;
@@ -517,7 +576,10 @@ export type ColonyEvent =
   | { t: "retracted"; at: Millis; ruleId: Id; reason: string; by: string; withdrawn: number }
   /** A person undid a landing (`ft revert`): `landingId` is the revert commit, `of` the landing undone; `redo` the intents declared again. */
   | { t: "reverted"; at: Millis; landingId: Id; of: Id; trunkSha: Sha; paths: Path[]; reason: string; by: string; redo: Id[] }
-  | { t: "directive"; at: Millis; directiveId: Id; agentId: Id; intentId?: Id; message: string; by: string; via?: "push" | "inbox" }
+  | { t: "directive"; at: Millis; directiveId: Id; agentId: Id; intentId?: Id; message: string; by: string; via?: "push" | "inbox"; kind?: DirectiveKind }
+  | { t: "escalation"; at: Millis; intentId: Id; agentId: Id; kind: EscalationKind; report: string; title: string; resolved?: IntentEscalation["resolved"] }
+  | { t: "contest"; at: Millis; intentId: Id; title: string; winner: Id; losers: Id[]; reason: string }
+  | { t: "revalidated"; at: Millis; proposalId: Id; intentId: Id; paths: Path[]; names: string[] }
   | { t: "status"; at: Millis; agentId: Id; intentId?: Id; note: string }
   // Trunk certification: a run started, or its result (failing names capped at 10).
   | {
