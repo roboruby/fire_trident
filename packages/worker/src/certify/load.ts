@@ -35,6 +35,8 @@ export interface Loaded {
   tests: Path[];
   /** Test files left out, with the reason. */
   unsupported: Array<{ path: Path; reason: string }>;
+  /** For each test file left out, the file that kept it out: itself, or a module it reaches. */
+  via: Map<Path, Path>;
   /** Blob ids of every module read (for the input digest), by path. */
   blobs: Map<Path, Sha>;
   /** The caps cut the read short. */
@@ -114,42 +116,48 @@ export async function load(index: readonly IndexedFile[], read: (blobs: Sha[]) =
 
   const run: Path[] = [];
   const unsupported: Array<{ path: Path; reason: string }> = [];
+  const via = new Map<Path, Path>();
   for (const t of tests) {
     const c = modules.get(t.path);
     if (!c) {
       unsupported.push({ path: t.path, reason: tooBig.has(t.path) ? `larger than one run reads (${caps.maxFileBytes} bytes)` : "past the run's size cap" });
+      via.set(t.path, t.path);
       continue;
     }
     // A file that does not parse still runs (and fails) when it was written for node:test.
     if (!(c.error === undefined ? usesNodeTest(c) : nodeTestText.has(t.path))) {
       unsupported.push({ path: t.path, reason: "does not import node:test" });
+      via.set(t.path, t.path);
       continue;
     }
-    const reason = blocker(closureOf(t.path, modules), modules, paths, tooBig, unread);
-    if (reason) unsupported.push({ path: t.path, reason });
-    else run.push(t.path);
+    const blocked = blocker(closureOf(t.path, modules), modules, paths, tooBig, unread);
+    if (blocked) {
+      unsupported.push({ path: t.path, reason: blocked.reason });
+      via.set(t.path, blocked.via);
+    } else run.push(t.path);
   }
-  return { modules, tests: run, unsupported, blobs, truncated: unread.size > 0 };
+  return { modules, tests: run, unsupported, via, blobs, truncated: unread.size > 0 };
 }
 
 /**
- * Why a test file cannot run honestly here, or null: a package or an unprovided built-in in reach,
- * or a module it reaches that was not read (over the per-file or per-run cap). A relative import
- * of a file that does not exist is not a blocker: it fails at load, as under `node --test`.
+ * Why a test file cannot run honestly here, and the file responsible, or null: a package or an
+ * unprovided built-in in reach, or a module it reaches that was not read (over the per-file or
+ * per-run cap). A relative import of a file that does not exist is not a blocker: it fails at
+ * load, as under `node --test`.
  */
-function blocker(closure: Path[], modules: ReadonlyMap<Path, Compiled>, paths: ReadonlySet<Path>, tooBig: ReadonlySet<Path>, unread: ReadonlySet<Path>): string | null {
+function blocker(closure: Path[], modules: ReadonlyMap<Path, Compiled>, paths: ReadonlySet<Path>, tooBig: ReadonlySet<Path>, unread: ReadonlySet<Path>): { reason: string; via: Path } | null {
   for (const path of closure) {
     const c = modules.get(path);
     if (!c) continue;
     for (const spec of c.imports) {
       const k = classify(spec);
-      if (k.kind === "package") return `imports the package ${k.name} (${path}); nothing is installed`;
-      if (k.kind === "unsupported") return `imports ${k.name} (${path}), which the test runner does not provide`;
+      if (k.kind === "package") return { reason: `imports the package ${k.name} (${path}); nothing is installed`, via: path };
+      if (k.kind === "unsupported") return { reason: `imports ${k.name} (${path}), which the test runner does not provide`, via: path };
       if (k.kind !== "relative") continue;
       const target = resolveExact(path, spec, paths);
       if (target === null || modules.has(target)) continue;
-      if (tooBig.has(target)) return `reaches ${target}, larger than one run reads`;
-      if (unread.has(target)) return `reaches ${target}, past the run's size cap`;
+      if (tooBig.has(target)) return { reason: `reaches ${target}, larger than one run reads`, via: target };
+      if (unread.has(target)) return { reason: `reaches ${target}, past the run's size cap`, via: target };
     }
   }
   return null;

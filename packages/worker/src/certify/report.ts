@@ -25,6 +25,12 @@ export const MAX_FAILING = 50;
 export const MAX_ERROR = 300;
 export const MAX_NAME = 200;
 
+/** A test or suite name as results keep it: the repository's text, cut to one readable length. */
+export function testName(s: unknown): string {
+  const n = typeof s === "string" ? s : String(s);
+  return n.length > MAX_NAME ? `${n.slice(0, MAX_NAME - 1)}…` : n;
+}
+
 /** The verdict of one run: green, red, or nothing to judge (no tests). */
 export interface Summary {
   status: Extract<CertificationStatus, "green" | "red" | "skipped">;
@@ -42,17 +48,12 @@ export function summarize(r: RunReport): Summary {
   const counts: TestCounts = { tests: 0, pass: 0, fail: 0, cancelled: 0, skipped: 0, todo: 0, suites: 0 };
   const failing: FailingTest[] = [];
   const clip = (s: string | undefined): string | undefined => (s === undefined ? undefined : s.length > MAX_ERROR ? `${s.slice(0, MAX_ERROR - 1)}…` : s);
-  // Names come from the repository's tests: keep them to one readable line.
-  const name = (s: unknown): string => {
-    const n = typeof s === "string" ? s : String(s);
-    return n.length > MAX_NAME ? `${n.slice(0, MAX_NAME - 1)}…` : n;
-  };
   for (const t of Array.isArray(r.tests) ? r.tests : []) {
     counts.tests++;
     if (t.status === "pass" || t.status === "fail" || t.status === "cancelled" || t.status === "skipped" || t.status === "todo") counts[t.status]++;
     else counts.fail++;
     if ((t.status === "fail" || t.status === "cancelled" || !["pass", "skipped", "todo"].includes(t.status)) && failing.length < MAX_FAILING) {
-      const f: FailingTest = { name: name(t.name), file: t.file };
+      const f: FailingTest = { name: testName(t.name), file: t.file };
       const error = clip(t.status === "cancelled" && t.error ? `cancelled: ${t.error}` : t.error);
       if (error) f.error = error;
       failing.push(f);
@@ -64,7 +65,7 @@ export function summarize(r: RunReport): Summary {
     if (s.status === "fail" && s.error) {
       suiteErrors++;
       if (failing.length < MAX_FAILING) {
-        const f: FailingTest = { name: `${name(s.name)} (suite)`, file: s.file };
+        const f: FailingTest = { name: `${testName(s.name)} (suite)`, file: s.file };
         const error = clip(s.error);
         if (error) f.error = error;
         failing.push(f);
@@ -76,10 +77,16 @@ export function summarize(r: RunReport): Summary {
   return { status: red ? "red" : "green", counts, failing };
 }
 
-/** "60/60 tests" or "5 failing" (with cancelled ones), for one line. */
+/**
+ * The counts in one line: "60/60 tests", "58/60 tests · 2 skipped", "5 failing · 1 todo". Skipped
+ * and todo tests stay in the total and are named, so a test that stops running never drops out of
+ * the line.
+ */
 export function countsLine(counts: TestCounts | undefined): string {
   if (!counts) return "";
   const bad = counts.fail + counts.cancelled;
-  if (bad === 0) return `${counts.pass}/${counts.tests - counts.skipped - counts.todo} tests`;
-  return `${bad} failing`;
+  const parts = [bad === 0 ? `${counts.pass}/${counts.tests} tests` : `${bad} failing`];
+  if (counts.skipped > 0) parts.push(`${counts.skipped} skipped`);
+  if (counts.todo > 0) parts.push(`${counts.todo} todo`);
+  return parts.join(" · ");
 }

@@ -2,10 +2,30 @@ import type { Certification, CertificationStatus, ColonyEvent, FailingTest, Id, 
 import { TEST_FILE } from "./compile.ts";
 import { DEFAULT_CAPS, load, testFiles, type CompileMemo, type IndexedFile, type Loaded } from "./load.ts";
 import { RUNNER_VERSION, buildPlan, closureOf, type Plan } from "./plan.ts";
-import { DEFAULT_POLICY, mergePolicy, repairAction, repairIntent, type CertifyPolicy, type RepairIntentInput, type RepairRow } from "./repair.ts";
-import { summarize, type RunReport } from "./report.ts";
+import { DEFAULT_POLICY, isOpen, mergePolicy, repairAction, repairIntent, type CertifyPolicy, type RepairIntentInput, type RepairRow } from "./repair.ts";
+import { countsLine, summarize, type RunReport } from "./report.ts";
 import { fileKeyText, mergeResults, splitReport, type FileResult } from "./cache.ts";
 import { CertifySchedule } from "./schedule.ts";
+import {
+  MAX_LOST,
+  acceptInBaseline,
+  acceptInOwed,
+  baselineOf,
+  findLost,
+  lostAsFailing,
+  lostDetail,
+  owedOf,
+  publicLost,
+  runFiles,
+  type Baseline,
+  type Kept,
+  type Listing,
+  type Lost,
+  type LostKey,
+  type Owed,
+  type OwedRepair,
+  type RunFiles,
+} from "./owed.ts";
 
 /**
  * Trunk certification: after a landing moves trunk, run the project's own tests on it in a
@@ -18,6 +38,10 @@ import { CertifySchedule } from "./schedule.ts";
  * and count the results the way `node --test` does. Green moves the colony's greenSha; red keeps
  * the last green and may declare a repair intent. Results are recorded, published as `certify`
  * events (so replays show them), and added to the certified landing's lineage note.
+ *
+ * A run is green only when it also ran and passed everything it owes (owed.ts): the tests that
+ * passed in the newest green run, and the tests each repair intent was declared for. A run that
+ * lost any of them is red, names what it lost, and leaves `certified` where it is.
  */
 
 /** The TrunkDO calls certification makes. */
@@ -79,7 +103,15 @@ const SCHEMA = [
   // Per test file results, keyed by what the file reaches (cache.ts).
   "CREATE TABLE IF NOT EXISTS certify_files (key TEXT PRIMARY KEY, path TEXT NOT NULL, at INTEGER NOT NULL, data TEXT NOT NULL)",
   "CREATE INDEX IF NOT EXISTS certify_files_by_at ON certify_files(at)",
+  // What later runs owe (owed.ts): the newest green run's passing tests per test file, and what each repair intent was declared for.
+  "CREATE TABLE IF NOT EXISTS certify_baseline (path TEXT PRIMARY KEY, data TEXT NOT NULL)",
+  `CREATE TABLE IF NOT EXISTS certify_repairs (
+    intent_id TEXT PRIMARY KEY, trunk_sha TEXT NOT NULL, state TEXT NOT NULL, at INTEGER NOT NULL, owed TEXT NOT NULL, lost TEXT NOT NULL)`,
 ];
+/** Repair records kept besides the ones still owed. */
+const KEEP_REPAIRS = 200;
+/** Losses a repair intent keeps, to accept when a person withdraws it. */
+const MAX_ACCEPT = 2_000;
 /** Per-file results kept per colony. */
 const KEEP_FILES = 5_000;
 /** Compiled modules kept in memory between runs (a run then reads only files that changed). */
@@ -92,6 +124,39 @@ interface Stored {
   testKey: string | null;
   /** Every test file lacked a node:test import (depends on the test files only). */
   foreign?: boolean;
+}
+
+/** What a run owes (owed.ts). */
+interface Owing {
+  baseline: Baseline | null;
+  repairs: OwedRepair[];
+}
+
+/** What judging a run found: for recording it and for the repair loop. */
+interface Judged {
+  loaded: Loaded | null;
+  run: RunFiles | null;
+  /** The run's own failing tests (`cert.failing` adds the lost ones). */
+  failing: FailingTest[];
+  /** Everything it lost (a result lists at most MAX_LOST). */
+  lost: Lost[];
+}
+
+/** One repair intent's record (certify_repairs): what it owes until a green run proves it. */
+interface RepairRecord {
+  intentId: Id;
+  /** The red commit it was declared on. */
+  sha: Sha;
+  /** pending: still owed; satisfied: a green run proved its tests; released: a person withdrew it. */
+  state: "pending" | "satisfied" | "released";
+  at: number;
+  owed: Owed[];
+  /** What it was declared for as lost: accepted when a person withdraws it. */
+  lost: LostKey[];
+}
+
+function owes(o: Owing): boolean {
+  return (o.baseline?.files.size ?? 0) > 0 || o.repairs.some((r) => r.owed.length > 0);
 }
 
 /** Hex SHA-256 of a string. */
@@ -308,11 +373,15 @@ export class Certifier {
     const base: Certification = { trunkSha: sha, status: "running", startedAt };
     if (snap.landingId) base.landingId = snap.landingId;
     const last = this.latest();
+    // What earlier runs proved and repairs were declared for: a run missing any of it is red.
+    const owing = this.owing();
+    const onTrunk = new Set(snap.files.map((f) => f.path));
+    const listing: Listing = { has: (p) => onTrunk.has(p), truncated: snap.truncated === true };
 
     const tests = testFiles(snap.files);
-    if (tests.length === 0) return this.skip(base, "no test files (*.test.ts or *.test.js)", null, last);
+    if (tests.length === 0) return this.nothingRan(base, "no test files (*.test.ts or *.test.js)", null, last, false, owing, listing, null);
     const testKey = await digest(tests.map((t) => `${t.path} ${t.blob}`).join("\n"));
-    if (last && last.foreign && last.testKey === testKey) return this.skip(base, last.cert.detail ?? "no test file imports node:test", testKey, last, true);
+    if (last && last.foreign && last.testKey === testKey && !owes(owing)) return this.skip(base, last.cert.detail ?? "no test file imports node:test", testKey, last, true);
 
     const t1 = Date.now();
     let loaded: Loaded;
@@ -329,7 +398,7 @@ export class Certifier {
     if (loaded.tests.length === 0) {
       const foreign = loaded.unsupported.every((u) => u.reason === "does not import node:test");
       const detail = foreign ? `no test file imports node:test (${tests.length} test file${tests.length === 1 ? "" : "s"})` : `no test file can run here: ${loaded.unsupported.slice(0, 3).map((u) => `${u.path} ${u.reason}`).join("; ")}`;
-      return this.skip({ ...base, unsupported: loaded.unsupported.slice(0, 20) }, detail, testKey, last, foreign);
+      return this.nothingRan({ ...base, unsupported: loaded.unsupported.slice(0, 20) }, detail, testKey, last, foreign, owing, listing, loaded);
     }
     // Each test file's key: what it reaches (paths and blob ids), the runner, the per-test limit.
     const keys = new Map<Path, string>();
@@ -338,17 +407,7 @@ export class Certifier {
     const common: Certification = { ...base, files: loaded.tests.length };
     if (loaded.unsupported.length > 0) common.unsupported = loaded.unsupported.slice(0, 20);
 
-    // The files the tests reach are the same as an earlier run's: its verdict holds (tests are deterministic by contract).
-    const same = !forced ? this.byInputs(inputs) : null;
-    if (same && (same.cert.status === "green" || same.cert.status === "red")) {
-      const reused: Certification = { ...common, status: same.cert.status, reusedFrom: same.cert.reusedFrom ?? same.cert.trunkSha, cached: loaded.tests.length, timing: { indexMs, loadMs, workerMs: 0 } };
-      if (same.cert.counts) reused.counts = same.cert.counts;
-      if (same.cert.failing) reused.failing = same.cert.failing;
-      if (same.cert.runMs !== undefined) reused.runMs = same.cert.runMs;
-      return this.finish(reused, inputs, testKey, loaded);
-    }
-
-    // Test files whose inputs did not change keep their results; only the others run.
+    // Test files whose inputs did not change keep their results (tests are deterministic by contract); only the others run.
     const cached = forced ? new Map<Path, FileResult>() : this.cachedFiles(keys);
     const toRun = loaded.tests.filter((t) => !cached.has(t));
     const results = new Map<Path, FileResult>(cached);
@@ -368,7 +427,7 @@ export class Certifier {
       } catch (err) {
         const msg = errorText(err);
         const detail = /cpu|exceeded/i.test(msg) ? `the test run used up its CPU or time limit: ${msg}` : `the test runner failed: ${msg}`;
-        return this.finish({ ...common, status: "error", detail: clip(detail, 400)!, timing: { indexMs, loadMs, workerMs: Date.now() - t2 } }, inputs, testKey, loaded);
+        return this.finish({ ...common, status: "error", detail: clip(detail, 400)!, timing: { indexMs, loadMs, workerMs: Date.now() - t2 } }, inputs, testKey, null);
       }
       workerMs = Date.now() - t2;
       runMs = report.ms;
@@ -376,12 +435,19 @@ export class Certifier {
       for (const [path, r] of splitReport(report, toRun, true)) results.set(path, r);
       this.storeFiles(splitReport(report, toRun), keys);
     }
-    const s = summarize(mergeResults(loaded.tests, results, RUNNER_VERSION, runMs));
+    const merged = mergeResults(loaded.tests, results, RUNNER_VERSION, runMs);
+    const s = summarize(merged);
     const cert: Certification = { ...common, status: s.status, counts: s.counts, failing: s.failing, runMs, timing: { indexMs, loadMs, workerMs } };
     if (cached.size > 0) cert.cached = cached.size;
     if (modules) cert.modules = modules;
     if (s.detail) cert.detail = s.detail;
-    return this.finish(cert, inputs, testKey, loaded);
+    const judged = this.judge(cert, runFiles(merged, loaded), owing, listing, loaded);
+    // Nothing ran: these are the results of an earlier run of the same tested files (named when its verdict was the same).
+    if (toRun.length === 0 && !forced) {
+      const same = this.byInputs(inputs);
+      if (same && same.cert.status === cert.status) cert.reusedFrom = same.cert.reusedFrom ?? same.cert.trunkSha;
+    }
+    return this.finish(cert, inputs, testKey, judged);
   }
 
   /** Load the plan into a Dynamic Worker and run it. */
@@ -418,11 +484,41 @@ export class Certifier {
     if (!last || last.cert.status !== "skipped" || last.cert.detail !== detail) this.host.publish(this.event(cert));
   }
 
-  /** Record a verdict (or a failed run): greenSha, the event, the repair loop, the lineage note. */
-  private async finish(cert: Certification, inputs: string | null, testKey: string | null, loaded: Loaded | null): Promise<void> {
+  /**
+   * No test file ran (none on trunk, none written for node:test, or none the runner can run). That
+   * judges nothing, unless the run owes tests (owed.ts): then they are lost and the run is red.
+   */
+  private async nothingRan(base: Certification, detail: string, testKey: string | null, last: Stored | null, foreign: boolean, owing: Owing, listing: Listing, loaded: Loaded | null): Promise<void> {
+    if (owes(owing)) {
+      const cert: Certification = { ...base, status: "skipped", files: 0, counts: { tests: 0, pass: 0, fail: 0, cancelled: 0, skipped: 0, todo: 0, suites: 0 }, failing: [] };
+      const judged = this.judge(cert, runFiles(null, loaded), owing, listing, loaded);
+      if (judged.lost.length > 0) return this.finish(cert, null, testKey, judged);
+    }
+    this.skip(base, detail, testKey, last, foreign);
+  }
+
+  /** Hold a run against what it owes (owed.ts): a run that lost a test is red, whatever its own tests say. */
+  private judge(cert: Certification, run: RunFiles, owing: Owing, listing: Listing, loaded: Loaded | null): Judged {
+    const failing = cert.failing ?? [];
+    const judged: Judged = { loaded, run, failing, lost: [] };
+    if (cert.status !== "green" && cert.status !== "red" && cert.status !== "skipped") return judged;
+    judged.lost = findLost({ baseline: owing.baseline, repairs: owing.repairs, run, listing });
+    if (judged.lost.length === 0) return judged;
+    const listed = judged.lost.slice(0, MAX_LOST).map(publicLost);
+    cert.status = "red";
+    cert.lost = listed;
+    cert.failing = [...failing, ...listed.map(lostAsFailing)];
+    cert.detail = lostDetail(judged.lost, failing.length > 0);
+    return judged;
+  }
+
+  /** Record a verdict (or a failed run): greenSha and what later runs owe, the event, the repair loop, the lineage note. */
+  private async finish(cert: Certification, inputs: string | null, testKey: string | null, judged: Judged | null): Promise<void> {
     cert.finishedAt = Date.now();
     cert.durationMs = cert.finishedAt - cert.startedAt;
     if (cert.status === "green") {
+      // Everything owed ran and passed: every repair's tests are proven, and this run is what later runs owe.
+      if (judged?.run) this.recordGreen(cert.trunkSha, judged.run);
       this.host.setGreen(cert.trunkSha);
       // The `certified` branch follows green, so plain git can check out the last trunk whose tests passed.
       void this.host
@@ -434,7 +530,7 @@ export class Certifier {
     if (green) cert.greenSha = green;
     if (cert.status === "red" || cert.status === "green") {
       try {
-        const repairId = await this.repair(cert, loaded);
+        const repairId = await this.repair(cert, judged);
         if (repairId) cert.repairIntentId = repairId;
       } catch (err) {
         console.warn(`certification: repair loop failed: ${errorText(err)}`);
@@ -457,26 +553,48 @@ export class Certifier {
   }
 
   /** The repair loop for one verdict (repair.ts decides). Returns the intent it declared, if any. */
-  private async repair(cert: Certification, loaded: Loaded | null): Promise<Id | null> {
+  private async repair(cert: Certification, judged: Judged | null): Promise<Id | null> {
     const policy = this.policy();
     const action = repairAction(cert, this.host.repairs(), policy, Date.now());
     if (action.kind === "satisfy") {
-      const c = cert.counts;
-      const reason = `satisfied: trunk ${cert.trunkSha.slice(0, 7)} passes ${c ? `${c.pass} of ${c.tests} tests` : "its tests"}`;
+      const reason = `satisfied: every test it was declared for passes on trunk ${cert.trunkSha.slice(0, 7)} (${countsLine(cert.counts)})`;
       for (const id of action.ids) await this.host.satisfy(id, reason);
       return null;
     }
     if (action.kind !== "declare") return null;
+    const loaded = judged?.loaded ?? null;
+    const lost = judged?.lost ?? [];
+    const lostAt = new Map(lost.map((l) => [`${l.file}\u0000${l.name ?? ""}`, l]));
     const files = [...new Set((cert.failing ?? []).map((f) => f.file))];
     const spec = this.host.specFor(files);
     const input = repairIntent({
       cert,
       reach: (file) => (loaded ? closureOf(file, loaded.modules) : [file]),
       isTest: (p) => TEST_FILE.test(p),
+      fixIn: (t) => fixIn(t, lostAt.get(`${t.file}\u0000${t.name ?? ""}`), loaded),
+      lostTotal: lost.length,
       spec: spec?.spec ?? null,
       ...(spec?.label ? { sourceLabel: spec.label } : {}),
     });
-    return this.host.declare(input);
+    const id = await this.host.declare(input);
+    // The repair counts only once the tests it was declared for run and pass (owed.ts).
+    try {
+      const owed = owedOf(judged?.failing ?? cert.failing ?? []);
+      this.saveRecord({ intentId: id, sha: cert.trunkSha, state: "pending", at: Date.now(), owed, lost: lost.slice(0, MAX_ACCEPT).map(lostKey) });
+    } catch (err) {
+      console.warn(`certification: repair intent ${id} not recorded: ${errorText(err)}`);
+    }
+    return id;
+  }
+
+  /** A green run: every repair's tests are proven, and its passing tests become the baseline (a failure here keeps the older baseline, which this run passed). */
+  private recordGreen(sha: Sha, run: RunFiles): void {
+    try {
+      this.host.sql.exec("UPDATE certify_repairs SET state = 'satisfied' WHERE state NOT IN ('satisfied', 'released')");
+      this.setBaseline(baselineOf(sha, run));
+    } catch (err) {
+      console.warn(`certification: owed tests not recorded: ${errorText(err)}`);
+    }
   }
 
   private event(cert: Certification): ColonyEvent {
@@ -569,6 +687,127 @@ export class Certifier {
     this.host.sql.exec("DELETE FROM certify_files WHERE key IN (SELECT key FROM certify_files ORDER BY at DESC LIMIT -1 OFFSET ?)", KEEP_FILES);
   }
 
+  /** What a run owes now (owed.ts), after the repair records are brought up to date. Unreadable records owe nothing rather than stop certification. */
+  private owing(): Owing {
+    try {
+      this.reconcile();
+    } catch (err) {
+      console.warn(`certification: repair records not updated: ${errorText(err)}`);
+    }
+    try {
+      return { baseline: this.baseline(), repairs: this.records(true).map((r) => ({ intentId: r.intentId, sha: r.sha, owed: r.owed })) };
+    } catch (err) {
+      console.warn(`certification: owed tests unreadable: ${errorText(err)}`);
+      return { baseline: null, repairs: [] };
+    }
+  }
+
+  /**
+   * Bring the repair records up to date with the colony's repair intents. One withdrawn by anyone
+   * but certification (only a person can, through the API; certification marks its own as
+   * satisfied first) owes nothing more, and what it was declared for as lost is accepted. An open
+   * one declared before records were kept gets one now, from the result that declared it.
+   */
+  private reconcile(): void {
+    const records = new Map(this.records().map((r) => [r.intentId, r]));
+    for (const intent of this.host.repairs()) {
+      const rec = records.get(intent.id);
+      if (!rec) {
+        if (isOpen(intent.status)) this.saveRecord(this.legacyRecord(intent));
+      } else if (rec.state === "pending" && intent.status === "withdrawn") {
+        this.release(rec);
+      }
+    }
+  }
+
+  /** A record for a repair intent declared before records were kept: the declaring result's failing tests (none known: any green run satisfies it, as before). */
+  private legacyRecord(intent: RepairRow): RepairRecord {
+    const row = this.host.sql.exec<{ data: string }>("SELECT data FROM certifications WHERE instr(data, ?) > 0 LIMIT 1", `"repairIntentId":${JSON.stringify(intent.id)}`).toArray()[0];
+    let cert: Certification | null = null;
+    try {
+      cert = row ? (JSON.parse(row.data) as Certification) : null;
+    } catch {
+      cert = null;
+    }
+    return { intentId: intent.id, sha: cert?.trunkSha ?? "", state: "pending", at: intent.createdAt, owed: Array.isArray(cert?.failing) ? owedOf(cert.failing) : [], lost: [] };
+  }
+
+  /** A person withdrew this repair intent: it owes nothing more, and what it named as lost leaves the baseline and every repair's obligations. */
+  private release(rec: RepairRecord): void {
+    this.saveRecord({ ...rec, state: "released" });
+    if (rec.lost.length === 0) return;
+    const b = this.baseline();
+    if (b && acceptInBaseline(b, rec.lost)) this.setBaseline(b);
+    for (const other of this.records(true)) {
+      const owed = acceptInOwed(other.owed, rec.lost);
+      if (owed.length !== other.owed.length) this.saveRecord({ ...other, owed });
+    }
+  }
+
+  /** The baseline (owed.ts), or null before the first green run that recorded one. */
+  private baseline(): Baseline | null {
+    const sha = this.meta("baseline");
+    if (!sha) return null;
+    const files = new Map<Path, Kept>();
+    for (const r of this.host.sql.exec<{ path: string; data: string }>("SELECT path, data FROM certify_baseline ORDER BY path").toArray()) {
+      const kept = parseKept(r.data);
+      if (kept !== null) files.set(r.path, kept);
+    }
+    return { sha, files };
+  }
+
+  /** Make `b` the baseline, rewriting only the files whose passing tests changed. */
+  private setBaseline(b: Baseline): void {
+    const old = new Map(
+      this.host.sql
+        .exec<{ path: string; data: string }>("SELECT path, data FROM certify_baseline")
+        .toArray()
+        .map((r) => [r.path, r.data]),
+    );
+    for (const [path, kept] of b.files) {
+      const data = JSON.stringify(kept);
+      if (old.get(path) !== data) this.host.sql.exec("INSERT OR REPLACE INTO certify_baseline (path, data) VALUES (?, ?)", path, data);
+      old.delete(path);
+    }
+    for (const path of old.keys()) this.host.sql.exec("DELETE FROM certify_baseline WHERE path = ?", path);
+    this.setMeta("baseline", b.sha);
+  }
+
+  /** Repair records, oldest first (only the ones still owed, when `owed`). */
+  private records(owed = false): RepairRecord[] {
+    const rows = this.host.sql
+      .exec<{ intent_id: string; trunk_sha: string; state: string; at: number; owed: string; lost: string }>(
+        `SELECT intent_id, trunk_sha, state, at, owed, lost FROM certify_repairs${owed ? " WHERE state NOT IN ('satisfied', 'released')" : ""} ORDER BY at, intent_id`,
+      )
+      .toArray();
+    return rows.map((r) => ({
+      intentId: r.intent_id,
+      sha: r.trunk_sha,
+      // An unknown state (a later version's) is treated as still owed.
+      state: r.state === "satisfied" || r.state === "released" ? r.state : "pending",
+      at: r.at,
+      owed: listOf(r.owed, isOwed),
+      lost: listOf(r.lost, isLostKey),
+    }));
+  }
+
+  private saveRecord(r: RepairRecord): void {
+    this.host.sql.exec(
+      `INSERT INTO certify_repairs (intent_id, trunk_sha, state, at, owed, lost) VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(intent_id) DO UPDATE SET trunk_sha = excluded.trunk_sha, state = excluded.state, at = excluded.at, owed = excluded.owed, lost = excluded.lost`,
+      r.intentId,
+      r.sha,
+      r.state,
+      r.at,
+      JSON.stringify(r.owed),
+      JSON.stringify(r.lost),
+    );
+    this.host.sql.exec(
+      "DELETE FROM certify_repairs WHERE intent_id IN (SELECT intent_id FROM certify_repairs WHERE state IN ('satisfied', 'released') ORDER BY at DESC, intent_id DESC LIMIT -1 OFFSET ?)",
+      KEEP_REPAIRS,
+    );
+  }
+
   private meta(k: string): string | null {
     return this.host.sql.exec<{ v: string }>("SELECT v FROM certify_meta WHERE k = ?", k).toArray()[0]?.v ?? null;
   }
@@ -584,3 +823,57 @@ export class Certifier {
 
 /** Statuses a certification can have (for request validation). */
 export const CERTIFICATION_STATUSES: readonly CertificationStatus[] = ["running", "green", "red", "error", "skipped"];
+
+/**
+ * Where a test's fix has to be written besides the code its file loads (see repairIntent): lost
+ * tests are put back in their own file, a file that did not run is fixed where it was kept out
+ * (itself, a module with a package import, or a deleted file restored), and a test file that does
+ * not parse is fixed in itself. Otherwise nowhere: test files are context only.
+ */
+function fixIn(t: { file: Path; name?: string }, lost: Lost | undefined, loaded: Loaded | null): Path[] {
+  if (lost) {
+    if (lost.scope === "test" || lost.via === null || lost.via === lost.file) return [lost.file];
+    return lost.via ? [lost.via] : [];
+  }
+  return loaded?.modules.get(t.file)?.error !== undefined ? [t.file] : [];
+}
+
+/** What a repair intent keeps of a loss. */
+function lostKey(l: Lost): LostKey {
+  const k: LostKey = { file: l.file, scope: l.scope };
+  if (l.name !== undefined) k.name = l.name;
+  if (l.count !== undefined) k.count = l.count;
+  return k;
+}
+
+/** A baseline row: test names, or their number; null when unreadable (the file then owes nothing). */
+function parseKept(data: string): Kept | null {
+  try {
+    const v = JSON.parse(data) as unknown;
+    if (typeof v === "number" && Number.isFinite(v) && v >= 0) return v;
+    if (Array.isArray(v) && v.every((n) => typeof n === "string")) return v as string[];
+  } catch {
+    // Unreadable: owe nothing for this file.
+  }
+  return null;
+}
+
+/** A stored JSON list, keeping only the entries `ok` accepts (unreadable data owes nothing). */
+function listOf<T>(data: string, ok: (v: unknown) => v is T): T[] {
+  try {
+    const v = JSON.parse(data) as unknown;
+    return Array.isArray(v) ? v.filter(ok) : [];
+  } catch {
+    return [];
+  }
+}
+
+function isOwed(v: unknown): v is Owed {
+  const o = v as Owed;
+  return !!o && typeof o.file === "string" && (o.kind === "test" || o.kind === "suite" || o.kind === "file") && (o.name === undefined || typeof o.name === "string");
+}
+
+function isLostKey(v: unknown): v is LostKey {
+  const k = v as LostKey;
+  return !!k && typeof k.file === "string" && (k.scope === "test" || k.scope === "file") && (k.name === undefined || typeof k.name === "string") && (k.count === undefined || typeof k.count === "number");
+}
