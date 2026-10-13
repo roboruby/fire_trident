@@ -2914,14 +2914,15 @@ textarea.note {
 }
 
 .diff-in {
-  display: inline-block;
-  min-width: 100%;
+  display: block;
   padding: 3px 0;
 }
 
+/* Lines wrap in the narrow review panel, so the risky part of a long line is never off-screen. */
 .dl {
   display: flex;
-  white-space: pre;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .dl-n {
@@ -2934,6 +2935,7 @@ textarea.note {
 }
 
 .dl-t {
+  min-width: 0;
   padding-right: 12px;
   color: var(--text-3);
 }
