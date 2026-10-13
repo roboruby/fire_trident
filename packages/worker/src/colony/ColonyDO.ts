@@ -89,6 +89,7 @@ import type { DecisionRow, DirectionInfo, DirectiveRow, IntentPatch, RevisionRow
 import { landedStaleText, missedRevisions, type MissedRevision } from "./direction.ts";
 import type { Direction, Directive, DirectiveKind, InboxDirective, IntentField, IntentRevision, NoteDecision } from "@fire_trident/core";
 import { NeighborCache, claimLookup, type Neighbor } from "../trunk/cochange.ts";
+import { importNeighbors, type ImportLinks } from "../trunk/imports.ts";
 import type { RevertResult } from "../trunk/revert.ts";
 import {
   BUCKET_MS,
@@ -208,6 +209,15 @@ const COCHANGE_WEIGHT = 2;
 /** Neighbors read per footprint file, and how long a take waits for neighbors it has not cached. */
 const COCHANGE_K = 8;
 const COCHANGE_WAIT_MS = 150;
+/**
+ * Import repulsion (FT_IMPORT_WEIGHT; off when absent or 0): a claim on a file that a candidate's
+ * files import, or on a file that imports them, repels the candidate, each such file at weight 1
+ * times FT_IMPORT_WEIGHT. In the simulator's history workload at 1,000 agents with group commit,
+ * weight 1 cut rework from 31% to 16% for about 10% fewer landings, and weight 2 to 2% for about
+ * 13% fewer (packages/bench/results/2026-10-13-papers, Q4). How long a take waits for links it has
+ * not cached.
+ */
+const IMPORT_WAIT_MS = 150;
 
 const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS colony (
@@ -468,6 +478,12 @@ export class ColonyDO extends DurableObject<Env> {
   /** Co-change neighbors of footprint files, cached from TrunkDO.neighbors (fails open). */
   private readonly cochange = new NeighborCache(
     (paths) => this.trunkStub().neighbors(paths, COCHANGE_K) as unknown as Promise<Record<Path, Neighbor[]>>,
+  );
+  /** Direct imports and importers of footprint files as weight-1 neighbors, cached from TrunkDO.importLinks (fails open; read only when FT_IMPORT_WEIGHT is on). */
+  private readonly imports = new NeighborCache((paths) =>
+    (this.trunkStub().importLinks(paths) as unknown as Promise<Record<Path, ImportLinks>>).then(importNeighbors, (err: unknown) => {
+      throw new Error(`TrunkDO.importLinks failed: ${errorText(err)}`);
+    }),
   );
   /** The event record for replays: everything published, written in batches (see publish, recordEvents). */
   private readonly recorder = new EventRecorder(
@@ -1379,12 +1395,17 @@ export class ColonyDO extends DurableObject<Env> {
     }
     // Files that change together wire together: read the claims on each footprint file's co-change neighbors too.
     const cochangeWeight = this.cochangeWeight();
+    const importing = this.importsFor(intents, now);
     const neighbors = cochangeWeight > 0 ? await this.cochange.get(intents.flatMap((i) => i.footprint), now, COCHANGE_WAIT_MS) : new Map<Path, Neighbor[]>();
     for (const nbs of neighbors.values()) for (const nb of nbs) want(regionOf(nb.path, depth), nb.path);
+    // Files that import each other: the claims on each footprint file's direct imports and importers too.
+    const imports = await importing;
+    for (const nbs of imports.neighbors.values()) for (const nb of nbs) want(regionOf(nb.path, depth), nb.path);
     const readings = await this.readRegions(wanted);
     const views = this.fieldViews(agentId, readings, depth);
     const claimOn = claimLookup(views, (p) => regionOf(p, depth), CLAIM_STRENGTH);
     const neighborsOf = (p: Path): Neighbor[] | undefined => neighbors.get(p);
+    const importLinksOf = (p: Path): Neighbor[] | undefined => imports.neighbors.get(p);
     const candidates: Candidate[] = intents.map((intent, idx) => {
       let rep = 0;
       // Lateral inhibition: other agents' live claims on the intent's own files, kept apart from the
@@ -1411,6 +1432,7 @@ export class ColonyDO extends DurableObject<Env> {
         if (!view.open) open = false;
       }
       if (neighbors.size > 0) rep += cochangeWeight * neighborRepulsion(intent.footprint, neighborsOf, claimOn);
+      if (imports.neighbors.size > 0) rep += imports.weight * neighborRepulsion(intent.footprint, importLinksOf, claimOn);
       return { intent, region: primary, repulsion: rep, directClaim: direct, admissionOpen: open };
     });
 
@@ -2877,6 +2899,19 @@ export class ColonyDO extends DurableObject<Env> {
     const raw = (this.env as unknown as { FT_COCHANGE_WEIGHT?: string }).FT_COCHANGE_WEIGHT;
     const w = raw === undefined || raw === "" ? Number.NaN : Number(raw);
     return Number.isFinite(w) && w >= 0 ? w : COCHANGE_WEIGHT;
+  }
+
+  /**
+   * Import repulsion for one take: its weight, FT_IMPORT_WEIGHT when set to a positive number
+   * (absent, 0 or anything else turns it off, and then nothing is fetched), and the direct imports
+   * and importers of the candidates' files from TrunkDO's import index, through a short-lived cache
+   * that waits at most IMPORT_WAIT_MS for what it has not cached and fails open.
+   */
+  private async importsFor(intents: Intent[], now: number): Promise<{ weight: number; neighbors: Map<Path, Neighbor[]> }> {
+    const raw = (this.env as unknown as { FT_IMPORT_WEIGHT?: string | number }).FT_IMPORT_WEIGHT;
+    const weight = Number(raw ?? 0);
+    if (!(Number.isFinite(weight) && weight > 0)) return { weight: 0, neighbors: new Map() };
+    return { weight, neighbors: await this.imports.get(intents.flatMap((i) => i.footprint), now, IMPORT_WAIT_MS) };
   }
 
   /**

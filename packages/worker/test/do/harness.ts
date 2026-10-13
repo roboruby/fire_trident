@@ -36,6 +36,10 @@ interface TrunkState {
   neighbors?: Record<Path, Array<{ path: Path; weight: number }>> | "fail";
   /** neighbors() calls, for asserting caching. */
   neighborCalls?: number;
+  /** Import links answered by importLinks() (none by default), or "fail" to make it throw. */
+  imports?: Record<Path, { imports: Path[]; importers: Path[] }> | "fail";
+  /** importLinks() calls, for asserting caching and that a weight of 0 never asks. */
+  importCalls?: number;
   /** Lineage note fields added after landing (annotate), by landing id. */
   annotations?: Record<Id, { certification?: NoteCertification }>;
   /** certifySnapshot() calls, for asserting how often certification read trunk. */
@@ -165,6 +169,27 @@ export class TrunkDO extends DurableObject<Env> {
     for (const p of paths) {
       const nb = s.neighbors?.[p];
       if (nb && nb.length > 0) out[p] = nb.slice(0, k);
+    }
+    return out;
+  }
+
+  /** Test helper: the import links importLinks() answers ("fail" makes it throw). */
+  async setImports(table: Record<Path, { imports: Path[]; importers: Path[] }> | "fail"): Promise<void> {
+    const s = await this.load();
+    s.imports = table;
+    await this.save(s);
+  }
+
+  /** Import links, as the real TrunkDO answers (paths with neither imports nor importers left out). */
+  async importLinks(paths: Path[]): Promise<Record<Path, { imports: Path[]; importers: Path[] }>> {
+    const s = await this.load();
+    s.importCalls = (s.importCalls ?? 0) + 1;
+    await this.save(s);
+    if (s.imports === "fail") throw new Error("simulated import links failure");
+    const out: Record<Path, { imports: Path[]; importers: Path[] }> = {};
+    for (const p of paths) {
+      const l = s.imports?.[p];
+      if (l && l.imports.length + l.importers.length > 0) out[p] = l;
     }
     return out;
   }

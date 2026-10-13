@@ -45,6 +45,7 @@ import { BoundedMap, applyTreeChangesDeferred, writePending, type PendingObject 
 import { commitContent, objectId } from "./objects.ts";
 import { pushPack } from "./push.ts";
 import { CoChangeStore, mineHistory, type CoChangeStats, type Neighbor } from "./cochange.ts";
+import { IMPORT_LINKS_MAX, ImportIndex, markLanded, type ImportLinks } from "./imports.ts";
 import { planCycle, resultsFor, uniqueProposals, type LandResult, type Outcome, type PlanProposal, type Returned } from "./plan.ts";
 import { IMPORT_SCAN, SCRIPT_FILE, importedDeletions, importedText, movedText, planRevert, relativeSpecifiers, type RevertResult } from "./revert.ts";
 import { durableFs } from "../artifacts/workspace.ts";
@@ -184,6 +185,8 @@ export class TrunkDO extends DurableObject<Env> {
   /** Co-change map (trunk/cochange.ts), and its history mining run while one is in flight. */
   private cochangeStore: CoChangeStore | null = null;
   private mining: Promise<void> | null = null;
+  /** Import index (trunk/imports.ts), created on its first read. */
+  private importStore: ImportIndex | null = null;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -679,6 +682,24 @@ export class TrunkDO extends DurableObject<Env> {
   async cochangeStats(): Promise<CoChangeStats & { mining: boolean }> {
     this.state();
     return { ...this.cochange().stats(), mining: this.mining !== null };
+  }
+
+  /**
+   * For each path, its direct relative imports and the trunk script files that import it (each
+   * sorted, at most `max`), from the import index: built from the trunk index on the first call and
+   * brought up to date with the landings since before each answer. Paths with neither are left out.
+   * Import-aware take() reads it (ColonyDO, FT_IMPORT_WEIGHT); nothing else builds the index.
+   */
+  async importLinks(paths: Path[], max = IMPORT_LINKS_MAX): Promise<Record<Path, ImportLinks>> {
+    const st = this.state();
+    const index = this.importIndex();
+    try {
+      await index.sync({ head: () => this.meta("trunk_sha"), read: (blob) => this.blobBytes(blob), label: st.colonyId });
+    } catch (e) {
+      // Answer from the index as it stands; the next call syncs again.
+      console.error(`import index sync failed: ${errorText(e)}`);
+    }
+    return index.links(Array.isArray(paths) ? paths : [], max);
   }
 
   /** Retries a failed notes push. */
@@ -1332,6 +1353,7 @@ export class TrunkDO extends DurableObject<Env> {
       if (c.blob === null) this.sql.exec(`DELETE FROM ft_files WHERE path = ?`, path);
       else this.sql.exec(`INSERT OR REPLACE INTO ft_files (path, blob, size, mode) VALUES (?, ?, ?, ?)`, path, c.blob, c.size, c.mode);
     }
+    markLanded(this.sql, landing.parentSha, landing.trunkSha, changes);
     const seq = this.sql
       .exec<{ seq: number }>(
         `INSERT INTO ft_landings (id, trunk_sha, parent_sha, at, data) VALUES (?, ?, ?, ?, ?) RETURNING seq`,
@@ -1578,6 +1600,16 @@ export class TrunkDO extends DurableObject<Env> {
     console.log(
       JSON.stringify({ ft: "cochange-mined", colonyId: st.colonyId, head: st.trunkSha, listed: mined.listed, learned, skipped: mined.skipped, truncated: mined.truncated, reads: mined.reads, ms: Date.now() - t0 }),
     );
+  }
+
+  // -------------------------------------------------------------------------
+  // Import index
+  // -------------------------------------------------------------------------
+
+  /** The import index (its tables are created here, outside any landing transaction). */
+  private importIndex(): ImportIndex {
+    if (!this.importStore) this.importStore = new ImportIndex(this.sql, (fn) => this.ctx.storage.transactionSync(fn));
+    return this.importStore;
   }
 
   // -------------------------------------------------------------------------
