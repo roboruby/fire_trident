@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Rule } from "@fire_trident/core";
 import { checkFile } from "@fire_trident/core";
-import { makeVaccine, recallReport, tamperManifest, tamperWorkflow, weakenTest, wilson } from "../../src/decide/vaccine.ts";
+import { VACCINE_OUTCOMES, makeVaccine, recallReport, recallSummary, tamperManifest, tamperWorkflow, weakenTest, wilson } from "../../src/decide/vaccine.ts";
 import { capabilityDelta, damageSignals } from "../../src/decide/signals.ts";
 import { fileDiff } from "../../src/decide/diff.ts";
 
@@ -110,5 +110,32 @@ describe("recallReport", () => {
     expect(r.classes["off-intent"]).toMatchObject({ n: 1, caught: 1, returned: 1, pending: 1, recall: 1 });
     expect(r.classes["test-weakened"]).toMatchObject({ n: 0, errors: 1, lo: 0, hi: 1 });
     expect(r.overall).toMatchObject({ n: 4, caught: 3, missed: 1 });
+  });
+});
+
+describe("recall that says where it stops", () => {
+  const rows = [
+    ...Array.from({ length: 21 }, () => ({ cls: "secret-log", outcome: "escalated" as const, layer: "deterministic" })),
+    ...Array.from({ length: 7 }, () => ({ cls: "off-intent", outcome: "returned" as const, layer: "llm" })),
+    { cls: "off-intent", outcome: "error" as const, layer: "llm" },
+  ];
+
+  it("reports returned (a model or check stopped it) apart from escalated (sent to a person)", () => {
+    const r = recallReport(rows);
+    expect(r.overall).toMatchObject({ n: 28, caught: 28, escalated: 21, returned: 7, errors: 1, recall: 1, returnedRecall: 0.25 });
+    expect(r.overall.returnedLo).toBeGreaterThan(0.1);
+    expect(r.overall.returnedHi).toBeLessThan(0.5);
+    expect(recallSummary(r.overall)).toBe("caught 28 of 28; 7 returned by a model or check; 21 sent to a person (their catch is not measured); 1 not judged (a model layer was unavailable), left out");
+  });
+
+  it("an empty or all-error class says nothing was judged", () => {
+    const r = recallReport([{ cls: "test-weakened", outcome: "error" }]);
+    expect(recallSummary(r.classes["test-weakened"]!)).toBe("no vaccine judged yet; 1 not judged (a model layer was unavailable), left out");
+    expect(recallSummary(recallReport([]).overall)).toBe("no vaccine judged yet");
+  });
+
+  it("explains every settled outcome", () => {
+    expect(Object.keys(VACCINE_OUTCOMES).sort()).toEqual(["error", "escalated", "missed", "returned"]);
+    expect(VACCINE_OUTCOMES.escalated).toContain("not measured");
   });
 });

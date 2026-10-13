@@ -3,12 +3,15 @@ import { antibodyAllows, antibodyMatches } from "./antibodies.ts";
 import type { DangerClass } from "./danger.ts";
 import type { DecidePolicy, DetectorState } from "./policy.ts";
 import { DEFAULT_POLICY, mergePolicy, probationState } from "./policy.ts";
+import { parseReviewView, type ReviewView } from "./review.ts";
 import type { VaccineOutcome } from "./vaccine.ts";
 
 /**
  * The Decide prong's tables in the colony's SQLite: policy, per-proposal outcomes (for the alert
- * budget, earned autonomy and the review order), antibodies, detector probation, autonomy
- * revocations and the vaccine registry. Synchronous; created on first use.
+ * budget, earned autonomy and the review order), antibodies (with the recurrences they caught),
+ * detector probation, autonomy revocations, the vaccine registry, what a person sees of each
+ * escalated proposal, and the intents a security finding put on probation. Synchronous; created
+ * on first use, and only ever extended additively.
  */
 
 const SCHEMA = [
@@ -30,10 +33,20 @@ const SCHEMA = [
     intent_id TEXT PRIMARY KEY, proposal_id TEXT, cls TEXT NOT NULL, batch TEXT NOT NULL, created_at INTEGER NOT NULL,
     outcome TEXT NOT NULL DEFAULT 'pending', layer TEXT, reason TEXT, decided_at INTEGER)`,
   "CREATE INDEX IF NOT EXISTS vaccines_by_proposal ON vaccines(proposal_id)",
+  "CREATE TABLE IF NOT EXISTS decide_review (proposal_id TEXT PRIMARY KEY, view TEXT NOT NULL, at INTEGER NOT NULL)",
+  "CREATE TABLE IF NOT EXISTS decide_intents (intent_id TEXT PRIMARY KEY, security_findings INTEGER NOT NULL DEFAULT 0, classes TEXT NOT NULL DEFAULT '[]', at INTEGER NOT NULL)",
+];
+
+/** Columns added to tables that already exist in production (added only when missing). */
+const COLUMNS: ReadonlyArray<readonly [table: string, column: string, decl: string]> = [
+  ["antibodies", "recurrences", "INTEGER NOT NULL DEFAULT 0"],
+  ["antibodies", "last_recurrence", "TEXT"],
 ];
 
 /** Outcome rows kept with their compact reflex state (older ones drop the state). */
 const KEEP_STATES = 2_000;
+/** Review views kept for proposals a person already decided (waiting ones are always kept). */
+const KEEP_REVIEWS = 500;
 
 /** The standard Clef detectors. */
 export const CLEF_DETECTORS = ["clef:needs_human", "clef:touches_sensitive", "clef:off_intent"] as const;
@@ -47,12 +60,36 @@ export interface DetectorStats {
   state: DetectorState;
 }
 
-/** An antibody with its lifecycle state and where it lives in trunk. */
+/** An antibody with its lifecycle state, where it lives in trunk, and the rejections it caught again. */
 export interface StoredAntibody {
   antibody: Antibody;
   state: DetectorState;
   path: string | null;
   landingId: string | null;
+  /** Rejected proposals it had already caught (counted instead of minting a near-copy). */
+  recurrences: number;
+  /** The latest of those proposals. */
+  lastRecurrence: string | null;
+}
+
+/** Why an intent is on probation: its security findings (returns and escalations) and their classes. */
+export interface SecurityProbation {
+  findings: number;
+  classes: string[];
+  at: number;
+}
+
+type AntibodyDbRow = { data: string; state: string; path: string | null; landing_id: string | null; recurrences: number | null; last_recurrence: string | null };
+
+function toStored(r: AntibodyDbRow): StoredAntibody {
+  return {
+    antibody: JSON.parse(r.data) as Antibody,
+    state: asState(r.state),
+    path: r.path,
+    landingId: r.landing_id,
+    recurrences: typeof r.recurrences === "number" ? r.recurrences : 0,
+    lastRecurrence: r.last_recurrence ?? null,
+  };
 }
 
 /** One vaccine registry row. */
@@ -86,6 +123,10 @@ export interface OutcomeRow {
 export class DecideStore {
   constructor(private readonly sql: SqlStorage) {
     for (const stmt of SCHEMA) sql.exec(stmt);
+    for (const [table, column, decl] of COLUMNS) {
+      const has = sql.exec<{ name: string }>(`PRAGMA table_info(${table})`).toArray().some((c) => c.name === column);
+      if (!has) sql.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${decl}`);
+    }
   }
 
   // -- policy ---------------------------------------------------------------
@@ -303,16 +344,18 @@ export class DecideStore {
 
   /** One antibody. */
   antibody(id: string): StoredAntibody | null {
-    const r = this.sql.exec<{ data: string; state: string; path: string | null; landing_id: string | null }>("SELECT data, state, path, landing_id FROM antibodies WHERE id = ?", id).toArray()[0];
-    return r ? { antibody: JSON.parse(r.data) as Antibody, state: asState(r.state), path: r.path, landingId: r.landing_id } : null;
+    const r = this.sql.exec<AntibodyDbRow>("SELECT data, state, path, landing_id, recurrences, last_recurrence FROM antibodies WHERE id = ?", id).toArray()[0];
+    return r ? toStored(r) : null;
   }
 
   /** Every antibody, newest first. */
   antibodies(): StoredAntibody[] {
-    return this.sql
-      .exec<{ data: string; state: string; path: string | null; landing_id: string | null }>("SELECT data, state, path, landing_id FROM antibodies ORDER BY created_at DESC")
-      .toArray()
-      .map((r) => ({ antibody: JSON.parse(r.data) as Antibody, state: asState(r.state), path: r.path, landingId: r.landing_id }));
+    return this.sql.exec<AntibodyDbRow>("SELECT data, state, path, landing_id, recurrences, last_recurrence FROM antibodies ORDER BY created_at DESC").toArray().map(toStored);
+  }
+
+  /** A person rejected a proposal this antibody had already caught: count the recurrence on it. */
+  recordRecurrence(id: string, proposalId: Id): void {
+    this.sql.exec("UPDATE antibodies SET recurrences = COALESCE(recurrences, 0) + 1, last_recurrence = ? WHERE id = ?", proposalId, id);
   }
 
   /** Antibodies (not off) whose matcher applies to this change, newest first, at most `limit`. */
@@ -371,6 +414,61 @@ export class DecideStore {
   /** Every vaccine, newest first (at most `limit`). */
   vaccines(limit = 5_000): VaccineRow[] {
     return this.sql.exec<VaccineDbRow>("SELECT * FROM vaccines ORDER BY created_at DESC LIMIT ?", limit).toArray().map(toVaccine);
+  }
+
+  // -- review views ---------------------------------------------------------------------
+
+  /**
+   * Store what a person sees of an escalated proposal (decide/review.ts). Views of proposals no
+   * longer waiting for a person are pruned past the newest KEEP_REVIEWS; waiting ones are kept.
+   */
+  putReview(proposalId: Id, view: ReviewView, at: number): void {
+    this.sql.exec(
+      "INSERT INTO decide_review (proposal_id, view, at) VALUES (?, ?, ?) ON CONFLICT(proposal_id) DO UPDATE SET view = excluded.view, at = excluded.at",
+      proposalId,
+      JSON.stringify(view),
+      at,
+    );
+    try {
+      this.sql.exec(
+        `DELETE FROM decide_review WHERE proposal_id IN (
+           SELECT r.proposal_id FROM decide_review r
+           WHERE NOT EXISTS (SELECT 1 FROM proposals p WHERE p.id = r.proposal_id AND p.status = 'escalated')
+           ORDER BY r.at DESC LIMIT -1 OFFSET ?)`,
+        KEEP_REVIEWS,
+      );
+    } catch (err) {
+      // Without the colony's proposals table nothing is pruned; the view is stored all the same.
+      console.warn(`decide_review prune skipped: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  /** What a person sees of an escalated proposal; null when none was stored (or it cannot be read). */
+  reviewView(proposalId: Id): ReviewView | null {
+    const r = this.sql.exec<{ view: string }>("SELECT view FROM decide_review WHERE proposal_id = ?", proposalId).toArray()[0];
+    return r ? parseReviewView(r.view) : null;
+  }
+
+  // -- intents on probation -------------------------------------------------------------
+
+  /** An intent's security findings, or null when it has none (then its proposals take the normal path). */
+  securityProbation(intentId: Id): SecurityProbation | null {
+    const r = this.sql.exec<{ security_findings: number; classes: string; at: number }>("SELECT security_findings, classes, at FROM decide_intents WHERE intent_id = ?", intentId).toArray()[0];
+    if (!r || !(r.security_findings > 0)) return null;
+    return { findings: r.security_findings, classes: parseList(r.classes), at: r.at };
+  }
+
+  /** A security finding sent a proposal for this intent back or to a person: its next proposals go to a person instead of a model. */
+  markSecurityFinding(intentId: Id, classes: readonly string[], at: number): void {
+    const was = this.securityProbation(intentId);
+    const merged = [...new Set([...(was?.classes ?? []), ...classes])].sort().slice(0, 20);
+    this.sql.exec(
+      `INSERT INTO decide_intents (intent_id, security_findings, classes, at) VALUES (?, 1, ?, ?)
+       ON CONFLICT(intent_id) DO UPDATE SET security_findings = decide_intents.security_findings + 1, classes = excluded.classes, at = excluded.at`,
+      intentId,
+      JSON.stringify(merged),
+      at,
+    );
   }
 }
 

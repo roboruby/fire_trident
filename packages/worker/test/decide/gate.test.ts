@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { gate, noulConfidence, type GateInput, type ReflexSignals, type SecondOpinion } from "../../src/decide/gate.ts";
+import { agentReason, gate, noulConfidence, type GateInput, type ReflexSignals, type SecondOpinion } from "../../src/decide/gate.ts";
 import { DEFAULT_POLICY } from "../../src/decide/policy.ts";
 import type { DamageSignals } from "../../src/decide/signals.ts";
 
@@ -14,6 +14,7 @@ function input(over: Partial<GateInput> = {}): GateInput {
     damage: NONE,
     reflex: CLEAN,
     autonomy: false,
+    whyBy: "person",
     alerts: { used: 0, max: 30 },
     detectors: {},
     policy: DEFAULT_POLICY,
@@ -238,5 +239,150 @@ describe("gate: antibodies, probation and the alert budget", () => {
   it("over the alert budget, high-risk escalations still reach a human", () => {
     const v = gate(input({ reflex: SECRET, damage: LOGS_SECRET, alerts: { used: 31, max: 30 } }));
     expect(v.action).toBe("escalate");
+  });
+});
+
+describe("gate: earned autonomy covers only changes like the ones that earned it", () => {
+  it("R3 never lands an intent an agent declared or a repair certification asked for", () => {
+    for (const whyBy of ["agent", "certification"] as const) {
+      const v = gate(input({ autonomy: true, whyBy }));
+      expect(v).toMatchObject({ action: "consult", rule: "R4 consult" });
+      expect(v.reasons[0]).toContain("earned autonomy does not cover an intent written by");
+    }
+    expect(gate(input({ autonomy: true, whyBy: "rule" })).action).toBe("land");
+    // Unknown author: no autonomy landing.
+    expect(gate(input({ autonomy: true, whyBy: undefined })).action).toBe("consult");
+  });
+
+  it("R3 never lands when the reflex saw only part of the change", () => {
+    const v = gate(input({ autonomy: true, coverage: { reflex: { complete: false, seen: "the reflex saw 20 of 31 files" } } }));
+    expect(v).toMatchObject({ action: "consult" });
+    expect(v.reasons[0]).toContain("the reflex saw 20 of 31 files");
+    expect(gate(input({ autonomy: true, coverage: { reflex: { complete: true, seen: "the reflex saw every changed line (2 files)" } } })).action).toBe("land");
+  });
+});
+
+describe("gate: an approval counts only for what its layer saw", () => {
+  const cut = { complete: false, seen: "the second opinion saw 3 of 4 files, 1 only in part (src/big.ts)" };
+
+  it("L5 sends a System 2 approval of a cut view to a person, with the reason", () => {
+    const v = gate(input({ llm: opinion(), coverage: { llm: cut } }));
+    expect(v).toMatchObject({ action: "escalate", layer: "llm", rule: "L5 too large", detectors: ["review:too-large"] });
+    expect(v.reasons[0]).toBe("too large for model review: the second opinion saw 3 of 4 files, 1 only in part (src/big.ts), so its approval does not count and a person decides");
+  });
+
+  it("the alert budget cannot send a too-large change back to loop", () => {
+    expect(gate(input({ llm: opinion(), coverage: { llm: cut }, alerts: { used: 99, max: 30 } })).action).toBe("escalate");
+  });
+
+  it("small diffs behave as before: a complete view lands on L3, and returns are unchanged", () => {
+    expect(gate(input({ llm: opinion(), coverage: { llm: { complete: true, seen: "the second opinion saw every changed line (2 files)" } } })).rule).toBe("L3 innate+llm");
+    expect(gate(input({ llm: opinion({ verdict: "return", reason: "wrong" }), coverage: { llm: cut } })).action).toBe("return");
+  });
+});
+
+describe("gate: after a security return, the intent's next proposal goes to a person", () => {
+  const probation = { classes: ["capability"] };
+  const inconclusive = { verdict: "inconclusive" as const, reasons: ["changes more than import specifiers"] };
+  const pass = { verdict: "pass" as const, reasons: ["proven"] };
+
+  it("P2 escalates instead of screening with a model, past the alert budget", () => {
+    const v = gate(input({ reflex: undefined, mechanical: inconclusive, probation, alerts: { used: 99, max: 30 } }));
+    expect(v).toMatchObject({ action: "escalate", layer: "deterministic", rule: "P2 security finding", risk: 3, detectors: ["intent:security-finding"] });
+    expect(v.reasons[0]).toContain("had a security finding (capability)");
+  });
+
+  it("a change failing its checks goes back first; a proof needs no model and still lands", () => {
+    expect(gate(input({ reflex: undefined, mechanical: inconclusive, probation, innate: { ok: false, failures: ["adds 1 violation"] }, damage: LOGS_SECRET }))).toMatchObject({
+      action: "return",
+      rule: "P2 probation+innate",
+    });
+    expect(gate(input({ reflex: undefined, mechanical: pass, probation, antibodies: 0 })).rule).toBe("D3 innate+proof");
+  });
+});
+
+describe("gate: security returns tell the agent only the class", () => {
+  const capability = { mustHuman: ["capability (network) at src/a.ts:3: await fetch('https://x.example/u')"], signals: [] };
+  const crypto = { mustHuman: [], signals: ["crypto (primitive) at src/id.ts:2: const n = crypto.getRandomValues(buf)"] };
+
+  it("P0 returns with the danger classes and the checks to fix; the details stay in the reasons", () => {
+    const v = gate(input({ reflex: undefined, danger: capability, innate: { ok: false, failures: ["src/a.ts adds 1 violation of rule r1"] } }));
+    expect(v).toMatchObject({ action: "return", rule: "P0 danger+innate", security: ["capability"], fix: ["innate: src/a.ts adds 1 violation of rule r1"] });
+    expect(v.reasons.join(" ")).toContain("fetch(");
+    const told = agentReason(v, capability);
+    expect(told).toBe(
+      "returned for review: security (capability); details are with the reviewers, and a person reviews this intent's next proposal. Fix these checks first: innate: src/a.ts adds 1 violation of rule r1",
+    );
+    expect(told).not.toContain("fetch");
+  });
+
+  it("System 2 flagging sensitive code or real damage is a security return", () => {
+    expect(gate(input({ llm: opinion({ verdict: "return", sensitive: true, reason: "reads the admin token" }) })).security).toEqual(["sensitive"]);
+    const v = gate(input({ llm: opinion({ verdict: "escalate", needsHuman: 0.9, reason: "opens a backdoor" }) }));
+    expect(v).toMatchObject({ action: "return", security: ["damage"] });
+    expect(agentReason(v)).not.toContain("backdoor");
+  });
+
+  it("an ordinary return keeps the model's sentence, with danger excerpts reduced to their class", () => {
+    const v = gate(input({ danger: crypto, llm: opinion({ verdict: "return", reason: "the slug is one character short" }) }));
+    expect(v.security).toBeUndefined();
+    const told = agentReason(v, crypto);
+    expect(told).toContain("the slug is one character short");
+    expect(told).toContain("danger: crypto");
+    expect(told).not.toContain("getRandomValues");
+  });
+
+  it("an unavailable second opinion defers the change without putting the intent on probation", () => {
+    const alarmed = gate(input({ reflex: { ...CLEAN, sensitive: 0.95 }, llm: null }));
+    expect(alarmed).toMatchObject({ action: "return", detectors: ["clef:touches_sensitive"] });
+    expect(alarmed.security).toBeUndefined();
+    const v = gate(input({ danger: crypto, llm: null }));
+    expect(v.security).toBeUndefined();
+    expect(agentReason(v, crypto)).toBe("llm: second opinion unavailable; one confirmation only; damage without a detector: danger: crypto");
+  });
+
+  it("an escalation over budget goes back as a security return when its damage is security damage", () => {
+    const low: ReflexSignals = { ...SECRET, risk: 1.2 };
+    expect(gate(input({ reflex: low, damage: LOGS_SECRET, alerts: { used: 30, max: 30 } })).security).toEqual(["secret", "sensitive"]);
+    const scope: ReflexSignals = { ...CLEAN, needsHuman: 0.97, risk: 0.5 };
+    const v = gate(input({ reflex: scope, damage: { ...NONE, residual: ["README.md"] }, alerts: { used: 30, max: 30 } }));
+    expect(v).toMatchObject({ action: "return", rule: "R1 detector+damage+budget" });
+    expect(v.security).toBeUndefined();
+  });
+});
+
+describe("gate: antibody returns", () => {
+  const pass = { verdict: "pass" as const, reasons: ["proven"] };
+  const question = "Does this change rename an exported function without updating its callers?";
+
+  it("name the antibody's question so the agent knows which check it failed", () => {
+    const v = gate(input({ reflex: { ...CLEAN, antibodies: [{ id: "ab_1", p: 0.95, threshold: 0.8, state: "active", question }] }, mechanical: pass, antibodies: 1 }));
+    expect(v).toMatchObject({ action: "return", rule: "M1 proof+antibody" });
+    expect(v.security).toBeUndefined();
+    expect(agentReason(v)).toContain(question);
+  });
+
+  it("an antibody learned from a security finding returns only the class", () => {
+    const v = gate(input({ reflex: { ...CLEAN, antibodies: [{ id: "ab_2", p: 0.95, threshold: 0.8, state: "active", question: "Does it log a token?", security: true }] }, mechanical: pass, antibodies: 1 }));
+    expect(v.security).toEqual(["antibody"]);
+    expect(agentReason(v)).not.toContain("log a token");
+  });
+});
+
+describe("gate: escalations driven by a security finding say so", () => {
+  it("a capped list of danger labels adds no class of its own", () => {
+    const many = { mustHuman: ["auth (bearer-scheme) at src/a.ts:4: …", "and 3 more"], signals: [] };
+    const v = gate(input({ reflex: undefined, danger: many, innate: { ok: false, failures: ["x"] } }));
+    expect(v.security).toEqual(["auth"]);
+    expect(agentReason(v, many)).toContain("security (auth)");
+  });
+
+  it("P1 carries its danger classes; an escalation with only scope damage carries none", () => {
+    const auth = { mustHuman: ["auth (bearer-scheme) at src/routes/links.ts:4: …"], signals: [] };
+    expect(gate(input({ reflex: undefined, danger: auth })).security).toEqual(["auth"]);
+    expect(gate(input({ reflex: SECRET, damage: LOGS_SECRET })).security).toEqual(["secret", "sensitive"]);
+    const scope = gate(input({ reflex: { ...CLEAN, needsHuman: 0.97 }, damage: { ...NONE, residual: ["README.md"] } }));
+    expect(scope).toMatchObject({ action: "escalate", rule: "R1 detector+damage" });
+    expect(scope.security).toBeUndefined();
   });
 });

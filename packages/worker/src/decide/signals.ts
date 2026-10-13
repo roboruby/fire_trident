@@ -87,6 +87,68 @@ function capabilityImports(path: Path, text: string): Set<string> {
 const LOGGING = /\bconsole\.(?:log|info|warn|error|debug|trace)\s*\(|\blogger\.\w+\s*\(|\bprint(?:ln)?\s*\(/;
 const SECRETISH = /\bprocess\.env\b|\bDeno\.env\b|\bimport\.meta\.env\b|\b[A-Z][A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD|API_KEY|PRIVATE_KEY|ACCESS_KEY)\b|\b(?:token|secret|password|apiKey|api_key|credentials?)\b/i;
 const ASSERTION = /\bexpect\s*\(|\bassert(?:\.\w+)?\s*\(|\.should\b/g;
+const SCRIPT = /\.[cm]?[jt]sx?$/i;
+/** Comment lines outside JavaScript and TypeScript (`#`, SQL and HTML comments). */
+const COMMENT_LINE = /^\s*(?:\/\/|\/\*|\*|#(?!!)|<!--|--\s)/;
+/** Characters that can start a comment or a string. */
+const SPECIAL = /[/'"`]/g;
+
+/**
+ * `text` with every JavaScript or TypeScript comment blanked to spaces (line breaks kept), so
+ * offsets and line numbers stay put. Strings and template literals are skipped over; a regex
+ * literal is read as code, so a `//` inside one blanks the rest of its line.
+ */
+export function blankComments(text: string): string {
+  const blank = (s: string): string => s.replace(/[^\r\n]/g, " ");
+  const parts: string[] = [];
+  let i = 0;
+  while (i < text.length) {
+    SPECIAL.lastIndex = i;
+    const m = SPECIAL.exec(text);
+    if (!m) {
+      parts.push(text.slice(i));
+      break;
+    }
+    const k = m.index;
+    parts.push(text.slice(i, k));
+    const c = text[k]!;
+    if (c === "/") {
+      const next = text[k + 1];
+      if (next === "/") {
+        let j = k + 2;
+        while (j < text.length && text[j] !== "\n" && text[j] !== "\r") j++;
+        parts.push(blank(text.slice(k, j)));
+        i = j;
+      } else if (next === "*") {
+        const close = text.indexOf("*/", k + 2);
+        const j = close < 0 ? text.length : close + 2;
+        parts.push(blank(text.slice(k, j)));
+        i = j;
+      } else {
+        parts.push(c);
+        i = k + 1;
+      }
+      continue;
+    }
+    // A string: to its closing quote; a quote left open ends at the line break (templates span lines).
+    let j = k + 1;
+    while (j < text.length && text[j] !== c) {
+      if (text[j] === "\\") j += 2;
+      else if (c !== "`" && (text[j] === "\n" || text[j] === "\r")) break;
+      else j++;
+    }
+    const end = j < text.length && text[j] === c ? j + 1 : Math.min(j, text.length);
+    parts.push(text.slice(k, end));
+    i = end;
+  }
+  return parts.join("");
+}
+
+/** Assertions in a file's code (`expect(`, `assert(`, `assert.x(`, `.should`); commented-out ones do not count. */
+export function assertionCount(path: Path, text: string): number {
+  const code = SCRIPT.test(path) ? blankComments(text) : text.split(/\r\n|\r|\n/).filter((l) => !COMMENT_LINE.test(l)).join("\n");
+  return count(ASSERTION, code);
+}
 
 /**
  * Capabilities `after` has more of than `before` for one file (a rename such as 'fs' → 'node:fs'
@@ -106,7 +168,7 @@ export function capabilityDelta(path: Path, before: string | null, after: string
   const now = [...capabilityImports(path, after)].filter((m) => !was.has(m));
   if (now.length > 0) hits.push({ id: "import", label: `imports ${now.join(", ")}`, path });
   if (added.some((l) => LOGGING.test(l) && SECRETISH.test(l))) hits.push({ id: "secret-log", label: "logs a secret or credential", path });
-  if (test && count(ASSERTION, after) < count(ASSERTION, old)) hits.push({ id: "assertions", label: "removes test assertions", path });
+  if (test && assertionCount(path, after) < assertionCount(path, old)) hits.push({ id: "assertions", label: "removes test assertions", path });
   return hits;
 }
 
