@@ -1,6 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 import { landingMessage, newId, regionOf, revalidationCandidate, revalidationEnabled, serializeNote, validateProposal } from "@fire_trident/core";
-import type { AgentKind, ColonyEvent, ColonySnapshot, Decision, ExportSurface, FileVersion, Id, Landing, LineageNote, OccResult, Path, Proposal, RepoRef, Revalidated, Sha } from "@fire_trident/core";
+import type { AgentKind, ColonyEvent, ColonySnapshot, Decision, ExportSurface, FileVersion, Id, Landing, LineageNote, OccResult, Path, Proposal, RepoRef, Revalidated, Sha, TrunkPublish } from "@fire_trident/core";
 import type { TreeEntry } from "isomorphic-git";
 import type { Env } from "../env.ts";
 import {
@@ -54,6 +54,7 @@ import { TRUNK_NAMESPACE, bindingFor } from "../artifacts/shards.ts";
 import { noteAlternatives, type ContestAlternative } from "../decide/contest.ts";
 import type { DirectionInfo } from "../colony/direction.ts";
 import { DIRECTION_TABLE, FENCE_WAIT_MS, directionReturns, fenceAnswer, mergeDirection, parseDirection, pushDelayMs, settlesWithin, type FenceAnswer } from "./direction.ts";
+import { PUBLISH_BOUND, addedObjects, asyncPublishEnabled, publishBackoffMs, publishChain, settlePublish, withinBound, type PublishBound, type RecordedCommit } from "./publish.ts";
 
 export type { LandResult, Returned } from "./plan.ts";
 
@@ -83,6 +84,8 @@ const SURFACE_BYTES = 8 * 1024 * 1024;
 /** Recent cycle summaries kept for stats(). */
 const CYCLE_LOG_KEEP = 50;
 const STAGING_REF = "refs/heads/ft-landing";
+/** Local ref the publish loop's regular push sends from (asynchronous publishing). */
+const PUBLISH_REF = "refs/heads/ft-publish";
 const MAIN_REF = "refs/heads/main";
 /** Moves only to trunk commits whose own tests passed (trunk certification). */
 const CERTIFIED_REF = "refs/heads/certified";
@@ -143,8 +146,14 @@ export interface CycleStat {
   revalidated?: number;
   /** Oldest request's time in the queue before the cycle started. */
   waitMs: number;
-  /** Time per phase: recover, screen, pull, assumptions (revalidation on), deletions (deletion guard on, cycles that delete files), plan, build, push, finalize. */
+  /**
+   * Time per phase: recover, publishWait (asynchronous publishing, or commits left to publish), screen, pull, assumptions
+   * (revalidation on), deletions (deletion guard on, cycles that delete files), plan, build, push (not with asynchronous
+   * publishing), finalize.
+   */
   ms: Record<string, number>;
+  /** Asynchronous publishing (FT_ASYNC_PUBLISH) as the cycle ended: the published head, and the landings recorded but not published and the age of the oldest. */
+  publish?: { publishedSha: Sha | null; unpublished: number; lagMs: number };
   totalMs: number;
   error?: string;
 }
@@ -201,6 +210,21 @@ export class TrunkDO extends DurableObject<Env> {
   private importStore: ImportIndex | null = null;
   /** Assumption revalidation: the names each version of a file exports, by blob id (immutable, so cached across cycles). */
   private readonly surfaces = new BoundedMap<Sha, ExportSurface | null>(SURFACE_CACHE);
+  /**
+   * Asynchronous publishing (FT_ASYNC_PUBLISH, trunk/publish.ts): the publish attempt in flight (single-flight), the loop
+   * that drives attempts beside the cycles and whether it should go round again, whether everything recorded before this
+   * object started has been published, and the failures in a row with the latest one.
+   */
+  private publishing: Promise<number> | null = null;
+  private publishDriver: Promise<void> | null = null;
+  private publishWanted = false;
+  private publishedSinceStart = false;
+  private publishFailures = 0;
+  private publishError: string | null = null;
+  /** The bound on unpublished landings (tests shrink it). */
+  private publishBound: PublishBound = PUBLISH_BOUND;
+  /** Moves when this object's storage is erased: a publish attempt of an earlier epoch writes nothing more. */
+  private epoch = 0;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -557,17 +581,23 @@ export class TrunkDO extends DurableObject<Env> {
    * trunk. Forward only: a commit that does not descend from the current certified one is ignored.
    * The remote update is a compare-and-swap; a remote that moved without being recorded here (a push
    * that landed but whose answer was lost) is followed when it is behind. False when nothing moved.
+   * `certified` moves only to commits on the trunk repository: with asynchronous publishing, a recorded
+   * commit not published yet is kept as the branch's next move (the newest wins), and the publish loop
+   * moves the branch once that commit is published.
    */
   async markCertified(sha: Sha): Promise<boolean> {
-    const st = this.state();
+    this.state();
     if (!isSha(sha)) return false;
     const current = this.meta("certified_sha");
     if (current === sha) return true;
+    if (this.isUnpublished(sha)) {
+      this.deferCertified(sha);
+      return false;
+    }
     const g = this.repo();
     if (current !== null && (await isAncestor(g, current, sha)) === false) return false;
     await setRef(g, CERTIFIED_REF, sha);
-    const push = (expectedOld: string | null): Promise<PushOutcome> =>
-      this.authed((token) => pushRef(g, { url: st.trunk.remote, token, localRef: CERTIFIED_REF, remoteRef: CERTIFIED_REF, expectedOld }));
+    const push = (expectedOld: string | null): Promise<PushOutcome> => this.pushTrunkRef(CERTIFIED_REF, expectedOld);
     let out = await push(current);
     if (!out.ok && out.stale && out.remoteOid !== current) {
       const remote = out.remoteOid;
@@ -580,6 +610,29 @@ export class TrunkDO extends DurableObject<Env> {
     }
     this.setMeta("certified_sha", sha);
     return true;
+  }
+
+  /**
+   * Asynchronous publishing (FT_ASYNC_PUBLISH): the newest commit on the trunk repository's main (leases start from it;
+   * `certified` and the lineage notes follow it), the newest recorded commit, and how far publishing lags. With nothing
+   * waiting, both heads are the same. Starts the publish loop when commits wait and it is not running (after a restart).
+   */
+  async publishState(): Promise<TrunkPublish> {
+    const st = this.state();
+    const lag = this.publishLag();
+    if (lag.unpublished > 0 && this.publishDriver === null) this.publishSoon();
+    const at = Number(this.meta("published_at") ?? "0");
+    return {
+      on: this.asyncPublish(st.colonyId),
+      publishedSha: this.publishedHead() ?? st.trunkSha,
+      trunkSha: st.trunkSha,
+      unpublished: lag.unpublished,
+      lagMs: lag.oldestAt === null ? 0 : Math.max(0, Date.now() - lag.oldestAt),
+      running: this.publishing !== null,
+      failures: this.publishFailures,
+      ...(this.publishError !== null ? { lastError: this.publishError } : {}),
+      ...(Number.isFinite(at) && at > 0 ? { publishedAt: at } : {}),
+    };
   }
 
   /** Mint a new trunk write token when the cached one is within 10 minutes of expiry. */
@@ -614,7 +667,7 @@ export class TrunkDO extends DurableObject<Env> {
     });
   }
 
-  /** Operational counters (for status pages and tests), with the group-commit queue and recent cycles. */
+  /** Operational counters (for status pages and tests), with the group-commit queue, recent cycles and publishing. */
   async stats(): Promise<{
     trunkSha: Sha | null;
     files: number;
@@ -624,6 +677,9 @@ export class TrunkDO extends DurableObject<Env> {
     queued: { batches: number; proposals: number };
     cycles: number;
     recentCycles: CycleStat[];
+    /** The newest commit on the trunk repository (the recorded head when nothing waits to be published), and the publish queue. */
+    publishedSha: Sha | null;
+    unpublished: number;
   }> {
     return {
       trunkSha: this.meta("trunk_sha"),
@@ -634,6 +690,8 @@ export class TrunkDO extends DurableObject<Env> {
       queued: { batches: this.queue.length, proposals: this.queue.reduce((n, r) => n + r.batch.length, 0) },
       cycles: this.cycles,
       recentCycles: this.cycleLog.slice(-20),
+      publishedSha: this.publishedHead(),
+      unpublished: this.publishLag().unpublished,
     };
   }
 
@@ -643,6 +701,8 @@ export class TrunkDO extends DurableObject<Env> {
    * is rebuilt by the next repo().
    */
   async destroy(): Promise<{ cleared: true }> {
+    // A publish in flight belongs to the erased trunk: from here on it writes nothing.
+    this.stopPublishing();
     const ddl = this.sql.exec<{ sql: string }>(`SELECT sql FROM sqlite_master WHERE substr(name, 1, 3) = 'ft_' AND sql IS NOT NULL ORDER BY rowid`).toArray();
     await this.ctx.storage.deleteAlarm();
     await this.ctx.storage.deleteAll();
@@ -695,9 +755,18 @@ export class TrunkDO extends DurableObject<Env> {
     return index.links(Array.isArray(paths) ? paths : [], max);
   }
 
-  /** Retries a failed notes push. */
+  /** Publishes recorded commits left waiting (asynchronous publishing; the loop's safety net), then retries a failed notes push. */
   async alarm(): Promise<void> {
     if (this.meta("trunk_sha") === null) return;
+    if (this.hasBacklog()) {
+      try {
+        await this.publishNow();
+        this.publishedSinceStart = true;
+      } catch (e) {
+        console.error(`publish from the alarm failed: ${errorText(e)}`);
+        this.publishSoon();
+      }
+    }
     await this.notesFlush().catch(() => undefined);
   }
 
@@ -728,6 +797,8 @@ export class TrunkDO extends DurableObject<Env> {
       await this.rebuildIndex(head);
     } else {
       await this.recoverJournal();
+      // Commits recorded and not yet published go out before catching up with the remote (resync builds on it).
+      if (this.hasBacklog()) await this.publishNow();
       await this.resync();
     }
     await this.notesFlush();
@@ -755,6 +826,8 @@ export class TrunkDO extends DurableObject<Env> {
    */
   private async resync(): Promise<Set<Path>> {
     const st = this.state();
+    // Recorded commits the remote does not have yet would be dropped from the index: they are published first.
+    if (this.hasBacklog()) throw new Error("trunk has recorded commits that are not published yet; publish them before catching up with the remote");
     const g = this.repo();
     const head = await this.authed((token) => fetchRef(g, { url: st.trunk.remote, token, ref: MAIN_REF }));
     if (head === null) throw new Error(`trunk ${st.trunk.name} lost its main branch`);
@@ -863,9 +936,33 @@ export class TrunkDO extends DurableObject<Env> {
       metric("commitMs", stat.ms.commit ?? 0),
       metric("pushMs", stat.ms.push ?? 0),
       metric("finalizeMs", stat.ms.finalize ?? 0),
+      // Asynchronous publishing: the publish queue and its lag as the cycle ended, and the cycle's wait for publishing.
+      ...(stat.publish
+        ? [metric("unpublished", stat.publish.unpublished), metric("publishLagMs", stat.publish.lagMs), metric("publishWaitMs", stat.ms.publishWait ?? 0)]
+        : []),
     ];
     const stub = ns.get(ns.idFromName(colonyId)) as unknown as { emit(e: unknown[]): Promise<unknown> };
     await stub.emit(events);
+  }
+
+  /**
+   * Publish one publish push on the colony's live feed as `trunk.publish.*` metric events (same `at`): how long it took,
+   * the landings and objects it carried, how long the oldest of them waited, what is left, and the failures before it.
+   */
+  private async emitPublish(p: { at: number; ms: number; landings: number; objects: number; lagMs: number; left: number; failures: number }): Promise<void> {
+    const colonyId = this.meta("colony_id");
+    const ns = (this.env as unknown as { COLONY?: DurableObjectNamespace } | undefined)?.COLONY;
+    if (colonyId === null || !ns) return;
+    const metric = (name: string, value: number) => ({ t: "metric" as const, at: p.at, name: `trunk.publish.${name}`, value });
+    const stub = ns.get(ns.idFromName(colonyId)) as unknown as { emit(e: unknown[]): Promise<unknown> };
+    await stub.emit([
+      metric("ms", p.ms),
+      metric("landings", p.landings),
+      metric("objects", p.objects),
+      metric("lagMs", p.lagMs),
+      metric("unpublished", p.left),
+      metric("failures", p.failures),
+    ]);
   }
 
   /**
@@ -926,7 +1023,8 @@ export class TrunkDO extends DurableObject<Env> {
   /**
    * One group-commit cycle: idempotency per proposal id, screening against trunk, blob pulls,
    * the plan over the virtual trunk (plan.ts), one chained commit per batch, one push of the tip
-   * with compare-and-swap, and the record of every landing in one transaction.
+   * with compare-and-swap, and the record of every landing in one transaction. With asynchronous
+   * publishing the record is the commit point: no push, the publish loop pushes beside the cycles.
    */
   private async cycle(reqs: LandRequest[], stat: CycleStat): Promise<LandResult[]> {
     let mark = Date.now();
@@ -938,6 +1036,13 @@ export class TrunkDO extends DurableObject<Env> {
     const st = this.state();
     await this.recoverJournal();
     lap("recover");
+    // Asynchronous publishing (FT_ASYNC_PUBLISH, trunk/publish.ts): commits recorded before this object started (or
+    // while publishing was asynchronous, when it no longer is) are published before anything else, and past the bound
+    // on unpublished landings the cycle waits for publishing.
+    const asyncPublish = this.asyncPublish(st.colonyId);
+    const drained = await this.publishFirst(asyncPublish);
+    if (asyncPublish) await this.publishRoom();
+    if (asyncPublish || drained) lap("publishWait");
     // Assumption revalidation (FT_REVALIDATE): a proposal stale only through files it read can still land
     // when the names it imports from them hold on the trunk it lands on. Off: stale means back.
     const revalidating = revalidationEnabled((this.env as unknown as { FT_REVALIDATE?: string } | undefined)?.FT_REVALIDATE, st.colonyId);
@@ -1045,15 +1150,22 @@ export class TrunkDO extends DurableObject<Env> {
         back();
         break;
       }
-      // Test hook (FT_TEST_PUSH_DELAY_MS, previews only): hold the cycle between its direction read and its push.
+      // Test hook (FT_TEST_PUSH_DELAY_MS, previews only): hold the cycle between its direction read and its push
+      // (its record, with asynchronous publishing).
       const hold = pushDelayMs((this.env as unknown as { FT_TEST_PUSH_DELAY_MS?: string } | undefined)?.FT_TEST_PUSH_DELAY_MS);
       if (hold > 0) await sleep(hold);
-      const pushed = await this.pushChain(chain);
-      lap("push");
+      // Asynchronous publishing: recorded is landed, so nothing is pushed here; each landing joins the publish queue
+      // in the transaction that records it.
+      const pushed = asyncPublish ? { ok: true as const } : await this.pushChain(chain);
+      if (!asyncPublish) lap("push");
       if (pushed.ok) {
         this.ctx.storage.transactionSync(() => {
-          for (const it of chain.items) this.finalizeRows(it.data);
+          for (const it of chain.items) {
+            this.finalizeRows(it.data);
+            if (asyncPublish) this.queuePublish(it.data.landing);
+          }
         });
+        if (asyncPublish) this.publishSoon();
         await setRef(this.repo(), MAIN_REF, chain.tip);
         for (const it of chain.items) {
           own[it.request] = it.data.landing;
@@ -1082,7 +1194,11 @@ export class TrunkDO extends DurableObject<Env> {
     }
 
     // The landings are recorded; a failure to start the notes flush must not fail them (the journal keeps every note).
-    if (stat.landings > 0) await this.notesSoon().catch((e: unknown) => console.error(`notes flush not started: ${errorText(e)}`));
+    // With asynchronous publishing the publish loop pushes them, and starts the notes flush once they are published.
+    if (asyncPublish) {
+      const lag = this.publishLag();
+      stat.publish = { publishedSha: this.publishedHead(), unpublished: lag.unpublished, lagMs: lag.oldestAt === null ? 0 : Math.max(0, Date.now() - lag.oldestAt) };
+    } else if (stat.landings > 0) await this.notesSoon().catch((e: unknown) => console.error(`notes flush not started: ${errorText(e)}`));
     for (const o of outcome.values()) {
       if (o.kind === "returned") stat.returned++;
       else if (o.kind === "deferred") stat.deferred++;
@@ -1369,10 +1485,16 @@ export class TrunkDO extends DurableObject<Env> {
     return sizes;
   }
 
-  /** Build, push and record one system commit (see systemCommit); up to MAX_REBUILDS retries on a moved trunk. */
+  /**
+   * Build, push and record one system commit (see systemCommit); up to MAX_REBUILDS retries on a moved trunk. With
+   * asynchronous publishing it is built on the recorded head (unpublished commits included) and recorded like a
+   * landing; the publish loop pushes it after every commit recorded before it.
+   */
   private async systemCommitNow(p: { files: Array<{ path: Path; content: string | null; expect?: Sha | null }>; message: string; note: LineageNote & Record<string, unknown> }): Promise<Landing> {
-    this.state();
+    const asyncPublish = this.asyncPublish(this.state().colonyId);
     await this.recoverJournal();
+    await this.publishFirst(asyncPublish);
+    if (asyncPublish) await this.publishRoom();
     if (!Array.isArray(p.files) || p.files.length === 0) throw new Error("system commit has no files");
     for (const f of p.files) {
       const bad = pathProblem(f.path);
@@ -1419,6 +1541,16 @@ export class TrunkDO extends DurableObject<Env> {
       };
       const note = serializeNote({ ...p.note, landingId: id, colonyId: st.colonyId });
       const data: JournalData = { landing, note, changes: [...changes] };
+      if (asyncPublish) {
+        // Recorded is landed: it joins the publish queue in the transaction that records it.
+        this.ctx.storage.transactionSync(() => {
+          this.finalizeRows(data);
+          this.queuePublish(landing);
+        });
+        this.publishSoon();
+        await setRef(g, MAIN_REF, commit);
+        return landing;
+      }
       this.sql.exec(
         `INSERT INTO ft_journal (landing_id, state, commit_sha, parent_sha, data, created_at, updated_at) VALUES (?, 'pushing', ?, ?, ?, ?, ?)`,
         id,
@@ -1633,6 +1765,299 @@ export class TrunkDO extends DurableObject<Env> {
   }
 
   // -------------------------------------------------------------------------
+  // Asynchronous publishing (FT_ASYNC_PUBLISH, trunk/publish.ts)
+  // -------------------------------------------------------------------------
+
+  /** Whether asynchronous publishing is on for this colony. */
+  private asyncPublish(colonyId: Id): boolean {
+    return asyncPublishEnabled((this.env as unknown as { FT_ASYNC_PUBLISH?: string } | undefined)?.FT_ASYNC_PUBLISH, colonyId);
+  }
+
+  /**
+   * Put a recorded landing in the publish queue, inside the transaction that records it: a journal row in state
+   * `recorded`. The first of a backlog pins the published head to its parent (the recorded head before it).
+   */
+  private queuePublish(landing: Landing): void {
+    if (!this.hasBacklog()) this.setMeta("published_sha", landing.parentSha);
+    this.sql.exec(
+      `INSERT INTO ft_journal (landing_id, state, commit_sha, parent_sha, data, created_at, updated_at) VALUES (?, 'recorded', ?, ?, '{}', ?, ?)`,
+      landing.id,
+      landing.trunkSha,
+      landing.parentSha,
+      landing.at,
+      Date.now(),
+    );
+  }
+
+  /** Whether any recorded commit waits to be published. */
+  private hasBacklog(): boolean {
+    return this.sql.exec(`SELECT 1 AS x FROM ft_journal WHERE state = 'recorded' LIMIT 1`).toArray().length > 0;
+  }
+
+  /** The publish queue: landings recorded and not published, and when the oldest of them was recorded. */
+  private publishLag(): { unpublished: number; oldestAt: number | null } {
+    const r = this.sql.exec<{ n: number; oldest: number | null }>(`SELECT COUNT(*) AS n, MIN(created_at) AS oldest FROM ft_journal WHERE state = 'recorded'`).one();
+    return { unpublished: r.n, oldestAt: r.oldest };
+  }
+
+  /** The recorded commits waiting to be published, in the order they were recorded. */
+  private recordedRows(): RecordedCommit[] {
+    return this.sql
+      .exec<{ landing_id: string; commit_sha: string; parent_sha: string; created_at: number }>(
+        `SELECT landing_id, commit_sha, parent_sha, created_at FROM ft_journal WHERE state = 'recorded' ORDER BY rowid`,
+      )
+      .toArray()
+      .map((r) => ({ landingId: r.landing_id, commit: r.commit_sha, parent: r.parent_sha, at: r.created_at }));
+  }
+
+  /** The newest commit on the trunk repository's main as far as this writer knows: the recorded head when nothing waits. */
+  private publishedHead(): Sha | null {
+    if (!this.hasBacklog()) return this.meta("trunk_sha");
+    return this.meta("published_sha") ?? this.recordedRows()[0]?.parent ?? null;
+  }
+
+  /** Whether `sha` is a recorded commit not published yet. */
+  private isUnpublished(sha: Sha): boolean {
+    return this.recordedOrder(sha) >= 0;
+  }
+
+  /** The order a waiting commit was recorded in (its journal row), or -1 when it is not waiting to be published. */
+  private recordedOrder(sha: Sha): number {
+    return this.sql.exec<{ n: number }>(`SELECT rowid AS n FROM ft_journal WHERE state = 'recorded' AND commit_sha = ? LIMIT 1`, sha).toArray()[0]?.n ?? -1;
+  }
+
+  /** Keep `sha` as `certified`'s next move until it is published. Recorded commits form one chain, so the later one wins. */
+  private deferCertified(sha: Sha): void {
+    const pending = this.meta("certified_pending");
+    if (pending !== null && pending !== sha && this.recordedOrder(pending) > this.recordedOrder(sha)) return;
+    this.setMeta("certified_pending", sha);
+  }
+
+  /**
+   * Publish every recorded commit now, before a cycle or system commit goes on, when it must: once after this object
+   * starts (commits recorded before a restart are published before anything else), and always while publishing is not
+   * asynchronous (commits left from when it was: a pushing cycle builds on the published head). True when it had
+   * commits to publish. Throws when publishing fails: the caller fails and is retried, and nothing new is recorded.
+   */
+  private async publishFirst(asyncOn: boolean): Promise<boolean> {
+    if (asyncOn && this.publishedSinceStart) return false;
+    const due = this.hasBacklog();
+    if (due) await this.publishNow();
+    this.publishedSinceStart = true;
+    return due;
+  }
+
+  /**
+   * The hard bound on how far the recorded head runs ahead of the published one (PUBLISH_BOUND): past it, wait for
+   * publishing, at most the bound's waitMs, then fail (a cycle's lanes send their batches again).
+   */
+  private async publishRoom(): Promise<void> {
+    const bound = this.publishBound;
+    const until = Date.now() + bound.waitMs;
+    for (;;) {
+      const lag = this.publishLag();
+      if (withinBound(lag, Date.now(), bound)) return;
+      const left = until - Date.now();
+      if (left <= 0) {
+        const age = lag.oldestAt === null ? 0 : Math.round((Date.now() - lag.oldestAt) / 1000);
+        throw new Error(`publishing is behind: ${lag.unpublished} landing(s) recorded and not published, the oldest for ${age} s; landing waits for publishing`);
+      }
+      this.publishSoon();
+      const attempt = this.publishOnce().then(
+        () => undefined,
+        () => sleep(Math.min(1_000, Math.max(0, until - Date.now()))),
+      );
+      await settlesWithin(attempt, left);
+    }
+  }
+
+  /**
+   * Publish until nothing recorded is left (a few rounds at most while cycles keep recording). Throws on the first failure,
+   * and when it takes longer than the bound's waitMs (the attempt in flight goes on, and the next caller joins it).
+   */
+  private async publishNow(): Promise<void> {
+    const waitMs = this.publishBound.waitMs;
+    const until = Date.now() + waitMs;
+    for (let round = 0; round < 8; round++) {
+      const out: { left?: number; failure?: unknown } = {};
+      const attempt = this.publishOnce().then(
+        (left) => void (out.left = left),
+        (e: unknown) => void (out.failure = e ?? new Error("publish failed")),
+      );
+      if (!(await settlesWithin(attempt, until - Date.now()))) {
+        throw new Error(`publishing did not finish within ${waitMs >= 1_000 ? `${Math.round(waitMs / 1000)} s` : `${waitMs} ms`}; landing waits for publishing`);
+      }
+      if (out.failure !== undefined) throw out.failure;
+      if (out.left === 0) return;
+    }
+  }
+
+  /** One publish attempt, single-flight: a caller while one runs shares it. Resolves to the landings still unpublished. */
+  private publishOnce(): Promise<number> {
+    if (this.publishing === null) {
+      const run: Promise<number> = this.publishStep().finally(() => {
+        if (this.publishing === run) this.publishing = null;
+      });
+      this.publishing = run;
+    }
+    return this.publishing;
+  }
+
+  /**
+   * One publish: push every recorded commit that chains from the published head to trunk main, in one push with
+   * compare-and-swap on the published head, so no commit is published twice (a repeat finds main moved). When the
+   * answer is lost or the push refused, where main is decides: at the published head, nothing was published (it fails
+   * and is retried); at one of the pushed commits, the commits up to it are; anywhere else, something else wrote trunk,
+   * and publishing fails until a person looks. Published rows move to `pending_note` (their notes follow). Resolves to
+   * the landings still unpublished.
+   */
+  private async publishStep(): Promise<number> {
+    const epoch = this.epoch;
+    const st = this.state();
+    const rows = this.recordedRows();
+    if (rows.length === 0) return 0;
+    const base = this.meta("published_sha") ?? rows[0]!.parent;
+    const { chain, broken } = publishChain(base, rows);
+    if (broken) console.error(`recorded commit ${broken.commit} (${broken.landingId}) does not build on the published chain from ${base}; it is not published`);
+    const tip = chain[chain.length - 1];
+    if (!tip) throw new Error(`no recorded commit builds on the published head ${base}`);
+    const t0 = Date.now();
+    const oids = await this.publishObjects(chain);
+    let outcome: PushOutcome | null = null;
+    let failure: unknown = null;
+    try {
+      outcome = await this.publishPush(base, tip.commit, oids);
+    } catch (e) {
+      failure = e;
+    }
+    let upTo = chain.length - 1;
+    if (!outcome?.ok) {
+      const remote = outcome && !outcome.ok && outcome.stale && outcome.remoteOid !== null ? outcome.remoteOid : await this.remoteHead();
+      const settled = settlePublish(base, chain, remote);
+      if (settled.kind === "none") throw new Error(outcome && !outcome.ok ? `publish push rejected: ${outcome.detail}` : `publish push failed: ${errorText(failure)}`);
+      if (settled.kind === "foreign") throw new Error(`trunk main is at ${remote ?? "nothing"}, a commit this writer did not record (published head ${base}); publishing waits for a person`);
+      upTo = settled.index;
+    }
+    // An attempt that outlived its storage (the trunk was erased meanwhile) records nothing.
+    if (epoch !== this.epoch) throw new Error("trunk erased while publishing");
+    const done = chain.slice(0, upTo + 1);
+    const now = Date.now();
+    this.markPublished(done, now);
+    const left = this.publishLag().unpublished;
+    const report = { ms: now - t0, landings: done.length, objects: oids.length, lagMs: Math.max(0, now - done[0]!.at), left, failures: this.publishFailures };
+    console.log(JSON.stringify({ ft: "trunk-publish", colonyId: st.colonyId, published: done[done.length - 1]!.commit, ...report, ...(outcome?.ok ? {} : { settled: true }) }));
+    void this.emitPublish({ at: now, ...report }).catch(() => undefined);
+    this.afterPublish();
+    return left;
+  }
+
+  /** The objects a publish of `chain` carries: each commit, and the trees and blobs it adds to its parent's tree. */
+  private async publishObjects(chain: RecordedCommit[]): Promise<string[]> {
+    const g = this.repo();
+    const rootOf = async (commit: Sha): Promise<string | null> => this.commitTrees.get(commit) ?? (await commitTree(g, commit));
+    const out = new Set<string>();
+    for (const c of chain) {
+      const tree = await rootOf(c.commit);
+      if (tree === null) throw new Error(`recorded commit ${c.commit} is missing locally`);
+      out.add(c.commit);
+      await addedObjects(g, this.trees, await rootOf(c.parent), tree, out);
+    }
+    return [...out];
+  }
+
+  /**
+   * Push the recorded commits up to `target` to trunk main with compare-and-swap on `expected` (the published head):
+   * exactly their objects in one receive-pack request (push.ts), or the regular push when that is refused for a reason
+   * other than a moved main. Throws when the outcome cannot be learned.
+   */
+  private async publishPush(expected: Sha, target: Sha, oids: string[]): Promise<PushOutcome> {
+    const st = this.state();
+    const g = this.repo();
+    const direct = await this.authed((token) => pushPack(g, { url: st.trunk.remote, token, ref: MAIN_REF, oldOid: expected, newOid: target, oids }));
+    if (direct.ok || direct.stale) return direct;
+    console.error(`direct publish push refused (${direct.detail}); using the regular push`);
+    await setRef(g, PUBLISH_REF, target);
+    return this.authed((token) => pushRef(g, { url: st.trunk.remote, token, localRef: PUBLISH_REF, remoteRef: MAIN_REF, expectedOld: expected }));
+  }
+
+  /** Push local `ref` to the same ref of the trunk repository with compare-and-swap (`certified`). */
+  private pushTrunkRef(ref: string, expectedOld: string | null): Promise<PushOutcome> {
+    const st = this.state();
+    const g = this.repo();
+    return this.authed((token) => pushRef(g, { url: st.trunk.remote, token, localRef: ref, remoteRef: ref, expectedOld }));
+  }
+
+  /** Record that trunk main holds `done`, the start of the recorded chain: their rows move to `pending_note`, in one transaction. */
+  private markPublished(done: RecordedCommit[], at: number): void {
+    const tip = done[done.length - 1];
+    if (!tip) return;
+    this.ctx.storage.transactionSync(() => {
+      for (const c of done) this.sql.exec(`UPDATE ft_journal SET state = 'pending_note', updated_at = ? WHERE landing_id = ? AND state = 'recorded'`, at, c.landingId);
+      this.setMeta("published_sha", tip.commit);
+      this.setMeta("published_at", String(at));
+    });
+  }
+
+  /** After a publish: the published landings' notes go out, and `certified` moves to a commit that waited to be published. */
+  private afterPublish(): void {
+    void this.notesSoon().catch((e: unknown) => console.error(`notes flush not started: ${errorText(e)}`));
+    const pending = this.meta("certified_pending");
+    if (pending === null || this.isUnpublished(pending)) return;
+    this.sql.exec(`DELETE FROM ft_meta WHERE key = 'certified_pending'`);
+    void this.markCertified(pending).catch((e: unknown) => console.warn(`certified ref not moved to ${pending.slice(0, 7)}: ${errorText(e)}`));
+  }
+
+  /**
+   * Run the publish loop beside the cycles: attempts one after another while recorded commits wait, never two at once,
+   * pausing after each failure (1 s, 2 s, 4 s, ... 30 s), which is logged. The alarm is its safety net when this object
+   * goes away first.
+   */
+  private publishSoon(): void {
+    this.publishWanted = true;
+    if (this.publishDriver !== null) return;
+    const epoch = this.epoch;
+    void this.armAlarm(NOTES_RETRY_MS).catch(() => undefined);
+    const run: Promise<void> = (async () => {
+      while (this.publishWanted && epoch === this.epoch) {
+        this.publishWanted = false;
+        try {
+          if ((await this.publishOnce()) > 0) this.publishWanted = true;
+          this.publishFailures = 0;
+          this.publishError = null;
+        } catch (e) {
+          if (epoch !== this.epoch) break;
+          this.publishFailures++;
+          this.publishError = errorText(e).slice(0, 500);
+          const delay = this.publishDelayMs(this.publishFailures);
+          console.error(JSON.stringify({ ft: "trunk-publish-failed", colonyId: this.meta("colony_id"), failures: this.publishFailures, retryInMs: delay, error: this.publishError }));
+          await this.armAlarm(delay + 5_000).catch(() => undefined);
+          await sleep(delay);
+          if (epoch !== this.epoch) break;
+          this.publishWanted = true;
+        }
+      }
+    })().finally(() => {
+      if (this.publishDriver === run) this.publishDriver = null;
+    });
+    this.publishDriver = run;
+  }
+
+  /** The pause after the n-th failed publish attempt in a row (tests shorten it). */
+  private publishDelayMs(failures: number): number {
+    return publishBackoffMs(failures);
+  }
+
+  /** Forget publishing in flight (the trunk was erased or replaced): an attempt or loop of the earlier epoch writes nothing more. */
+  private stopPublishing(): void {
+    this.epoch++;
+    this.publishing = null;
+    this.publishDriver = null;
+    this.publishWanted = false;
+    this.publishFailures = 0;
+    this.publishError = null;
+  }
+
+  // -------------------------------------------------------------------------
   // Lineage context
   // -------------------------------------------------------------------------
 
@@ -1708,13 +2133,15 @@ export class TrunkDO extends DurableObject<Env> {
   private async mineCoChange(): Promise<void> {
     const st = this.state();
     const t0 = Date.now();
-    const mined = await withRepo(this.trunkBinding(st.trunk), st.trunk.name, (repo) => mineHistory(repo, st.trunkSha));
+    // History is read from the trunk repository, which holds published commits only (asynchronous publishing).
+    const head = this.publishedHead() ?? st.trunkSha;
+    const mined = await withRepo(this.trunkBinding(st.trunk), st.trunk.name, (repo) => mineHistory(repo, head));
     // The trunk may have been replaced or erased while the history was read.
     const trunk = this.meta("trunk");
     if (trunk === null || (JSON.parse(trunk) as RepoRef).name !== st.trunk.name) return;
-    const learned = this.cochange().learnHistory(mined, st.trunkSha, Date.now());
+    const learned = this.cochange().learnHistory(mined, head, Date.now());
     console.log(
-      JSON.stringify({ ft: "cochange-mined", colonyId: st.colonyId, head: st.trunkSha, listed: mined.listed, learned, skipped: mined.skipped, truncated: mined.truncated, reads: mined.reads, ms: Date.now() - t0 }),
+      JSON.stringify({ ft: "cochange-mined", colonyId: st.colonyId, head, listed: mined.listed, learned, skipped: mined.skipped, truncated: mined.truncated, reads: mined.reads, ms: Date.now() - t0 }),
     );
   }
 
@@ -1950,6 +2377,7 @@ export class TrunkDO extends DurableObject<Env> {
     });
     this.gitRepo = null;
     this.tokenCache = null;
+    this.stopPublishing();
   }
 }
 

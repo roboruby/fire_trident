@@ -44,6 +44,7 @@ import type {
   RepoRef,
   Rule,
   Sha,
+  TrunkPublish,
   Violation,
   WorkspaceLease,
 } from "@fire_trident/core";
@@ -109,6 +110,7 @@ import type { FootprintIndex, LandedRow, LandedWhy } from "../agents/landed.ts";
 import { NeighborCache, claimLookup, type Neighbor } from "../trunk/cochange.ts";
 import { importNeighbors, type ImportLinks } from "../trunk/imports.ts";
 import type { RevertResult } from "../trunk/revert.ts";
+import { asyncPublishEnabled } from "../trunk/publish.ts";
 import {
   BUCKET_MS,
   COUNTER_SERIES,
@@ -182,6 +184,8 @@ const CLAIM_STRENGTH = 1;
 const FAILURE_STRENGTH = 0.5;
 const TRAIL_STRENGTH = 1;
 const LEASE_RETRY_MS = 2_000;
+/** Asynchronous publishing: how long the trunk writer's published head is reused as the base of leases before it is asked again. */
+const LEASE_BASE_TTL_MS = 1_000;
 const IDLE_RETRY_MS = 5_000;
 const DECLINED_RETRY_MS = 1_500;
 const CLOSED_RETRY_MS = 3_000;
@@ -540,6 +544,9 @@ export class ColonyDO extends DurableObject<Env> {
       throw new Error(`TrunkDO.importLinks failed: ${errorText(err)}`);
     }),
   );
+  /** Asynchronous publishing (FT_ASYNC_PUBLISH): the trunk writer's published head as leases last saw it, and the read in flight (leaseBase). */
+  private publishedBase: { sha: Sha; at: number } | null = null;
+  private publishedRead: Promise<void> | null = null;
   /** The event record for replays: everything published, written in batches (see publish, recordEvents). */
   private readonly recorder = new EventRecorder(
     (events) => this.recordEvents(events),
@@ -645,7 +652,14 @@ export class ColonyDO extends DurableObject<Env> {
     const now = Date.now();
     this.maybeReap(now);
     const trunk = this.trunkStub();
-    const [filesRes, landingsRes] = await Promise.allSettled([trunk.files(), trunk.landings(20)]);
+    // Asynchronous publishing (FT_ASYNC_PUBLISH): the published head and the publish queue are part of the colony's status.
+    const publishing = asyncPublishEnabled(this.env.FT_ASYNC_PUBLISH, colony.id);
+    const [filesRes, landingsRes, publishRes] = await Promise.allSettled([
+      trunk.files(),
+      trunk.landings(20),
+      publishing ? (trunk.publishState() as Promise<TrunkPublish>) : Promise.resolve(null),
+    ]);
+    const publish = publishRes.status === "fulfilled" && publishRes.value ? publishRes.value : null;
     const files =
       filesRes.status === "fulfilled" && Array.isArray(filesRes.value) ? filesRes.value.map((f) => ({ path: f.path, size: f.size })) : [];
     if (filesRes.status === "rejected") console.warn(`snapshot: TrunkDO.files failed: ${errorText(filesRes.reason)}`);
@@ -682,7 +696,7 @@ export class ColonyDO extends DurableObject<Env> {
     const violations = this.violationTotals();
     const certification = this.certifier.latestCertification();
     return {
-      colony: certification ? { ...colony, certification } : colony,
+      colony: certification || publish ? { ...colony, ...(certification ? { certification } : {}), ...(publish ? { publish } : {}) } : colony,
       files,
       intents,
       agents,
@@ -2699,7 +2713,7 @@ export class ColonyDO extends DurableObject<Env> {
     let failure = closed.length > 0 ? `admission closed in ${closed.join(", ")}` : "pool empty";
     if (closed.length === 0) {
       try {
-        lease = await this.poolStub().lease(agentId, this.requireColony().trunkSha);
+        lease = await this.poolStub().lease(agentId, await this.leaseBase());
       } catch (err) {
         failure = `lease failed: ${errorText(err)}`;
         console.error(`PoolDO.lease failed for ${agentId}: ${failure}`);
@@ -3916,7 +3930,7 @@ export class ColonyDO extends DurableObject<Env> {
     let failure = closed.length > 0 ? `admission closed in ${closed.join(", ")}` : "pool empty";
     if (closed.length === 0) {
       try {
-        lease = await this.poolStub().lease(agentId, this.requireColony().trunkSha);
+        lease = await this.poolStub().lease(agentId, await this.leaseBase());
       } catch (err) {
         failure = `lease failed: ${errorText(err)}`;
         console.error(`PoolDO.lease failed for ${agentId}: ${failure}`);
@@ -5318,6 +5332,46 @@ export class ColonyDO extends DurableObject<Env> {
 
   private trunkStub() {
     return this.env.TRUNK.get(this.env.TRUNK.idFromName(this.requireColony().id));
+  }
+
+  /**
+   * The trunk commit a lease starts from: agents clone or read the trunk repository at it. With asynchronous publishing
+   * (FT_ASYNC_PUBLISH) the colony's trunk head (its newest landing) can be recorded but not pushed yet, so leases get
+   * the trunk writer's published head instead, asked at most every LEASE_BASE_TTL_MS (the last answer serves while a
+   * newer one is on its way). Off, the colony's trunk head, as before.
+   */
+  private async leaseBase(): Promise<Sha> {
+    const colony = this.requireColony();
+    if (!asyncPublishEnabled(this.env.FT_ASYNC_PUBLISH, colony.id)) return colony.trunkSha;
+    const cached = this.publishedBase;
+    if (cached && Date.now() - cached.at < LEASE_BASE_TTL_MS) return cached.sha;
+    if (this.publishedRead === null) {
+      const read: Promise<void> = this.readPublishedBase().finally(() => {
+        if (this.publishedRead === read) this.publishedRead = null;
+      });
+      this.publishedRead = read;
+    }
+    if (cached) {
+      this.publishedRead.catch((err: unknown) => console.warn(`lease base not refreshed: ${errorText(err)}`));
+      return cached.sha;
+    }
+    await this.publishedRead;
+    if (!this.publishedBase) throw new Error("the trunk writer did not name its published head");
+    return this.publishedBase.sha;
+  }
+
+  /**
+   * Ask the trunk writer for its published head (leaseBase). A trunk writer still on code without publishState (deploys
+   * reach objects gradually) pushes every landing before it is reported, so the colony's trunk head is published there.
+   */
+  private async readPublishedBase(): Promise<void> {
+    try {
+      const s = (await this.trunkStub().publishState()) as TrunkPublish;
+      if (typeof s?.publishedSha === "string" && /^[0-9a-f]{40}$/.test(s.publishedSha)) this.publishedBase = { sha: s.publishedSha, at: Date.now() };
+    } catch (err) {
+      if (!/RPC receiver does not implement the method/i.test(errorText(err))) throw err;
+      this.publishedBase = { sha: this.requireColony().trunkSha, at: Date.now() };
+    }
   }
 
   private poolStub() {
