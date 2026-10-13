@@ -213,6 +213,19 @@ function cmp(a: SimTask, b: SimTask): number {
   return a.createdAt - b.createdAt || a.id - b.id;
 }
 
+/**
+ * The random stream for assumption revalidation draws, separate from the run's own stream so that
+ * turning revalidation on does not shift the draws for tasks, work times and choices.
+ */
+export function assumptionStream(seed: number): Rng {
+  return new Rng((seed ^ 0x5f3759df) >>> 0);
+}
+
+/** A assumption hold probability clamped to [0, 1]; anything not finite counts as 0 (never holds). */
+export function holdChance(hold: number): number {
+  return Number.isFinite(hold) ? Math.min(1, Math.max(0, hold)) : 0;
+}
+
 /** Shared scaffolding: clock, randomness, tasks, metrics, and outcome polling. */
 export abstract class SimBase {
   readonly p: SimParams;

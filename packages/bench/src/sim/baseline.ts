@@ -13,9 +13,22 @@
  *    FireTrident's read-set validation applies) and it goes back to its agent, who reworks it
  *    (`rework` x the task's work time) with its locks held and resubmits at the back.
  *    Otherwise it lands (`landMs`), and its locks are released.
+ *  - ANALYSIS, off by default: with `assumptions`, a change whose changed files it only read lands
+ *    after the rebase when its assumptions held, as FireSim's option does (not built).
  */
-import { SimBase, type SimParams } from "./common.ts";
+import { SimBase, holdChance, assumptionStream, type SimParams } from "./common.ts";
+import type { Rng } from "./engine.ts";
 import type { SimTask, TaskSource } from "./workloads.ts";
+
+/** Model options beyond SimParams. */
+export interface BaselineOptions {
+  /**
+   * ANALYSIS, not built: assumption revalidation. A change whose changed files it only read lands
+   * anyway when its assumption on each held through every change since its base, each change
+   * independently with probability `hold`. Undefined leaves it off.
+   */
+  assumptions?: { hold: number };
+}
 
 const CANDIDATE_CAP = 200;
 const HEARTBEAT_MS = 45_000;
@@ -34,6 +47,10 @@ interface Change {
   baseCommit: number;
   submittedAt: number;
   attemptMs: number;
+  /** Assumption revalidation only: landings that had written each base path at the base. */
+  versions: Map<string, number> | null;
+  /** Assumption revalidation only: it went past a changed read because its assumptions held. */
+  kept: boolean;
 }
 
 /** Locks + one merge queue. */
@@ -48,10 +65,19 @@ export class BaselineSim extends SimBase {
   private blobSeq = 0;
   private lockVersion = 0;
   private blockedAt = -1;
+  /** Assumption revalidation: the chance a assumption holds through one change (null = off), drawn from its own stream. */
+  private readonly assumptionHold: number | null;
+  private readonly assumptionRng: Rng | null;
+  /** Assumption revalidation only: landings that wrote each path. */
+  private readonly versions = new Map<string, number>();
+  /** Landings after warm-up that went past a changed read because their assumptions held. */
+  keptLandings = 0;
 
-  constructor(p: SimParams, source: TaskSource, initial: (path: string) => string | null) {
+  constructor(p: SimParams, source: TaskSource, initial: (path: string) => string | null, opts: BaselineOptions = {}) {
     super(p, source);
     this.initial = initial;
+    this.assumptionHold = opts.assumptions ? holdChance(opts.assumptions.hold) : null;
+    this.assumptionRng = opts.assumptions ? assumptionStream(p.seed) : null;
   }
 
   protected backlogAtEnd(): number {
@@ -117,6 +143,7 @@ export class BaselineSim extends SimBase {
   private attempt(a: Agent, t: SimTask, from: number, workMs: number, rework: boolean): void {
     this.work(t, workMs, rework);
     const base = this.snapshot(t);
+    const versions = this.assumptionHold !== null ? new Map([...base.keys()].map((path) => [path, this.versions.get(path) ?? 0])) : null;
     const baseCommit = this.commitsSeen;
     this.q.at(from + workMs + this.p.timings.testMs, () => {
       this.m.msg(this.q.now, "submit", 1, true);
@@ -125,10 +152,32 @@ export class BaselineSim extends SimBase {
         if (t.firstSubmitAt < 0) t.firstSubmitAt = now;
         if (this.m.on(now)) this.m.submitted++;
         t.status = "proposed";
-        this.queue.push({ task: t, agent: a, base, baseCommit, submittedAt: now, attemptMs: workMs });
+        this.queue.push({ task: t, agent: a, base, baseCommit, submittedAt: now, attemptMs: workMs, versions, kept: false });
         this.serve();
       });
     });
+  }
+
+  /**
+   * Assumption revalidation (analysis, see BaselineOptions.assumptions): true when every changed base path
+   * is one the change only read and its assumption held through each landing that wrote it since the
+   * base (one draw per landing).
+   */
+  private keeps(c: Change): boolean {
+    const hold = this.assumptionHold;
+    if (hold === null) return false;
+    const writes = new Set(c.task.writes);
+    const changed: string[] = [];
+    for (const [path, blob] of c.base) {
+      if (this.blob(path) === blob) continue;
+      if (writes.has(path)) return false;
+      changed.push(path);
+    }
+    for (const path of changed) {
+      const changes = Math.max(1, (this.versions.get(path) ?? 0) - (c.versions?.get(path) ?? 0));
+      for (let k = 0; k < changes; k++) if (this.assumptionRng!.next() >= hold) return false;
+    }
+    return changed.length > 0;
   }
 
   private serve(): void {
@@ -145,6 +194,10 @@ export class BaselineSim extends SimBase {
         break;
       }
     }
+    if (conflict && this.assumptionHold !== null && this.keeps(c)) {
+      conflict = false;
+      c.kept = true;
+    }
     this.m.msg(this.q.now, "queueFetch", 1);
     if (stale) this.m.msg(this.q.now, "queueRebasePush", 1);
     const service = conflict ? discover : discover + t.landMs;
@@ -160,6 +213,7 @@ export class BaselineSim extends SimBase {
 
   private land(c: Change, now: number): void {
     for (const w of c.task.writes) this.trunk.set(w, `b${this.blobSeq++}`);
+    if (this.assumptionHold !== null) for (const w of c.task.writes) this.versions.set(w, (this.versions.get(w) ?? 0) + 1);
     this.commitsSeen++;
     for (const w of c.task.writes) this.locks.delete(w);
     this.lockVersion++;
@@ -168,6 +222,7 @@ export class BaselineSim extends SimBase {
     if (this.m.on(now)) {
       this.m.landed++;
       this.m.commits++;
+      if (c.kept) this.keptLandings++;
       this.m.batch.push(1);
       this.m.ttl.push(now - c.task.firstSubmitAt);
       this.m.e2e.push(now - c.task.firstClaimAt);
