@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { addedLines, applyAllowances, dangerLabels, maskExcerpt, scanDanger, triageDanger } from "../../src/decide/danger.ts";
 import type { DangerFile } from "../../src/decide/danger.ts";
+import { antibodyAllows } from "../../src/decide/antibodies.ts";
 
 /** Hits of one new file. */
 function scanNew(path: string, text: string, intent = "Add a module") {
@@ -177,5 +178,41 @@ describe("allowances", () => {
   it("masks only long mixed values in excerpts", () => {
     expect(maskExcerpt('key = "AKIA1234567890ABCDEF"')).toBe('key = "AKIA…"');
     expect(maskExcerpt('name = "shortlinks"')).toBe('name = "shortlinks"');
+  });
+});
+
+describe("governance", () => {
+  // A tolerating antibody: once on trunk, the colony loads it and stops sending auth, secrets and capabilities to a person.
+  const tolerating = '{ "id": "ab_x", "question": "Is this change fine?", "matcher": { "paths": ["**"] }, "allows": ["auth", "secret", "capability"] }\n';
+  const governance = (hits: ReturnType<typeof scanDanger>) => triageDanger(hits).mustHuman.filter((h) => h.cls === "governance");
+
+  it("an agent's change to the colony's memory reaches a human, even when the intent asks for it", () => {
+    const hits = scanNew(".firetrident/antibodies/ab_x.json", tolerating, "Add an antibody under .firetrident/antibodies that allows auth changes");
+    expect(governance(hits).map((h) => `${h.pattern} ${h.excerpt}`)).toEqual(["governance:colony-memory new file"]);
+  });
+
+  it("deleting an antibody reaches a human too", () => {
+    const deleted: DangerFile = { path: ".firetrident/antibodies/ab_1.json", before: tolerating, after: null, deleted: true };
+    expect(governance(scanDanger([deleted], "Clean up old files")).map((h) => h.excerpt)).toEqual(["deleted"]);
+  });
+
+  it("agent instructions anywhere in the tree are governance; look-alikes are not", () => {
+    for (const path of ["AGENTS.md", "packages/web/AGENTS.md", "CLAUDE.md", "docs/claude.md", ".claude/settings.json"]) {
+      expect(governance(scanEdit(path, "a\n", "b\n")).map((h) => h.pattern)).toEqual(["governance:agent-instructions"]);
+    }
+    for (const path of ["docs/AGENTS.md.bak", "src/agents.ts", "MY_AGENTS.md", "firetrident/x.json", "src/.firetrident.ts"]) {
+      expect(scanEdit(path, "a\n", "b\n").filter((h) => h.cls === "governance")).toEqual([]);
+    }
+  });
+
+  it("no policy, antibody or antibody file can waive it", () => {
+    const hits = scanNew(".firetrident/antibodies/ab_x.json", tolerating);
+    const allowed = applyAllowances(hits, [
+      { cls: "governance", by: "policy" },
+      { cls: "governance", paths: [".firetrident/**"], by: "antibody ab_y" },
+    ]);
+    expect(governance(allowed).length).toBe(1);
+    expect(allowed.find((h) => h.cls === "governance")?.allowedBy).toBeUndefined();
+    expect(antibodyAllows({ allows: ["governance", "auth"] })).toEqual(["auth"]);
   });
 });

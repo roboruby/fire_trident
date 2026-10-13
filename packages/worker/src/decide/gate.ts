@@ -204,7 +204,7 @@ export function gate(input: GateInput): GateVerdict {
   const proof = (input.mechanical?.reasons ?? []).join("; ");
 
   /**
-   * P0/P1: a recognized danger pattern (auth, secret, unrequested capability) always reaches a
+   * P0/P1: a recognized danger pattern (auth, secret, unrequested capability, governance) always reaches a
    * human: no confirmation can land it. A change that also fails its checks goes back first, so
    * the reviewer only ever sees a version that passes them.
    */

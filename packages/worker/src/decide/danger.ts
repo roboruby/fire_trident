@@ -13,16 +13,29 @@ import { isTestPath, sensitiveReason } from "./signals.ts";
  * - crypto: cryptographic or security randomness primitives the intent does not ask for
  * - ci, dependency: CI workflows and dependency manifests (by path)
  * - test-weakening: skipped or focused tests, deleted assertions, deleted test files
+ * - governance: what decides on agents (by path): the colony's own memory under .firetrident/
+ *   (antibodies, including the tolerating ones the colony loads from trunk) and agent
+ *   instructions (AGENTS.md, CLAUDE.md, .claude/)
  * Auth, secret and capability hits must reach a human unless a policy or an antibody explicitly
- * allows them; the others are danger signals that only a reviewer's approval can clear.
+ * allows them; governance always reaches a human, since no allowance may waive the files that
+ * grant allowances. The others are danger signals that only a reviewer's approval can clear.
  * Import and export-from lines are never scanned for code patterns: rewriting a specifier
  * (Hono's ./x -> ./x.ts, OpenSpec's 'fs' -> 'node:fs') never adds behavior. Pure: no I/O.
  */
 
-export type DangerClass = "auth" | "secret" | "capability" | "crypto" | "ci" | "dependency" | "test-weakening";
+export type DangerClass = "auth" | "secret" | "capability" | "crypto" | "ci" | "dependency" | "test-weakening" | "governance";
 
 /** Classes that must reach a human. */
-export const MUST_HUMAN: ReadonlySet<DangerClass> = new Set<DangerClass>(["auth", "secret", "capability"]);
+export const MUST_HUMAN: ReadonlySet<DangerClass> = new Set<DangerClass>(["auth", "secret", "capability", "governance"]);
+
+/** Classes no policy, antibody or intent can allow. */
+export const UNWAIVABLE: ReadonlySet<DangerClass> = new Set<DangerClass>(["governance"]);
+
+/** Paths that decide on agents: the colony's memory and agent instructions, anywhere in the tree. */
+const GOVERNANCE: ReadonlyArray<{ id: string; re: RegExp }> = [
+  { id: "colony-memory", re: /(^|\/)\.firetrident\// },
+  { id: "agent-instructions", re: /(^|\/)(?:(?:AGENTS|CLAUDE)\.md$|\.claude\/)/i },
+];
 
 /** One recognized danger pattern. */
 export interface DangerHit {
@@ -219,6 +232,9 @@ export function scanDanger(files: readonly DangerFile[], intentText: string): Da
     const reason = sensitiveReason(f.path);
     if (reason === "CI configuration") hits.push({ cls: "ci", pattern: "ci:workflow", path: f.path, line: 0, excerpt: f.after === null ? "deleted" : "changed" });
     if (reason === "dependency manifest") hits.push({ cls: "dependency", pattern: "dependency:manifest", path: f.path, line: 0, excerpt: f.before === null ? "new manifest" : f.after === null ? "deleted" : "changed" });
+    // Before the deleted-file exit: removing an antibody weakens the colony as much as adding one.
+    const gov = GOVERNANCE.find((g) => g.re.test(f.path));
+    if (gov) hits.push({ cls: "governance", pattern: `governance:${gov.id}`, path: f.path, line: 0, excerpt: f.deleted ? "deleted" : f.before === null ? "new file" : "changed" });
     const test = isTestPath(f.path);
     if (f.after === null) {
       if (f.deleted && test) hits.push({ cls: "test-weakening", pattern: "test-weakening:deleted-test-file", path: f.path, line: 0, excerpt: "test file deleted" });
@@ -278,10 +294,10 @@ export interface DangerAllowance {
   by: string;
 }
 
-/** Mark hits that an allowance covers (returns new objects; `requested` hits are left alone). */
+/** Mark hits that an allowance covers (returns new objects; `requested` and unwaivable hits are left alone). */
 export function applyAllowances(hits: readonly DangerHit[], allowances: readonly DangerAllowance[]): DangerHit[] {
   return hits.map((h) => {
-    if (h.requested) return h;
+    if (h.requested || UNWAIVABLE.has(h.cls)) return h;
     const a = allowances.find((x) => x.cls === h.cls && (!x.paths || x.paths.length === 0 || x.paths.some((g) => g === h.path || globMatch(g, h.path))));
     return a ? { ...h, allowedBy: a.by } : h;
   });
