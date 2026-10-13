@@ -2343,8 +2343,6 @@ export class ColonyDO extends DurableObject<Env> {
   private contestTimer: ReturnType<typeof setTimeout> | null = null;
   private contestRunning: Promise<void> | null = null;
   private contestAgain = false;
-  /** The judge's call limiter when the decide engine's own is out of reach. */
-  private judgeLimiter: CallLimiter | null = null;
 
   /** Forget the in-memory contest state (colony erased). */
   private contestReset(): void {
@@ -2462,8 +2460,8 @@ export class ColonyDO extends DurableObject<Env> {
     const listed = new Set(rows.map((r) => r.id));
     const extra: typeof rows = [];
     const found = this.sql
-      .exec<{ id: string; footprint: string; priority: number; created_at: number; status: string }>(
-        "SELECT id, footprint, priority, created_at, status FROM intents WHERE id IN (SELECT value FROM json_each(?))",
+      .exec<{ id: string; footprint: string; priority: number; created_at: number; status: string; escalation_open: number | null }>(
+        "SELECT id, footprint, priority, created_at, status, escalation_open FROM intents WHERE id IN (SELECT value FROM json_each(?))",
         JSON.stringify([...contests.keys()].slice(0, CANDIDATE_CAP)),
       )
       .toArray();
@@ -2472,7 +2470,8 @@ export class ColonyDO extends DurableObject<Env> {
         contests.delete(r.id); // finished: nobody joins it any more
         continue;
       }
-      if (r.status === "open" || listed.has(r.id) || !this.contestSeatsOpen(r.id, r)) continue;
+      // A report waiting for a person keeps every seat closed (escalation).
+      if (r.status === "open" || r.escalation_open === 1 || listed.has(r.id) || !this.contestSeatsOpen(r.id, r)) continue;
       const live = this.contestLive(r.id);
       if (live.includes(agentId) || live.length >= (contests.get(r.id) ?? 0)) continue;
       extra.push({ id: r.id, footprint: r.footprint, priority: r.priority, created_at: r.created_at });
@@ -2861,14 +2860,9 @@ export class ColonyDO extends DurableObject<Env> {
     });
   }
 
-  /**
-   * The decide engine's call limiter, so judge calls share its per-model rate, concurrency and
-   * throttling cooldowns with the second opinion; a limiter of its own if that one is out of reach.
-   */
+  /** The decide engine's call limiter, so judge calls share its per-model rate, concurrency and throttling cooldowns with the second opinion. */
   private contestLimiter(): CallLimiter {
-    const shared = (this.decider() as unknown as { limiter?: unknown }).limiter;
-    if (shared instanceof CallLimiter) return shared;
-    return (this.judgeLimiter ??= new CallLimiter(8, 120));
+    return this.decider().limiter;
   }
 
   /** A contestant's change file by file, for the tie-break and the judge (tests replace it). */

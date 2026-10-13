@@ -141,7 +141,8 @@ export class DecideEngine {
   private active = 0;
   private syncing: Promise<void> | null = null;
   /** Admission for System 2 calls (concurrency, per-minute rate per model, cooldown after throttling). */
-  private readonly limiter = new CallLimiter(8, 120);
+  /** Per-model rate, concurrency and throttling cooldowns for System 2 calls (contest judging shares it). */
+  readonly limiter = new CallLimiter(8, 120);
 
   constructor(private readonly host: DecideHost) {
     this.store = new DecideStore(host.sql);
