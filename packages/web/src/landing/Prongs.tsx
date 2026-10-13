@@ -219,7 +219,7 @@ const PRONGS: readonly Prong[] = [
     n: "03",
     name: "Land",
     head: "Parallel lanes instead of a merge queue.",
-    body: "Each region of the code has its own lane. Every cycle a lane takes the largest set of proposals that do not conflict and whose reads are still current, and lands them as one commit. A stale proposal goes back to its agent with the exact files that changed. Then the project's own tests run on trunk, and a failing trunk becomes a repair.",
+    body: "Each region of the code has its own lane. Every cycle a lane takes the largest set of proposals that do not conflict and whose reads are still current, and lands them as one commit. A stale proposal goes back to its agent with the exact files that changed. Then the project's own tests run on trunk: the certified branch moves only when they pass, and a failing trunk becomes a repair.",
     how: "Read sets are checked against trunk blob ids; trunk moves by compare-and-swap; tests run in a Dynamic Worker with no network.",
     Diagram: LandDiagram,
   },

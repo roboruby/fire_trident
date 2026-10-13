@@ -11,7 +11,8 @@ FireTrident is built by several agents working in parallel on one tree. These ru
 | `packages/worker/src/trunk/`, `pool/`, `artifacts/`, `workflows/` | S3 Artifacts layer |
 | `packages/worker/src/agents/`, `mcp/`, `packages/bench/` | S4 agents |
 | `packages/worker/src/decide/`, `api/vaccinate.ts`, `colony/innate.ts` | W1 decide |
-| `packages/worker/src/certify/`, `api/certify.ts` | T1 trunk certification |
+| `packages/worker/src/certify/`, `api/certify.ts` | T1 trunk certification (green moves the `certified` branch) |
+| `packages/worker/src/trunk/revert.ts`, `ColonyDO.revertLanding` | `ft revert`: a person undoes a landing, guarded like one |
 | `packages/web/` | S5 web UI |
 | `packages/worker/src/morph/`, `packages/cli/`, `demo/` | S6 morphology, CLI, demo |
 | `packages/core/src/types.ts`, `packages/core/src/index.ts`, `packages/worker/src/env.ts`, `packages/worker/src/index.ts`, `packages/worker/wrangler.jsonc`, every `package.json`, `docs/ARCHITECTURE.md` | Orchestrator only |
