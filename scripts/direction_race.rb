@@ -46,6 +46,7 @@ OptionParser.new do |o|
     opts[:after] = v.split(",").map { |x| Float(x) }
   end
   o.on("--watch S", Float, "Seconds a stopped change is watched for a late landing (default 20)") { |v| opts[:watch] = v }
+  o.on("--queued", "Also withdraw a change while it waits in the trunk writer behind another change's cycle (needs FT_TEST_PUSH_DELAY_MS of 8000 or more)") { opts[:queued] = true }
   o.on("--keep", "Keep the colony afterwards (default: delete it)") { opts[:keep] = true }
   o.on("--out FILE", "Write the summary JSON here") { |v| opts[:out] = File.expand_path(v) }
   o.on("--production", "Allow the production deployment (it has no push delay; meant for previews)") { opts[:production] = true }
@@ -126,6 +127,7 @@ end
 def propose_file(colony, agent, took, path, text)
   intent, lease = took.values_at("intent", "lease")
   $secrets |= [lease["token"], lease.dig("trunk", "token")].compact
+  $trunk_read = [lease.dig("trunk", "remote"), lease.dig("trunk", "token")]
   Dir.mktmpdir("ft-race") do |dir|
     git(dir, "clone", "--quiet", "--branch", "main", "--depth", "1", lease.dig("trunk", "remote"), "w", token: lease.dig("trunk", "token"))
     w = File.join(dir, "w")
@@ -150,8 +152,26 @@ def propose_file(colony, agent, took, path, text)
   end
 end
 
-def trunk_blob(colony, path)
-  (api!(:get, "/colonies/#{colony}", timeout: 60)["files"] || []).find { |f| f["path"] == path }&.dig("blob")
+# The blob that trunk's main holds at `path`, read with git through the latest lease's trunk read token
+# (the colony snapshot lists paths and sizes, not blob ids); nil when the path is absent.
+def trunk_blob(_colony, path)
+  remote, token = $trunk_read
+  raise "no lease seen yet: cannot read trunk" unless remote
+
+  attempts = 0
+  begin
+    attempts += 1
+    Dir.mktmpdir("ft-race-check") do |dir|
+      git(dir, "clone", "--quiet", "--branch", "main", "--depth", "1", remote, "c", token: token)
+      line = git(File.join(dir, "c"), "ls-tree", "HEAD", "--", path)
+      line.empty? ? nil : line.split(/\s+/)[2]
+    end
+  rescue RuntimeError => e
+    raise e if attempts >= 3 || !e.message.include?("git clone failed")
+
+    sleep 3
+    retry
+  end
 end
 
 def why(colony, path)
@@ -223,6 +243,68 @@ def race(colony, agent, n, after, watch)
   rec.merge(outcome: "stopped and absent", detail: "watched #{watch.round} s: #{proposal(colony, pid)['reason']}")
 end
 
+# Wait until a proposal leaves pending and checking (review is off, so it becomes ready in a lane).
+def wait_ready(colony, pid)
+  status = nil
+  40.times do
+    status = proposal(colony, pid)["status"]
+    break unless %w[pending checking].include?(status)
+
+    sleep 0.5
+  end
+  status
+end
+
+# The queued round: change A enters the trunk writer's cycle, which the push delay holds open; change B
+# becomes ready behind it and the lane hands it to the writer, where it waits for the next cycle; B is
+# withdrawn while it waits. The writer's direction check must stop B (never on trunk, never named as
+# landed) while A lands.
+def queued_race(colony, agent_a, agent_b, watch)
+  rec = { round: "queued" }
+  ia = api!(:post, "/colonies/#{colony}/intents", { title: "Add race-qa/fence.txt", why: "The change ahead in the queued round.", footprint: ["race-qa/fence.txt"], createdBy: BY })
+  pa, blob_a = propose_file(colony, agent_a, take_intent(colony, agent_a, ia["id"]), "race-qa/fence.txt", "queued round: the change ahead\n")
+  return rec.merge(outcome: "skipped", detail: "change A is #{wait_ready(colony, pa['id'])}, not ready") unless wait_ready(colony, pa["id"]) == "ready"
+
+  ib = api!(:post, "/colonies/#{colony}/intents", { title: "Add race-qb/fence.txt", why: "The change withdrawn while it waits in the trunk writer.", footprint: ["race-qb/fence.txt"], createdBy: BY })
+  pb, = propose_file(colony, agent_b, take_intent(colony, agent_b, ib["id"]), "race-qb/fence.txt", "queued round: the change withdrawn\n")
+  b_status = wait_ready(colony, pb["id"])
+  return rec.merge(outcome: "skipped", detail: "change B is #{b_status}, not ready") unless b_status == "ready"
+
+  sleep 2 # the lane hands B to the trunk writer, where it waits behind A's cycle
+  a_status = proposal(colony, pa["id"])["status"]
+  return rec.merge(outcome: "inconclusive", detail: "change A had already landed, so B was not queued behind it; raise FT_TEST_PUSH_DELAY_MS") if a_status == "landed"
+
+  t = Time.now
+  code, res = api(:post, "/colonies/#{colony}/intents/#{ib['id']}/withdraw", { reason: "direction fence check, queued round", by: BY }, timeout: 90)
+  rec[:withdraw_ms] = ((Time.now - t) * 1000).round
+  raise "withdraw -> #{code}: #{redact(res.inspect)[0, 300]}" unless code == 200
+
+  rec[:answer] = res.slice("returned", "landed", "confirmed", "unconfirmed")
+  problems = []
+  problems << "unconfirmed: the trunk writer did not answer" unless res["confirmed"] == true
+  problems << "the answer named a landing for the withdrawn change" if (res["landed"] || []).any? { |l| l["proposalId"] == pb["id"] }
+  problems << "the answer did not count the change stopped" unless res["returned"].to_i >= 1
+  deadline = Time.now + watch
+  while problems.empty? && Time.now < deadline
+    p_b = proposal(colony, pb["id"])
+    problems << "the withdrawn change is #{p_b['status']}#{p_b['landingId'] ? " in #{p_b['landingId']}" : ''}" unless p_b["status"] == "returned"
+    sleep 2
+  end
+  problems << "trunk holds race-qb/fence.txt" if problems.empty? && trunk_blob(colony, "race-qb/fence.txt")
+  a_final = nil
+  20.times do
+    a_final = proposal(colony, pa["id"])
+    break if a_final["status"] == "landed"
+
+    sleep 1
+  end
+  problems << "change A is #{a_final['status']}, not landed" unless a_final["status"] == "landed"
+  problems << "trunk does not hold change A's blob" unless trunk_blob(colony, "race-qa/fence.txt") == blob_a
+  return rec.merge(outcome: "FAIL", detail: problems.uniq.join("; ")) unless problems.empty?
+
+  rec.merge(outcome: "stopped while queued", detail: "watched #{watch.round} s: #{proposal(colony, pb['id'])['reason']}; A landed in #{a_final['landingId']}")
+end
+
 colony = nil
 records = []
 begin
@@ -236,6 +318,12 @@ begin
     rec = race(colony, agent, i + 1, after, opts[:watch])
     records << rec
     say "round #{rec[:round]} (withdrawn #{after} s after ready, answered in #{rec[:withdraw_ms] || '-'} ms): #{rec[:outcome]}: #{rec[:detail]}"
+  end
+  if opts[:queued]
+    agent_b = api!(:post, "/colonies/#{colony}/agents", { kind: "external", name: "race-check-b", model: "script" })["id"]
+    rec = queued_race(colony, agent, agent_b, opts[:watch])
+    records << rec
+    say "queued round (answered in #{rec[:withdraw_ms] || '-'} ms): #{rec[:outcome]}: #{rec[:detail]}"
   end
 rescue StandardError => e
   say "ERROR #{e.message}"
@@ -253,7 +341,7 @@ counts = records.group_by { |r| r[:outcome] }.transform_values(&:size)
 summary = { url: BASE, colony: colony, kept: opts[:keep], rounds: records, counts: counts }
 say "SUMMARY #{JSON.pretty_generate(summary)}"
 File.write(opts[:out], "#{redact(JSON.pretty_generate(summary))}\n") if opts[:out]
-decisive = records.count { |r| ["landed and named", "stopped and absent"].include?(r[:outcome]) }
+decisive = records.count { |r| ["landed and named", "stopped and absent", "stopped while queued"].include?(r[:outcome]) }
 if counts.key?("FAIL")
   say "FAIL: an answer disagreed with trunk"
   exit 1

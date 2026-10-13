@@ -872,9 +872,12 @@ export class ColonyDO extends DurableObject<Env> {
     fx.events.push({ t: "amended", at: now, intentId: id, revision, changed: diff.changed, reason, by, title: intent.title, returned: sent.length });
     // The new direction as it stands now, before a landing report can interleave; the trunk writer's fence records it.
     const direction = diff.substantive ? this.directionOf([id]) : null;
+    // The trunk writer records the new direction before the lanes are told: their dequeue can wait behind a
+    // landing call in flight, and a change queued in the writer is stopped by its cycle only once this is recorded.
+    const fencing = direction ? this.fence(direction, sent) : null;
     await this.flushEffects(fx);
     for (const n of notices) n.intent = intent;
-    const [notified, fenced] = await Promise.all([this.deliver(notices), direction ? this.fence(direction, sent) : null]);
+    const [notified, fenced] = await Promise.all([this.deliver(notices), fencing]);
     const after = fenced ? this.intentRow(id) : undefined;
     return {
       intent: after ? this.toIntent(after, colony.id) : intent,
@@ -903,8 +906,9 @@ export class ColonyDO extends DurableObject<Env> {
     const fx = this.effects(colony.regionDepth);
     const out = this.withdrawRows([row], reason, oneLine(p.by ?? "", 200) || "unknown", now, fx);
     const direction = this.directionOf([id]);
+    const fencing = this.fence(direction, out.proposalIds); // recorded at the trunk writer before the lanes are told (see amendIntent)
     await this.flushEffects(fx);
-    const [notified, fenced] = await Promise.all([this.deliver(out.notices), this.fence(direction, out.proposalIds)]);
+    const [notified, fenced] = await Promise.all([this.deliver(out.notices), fencing]);
     const fresh = this.intentRow(id);
     return { intent: this.toIntent(fresh ?? row, colony.id), ...redirectOutcome(out.proposalIds, fenced.landed, fenced.unconfirmed), notified };
   }
@@ -933,8 +937,9 @@ export class ColonyDO extends DurableObject<Env> {
     fx.events.push({ t: "retracted", at: now, ruleId, reason, by, withdrawn: rows.length });
     fx.events.push(this.violationsEvent(now));
     const direction = this.directionOf(rows.map((r) => r.id));
+    const fencing = this.fence(direction, out.proposalIds); // recorded at the trunk writer before the lanes are told (see amendIntent)
     await this.flushEffects(fx);
-    const [notified, fenced] = await Promise.all([this.deliver(out.notices), this.fence(direction, out.proposalIds)]);
+    const [notified, fenced] = await Promise.all([this.deliver(out.notices), fencing]);
     const fresh = this.sql.exec<RuleRow>("SELECT * FROM rules WHERE id = ?", ruleId).toArray()[0] ?? row;
     return { rule: this.toRule(fresh, colony.id), withdrawn: rows.length, ...redirectOutcome(out.proposalIds, fenced.landed, fenced.unconfirmed), notified };
   }
@@ -1019,8 +1024,9 @@ export class ColonyDO extends DurableObject<Env> {
       const out = this.withdrawRows(rows, `${res.reverted.id} was itself reverted by ${by}: ${reason}`, by, now, fx);
       fx.events.push(this.violationsEvent(now));
       const direction = this.directionOf(rows.map((r) => r.id));
+      const fencing = this.fence(direction, out.proposalIds); // recorded at the trunk writer before the lanes are told (see amendIntent)
       await this.flushEffects(fx);
-      const [, fenced] = await Promise.all([this.deliver(out.notices), this.fence(direction, out.proposalIds)]);
+      const [, fenced] = await Promise.all([this.deliver(out.notices), fencing]);
       if (out.proposalIds.length > 0) redirect = redirectOutcome(out.proposalIds, fenced.landed, fenced.unconfirmed);
     } else if (restored.length > 0) {
       this.publish(this.violationsEvent(now));
