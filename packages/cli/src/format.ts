@@ -595,6 +595,40 @@ export function formatVaccinate(colony: string, count: number, res: unknown, c: 
   return extra.length ? `${head}\n  ${c.dim(extra.join(" · "))}` : head;
 }
 
+/** The decide policy fields `ft policy` and `ft status` show (GET /api/colonies/:id/decide/policy). */
+export interface DecidePolicyView {
+  enabled?: boolean;
+  deterministic?: boolean;
+  commentProof?: boolean;
+  protectedPaths?: string[];
+}
+
+/** The protected paths, comma-separated, or "none". */
+function protectedList(p: DecidePolicyView, c: Colors): string {
+  const globs = Array.isArray(p.protectedPaths) ? p.protectedPaths.filter((g) => typeof g === "string") : [];
+  return globs.length === 0 ? c.dim("none") : `${globs.join(", ")} ${c.dim("(a person decides every change to them)")}`;
+}
+
+/** What `ft policy` prints: whether review runs, the deterministic proofs, and the protected paths. */
+export function formatPolicy(colony: string, p: DecidePolicyView, c: Colors): string {
+  const out = [`${c.bold(colony)} decide policy`];
+  const row = (label: string, value: string) => out.push(`${c.dim(label.padEnd(11))}${value}`);
+  row("review", p.enabled === false ? c.yellow("off: changes go to their lanes without review") : "on");
+  const comments = p.commentProof === false ? c.yellow("comment-only proof off") : "comment-only changes";
+  row("proofs", p.deterministic === false ? c.yellow("off: every change needs a model or a person") : `import rewrites, rule replacements, ${comments}`);
+  row("protected", protectedList(p, c));
+  return out.join("\n");
+}
+
+/** Rows `ft status` adds under its summary: the protected paths, and the comment-only proof when it is off. None for an older server. */
+export function policyRows(p: DecidePolicyView | undefined, c: Colors): string[] {
+  if (!p || typeof p !== "object") return [];
+  const out: string[] = [];
+  if (Array.isArray(p.protectedPaths) && p.protectedPaths.length > 0) out.push(`${c.dim("protected".padEnd(11))}${protectedList(p, c)}`);
+  if (p.commentProof === false) out.push(`${c.dim("proofs".padEnd(11))}${c.yellow("comment-only proof off")}`);
+  return out;
+}
+
 function checkLine(checks: CheckResult[] | undefined, c: Colors): string {
   if (!checks || checks.length === 0) return c.dim("none recorded");
   return checks.map((k) => `${k.ok ? c.green("✓") : c.red("✗")} ${k.name} ${c.dim(ms(k.ms))}`).join("  ");

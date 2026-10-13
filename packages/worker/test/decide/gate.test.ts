@@ -107,6 +107,47 @@ describe("gate: danger patterns", () => {
   });
 });
 
+describe("gate: protected paths", () => {
+  const login = [{ path: "src/auth/login.ts", glob: "src/auth/**" }];
+  const pass = { verdict: "pass" as const, reasons: ["1 file proven comment-only (src/auth/login.ts)"] };
+
+  it("P3 sends a change to a protected path to a person before any model, whatever proves it", () => {
+    const v = gate(input({ reflex: undefined, protected: login, mechanical: pass, autonomy: true }));
+    expect(v).toMatchObject({ action: "escalate", layer: "deterministic", rule: "P3 protected path", risk: 3, detectors: ["policy:protected-path"] });
+    expect(v.reasons).toEqual(["protected paths need a person: src/auth/login.ts (protected by src/auth/**)"]);
+    expect(v.security).toBeUndefined();
+    // Nothing a model says later lands it either: not earned autonomy, not a second opinion's approval.
+    expect(gate(input({ protected: login, autonomy: true }))).toMatchObject({ action: "escalate", rule: "P3 protected path" });
+    expect(gate(input({ protected: login, llm: opinion() }))).toMatchObject({ action: "escalate", rule: "P3 protected path" });
+  });
+
+  it("P3 ignores the alert budget and names every protected path, up to five", () => {
+    expect(gate(input({ reflex: undefined, protected: login, alerts: { used: 99, max: 30 } })).action).toBe("escalate");
+    const many = Array.from({ length: 7 }, (_, i) => ({ path: `db/m${i}.sql`, glob: "db" }));
+    expect(gate(input({ reflex: undefined, protected: many })).reasons[0]).toBe(
+      "protected paths need a person: db/m0.sql (protected by db), db/m1.sql (protected by db), db/m2.sql (protected by db), db/m3.sql (protected by db), db/m4.sql (protected by db) and 2 more",
+    );
+  });
+
+  it("P3 returns a protected change that fails its checks first, naming the glob", () => {
+    const v = gate(input({ reflex: undefined, protected: login, innate: { ok: false, failures: ["no Not verified statement"] } }));
+    expect(v).toMatchObject({ action: "return", layer: "deterministic", rule: "P3 protected+innate" });
+    expect(v.reasons).toEqual(["innate: no Not verified statement", "protected paths need a person: src/auth/login.ts (protected by src/auth/**); a person reviews it once its checks pass"]);
+    expect(agentReason(v)).toContain("protected by src/auth/**");
+  });
+
+  it("a danger pattern on a protected path escalates once, naming both", () => {
+    const auth = { mustHuman: ["auth (authorization-header) at src/auth/login.ts:4: …"], signals: [] };
+    const v = gate(input({ reflex: undefined, danger: auth, protected: login }));
+    expect(v).toMatchObject({ action: "escalate", rule: "P1 danger pattern" });
+    expect(v.reasons).toEqual(["danger patterns need a human: auth (authorization-header) at src/auth/login.ts:4: …", "protected paths need a person: src/auth/login.ts (protected by src/auth/**)"]);
+  });
+
+  it("with nothing protected, a proven change lands as before", () => {
+    expect(gate(input({ reflex: undefined, protected: [], mechanical: pass, antibodies: 0 })).rule).toBe("D3 innate+proof");
+  });
+});
+
 describe("gate: System 1 phase", () => {
   it("R1 escalates a confident detector hit with damage without consulting System 2", () => {
     const v = gate(input({ reflex: SECRET, damage: LOGS_SECRET }));

@@ -20,6 +20,7 @@ import type { Command } from "./args.ts";
  *   POST /api/colonies/:id/swarm/stop   { reason? }  -> { ok, considered, stopped, failed, retired }
  *   POST /api/colonies/:id/vaccinate    { count }
  *   GET  /api/colonies/:id/certifications, POST .../certify, POST .../certify/policy { enabled }
+ *   GET  /api/colonies/:id/decide/policy, POST .../decide/policy { protectedPaths?, commentProof? } -> the decide policy
  *   DELETE /api/colonies/:id            -> { found, ok, agents, repos, objects, unregistered }
  *   PATCH  /api/colonies/:id/intents/:iid           { title?, why?, footprint?, priority?, reason, by } -> { intent, revision, returned, notified }
  *   POST   /api/colonies/:id/intents/:iid/withdraw  { reason, by } -> { intent, returned, notified }
@@ -164,6 +165,11 @@ export function planRequest(cmd: Command, by: string): ApiRequest | null {
       if (cmd.action === "now") return { method: "POST", path: colonyPath(cmd.colony, "/certify") };
       if (cmd.action === "on" || cmd.action === "off") return { method: "POST", path: colonyPath(cmd.colony, "/certify/policy"), body: { enabled: cmd.action === "on" } };
       return { method: "GET", path: `${colonyPath(cmd.colony, "/certifications")}?limit=10` };
+    case "policy":
+      // Adding or removing protected paths reads the list first (see run.ts).
+      if (cmd.protect.length > 0 || cmd.unprotect.length > 0) return null;
+      if (cmd.commentProof !== undefined) return { method: "POST", path: colonyPath(cmd.colony, "/decide/policy"), body: { commentProof: cmd.commentProof } };
+      return { method: "GET", path: colonyPath(cmd.colony, "/decide/policy") };
     case "intent-amend": {
       const body: Record<string, unknown> = {};
       if (cmd.title !== undefined) body.title = cmd.title;

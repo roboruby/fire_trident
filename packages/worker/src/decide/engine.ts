@@ -48,7 +48,7 @@ import {
 } from "./reflex.ts";
 import { buildReviewView } from "./review.ts";
 import { maskNote } from "../trunk/mask.ts";
-import { damageSignals, isTestPath } from "./signals.ts";
+import { damageSignals, isTestPath, protectedHits } from "./signals.ts";
 import { DecideStore, type DetectorStats, type StoredAntibody } from "./store.ts";
 import { VACCINE_CLASSES, VACCINE_LABELS, VACCINE_OUTCOMES, makeVaccine, recallReport, recallSummary, type SourceFile, type VaccineChange, type VaccineClass } from "./vaccine.ts";
 
@@ -274,7 +274,7 @@ export class DecideEngine {
 
     // Deterministic stage: import resolution against the trunk tree and the mechanical proof. No model.
     // With policy.deterministic off the facts are still recorded (observed only), but nothing uses them.
-    const observed = await this.mechanical(p, innate, rule);
+    const observed = await this.mechanical(p, innate, rule, policy.commentProof);
     const mech = policy.deterministic ? observed : null;
     // The files those facts found: the trunk writer re-checks that they still exist when the change lands.
     // Name assumptions (the names it imports from trunk files) let it land over a read file that changed.
@@ -288,6 +288,7 @@ export class DecideEngine {
       damage,
       ...(mech ? { mechanical: { verdict: mech.result.verdict, reasons: mech.result.reasons } } : {}),
       danger: { mustHuman: dangerLabels(danger.mustHuman), signals: dangerSignals },
+      protected: protectedHits(paths, policy.protectedPaths),
       antibodies: matching.length,
       autonomy: !vaccine && this.store.approvedLandings(region) >= policy.autonomyAfter,
       whyBy,
@@ -482,11 +483,12 @@ export class DecideEngine {
   /**
    * The deterministic stage for one proposal: every candidate path its changed import specifiers
    * could resolve to is looked up in one TrunkDO.blobsFor call (the proposal's own writes layered
-   * on top), then the mechanical proof runs. With assumption revalidation on for the colony
+   * on top), then the mechanical proof runs, and the comment-only proof unless `commentProof` (the
+   * policy's) is off. With assumption revalidation on for the colony
    * (FT_REVALIDATE), the same call also resolves every relative import of the written files, for the
    * name assumptions; when that lookup would be cut short, none are recorded.
    */
-  private async mechanical(p: Proposal, innate: InnateResult, rule: Rule | null): Promise<{ result: MechanicalResult; ms: number; names: NameAssumption[] }> {
+  private async mechanical(p: Proposal, innate: InnateResult, rule: Rule | null, commentProof: boolean): Promise<{ result: MechanicalResult; ms: number; names: NameAssumption[] }> {
     const t0 = Date.now();
     const files = innate.files.map((f) => ({ path: f.path, before: f.before, after: f.after, unreadable: f.unreadable, binary: f.binary }));
     const based = revalidationEnabled((this.host.env as unknown as { FT_REVALIDATE?: string }).FT_REVALIDATE, this.host.colony().id);
@@ -505,7 +507,7 @@ export class DecideEngine {
     const existed = (path: Path): boolean => (trunk[path] ?? null) !== null;
     const exists = (path: Path): boolean => (writes.has(path) ? writes.get(path)! : existed(path));
     const names = based && all.length <= MAX_RESOLUTION_PATHS ? nameAssumptions(files, exists, existed) : [];
-    return { result: mechanicalCheck({ files, residual: innate.residual, rule, innateOk: innate.ok, exists, existed }), ms: Date.now() - t0, names };
+    return { result: mechanicalCheck({ files, residual: innate.residual, rule, innateOk: innate.ok, exists, existed, commentProof }), ms: Date.now() - t0, names };
   }
 
   /**

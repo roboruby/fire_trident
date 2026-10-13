@@ -420,6 +420,81 @@ describe("antibody memory", () => {
   });
 });
 
+describe("the comment-only proof", () => {
+  const documented = `/** Adds two numbers. */\n${MODULE.replace("  return a + b;", "  // Plain addition: no rounding.\n  return a + b;")}`;
+
+  it("lands a comment-only change on the innate checks and the proof, without asking a model", async () => {
+    const c = new Colonyish();
+    const p = await c.decide(c.declare("agent", ["src/add.ts"], { title: "Document add()" }), [{ path: "src/add.ts", before: MODULE, after: documented }]);
+    expect(p.status).toBe("ready");
+    expect(c.ai.calls).toEqual([]);
+    expect(c.decisions).toEqual([]);
+    const gate = p.evidence.checks.find((k) => k.name === "gate")!;
+    expect(gate.detail).toMatch(/^D3 innate\+proof → land by deterministic .*\(confirmations: innate \+ deterministic\): deterministic proof: 1 file proven comment-only \(src\/add\.ts\)/);
+    expect(p.evidence.checks.find((k) => k.name === "deterministic: mechanical proof")).toMatchObject({ ok: true });
+  });
+
+  it("still sends a secret written into a comment to a person: danger patterns run first", async () => {
+    const c = new Colonyish();
+    const leaked = MODULE.replace("  return a + b;", "  // deploy with ghp_abcdefghijklmnopqrstuvwxyz0123456789AB\n  return a + b;");
+    const p = await c.decide(c.declare("agent", ["src/add.ts"]), [{ path: "src/add.ts", before: MODULE, after: leaked }]);
+    expect(p.status).toBe("escalated");
+    expect(p.reason).toContain("escalated by deterministic: danger patterns need a human: secret (token-format) at src/add.ts:2");
+    expect(c.ai.calls).toEqual([]);
+  });
+
+  it("asks the models as before when the colony policy turns it off, or when a directive comment changes", async () => {
+    const off = new Colonyish();
+    off.engine.store.setPolicy({ commentProof: false });
+    expect((await off.decide(off.declare("agent", ["src/add.ts"]), [{ path: "src/add.ts", before: MODULE, after: documented }])).status).toBe("ready");
+    expect(off.ai.secondOpinions()).toHaveLength(1);
+
+    const c = new Colonyish();
+    const directive = MODULE.replace("  return a + b;", "  // @ts-ignore\n  return a + b;");
+    const p = await c.decide(c.declare("agent", ["src/add.ts"]), [{ path: "src/add.ts", before: MODULE, after: directive }]);
+    expect(c.ai.clefCalls()).toHaveLength(1);
+    expect(p.evidence.checks.find((k) => k.name === "deterministic: mechanical proof")!.detail).toContain('only comments and whitespace changed, but src/add.ts holds a directive comment that tools read ("@ts-")');
+    // The models are told the code itself is unchanged, so they can judge the directive.
+    expect(c.ai.clefCalls()[0]!.checked_facts).toEqual(["src/add.ts: outside comments and whitespace the code is unchanged (the same tokens, with line breaks in the same places)"]);
+  });
+});
+
+describe("protected paths", () => {
+  it("send a change to a person without a model, the reason naming the glob, even when it is proven comment-only", async () => {
+    const c = new Colonyish();
+    c.engine.store.setPolicy({ protectedPaths: ["src/auth/**"] });
+    const before = "export const realm = 'app';\n";
+    const p = await c.decide(c.declare("human", ["src/auth/realm.ts"]), [{ path: "src/auth/realm.ts", before, after: `// The realm name.\n${before}` }]);
+    expect(p.status).toBe("escalated");
+    expect(p.reason).toBe("escalated by deterministic: protected paths need a person: src/auth/realm.ts (protected by src/auth/**)");
+    expect(c.ai.calls).toEqual([]);
+    expect(c.engine.store.reviewView(p.id)?.files[0]?.path).toBe("src/auth/realm.ts");
+  });
+
+  it("cover deleting a protected file and renaming a file into a protected directory", async () => {
+    const c = new Colonyish();
+    c.engine.store.setPolicy({ protectedPaths: ["db/migrations"] });
+    const deleted = await c.decide(c.declare("human", ["db/migrations/001.sql"]), [{ path: "db/migrations/001.sql", before: "create table t (id int);\n", after: null }]);
+    expect(deleted.status).toBe("escalated");
+    expect(deleted.reason).toContain("db/migrations/001.sql (protected by db/migrations)");
+    const renamed = await c.decide(c.declare("human", ["db/002.sql", "db/migrations/002.sql"]), [
+      { path: "db/002.sql", before: "alter table t add column v int;\n", after: null },
+      { path: "db/migrations/002.sql", after: "alter table t add column v int;\n" },
+    ]);
+    expect(renamed.status).toBe("escalated");
+    expect(renamed.reason).toContain("db/migrations/002.sql (protected by db/migrations)");
+    expect(c.ai.calls).toEqual([]);
+  });
+
+  it("leave other paths to the usual review", async () => {
+    const c = new Colonyish();
+    c.engine.store.setPolicy({ protectedPaths: ["src/auth/**"] });
+    const p = await c.decide(c.declare("human", ["src/add.ts"]), [{ path: "src/add.ts", after: MODULE }]);
+    expect(p.status).toBe("ready");
+    expect(c.decisions.at(-1)!.answers.rule).toBe("L3 innate+llm");
+  });
+});
+
 describe("the review view of an escalation", () => {
   it("holds the change with its danger patterns, secrets masked, for every escalation", async () => {
     const c = new Colonyish();

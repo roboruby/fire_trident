@@ -1,7 +1,7 @@
 import type { DecisionLayer, Id } from "@fire_trident/core";
 import type { WhyAuthor } from "./danger.ts";
 import type { DecidePolicy, DetectorState } from "./policy.ts";
-import type { DamageSignals } from "./signals.ts";
+import type { DamageSignals, ProtectedHit } from "./signals.ts";
 import { damageLabels } from "./signals.ts";
 
 /**
@@ -10,8 +10,8 @@ import { damageLabels } from "./signals.ts";
  * Signals
  * - Confirmations, bound to the proposal's head commit: innate checks pass (deterministic), plus
  *   a second one: a mechanical proof (deterministic: only import specifiers changed, each still
- *   resolving to the same file, or exactly the rule's replacement), earned autonomy, or System 2
- *   approval. Model opinions never override deterministic facts.
+ *   resolving to the same file, or exactly the rule's replacement; or only comments and whitespace
+ *   changed), earned autonomy, or System 2 approval. Model opinions never override deterministic facts.
  * - Detectors (something looks wrong): Clef's needs_human and touches_sensitive answers, antibody
  *   hits, and a System 2 "escalate" verdict.
  * - Damage (it would matter): sensitive paths, writes outside the intent's footprint, capabilities
@@ -22,6 +22,9 @@ import { damageLabels } from "./signals.ts";
  * - P0 a danger pattern that needs a human, in a change failing its checks → return (deterministic)
  * - P1 a danger pattern that needs a human (auth, secret, unrequested capability, not allowed by
  *      policy or an antibody)                                 → escalate (deterministic; in every phase)
+ * - P3 the change writes, deletes or renames a path the colony's policy protects → escalate
+ *      (deterministic; in every phase; no intent text, antibody, proof or policy entry waives it, and
+ *      the alert budget cannot bounce it), or return a change failing its checks first
  * - D2 innate checks fail and there is no damage               → return (deterministic)
  * - D3 mechanical proof and no antibody to screen               → land (deterministic)
  * - P2 an earlier proposal for this intent had a security finding → a person instead of a model:
@@ -95,6 +98,8 @@ export interface GateInput {
    * not explicitly allowed) always go to a human; `signals` count as damage.
    */
   danger?: { mustHuman: string[]; signals: string[] };
+  /** Paths the change writes, deletes or renames that the colony's policy protects (signals.ts protectedHits): a person decides. */
+  protected?: ProtectedHit[];
   /** Matching antibodies that only System 1 can answer. */
   antibodies?: number;
   /** System 1 answers: undefined before it is asked (deterministic stage), null when Clef was unavailable. */
@@ -308,6 +313,10 @@ export function gate(input: GateInput): GateVerdict {
     return v;
   };
   const proof = (input.mechanical?.reasons ?? []).join("; ");
+  // Protected paths, each named with the glob of the colony's policy that protects it.
+  const guarded = input.protected ?? [];
+  const guardedText =
+    guarded.length === 0 ? "" : `protected paths need a person: ${guarded.slice(0, 5).map((h) => `${h.path} (protected by ${h.glob})`).join(", ")}${guarded.length > 5 ? ` and ${guarded.length - 5} more` : ""}`;
 
   /**
    * P0/P1: a recognized danger pattern (auth, secret, unrequested capability, governance, a repair's
@@ -324,13 +333,25 @@ export function gate(input: GateInput): GateVerdict {
       return back;
     }
     risk = 3;
-    return escalate("deterministic", "P1 danger pattern", 1, [`danger patterns need a human: ${mustHuman.join("; ")}`], mustHuman.map((m) => `danger:${m.split(" ")[0]}`), classes(mustHuman.map(labelClass)));
+    return escalate("deterministic", "P1 danger pattern", 1, [`danger patterns need a human: ${mustHuman.join("; ")}`, ...(guardedText ? [guardedText] : [])], mustHuman.map((m) => `danger:${m.split(" ")[0]}`), classes(mustHuman.map(labelClass)));
+  };
+
+  /**
+   * P3: a change that writes, deletes or renames a path the colony's policy protects reaches a person,
+   * whatever proves or approves it. Like P0, a change failing its checks goes back first, told which
+   * paths are protected and by which globs.
+   */
+  const guard = (): GateVerdict | null => {
+    if (guarded.length === 0) return null;
+    if (!input.innate.ok) return verdict("return", "deterministic", "P3 protected+innate", 1, [...input.innate.failures.map((f) => `innate: ${f}`), `${guardedText}; a person reviews it once its checks pass`], []);
+    risk = 3;
+    return escalate("deterministic", "P3 protected path", 1, [guardedText], ["policy:protected-path"], []);
   };
 
   // Deterministic stage: facts first, no model.
   if (!asked) {
     if (mech === "fail") return verdict("return", "deterministic", "D1 resolution", 1, (input.mechanical?.reasons ?? []).map((x) => `deterministic: ${x}`), []);
-    const gated = danger();
+    const gated = danger() ?? guard();
     if (gated) return gated;
     if (!input.innate.ok && facts.length === 0) return verdict("return", "deterministic", "D2 innate", 1, input.innate.failures.map((f) => `innate: ${f}`), []);
     if (mech === "pass" && facts.length === 0 && (input.antibodies ?? 0) === 0) return verdict("land", "deterministic", "D3 innate+proof", 1, [`deterministic proof: ${proof}`], [], ["innate", "deterministic"]);
@@ -346,7 +367,7 @@ export function gate(input: GateInput): GateVerdict {
 
   if (!consulted) {
     if (mech !== "fail") {
-      const gated = danger();
+      const gated = danger() ?? guard();
       if (gated) return gated;
     }
     // M1: a proven change only answers to antibodies (learned from humans); Clef's other alarms are advisory.
@@ -395,9 +416,9 @@ export function gate(input: GateInput): GateVerdict {
     return verdict("consult", "reflex", "R4 consult", 1 - confidence, [why], s1.map((h) => h.id));
   }
 
-  // After System 2: a danger pattern still needs a human, whatever the second opinion said.
+  // After System 2: a danger pattern or a protected path still needs a human, whatever the second opinion said.
   if (mech !== "fail") {
-    const gated = danger();
+    const gated = danger() ?? guard();
     if (gated) return gated;
   }
   // Unconfident System 1 alarms give way to the second opinion.

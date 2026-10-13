@@ -134,6 +134,46 @@ describe("mechanicalCheck", () => {
   });
 });
 
+describe("mechanicalCheck: the comment-only proof", () => {
+  const before = "// Adds.\nexport function add(a: number, b: number): number {\n  return a + b;\n}\n";
+  const after = before.replace("// Adds.", "/** Adds two numbers; never rounds. */");
+  const one = (over: Partial<Parameters<typeof mechanicalCheck>[0]> = {}) =>
+    mechanicalCheck({ files: [{ path: "src/add.ts", before, after }], residual: [], rule: null, innateOk: true, exists, ...over });
+
+  it("proves a comment-only change without a rule, as its own deterministic confirmation", () => {
+    const r = one();
+    expect(r.verdict).toBe("pass");
+    expect(r.reasons).toEqual([expect.stringMatching(/^1 file proven comment-only \(src\/add\.ts\).*; inside the footprint; no sensitive path; the innate checks pass$/)]);
+    expect(r.facts).toEqual(["src/add.ts: outside comments and whitespace the code is unchanged (the same tokens, with line breaks in the same places)"]);
+    expect(r.checks).toEqual([{ name: "deterministic: mechanical proof", ok: true, ms: 0, detail: expect.stringContaining("pass: 1 file proven comment-only") }]);
+    // With a rule as well: a comment-only change is proven whatever the rule asks.
+    expect(one({ rule: IMPORT_RULE }).verdict).toBe("pass");
+  });
+
+  it("is off when the colony policy turns it off", () => {
+    const r = one({ commentProof: false });
+    expect(r).toMatchObject({ verdict: "inconclusive", reasons: ["the intent has no rule to prove against"], facts: [] });
+  });
+
+  it("says why a comment-only change is still not proven", () => {
+    expect(one({ innateOk: false }).reasons).toContain("only comments and whitespace changed, but the rule re-check or another innate check failed");
+    expect(one({ residual: ["src/add.ts"] }).reasons).toContain("only comments and whitespace changed, but it writes outside the footprint (src/add.ts)");
+    const auth = mechanicalCheck({ files: [{ path: "src/auth/add.ts", before, after }], residual: [], rule: null, innateOk: true, exists });
+    expect(auth.verdict).toBe("inconclusive");
+    expect(auth.reasons.at(-1)).toContain("but it touches sensitive paths (src/auth/add.ts)");
+    const directive = one({ files: [{ path: "src/add.ts", before, after: before.replace("// Adds.", "// eslint-disable-next-line") }] });
+    expect(directive.verdict).toBe("inconclusive");
+    expect(directive.reasons.at(-1)).toBe('only comments and whitespace changed, but src/add.ts holds a directive comment that tools read ("eslint")');
+  });
+
+  it("leaves code changes and failed imports to the import proof", () => {
+    expect(one({ files: [{ path: "src/add.ts", before, after: after.replace("a + b", "b + a") }] })).toMatchObject({ verdict: "inconclusive", facts: [] });
+    const r = check(GOOD.replace("'./node.ts'", "'./missing.ts'"));
+    expect(r.verdict).toBe("fail");
+    expect(r.reasons.join(" ")).not.toContain("comment");
+  });
+});
+
 describe("proofAssumptions", () => {
   it("lists the resolved relative targets outside the change's own writes, once each, sorted", () => {
     const changes: SpecifierChange[] = [
