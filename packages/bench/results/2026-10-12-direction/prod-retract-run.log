@@ -1,0 +1,28 @@
+[   0.9s] importing https://github.com/hexojs/hexo as direction-retract
+[  22.9s] imported 302 files: https://firetrident.mattsolt.workers.dev/c/direction-retract
+[  24.9s] rule rul_mv5xgnyd7ioukn: 46 violations, 36 intents
+[  26.1s] swarm: 6 agents (@cf/google/gemma-4-26b-a4b-it)
+[  27.3s]   landed 0, proposed 0, agents holding 5
+[  31.2s]   landed 0, proposed 0, agents holding 6
+[  34.8s]   landed 0, proposed 0, agents holding 6
+[  38.7s]   landed 0, proposed 0, agents holding 6
+[  43.2s]   landed 0, proposed 1, agents holding 6
+[  46.9s]   landed 1, proposed 2, agents holding 6
+[  47.4s] RETRACTING the rule (1 intents landed so far)
+[  48.0s] retracted in 0.65 s: 35 intents withdrawn, 3 in-flight change(s) returned
+[  48.2s] no agent holds a rule intent after 0.86 s; watching 75 s for late landings
+[ 125.1s] SUMMARY {
+  "colony": "direction-retract",
+  "url": "https://firetrident.mattsolt.workers.dev/c/direction-retract",
+  "by": "operator-script",
+  "rule": "rul_mv5xgnyd7ioukn",
+  "violations": 46,
+  "intents": 36,
+  "landed_before": 1,
+  "withdrawn": 35,
+  "returned_in_flight": 3,
+  "retract_api_s": 0.65,
+  "agents_clear_s": 0.86,
+  "rule_intents_landed_after": 0,
+  "escalated": []
+}

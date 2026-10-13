@@ -1,0 +1,147 @@
+[    0.0s] FireTrident: grow shortlinks from demo/new-project-spec.md at https://firetrident.mattsolt.workers.dev
+[    0.0s] plan: 5 rule(s), 13 intents; 6 agents on default=3,bulk; escalations left for a human
+
+[    0.6s] == ft new
+$ ft new --spec demo/new-project-spec.md --name shortlinks
+  ✓ Colony shortlinks shortlinks created from demo/new-project-spec.md
+    ✓ rule rul_mv519icht0d9zz Relative imports name the .ts file
+    ✓ rule rul_mv519if1zle5zg Worker code uses web APIs, not Node built-ins
+    ✓ rule rul_mv519ihd829rdc Route handlers depend on the Store interface, not a store
+    ✓ rule rul_mv519ilyl5rp2x Responses are built by src/http.ts
+    ✓ rule rul_mv519io8etg4td Randomness and time are injected
+    ✓ intent int_mv519iq0c84orz p5 Scaffold the Worker project
+    ✓ intent int_mv519j31bvnz0l p5 Shared types: Link, Store, KVLike, Env, Deps, Handler
+    ✓ intent int_mv519jhsx35k7i p4 HTTP helpers: json, error, readJson
+    ✓ intent int_mv519jth0rmzpo p4 Slug generation and validation
+    ✓ intent int_mv519jwhjj6tp2 p4 Target URL validation
+    ✓ intent int_mv519jz15snosu p4 Router with params, 404, and 405 ← builds on "HTTP helpers: json, error, readJson"
+    ✓ intent int_mv519k1hk6eiuz p4 In-memory store ← builds on "Shared types: Link, Store, KVLike, Env, Deps, Handler"
+    ✓ intent int_mv519kf54sk8h9 p4 KV store ← builds on "Shared types: Link, Store, KVLike, Env, Deps, Handler"
+    ✓ intent int_mv519kmoep5ydz p3 Route: POST /api/links creates a short link ← builds on "HTTP helpers: json, error, readJson"
+    ✓ intent int_mv519l3ddxihrr p3 Route: GET /:slug redirects and counts ← builds on "HTTP helpers: json, error, readJson"
+    ✓ intent int_mv519l6f7co3pi p3 Routes: GET and DELETE /api/links/:slug ← builds on "HTTP helpers: json, error, readJson"
+    ✓ intent int_mv519l99q188a8 p2 Worker entry: routes, error boundary, store selection ← builds on "Route: POST /api/links creates a short link"
+    ✓ intent int_mv519lbxblpb0h p1 Acceptance suite A1 to A7 ← builds on "Worker entry: routes, error boundary, store selection"
+  
+  5 rules and 13 intents painted into the field, in 5 waves (priority 5 to 1).
+    Each intent carries the spec's contracts (11,047 characters at most); an agent waits for the files its intent builds on, then reads them.
+    Next: ft swarm shortlinks --agents 6   then   ft watch shortlinks
+[   14.0s] colony declared in 14.0 s
+
+[   14.0s] == ft swarm
+$ ft swarm shortlinks --agents 6 --model default=3,bulk
+  ✓ 6 internal agents joining shortlinks (default=3,bulk)
+    They self-assign from the field. Watch: ft watch shortlinks
+
+[   15.1s] == Growing
+[   20.7s] intents landed  0/13  claimed 6  proposed 0  open 7 | landings 0, returned 0, review 0, files 1
+[   26.9s] intents landed  0/13  claimed 6  proposed 0  open 7 | landings 0, returned 0, review 0, files 1
+[   32.2s] intents landed  0/13  claimed 5  proposed 1  open 7 | landings 0, returned 0, review 0, files 1
+[   38.4s] intents landed  1/13  claimed 6  proposed 0  open 6 | landings 1, returned 0, review 0, files 2
+[   44.4s] intents landed  1/13  claimed 5  proposed 1  open 6 | landings 1, returned 0, review 0, files 2
+[   49.8s] intents landed  1/13  claimed 5  proposed 1  open 6 | landings 1, returned 0, review 0, files 2
+[   55.5s] intents landed  2/13  claimed 6  proposed 0  open 5 | landings 2, returned 0, review 0, files 4
+[   61.5s] intents landed  2/13  claimed 6  proposed 0  open 5 | landings 2, returned 0, review 0, files 4
+[   66.8s] intents landed  2/13  claimed 6  proposed 0  open 5 | landings 2, returned 0, review 0, files 4
+[   72.4s] intents landed  2/13  claimed 6  proposed 0  open 5 | landings 2, returned 0, review 0, files 4
+[   77.7s] intents landed  2/13  claimed 5  proposed 1  open 5 | landings 2, returned 0, review 0, files 4
+[   83.0s] intents landed  2/13  claimed 5  proposed 1  open 5 | landings 2, returned 0, review 0, files 4
+[   88.7s] intents landed  3/13  claimed 5  proposed 1  open 4 | landings 3, returned 0, review 0, files 8
+[   94.1s] intents landed  4/13  claimed 6  proposed 0  open 3 | landings 4, returned 0, review 0, files 10
+[   99.4s] intents landed  4/13  claimed 6  proposed 0  open 3 | landings 4, returned 0, review 0, files 10
+[  105.4s] intents landed  4/13  claimed 6  proposed 0  open 3 | landings 4, returned 0, review 0, files 10
+[  110.7s] intents landed  4/13  claimed 5  proposed 1  open 3 | landings 4, returned 0, review 0, files 10
+[  116.2s] intents landed  4/13  claimed 5  proposed 1  open 3 | landings 4, returned 0, review 0, files 10
+[  122.0s] intents landed  4/13  claimed 5  proposed 1  open 3 | landings 4, returned 0, review 0, files 10
+[  127.9s] intents landed  5/13  claimed 5  proposed 0  open 3 | landings 5, returned 0, review 0, files 12
+[  133.2s] intents landed  5/13  claimed 6  proposed 0  open 2 | landings 5, returned 0, review 0, files 12
+[  138.5s] intents landed  5/13  claimed 6  proposed 0  open 2 | landings 5, returned 0, review 0, files 12
+[  143.8s] intents landed  5/13  claimed 6  proposed 0  open 2 | landings 5, returned 0, review 0, files 12
+[  149.1s] intents landed  5/13  claimed 6  proposed 0  open 2 | landings 5, returned 0, review 0, files 12
+[  155.3s] intents landed  5/13  claimed 6  proposed 0  open 2 | landings 5, returned 0, review 0, files 12
+[  160.5s] intents landed  5/13  claimed 6  proposed 0  open 2 | landings 5, returned 0, review 0, files 12
+[  166.1s] intents landed  5/13  claimed 6  proposed 0  open 2 | landings 5, returned 0, review 0, files 12
+[  172.0s] intents landed  5/13  claimed 6  proposed 0  open 2 | landings 5, returned 0, review 0, files 12
+[  177.3s] intents landed  5/13  claimed 6  proposed 0  open 2 | landings 5, returned 0, review 0, files 12
+[  182.6s] intents landed  5/13  claimed 6  proposed 0  open 2 | landings 5, returned 0, review 0, files 12
+[  188.3s] intents landed  6/13  claimed 5  proposed 0  open 2 | landings 6, returned 0, review 0, files 14
+[  193.9s] intents landed  6/13  claimed 6  proposed 0  open 1 | landings 6, returned 0, review 0, files 14
+[  199.6s] intents landed  6/13  claimed 5  proposed 1  open 1 | landings 6, returned 0, review 0, files 14
+[  204.9s] intents landed  7/13  claimed 6  proposed 0  open 0 | landings 7, returned 0, review 0, files 16
+[  210.7s] intents landed  7/13  claimed 6  proposed 0  open 0 | landings 7, returned 0, review 0, files 16
+[  216.4s] intents landed  7/13  claimed 5  proposed 1  open 0 | landings 7, returned 0, review 0, files 16
+[  222.0s] intents landed  8/13  claimed 5  proposed 0  open 0 | landings 8, returned 0, review 0, files 17
+[  227.5s] intents landed  8/13  claimed 5  proposed 0  open 0 | landings 8, returned 0, review 0, files 17
+[  233.2s] intents landed  8/13  claimed 5  proposed 0  open 0 | landings 8, returned 0, review 0, files 17
+[  238.6s] intents landed  8/13  claimed 5  proposed 0  open 0 | landings 8, returned 0, review 0, files 17
+[  244.7s] intents landed  8/13  claimed 5  proposed 0  open 0 | landings 8, returned 0, review 0, files 17
+[  250.0s] intents landed  8/13  claimed 5  proposed 0  open 0 | landings 8, returned 0, review 0, files 17
+[  255.3s] intents landed  8/13  claimed 5  proposed 0  open 0 | landings 8, returned 0, review 0, files 17
+[  260.6s] intents landed  8/13  claimed 5  proposed 0  open 0 | landings 8, returned 0, review 0, files 17
+[  265.9s] intents landed  8/13  claimed 4  proposed 1  open 0 | landings 8, returned 0, review 0, files 17
+[  271.5s] intents landed  9/13  claimed 4  proposed 0  open 0 | landings 9, returned 0, review 0, files 18
+[  277.4s] intents landed  9/13  claimed 3  proposed 1  open 0 | landings 9, returned 0, review 0, files 18
+[  283.5s] intents landed  9/13  claimed 3  proposed 1  open 0 | landings 9, returned 0, review 0, files 18
+[  289.0s] intents landed 10/13  claimed 3  proposed 0  open 0 | landings 10, returned 0, review 0, files 19
+[  295.4s] intents landed 10/13  claimed 3  proposed 0  open 0 | landings 10, returned 0, review 0, files 19
+[  300.7s] intents landed 10/13  claimed 3  proposed 0  open 0 | landings 10, returned 0, review 0, files 19
+[  306.5s] intents landed 10/13  claimed 3  proposed 0  open 0 | landings 10, returned 0, review 0, files 19
+[  312.4s] intents landed 10/13  claimed 3  proposed 0  open 0 | landings 10, returned 0, review 0, files 19
+[  317.8s] intents landed 10/13  claimed 3  proposed 0  open 0 | landings 10, returned 0, review 0, files 19
+[  323.1s] intents landed 10/13  claimed 3  proposed 0  open 0 | landings 10, returned 0, review 0, files 19
+[  328.7s] intents landed 10/13  claimed 3  proposed 0  open 0 | landings 10, returned 0, review 0, files 19
+[  334.3s] intents landed 10/13  claimed 3  proposed 0  open 0 | landings 10, returned 0, review 0, files 19
+[  340.1s] intents landed 10/13  claimed 3  proposed 0  open 0 | landings 10, returned 0, review 0, files 19
+[  346.0s] intents landed 10/13  claimed 3  proposed 0  open 0 | landings 10, returned 0, review 0, files 19
+[  351.6s] intents landed 10/13  claimed 3  proposed 0  open 0 | landings 10, returned 0, review 0, files 19
+[  357.0s] intents landed 10/13  claimed 2  proposed 1  open 0 | landings 10, returned 0, review 0, files 19
+[  362.7s] intents landed 10/13  claimed 2  proposed 1  open 0 | landings 11, returned 0, review 0, files 21
+[  368.1s] intents landed 11/13  claimed 2  proposed 0  open 0 | landings 11, returned 0, review 0, files 21
+[  373.5s] intents landed 11/13  claimed 2  proposed 0  open 0 | landings 11, returned 0, review 0, files 21
+[  379.4s] intents landed 11/13  claimed 2  proposed 0  open 0 | landings 11, returned 0, review 0, files 21
+[  385.0s] intents landed 11/13  claimed 2  proposed 0  open 0 | landings 11, returned 0, review 0, files 21
+[  390.4s] intents landed 11/13  claimed 2  proposed 0  open 0 | landings 11, returned 0, review 0, files 21
+[  395.8s] intents landed 11/13  claimed 1  proposed 1  open 0 | landings 11, returned 0, review 0, files 21
+[  401.1s] intents landed 12/13  claimed 1  proposed 0  open 0 | landings 12, returned 0, review 0, files 22
+[  406.7s] intents landed 12/13  claimed 1  proposed 0  open 0 | landings 12, returned 0, review 0, files 22
+[  412.5s] intents landed 12/13  claimed 1  proposed 0  open 0 | landings 12, returned 0, review 0, files 22
+[  418.2s] intents landed 12/13  claimed 1  proposed 0  open 0 | landings 12, returned 0, review 0, files 22
+[  423.8s] intents landed 12/13  claimed 1  proposed 0  open 0 | landings 12, returned 0, review 0, files 22
+[  429.2s] intents landed 12/13  claimed 1  proposed 0  open 0 | landings 12, returned 0, review 0, files 22
+[  435.0s] intents landed 12/13  claimed 1  proposed 0  open 0 | landings 12, returned 0, review 0, files 22
+[  440.3s] intents landed 12/13  claimed 1  proposed 0  open 0 | landings 12, returned 0, review 0, files 22
+[  445.7s] intents landed 12/13  claimed 1  proposed 0  open 0 | landings 12, returned 0, review 0, files 22
+[  451.3s] intents landed 12/13  claimed 1  proposed 0  open 0 | landings 12, returned 0, review 0, files 22
+[  456.7s] intents landed 12/13  claimed 1  proposed 0  open 0 | landings 12, returned 0, review 0, files 22
+[  462.3s] intents landed 12/13  claimed 1  proposed 0  open 0 | landings 12, returned 0, review 0, files 22
+[  467.6s] intents landed 12/13  claimed 1  proposed 0  open 0 | landings 12, returned 0, review 0, files 22
+[  473.2s] intents landed 12/13  claimed 0  proposed 1  open 0 | landings 12, returned 0, review 0, files 22
+[  479.1s] intents landed 13/13  claimed 0  proposed 0  open 0 | landings 13, returned 0, review 0, files 23
+
+[  479.1s] == Result
+[  480.0s] swarm stopped
+[  480.1s] all 13 intents landed 479.1 s after ft new
+[  480.1s] landings 13, proposals 13, returned 0, rejected 0, escalated 0 (approved by the script: 0), abandons 0
+[  480.1s] @cf/google/gemma-4-26b-a4b-it        3 agents,   6 calls,   24901 in /   2922 out tokens, 0 throttled, landed 6, $0.0034
+[  480.1s] @cf/moonshotai/kimi-k2.7-code        3 agents,  20 calls,   86701 in /  36747 out tokens, 0 throttled, landed 7, $0.2294
+[  480.1s] decide: Clef 28215 tokens ($0.0068), second opinions 26919 in / 4326 out ($0.0127)
+[  480.1s] model spend: $0.2522 (agents $0.2327 + decide $0.0194)
+
+[  480.1s] == Plain git clone of trunk
+[  481.7s] cloned 23 files to <scratch>/shortlinks-clone/shortlinks (trunk f923e70, 14 commits)
+[  481.7s] files: .gitignore, README.md, package.json, src/http.ts, src/index.ts, src/router.ts, src/routes/create.ts, src/routes/links.ts, src/routes/resolve.ts, src/slug.ts, src/store/kv.ts, src/store/memory.ts, src/types.ts, src/validate.ts, test/acceptance.test.ts, test/http.test.ts, test/router.test.ts, test/slug.test.ts, test/store.kv.test.ts, test/store.memory.test.ts, test/validate.test.ts, tsconfig.json, wrangler.jsonc
+
+[  481.7s] == node --test (the colony's own suite, nothing installed)
+[  481.9s] node --test: 60 tests, 60 pass, 0 fail in 144 ms
+
+[  481.9s] == Reference acceptance suite A1-A7 against the colony's code
+[  482.0s] reference acceptance: 7/7 pass in 87 ms
+
+[  482.0s] == The spec's rules on every file of trunk
+[  482.0s] rule 1 Relative imports name the .ts file                         18 file(s) checked, 0 violation(s)
+[  482.0s] rule 2 Worker code uses web APIs, not Node built-ins              11 file(s) checked, 0 violation(s)
+[  482.0s] rule 3 Route handlers depend on the Store interface, not a store  3 file(s) checked, 0 violation(s)
+[  482.0s] rule 4 Responses are built by src/http.ts                         10 file(s) checked, 0 violation(s)
+[  482.0s] rule 5 Randomness and time are injected                           10 file(s) checked, 0 violation(s)
+[  482.0s] done in 482.0 s; clone kept at <scratch>/shortlinks-clone/shortlinks
+exit=0

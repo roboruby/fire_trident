@@ -1,0 +1,67 @@
+[   0.0s] FireTrident demo on https://github.com/honojs/hono -> colony hono at https://firetrident.mattsolt.workers.dev
+[   0.0s] plan: pool 84, 80 agents on @cf/moonshotai/kimi-k2.7-code=4,@cf/google/gemma-4-26b-a4b-it, prerequisite on, payoff on
+
+[   0.8s] == Import honojs/hono
+$ ft import https://github.com/honojs/hono --name hono --branch main --region-depth 3 --pool 84 --timeout 900
+  ✓ Importing https://github.com/honojs/hono (main) as hono hono
+  hono hono  from https://github.com/honojs/hono (main)
+  trunk      552ea02  green not certified yet
+  files      583 in 127 regions
+  intents    none
+  agents     none
+  violations 0 left
+  decisions  reflex 0 · llm 0 · human 0
+  landings   none yet
+  in flight  0 proposals · 0 landings/min
+  last 30m   no landings
+  
+    Next: ft rule add hono --pattern <regex> --hint <text> --description <text>
+          ft watch hono
+[  20.6s] trunk 552ea02425: 583 files
+[  20.6s] letting the workspace pool warm up for 27 s
+
+[  47.6s] == Prerequisite: a human intent lands first
+[  48.6s] intent int_mv515q59kxzvig: Let TypeScript accept .ts import specifiers (tsconfig.base.json)
+$ ft swarm hono --agents 1 --model @cf/moonshotai/kimi-k2.7-code
+  ✓ 1 internal agent joining hono (@cf/moonshotai/kimi-k2.7-code)
+    They self-assign from the field. Watch: ft watch hono
+[  68.2s] prerequisite landed in 18.4 s
+
+[  68.2s] == Declare the rule
+$ ft rule import-boundary hono --from 'src/**/*.ts' --from 'src/**/*.tsx' --module '^\.\.?(?:/.*)?(?<!\.ts|\.tsx|\.json)$' --hint 'Name the file in every relative import: ./x becomes ./x.ts when x.ts exists; a directory ./d becomes ./d/index.ts (".", ".." and "../.." are directories). Check the tree. Change nothing else.' --description 'Relative imports in src name their file, so Hono runs on Deno, JSR and Node built-in TypeScript without the unstable sloppy-imports flag.'
+  ✓ rul_mv51663hu2jmz8 added (forbid-import, approved by ms)
+    958 violations → 282 intents in the field
+    Next: ft swarm hono --agents 50   then   ft watch hono
+[  72.9s] violations: 958, open intents: 281, regions: 79
+
+[  72.9s] == Release the swarm
+$ ft swarm hono --agents 80 --model @cf/moonshotai/kimi-k2.7-code=4,@cf/google/gemma-4-26b-a4b-it
+  ✓ 80 internal agents joining hono (@cf/moonshotai/kimi-k2.7-code=4,@cf/google/gemma-4-26b-a4b-it)
+    They self-assign from the field. Watch: ft watch hono
+[  82.2s] violations  922 | intents open 211 claimed  29 proposed  28 landed  15 | landings  14 (90.0/min, now 15/min) | returned 0 | agents working 57
+[  87.4s] violations  811 | intents open 173 claimed  10 proposed  47 landed  53 | landings  40 (165.6/min, now 41/min) | returned 0 | agents working 57
+[  92.8s] violations  679 | intents open 117 claimed  25 proposed  45 landed  96 | landings  64 (192.6/min, now 65/min) | returned 0 | agents working 67
+[  98.3s] violations  532 | intents open  76 claimed  23 proposed  45 landed 139 | landings  93 (220.0/min, now 94/min) | returned 0 | agents working 68
+[ 104.0s] violations  297 | intents open  40 claimed  15 proposed  35 landed 193 | landings 132 (254.6/min, now 133/min) | returned 0 | agents working 50
+[ 109.6s] violations  160 | intents open  35 claimed   4 proposed  14 landed 230 | landings 158 (258.3/min, now 159/min) | returned 0 | agents working 18
+[ 114.7s] violations   97 | intents open  17 claimed   8 proposed   7 landed 251 | landings 169 (242.3/min, now 170/min) | returned 0 | agents working 15
+[ 119.9s] violations   54 | intents open   7 claimed   2 proposed   8 landed 266 | landings 179 (228.6/min, now 180/min) | returned 0 | agents working 10
+[ 125.3s] violations   17 | intents open   1 claimed   3 proposed   0 landed 279 | landings 188 (215.1/min, now 189/min) | returned 0 | agents working 2
+[ 130.6s] violations    1 | intents open   0 claimed   1 proposed   0 landed 282 | landings 191 (198.7/min, now 191/min) | returned 0 | agents working 1
+[ 136.0s] violations    0 | intents open   0 claimed   0 proposed   0 landed 283 | landings 192 (182.5/min, now 192/min) | returned 0 | agents working 0
+
+[ 136.0s] == Result
+[ 137.7s] violations reached 0 in 63.1 s
+[ 137.7s] landings 192 (182.5 per minute), intents landed 283, proposals returned 0, abandons 0, review queue 0
+[ 137.7s] @cf/google/gemma-4-26b-a4b-it             76 agents,  269 calls,  222297 in /  14880 out tokens,    0 throttled waits, $0.0267
+[ 137.7s] @cf/moonshotai/kimi-k2.7-code              5 agents,   14 calls,   13659 in /   3195 out tokens,    0 throttled waits, $0.0258
+[ 137.7s] model cost estimate: $0.0524
+[ 137.7s] violations event reached 0 at +58.0 s (from the colony's own clock)
+[ 137.7s] event log: $TMPDIR/ft-watch-hono-1791796164.jsonl
+
+[ 137.7s] == Payoff: JSR without sloppy imports
+[ 138.2s] intent int_mv517nmgeumthh: Publish to JSR without sloppy imports
+[ 175.9s] jsr.json landed in 37.7 s
+[ 176.2s] swarm stopped (["agt_mv5169omqpoaoi", "agt_mv5169omrojgo9", "agt_mv5169omfgiooi", "agt_mv5169omhm439v", "agt_mv5169omwnztdl", "agt_mv5169omk7g02h", "agt_mv5169om98mldc", "agt_mv5169omexo0w7", "agt_mv5169omfduuls", "agt_mv5169om1jn4sh", "agt_mv5169omxv6s56", "agt_mv5169om3yxzsh", "agt_mv5169om8lecuj", "agt_mv5169om1unt7x", "agt_mv5169om15j2ad", "agt_mv5169omcwzhls", "agt_mv515qs6qiib8d", "agt_mv5169omze59ti", "agt_mv5169omzclzzq", "agt_mv5169ommfwm27", "agt_mv5169ombx55qf", "agt_mv5169oma4rm5v", "agt_mv5169omioe6xu", "agt_mv5169om1v6dr6", "agt_mv5169omvk8130", "agt_mv5169omw2873j", "agt_mv5169omqrozqb", "agt_mv5169oma1494a", "agt_mv5169om0vsv1y", "agt_mv5169omnxtyof", "agt_mv5169om3v50lm", "agt_mv5169ommwr7xp", "agt_mv5169omek0u02", "agt_mv5169omdp3tg2", "agt_mv5169omxyufia", "agt_mv5169omrumcl2", "agt_mv5169omvlk1xh", "agt_mv5169omy6c65o", "agt_mv5169omlzyupu", "agt_mv5169om9reyov", "agt_mv5169om1vramm", "agt_mv5169omnrccqf", "agt_mv5169omry7nar", "agt_mv5169omb4n01n", "agt_mv5169omhf6yv9", "agt_mv5169om3ghcfa", "agt_mv5169om0fi8sb", "agt_mv5169omz66rjs", "agt_mv5169omamiyfq", "agt_mv5169omzh6gex", "agt_mv5169omcvv8mn", "agt_mv5169omljyw0v", "agt_mv5169omglqe90", "agt_mv5169ombv60rr", "agt_mv5169omsbb3qg", "agt_mv5169om32gaia", "agt_mv5169om8ek8r0", "agt_mv5169omdzibou", "agt_mv5169omn4nu3t", "agt_mv5169omkfn7v9", "agt_mv5169om59c4gn", "agt_mv5169omi12rsa", "agt_mv5169om06m9h4", "agt_mv5169omifw6m7", "agt_mv5169omfciiol", "agt_mv5169om5yxsjt", "agt_mv5169omj4vbzj", "agt_mv5169omka95aj", "agt_mv5169om3ksfby", "agt_mv5169omf3jja7", "agt_mv5169omdl34o3", "agt_mv5169omm3nwyb", "agt_mv5169om4de025", "agt_mv5169omssgx9e", "agt_mv5169omhktxee", "agt_mv5169omzud74m", "agt_mv5169om95ho9g", "agt_mv5169om743wk9", "agt_mv5169omlx6kmk", "agt_mv5169omxb2jq0", "agt_mv5169omw7zatd"])
+[ 176.2s] open https://firetrident.mattsolt.workers.dev/c/hono for the colony map; ft why hono src/index.ts:17 for the lineage of one line
+exit=0

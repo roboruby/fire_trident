@@ -1,0 +1,43 @@
+[    0.0s] importing hexojs/hexo as d1-retract-060533
+[   18.2s] imported: 302 files
+[   20.0s] rule rul_mv536uruyq1quk: 46 violations, 36 intents
+[   21.1s] swarm: 6 internal agents (@cf/google/gemma-4-26b-a4b-it)
+[   22.6s]   landed 0, proposed 0, agents holding 6
+[   26.2s]   landed 0, proposed 0, agents holding 6
+[   30.7s]   landed 0, proposed 1, agents holding 6
+[   35.2s]   landed 1, proposed 1, agents holding 6
+[   36.0s] RETRACTING rul_mv536uruyq1quk: 1 landed so far; holders [["agt_mv536w4y5qxo4n", "await"], ["agt_mv536w4y43jgfe", "produce"], ["agt_mv536w4ymbofwr", "produce"], ["agt_mv536w4y26pdrt", "produce"], ["agt_mv536w4y99uaqf", "produce"], ["agt_mv536w4ypf6po0", "produce"]]
+[   36.8s] (a) retract answered in 0.81 s: withdrawn 35, returned 1, notified {"pushed" => 6}
+[   37.0s] (a) no agent holds a rule intent: colony view after 0.99 s, agents' own view after 0.99 s
+[  114.9s] SUMMARY {
+  "colony": "d1-retract-060533",
+  "rule": "rul_mv536uruyq1quk",
+  "violations": 46,
+  "intents": 36,
+  "landed_before": 1,
+  "withdrawn": 35,
+  "returned_in_flight": 1,
+  "notified": {
+    "pushed": 6
+  },
+  "retract_api_s": 0.81,
+  "colony_clear_s": 0.99,
+  "agents_clear_s": 0.99,
+  "landings_after_retract": 0,
+  "rule_intents_landed_after_retract": [],
+  "statuses_after": {
+    "withdrawn": 35,
+    "landed": 1
+  },
+  "rule_after": {
+    "retractedAt": 1791799569956,
+    "retractedBy": "d1-check",
+    "retractReason": "node: protocol is not wanted here after all"
+  },
+  "violations_after": {
+    "total": 0,
+    "byRule": {
+      "rul_mv536uruyq1quk": 0
+    }
+  }
+}

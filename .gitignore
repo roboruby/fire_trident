@@ -3,6 +3,8 @@ dist/
 .wrangler/
 .dev.vars
 *.log
+# Run logs under packages/bench/results are published evidence (redacted by packages/bench/src/evidence.ts).
+!packages/bench/results/**/*.log
 .DS_Store
 coverage/
 .tsbuildinfo
