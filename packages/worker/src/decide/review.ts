@@ -30,7 +30,7 @@ export interface ReviewFile {
 }
 
 /** Hunk characters kept per file and in all. */
-export const REVIEW_FILE_CHARS = 8_000;
+export const REVIEW_FILE_CHARS = 24_000;
 export const REVIEW_TOTAL_CHARS = 60_000;
 /** Files, danger entries and residual paths kept at most. */
 const MAX_FILES = 200;

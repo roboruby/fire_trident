@@ -58,7 +58,7 @@ export const STANDARD_QUESTIONS: Record<"needs_human" | "risk" | "touches_sensit
 const STATE_DIFF_CHARS = 9_000;
 const STATE_FILES = 20;
 /** Diff characters and files in System 2's prompt. */
-const PROMPT_DIFF_CHARS = 40_000;
+const PROMPT_DIFF_CHARS = 60_000;
 const PROMPT_FILES = 20;
 
 /** Everything the reflex state is built from. */

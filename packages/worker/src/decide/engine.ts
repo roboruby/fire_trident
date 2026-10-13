@@ -58,8 +58,8 @@ import { VACCINE_CLASSES, VACCINE_LABELS, VACCINE_OUTCOMES, makeVaccine, recallR
  */
 
 /** Input of ColonyDO.recordDecision. */
-/** Diff characters shown to reviewers per file: enough for a whole new module, so a complete file never looks cut off. */
-const REVIEW_FILE_CHARS = 8_000;
+/** Diff characters shown to reviewers per file: enough for a whole new module or test suite (the new-project spec's largest file is under 10 KB), so a complete file is never cut. */
+const REVIEW_FILE_CHARS = 24_000;
 
 export type DecisionInput = Omit<Decision, "id" | "colonyId" | "at"> & { at?: number };
 

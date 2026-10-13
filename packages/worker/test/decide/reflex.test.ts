@@ -67,14 +67,14 @@ describe("what each layer sees", () => {
     expect(coverageText(so.coverage)).toBe("saw 20 of 23 files");
   });
 
-  it("past 40,000 characters the cut is marked on a line boundary, and later files are not shown", () => {
-    const diffs = Array.from({ length: 8 }, (_, i) => newFile(`src/m${i}.ts`, 110, 50));
+  it("past 60,000 characters the cut is marked on a line boundary, and later files are not shown", () => {
+    const diffs = Array.from({ length: 12 }, (_, i) => newFile(`src/m${i}.ts`, 110, 50));
     expect(diffs.every((d) => !d.truncated)).toBe(true);
     const so = secondOpinionDiff(diffs);
     expect(so.coverage.complete).toBe(false);
     expect(so.text).toContain("\n… (truncated)\n… not shown (over the review limit):");
     const before = so.text.slice(0, so.text.indexOf("\n… (truncated)"));
-    expect(before.length).toBeLessThanOrEqual(40_000);
+    expect(before.length).toBeLessThanOrEqual(60_000);
     expect(so.coverage.cut).toEqual([diffs[so.coverage.filesShown - 1]!.path]);
   });
 

@@ -49,9 +49,9 @@ describe("buildReviewView", () => {
     expect(v.files[0]!.hunks).not.toContain("8080");
   });
 
-  it("cuts each file to 8,000 characters and the whole view to 60,000, marking what was cut", () => {
+  it("cuts each file to 24,000 characters and the whole view to 60,000, marking what was cut", () => {
     const big = (n: number) => Array.from({ length: n }, (_, i) => `export const v${i} = "${"y".repeat(60)}";`).join("\n");
-    const files: ReviewFile[] = Array.from({ length: 12 }, (_, i) => ({ path: `src/m${i}.ts`, before: null, after: big(150) }));
+    const files: ReviewFile[] = Array.from({ length: 12 }, (_, i) => ({ path: `src/m${i}.ts`, before: null, after: big(400) }));
     const v = buildReviewView({ files, danger: [], residual: [] });
     expect(v.files.every((f) => f.hunks.length <= REVIEW_FILE_CHARS)).toBe(true);
     expect(v.files.reduce((n, f) => n + f.hunks.length, 0)).toBeLessThanOrEqual(REVIEW_TOTAL_CHARS);

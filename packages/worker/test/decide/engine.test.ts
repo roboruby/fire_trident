@@ -269,7 +269,7 @@ describe("earned autonomy", () => {
 });
 
 describe("complete input or no confirmation", () => {
-  const big = Array.from({ length: 400 }, (_, i) => `export const value${i} = ${i};`).join("\n");
+  const big = Array.from({ length: 1_200 }, (_, i) => `export const value${i} = ${i};`).join("\n");
 
   it("a change too large for the second opinion's view goes to a person, and each layer's view is recorded", async () => {
     const c = new Colonyish();
