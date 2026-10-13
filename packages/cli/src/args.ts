@@ -868,10 +868,14 @@ Example
 ft certify <colony> [--now | --on | --off]
 
 Trunk certification runs the colony's own tests (node:test) after landings, in
-a Dynamic Worker, and records the result per trunk commit. Without options,
-show the state, the green commit and the latest results. --now certifies the
-current trunk now; --off and --on change the colony's policy (the deployment's
-FT_TRUNK_TESTS must be "on" as well).
+a Dynamic Worker, and records the result per trunk commit. A green run moves
+the trunk's certified branch to that commit: every test file it could run
+passed and no test that passed before was lost. main holds every landing,
+tested or not; deploy, release and pin from certified
+(git clone -b certified <url>). Without options, show the state, the green
+commit and the latest results. --now certifies the current trunk now; --off
+and --on change the colony's policy (the deployment's FT_TRUNK_TESTS must be
+"on" as well).
 `,
   vaccinate: `
 ft vaccinate <colony> --count <n>

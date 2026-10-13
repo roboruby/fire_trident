@@ -123,7 +123,7 @@ export function Exceptions() {
             <div className="ex-k">After a change lands</div>
             <h3 className="ex-head">A repair counts only when its tests pass.</h3>
             <p className="ex-body">
-              The project's own tests run on trunk after landings. <span className="mono">certified</span> moves only to a commit whose tests all passed. A failing trunk becomes a repair intent, and the repair counts only when the tests it
+              The project's own tests run on trunk after landings. <span className="mono">certified</span> moves only to a commit on which every test file that could run passed. A failing trunk becomes a repair intent, and the repair counts only when the tests it
               was declared for run and pass: a run that lost tests never moves <span className="mono">certified</span>.
             </p>
             <div className="ex-diagram">

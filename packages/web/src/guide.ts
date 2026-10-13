@@ -28,12 +28,12 @@ export const GUIDE_STEPS: readonly GuideStep[] = [
   {
     target: "lanes",
     title: "Lanes land batches into trunk",
-    text: "Each region of the code has a lane that batches the changes that do not conflict and whose reads are still current, and one trunk writer folds the batches into a single commit. Each spark is a change flying into trunk. A change whose reads went stale goes back to its agent.",
+    text: "Each region of the code has a lane that batches the changes that do not conflict and whose reads are still current, and one trunk writer commits each batch and pushes them together. Each spark is a change flying into trunk. A change whose reads went stale goes back to its agent.",
   },
   {
     target: "trunk",
     title: "The trunk bar",
-    text: "`head` is the newest commit, and ✓ or ✗ is that commit's own tests, run after it landed. `certified` is the newest commit whose tests all passed. A failing trunk becomes a repair intent, and a repair counts only when its tests pass.",
+    text: "`head` is the newest commit, and ✓ or ✗ is that commit's own tests, run after it landed. `certified` is the newest commit on which every test file that could run passed and no test that passed before was lost. A failing trunk becomes a repair intent, and a repair counts only when its tests pass.",
   },
   {
     target: "funnel",
