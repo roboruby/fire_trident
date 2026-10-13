@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { blobId, changesetId, inlineProblem, sha1Hex, utf8Bytes } from "@fire_trident/core";
 import type { AgentInfo, Colony, ColonySnapshot, Directive, FileVersion, Id, Intent, Path, Proposal, Rule, Sha, WorkspaceLease } from "@fire_trident/core";
 import { MemoryJournal } from "../../src/agents/journal.ts";
-import { FIRST_POLL_MS, receiveDirective, tick } from "../../src/agents/loop.ts";
+import { FIRST_POLL_MS, TIP_POLL_MS, TIP_WAIT_MS, receiveDirective, tick } from "../../src/agents/loop.ts";
 import type { AgentConfig, BaseFile, GitOps, LoopDeps, ModelClient, ModelReply } from "../../src/agents/loop.ts";
 import type { ChatMessage } from "../../src/agents/prompt.ts";
 import type { ColonyRpc, ProposeInput, TakeResult } from "../../src/agents/rpc.ts";
@@ -408,6 +408,63 @@ describe("virtual checkouts in the agent loop", () => {
     expect(p.readSet).toEqual([{ path: "src/a.ts", blob: blobId(NEW) }]);
     expect(p.headSha).toBe(changesetId(tip, [{ path: "src/a.ts", blob: blobId(WRITTEN) }]));
     expect(s.git.calls).toEqual([]);
+  });
+
+  // Asynchronous publishing (FT_ASYNC_PUBLISH): a landing notice can arrive before trunk's tip shows the landing.
+  const noticeBeforePublish = async (s: ReturnType<typeof setup>, OLD: string, NEW: string): Promise<void> => {
+    s.colony.rules = [];
+    s.colony.intents = [intent({ title: "Make f return 3", source: "human", ruleId: undefined, why: "Callers need 3." })];
+    let release!: () => void;
+    s.model.gate = new Promise<void>((r) => (release = r));
+    const running = tick(s.deps());
+    await settleTurns();
+    const notice: Directive = {
+      id: "dir_10",
+      colonyId: "col",
+      agentId: "agt_1",
+      kind: "landing",
+      intentId: "int_1",
+      message: "Landing lnd_10 changed src/a.ts",
+      by: "colony",
+      at: s.now(),
+      landing: { landingId: "lnd_10", trunkSha: "f".repeat(40), paths: [{ path: "src/a.ts", before: blobId(OLD), after: blobId(NEW) }], intentTitle: "Add g", why: "g is needed" },
+    };
+    expect(receiveDirective(s.journal, notice, undefined, s.now())).toMatchObject({ interrupted: true });
+    s.model.gate = null;
+    release();
+    expect(await running).toEqual({ sleepMs: null });
+  };
+
+  it("waits for trunk's tip to show the landing a notice announced, then rebuilds on it", async () => {
+    const OLD = "export function f() {\n  return 1;\n}\n";
+    const NEW = "export function f() {\n  return 1;\n}\nexport const g = 2;\n";
+    const WRITTEN = "export function f() {\n  return 3;\n}\nexport const g = 2;\n";
+    const s = setup({ files: { "src/a.ts": OLD }, replies: [`<file>\n${WRITTEN}</file>`, `<file>\n${WRITTEN}</file>`] });
+    await noticeBeforePublish(s, OLD, NEW);
+    // Not published yet: the tip still has the old blob, so the job waits and asks the model nothing.
+    expect(await tick(s.deps())).toEqual({ sleepMs: TIP_POLL_MS });
+    expect(s.model.calls).toHaveLength(1);
+    s.advance(TIP_POLL_MS);
+    const tip = s.land({ "src/a.ts": NEW });
+    expect(await tick(s.deps())).toEqual({ sleepMs: FIRST_POLL_MS });
+    expect(user(s.model.calls[1]!)).toContain("export const g = 2;");
+    const p = s.colony.only();
+    expect(p.baseSha).toBe(tip);
+    expect(p.readSet).toEqual([{ path: "src/a.ts", blob: blobId(NEW) }]);
+  });
+
+  it("stops waiting for the tip after TIP_WAIT_MS and rebuilds on it as it is", async () => {
+    const OLD = "export function f() {\n  return 1;\n}\n";
+    const NEW = "export function f() {\n  return 1;\n}\nexport const g = 2;\n";
+    const WRITTEN = "export function f() {\n  return 3;\n}\n";
+    const s = setup({ files: { "src/a.ts": OLD }, replies: [`<file>\n${WRITTEN}</file>`, `<file>\n${WRITTEN}</file>`] });
+    await noticeBeforePublish(s, OLD, NEW);
+    expect(await tick(s.deps())).toEqual({ sleepMs: TIP_POLL_MS });
+    s.advance(TIP_WAIT_MS);
+    expect(await tick(s.deps())).toEqual({ sleepMs: FIRST_POLL_MS });
+    const p = s.colony.only();
+    expect(p.baseSha).toBe(s.base);
+    expect(p.readSet).toEqual([{ path: "src/a.ts", blob: blobId(OLD) }]);
   });
 
   it("with the flag off, takes today's clone path and reads nothing through the binding", async () => {

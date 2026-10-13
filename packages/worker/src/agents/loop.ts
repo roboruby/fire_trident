@@ -151,6 +151,12 @@ export interface Job {
   lastReturn?: LastReturn;
   /** Build on trunk as it is now, not the lease base: a landing notice changed files this job covers (fetch takes the tip). */
   freshBase?: boolean;
+  /**
+   * The blobs that files this job covers had before the landings its notices announced (path → blob, null when the
+   * file was new). With asynchronous publishing (FT_ASYNC_PUBLISH) trunk's tip can lag a landing for a moment, so the
+   * fetch step waits, at most TIP_WAIT_MS from `since`, until the tip no longer shows them.
+   */
+  awaitTip?: { before: Record<Path, Sha | null>; since: number };
   /** Times a landing notice restarted this job, and the landings it rebased past (for the evidence). */
   rebases?: number;
   rebasedOn?: Id[];
@@ -670,6 +676,11 @@ async function fetchStep(deps: LoopDeps, cfg: AgentConfig, job: Job): Promise<St
   // does a job a landing notice restarted (freshBase): files it covers changed after the lease base.
   const atTip = (job.buildsOn ?? []).length > 0 || job.freshBase === true;
   const tip = atTip && deps.git.fetchTip ? await deps.git.fetchTip({ remote: job.lease.trunk.remote, token: job.lease.trunk.token }) : null;
+  if (tip && !(await tipShowsLandings(job, tip, deps.git.blobsAt ? (sha, paths) => deps.git.blobsAt!(sha, paths) : undefined, deps.now()))) {
+    save(deps, cfg, job);
+    return { sleepMs: TIP_POLL_MS };
+  }
+  delete job.awaitTip;
   const reuse = tip ? null : await workspaceBase(deps, job);
   if (tip) {
     job.baseSha = tip;
@@ -696,6 +707,12 @@ async function virtualFetchStep(deps: LoopDeps, cfg: AgentConfig, job: Job): Pro
   const v = virtualOf(deps);
   const atTip = (job.buildsOn ?? []).length > 0 || job.freshBase === true;
   const tip = atTip ? await v.fetchTip() : null;
+  if (tip && !(await tipShowsLandings(job, tip, (sha, paths) => v.blobsAt(sha, paths), deps.now()))) {
+    bookReads(deps, job);
+    save(deps, cfg, job);
+    return { sleepMs: TIP_POLL_MS };
+  }
+  delete job.awaitTip;
   if (tip) {
     job.baseSha = tip;
   } else {
@@ -705,6 +722,26 @@ async function virtualFetchStep(deps: LoopDeps, cfg: AgentConfig, job: Job): Pro
   }
   bookReads(deps, job);
   return advance(deps, cfg, job, "read");
+}
+
+/** How long a job a landing notice restarted waits for trunk's tip to show that landing, and how often it looks. */
+export const TIP_WAIT_MS = 15_000;
+export const TIP_POLL_MS = 1_000;
+
+/**
+ * Whether trunk's tip shows the landings the job's notices announced: no file they changed still has its blob from
+ * before them. True as well when there is nothing to wait for, no way to read blobs, the read fails, or the job has
+ * waited TIP_WAIT_MS: then it rebuilds on the tip as it is, and the lane's read-set check catches a change that is
+ * still stale.
+ */
+async function tipShowsLandings(job: Job, tip: Sha, blobsAt: ((sha: Sha, paths: Path[]) => Promise<Map<Path, Sha | null>>) | undefined, now: number): Promise<boolean> {
+  const want = job.awaitTip;
+  if (!want || !blobsAt || now - want.since >= TIP_WAIT_MS) return true;
+  const paths = Object.keys(want.before);
+  if (paths.length === 0) return true;
+  const at = await blobsAt(tip, paths).catch(() => null);
+  if (!at) return true;
+  return paths.every((p) => (at.get(p) ?? null) !== (want.before[p] ?? null));
 }
 
 /** `fn` on each item in order: together for a virtual checkout (each read is a call to the trunk repo), in turn for a clone. */
@@ -1769,6 +1806,13 @@ function rebase(deps: LoopDeps, cfg: AgentConfig, job: Job, d: Directive): void 
   if (d.landing) {
     job.history = withLanded(job.history, noticeEntry(d.landing, d.at));
     job.rebasedOn = [...new Set([...(job.rebasedOn ?? []), d.landing.landingId])].slice(-5);
+    // Wait for the tip to show this landing (FT_ASYNC_PUBLISH can leave it behind for a moment): remember each file's
+    // blob from before it, keeping the earliest known when several notices touch the same file.
+    const before = { ...(job.awaitTip?.before ?? {}) };
+    for (const p of Array.isArray(d.landing.paths) ? d.landing.paths : []) {
+      if (typeof p?.path === "string" && !(p.path in before)) before[p.path] = p.before ?? null;
+    }
+    job.awaitTip = { before, since: deps.now() };
   }
   if (job.step === "deps") {
     deps.journal.setJob(job);
