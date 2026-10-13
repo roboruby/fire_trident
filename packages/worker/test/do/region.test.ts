@@ -62,7 +62,7 @@ describe("RegionDO field", () => {
     ]);
     const f = (await r.reading({ paths: ["src/lib/a.ts"], excludeAgentId: "me", agents: false })) as FieldReading;
     expect(Object.keys(f.byPath).sort()).toEqual(["src/lib/"]);
-    expect(f.byPath["src/lib/"]!.claim).toBeCloseTo(1, 3);
+    expect(f.byPath["src/lib/"]!.claim).toBeCloseTo(1, 2); // decays from 1 while the test runs
     expect(f.agents).toEqual([]);
     expect(f.admission.activeAgents).toBe(1);
     expect(f.totals.need).toBe(1);

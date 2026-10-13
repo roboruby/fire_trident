@@ -203,6 +203,8 @@ export class RegionDO extends DurableObject<Env> {
   private agg: { at: number; version: number } & Pick<FieldReading, "totals" | "byPath"> | null = null;
   private sigmaCache: { at: number; sigma: number } | null = null;
   private lastGc = 0;
+  /** Tells apart enqueues of one proposal in the same millisecond, so each counts toward the flux. */
+  private enqSeq = 0;
   private lastTickAt = 0;
   private ticking = false;
   private outbox: ColonyEvent[] = [];
@@ -459,7 +461,7 @@ export class RegionDO extends DurableObject<Env> {
       now,
       JSON.stringify(p),
     );
-    this.log(`enq:${p.id}:${now}`, "enq", now);
+    this.log(`enq:${p.id}:${now}:${++this.enqSeq}`, "enq", now);
     await this.ensureAlarm(now, wasEmpty);
   }
 
