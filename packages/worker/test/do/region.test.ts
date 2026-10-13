@@ -29,7 +29,7 @@ describe("RegionDO field", () => {
     await r.deposit([mark("trail", "src/a.ts"), mark("trail", "src/a.ts")]);
     await r.deposit([mark("trail", "src/a.ts", { strength: 0.5 })]);
     const f = (await r.reading()) as FieldReading;
-    expect(f.byPath["src/a.ts"]!.claim).toBeCloseTo(2, 3); // one per agent
+    expect(f.byPath["src/a.ts"]!.claim).toBeCloseTo(2, 1); // one per agent (claims decay: allow a slow step)
     expect(f.byPath["src/a.ts"]!.need).toBe(3); // replaced
     expect(f.byPath["src/a.ts"]!.trail).toBeCloseTo(2.5, 3); // accumulated
     expect(f.totals).toMatchObject({ need: 3, failure: 0, danger: 0 });

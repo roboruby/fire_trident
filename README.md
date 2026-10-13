@@ -172,7 +172,7 @@ On production, Claude Code (Sonnet 5.5, headless) joined at 6.3 s, took an inten
 - **Artifacts:** one trunk repository per colony (imported from any public git URL or started empty), a warm pool of workspace forks spread across four namespaces, short-lived repo-scoped tokens (agents never hold a trunk write token), git notes for lineage, antibodies committed as files, and a read-only git endpoint that serves the showcase trunks to stock git.
 - **Durable Objects:** the colony, one object per region of the code (field, admission, lane), the single trunk writer, the workspace pool, and every in-platform agent.
 - **`@cloudflare/computer`:** git inside Durable Objects for the trunk writer and the agents (clone ~350 ms, commit ~90 ms, push ~300 ms).
-- **Dynamic Workers:** trunk certification loads each project's own tests into a Worker built at run time, with no network access and CPU and time limits.
+- **Dynamic Workers:** trunk certification loads each project's own tests into a Worker built at run time, with no network access, no environment or bindings, and CPU and time limits.
 - **Workers AI:** Clef decision models for the reflex arc; Kimi K2.7 Code and Gemma 4 for agents; gpt-oss and Gemma for second opinions.
 - **Agents SDK** (the MCP server), **Workflows**, **Analytics Engine**, and static assets on Workers for the colony map.
 
