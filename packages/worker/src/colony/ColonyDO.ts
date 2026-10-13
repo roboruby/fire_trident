@@ -4133,7 +4133,7 @@ export class ColonyDO extends DurableObject<Env> {
     }
     this.publish(
       notices.map(
-        (n): ColonyEvent => ({ t: "directive", at: now, directiveId: n.directive.id, agentId: n.directive.agentId, ...(n.directive.intentId ? { intentId: n.directive.intentId } : {}), message: n.directive.message, by: n.directive.by, kind: "landing" }),
+        (n): ColonyEvent => ({ t: "directive", at: now, directiveId: n.directive.id, agentId: n.directive.agentId, ...(n.directive.intentId ? { intentId: n.directive.intentId } : {}), message: n.directive.message, by: n.directive.by, kind: "landing", ...(n.directive.landing ? { landingId: n.directive.landing.landingId, paths: n.directive.landing.paths.map((p) => p.path) } : {}) }),
       ),
     );
     this.noticesSincePrune += notices.length;
