@@ -127,9 +127,14 @@ class Colonyish implements DecideHost {
       blobsFor: async (paths) => Object.fromEntries(paths.map((p) => [p, null])),
       readFile: async () => null,
       files: async () => [],
-      systemCommit: async () => ({ id: "lnd_ab", colonyId: COLONY.id, trunkSha: "1".repeat(40) }) as unknown as Landing,
+      systemCommit: async (commit) => {
+        this.commits.push(commit);
+        return { id: "lnd_ab", colonyId: COLONY.id, trunkSha: "1".repeat(40) } as unknown as Landing;
+      },
     };
   }
+  /** What the engine committed to trunk itself (antibodies), as it sent it. */
+  readonly commits: Array<Parameters<TrunkRpc["systemCommit"]>[0]> = [];
   async systemCommitted(): Promise<void> {}
   async vaccineAgent(): Promise<Id> {
     return "agt_vaccine";
@@ -205,7 +210,7 @@ describe("waivers: who wrote the why", () => {
     expect(p.status).toBe("ready");
     expect((c.ai.clefCalls()[0]!.intent as Record<string, unknown>).why_written_by).toBe("person");
     const prompt = c.ai.secondOpinions()[0]!;
-    expect(prompt).toContain("Why (written by a person): Send a webhook");
+    expect(prompt).toMatch(/Why \(written by a person\), between (fence-[0-9a-f]{12}) markers:\n\1\nSend a webhook/);
     expect(prompt).toContain("[asked for by the intent, written by a person]");
   });
 
@@ -389,6 +394,20 @@ describe("antibody memory", () => {
     c.engine.onHumanDecision(p, "reject", "logs the API token", "matt");
     await Promise.all(c.pending);
     expect(c.engine.store.antibodies().length).toBe(1);
+  });
+
+  it("the minted antibody's lineage note masks secrets in the intent, the evidence and the reason (notes are public)", async () => {
+    const c = new Colonyish();
+    const token = "ghp_abcdefghijklmnopqrstuvwxyz0123456789AB";
+    const p = await c.decide(c.declare("human", ["src/hook.ts"], { why: `Rotate the bot token ${token} weekly.` }), [{ path: "src/hook.ts", after: `${HOOK}console.log(process.env.API_TOKEN);\n` }]);
+    expect(p.status).toBe("escalated");
+    c.engine.onHumanDecision({ ...p, evidence: { ...p.evidence, notVerified: `Not verified: I ran it with ${token} set.` } }, "reject", `it logs the token, like ${token}`, "matt");
+    await Promise.all(c.pending);
+    expect(c.commits).toHaveLength(1);
+    const note = c.commits[0]!.note;
+    expect(JSON.stringify(note)).not.toContain(token);
+    expect(note.system).toMatchObject({ kind: "antibody", reason: "it logs the token, like [masked]", by: "matt" });
+    expect(note.proposals[0]).toMatchObject({ id: p.id, intent: { why: "Rotate the bot token [masked] weekly." }, evidence: { notVerified: "Not verified: I ran it with [masked] set." }, writeSet: p.writeSet });
   });
 
   it("a change an antibody returns tells its agent the antibody's question", async () => {

@@ -129,6 +129,7 @@ import type { AgentListEntry, ColonySeries, ColonySummary, RegistryEntry, Snapsh
 import { Certifier, type CertifyHost, type CertifyTrunk } from "../certify/certifier.ts";
 import type { CertifyPolicy } from "../certify/repair.ts";
 import { reviewPreview, type ReviewPreview } from "../agents/preview.ts";
+import { MAX_RESUME_KEY, MIN_RESUME_KEY, resumeDigest, resumeKeyMatches } from "../mcp/resume.ts";
 import { CONTEST_LOOK_MS, CONTEST_MIN, CONTEST_RETRY_MS, CONTEST_WAIT_MS, cleanAlternatives, contestEvidence, contestSeats, judgeModels, loadDiffs, migrateContest, pairJudge, selectWinner, supersededReason } from "../decide/contest.ts";
 import type { ContestAlternative, ContestCandidate, ContestOutcome, ContestRound, PairJudge } from "../decide/contest.ts";
 import { whyAuthor } from "../decide/danger.ts";
@@ -261,6 +262,8 @@ const SCHEMA = [
     id TEXT PRIMARY KEY, kind TEXT NOT NULL, name TEXT NOT NULL, model TEXT, thresholds TEXT NOT NULL DEFAULT '{}',
     state TEXT NOT NULL, intent_id TEXT, workspace TEXT, last_seen INTEGER NOT NULL, created_at INTEGER NOT NULL)`,
   "CREATE INDEX IF NOT EXISTS agents_by_seen ON agents(state, last_seen)",
+  // External agents' resume keys (MCP join): only each key's SHA-256 digest, which no route returns.
+  "CREATE TABLE IF NOT EXISTS agent_keys (agent_id TEXT PRIMARY KEY, digest TEXT NOT NULL, created_at INTEGER NOT NULL)",
   `CREATE TABLE IF NOT EXISTS proposals (
     id TEXT PRIMARY KEY, intent_id TEXT NOT NULL, agent_id TEXT NOT NULL, status TEXT NOT NULL, region TEXT NOT NULL,
     priority REAL NOT NULL DEFAULT 1, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, data TEXT NOT NULL)`,
@@ -1432,11 +1435,37 @@ export class ColonyDO extends DurableObject<Env> {
   // Agents
   // =========================================================================
 
-  /** Register one agent. */
-  async registerAgent(a: { kind: AgentKind; name: string; model?: string }): Promise<AgentInfo> {
-    const [agent] = await this.registerAgents([a]);
+  /**
+   * Register one agent. An external agent that joins over MCP brings a resume key (mcp/resume.ts):
+   * only the key's SHA-256 digest is kept, and no route returns it (resumeAgent checks a key against it).
+   */
+  async registerAgent(a: { kind: AgentKind; name: string; model?: string; resumeKey?: string }): Promise<AgentInfo> {
+    let digest: string | null = null;
+    if (a.resumeKey !== undefined) {
+      if (a.kind !== "external") throw ftError(400, "only external agents have resume keys");
+      if (typeof a.resumeKey !== "string" || a.resumeKey.length < MIN_RESUME_KEY || a.resumeKey.length > MAX_RESUME_KEY) throw ftError(400, "invalid resume key");
+      digest = await resumeDigest(a.resumeKey);
+    }
+    const [agent] = await this.registerAgents([{ kind: a.kind, name: a.name, ...(a.model ? { model: a.model } : {}) }]);
     if (!agent) throw ftError(500, "agent was not registered");
+    if (digest) this.sql.exec("INSERT OR REPLACE INTO agent_keys (agent_id, digest, created_at) VALUES (?, ?, ?)", agent.id, digest, Date.now());
     return agent;
+  }
+
+  /**
+   * An external agent acting as itself again from another MCP session: the agent when `resumeKey` is
+   * the key it registered with (the stored digest compared in constant time). Refused as "unknown"
+   * (no external agent by that id), "no-key" (registered before resume keys or outside MCP: it joins
+   * again as a new agent) or "wrong-key". Never returns the key or its digest.
+   */
+  async resumeAgent(agentId: Id, resumeKey: string): Promise<{ agent: AgentInfo } | { refused: "unknown" | "no-key" | "wrong-key" }> {
+    const colonyId = this.requireColony().id;
+    const row = typeof agentId === "string" ? this.agentRow(agentId) : undefined;
+    if (!row || row.kind !== "external") return { refused: "unknown" };
+    const stored = this.sql.exec<{ digest: string }>("SELECT digest FROM agent_keys WHERE agent_id = ?", row.id).toArray()[0]?.digest;
+    if (!stored) return { refused: "no-key" };
+    if (typeof resumeKey !== "string" || resumeKey.length > MAX_RESUME_KEY || !(await resumeKeyMatches(resumeKey, stored))) return { refused: "wrong-key" };
+    return { agent: this.toAgent(this.agentRow(row.id) ?? row, colonyId, false) };
   }
 
   /** Register many agents in one call (swarms). */

@@ -3,6 +3,7 @@ import type { Env } from "./env.ts";
 import { api } from "./api/routes.ts";
 import { gitProxy } from "./api/git-proxy.ts";
 import { FireTridentMcp } from "./mcp/FireTridentMcp.ts";
+import { mcpRefusal } from "./mcp/gate.ts";
 
 export { ColonyDO } from "./colony/ColonyDO.ts";
 export { RegionDO } from "./region/RegionDO.ts";
@@ -21,22 +22,12 @@ const mcpHttp = FireTridentMcp.serve("/mcp", { binding: "MCP" });
 const mcpSse = FireTridentMcp.serveSSE("/sse", { binding: "MCP" });
 
 /**
- * MCP clients must send FT_MCP_TOKEN as a Bearer header or a `token` query parameter. Without that
- * secret the endpoint refuses (fail closed), unless FT_OPEN_WRITES is "1" (local development only).
+ * MCP clients must send FT_MCP_TOKEN as an `Authorization: Bearer` header (never in the URL), checked in
+ * constant time. Without that secret the endpoint refuses (fail closed), unless FT_OPEN_WRITES is "1"
+ * (local development only). See mcp/gate.ts.
  */
-function mcpAuthorized(req: Request, env: Env): boolean {
-  const expected = env.FT_MCP_TOKEN;
-  if (!expected) return env.FT_OPEN_WRITES === "1";
-  const header = req.headers.get("authorization") ?? "";
-  const bearer = header.startsWith("Bearer ") ? header.slice(7) : "";
-  const query = new URL(req.url).searchParams.get("token") ?? "";
-  return bearer === expected || query === expected;
-}
-
-const mcpGate = (handler: typeof mcpHttp) => (c: { req: { raw: Request }; env: Env; executionCtx: unknown }) =>
-  mcpAuthorized(c.req.raw, c.env)
-    ? handler.fetch(c.req.raw, c.env, c.executionCtx as ExecutionContext)
-    : new Response(JSON.stringify({ error: "unauthorized: send the FireTrident MCP token" }), { status: 401, headers: { "content-type": "application/json" } });
+const mcpGate = (handler: typeof mcpHttp) => async (c: { req: { raw: Request }; env: Env; executionCtx: unknown }) =>
+  (await mcpRefusal(c.req.raw, c.env)) ?? handler.fetch(c.req.raw, c.env, c.executionCtx as ExecutionContext);
 
 app.all("/mcp", mcpGate(mcpHttp));
 app.all("/mcp/*", mcpGate(mcpHttp));

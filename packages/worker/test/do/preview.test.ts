@@ -12,11 +12,12 @@ import { addAgent, addIntent, api, colony, newColony, take } from "./helpers.ts"
  */
 
 /** Store antibodies in the colony's decide tables, as minting or a trunk sync would. */
-async function seed(colonyId: string, list: Array<{ id: string; paths: string[]; question: string; state: DetectorState }>): Promise<void> {
+async function seed(colonyId: string, list: Array<{ id: string; paths: string[]; question: string; state: DetectorState; pattern?: string }>): Promise<void> {
   await runInDurableObject(colony(colonyId), (_instance: unknown, state: DurableObjectState) => {
     const store = new DecideStore(state.storage.sql);
     list.forEach((a, i) => {
-      const ab: Antibody = { id: a.id, colonyId, origin: "human-reject", matcher: { paths: a.paths }, question: a.question, threshold: 0.7, createdAt: 1_000 + i, hits: 0, falsePositives: 0 };
+      const matcher: Antibody["matcher"] = { paths: a.paths, ...(a.pattern ? { pattern: a.pattern } : {}) };
+      const ab: Antibody = { id: a.id, colonyId, origin: "human-reject", matcher, question: a.question, threshold: 0.7, createdAt: 1_000 + i, hits: 0, falsePositives: 0 };
       store.putAntibody(ab, a.state);
     });
   });
@@ -44,6 +45,19 @@ describe("take shows what review will ask", () => {
     const docs = await take(c.id, a2.id);
     expect(docs.intent.id).toBe(docsIntent.id);
     expect(reviewOf(docs)).toBeUndefined();
+  });
+
+  it("never hands out a security antibody's question (its agent is told the class only)", async () => {
+    const c = await newColony();
+    await seed(c.id, [
+      { id: "ab_sec", paths: ["src/auth/**"], question: "Does this change send the session token to a remote host?", state: "active", pattern: "(?:\\bfetch\\s*\\()" },
+      { id: "ab_auth", paths: ["src/auth/**"], question: "Does this change skip the CSRF check?", state: "active" },
+    ]);
+    await addIntent(c.id, ["src/auth/x.ts"]);
+    const a = await addAgent(c.id);
+    const got = await take(c.id, a.id);
+    expect(reviewOf(got)).toEqual({ antibodies: [{ id: "ab_auth", question: "Does this change skip the CSRF check?" }], rules: [] });
+    expect(JSON.stringify(got)).not.toContain("session token");
   });
 
   it("lists the colony's other rules whose scope covers the footprint", async () => {

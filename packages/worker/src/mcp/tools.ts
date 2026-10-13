@@ -1,5 +1,5 @@
 import { regionOf } from "@fire_trident/core";
-import type { AgentInfo, Directive, EscalationKind, FieldReading, FileVersion, Id, Intent, Path, Proposal, ProposalStatus, RepoRef, Rule, Sha, WorkspaceLease } from "@fire_trident/core";
+import type { AgentInfo, AgentKind, Directive, EscalationKind, FieldReading, FileVersion, Id, Intent, Path, Proposal, ProposalStatus, RepoRef, Rule, Sha, WorkspaceLease } from "@fire_trident/core";
 import { ESCALATION_KINDS, isInboxDirective, landingMessage } from "../colony/direction.ts";
 import { cleanPath } from "../agents/change.ts";
 import { cleanContext, type LandedWhy } from "../agents/landed.ts";
@@ -7,7 +7,8 @@ import { cleanPreview, type ReviewPreview } from "../agents/preview.ts";
 import type { ColonyRpc, RegionRpc, TakeResult, TrunkRpc } from "../agents/rpc.ts";
 import { diffTrees, onFirstParentChain, readFileAt } from "./gitread.ts";
 import type { ReadBlob, ReadCommit, ReadTree } from "./gitread.ts";
-import { contextBrief, escalateReceipt, gitInstructions, leaseNext, reviewBrief, ruleBrief } from "./instructions.ts";
+import { RESUME_KEY_NOTE, contextBrief, escalateReceipt, gitInstructions, leaseNext, reviewBrief, ruleBrief } from "./instructions.ts";
+import { newResumeKey } from "./resume.ts";
 
 /** What one MCP session remembers (stored in the session's Durable Object). */
 export interface Session {
@@ -37,8 +38,18 @@ export interface RepoReader {
   release(): void;
 }
 
-/** ColonyDO methods the MCP tools use: the agent surface plus the colony's region list. */
-export type McpColonyRpc = ColonyRpc & { listRegions(): Promise<string[]> };
+/** What ColonyDO.resumeAgent answers: the agent, or why it refused (never the key or its digest). */
+export type ResumeCheck = { agent: AgentInfo } | { refused: "unknown" | "no-key" | "wrong-key" };
+
+/**
+ * ColonyDO methods the MCP tools use: the agent surface plus the colony's region list, registration
+ * with a resume key (only its digest is stored) and the resume check (mcp/resume.ts).
+ */
+export type McpColonyRpc = Omit<ColonyRpc, "registerAgent"> & {
+  listRegions(): Promise<string[]>;
+  registerAgent(a: { kind: AgentKind; name: string; model?: string; resumeKey?: string }): Promise<AgentInfo>;
+  resumeAgent(agentId: Id, resumeKey: string): Promise<ResumeCheck>;
+};
 
 /** Everything the tools touch, injected by the Durable Object (or a test). */
 export interface ToolContext {
@@ -233,8 +244,13 @@ export class FireTridentTools {
     return c.trunk;
   }
 
-  /** Join a colony as an external agent (or resume an existing external agent id). */
-  async join(a: { colony: string; name?: string; model?: string; agentId?: string }): Promise<unknown> {
+  /**
+   * Join a colony as an external agent. A new agent gets a resume key, returned here once (the colony
+   * keeps only its digest). This session resumes its own agent without the key; resuming an agent id
+   * from another session needs it, because agent ids are public. An agent registered without a key
+   * (before resume keys, or outside MCP) cannot be resumed from another session: it joins again as new.
+   */
+  async join(a: { colony: string; name?: string; model?: string; agentId?: string; resumeKey?: string }): Promise<unknown> {
     const colonyId = a.colony.trim().toLowerCase();
     if (!colonyId) fail(400, "colony is required");
     if (!COLONY_ID.test(colonyId)) fail(400, `invalid colony id ${a.colony}: colony ids are lowercase slugs such as my-colony`);
@@ -242,21 +258,26 @@ export class FireTridentTools {
     const c = await colony.getColony();
     if (!c) fail(404, `colony ${colonyId} not found`);
     const prev = await this.ctx.load();
+    const own = prev.colonyId === colonyId ? prev.agentId : undefined;
+    const wanted = a.agentId?.trim();
     let agent: AgentInfo | null = null;
-    if (a.agentId) {
-      agent = await colony.getAgent(a.agentId.trim());
-      if (!agent || agent.kind !== "external") fail(404, `no external agent ${a.agentId} in colony ${colonyId}`);
-    } else if (prev.agentId && prev.colonyId === colonyId) {
-      agent = await colony.getAgent(prev.agentId);
+    if (wanted && wanted !== own) {
+      agent = await this.resumeOther(colony, colonyId, wanted, a.resumeKey);
+    } else if (own) {
+      agent = await colony.getAgent(own);
+      if (wanted && (!agent || agent.kind !== "external")) fail(404, `no external agent ${wanted} in colony ${colonyId}`);
     }
     let registered = false;
+    let resumeKey: string | null = null;
     if (!agent) {
-      const reg: { kind: "external"; name: string; model?: string } = { kind: "external", name: (a.name ?? "").trim().slice(0, 100) || "mcp-agent" };
+      resumeKey = newResumeKey();
+      const reg: { kind: "external"; name: string; model?: string; resumeKey: string } = { kind: "external", name: (a.name ?? "").trim().slice(0, 100) || "mcp-agent", resumeKey };
       if (a.model?.trim()) reg.model = a.model.trim().slice(0, 200);
       agent = await colony.registerAgent(reg);
       registered = true;
     }
-    const resumed = prev.agentId === agent.id && prev.colonyId === colonyId;
+    // An existing agent resumed: this session's own, or another session's with its key.
+    const resumed = !registered;
     const id = agent.id;
     // A returning agent comes back to life (heartbeat); a registration is a sign of life on its own.
     if (!registered) await this.ctx.colony(colonyId).heartbeat(id).catch(() => undefined);
@@ -272,10 +293,33 @@ export class FireTridentTools {
     });
     return {
       agentId: agent.id,
+      ...(resumeKey ? { resumeKey, resumeKeyNote: RESUME_KEY_NOTE } : {}),
       resumed,
       colony: { id: c.id, name: c.name, trunkSha: c.trunkSha, regionDepth: c.regionDepth },
       next: "Call take to receive an intent and a workspace lease (sense first to see where others work).",
     };
+  }
+
+  /**
+   * Another session's agent, resumed by its id and the key it registered with (checked by the colony
+   * against the stored digest, in constant time). Refuses with 404 when there is no such external
+   * agent and 403 when the key is missing or wrong or the agent has none.
+   */
+  private async resumeOther(colony: McpColonyRpc, colonyId: Id, agentId: Id, resumeKey: string | undefined): Promise<AgentInfo> {
+    const key = (resumeKey ?? "").trim();
+    const unknown = `no external agent ${agentId} in colony ${colonyId}`;
+    if (!key) {
+      const known = await colony.getAgent(agentId);
+      if (!known || known.kind !== "external") fail(404, unknown);
+      fail(403, `forbidden: resuming agent ${agentId} from another session needs the resumeKey join returned when it registered. Without it, call join without agentId to register a new agent.`);
+    }
+    const r = await colony.resumeAgent(agentId, key);
+    if ("agent" in r) return r.agent;
+    if (r.refused === "unknown") fail(404, unknown);
+    if (r.refused === "no-key") {
+      fail(403, `forbidden: agent ${agentId} has no resume key (it registered before resume keys, or not over MCP), so no other session can resume it. Call join without agentId to register a new agent.`);
+    }
+    fail(403, `forbidden: wrong resumeKey for agent ${agentId}`);
   }
 
   /**

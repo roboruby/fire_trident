@@ -26,9 +26,21 @@ describe("reviewPreview", () => {
     expect(reviewPreview({ footprint: ["docs/guide.md", "src/auth/session.ts"] }, [auth], [])?.antibodies).toHaveLength(1);
   });
 
-  it("matches on paths alone: an added-line pattern cannot be tested before the change exists", () => {
-    const logging = stored("ab_log", ["src/auth/**"], "active", { matcher: { paths: ["src/auth/**"], pattern: "console\\.log" } });
-    expect(reviewPreview({ footprint: ["src/auth/x.ts"] }, [logging], [])?.antibodies.map((a) => a.id)).toEqual(["ab_log"]);
+  it("matches on paths alone: what a change will add cannot be tested before the change exists", () => {
+    const docs = stored("ab_docs", ["docs/**"]);
+    expect(reviewPreview({ footprint: ["docs/guide.md"] }, [docs, auth], [])?.antibodies.map((a) => a.id)).toEqual(["ab_docs"]);
+  });
+
+  it("never shows a security antibody's question: its agent is told the class, never how to slip past it", () => {
+    // An antibody minted from a change that carried capability tokens matches on them too (decide/antibodies.ts securityAntibody).
+    const logging = stored("ab_log", ["src/auth/**"], "active", { matcher: { paths: ["src/auth/**"], pattern: "console\\.log" }, question: "Does this change log the session token?" });
+    expect(reviewPreview({ footprint: ["src/auth/x.ts"] }, [logging], [])).toBeUndefined();
+    const got = reviewPreview({ footprint: ["src/auth/x.ts"] }, [logging, auth], []);
+    expect(got?.antibodies.map((a) => a.id)).toEqual(["ab_auth"]);
+    expect(JSON.stringify(got)).not.toContain("session token");
+    // An empty pattern is no pattern: that antibody asks as usual.
+    const plain = stored("ab_plain", ["src/auth/**"], "active", { matcher: { paths: ["src/auth/**"], pattern: "" } });
+    expect(reviewPreview({ footprint: ["src/auth/x.ts"] }, [plain], [])?.antibodies.map((a) => a.id)).toEqual(["ab_plain"]);
   });
 
   it("never shows antibodies that are off or that tolerate instead of asking", () => {

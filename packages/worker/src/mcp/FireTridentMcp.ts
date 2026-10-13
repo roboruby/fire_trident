@@ -98,12 +98,14 @@ export class FireTridentMcp extends McpAgent<Env, Record<string, never>, Record<
       "join",
       {
         title: "Join a colony",
-        description: "Join a FireTrident colony as an external agent. Returns your agent id for this session. Pass agentId to resume an identity from an earlier session.",
+        description:
+          "Join a FireTrident colony as an external agent. Returns your agent id for this session and, when it registers you, a resumeKey shown only once. Pass agentId with that resumeKey to resume the identity from another session.",
         inputSchema: {
           colony: z.string().min(1).max(100).describe("Colony id"),
           name: z.string().max(100).optional().describe("A name for this agent (shown in the colony UI)"),
           model: z.string().max(200).optional().describe("The model driving this agent, for lineage"),
           agentId: z.string().max(100).optional().describe("Resume this external agent id instead of registering a new one"),
+          resumeKey: z.string().max(200).optional().describe("The resumeKey join returned when agentId registered (needed to resume it from another session)"),
         },
         annotations: { idempotentHint: true, openWorldHint: false },
       },
