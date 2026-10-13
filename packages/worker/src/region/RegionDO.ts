@@ -1,5 +1,18 @@
 import { DurableObject } from "cloudflare:workers";
-import { LATERAL_INHIBITION, admissionOpen, aggregate, inhibitionFactor, isExpired, markValue, regionKey, regionOf, selectBatch, validateProposal } from "@fire_trident/core";
+import {
+  LATERAL_INHIBITION,
+  admissionOpen,
+  aggregate,
+  inhibitionFactor,
+  isExpired,
+  markValue,
+  regionKey,
+  regionOf,
+  revalidationCandidate,
+  revalidationEnabled,
+  selectBatch,
+  validateProposal,
+} from "@fire_trident/core";
 import type { CausalEvent, ColonyEvent, FieldReading, FileVersion, Id, Landing, Mark, MarkKind, OccResult, Path, Proposal, Sha } from "@fire_trident/core";
 import type { Env } from "../env.ts";
 import { errorText } from "../colony/errors.ts";
@@ -914,15 +927,23 @@ export class RegionDO extends DurableObject<Env> {
       }),
     );
 
-    // 2. Optimistic concurrency: stale proposals go back with the exact delta.
+    // 2. Optimistic concurrency: stale proposals go back with the exact delta. With assumption revalidation
+    //    on for the colony (FT_REVALIDATE), one stale only through files it read, each still on trunk and
+    //    covered by a name assumption, goes on to the trunk writer instead: it reads those files and lands
+    //    the change only when every name the change imports from them is still exported.
+    const revalidating = revalidationEnabled((this.env as unknown as { FT_REVALIDATE?: string } | undefined)?.FT_REVALIDATE, colonyId);
     const valid: Proposal[] = [];
     const stale: Array<{ p: Proposal; occ: OccResult }> = [];
+    const candidates = new Map<Id, OccResult["stale"]>();
     for (const p of proposals) {
       const base = bases.get(p.baseSha);
       const baseBlobs: FileVersion[] = p.writeSet.map((w) => ({ path: w.path, blob: base?.get(w.path) ?? null }));
       const occ = validateProposal(p, (path) => current[path], baseBlobs);
       if (occ.eligible) valid.push(p);
-      else stale.push({ p, occ });
+      else if (revalidating && revalidationCandidate(p, occ.stale)) {
+        valid.push(p);
+        candidates.set(p.id, occ.stale);
+      } else stale.push({ p, occ });
     }
 
     // 3. Direction, then lateral inhibition. One small call fetches the lineage context (intents with
@@ -965,7 +986,8 @@ export class RegionDO extends DurableObject<Env> {
     for (const r of settled.returned) {
       remove.add(r.id);
       updates.push({ id: r.id, patch: { status: "returned", reason: r.reason } });
-      if (r.p) this.recordReturn(r.p, r.stale ?? null, now);
+      // A revalidation candidate the trunk writer sent back is still a stale return: its cause is a landing.
+      if (r.p) this.recordReturn(r.p, r.stale ?? candidates.get(r.id) ?? null, now);
     }
     // Stale direction never lands. A human changed course, not a landing: no causal event.
     for (const r of direction.returned) {

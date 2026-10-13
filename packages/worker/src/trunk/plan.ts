@@ -10,8 +10,9 @@
  * trunk as it will be once every earlier accepted proposal of the cycle has landed. That is
  * what serving the batches one commit at a time would decide, without a push per batch.
  */
-import { validateProposal } from "@fire_trident/core";
-import type { FileVersion, Id, Landing, Path, Proposal, Sha } from "@fire_trident/core";
+import { revalidate, validateProposal } from "@fire_trident/core";
+import type { ExportSurface, ExportedNames, FileVersion, Id, Landing, Path, Proposal, Revalidated, Sha } from "@fire_trident/core";
+import { exportedNames } from "../decide/mechanical.ts";
 
 /** A proposal sent back from `land`, with the exact reason. */
 export interface Returned {
@@ -45,10 +46,15 @@ export interface PlanProposal {
   base: FileVersion[];
 }
 
-/** Per batch (same order as the input): the proposals that land in its commit, and the ones that go back. */
+/**
+ * Per batch (same order as the input): the proposals that land in its commit, and the ones that go
+ * back. `revalidated`: accepted proposals that land over files they read that changed, with the names
+ * that held in each (assumption revalidation).
+ */
 export interface PlanResult {
   accepted: Proposal[][];
   returned: Returned[][];
+  revalidated: Map<Id, Revalidated[]>;
 }
 
 /** Same path, or one is a directory prefix of the other. */
@@ -76,10 +82,15 @@ function short(blob: Sha | null): string {
  * - Assumptions (the files a proposal's imports resolve to) must still exist: a proposal whose assumption
  *   is gone from the virtual trunk goes back, and so does one that would delete a assumption of a
  *   proposal accepted earlier in the cycle. Only existence counts; an edited assumption is fine.
+ * - Assumption revalidation (with `exported`, the names each version of a file exports): a proposal
+ *   stale only through files it read, each covered by a name assumption, still lands when every name it
+ *   imports from each is exported by the version on the virtual trunk (trunk, or the new blob of a
+ *   proposal accepted earlier in the cycle). A name that is gone is named in the reason; anything
+ *   else goes back as above. Without `exported`, stale means back.
  *
  * Proposal ids must be unique across the cycle (the caller dedupes); a repeated id is skipped.
  */
-export function planCycle(batches: PlanProposal[][], trunk: (path: Path) => Sha | null): PlanResult {
+export function planCycle(batches: PlanProposal[][], trunk: (path: Path) => Sha | null, exported?: ExportedNames): PlanResult {
   const ahead = new Map<Path, { blob: Sha | null; by: Id }>();
   const aheadPaths: Path[] = [];
   /** Assumptions of the proposals accepted in earlier batches, with the proposal relying on each. */
@@ -91,6 +102,7 @@ export function planCycle(batches: PlanProposal[][], trunk: (path: Path) => Sha 
   const seen = new Set<Id>();
   const accepted: Proposal[][] = [];
   const returned: Returned[][] = [];
+  const revalidated = new Map<Id, Revalidated[]>();
   for (const batch of batches) {
     const ok: Proposal[] = [];
     const back: Returned[] = [];
@@ -123,15 +135,22 @@ export function planCycle(batches: PlanProposal[][], trunk: (path: Path) => Sha 
         continue;
       }
       const occ = validateProposal(p, virtual, base);
+      let kept: Revalidated[] | null = null;
       if (!occ.eligible) {
-        const detail = occ.stale
-          .map((s) => {
-            const by = ahead.get(s.path)?.by;
-            return `${s.path} (expected ${s.expected ?? "absent"}, trunk has ${s.actual ?? "absent"}${by ? `, landing ahead in this cycle from ${by}` : ""})`;
-          })
-          .join(", ");
-        back.push({ proposalId: p.id, reason: `stale: ${detail}` });
-        continue;
+        const rv = exported ? revalidate(p, occ.stale, exported) : null;
+        if (rv?.ok) {
+          kept = rv.revalidated;
+        } else {
+          const detail = occ.stale
+            .map((s) => {
+              const by = ahead.get(s.path)?.by;
+              return `${s.path} (expected ${s.expected ?? "absent"}, trunk has ${s.actual ?? "absent"}${by ? `, landing ahead in this cycle from ${by}` : ""})`;
+            })
+            .join(", ");
+          const broken = rv?.ok === false && rv.broken ? `; ${rv.broken.path} no longer exports ${rv.broken.names.join(", ")}, which this change imports` : "";
+          back.push({ proposalId: p.id, reason: `stale: ${detail}${broken}` });
+          continue;
+        }
       }
       const missing = assumptions.find((path) => virtual(path) === null);
       if (missing !== undefined) {
@@ -147,6 +166,7 @@ export function planCycle(batches: PlanProposal[][], trunk: (path: Path) => Sha 
         continue;
       }
       ok.push(p);
+      if (kept) revalidated.set(p.id, kept);
       for (const path of w) writes.add(path);
       for (const path of r) reads.add(path);
       for (const f of p.writeSet) if ((f.blob ?? null) === null) deleted.set(f.path, p.id);
@@ -163,7 +183,56 @@ export function planCycle(batches: PlanProposal[][], trunk: (path: Path) => Sha 
     accepted.push(ok);
     returned.push(back);
   }
-  return { accepted, returned };
+  return { accepted, returned, revalidated };
+}
+
+/** Larger files are never read for their exports (their readers go back as stale). */
+export const SURFACE_FILE_BYTES = 512 * 1024;
+
+/**
+ * Assumption revalidation: the blobs whose exported names a cycle may need. For each file a proposal read
+ * and imports names from (a name assumption), trunk's blob of it and every new blob a proposal of the
+ * cycle writes there (the versions the plan's virtual trunk can hold), unless it is the blob the
+ * proposal read (not stale, nothing to check). Each once, in first-seen order.
+ */
+export function surfaceBlobs(proposals: Proposal[], trunk: (path: Path) => Sha | null): Sha[] {
+  const written = new Map<Path, Sha[]>();
+  for (const p of proposals) {
+    for (const w of p.writeSet) {
+      if (w.blob === null) continue;
+      const list = written.get(w.path) ?? [];
+      list.push(w.blob);
+      written.set(w.path, list);
+    }
+  }
+  const want = new Set<Sha>();
+  for (const p of proposals) {
+    if (!Array.isArray(p.nameAssumptions)) continue;
+    const reads = new Map<Path, Set<Sha | null>>();
+    for (const r of p.readSet) reads.set(r.path, (reads.get(r.path) ?? new Set<Sha | null>()).add(r.blob ?? null));
+    for (const np of p.nameAssumptions) {
+      const read = np && typeof np.path === "string" ? reads.get(np.path) : undefined;
+      if (!read) continue;
+      for (const blob of [trunk(np.path), ...(written.get(np.path) ?? [])]) if (blob !== null && !read.has(blob)) want.add(blob);
+    }
+  }
+  return [...want];
+}
+
+/**
+ * The export surface of one file version (assumption revalidation), or null when it cannot be known for
+ * sure: too large, not UTF-8 text, or a source the export reader cannot read reliably.
+ */
+export function exportSurface(bytes: Uint8Array): ExportSurface | null {
+  if (bytes.length > SURFACE_FILE_BYTES) return null;
+  let text: string;
+  try {
+    text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
+  } catch {
+    return null;
+  }
+  const ex = exportedNames(text);
+  return ex === null ? null : { names: ex.names, open: ex.star.length > 0 };
 }
 
 /**
