@@ -7,10 +7,29 @@
   "bin": {
     "ft": "dist/ft.js"
   },
+  "engines": {
+    "node": ">=20"
+  },
+  "homepage": "https://firetrident.mattsolt.workers.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/roboruby/fire_trident.git",
+    "directory": "packages/cli"
+  },
+  "keywords": [
+    "git",
+    "agents",
+    "cloudflare",
+    "artifacts",
+    "durable-objects",
+    "mcp",
+    "cli"
+  ],
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
-    "build": "tsc -p tsconfig.build.json"
+    "build": "tsc -p tsconfig.build.json",
+    "prepack": "npm run build"
   },
   "devDependencies": {
     "typescript": "7.0.2",

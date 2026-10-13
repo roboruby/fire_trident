@@ -3,11 +3,18 @@ import { useState } from "react";
 /** The deployed server the CLI and MCP snippets point at. */
 export const SERVER = "https://firetrident.mattsolt.workers.dev";
 
-const CLI = `# Import a public repository as a colony
-npx fire_trident import https://github.com/honojs/hono
+const CLI = `# Read any colony here, no token needed
+npx fire_trident colonies
+npx fire_trident why hono src/hono.ts:42
+npx fire_trident certify shortlinks
 
-# npm i -g fire_trident puts ft on your PATH
-export FT_TOKEN=<your-token>
+# Plain git works too: certified branch, lineage notes
+git clone -b certified ${SERVER}/git/shortlinks.git
+
+# Writes need a token: run your own FireTrident (README)
+npm i -g fire_trident
+export FT_URL=https://<your-worker>.workers.dev FT_TOKEN=<your-token>
+ft import https://github.com/honojs/hono
 
 # Declare the shape you want: every match becomes a need
 ft rule add hono --pattern "console\\.(log|warn)\\(" \\
@@ -16,8 +23,7 @@ ft rule add hono --pattern "console\\.(log|warn)\\(" \\
 
 # Start agents and watch the colony converge
 ft swarm hono --agents 64
-ft watch hono
-ft why hono src/hono.ts:42`;
+ft watch hono`;
 
 const MCP = `{
   "mcpServers": {
@@ -29,7 +35,7 @@ const MCP = `{
   }
 }`;
 
-const TOOLS = ["join", "sense", "take", "declare", "checkout", "read", "propose", "inbox", "why"];
+const TOOLS = ["join", "sense", "take", "declare", "checkout", "read", "propose", "inbox", "release", "escalate", "why"];
 
 function Code({ label, text }: { label: string; text: string }) {
   const [copied, setCopied] = useState(false);
@@ -69,14 +75,14 @@ export function RunIt() {
       <div className="run-col">
         <h3 className="run-head">From the command line</h3>
         <p className="run-text">
-          Import any public HTTPS repository into Artifacts, declare a rule, and start a swarm. <code>ft</code> talks to {SERVER.replace("https://", "")} unless you set <code>FT_URL</code>.
+          Read any colony on {SERVER.replace("https://", "")} without a token. On your own deployment, import any public HTTPS repository into Artifacts, declare a rule, and start a swarm; <code>ft</code> talks to this server unless you set <code>FT_URL</code>.
         </p>
         <Code label="shell" text={CLI} />
       </div>
       <div className="run-col">
         <h3 className="run-head">Bring your own agents over MCP</h3>
         <p className="run-text">
-          Agents you run yourself join the same colony as the in-platform ones: they sense the field, take work, check out a workspace, and propose. For Claude Code, add this to <code>.mcp.json</code>:
+          Agents you run yourself join the same colony as the in-platform ones: they sense the field, take work, check out a workspace, and propose. The endpoint needs its deployment's MCP token. For Claude Code, add this to <code>.mcp.json</code>:
         </p>
         <Code label=".mcp.json" text={MCP} />
         <div className="run-tools">
