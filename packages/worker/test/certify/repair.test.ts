@@ -71,12 +71,12 @@ describe("repair loop rules", () => {
     expect(spec.why).toContain("Trunk abcdef0 fails 5 of its 67 tests");
     expect(spec.why).toContain("The tests are the specification.");
     expect(spec.why).toContain("do not edit, skip, delete or weaken a test to make it pass");
-    expect(spec.why).toContain("If a test itself is wrong (it contradicts the spec), give the intent back (release it) with the reason instead of changing the test");
+    expect(spec.why).toContain("If a test itself is wrong (it contradicts the spec), do not change it: escalate the intent with kind broken-test");
     expect(spec.why).not.toContain("in the footprint only to run again");
     expect(spec.why).toContain("- test/acceptance.test.ts > A6: DELETE /api/links/:slug requires admin token: AssertionError (strictEqual): actual 405, expected 401");
     expect(intent.acceptance).toEqual([
       "Every test listed above passes under trunk certification and every other test still passes: node --test passes from a clean clone of trunk",
-      "No test file changes; a test that is wrong is reported by giving the intent back with the reason",
+      "No test file changes; a test that is wrong is escalated with kind broken-test, not changed",
     ]);
   });
 

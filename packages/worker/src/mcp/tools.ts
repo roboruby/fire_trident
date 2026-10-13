@@ -1,12 +1,13 @@
 import { regionOf } from "@fire_trident/core";
-import type { AgentInfo, Directive, FieldReading, FileVersion, Id, Intent, Path, Proposal, ProposalStatus, RepoRef, Rule, Sha, WorkspaceLease } from "@fire_trident/core";
-import { isInboxDirective } from "../colony/direction.ts";
+import type { AgentInfo, Directive, EscalationKind, FieldReading, FileVersion, Id, Intent, Path, Proposal, ProposalStatus, RepoRef, Rule, Sha, WorkspaceLease } from "@fire_trident/core";
+import { ESCALATION_KINDS, isInboxDirective, landingMessage } from "../colony/direction.ts";
 import { cleanPath } from "../agents/change.ts";
+import { cleanContext, type LandedWhy } from "../agents/landed.ts";
 import { cleanPreview, type ReviewPreview } from "../agents/preview.ts";
 import type { ColonyRpc, RegionRpc, TakeResult, TrunkRpc } from "../agents/rpc.ts";
 import { diffTrees, onFirstParentChain, readFileAt } from "./gitread.ts";
 import type { ReadBlob, ReadCommit, ReadTree } from "./gitread.ts";
-import { gitInstructions, leaseNext, reviewBrief, ruleBrief } from "./instructions.ts";
+import { contextBrief, escalateReceipt, gitInstructions, leaseNext, reviewBrief, ruleBrief } from "./instructions.ts";
 
 /** What one MCP session remembers (stored in the session's Durable Object). */
 export interface Session {
@@ -19,6 +20,8 @@ export interface Session {
   rule?: Rule | null;
   /** What review will ask of the held intent's change, as take returned it (sessions saved before it have none). */
   review?: ReviewPreview;
+  /** Why the code is the way it is: the latest landings on the held intent's files, as take returned them. */
+  context?: LandedWhy[];
   /** Read set of the current intent: path -> blob seen at the lease base (null = absent). */
   reads: Record<Path, Sha | null>;
   proposals: Array<{ id: Id; intentId: Id; headSha: Sha; at: number }>;
@@ -118,7 +121,7 @@ function proposalView(p: Proposal): Record<string, unknown> {
   };
 }
 
-/** One directive as the inbox shows it. */
+/** One directive as the inbox shows it (a landing notice with its facts: the landing, the blobs, the intent). */
 function directiveView(d: Directive): Record<string, unknown> {
   return {
     id: d.id,
@@ -128,7 +131,20 @@ function directiveView(d: Directive): Record<string, unknown> {
     by: d.by,
     at: new Date(d.at).toISOString(),
     ...(typeof d.revision === "number" ? { revision: d.revision, changed: d.changed ?? [] } : {}),
+    ...(d.landing
+      ? { landing: { landingId: d.landing.landingId, trunkSha: d.landing.trunkSha, paths: d.landing.paths, intent: { title: d.landing.intentTitle, why: d.landing.why } } }
+      : {}),
   };
+}
+
+/** Forget the held intent: its lease, rule, review questions, why-context and read set. */
+function dropHeld(s: Session): void {
+  delete s.intent;
+  delete s.lease;
+  delete s.rule;
+  delete s.review;
+  delete s.context;
+  s.reads = {};
 }
 
 /** What an agent should do next, given its proposal's status. */
@@ -302,6 +318,7 @@ export class FireTridentTools {
   private leaseView(s: Session & { intent: Intent; lease: WorkspaceLease }): Record<string, unknown> {
     const { intent, lease } = s;
     const review = reviewBrief(s.review);
+    const context = contextBrief(s.context);
     return {
       intent: {
         id: intent.id,
@@ -315,6 +332,7 @@ export class FireTridentTools {
       },
       rule: ruleBrief(s.rule),
       ...(review ? { review } : {}),
+      ...(context ? { context } : {}),
       lease: {
         baseSha: lease.baseSha,
         trunk: { remote: lease.trunk.remote, sha: lease.trunk.sha },
@@ -347,6 +365,7 @@ export class FireTridentTools {
     const got = res;
     const now = this.ctx.now();
     const review = cleanPreview(got.review);
+    const context = cleanContext(got.context);
     const next = await this.update((x) => {
       if (x.intent?.id !== got.intent.id) x.reads = {};
       x.intent = got.intent;
@@ -354,6 +373,8 @@ export class FireTridentTools {
       x.rule = got.rule ?? null;
       if (review) x.review = review;
       else delete x.review;
+      if (context) x.context = context;
+      else delete x.context;
       x.lastBeat = now; // a take deposits fresh claims
     });
     return this.leaseView(next as Session & { intent: Intent; lease: WorkspaceLease });
@@ -458,11 +479,7 @@ export class FireTridentTools {
     await this.update((x) => {
       x.proposals = [...x.proposals.slice(-49), { id: proposal.id, intentId: intent.id, headSha, at }];
       if (x.intent?.id !== intent.id) return; // a newer take replaced it meanwhile
-      delete x.intent;
-      delete x.lease;
-      delete x.rule;
-      delete x.review;
-      x.reads = {};
+      dropHeld(x);
     });
     return {
       proposal: { id: proposal.id, status: proposal.status, reason: proposal.reason ?? null, residual: proposal.evidence?.residual ?? [] },
@@ -515,11 +532,7 @@ export class FireTridentTools {
     if (held && withdrawal) {
       await this.update((x) => {
         if (x.intent?.id !== held.id) return;
-        delete x.intent;
-        delete x.lease;
-        delete x.rule;
-        delete x.review;
-        x.reads = {};
+        dropHeld(x);
       });
       current = undefined;
       direction = `Your intent ${held.id} was withdrawn: ${withdrawal.message}. Stop working on it (your lease is revoked) and call take for other work.`;
@@ -535,7 +548,10 @@ export class FireTridentTools {
       direction = `Your intent was revised to r${revision.revision} (changed: ${changed}): ${revision.message}. Call checkout for the new text and rebuild your change on it; a change built on an older revision is refused.`;
     } else {
       const guidance = about.find((d) => d.kind === "guidance");
+      const landing = held ? about.find((d) => d.kind === "landing" && d.intentId === held.id && d.landing) : undefined;
       if (guidance) direction = `A human sent you guidance: "${guidance.message}". Follow it in your change.`;
+      // Facts only: what landed, and that the lane checks a change against trunk when it lands.
+      else if (landing?.landing) direction = `Trunk moved under your intent. ${landingMessage(landing.landing)} A change built on the old blobs comes back when it lands.`;
     }
     return {
       ...(watched ? { watching: watched, next: nextFor(watched.status) } : {}),
@@ -555,14 +571,32 @@ export class FireTridentTools {
     const reason = (a.reason ?? "").trim().slice(0, 500) || "released by an external agent";
     await this.ctx.colony(s.colonyId).abandon(s.agentId, reason);
     const held = s.intent ? { intentId: s.intent.id, title: s.intent.title } : null;
-    await this.update((x) => {
-      delete x.intent;
-      delete x.lease;
-      delete x.rule;
-      delete x.review;
-      x.reads = {};
-    });
+    await this.update((x) => dropHeld(x));
     return { released: held, next: "Call take for other work." };
+  }
+
+  /**
+   * Report to a person that an intent cannot be done as written (a wrong test, a contradictory spec,
+   * an impossible ask) instead of working around it. Defaults to the held intent. The colony keeps the
+   * intent for a person and releases this agent's claim and lease; the session forgets the intent.
+   * The answer is fixed text (escalateReceipt).
+   */
+  async escalate(a: { intentId?: string; kind: string; report: string }): Promise<unknown> {
+    const s = await this.joined();
+    const kind = (ESCALATION_KINDS as readonly string[]).includes(a.kind) ? (a.kind as EscalationKind) : null;
+    if (!kind) fail(400, `kind must be one of ${ESCALATION_KINDS.join(", ")}`);
+    const report = (a.report ?? "").trim();
+    if (!report) fail(400, "a report is required: say what is wrong, quoting the test or the spec line");
+    const intentId = a.intentId?.trim() || s.intent?.id;
+    if (!intentId) fail(400, "you hold no intent: take one, or pass the intentId your report is about");
+    const colony = this.ctx.colony(s.colonyId);
+    // Called as a method: on a Durable Object stub, a detached function would name a remote property.
+    if (!colony.escalate) fail(503, "this colony cannot take reports yet; release the intent with your report as the reason");
+    const res = await colony.escalate(s.agentId, { intentId, kind, report });
+    await this.update((x) => {
+      if (x.intent?.id === intentId) dropHeld(x);
+    });
+    return { escalated: { intentId: res.intent.id, title: res.intent.title, kind }, receipt: escalateReceipt(res.intent.id), next: "Call take for other work." };
   }
 
   /** Lineage of a trunk path (optionally one line): the landings and intents behind it. */

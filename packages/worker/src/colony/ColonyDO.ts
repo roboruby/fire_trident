@@ -87,7 +87,22 @@ import {
 } from "./direction.ts";
 import type { DecisionRow, DirectionInfo, DirectiveRow, IntentPatch, RevisionRow } from "./direction.ts";
 import { landedStaleText, missedRevisions, type MissedRevision } from "./direction.ts";
+import {
+  ESCALATION_KINDS,
+  MAX_ANSWER_CHARS,
+  NOTICE_PATHS,
+  NOTICE_WHY_CHARS,
+  escalationDecision,
+  escalationKind,
+  landingMessage,
+  parseEscalation,
+  reportText,
+  type EscalationDecision,
+} from "./direction.ts";
 import type { Direction, Directive, DirectiveKind, InboxDirective, IntentField, IntentRevision, NoteDecision } from "@fire_trident/core";
+import type { EscalationKind, IntentEscalation, LandingNotice } from "@fire_trident/core";
+import { WHY_FOOTPRINT, WHY_LANDINGS, WHY_PER_PATH, WHY_RANGE_ROWS, coveringFootprints, footprintIndex, indexRange, pickLanded, shortTitle, shortWhy } from "../agents/landed.ts";
+import type { FootprintIndex, LandedRow, LandedWhy } from "../agents/landed.ts";
 import { NeighborCache, claimLookup, type Neighbor } from "../trunk/cochange.ts";
 import { importNeighbors, type ImportLinks } from "../trunk/imports.ts";
 import type { RevertResult } from "../trunk/revert.ts";
@@ -117,9 +132,11 @@ import { reviewPreview, type ReviewPreview } from "../agents/preview.ts";
 
 /**
  * Result of ColonyDO.take: an assignment, or advice to wait and retry. `review`: what review will
- * ask of the change (agents/preview.ts), shown to the agent before it writes; absent when nothing.
+ * ask of the change (agents/preview.ts), shown to the agent before it writes; `context`: the latest
+ * landings that changed the intent's files, with their intents' whys (agents/landed.ts). Each is
+ * absent when there is nothing to say.
  */
-export type TakeResult = { intent: Intent; lease: WorkspaceLease; rule?: Rule; review?: ReviewPreview } | { wait: true; retryInMs: number; reason: string };
+export type TakeResult = { intent: Intent; lease: WorkspaceLease; rule?: Rule; review?: ReviewPreview; context?: LandedWhy[] } | { wait: true; retryInMs: number; reason: string };
 
 /** Review views built per review-queue read for proposals escalated before views were kept. */
 const REVIEW_BACKFILLS = 3;
@@ -296,8 +313,24 @@ const RECON_TTL_MS = 10 * 60_000;
 /** Rows a reconstruction reads per table at most. */
 const RECON_ROWS = 20_000;
 
+/** Paths of one landing indexed for why-context at most, and landed proposals that fill the index of a colony from before it. */
+const LANDED_INDEX_PATHS = 1_000;
+const LANDED_BACKFILL = 200;
+/** Agents told about one landing at most; landing notices are kept this long, pruned every so many notices. */
+const MAX_LANDING_NOTICES = 100;
+const NOTICE_KEEP_MS = 6 * 60 * 60_000;
+const NOTICE_PRUNE_EVERY = 256;
+/** The held intents' footprint index (landing notices) is rebuilt at most this often. */
+const HELD_INDEX_MS = 1_000;
+
 /** A directive for one agent to deliver, with the agent's kind (in-platform agents get it pushed). */
 type Notice = { directive: Directive; kind: string; intent?: Intent };
+/** One row of the landing path index (why-context). */
+type LandedIndexRow = { path: string; at: number; landing_id: string; intent_id: string | null };
+/** An agent a landing concerns: the intent its notice is about, and the landed paths that intent covers. */
+type NoticeRecipient = { agentId: Id; kind: string; intentId: Id; paths: Path[] };
+/** An intent an agent holds, as the landing notices' footprint index keeps it (`current`: the agent's current intent). */
+type HeldRef = { intentId: Id; agentId: Id; kind: string; current: boolean };
 /** How a directive reached its agent: pushed, left in the inbox (external agents), or the push failed. */
 export type Notified = { agentId: Id; directiveId: Id; delivery: "pushed" | "inbox" | "failed" };
 
@@ -332,6 +365,9 @@ type IntentRow = {
   /** Direction columns (direction.ts migrates older tables). */
   revision?: number;
   withdrawn_reason?: string | null;
+  /** An agent's report and the person's answer (IntentEscalation JSON), and 1 while it waits: take skips the intent. */
+  escalation?: string | null;
+  escalation_open?: number | null;
 };
 
 type RuleRow = {
@@ -1009,8 +1045,11 @@ export class ColonyDO extends DurableObject<Env> {
     return this.guidanceRows(intentId);
   }
 
-  /** One intent with its revision history (oldest first) and the directives about it (newest first). */
-  async intentHistory(id: Id): Promise<{ intent: Intent; revisions: IntentRevision[]; directives: Directive[] } | null> {
+  /**
+   * One intent with its revision history (oldest first), the directives about it (newest first), and
+   * the reports agents made on it with the answers (newest first).
+   */
+  async intentHistory(id: Id): Promise<{ intent: Intent; revisions: IntentRevision[]; directives: Directive[]; escalations: IntentEscalation[] } | null> {
     const colony = this.requireColony();
     const row = this.intentRow(id);
     if (!row) return null;
@@ -1018,7 +1057,7 @@ export class ColonyDO extends DurableObject<Env> {
       .exec<DirectiveRow>("SELECT * FROM directives WHERE intent_id = ? ORDER BY at DESC LIMIT 100", id)
       .toArray()
       .map((r) => toDirective(r, colony.id));
-    return { intent: this.toIntent(row, colony.id), revisions: this.revisionRows(id).map(toRevision), directives };
+    return { intent: this.toIntent(row, colony.id), revisions: this.revisionRows(id).map(toRevision), directives, escalations: this.escalationHistory(id) };
   }
 
   /** Amending or withdrawing needs an intent that is still live: not landed, withdrawn or sealed. */
@@ -1220,6 +1259,159 @@ export class ColonyDO extends DurableObject<Env> {
     } finally {
       if (timer) clearTimeout(timer);
     }
+  }
+
+  // =========================================================================
+  // Reports (escalations): an agent says an intent cannot be done as written,
+  // instead of working around it, and a person answers. See colony/direction.ts.
+  // =========================================================================
+
+  /** Intents whose report a person is answering right now: a second answer at the same time is refused (409). */
+  private readonly answering = new Set<Id>();
+
+  /**
+   * An agent reports that the intent it holds cannot be done as written: a test that is wrong, a
+   * contradictory spec, an impossible ask. The intent stays open, but take() offers it to no agent
+   * until a person answers (resolveEscalation). The agent's claim and lease are released as on a
+   * release, with no failure mark (reporting is not failing), and a change it has in flight for the
+   * intent goes back. The report is kept on the intent and in its history; one open report per
+   * intent (409). Publishes `escalation` and `intent` events.
+   */
+  async escalate(agentId: Id, p: { intentId?: Id; kind: EscalationKind; report: string }): Promise<{ intent: Intent; escalation: IntentEscalation }> {
+    const colony = this.requireColony();
+    const agent = this.requireAgent(agentId);
+    const kind = escalationKind(p?.kind);
+    if (!kind) throw ftError(400, `kind must be one of ${ESCALATION_KINDS.join(", ")}`);
+    const report = reportText(p?.report);
+    if (!report) throw ftError(400, "a report is required: say what is wrong, quoting the test or the spec line");
+    const named = typeof p.intentId === "string" && p.intentId.trim() ? p.intentId.trim() : null;
+    const intentId =
+      named ??
+      agent.intent_id ??
+      this.sql.exec<{ id: string }>("SELECT id FROM intents WHERE assigned_to = ? AND status IN ('claimed', 'proposed') ORDER BY updated_at DESC LIMIT 1", agentId).toArray()[0]?.id ??
+      null;
+    if (!intentId) throw ftError(400, "you hold no intent: take one, or name the intent your report is about");
+    const row = this.intentRow(intentId);
+    if (!row) throw ftError(404, `unknown intent ${intentId}`);
+    this.assertRedirectable(row, "reported on");
+    if (row.escalation_open === 1) throw ftError(409, `intent ${row.id} already has a report waiting for a person`);
+    if (row.assigned_to !== agentId || (row.status !== "claimed" && row.status !== "proposed")) {
+      throw ftError(409, `intent ${row.id} is not held by ${agentId}: report on an intent you hold`);
+    }
+    const now = Date.now();
+    const escalation: IntentEscalation = { kind, report, by: agentId, at: now };
+    const fp = this.footprintOf(row.id, row.footprint);
+    const fx = this.effects(colony.regionDepth);
+    // Open, unassigned and waiting for a person: take() skips intents whose report is open.
+    this.sql.exec("UPDATE intents SET status = 'open', assigned_to = NULL, escalation = ?, escalation_open = 1, updated_at = ? WHERE id = ?", JSON.stringify(escalation), now, row.id);
+    this.sql.exec("INSERT OR REPLACE INTO intent_escalations (intent_id, at, agent_id, kind, report, resolved) VALUES (?, ?, ?, ?, ?, NULL)", row.id, now, agentId, kind, report);
+    if (this.candidateRows) this.candidateRows.rows = this.candidateRows.rows.filter((r) => r.id !== row.id);
+    // Released as on a release, but reporting is not failing: no failure mark.
+    fx.batch.clear(fp, { agentId, intentId: row.id, kind: "claim" });
+    if (agent.intent_id === row.id || agent.intent_id === null) {
+      this.sql.exec("UPDATE agents SET state = 'idle', intent_id = NULL, workspace = NULL WHERE id = ?", agentId);
+      if (agent.state !== "idle") fx.events.push({ t: "agent", at: now, agentId, kind: agent.kind as AgentKind, state: "idle" });
+      fx.release.add(agentId);
+      // Its take's claim is gone: other takes stop counting it at once.
+      this.recentClaims.delete(agentId);
+    }
+    // A change in flight for it goes back (a redirect: nothing reopens, no failure mark).
+    for (const prev of this.inFlightFor([row.id])) {
+      const next: Proposal = { ...prev, status: "returned", reason: supersededReturn(`its agent reported the intent to a person (${kind})`) };
+      this.writeProposal(next, now);
+      this.transition(next, prev.status, now, fx);
+    }
+    fx.events.push({ t: "intent", at: now, intentId: row.id, status: "open", title: row.title, footprint: fp });
+    fx.events.push({ t: "escalation", at: now, intentId: row.id, agentId, kind, report, title: row.title });
+    await this.flushEffects(fx);
+    const fresh = this.intentRow(row.id);
+    return { intent: this.toIntent(fresh ?? row, colony.id), escalation };
+  }
+
+  /**
+   * A person answers an open report (POST /api/colonies/:id/intents/:iid/escalation). `amend` changes
+   * the intent through amendIntent (the note is the amendment's reason) and reopens it; `withdraw`
+   * withdraws it with the note; `dismiss` reopens it unchanged, and the note becomes guidance on the
+   * intent, so whoever takes it next reads the answer. The report keeps the answer
+   * (`escalation.resolved`), and an `escalation` event carries it. 409 when no report is open.
+   */
+  async resolveEscalation(
+    intentId: Id,
+    p: { decision: EscalationDecision; note: string; by?: string; amend?: { title?: string; why?: string; footprint?: Path[] } },
+  ): Promise<{ intent: Intent }> {
+    const colony = this.requireColony();
+    const decision = escalationDecision(p?.decision);
+    if (!decision) throw ftError(400, "decision must be amend, withdraw or dismiss");
+    const note = reportText(p?.note, MAX_ANSWER_CHARS);
+    if (!note) throw ftError(400, "a note is required: it is the answer the agents and the history keep");
+    const by = oneLine(p.by ?? "", 200) || "unknown";
+    const row = this.intentRow(intentId);
+    if (!row) throw ftError(404, `unknown intent ${intentId}`);
+    const open = row.escalation_open === 1 ? parseEscalation(row.escalation) : null;
+    if (!open || open.resolved) throw ftError(409, `intent ${intentId} has no report waiting for a person`);
+    if (this.answering.has(intentId)) throw ftError(409, `the report on intent ${intentId} is being answered`);
+    this.answering.add(intentId);
+    try {
+      if (decision === "amend") {
+        const a = p.amend ?? {};
+        const patch: IntentPatch = {};
+        if (a.title !== undefined) patch.title = a.title;
+        if (a.why !== undefined) patch.why = a.why;
+        if (a.footprint !== undefined) patch.footprint = a.footprint;
+        if (Object.keys(patch).length === 0) throw ftError(400, "amend needs a title, why or footprint to change");
+        await this.amendIntent(intentId, { ...patch, reason: note, by });
+      } else if (decision === "withdraw") {
+        await this.withdrawIntent(intentId, { reason: note, by });
+      } else {
+        // Only a live intent can be offered again.
+        this.assertRedirectable(row, "reopened");
+      }
+      const now = Date.now();
+      const resolved = { by, at: now, decision, note };
+      this.sql.exec("UPDATE intents SET escalation = ?, escalation_open = 0, updated_at = ? WHERE id = ?", JSON.stringify({ ...open, resolved }), now, intentId);
+      this.sql.exec("UPDATE intent_escalations SET resolved = ? WHERE intent_id = ? AND resolved IS NULL", JSON.stringify(resolved), intentId);
+      const fresh = this.intentRow(intentId) ?? row;
+      const intent = this.toIntent(fresh, colony.id);
+      const events: ColonyEvent[] = [{ t: "escalation", at: now, intentId, agentId: open.by, kind: open.kind, report: open.report, title: intent.title, resolved }];
+      if (decision === "dismiss") {
+        events.push({ t: "intent", at: now, intentId, status: intent.status, title: intent.title, footprint: intent.footprint });
+        // The answer follows the intent to whoever takes it next (guidance is about the intent).
+        const reporter = this.agentRow(open.by);
+        if (reporter) {
+          const d = this.insertDirective({ agentId: reporter.id, kind: "guidance", intentId, message: oneLine(note, MAX_DIRECTIVE_CHARS), by, at: now });
+          events.push({ t: "directive", at: now, directiveId: d.id, agentId: d.agentId, intentId, message: d.message, by, kind: "guidance" });
+          this.ctx.waitUntil(this.deliver([{ directive: d, kind: reporter.kind }]).catch((err) => console.warn(`answer to ${reporter.id} not delivered: ${errorText(err)}`)));
+        }
+      }
+      this.publish(events);
+      return { intent };
+    } finally {
+      this.answering.delete(intentId);
+    }
+  }
+
+  /** Reports waiting for a person, newest first: each intent carries its `escalation`. */
+  async escalations(limit = 100): Promise<Intent[]> {
+    const colony = this.requireColony();
+    const n = Math.max(1, Math.min(500, Math.floor(Number(limit) || 100)));
+    return this.sql
+      .exec<IntentRow>("SELECT * FROM intents WHERE escalation_open = 1 AND status = 'open' ORDER BY updated_at DESC LIMIT ?", n)
+      .toArray()
+      .map((r) => this.toIntent(r, colony.id));
+  }
+
+  /** The reports agents made on an intent, with the answers, newest first. */
+  private escalationHistory(intentId: Id): IntentEscalation[] {
+    const rows = this.sql
+      .exec<{ at: number; agent_id: string; kind: string; report: string; resolved: string | null }>(
+        "SELECT at, agent_id, kind, report, resolved FROM intent_escalations WHERE intent_id = ? ORDER BY at DESC LIMIT 20",
+        intentId,
+      )
+      .toArray();
+    return rows.flatMap((r) => {
+      const e = parseEscalation(JSON.stringify({ kind: r.kind, report: r.report, by: r.agent_id, at: r.at, resolved: parseJson<unknown>(r.resolved, undefined) }));
+      return e ? [e] : [];
+    });
   }
 
   // =========================================================================
@@ -1761,6 +1953,8 @@ export class ColonyDO extends DurableObject<Env> {
     const paths = normalizePaths(l.paths && l.paths.length > 0 ? l.paths : writtenPaths);
     fx.batch.deposit("trail", paths, TRAIL_STRENGTH, now);
     fx.batch.landing(groupByRegion(paths, colony.regionDepth).keys(), l.id);
+    // For the agents working on these files: why-context at their next take, landing notices now.
+    this.landed(l, paths, now);
 
     this.bump("landings", 1, now);
     const perMin = this.landingsPerMin(now);
@@ -2931,14 +3125,15 @@ export class ColonyDO extends DurableObject<Env> {
    * The open intents self-assignment considers (highest priority, then oldest; CANDIDATE_CAP of
    * them). Under load (BUSY_TAKES takes in flight or more) concurrent takes share one list for
    * CANDIDATES_TTL_MS instead of each reading 200 rows; reserve() stays the atomic check, and drops
-   * what it claims from the shared list.
+   * what it claims from the shared list. An intent whose report waits for a person (escalate) is not
+   * offered: only an intent its agent held can be reported on, so no list read before holds it.
    */
   private openCandidates(now: number): Array<{ id: string; footprint: string; priority: number; created_at: number }> {
     const busy = this.taking.size >= BUSY_TAKES;
     if (busy && this.candidateRows && now - this.candidateRows.at < CANDIDATES_TTL_MS) return this.candidateRows.rows;
     const rows = this.sql
       .exec<{ id: string; footprint: string; priority: number; created_at: number }>(
-        "SELECT id, footprint, priority, created_at FROM intents WHERE status = 'open' ORDER BY priority DESC, created_at ASC LIMIT ?",
+        "SELECT id, footprint, priority, created_at FROM intents WHERE status = 'open' AND escalation_open IS NOT 1 ORDER BY priority DESC, created_at ASC LIMIT ?",
         CANDIDATE_CAP,
       )
       .toArray();
@@ -2959,7 +3154,8 @@ export class ColonyDO extends DurableObject<Env> {
   private assignment(intent: Intent, lease: WorkspaceLease): TakeResult {
     const rule = intent.ruleId ? this.sql.exec<RuleRow>("SELECT * FROM rules WHERE id = ?", intent.ruleId).toArray()[0] : undefined;
     const review = this.reviewAhead(intent);
-    return { intent, lease, ...(rule ? { rule: this.toRule(rule, intent.colonyId) } : {}), ...(review ? { review } : {}) };
+    const context = this.whyContext(intent);
+    return { intent, lease, ...(rule ? { rule: this.toRule(rule, intent.colonyId) } : {}), ...(review ? { review } : {}), ...(context ? { context } : {}) };
   }
 
   /**
@@ -2978,6 +3174,254 @@ export class ColonyDO extends DurableObject<Env> {
       console.warn(`review preview for intent ${intent.id} failed: ${errorText(err)}`);
       return undefined;
     }
+  }
+
+  // =========================================================================
+  // Landings, for the agents working on their files (agents/landed.ts): why
+  // the code is the way it is at take, landing notices while they work
+  // =========================================================================
+
+  /** Set once this object made sure its landing path index covers landings from before the index. */
+  private landedIndexReady = false;
+  /** Landing notices written since old ones were last pruned. */
+  private noticesSincePrune = 0;
+
+  /**
+   * The latest landings that changed files in the intent's footprint, each with the intent it
+   * completed and that intent's why (at most WHY_LANDINGS, newest first): why the code is the way it
+   * is. Read from the colony's own path index, a few indexed lookups per take; trunk is never asked.
+   * Best effort: a take never fails over it.
+   */
+  private whyContext(intent: Intent): LandedWhy[] | undefined {
+    try {
+      this.backfillLandedIndex();
+      const footprint = (intent.footprint ?? []).slice(0, WHY_FOOTPRINT);
+      const rows: LandedRow[] = [];
+      for (const entry of footprint) {
+        const range = indexRange(entry);
+        if (!range) continue;
+        const found =
+          "eq" in range
+            ? this.sql.exec<LandedIndexRow>("SELECT path, at, landing_id, intent_id FROM landing_paths WHERE path = ? ORDER BY at DESC LIMIT ?", range.eq, WHY_PER_PATH)
+            : this.sql.exec<LandedIndexRow>("SELECT path, at, landing_id, intent_id FROM landing_paths WHERE path >= ? AND path < ? LIMIT ?", range.from, range.to, WHY_RANGE_ROWS);
+        for (const r of found) rows.push({ path: r.path, at: r.at, landingId: r.landing_id, intentId: r.intent_id });
+      }
+      const picked = pickLanded(rows, footprint, WHY_LANDINGS);
+      if (picked.length === 0) return undefined;
+      const texts = this.intentTexts(picked.flatMap((e) => (e.intentId ? [e.intentId] : [])));
+      const commits = new Map(
+        this.sql
+          .exec<{ id: string; trunk_sha: string }>("SELECT id, trunk_sha FROM landings WHERE id IN (SELECT value FROM json_each(?))", JSON.stringify(picked.map((e) => e.landingId)))
+          .toArray()
+          .map((r) => [r.id, r.trunk_sha]),
+      );
+      return picked.map((e) => {
+        const t = e.intentId ? texts.get(e.intentId) : undefined;
+        const out: LandedWhy = { landingId: e.landingId, at: e.at, title: shortTitle(t?.title), why: shortWhy(t?.why), paths: e.paths };
+        const sha = commits.get(e.landingId);
+        if (sha) out.trunkSha = sha;
+        if (e.intentId) out.intentId = e.intentId;
+        return out;
+      });
+    } catch (err) {
+      console.warn(`why-context for intent ${intent.id} failed: ${errorText(err)}`);
+      return undefined;
+    }
+  }
+
+  /** Titles and whys of these intents. */
+  private intentTexts(ids: Id[]): Map<Id, { title: string; why: string }> {
+    const want = [...new Set(ids)].slice(0, 1_000);
+    if (want.length === 0) return new Map();
+    return new Map(
+      this.sql
+        .exec<{ id: string; title: string; why: string }>("SELECT id, title, why FROM intents WHERE id IN (SELECT value FROM json_each(?))", JSON.stringify(want))
+        .toArray()
+        .map((r) => [r.id, { title: r.title, why: r.why }]),
+    );
+  }
+
+  /**
+   * Record which landing (and intent) changed each path. Only the newest WHY_PER_PATH rows of a path
+   * are kept, so the index stays the size of the tree however long the colony runs, and still holds
+   * the newest landings of any footprint.
+   */
+  private indexLanded(rows: LandedRow[]): void {
+    for (const r of rows.slice(0, LANDED_INDEX_PATHS)) {
+      this.sql.exec("INSERT OR IGNORE INTO landing_paths (path, at, landing_id, intent_id) VALUES (?, ?, ?, ?)", r.path, r.at, r.landingId, r.intentId);
+      this.sql.exec(
+        "DELETE FROM landing_paths WHERE path = ? AND at < (SELECT at FROM landing_paths WHERE path = ? ORDER BY at DESC LIMIT 1 OFFSET ?)",
+        r.path,
+        r.path,
+        WHY_PER_PATH - 1,
+      );
+    }
+  }
+
+  /**
+   * A colony that landed work before the path index existed gets it filled once, from its latest
+   * landed changes (LANDED_BACKFILL proposals), so its takes show why-context at once. Once per object.
+   */
+  private backfillLandedIndex(): void {
+    if (this.landedIndexReady) return;
+    this.landedIndexReady = true;
+    if (this.sql.exec("SELECT 1 AS x FROM landing_paths LIMIT 1").toArray().length > 0) return;
+    const rows = this.sql
+      .exec<{ path: string | null; at: number | null; landing_id: string | null; intent_id: string }>(
+        `SELECT json_extract(w.value, '$.path') AS path, COALESCE(l.at, p.updated_at) AS at, json_extract(p.data, '$.landingId') AS landing_id, p.intent_id AS intent_id
+           FROM (SELECT intent_id, data, updated_at FROM proposals WHERE status = 'landed' ORDER BY created_at DESC LIMIT ?) p
+           JOIN json_each(p.data, '$.writeSet') w
+           LEFT JOIN landings l ON l.id = json_extract(p.data, '$.landingId')`,
+        LANDED_BACKFILL,
+      )
+      .toArray();
+    this.indexLanded(rows.flatMap((r) => (r.path && r.landing_id && typeof r.at === "number" ? [{ path: r.path, at: r.at, landingId: r.landing_id, intentId: r.intent_id }] : [])));
+  }
+
+  /**
+   * After a landing (onLanding): index which intent changed each path (why-context at take), and tell
+   * the agents still working on those files, other than the landing's own authors (landing notices,
+   * built and delivered in the background). Never throws: a landing never fails over it.
+   */
+  private landed(l: Landing, paths: Path[], now: number): void {
+    try {
+      const writers = this.landingWriters(l);
+      const byPath = new Map(writers.map((w) => [w.path, w.intentId]));
+      // A commit whose proposals this colony does not know: its one intent, if it names one.
+      const single = (l.intentIds ?? []).length === 1 ? (l.intentIds[0] ?? null) : null;
+      const at = typeof l.at === "number" && Number.isFinite(l.at) ? l.at : now;
+      this.indexLanded(paths.map((path) => ({ path, at, landingId: l.id, intentId: byPath.get(path) ?? single })));
+      const recipients = this.noticeRecipients(paths, new Set(writers.map((w) => w.agentId)), now);
+      if (recipients.length > 0) {
+        this.ctx.waitUntil(this.sendLandingNotices(l, recipients, byPath, single).catch((err) => console.warn(`landing notices for ${l.id} not sent: ${errorText(err)}`)));
+      }
+    } catch (err) {
+      console.warn(`landing ${l.id}: why-context index and notices skipped: ${errorText(err)}`);
+    }
+  }
+
+  /** Who wrote each path of a landing: the intent and agent of the landed proposal that wrote it. */
+  private landingWriters(l: Landing): Array<{ path: Path; intentId: Id; agentId: Id }> {
+    const ids = (l.proposalIds ?? []).slice(0, 1_000);
+    if (ids.length === 0) return [];
+    return this.sql
+      .exec<{ path: string | null; intent_id: string; agent_id: string }>(
+        `SELECT json_extract(w.value, '$.path') AS path, p.intent_id AS intent_id, p.agent_id AS agent_id
+           FROM proposals p JOIN json_each(p.data, '$.writeSet') w
+          WHERE p.id IN (SELECT value FROM json_each(?))`,
+        JSON.stringify(ids),
+      )
+      .toArray()
+      .flatMap((r) => (r.path ? [{ path: r.path, intentId: r.intent_id, agentId: r.agent_id }] : []));
+  }
+
+  /**
+   * The agents a landing concerns: those still working on an intent (claimed, or proposed and in
+   * flight) whose footprint covers a landed path, other than its authors. An agent's claims sit on the
+   * footprint of the intents it holds, so the footprint stands for them. Synthetic agents are load and
+   * are not told. One entry per agent, named after its current intent, at most MAX_LANDING_NOTICES.
+   */
+  private noticeRecipients(paths: Path[], authors: ReadonlySet<Id>, now: number): NoticeRecipient[] {
+    if (paths.length === 0) return [];
+    const out = new Map<Id, NoticeRecipient>();
+    for (const { ref, paths: covered } of coveringFootprints(this.heldFootprints(now), paths)) {
+      if (authors.has(ref.agentId) || ref.kind === "synthetic") continue;
+      const prev = out.get(ref.agentId);
+      if (prev) {
+        if (ref.current) prev.intentId = ref.intentId;
+        prev.paths = [...new Set([...prev.paths, ...covered])].sort();
+      } else if (out.size < MAX_LANDING_NOTICES) {
+        out.set(ref.agentId, { agentId: ref.agentId, kind: ref.kind, intentId: ref.intentId, paths: covered });
+      }
+    }
+    return [...out.values()];
+  }
+
+  /** The footprints of the intents agents hold, indexed for landing notices (see heldFootprints). */
+  private heldIndex: { at: number; index: FootprintIndex<HeldRef> } | null = null;
+
+  /**
+   * The footprints of the intents agents hold (claimed, or proposed and in flight), indexed by path.
+   * Rebuilt from one scan of the held intents at most every HELD_INDEX_MS, however many landings
+   * arrive meanwhile: at scale the colony gets dozens a second. An intent taken since the last
+   * rebuild can miss a notice; the lane still checks its change against trunk.
+   */
+  private heldFootprints(now: number): FootprintIndex<HeldRef> {
+    if (this.heldIndex && now - this.heldIndex.at < HELD_INDEX_MS) return this.heldIndex.index;
+    const rows = this.sql
+      .exec<{ id: string; footprint: string; agent_id: string; kind: string; current: string | null }>(
+        `SELECT i.id AS id, i.footprint AS footprint, i.assigned_to AS agent_id, a.kind AS kind, a.intent_id AS current
+           FROM intents i JOIN agents a ON a.id = i.assigned_to
+          WHERE i.status IN ('claimed', 'proposed') AND i.created_by != 'vaccine' AND a.state != 'dead'`,
+      )
+      .toArray();
+    const index = footprintIndex(rows.map((r) => ({ footprint: this.footprintOf(r.id, r.footprint), ref: { intentId: r.id, agentId: r.agent_id, kind: r.kind, current: r.current === r.id } })));
+    this.heldIndex = { at: now, index };
+    return index;
+  }
+
+  /**
+   * Build and deliver landing notices: each changed path with its blob before and after the landing
+   * (one trunk read of both commits for the whole landing), and the intent that changed the
+   * recipient's files with its why. Facts only. Pushed to in-platform agents, left in the inbox of
+   * external ones, and published as `directive` events of kind landing.
+   */
+  private async sendLandingNotices(l: Landing, recipients: NoticeRecipient[], writers: ReadonlyMap<Path, Id>, single: Id | null): Promise<void> {
+    // Without both commits the blobs before and after cannot be stated.
+    if (!l.parentSha || !l.trunkSha) return;
+    const paths = [...new Set(recipients.flatMap((r) => r.paths.slice(0, NOTICE_PATHS)))];
+    const trunk = this.trunkStub();
+    const [before, after] = await Promise.all([trunk.baseBlobs(l.parentSha, paths), trunk.baseBlobs(l.trunkSha, paths)]);
+    const was = new Map((before as FileVersion[]).map((f) => [f.path, f.blob ?? null]));
+    const is = new Map((after as FileVersion[]).map((f) => [f.path, f.blob ?? null]));
+    const texts = this.intentTexts([...writers.values(), ...(single ? [single] : [])]);
+    const now = Date.now();
+    const notices: Notice[] = [];
+    for (const r of recipients) {
+      const shown = r.paths.slice(0, NOTICE_PATHS);
+      // The intent that changed most of this agent's files names the notice.
+      const count = new Map<Id, number>();
+      for (const p of shown) {
+        const w = writers.get(p) ?? single;
+        if (w) count.set(w, (count.get(w) ?? 0) + 1);
+      }
+      const writer = [...count].sort((a, b) => b[1] - a[1])[0]?.[0];
+      const t = writer ? texts.get(writer) : undefined;
+      const notice: LandingNotice = {
+        landingId: l.id,
+        trunkSha: l.trunkSha,
+        paths: shown.map((path) => ({ path, before: was.get(path) ?? null, after: is.get(path) ?? null })),
+        intentTitle: shortTitle(t?.title),
+        why: shortWhy(t?.why, NOTICE_WHY_CHARS),
+      };
+      notices.push({ directive: this.insertLandingNotice(r.agentId, r.intentId, notice, now), kind: r.kind });
+    }
+    this.publish(
+      notices.map(
+        (n): ColonyEvent => ({ t: "directive", at: now, directiveId: n.directive.id, agentId: n.directive.agentId, ...(n.directive.intentId ? { intentId: n.directive.intentId } : {}), message: n.directive.message, by: n.directive.by, kind: "landing" }),
+      ),
+    );
+    this.noticesSincePrune += notices.length;
+    if (this.noticesSincePrune >= NOTICE_PRUNE_EVERY) {
+      this.noticesSincePrune = 0;
+      this.sql.exec("DELETE FROM directives WHERE kind = 'landing' AND at < ?", now - NOTICE_KEEP_MS);
+    }
+    await this.deliver(notices);
+  }
+
+  /** Store a landing notice for one agent: a directive of kind landing, about the intent it works on. */
+  private insertLandingNotice(agentId: Id, intentId: Id, notice: LandingNotice, at: number): Directive {
+    const d: Directive = { id: newId("dir_"), colonyId: this.requireColony().id, agentId, kind: "landing", intentId, message: landingMessage(notice), by: "colony", at, landing: notice };
+    this.sql.exec(
+      "INSERT INTO directives (id, agent_id, kind, intent_id, message, by, at, revision, changed, delivered_at, via, landing) VALUES (?, ?, 'landing', ?, ?, 'colony', ?, NULL, NULL, NULL, NULL, ?)",
+      d.id,
+      agentId,
+      intentId,
+      d.message,
+      at,
+      JSON.stringify(notice),
+    );
+    return d;
   }
 
   /**
@@ -3707,6 +4151,8 @@ export class ColonyDO extends DurableObject<Env> {
     // Revision 1 is implied (absent) so a never-amended intent keeps its original shape.
     if (typeof r.revision === "number" && r.revision > 1) intent.revision = r.revision;
     if (r.withdrawn_reason) intent.withdrawnReason = r.withdrawn_reason;
+    const escalation = r.escalation ? parseEscalation(r.escalation) : null;
+    if (escalation) intent.escalation = escalation;
     return intent;
   }
 

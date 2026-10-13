@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { AmendIntentBody, DirectiveBody, ProposalBody, StatusBody, WithdrawBody } from "../../src/api/schemas.ts";
+import { AmendIntentBody, DirectiveBody, EscalationBody, ProposalBody, StatusBody, WithdrawBody } from "../../src/api/schemas.ts";
 
 describe("changing-direction request bodies", () => {
   it("amends need a reason and at least one field", () => {
@@ -40,5 +40,23 @@ describe("changing-direction request bodies", () => {
     expect(ProposalBody.parse(base).intentRevision).toBeUndefined();
     expect(ProposalBody.safeParse({ ...base, intentRevision: 0 }).success).toBe(false);
     expect(ProposalBody.safeParse({ ...base, intentRevision: 1.5 }).success).toBe(false);
+  });
+});
+
+describe("answering an agent's report", () => {
+  it("needs a decision and a note, and amend needs something to change", () => {
+    expect(EscalationBody.parse({ decision: "dismiss", note: " the test is right ", by: "matt" })).toEqual({ decision: "dismiss", note: "the test is right", by: "matt" });
+    expect(EscalationBody.parse({ decision: "amend", note: "spec changed", amend: { why: "Return 404", footprint: ["src/a.ts"] } })).toEqual({
+      decision: "amend",
+      note: "spec changed",
+      amend: { why: "Return 404", footprint: ["src/a.ts"] },
+    });
+    expect(EscalationBody.parse({ decision: "withdraw", note: "not needed" })).toEqual({ decision: "withdraw", note: "not needed" });
+    expect(EscalationBody.safeParse({ decision: "amend", note: "x" }).success).toBe(false);
+    expect(EscalationBody.safeParse({ decision: "amend", note: "x", amend: {} }).success).toBe(false);
+    expect(EscalationBody.safeParse({ decision: "amend", note: "x", amend: { title: " " } }).success).toBe(false);
+    expect(EscalationBody.safeParse({ decision: "approve", note: "x" }).success).toBe(false);
+    expect(EscalationBody.safeParse({ decision: "dismiss", note: "  " }).success).toBe(false);
+    expect(EscalationBody.safeParse({ decision: "dismiss" }).success).toBe(false);
   });
 });

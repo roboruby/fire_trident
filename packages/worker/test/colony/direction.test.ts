@@ -2,8 +2,12 @@ import { describe, expect, it } from "vitest";
 import type { Directive } from "@fire_trident/core";
 import {
   DIRECTION_COLUMNS,
+  ESCALATION_KINDS,
+  MAX_REPORT_CHARS,
   describeChanges,
   directiveText,
+  escalationDecision,
+  escalationKind,
   footprintDelta,
   guidanceText,
   inboxEntry,
@@ -11,10 +15,14 @@ import {
   isInboxDirective,
   isRedirect,
   landedStaleText,
+  landingMessage,
   migrateDirection,
   missedRevisions,
   noteDecision,
   noteDecisions,
+  parseEscalation,
+  parseLandingNotice,
+  reportText,
   revisedReturn,
   splitByDirection,
   staleDirection,
@@ -239,5 +247,87 @@ describe("missedRevisions (a change that landed after an amendment)", () => {
   it("says what is left to do", () => {
     expect(landedStaleText(1, 2)).toBe("landed a change built on r1; r2 still to do");
     expect(landedStaleText(null, 3)).toBe("landed a change built on an older revision; r3 still to do");
+  });
+});
+
+describe("landing notices", () => {
+  const notice = {
+    landingId: "lnd_1",
+    trunkSha: "c".repeat(40),
+    paths: [
+      { path: "src/a.ts", before: "a".repeat(40), after: "b".repeat(40) },
+      { path: "src/new.ts", before: null, after: "d".repeat(40) },
+    ],
+    intentTitle: "Rename helper",
+    why: "clarity",
+  };
+
+  it("say what changed on trunk as facts: paths, blobs, the landing and its intent", () => {
+    expect(landingMessage(notice)).toBe('Landing lnd_1 (trunk ccccccc) changed src/a.ts (aaaaaaa → bbbbbbb), src/new.ts (absent → ddddddd); it completed intent "Rename helper": clarity.');
+    expect(landingMessage({ ...notice, intentTitle: "", why: "" })).toBe("Landing lnd_1 (trunk ccccccc) changed src/a.ts (aaaaaaa → bbbbbbb), src/new.ts (absent → ddddddd).");
+    const d: Directive = { id: "dir_1", colonyId: "c", agentId: "agt_1", kind: "landing", intentId: "int_1", message: "m", by: "colony", at: 5, landing: notice };
+    expect(directiveText(d)).toBe(`Trunk moved under intent int_1: ${landingMessage(notice)}`);
+    expect(inboxEntry(d).reason).toBe(directiveText(d));
+  });
+
+  it("are read back from their rows, checked", () => {
+    const row = { id: "dir_2", agent_id: "agt_1", kind: "landing", intent_id: "int_1", message: "m", by: "colony", at: 1, revision: null, changed: null, delivered_at: null, via: null };
+    expect(toDirective({ ...row, landing: JSON.stringify(notice) }, "c").landing).toEqual(notice);
+    // Rows from before the column, or unreadable data, carry no notice.
+    expect(toDirective(row, "c")).not.toHaveProperty("landing");
+    expect(toDirective({ ...row, landing: "{nope" }, "c")).not.toHaveProperty("landing");
+    expect(parseLandingNotice({ ...notice, paths: [{ path: "x", before: "HEAD", after: null }] })).toBeNull();
+    expect(parseLandingNotice({ ...notice, intentTitle: 5, why: "w".repeat(400) })).toMatchObject({ intentTitle: "", why: expect.stringMatching(/…$/) });
+  });
+});
+
+describe("escalations", () => {
+  it("know the kinds an agent can report and the answers a person can give", () => {
+    expect(ESCALATION_KINDS).toEqual(["broken-test", "contradictory-spec", "impossible", "other"]);
+    expect(escalationKind("broken-test")).toBe("broken-test");
+    expect(escalationKind("bug")).toBeNull();
+    expect(escalationDecision("dismiss")).toBe("dismiss");
+    expect(escalationDecision("approve")).toBeNull();
+    expect(reportText("  a\r\nb  ")).toBe("a\nb");
+    expect(reportText("x".repeat(5_000))).toHaveLength(MAX_REPORT_CHARS);
+    expect(reportText(7)).toBe("");
+  });
+
+  it("are read back from storage, checked", () => {
+    const open = { kind: "broken-test", report: "test 4 is wrong", by: "agt_1", at: 5 };
+    expect(parseEscalation(JSON.stringify(open))).toEqual(open);
+    const resolved = { ...open, resolved: { by: "matt", at: 9, decision: "dismiss", note: "the test is right" } };
+    expect(parseEscalation(JSON.stringify(resolved))).toEqual(resolved);
+    // An unknown kind reads as other; a malformed answer is left out; junk is nothing.
+    expect(parseEscalation(JSON.stringify({ ...open, kind: "weird" }))?.kind).toBe("other");
+    expect(parseEscalation(JSON.stringify({ ...open, resolved: { decision: "maybe" } }))).toEqual(open);
+    expect(parseEscalation("{bad")).toBeNull();
+    expect(parseEscalation(null)).toBeNull();
+    expect(parseEscalation(JSON.stringify({ kind: "other" }))).toBeNull();
+  });
+});
+
+describe("migrateDirection on a store that lists its columns", () => {
+  it("adds only the columns a table is missing", () => {
+    const have: Record<string, string[]> = { intents: ["id", "revision", "withdrawn_reason"], rules: ["id"], agents: ["id", "note", "note_at"], directives: ["id"] };
+    const altered: string[] = [];
+    const sql = {
+      exec(q: string): unknown {
+        const pragma = /^PRAGMA table_info\((\w+)\)$/.exec(q);
+        if (pragma) return { toArray: () => (have[pragma[1]!] ?? []).map((name) => ({ name })) };
+        const m = /^ALTER TABLE (\w+) ADD COLUMN (\w+)/.exec(q);
+        if (m) {
+          if (have[m[1]!]!.includes(m[2]!)) throw new Error(`duplicate column name: ${m[2]}`);
+          altered.push(`${m[1]}.${m[2]}`);
+          have[m[1]!]!.push(m[2]!);
+        }
+        return { toArray: () => [] };
+      },
+    };
+    migrateDirection(sql);
+    expect(altered.sort()).toEqual(["directives.landing", "intents.escalation", "intents.escalation_open", "rules.retract_reason", "rules.retracted_at", "rules.retracted_by"]);
+    altered.length = 0;
+    migrateDirection(sql); // a second wake alters nothing
+    expect(altered).toEqual([]);
   });
 });

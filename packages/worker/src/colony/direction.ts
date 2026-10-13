@@ -2,12 +2,15 @@ import type {
   Decision,
   Directive,
   DirectiveKind,
+  EscalationKind,
   Id,
   InboxDirective,
   Intent,
+  IntentEscalation,
   IntentField,
   IntentRevision,
   IntentStatus,
+  LandingNotice,
   NoteDecision,
   Path,
   Proposal,
@@ -32,6 +35,12 @@ export const DIRECTION_SCHEMA = [
   "CREATE INDEX IF NOT EXISTS directives_by_intent ON directives(intent_id, at)",
   // The revision an agent last saw of an intent it held when the intent was amended (see stampRevision).
   "CREATE TABLE IF NOT EXISTS intent_acks (intent_id TEXT NOT NULL, agent_id TEXT NOT NULL, revision INTEGER NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (intent_id, agent_id))",
+  // Which landing (and intent) changed each path, the newest few per path: why-context at take (agents/landed.ts).
+  "CREATE TABLE IF NOT EXISTS landing_paths (path TEXT NOT NULL, at INTEGER NOT NULL, landing_id TEXT NOT NULL, intent_id TEXT, PRIMARY KEY (path, at, landing_id))",
+  // Every report agents made on an intent, and the person's answer (the intent's history; intents.escalation holds the latest).
+  `CREATE TABLE IF NOT EXISTS intent_escalations (
+    intent_id TEXT NOT NULL, at INTEGER NOT NULL, agent_id TEXT NOT NULL, kind TEXT NOT NULL, report TEXT NOT NULL, resolved TEXT,
+    PRIMARY KEY (intent_id, at, agent_id))`,
 ];
 
 /** Columns added to tables that predate direction changes. */
@@ -43,6 +52,11 @@ export const DIRECTION_COLUMNS: ReadonlyArray<readonly [table: string, column: s
   ["rules", "retract_reason", "TEXT"],
   ["agents", "note", "TEXT"],
   ["agents", "note_at", "INTEGER"],
+  // An agent's report on the intent and the person's answer (IntentEscalation as JSON), and whether it still waits: take skips those.
+  ["intents", "escalation", "TEXT"],
+  ["intents", "escalation_open", "INTEGER NOT NULL DEFAULT 0"],
+  // Landing notices: what landed (LandingNotice as JSON).
+  ["directives", "landing", "TEXT"],
 ];
 
 /** The SQL surface the migration needs. */
@@ -50,10 +64,24 @@ export interface SqlExec {
   exec(query: string, ...bindings: unknown[]): unknown;
 }
 
-/** Create the direction tables and add missing columns (an existing column makes ALTER throw: skipped). */
+/** A table's column names, or null when the store cannot list them (then ALTER decides). */
+function tableColumns(sql: SqlExec, table: string): Set<string> | null {
+  try {
+    const rows = (sql.exec(`PRAGMA table_info(${table})`) as { toArray?: () => unknown[] } | null)?.toArray?.();
+    if (!Array.isArray(rows)) return null;
+    return new Set(rows.map((r) => (r && typeof r === "object" ? String((r as { name?: unknown }).name ?? "") : "")));
+  } catch {
+    return null;
+  }
+}
+
+/** Create the direction tables and add the columns a table is missing (checked first; an ALTER that still fails is skipped). */
 export function migrateDirection(sql: SqlExec): void {
   for (const stmt of DIRECTION_SCHEMA) sql.exec(stmt);
+  const known = new Map<string, Set<string> | null>();
   for (const [table, column, decl] of DIRECTION_COLUMNS) {
+    if (!known.has(table)) known.set(table, tableColumns(sql, table));
+    if (known.get(table)?.has(column)) continue;
     try {
       sql.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${decl}`);
     } catch {
@@ -293,6 +321,8 @@ export type DirectiveRow = {
   changed: string | null;
   delivered_at: number | null;
   via: string | null;
+  /** Landing notices (absent in rows read before the column existed). */
+  landing?: string | null;
 };
 
 function parse<T>(text: string | null | undefined, fallback: T): T {
@@ -328,7 +358,96 @@ export function toDirective(r: DirectiveRow, colonyId: Id): Directive {
   if (changed) d.changed = changed;
   if (typeof r.delivered_at === "number") d.deliveredAt = r.delivered_at;
   if (r.via === "push" || r.via === "inbox") d.via = r.via;
+  const landing = parseLandingNotice(parse<unknown>(r.landing, null));
+  if (landing) d.landing = landing;
   return d;
+}
+
+/** Characters of a landing notice's why, and paths one notice lists at most. */
+export const NOTICE_WHY_CHARS = 300;
+export const NOTICE_PATHS = 20;
+
+const SHA_OR_NULL = (v: unknown): v is string | null => v === null || (typeof v === "string" && /^[0-9a-f]{40}([0-9a-f]{24})?$/.test(v));
+
+/** A stored or received landing notice, checked (malformed paths dropped); null when it is not one. */
+export function parseLandingNotice(x: unknown): LandingNotice | null {
+  if (!x || typeof x !== "object" || Array.isArray(x)) return null;
+  const o = x as Record<string, unknown>;
+  if (typeof o.landingId !== "string" || !o.landingId || typeof o.trunkSha !== "string") return null;
+  const paths = (Array.isArray(o.paths) ? o.paths : [])
+    .filter((p): p is { path: string; before: string | null; after: string | null } => {
+      const e = p as Record<string, unknown> | null;
+      return !!e && typeof e === "object" && typeof e.path === "string" && e.path !== "" && SHA_OR_NULL(e.before) && SHA_OR_NULL(e.after);
+    })
+    .slice(0, NOTICE_PATHS)
+    .map((p) => ({ path: p.path, before: p.before, after: p.after }));
+  if (paths.length === 0) return null;
+  return {
+    landingId: o.landingId,
+    trunkSha: o.trunkSha,
+    paths,
+    intentTitle: typeof o.intentTitle === "string" ? oneLine(o.intentTitle, 200) : "",
+    why: typeof o.why === "string" ? oneLine(o.why, NOTICE_WHY_CHARS) : "",
+  };
+}
+
+/** A blob id as a notice shows it: seven characters, or "absent". */
+function blob7(sha: string | null): string {
+  return sha ? sha.slice(0, 7) : "absent";
+}
+
+/**
+ * A landing notice in words: which files changed on trunk, their blobs before and after, and the
+ * intent that changed them. Facts only (the notice carries no instruction; what an agent does with
+ * one is the platform's policy, given in its instructions).
+ */
+export function landingMessage(n: LandingNotice): string {
+  const shown = n.paths.slice(0, 5).map((p) => `${p.path} (${blob7(p.before)} → ${blob7(p.after)})`);
+  const more = n.paths.length > shown.length ? ` and ${n.paths.length - shown.length} more` : "";
+  const intent = n.intentTitle ? `; it completed intent "${oneLine(n.intentTitle, 120)}"${n.why ? `: ${oneLine(n.why, 200)}` : ""}` : "";
+  return `Landing ${n.landingId} (trunk ${n.trunkSha.slice(0, 7)}) changed ${shown.join(", ")}${more}${intent}.`;
+}
+
+// ---------------------------------------------------------------------------
+// Escalations: an agent reports that an intent cannot be done as written; a person answers
+// ---------------------------------------------------------------------------
+
+/** What an agent can report, and the longest report and answer kept. */
+export const ESCALATION_KINDS: readonly EscalationKind[] = ["broken-test", "contradictory-spec", "impossible", "other"];
+export const MAX_REPORT_CHARS = 4_000;
+export const MAX_ANSWER_CHARS = 2_000;
+const DECISIONS: ReadonlySet<string> = new Set(["amend", "withdraw", "dismiss"]);
+
+/** A person's answer to a report. */
+export type EscalationDecision = NonNullable<IntentEscalation["resolved"]>["decision"];
+
+/** The kind as given, when it is one an agent can report; null otherwise. */
+export function escalationKind(x: unknown): EscalationKind | null {
+  return typeof x === "string" && (ESCALATION_KINDS as readonly string[]).includes(x) ? (x as EscalationKind) : null;
+}
+
+/** The decision as given, when it is one a person can make; null otherwise. */
+export function escalationDecision(x: unknown): EscalationDecision | null {
+  return typeof x === "string" && DECISIONS.has(x) ? (x as EscalationDecision) : null;
+}
+
+/** Report or answer text as kept: trimmed, at most `max` characters (line breaks stay; it is shown as data). */
+export function reportText(x: unknown, max = MAX_REPORT_CHARS): string {
+  const t = typeof x === "string" ? x.replace(/\r\n?/g, "\n").trim() : "";
+  return t.length > max ? `${t.slice(0, max - 1)}…` : t;
+}
+
+/** A stored escalation (intents.escalation, intent_escalations), checked; null when absent or unreadable. */
+export function parseEscalation(text: string | null | undefined): IntentEscalation | null {
+  const o = parse<Record<string, unknown> | null>(text, null);
+  if (!o || typeof o !== "object" || Array.isArray(o)) return null;
+  const kind = escalationKind(o.kind) ?? "other";
+  if (typeof o.report !== "string" || typeof o.by !== "string" || typeof o.at !== "number") return null;
+  const out: IntentEscalation = { kind, report: o.report, by: o.by, at: o.at };
+  const r = o.resolved as Record<string, unknown> | undefined;
+  const decision = r && typeof r === "object" ? escalationDecision(r.decision) : null;
+  if (r && decision && typeof r.by === "string" && typeof r.at === "number") out.resolved = { by: r.by, at: r.at, decision, note: typeof r.note === "string" ? r.note : "" };
+  return out;
 }
 
 /**
@@ -347,6 +466,9 @@ export function directiveText(d: Directive): string {
       return `Intent ${d.intentId ?? "?"} revised to r${d.revision ?? "?"} (${describeChanges(d.changed ?? [])}): ${d.message}. Call take to get the new revision and redo the change against it; changes built on an older revision are sent back.`;
     case "withdrawal":
       return `Intent ${d.intentId ?? "?"} withdrawn: ${d.message}. Stop working on it (nothing for it will land) and call take for other work.`;
+    case "landing":
+      // Facts about trunk, not instructions: the notice's text is the message the colony wrote from them.
+      return `Trunk moved under intent ${d.intentId ?? "?"}: ${d.landing ? landingMessage(d.landing) : d.message}`;
     default:
       return `Directive from ${d.by}${d.intentId ? ` about intent ${d.intentId}` : ""}: ${d.message}`;
   }

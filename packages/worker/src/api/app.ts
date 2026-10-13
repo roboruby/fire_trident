@@ -15,6 +15,7 @@ import {
   DecisionBody,
   RevertBody,
   DirectiveBody,
+  EscalationBody,
   IntentBody,
   ProposalBody,
   RuleBody,
@@ -179,6 +180,8 @@ async function requireColony(env: Env, colonyId: Id): Promise<void> {
  *   GET    /colonies/:id/intents/:iid       one intent with its revision history and directives
  *   PATCH  /colonies/:id/intents/:iid       amend an intent (revision + 1; stale work goes back)
  *   POST   /colonies/:id/intents/:iid/withdraw  withdraw an intent (needs evaporate, holder stops)
+ *   POST   /colonies/:id/intents/:iid/escalation  answer an agent's report: amend | withdraw | dismiss
+ *   GET    /colonies/:id/escalations        agents' reports waiting for a person (the intents, newest first)
  *   POST   /colonies/:id/rules              add a morphology rule (creates needs)
  *   DELETE /colonies/:id/rules/:rid         retract a rule (kept in history; its unlanded intents withdrawn)
  *   GET    /colonies/:id/agents             agents with state, intent, model, journal step (?all=1, ?journal=0)
@@ -384,6 +387,22 @@ export function createApi(deps: ApiDeps): Hono<ApiEnv> {
   app.post("/colonies/:id/intents/:iid/withdraw", requireAdmin, async (c) => {
     const b = await body(c, WithdrawBody);
     return json(await colonyStub(c.env, colonyParam(c)).withdrawIntent(c.req.param("iid"), { reason: b.reason, by: b.by ?? "api" }));
+  });
+
+  // Reports: an agent said an intent cannot be done as written; a person answers it (amend, withdraw or dismiss).
+  app.post("/colonies/:id/intents/:iid/escalation", requireAdmin, async (c) => {
+    const b = await body(c, EscalationBody);
+    const amend = b.amend
+      ? { ...(b.amend.title !== undefined ? { title: b.amend.title } : {}), ...(b.amend.why !== undefined ? { why: b.amend.why } : {}), ...(b.amend.footprint !== undefined ? { footprint: b.amend.footprint } : {}) }
+      : undefined;
+    const res = await colonyStub(c.env, colonyParam(c)).resolveEscalation(c.req.param("iid"), { decision: b.decision, note: b.note, by: b.by ?? "api", ...(amend ? { amend } : {}) });
+    return json(res);
+  });
+
+  app.get("/colonies/:id/escalations", async (c) => {
+    const colonyId = colonyParam(c);
+    const intents = await colonyStub(c.env, colonyId).escalations();
+    return json({ colonyId, total: intents.length, intents });
   });
 
   app.delete("/colonies/:id/rules/:rid", requireAdmin, async (c) => {

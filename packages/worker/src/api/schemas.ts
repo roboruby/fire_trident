@@ -149,3 +149,27 @@ export const DirectiveBody = z.object({
 export const StatusBody = z.object({
   note: z.string().trim().min(1, "a status note cannot be empty").max(2_000),
 });
+
+/**
+ * POST /api/colonies/:id/intents/:iid/escalation: a person answers an agent's report that the intent
+ * cannot be done as written. `amend` changes the intent (at least one of amend.title, amend.why,
+ * amend.footprint) and reopens it; `withdraw` withdraws it; `dismiss` reopens it unchanged. The note
+ * is the answer: the amendment's or withdrawal's reason, or guidance for whoever takes it next.
+ */
+export const EscalationBody = z
+  .object({
+    decision: z.enum(["amend", "withdraw", "dismiss"]),
+    note: z.string().trim().min(1, "a note is required").max(2_000),
+    by: z.string().trim().min(1).max(200).optional(),
+    amend: z
+      .object({
+        title: z.string().trim().min(1).max(500).optional(),
+        why: z.string().max(20_000).optional(),
+        footprint: z.array(PathString).min(1).max(1_000).optional(),
+      })
+      .optional(),
+  })
+  .refine((b) => b.decision !== "amend" || (b.amend !== undefined && (b.amend.title !== undefined || b.amend.why !== undefined || b.amend.footprint !== undefined)), {
+    message: "amend needs amend.title, amend.why or amend.footprint",
+    path: ["amend"],
+  });

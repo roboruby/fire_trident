@@ -146,7 +146,7 @@ function flat(s: string): string {
  * holds the source files to fix (nearest first, at most 6) and the failing test files are "Builds
  * on" context, read but not rewritten. A test file is in the footprint only when the fix has to be
  * written in it (see `fixIn`), or when the failing tests load no other file. The text says the tests
- * must not be edited, and that an agent finding a test wrong gives the intent back with the reason.
+ * must not be edited, and that an agent finding a test wrong escalates it to a person (kind broken-test).
  */
 export function repairIntent(p: RepairInput): RepairIntentInput {
   const lost = p.cert.lost ?? [];
@@ -203,7 +203,9 @@ export function repairIntent(p: RepairInput): RepairIntentInput {
   if (testsToChange.length > 0) {
     lines.push(flat(`${testsToChange.join(", ")} ${testsToChange.length === 1 ? "is" : "are"} in the footprint only to run again as written: put back the lost tests listed below exactly as they were on the commit named (git show <commit>:<file>), or make a file that does not parse load, without changing what any test checks; otherwise leave it as it is.`));
   }
-  lines.push("If a test itself is wrong (it contradicts the spec), give the intent back (release it) with the reason instead of changing the test: a person decides.");
+  lines.push(
+    "If a test itself is wrong (it contradicts the spec), do not change it: escalate the intent with kind broken-test, naming the test and the spec line that disagree, and a person decides. Escalating is not a failure.",
+  );
   if (failing.length > 0) {
     lines.push("", "Failing tests:");
     for (const f of failing.slice(0, LISTED)) lines.push(flat(`- ${f.file} > ${f.name === f.file ? "(the file fails to load)" : f.name}${f.error ? `: ${f.error}` : ""}`));
@@ -230,7 +232,7 @@ export function repairIntent(p: RepairInput): RepairIntentInput {
       "Every test listed above passes under trunk certification and every other test still passes: node --test passes from a clean clone of trunk",
       testsToChange.length > 0
         ? "Test files change only to run again as written (lost tests put back exactly as they were, a file that does not parse made to load); no test checks less than before"
-        : "No test file changes; a test that is wrong is reported by giving the intent back with the reason",
+        : "No test file changes; a test that is wrong is escalated with kind broken-test, not changed",
     ],
     priority: REPAIR_PRIORITY,
     createdBy: "certify",

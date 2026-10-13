@@ -26,6 +26,8 @@ import type { Command } from "./args.ts";
  *   GET    /api/colonies/:id/intents/:iid           -> { intent, revisions, directives }
  *   DELETE /api/colonies/:id/rules/:rid             { reason, by } -> { rule, withdrawn, returned, notified }
  *   POST   /api/colonies/:id/agents/:aid/directive  { message, intentId?, by } -> Directive + { delivery }
+ *   GET    /api/colonies/:id/escalations            -> { colonyId, total, intents: Intent[] } (reports waiting for a person)
+ *   POST   /api/colonies/:id/intents/:iid/escalation { decision: amend|withdraw|dismiss, note, by, amend?: { title?, why?, footprint? } } -> { intent }
  *
  * Every request carries `Authorization: Bearer $FT_TOKEN` when the token is set.
  */
@@ -184,6 +186,19 @@ export function planRequest(cmd: Command, by: string): ApiRequest | null {
         path: colonyPath(cmd.colony, `/agents/${encodeURIComponent(cmd.agentId)}/directive`),
         body: { message: cmd.message, ...(cmd.intentId ? { intentId: cmd.intentId } : {}), by: cmd.by ?? by },
       };
+    case "escalations":
+      return { method: "GET", path: colonyPath(cmd.colony, "/escalations") };
+    case "escalation": {
+      const amend: Record<string, unknown> = {};
+      if (cmd.title !== undefined) amend.title = cmd.title;
+      if (cmd.why !== undefined) amend.why = cmd.why;
+      if (cmd.footprint !== undefined) amend.footprint = cmd.footprint;
+      return {
+        method: "POST",
+        path: colonyPath(cmd.colony, `/intents/${encodeURIComponent(cmd.intentId)}/escalation`),
+        body: { decision: cmd.decision, note: cmd.note, by: cmd.by ?? by, ...(Object.keys(amend).length > 0 ? { amend } : {}) },
+      };
+    }
     default:
       return null;
   }

@@ -190,9 +190,10 @@ export class AgentDO extends DurableObject<Env> {
   }
 
   /**
-   * A directive pushed by the colony: human guidance, or a revision or withdrawal of an intent this
-   * agent holds. It is kept in the journal and acted on at the next step (loop.ts receiveDirective and
-   * applyDirection); a step working the old way is halted, and a sleeping agent wakes at once.
+   * A directive pushed by the colony: human guidance, a revision or withdrawal of an intent this agent
+   * holds, or a landing notice (files its intent covers changed on trunk). It is kept in the journal
+   * and acted on at the next step (loop.ts receiveDirective and applyDirection); a step working the old
+   * way is halted, and a sleeping agent wakes at once.
    */
   async direct(p: { directive: Directive; intent?: Intent }): Promise<{ received: true; action: string; step?: JobStep }> {
     const d = p?.directive;
@@ -280,6 +281,6 @@ export class AgentDO extends DurableObject<Env> {
 
   private finishedJobs(): number {
     const c = this.journal.counters();
-    return (c.landed ?? 0) + (c.returned ?? 0) + (c.rejected ?? 0) + (c.abandoned ?? 0) + (c.timeout ?? 0) + (c.lost ?? 0);
+    return (c.landed ?? 0) + (c.returned ?? 0) + (c.rejected ?? 0) + (c.abandoned ?? 0) + (c.timeout ?? 0) + (c.lost ?? 0) + (c.escalated ?? 0);
   }
 }

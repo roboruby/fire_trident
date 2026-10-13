@@ -14,6 +14,8 @@ import {
   formatColonies,
   formatDelete,
   formatDirect,
+  formatEscalationAnswer,
+  formatEscalations,
   formatEvent,
   formatIntentShow,
   formatRetract,
@@ -33,6 +35,7 @@ import type {
   Colors,
   DeleteResult,
   DirectResult,
+  EscalationResult,
   IntentShowResult,
   RetractResult,
   SnapshotLike,
@@ -316,6 +319,18 @@ async function execute(cmd: Command, ctx: Ctx): Promise<number> {
       if (ctx.flags.json) printJson(ctx, res);
       else io.stdout(formatDirect(cmd.agentId, res ?? {}, c));
       return res?.delivery === "failed" ? 1 : 0;
+    }
+    case "escalations": {
+      const res = await send<unknown>(ctx.http, req);
+      if (ctx.flags.json) printJson(ctx, res);
+      else io.stdout(formatEscalations(cmd.colony, asArray<Partial<Intent>>(res, ["intents", "escalations"]), c, io.now()));
+      return 0;
+    }
+    case "escalation": {
+      const res = await send<EscalationResult>(ctx.http, req, 60_000);
+      if (ctx.flags.json) printJson(ctx, res);
+      else io.stdout(formatEscalationAnswer(cmd.intentId, cmd.decision, res ?? {}, c));
+      return 0;
     }
     default:
       throw new Error(`unhandled command ${cmd.name}`);

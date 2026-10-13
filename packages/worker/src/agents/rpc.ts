@@ -5,10 +5,12 @@ import type {
   Colony,
   ColonySnapshot,
   Directive,
+  EscalationKind,
   Evidence,
   FieldReading,
   Id,
   Intent,
+  IntentEscalation,
   Landing,
   LineageNote,
   Path,
@@ -19,6 +21,7 @@ import type {
   WorkspaceLease,
 } from "@fire_trident/core";
 import type { Env } from "../env.ts";
+import type { LandedWhy } from "./landed.ts";
 import type { ReviewPreview } from "./preview.ts";
 
 /**
@@ -30,9 +33,11 @@ import type { ReviewPreview } from "./preview.ts";
 
 /**
  * What ColonyDO.take returns: work plus a workspace lease, or a hint to come back later. `review`
- * is what review will ask of the change (agents/preview.ts); a colony on the previous version sends none.
+ * is what review will ask of the change (agents/preview.ts); `context` the latest landings that
+ * changed the intent's files, with their intents' whys (agents/landed.ts). A colony on the previous
+ * version sends neither.
  */
-export type TakeResult = { intent: Intent; lease: WorkspaceLease; rule?: Rule; review?: ReviewPreview } | { wait: true; retryInMs: number; reason: string };
+export type TakeResult = { intent: Intent; lease: WorkspaceLease; rule?: Rule; review?: ReviewPreview; context?: LandedWhy[] } | { wait: true; retryInMs: number; reason: string };
 
 /** Input of ColonyDO.propose. */
 export type ProposeInput = Omit<Proposal, "id" | "status" | "createdAt" | "evidence"> & {
@@ -74,6 +79,11 @@ export interface ColonyRpc {
   relay?(agentId: Id, note: string): Promise<unknown>;
   /** The human guidance about an intent: an agent that takes it over follows it too. */
   guidance?(intentId: Id): Promise<Array<{ id: Id; message: string; by: string; at: number }>>;
+  /**
+   * Report that the intent the agent holds cannot be done as written (a wrong test, a contradictory
+   * spec, an impossible ask): the intent waits for a person, and the agent's claim and lease are released.
+   */
+  escalate?(agentId: Id, p: { intentId?: Id; kind: EscalationKind; report: string }): Promise<{ intent: Intent; escalation: IntentEscalation }>;
 }
 
 /** RegionDO methods used for sensing. */

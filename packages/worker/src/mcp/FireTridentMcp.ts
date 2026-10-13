@@ -6,6 +6,7 @@ import type { RepoRef } from "@fire_trident/core";
 import type { Env } from "../env.ts";
 import { artifactsFor, colonyStub, errorMessage, errorStatus, regionStub, trunkStub } from "../agents/rpc.ts";
 import { withArtifactsRetry } from "../artifacts/git.ts";
+import { ESCALATION_KINDS, MAX_REPORT_CHARS } from "../colony/direction.ts";
 import { SERVER_INSTRUCTIONS } from "./instructions.ts";
 import { FireTridentTools, MAX_WAIT_S } from "./tools.ts";
 import type { McpColonyRpc, RepoReader, Session, ToolContext } from "./tools.ts";
@@ -50,7 +51,7 @@ const wait = z.number().min(0).max(MAX_WAIT_S).optional();
  * The FireTrident MCP server for external coding agents. Each MCP session is its
  * own Durable Object (binding MCP) holding the session's agent id, current
  * intent, lease and read set. Tools: join, sense, take, checkout, declare, read,
- * propose, inbox, release, why. Served over Streamable HTTP at /mcp and legacy SSE at /sse.
+ * propose, inbox, release, escalate, why. Served over Streamable HTTP at /mcp and legacy SSE at /sse.
  */
 export class FireTridentMcp extends McpAgent<Env, Record<string, never>, Record<string, unknown>> {
   server = new McpServer({ name: "firetrident", version: "0.0.1" }, { instructions: SERVER_INSTRUCTIONS });
@@ -218,6 +219,22 @@ export class FireTridentMcp extends McpAgent<Env, Record<string, never>, Record<
         annotations: { destructiveHint: false, openWorldHint: false },
       },
       async (a) => run(() => this.tools().release(a)),
+    );
+
+    this.server.registerTool(
+      "escalate",
+      {
+        title: "Report to a person",
+        description:
+          "Report to a person that an intent cannot be done correctly as written, instead of proposing a change you know is wrong or working around it: a test that is wrong (kind broken-test), a spec that contradicts itself or the code (contradictory-spec), an impossible ask (impossible), or other. Quote the test or spec line and say what you tried. The intent waits for a person's answer (amend, withdraw or dismiss) and no agent is offered it meanwhile; your claim and workspace lease are released. Escalating is a normal part of the work and is never counted as a failure; it is always better than editing, skipping or weakening a test, or hard-coding a value a test expects.",
+        inputSchema: {
+          intentId: z.string().max(100).optional().describe("The intent the report is about (default: the one you hold)"),
+          kind: z.enum(["broken-test", "contradictory-spec", "impossible", "other"]).describe(ESCALATION_KINDS.join(", ")),
+          report: z.string().min(1).max(MAX_REPORT_CHARS).describe("What is wrong and why, quoting the test or spec line, and what you tried"),
+        },
+        annotations: { destructiveHint: false, openWorldHint: false },
+      },
+      async (a) => run(() => this.tools().escalate(a)),
     );
 
     this.server.registerTool(
