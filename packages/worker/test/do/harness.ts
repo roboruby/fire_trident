@@ -277,7 +277,7 @@ async revert(ref: string, p: { by: string; reason: string }): Promise<RevertResu
   const plan = planRevert(
     target.paths.map((path) => ({ path, before: before[path] ?? null, after: after[path] ?? null })),
     (path) => s.files[path]?.blob ?? null,
-    (path) => later.find((l) => l.paths.includes(path))?.id ?? null,
+    (path) => [...later].reverse().find((l) => l.paths.includes(path))?.id ?? null,
   );
   if (!plan.ok) return { ok: false, status: 409, error: `work landed on top of ${target.id}: ${movedText(plan.moved)}`, moved: plan.moved };
   for (const r of plan.restore) {

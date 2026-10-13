@@ -15,7 +15,7 @@ export interface LandedPath {
   after: Sha | null;
 }
 
-/** A path that changed again after the landing: what trunk holds now, and the first landing that changed it. */
+/** A path that changed again after the landing: what trunk holds now, and the latest landing that changed it (undo that one first). */
 export interface Moved {
   path: Path;
   now: Sha | null;
@@ -36,7 +36,7 @@ export type RevertResult =
   | { ok: true; landing: Landing; reverted: Landing }
   | { ok: false; status: 404 | 409 | 422; error: string; moved?: Moved[] };
 
-/** Plan the revert of one landing's paths against current trunk (`later` names the first landing that changed a path since). */
+/** Plan the revert of one landing's paths against current trunk (`later` names the latest landing that changed a path since). */
 export function planRevert(paths: readonly LandedPath[], current: (path: Path) => Sha | null, later: (path: Path) => Id | null): RevertPlan {
   const moved: Moved[] = [];
   for (const p of paths) {
@@ -47,9 +47,9 @@ export function planRevert(paths: readonly LandedPath[], current: (path: Path) =
   return { ok: true, restore: paths.filter((p) => p.before !== p.after).map((p) => ({ path: p.path, blob: p.before, expect: p.after })) };
 }
 
-/** The refused paths in one line, e.g. "src/a.ts changed since by lnd_x; src/b.ts deleted since". */
+/** The refused paths in one line, e.g. "src/a.ts changed since, last by lnd_x; src/b.ts deleted since". */
 export function movedText(moved: readonly Moved[], max = 5): string {
-  const parts = moved.slice(0, max).map((m) => `${m.path} ${m.now === null ? "deleted" : "changed"} since${m.by ? ` by ${m.by}` : ""}`);
+  const parts = moved.slice(0, max).map((m) => `${m.path} ${m.now === null ? "deleted" : "changed"} since${m.by ? `, last by ${m.by}` : ""}`);
   if (moved.length > max) parts.push(`and ${moved.length - max} more`);
   return parts.join("; ");
 }

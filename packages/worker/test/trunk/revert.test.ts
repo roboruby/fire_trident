@@ -37,8 +37,8 @@ describe("planRevert", () => {
       ],
     });
     if (plan.ok) throw new Error("expected a refusal");
-    expect(movedText(plan.moved)).toBe("src/a.ts changed since by lnd_b; src/new.ts deleted since by lnd_c; src/old.ts changed since by lnd_d");
-    expect(movedText(plan.moved, 1)).toBe("src/a.ts changed since by lnd_b; and 2 more");
+    expect(movedText(plan.moved)).toBe("src/a.ts changed since, last by lnd_b; src/new.ts deleted since, last by lnd_c; src/old.ts changed since, last by lnd_d");
+    expect(movedText(plan.moved, 1)).toBe("src/a.ts changed since, last by lnd_b; and 2 more");
   });
 
   it("skips paths the landing left as they were", () => {

@@ -59,7 +59,7 @@ describe("revert", () => {
     const head = (await trunk(c.id).state()).head;
     const res = await api<{ error: string }>("POST", `/colonies/${c.id}/landings/${first.landingId}/revert`, { reason: "too early" });
     expect(res.status).toBe(409);
-    expect(res.body.error).toBe(`work landed on top of ${first.landingId}: src/lib/util.ts changed since by ${second.landingId}`);
+    expect(res.body.error).toBe(`work landed on top of ${first.landingId}: src/lib/util.ts changed since, last by ${second.landingId}`);
     expect((await trunk(c.id).state()).head).toBe(head);
     const events = (await api<{ events: ColonyEvent[] }>("GET", `/colonies/${c.id}/events?limit=5000`)).body.events;
     expect(events.some((e) => e.t === "reverted")).toBe(false);

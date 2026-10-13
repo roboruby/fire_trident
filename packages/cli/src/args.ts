@@ -763,7 +763,7 @@ ft revert <colony> <landing|commit> --reason <text> [--by <name>] [--no-redo]
 
 Undo one landed change as a new commit on trunk. Every file it wrote must still
 hold what it landed: if later work changed one, nothing happens and the answer
-names the file and the landing that changed it. The landing is a landing id or a
+names the file and the latest landing that changed it. The landing is a landing id or a
 trunk commit (7+ characters). The intents it completed are declared again, their
 why starting with your reason, unless --no-redo; a rule's violations count again
 until they land. The revert is recorded in the events and in the commit's note.

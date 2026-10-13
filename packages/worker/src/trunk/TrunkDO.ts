@@ -325,7 +325,7 @@ export class TrunkDO extends DurableObject<Env> {
    * Undo one landing as a new commit on current main (`ft revert`, a person's decision), through
    * the same serialized path as system commits. Guarded like a landing: every path the landing wrote
    * must still hold the blob it produced, or nothing changes and the answer names the paths that
-   * moved and the landing that moved each (checked again inside the commit, so a landing cycle cannot
+   * moved and the latest landing that moved each (checked again inside the commit, so a landing cycle cannot
    * slip in between). `ref` is a landing id or a trunk commit (40 hex, or a unique prefix of 7+).
    */
   async revert(ref: string, p: { by: string; reason: string }): Promise<RevertResult> {
@@ -340,7 +340,7 @@ export class TrunkDO extends DurableObject<Env> {
     const plan = planRevert(
       rows.map((r) => ({ path: r.path, before: r.before_blob, after: r.after_blob })),
       (path) => this.indexBlob(path),
-      (path) => this.sql.exec<{ landing_id: string }>(`SELECT landing_id FROM ft_landing_paths WHERE path = ? AND seq > ? ORDER BY seq LIMIT 1`, path, seq).toArray()[0]?.landing_id ?? null,
+      (path) => this.sql.exec<{ landing_id: string }>(`SELECT landing_id FROM ft_landing_paths WHERE path = ? AND seq > ? ORDER BY seq DESC LIMIT 1`, path, seq).toArray()[0]?.landing_id ?? null,
     );
     if (!plan.ok) return { ok: false, status: 409, error: `work landed on top of ${target.id}: ${movedText(plan.moved)}`, moved: plan.moved };
     if (plan.restore.length === 0) return { ok: false, status: 422, error: `landing ${target.id} changed nothing to undo` };
