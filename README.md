@@ -52,6 +52,8 @@ The benchmark compares FireTrident with the common design (exclusive file locks 
 
 Any colony replays from its first event: open [`/c/hono?replay=1`](https://firetrident.mattsolt.workers.dev/c/hono?replay=1) for play, pause, 1× to 16× and a scrubber. Colonies record their events as they work; the showcase colonies ran before recording existed, so their replays are rebuilt from what each colony stores (intents, proposals, decisions and landings with their times) and labeled "reconstructed", with claim times estimated.
 
+Runs since then replay from their own record. [`/c/shortlinks-review?replay=1`](https://firetrident.mattsolt.workers.dev/c/shortlinks-review?replay=1) shows a new project growing, its authentication route waiting for a person, and, later, trunk certification finding five failing tests and the colony repairing them until the trunk bar reads 67/67.
+
 ## Verify it with plain git
 
 The showcase colonies (`hono`, `shortlinks`, `byo-demo`) can be read with stock git. You need no account and no token. The server holds a read-only token for each trunk, and pushes are refused.
