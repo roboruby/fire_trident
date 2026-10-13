@@ -5,7 +5,7 @@ import { colonyHref } from "../route.ts";
 
 type Status = "working" | "converged" | "idle" | "unreachable";
 
-function statusOf(c: ColonyCard): Status {
+export function statusOf(c: ColonyCard): Status {
   if (c.error) return "unreachable";
   const working = c.counters.get("agentsworking") ?? 0;
   const perMin = c.counters.get("landingspermin") ?? 0;

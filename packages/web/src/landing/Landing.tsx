@@ -4,7 +4,7 @@ import { TridentMark } from "../components/TopBar.tsx";
 import { fmtInt, timeAgo } from "../format.ts";
 import { colonyHref } from "../route.ts";
 import { HeroColony } from "./HeroColony.tsx";
-import { LiveColonies, rankColonies } from "./LiveColonies.tsx";
+import { LiveColonies, rankColonies, statusOf } from "./LiveColonies.tsx";
 import { Prongs } from "./Prongs.tsx";
 import { Results } from "./Results.tsx";
 import { RunIt, SERVER } from "./RunIt.tsx";
@@ -69,6 +69,9 @@ function Proof({ card }: { card: ColonyCard | undefined }) {
   );
 }
 
+/** The colony the hero button opens when nothing is working right now. */
+const SHOWCASE_ID = "hono";
+
 /** The landing page: what FireTrident is, the colonies running now, how it works, and how to run it. */
 export function Landing() {
   const cards = useColonies();
@@ -77,7 +80,12 @@ export function Landing() {
   }, []);
   const ranked = cards ? rankColonies(cards) : null;
   const first = ranked?.find((c) => !c.error);
-  const liveHref = first ? colonyHref(first.id) : colonyHref("openspec-e2e");
+  // A colony at work right now comes first; otherwise the showcase run, replayed from its record.
+  const live = first && statusOf(first) === "working" ? first : undefined;
+  const showcase = cards?.find((c) => c.id === SHOWCASE_ID && !c.error);
+  const hero = live ?? showcase ?? first;
+  const heroHref = live ? colonyHref(live.id) : showcase ? colonyHref(showcase.id, { replay: true }) : first ? colonyHref(first.id) : colonyHref("demo", { mock: true });
+  const heroLabel = live ? "Watch a live colony" : showcase ? "Watch the Hono run" : "Watch a colony";
   return (
     <div className="landing">
       <div className="l-glow" aria-hidden="true" />
@@ -106,14 +114,14 @@ export function Landing() {
           <h1 className="l-h1">A colony, not a queue.</h1>
           <p className="l-lede">Thousands of coding agents share one repository by reading signals left on the code instead of waiting in a merge queue, and every change they land records why it was made.</p>
           <div className="l-ctas">
-            <a className="l-btn l-btn-primary" href={liveHref}>
-              Watch a live colony
+            <a className="l-btn l-btn-primary" href={heroHref}>
+              {heroLabel}
             </a>
             <a className="l-btn" href={colonyHref("demo", { mock: true })}>
               Open the simulator
             </a>
           </div>
-          <Proof card={first} />
+          <Proof card={hero} />
         </div>
         <div className="l-hero-viz">
           <HeroColony />
