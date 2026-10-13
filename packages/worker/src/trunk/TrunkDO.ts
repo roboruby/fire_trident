@@ -46,7 +46,7 @@ import { commitContent, objectId } from "./objects.ts";
 import { pushPack } from "./push.ts";
 import { CoChangeStore, mineHistory, type CoChangeStats, type Neighbor } from "./cochange.ts";
 import { planCycle, resultsFor, uniqueProposals, type LandResult, type Outcome, type PlanProposal, type Returned } from "./plan.ts";
-import { movedText, planRevert, type RevertResult } from "./revert.ts";
+import { IMPORT_SCAN, SCRIPT_FILE, importedDeletions, importedText, movedText, planRevert, relativeSpecifiers, type RevertResult } from "./revert.ts";
 import { durableFs } from "../artifacts/workspace.ts";
 import { TRUNK_NAMESPACE, bindingFor } from "../artifacts/shards.ts";
 
@@ -326,7 +326,10 @@ export class TrunkDO extends DurableObject<Env> {
    * the same serialized path as system commits. Guarded like a landing: every path the landing wrote
    * must still hold the blob it produced, or nothing changes and the answer names the paths that
    * moved and the latest landing that moved each (checked again inside the commit, so a landing cycle cannot
-   * slip in between). `ref` is a landing id or a trunk commit (40 hex, or a unique prefix of 7+).
+   * slip in between). A file the landing created would be deleted, so the revert is also refused
+   * while other trunk files import it, naming them (also checked again inside the commit, reading
+   * only the files that changed in between). `ref` is a landing id or a trunk commit (40 hex, or a
+   * unique prefix of 7+).
    */
   async revert(ref: string, p: { by: string; reason: string }): Promise<RevertResult> {
     this.state();
@@ -337,13 +340,52 @@ export class TrunkDO extends DurableObject<Env> {
       .exec<{ path: string; before_blob: string | null; after_blob: string | null }>(`SELECT path, before_blob, after_blob FROM ft_landing_paths WHERE landing_id = ? ORDER BY path`, target.id)
       .toArray();
     if (rows.length === 0) return { ok: false, status: 422, error: `landing ${target.id} recorded no file changes` };
+    const later = (path: Path): Id | null =>
+      this.sql.exec<{ landing_id: string }>(`SELECT landing_id FROM ft_landing_paths WHERE path = ? AND seq > ? ORDER BY seq DESC LIMIT 1`, path, seq).toArray()[0]?.landing_id ?? null;
     const plan = planRevert(
       rows.map((r) => ({ path: r.path, before: r.before_blob, after: r.after_blob })),
       (path) => this.indexBlob(path),
-      (path) => this.sql.exec<{ landing_id: string }>(`SELECT landing_id FROM ft_landing_paths WHERE path = ? AND seq > ? ORDER BY seq DESC LIMIT 1`, path, seq).toArray()[0]?.landing_id ?? null,
+      later,
     );
     if (!plan.ok) return { ok: false, status: 409, error: `work landed on top of ${target.id}: ${movedText(plan.moved)}`, moved: plan.moved };
     if (plan.restore.length === 0) return { ok: false, status: 422, error: `landing ${target.id} changed nothing to undo` };
+
+    // The files this revert deletes (the landing created them) must not be imported by any other
+    // trunk file. Each script file is read once; a second pass rereads only files whose blob moved.
+    const deleted = plan.restore.filter((r) => r.blob === null).map((r) => r.path);
+    const writes = new Set(plan.restore.map((r) => r.path));
+    const scanned = new Map<Path, { blob: Sha; specifiers: string[] }>();
+    const text = new TextDecoder();
+    const importers = async (): Promise<RevertResult | null> => {
+      const index = this.sql.exec<{ path: string; blob: string; size: number }>(`SELECT path, blob, size FROM ft_files`).toArray();
+      const tree = new Set(index.map((f) => f.path));
+      const files: Array<{ path: Path; specifiers: string[] }> = [];
+      let bytes = 0;
+      for (const f of index) {
+        if (writes.has(f.path) || !SCRIPT_FILE.test(f.path)) continue;
+        const known = scanned.get(f.path);
+        if (known && known.blob === f.blob) {
+          files.push({ path: f.path, specifiers: known.specifiers });
+          continue;
+        }
+        bytes += f.size;
+        if (scanned.size >= IMPORT_SCAN.files || bytes > IMPORT_SCAN.bytes) {
+          return { ok: false, status: 422, error: `too many files to check which ones import ${deleted.slice(0, 3).join(", ")}; revert ${target.id} by hand` };
+        }
+        const data = await this.blobBytes(f.blob);
+        if (data === null) return { ok: false, status: 422, error: `cannot read ${f.path} to check whether it imports ${deleted.slice(0, 3).join(", ")}` };
+        const specifiers = relativeSpecifiers(text.decode(data));
+        scanned.set(f.path, { blob: f.blob, specifiers });
+        files.push({ path: f.path, specifiers });
+      }
+      const imported = importedDeletions(deleted, files, (path) => tree.has(path));
+      return imported.length === 0 ? null : { ok: false, status: 409, error: `work landed on top of ${target.id}: ${importedText(imported, later)}`, imported };
+    };
+    if (deleted.length > 0) {
+      const refused = await importers();
+      if (refused) return refused;
+    }
+
     const files: Array<{ path: Path; content: string | null; expect: Sha | null }> = [];
     const strict = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
     for (const r of plan.restore) {
@@ -371,6 +413,17 @@ export class TrunkDO extends DurableObject<Env> {
       revert: { of: target.id, commit: target.trunkSha, by: p.by, reason: why, at: Date.now() },
     } as unknown as LineageNote & Record<string, unknown>;
     try {
+      if (deleted.length > 0) {
+        // The import check runs again in the same serial step as the commit, so no landing that
+        // imports a deleted file can slip in between (this is what systemCommit does, plus the check).
+        const out = await this.serial(async (): Promise<RevertResult> => {
+          const refused = await importers();
+          if (refused) return refused;
+          return { ok: true, landing: await this.systemCommitNow({ files, message, note }), reverted: target };
+        });
+        if (out.ok) await this.notesSoon();
+        return out;
+      }
       const landing = await this.systemCommit({ files, message, note });
       return { ok: true, landing, reverted: target };
     } catch (e) {

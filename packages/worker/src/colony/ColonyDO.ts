@@ -56,6 +56,10 @@ import { reconstruct, type ReconInput } from "./replay.ts";
 import { DecideEngine, type DecideHost, type TrunkRpc, type VaccinationResult } from "../decide/engine.ts";
 import type { DecidePolicy } from "../decide/policy.ts";
 import type { DetectorStats } from "../decide/store.ts";
+import type { Antibody } from "@fire_trident/core";
+import type { DetectorState } from "../decide/policy.ts";
+import type { DecideStore, StoredAntibody } from "../decide/store.ts";
+import { ANTIBODY_DIR, antibodyAllows, parseAntibodyFile, type AllowingAntibody } from "../decide/antibodies.ts";
 import { DEFAULT_NOT_VERIFIED, FieldBatch, groupByRegion, jitter, normalizePath, normalizePaths, overlapCount, primaryRegion, violationIntents } from "./logic.ts";
 import { EmitPacer, Gate, WaitPacer, fastRepulsion, fieldIndex, unseenByRegion, type FieldIndex, type RecentClaim } from "./views.ts";
 import { LagProbe } from "./lag.ts";
@@ -82,6 +86,7 @@ import {
   withdrawnReturn,
 } from "./direction.ts";
 import type { DecisionRow, DirectionInfo, DirectiveRow, IntentPatch, RevisionRow } from "./direction.ts";
+import { landedStaleText, missedRevisions, type MissedRevision } from "./direction.ts";
 import type { Direction, Directive, DirectiveKind, InboxDirective, IntentField, IntentRevision, NoteDecision } from "@fire_trident/core";
 import { NeighborCache, claimLookup, type Neighbor } from "../trunk/cochange.ts";
 import type { RevertResult } from "../trunk/revert.ts";
@@ -388,6 +393,9 @@ interface Effects {
   /** Outcomes to push to in-platform agents that asked for them (outcome_watch). */
   outcomes?: Proposal[];
 }
+
+/** An antibody as the colony stores it: a retired one remembers the state it had and why it was retired. */
+type AntibodyRecord = AllowingAntibody & { retired?: { state: DetectorState; landingId: Id; at: number; reason: string } };
 
 function parseJson<T>(text: string | null | undefined, fallback: T): T {
   if (text === null || text === undefined || text === "") return fallback;
@@ -1682,6 +1690,9 @@ export class ColonyDO extends DurableObject<Env> {
    * A trunk commit landed: proposals and intents become landed, rule
    * violation counts drop, `trail` marks go on the landed paths, the agents'
    * claims are cleared and their thresholds for the region reinforced.
+   * A change the trunk writer was already landing when a person amended its
+   * intent lands too, but the intent stays live at its newer revision (see
+   * keepRevised). Antibody files the landing changed are reloaded or retired.
    * Idempotent per landing id (RegionDO and TrunkDO may both report it).
    */
   async onLanding(l: Landing): Promise<void> {
@@ -1699,18 +1710,28 @@ export class ColonyDO extends DurableObject<Env> {
 
     const fx = this.effects(colony.regionDepth);
     const writtenPaths: Path[] = [];
+    const known = new Set<Id>();
     for (const pid of l.proposalIds ?? []) {
       const row = this.proposalRow(pid);
       if (!row) continue;
       const p = JSON.parse(row.data) as Proposal;
+      known.add(p.intentId);
       for (const w of p.writeSet) writtenPaths.push(w.path);
       if (p.status === "landed") continue; // already settled through updateProposal
-      const next: Proposal = { ...p, status: "landed", landingId: l.id };
+      // Built on an older revision than a later substantive amendment: it lands, and says what is left.
+      const missed = this.missedRevision(p);
+      const next: Proposal = { ...p, status: "landed", landingId: l.id, ...(missed ? { reason: missed.text } : {}) };
       this.writeProposal(next, now);
-      this.transition(next, p.status, now, fx);
+      this.landingMissed = missed;
+      try {
+        this.transition(next, p.status, now, fx);
+      } finally {
+        this.landingMissed = null;
+      }
     }
-    // Intents named by the landing whose proposals this colony does not know.
-    for (const iid of l.intentIds ?? []) this.landIntent(iid, now, fx);
+    // Intents named by the landing whose proposals this colony does not know (the ones it knows
+    // settled with their proposals above).
+    for (const iid of l.intentIds ?? []) if (!known.has(iid)) this.landIntent(iid, now, fx);
 
     const paths = normalizePaths(l.paths && l.paths.length > 0 ? l.paths : writtenPaths);
     fx.batch.deposit("trail", paths, TRAIL_STRENGTH, now);
@@ -1726,6 +1747,8 @@ export class ColonyDO extends DurableObject<Env> {
     await this.flushEffects(fx);
     // Trunk moved: certify the newest trunk soon (asynchronous; nothing here waits for it).
     this.certifier.landed(l);
+    // A person approved this change to colony memory (.firetrident/ is governance): it takes effect now.
+    await this.refreshAntibodies({ ...l, paths });
   }
 
   /**
@@ -2048,6 +2071,8 @@ export class ColonyDO extends DurableObject<Env> {
     }
     this.publish({ t: "landing", at: Date.now(), landingId: l.id, trunkSha: l.trunkSha, proposalIds: [], paths: l.paths });
     this.certifier.landed(l);
+    // A person's revert can bring an antibody file back or remove it (an antibody's own commit changes nothing).
+    this.ctx.waitUntil(this.refreshAntibodies(l));
   }
 
   // =========================================================================
@@ -3187,10 +3212,23 @@ export class ColonyDO extends DurableObject<Env> {
     }
   }
 
-  /** Mark an intent landed: its need is met and its rule has one fewer open violation file. */
+  /** Set while onLanding settles a landed proposal that missed a substantive amendment (landIntent reads it). */
+  private landingMissed: MissedRevision | null = null;
+
+  /**
+   * Mark an intent landed: its need is met and its rule has one fewer open violation file. When the
+   * change that landed was built on an older revision than a later substantive amendment
+   * (landingMissed), the intent stays live at its current revision instead (keepRevised). A withdrawn
+   * intent still shows landed: a withdrawal that loses the race to the trunk writer is documented so.
+   */
   private landIntent(intentId: Id, now: number, fx: Effects): void {
     const row = this.intentRow(intentId);
     if (!row || row.status === "landed") return;
+    const missed = this.landingMissed?.intentId === intentId ? this.landingMissed : null;
+    if (missed && row.status !== "withdrawn") {
+      this.keepRevised(row, missed, now, fx);
+      return;
+    }
     this.sql.exec("UPDATE intents SET status = 'landed', updated_at = ? WHERE id = ?", now, intentId);
     const fp = this.footprintOf(row.id, row.footprint);
     fx.batch.clear(fp, { intentId: row.id, kind: "need" });
@@ -3200,6 +3238,140 @@ export class ColonyDO extends DurableObject<Env> {
       this.sql.exec("UPDATE rules SET open_violations = MAX(0, open_violations - ?) WHERE id = ?", row.violations, row.rule_id);
       fx.events.push(this.violationsEvent(now));
     }
+  }
+
+  /**
+   * What a change that is landing missed: its intent was amended substantively after the revision
+   * the change was built on (its `intentRevision`, else its recorded direction). Null when it still
+   * fits; withdrawn and landed intents are not judged.
+   */
+  private missedRevision(p: Proposal): MissedRevision | null {
+    const row = this.intentRow(p.intentId);
+    const current = row?.revision ?? 1;
+    if (!row || current <= 1 || row.status === "landed" || row.status === "withdrawn") return null;
+    const built = typeof p.intentRevision === "number" ? p.intentRevision : (p.evidence?.direction?.intentRevision ?? null);
+    const missed = missedRevisions({ ...(built !== null ? { intentRevision: built } : {}), createdAt: p.createdAt }, current, this.revisionRows(row.id).map(toRevision));
+    if (missed.length === 0) return null;
+    return { intentId: row.id, agentId: p.agentId, built, current, changed: unionChanged(missed), text: landedStaleText(built, current) };
+  }
+
+  /**
+   * A change built on an older revision landed after a person amended its intent (it was already in
+   * the trunk writer's cycle). The change stays landed and the intent stays live at its current
+   * revision: a holder still working on it, or a newer change for it in flight, keeps it; otherwise
+   * it goes back to open for the next taker. Its needs stay. An event and the intent's history (a
+   * revision notice to the agent whose change landed, read in its inbox) say what is left to do.
+   */
+  private keepRevised(row: IntentRow, missed: MissedRevision, now: number, fx: Effects): void {
+    const holder = row.assigned_to ? this.agentRow(row.assigned_to) : undefined;
+    const held = (row.status === "claimed" || row.status === "proposed") && holder?.intent_id === row.id;
+    const inFlight = row.status === "proposed" && this.inFlightFor([row.id]).length > 0;
+    if (!held && !inFlight && row.status !== "open") {
+      this.sql.exec("UPDATE intents SET status = 'open', assigned_to = NULL, updated_at = ? WHERE id = ?", now, row.id);
+      fx.events.push({ t: "intent", at: now, intentId: row.id, status: "open", title: row.title, footprint: this.footprintOf(row.id, row.footprint) });
+    }
+    const d = this.insertDirective({ agentId: missed.agentId, kind: "revision", intentId: row.id, message: missed.text, by: "colony", at: now, revision: missed.current, changed: missed.changed });
+    fx.events.push({ t: "directive", at: now, directiveId: d.id, agentId: d.agentId, intentId: row.id, message: d.message, by: d.by });
+    console.log(`intent ${row.id}: ${missed.text}`);
+  }
+
+  /** Antibody refreshes run one at a time, so the last one always reads the newest trunk. */
+  private antibodyRefresh: Promise<void> = Promise.resolve();
+
+  /**
+   * Antibody files in trunk are authoritative. When a landing (a person approved it: .firetrident/
+   * is governance) or a revert changes .firetrident/antibodies/<id>.json, the colony reloads that
+   * antibody's definition (matcher, question, threshold, allowances) and keeps its counters and
+   * state. A file that is gone, or no longer parses, retires its antibody (off, the row kept), and
+   * a retired antibody whose file comes back gets the state it had. The antibody's own mint commit
+   * changes nothing. Never throws: a trunk read that fails leaves the antibodies as they were.
+   */
+  private refreshAntibodies(l: Landing): Promise<void> {
+    const prefix = `${ANTIBODY_DIR}/`;
+    const paths = [...new Set((l.paths ?? []).filter((p) => p.startsWith(prefix) && p.endsWith(".json") && !p.slice(prefix.length).includes("/")))];
+    if (paths.length === 0) return Promise.resolve();
+    const run = this.antibodyRefresh.then(() => this.refreshAntibodiesNow(l, paths));
+    this.antibodyRefresh = run.catch(() => undefined);
+    return run;
+  }
+
+  /** See refreshAntibodies: reads each changed antibody file on trunk as it is now, loads first, then retires. */
+  private async refreshAntibodiesNow(l: Landing, paths: Path[]): Promise<void> {
+    const prefix = `${ANTIBODY_DIR}/`;
+    try {
+      const colonyId = this.requireColony().id;
+      const store = this.decider().store;
+      // The antibodies a path holds: by the trunk path recorded for them, else by the id in the file name.
+      const at = (path: Path) => (s: StoredAntibody) => s.path === path || (s.path === null && s.antibody.id === path.slice(prefix.length, -".json".length));
+      const minted = store.antibodies().filter((s) => s.landingId === l.id);
+      const todo = paths.filter((path) => !minted.some(at(path)));
+      if (todo.length === 0) return;
+      const trunk = this.trunkStub();
+      const blobs = await trunk.blobsFor(todo);
+      const found: Array<{ path: Path; ab: Antibody | null; why: string }> = [];
+      for (const path of todo) {
+        if (!blobs[path]) {
+          found.push({ path, ab: null, why: `${path} deleted by ${l.id}` });
+          continue;
+        }
+        const text = await trunk.readFile(path);
+        if (text === null) {
+          console.warn(`antibody file ${path} unreadable after ${l.id}; its antibodies are left as they were`);
+          continue;
+        }
+        const ab = parseAntibodyFile(text, colonyId);
+        found.push({ path, ab, why: `${path} no longer holds an antibody after ${l.id}` });
+      }
+      const now = Date.now();
+      let changed = 0;
+      const loaded = new Set<Id>();
+      for (const f of found) {
+        if (!f.ab) continue;
+        changed += this.loadAntibody(store, f.ab, f.path, l.id);
+        loaded.add(f.ab.id);
+      }
+      for (const f of found) {
+        for (const s of store.antibodies().filter(at(f.path))) if (!loaded.has(s.antibody.id)) changed += this.retireAntibody(store, s, l.id, f.why, now);
+      }
+      if (changed > 0) {
+        const active = store.antibodies().filter((a) => a.state !== "off").length;
+        this.setMetric("antibodies.active", active, now);
+        this.publish({ t: "metric", at: now, name: "antibodies.active", value: active });
+      }
+    } catch (err) {
+      console.warn(`antibody refresh after ${l.id} failed: ${errorText(err)}`);
+    }
+  }
+
+  /** Retire an antibody whose file is gone (off, row kept, the state it had remembered). 1 when that changed it. */
+  private retireAntibody(store: DecideStore, s: StoredAntibody, landingId: Id, why: string, now: number): number {
+    const data = s.antibody as AntibodyRecord;
+    if (s.state === "off" && data.retired) return 0;
+    const retired: AntibodyRecord = { ...data, retired: { state: s.state, landingId, at: now, reason: why } };
+    store.putAntibody(retired, "off");
+    console.log(`antibody ${s.antibody.id} retired: ${why}`);
+    return 1;
+  }
+
+  /**
+   * Load an antibody from its trunk file: an unknown one starts active, a known one takes the file's
+   * definition and keeps its counters and state, a retired one gets back the state it had. 1 when
+   * that changed it.
+   */
+  private loadAntibody(store: DecideStore, ab: Antibody, path: Path, landingId: Id): number {
+    const s = store.antibody(ab.id);
+    if (!s) {
+      store.putAntibody(ab, "active", { path, landingId });
+      console.log(`antibody ${ab.id} loaded from ${path} (${landingId})`);
+      return 1;
+    }
+    const prev = s.antibody as AntibodyRecord;
+    const next: Antibody = { ...ab, hits: prev.hits, falsePositives: prev.falsePositives };
+    const definition = (x: Antibody) => JSON.stringify([x.origin, x.matcher.paths, x.matcher.pattern ?? null, x.question, x.threshold, x.createdFrom ?? null, antibodyAllows(x)]);
+    if (!prev.retired && s.path === path && definition(prev) === definition(next)) return 0;
+    store.putAntibody(next, prev.retired ? prev.retired.state : s.state, { path });
+    console.log(`antibody ${ab.id} ${prev.retired ? "restored" : "reloaded"} from ${path} (${landingId})`);
+    return 1;
   }
 
   private async flushEffects(fx: Effects): Promise<void> {

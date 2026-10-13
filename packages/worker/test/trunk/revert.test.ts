@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Path, Sha } from "@fire_trident/core";
-import { movedText, planRevert, type LandedPath } from "../../src/trunk/revert.ts";
+import { importedDeletions, importedText, movedText, planRevert, relativeSpecifiers, type LandedPath } from "../../src/trunk/revert.ts";
 
 const sha = (c: string): Sha => c.repeat(40).slice(0, 40);
 
@@ -44,5 +44,54 @@ describe("planRevert", () => {
   it("skips paths the landing left as they were", () => {
     const same: LandedPath[] = [{ path: "src/a.ts", before: sha("1"), after: sha("1") }];
     expect(planRevert(same, () => sha("1"), later({}))).toEqual({ ok: true, restore: [] });
+  });
+});
+
+describe("importedDeletions", () => {
+  // Trunk after landings: src/lib/fresh.ts and src/lib/kit/index.ts were created by the landing being undone.
+  const tree = new Set(["src/app/main.ts", "src/app/other.ts", "src/lib/fresh.ts", "src/lib/kit/index.ts", "src/lib/util.ts", "src/lib/util/index.ts", "docs/guide.md", "data.json"]);
+  const exists = (p: Path) => tree.has(p);
+  const files = (texts: Record<Path, string>) => Object.entries(texts).map(([path, text]) => ({ path, specifiers: relativeSpecifiers(text) }));
+
+  it("finds the trunk files whose relative imports resolve to a deleted file, as the decide stage resolves them", () => {
+    const found = importedDeletions(
+      ["src/lib/fresh.ts", "src/lib/kit/index.ts"],
+      files({
+        "src/app/main.ts": 'import { fresh } from "../lib/fresh.js";\nimport kit from "../lib/kit";\n',
+        "src/app/other.ts": 'export { fresh } from "../lib/fresh";\n',
+        "src/lib/util.ts": 'import type { Fresh } from "./fresh.ts";\n',
+        "docs/guide.md": 'import { fresh } from "../src/lib/fresh";\n',
+      }),
+      exists,
+    );
+    expect(found).toEqual([
+      { path: "src/lib/fresh.ts", by: ["src/app/main.ts", "src/app/other.ts", "src/lib/util.ts"] },
+      { path: "src/lib/kit/index.ts", by: ["src/app/main.ts"] },
+    ]);
+    expect(importedText(found, (p) => (p === "src/app/main.ts" ? "lnd_b" : null))).toBe(
+      "src/lib/fresh.ts is imported by src/app/main.ts (last changed by lnd_b), src/app/other.ts, src/lib/util.ts; src/lib/kit/index.ts is imported by src/app/main.ts (last changed by lnd_b)",
+    );
+  });
+
+  it("ignores imports that resolve elsewhere, packages, comments and strings, and the deleted files themselves", () => {
+    const found = importedDeletions(
+      ["src/lib/fresh.ts", "src/lib/kit/index.ts"],
+      files({
+        // "./util" resolves to the file beside the directory, never to anything deleted.
+        "src/app/main.ts": 'import { helper } from "../lib/util";\nimport x from "fresh";\n// import { fresh } from "../lib/fresh";\nconst s = "import y from \'../lib/fresh\'";\n',
+        // A deleted file importing another deleted file goes away with it.
+        "src/lib/kit/index.ts": 'export * from "../fresh.ts";\n',
+      }),
+      exists,
+    );
+    expect(found).toEqual([]);
+  });
+
+  it("caps the refusal text", () => {
+    const by = Array.from({ length: 7 }, (_, i) => `src/a${i}.ts`);
+    const list = Array.from({ length: 7 }, (_, i) => ({ path: `src/gone${i}.ts`, by }));
+    const text = importedText(list);
+    expect(text.startsWith("src/gone0.ts is imported by src/a0.ts, src/a1.ts, src/a2.ts, src/a3.ts, src/a4.ts, 2 more; src/gone1.ts")).toBe(true);
+    expect(text.endsWith("; and 2 more")).toBe(true);
   });
 });
