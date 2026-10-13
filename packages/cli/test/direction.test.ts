@@ -173,4 +173,31 @@ describe("formatting changes of direction", () => {
     expect(formatRetract("rul_1", "x", { withdrawn: 2, notified: [{ agentId: "a", delivery: "pushed" }, { agentId: "b", delivery: "inbox" }] }, c)).toContain("2 unlanded intents withdrawn; 2 agents told (1 pushed, 1 inbox)");
     expect(formatDirect("agt_1", { id: "dir_1", message: "m", delivery: "failed" }, c)).toMatch(/^! Directive dir_1 to agt_1: not delivered/);
   });
+
+  it("says what the trunk writer did with the changes in flight: stopped, already landed, or unconfirmed", () => {
+    const landed = [{ proposalId: "prp_1", landingId: "lnd_9", trunkSha: "abcdef1234567890abcdef1234567890abcdef12" }];
+    const stopped = formatWithdraw("int_1", "not needed", { intent: { colonyId: "web", title: "Greet", status: "withdrawn" }, returned: 2, landed: [], confirmed: true }, c);
+    expect(stopped).toBe('✓ Withdrew int_1 "Greet": not needed\n  its needs evaporated; 2 changes in flight stopped');
+
+    const lost = formatWithdraw("int_1", "not needed", { intent: { colonyId: "web", title: "Greet", status: "landed" }, returned: 0, landed, confirmed: true }, c).split("\n");
+    expect(lost[0]).toBe('! Withdrew int_1 "Greet": not needed');
+    expect(lost).toContain("  ! prp_1 already landed in abcdef1 as lnd_9; undo with ft revert web lnd_9");
+    expect(lost).toContain("  The intent shows landed: its change reached trunk before the withdrawal did.");
+
+    const silent = formatWithdraw("int_1", "x", { intent: { colonyId: "web" }, returned: 0, landed: [], confirmed: false, unconfirmed: ["prp_2"] }, c);
+    expect(silent).toContain("  ! unconfirmed: the trunk writer did not answer; 1 change sent back may still land");
+    expect(silent.startsWith("! Withdrew")).toBe(true);
+
+    const amend = formatAmend("int_1", { intent: { colonyId: "web", title: "Greet", status: "open", revision: 2 }, revision: { revision: 2, changed: ["why"], reason: "French UI", substantive: true }, returned: 0, landed, confirmed: true }, c);
+    expect(amend).toContain("! prp_1 already landed in abcdef1 as lnd_9; undo with ft revert web lnd_9");
+    expect(amend).toContain("The change that landed was built on an older revision: the intent stays live and r2 is still to do.");
+    expect(amend).not.toContain("never land");
+
+    const retract = formatRetract("rul_1", "x", { rule: { colonyId: "web" }, withdrawn: 2, returned: 1, landed, confirmed: true }, c);
+    expect(retract).toContain("2 unlanded intents withdrawn; 1 change in flight stopped");
+    expect(retract).toContain("prp_1 already landed in abcdef1 as lnd_9; undo with ft revert web lnd_9");
+
+    // A server without the direction fence cannot say whether a change stopped: it was sent back.
+    expect(formatWithdraw("int_1", "x", { returned: 1 }, c)).toContain("1 change in flight sent back");
+  });
 });

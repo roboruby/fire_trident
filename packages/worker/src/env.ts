@@ -47,6 +47,12 @@ export interface Env {
   /** Optional (load tests only): when set, ColonyDO logs event-loop lag and streams it as colony.lagMs. */
   FT_LAG_PROBE?: string;
   /**
+   * Test hook (previews only; never set in production): the trunk writer sleeps this many milliseconds in each landing
+   * cycle between its direction check and its push (at most 60 s), so a live check can withdraw an intent while its
+   * change is mid-cycle (scripts/direction_race.rb). Read only when set.
+   */
+  FT_TEST_PUSH_DELAY_MS?: string;
+  /**
    * Optional: colonies whose trunk anyone may clone and fetch read-only with plain git at
    * /git/<colony>.git (comma-separated colony ids). Empty or unset turns the proxy off.
    */

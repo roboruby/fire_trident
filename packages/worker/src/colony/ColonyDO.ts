@@ -87,6 +87,9 @@ import {
 } from "./direction.ts";
 import type { DecisionRow, DirectionInfo, DirectiveRow, IntentPatch, RevisionRow } from "./direction.ts";
 import { landedStaleText, missedRevisions, type MissedRevision } from "./direction.ts";
+import { landedAnywayText, redirectOutcome } from "./direction.ts";
+import type { LandedChange, RedirectOutcome } from "@fire_trident/core";
+import { FENCE_ANSWER_MS, type FenceAnswer } from "../trunk/direction.ts";
 import {
   ESCALATION_KINDS,
   MAX_ANSWER_CHARS,
@@ -769,10 +772,12 @@ export class ColonyDO extends DurableObject<Env> {
    * change is kept in its history. Needs move with the footprint (strength = priority) and claims leave
    * the paths it dropped. A substantive amendment (title, why or footprint) sends back the changes built
    * on the older revision and tells the holder, which keeps the intent and redoes the work against the
-   * new revision (pushed to an in-platform agent, in an external agent's inbox). Landed, withdrawn and
-   * sealed intents cannot be amended (409); an amendment that changes nothing returns the intent as is.
+   * new revision (pushed to an in-platform agent, in an external agent's inbox). The trunk writer's fence
+   * then says what became of those changes: stopped, or already landed (named; the intent stays live at the
+   * new revision), or unconfirmed. Landed, withdrawn and sealed intents cannot be amended (409); an
+   * amendment that changes nothing returns the intent as is.
    */
-  async amendIntent(id: Id, p: IntentPatch & { reason: string; by?: string }): Promise<{ intent: Intent; revision: IntentRevision | null; returned: number; notified: Notified[] }> {
+  async amendIntent(id: Id, p: IntentPatch & { reason: string; by?: string }): Promise<{ intent: Intent; revision: IntentRevision | null; notified: Notified[] } & RedirectOutcome> {
     const colony = this.requireColony();
     const row = this.intentRow(id);
     if (!row) throw ftError(404, `unknown intent ${id}`);
@@ -798,7 +803,7 @@ export class ColonyDO extends DurableObject<Env> {
     if (Object.keys(patch).length === 0) throw ftError(400, "nothing to amend: give a title, why, footprint or priority");
     const current = this.toIntent(row, colony.id);
     const diff = intentChanges(current, patch);
-    if (diff.changed.length === 0) return { intent: current, revision: null, returned: 0, notified: [] };
+    if (diff.changed.length === 0) return { intent: current, revision: null, returned: 0, landed: [], confirmed: true, notified: [] };
 
     const now = Date.now();
     const by = oneLine(p.by ?? "", 200) || "unknown";
@@ -836,14 +841,14 @@ export class ColonyDO extends DurableObject<Env> {
     }
     if (diff.changed.includes("footprint") || diff.changed.includes("priority")) fx.batch.deposit("need", diff.next.footprint, diff.next.priority, now, { intentId: id });
 
-    let returned = 0;
+    const sent: Id[] = [];
     const notices: Notice[] = [];
     if (diff.substantive) {
       for (const prev of this.inFlightFor([id])) {
         const next: Proposal = { ...prev, status: "returned", reason: revisedReturn(prev.intentRevision ?? null, revision, diff.changed, reason) };
         this.writeProposal(next, now);
         this.transition(next, prev.status, now, fx);
-        returned++;
+        sent.push(prev.id);
       }
       const agent = holder ? this.agentRow(holder) : undefined;
       if (holder && agent) {
@@ -857,45 +862,57 @@ export class ColonyDO extends DurableObject<Env> {
     const fresh = this.intentRow(id);
     const intent = fresh ? this.toIntent(fresh, colony.id) : { ...current, ...diff.next, revision };
     fx.events.push({ t: "intent", at: now, intentId: id, status: intent.status, title: intent.title, footprint: intent.footprint });
-    fx.events.push({ t: "amended", at: now, intentId: id, revision, changed: diff.changed, reason, by, title: intent.title, returned });
+    fx.events.push({ t: "amended", at: now, intentId: id, revision, changed: diff.changed, reason, by, title: intent.title, returned: sent.length });
+    // The new direction as it stands now, before a landing report can interleave; the trunk writer's fence records it.
+    const direction = diff.substantive ? this.directionOf([id]) : null;
     await this.flushEffects(fx);
     for (const n of notices) n.intent = intent;
-    const notified = await this.deliver(notices);
-    return { intent, revision: { intentId: id, revision, changed: diff.changed, before: diff.before, after: diff.after, reason, by, at: now, substantive: diff.substantive }, returned, notified };
+    const [notified, fenced] = await Promise.all([this.deliver(notices), direction ? this.fence(direction, sent) : null]);
+    const after = fenced ? this.intentRow(id) : undefined;
+    return {
+      intent: after ? this.toIntent(after, colony.id) : intent,
+      revision: { intentId: id, revision, changed: diff.changed, before: diff.before, after: diff.after, reason, by, at: now, substantive: diff.substantive },
+      ...redirectOutcome(sent, fenced?.landed ?? [], fenced?.unconfirmed ?? []),
+      notified,
+    };
   }
 
   /**
    * Withdraw an intent before it lands: it becomes "withdrawn" (kept, with the reason), its needs
    * evaporate and its claims clear, the changes in flight for it go back ("withdrawn: ..."), and its
-   * holder gives up its lease and is told to stop. Idempotent. Landed work is untouched (409).
+   * holder gives up its lease and is told to stop. The trunk writer's fence then says what became of
+   * those changes: stopped, or already landed (named, and the intent shows landed), or unconfirmed.
+   * Idempotent. Landed work is untouched (409).
    */
-  async withdrawIntent(id: Id, p: { reason: string; by?: string }): Promise<{ intent: Intent; returned: number; notified: Notified[]; already?: true }> {
+  async withdrawIntent(id: Id, p: { reason: string; by?: string }): Promise<{ intent: Intent; notified: Notified[]; already?: true } & RedirectOutcome> {
     const colony = this.requireColony();
     const row = this.intentRow(id);
     if (!row) throw ftError(404, `unknown intent ${id}`);
-    if (row.status === "withdrawn") return { intent: this.toIntent(row, colony.id), returned: 0, notified: [], already: true };
+    if (row.status === "withdrawn") return { intent: this.toIntent(row, colony.id), returned: 0, landed: [], confirmed: true, notified: [], already: true };
     this.assertRedirectable(row, "withdrawn");
     const reason = oneLine(String(p?.reason ?? ""), 500);
     if (!reason) throw ftError(400, "a reason is required: it is recorded with the intent and sent to the agent");
     const now = Date.now();
     const fx = this.effects(colony.regionDepth);
     const out = this.withdrawRows([row], reason, oneLine(p.by ?? "", 200) || "unknown", now, fx);
+    const direction = this.directionOf([id]);
     await this.flushEffects(fx);
-    const notified = await this.deliver(out.notices);
+    const [notified, fenced] = await Promise.all([this.deliver(out.notices), this.fence(direction, out.proposalIds)]);
     const fresh = this.intentRow(id);
-    return { intent: this.toIntent(fresh ?? row, colony.id), returned: out.returned, notified };
+    return { intent: this.toIntent(fresh ?? row, colony.id), ...redirectOutcome(out.proposalIds, fenced.landed, fenced.unconfirmed), notified };
   }
 
   /**
    * Retract a rule: it stays in history (retractedAt, by, reason) but is no longer checked, its open
    * violations no longer count, and every intent it created that has not landed is withdrawn (needs
-   * evaporate, changes in flight go back, holders stop). Idempotent.
+   * evaporate, changes in flight go back, holders stop; the trunk writer's fence says what became of those
+   * changes, as for withdrawIntent). Idempotent.
    */
-  async retractRule(ruleId: Id, p: { reason: string; by?: string }): Promise<{ rule: Rule; withdrawn: number; returned: number; notified: Notified[]; already?: true }> {
+  async retractRule(ruleId: Id, p: { reason: string; by?: string }): Promise<{ rule: Rule; withdrawn: number; notified: Notified[]; already?: true } & RedirectOutcome> {
     const colony = this.requireColony();
     const row = this.sql.exec<RuleRow>("SELECT * FROM rules WHERE id = ?", ruleId).toArray()[0];
     if (!row) throw ftError(404, `unknown rule ${ruleId}`);
-    if (row.retracted_at) return { rule: this.toRule(row, colony.id), withdrawn: 0, returned: 0, notified: [], already: true };
+    if (row.retracted_at) return { rule: this.toRule(row, colony.id), withdrawn: 0, returned: 0, landed: [], confirmed: true, notified: [], already: true };
     const reason = oneLine(String(p?.reason ?? ""), 500);
     if (!reason) throw ftError(400, "a reason is required: it is recorded with the rule and sent to the agents holding its intents");
     const now = Date.now();
@@ -908,10 +925,11 @@ export class ColonyDO extends DurableObject<Env> {
     const out = this.withdrawRows(rows, `rule ${ruleId} retracted: ${reason}`, by, now, fx, ruleId);
     fx.events.push({ t: "retracted", at: now, ruleId, reason, by, withdrawn: rows.length });
     fx.events.push(this.violationsEvent(now));
+    const direction = this.directionOf(rows.map((r) => r.id));
     await this.flushEffects(fx);
-    const notified = await this.deliver(out.notices);
+    const [notified, fenced] = await Promise.all([this.deliver(out.notices), this.fence(direction, out.proposalIds)]);
     const fresh = this.sql.exec<RuleRow>("SELECT * FROM rules WHERE id = ?", ruleId).toArray()[0] ?? row;
-    return { rule: this.toRule(fresh, colony.id), withdrawn: rows.length, returned: out.returned, notified };
+    return { rule: this.toRule(fresh, colony.id), withdrawn: rows.length, ...redirectOutcome(out.proposalIds, fenced.landed, fenced.unconfirmed), notified };
   }
 
   /**
@@ -921,7 +939,7 @@ export class ColonyDO extends DurableObject<Env> {
    * intent (its parent is the one undone, its why starts with the reason), and the violations a rule
    * fix had cleared count again until that intent lands.
    */
-  async revertLanding(ref: string, p: { reason: string; by?: string; redo?: boolean }): Promise<{ landing: Landing; reverted: Landing; redo: Id[] }> {
+  async revertLanding(ref: string, p: { reason: string; by?: string; redo?: boolean }): Promise<{ landing: Landing; reverted: Landing; redo: Id[] } & Partial<RedirectOutcome>> {
     const colony = this.requireColony();
     const reason = oneLine(String(p?.reason ?? ""), 500);
     if (!reason) throw ftError(400, "a reason is required: it is recorded with the revert and given to the intents it brings back");
@@ -961,7 +979,9 @@ export class ColonyDO extends DurableObject<Env> {
 
     // Undoing a revert puts its change back: the intents it declared again are not needed any more
     // (none can have landed, or this revert would have been refused), and its violations are fixed again.
+    // Their changes in flight go back, and the trunk writer's fence says what became of them.
     const prior = this.sql.exec<{ redo: string; restored: string }>("SELECT redo, restored FROM reverts WHERE landing_id = ?", res.reverted.id).toArray()[0];
+    let redirect: RedirectOutcome | undefined;
     if (prior) {
       const rows = (JSON.parse(prior.redo) as Id[])
         .map((id) => this.intentRow(id))
@@ -972,12 +992,14 @@ export class ColonyDO extends DurableObject<Env> {
       const fx = this.effects(colony.regionDepth);
       const out = this.withdrawRows(rows, `${res.reverted.id} was itself reverted by ${by}: ${reason}`, by, now, fx);
       fx.events.push(this.violationsEvent(now));
+      const direction = this.directionOf(rows.map((r) => r.id));
       await this.flushEffects(fx);
-      await this.deliver(out.notices);
+      const [, fenced] = await Promise.all([this.deliver(out.notices), this.fence(direction, out.proposalIds)]);
+      if (out.proposalIds.length > 0) redirect = redirectOutcome(out.proposalIds, fenced.landed, fenced.unconfirmed);
     } else if (restored.length > 0) {
       this.publish(this.violationsEvent(now));
     }
-    return { landing: res.landing, reverted: res.reverted, redo };
+    return { landing: res.landing, reverted: res.reverted, redo, ...(redirect ?? {}) };
   }
 
   /**
@@ -1082,10 +1104,10 @@ export class ColonyDO extends DurableObject<Env> {
   /**
    * Withdraw these intents in one batch of effects: status, reason, needs and claims cleared, changes
    * in flight sent back (see settleRedirect), holders idle with their leases released and a withdrawal
-   * notice each. Returns the notices to deliver and how many changes went back.
+   * notice each. Returns the notices to deliver and the changes sent back (for the trunk writer's fence).
    */
-  private withdrawRows(rows: IntentRow[], reason: string, by: string, now: number, fx: Effects, ruleId?: Id): { notices: Notice[]; returned: number } {
-    if (rows.length === 0) return { notices: [], returned: 0 };
+  private withdrawRows(rows: IntentRow[], reason: string, by: string, now: number, fx: Effects, ruleId?: Id): { notices: Notice[]; proposalIds: Id[] } {
+    if (rows.length === 0) return { notices: [], proposalIds: [] };
     const inflight = this.inFlightFor(rows.map((r) => r.id));
     const perIntent = new Map<Id, number>();
     for (const p of inflight) perIntent.set(p.intentId, (perIntent.get(p.intentId) ?? 0) + 1);
@@ -1115,7 +1137,65 @@ export class ColonyDO extends DurableObject<Env> {
       }
       notices.push({ directive: this.insertDirective({ agentId: agent.id, kind: "withdrawal", intentId: row.id, message: reason, by, at: now }), kind: agent.kind });
     }
-    return { notices, returned: inflight.length };
+    return { notices, proposalIds: inflight.map((p) => p.id) };
+  }
+
+  /** These intents' direction as the trunk writer's fence records it: status, revision, withdrawal reason, substantive amendments. */
+  private directionOf(intentIds: Id[]): Record<Id, DirectionInfo> {
+    const out: Record<Id, DirectionInfo> = {};
+    for (const id of new Set(intentIds)) {
+      const row = this.intentRow(id);
+      if (!row) continue;
+      const revision = row.revision ?? 1;
+      const info: DirectionInfo = { status: row.status as IntentStatus, revision };
+      if (row.withdrawn_reason) info.withdrawnReason = row.withdrawn_reason;
+      if (revision > 1) {
+        info.revisions = this.revisionRows(id)
+          .filter((r) => r.substantive === 1)
+          .slice(-MAX_REVISIONS)
+          .map((r) => ({ revision: r.revision, changed: toRevision(r).changed, reason: r.reason, at: r.at }));
+      }
+      out[id] = info;
+    }
+    return out;
+  }
+
+  /**
+   * The trunk writer's direction fence (TrunkDO.direction), after a person changed these intents' direction
+   * and the colony sent their changes in flight (`proposalIds`) back. The writer records the new direction
+   * (every later landing cycle checks it) and answers once the cycles that read the old one are over: a
+   * change one of them landed is named, and its landing is settled here at once (onLanding is idempotent),
+   * so a landing report still on its way, or one that was lost, cannot leave the intent looking withdrawn
+   * while its change is on trunk. Changes the writer cannot vouch for, or all of them when it does not
+   * answer, are unconfirmed: they may still land.
+   */
+  private async fence(intents: Record<Id, DirectionInfo>, proposalIds: Id[]): Promise<{ landed: LandedChange[]; unconfirmed: Id[] }> {
+    if (Object.keys(intents).length === 0 && proposalIds.length === 0) return { landed: [], unconfirmed: [] };
+    let answer: FenceAnswer;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const late = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`no answer in ${FENCE_ANSWER_MS} ms`)), FENCE_ANSWER_MS);
+      });
+      answer = (await Promise.race([this.trunkStub().direction({ intents, proposalIds }), late])) as FenceAnswer;
+    } catch (err) {
+      console.error(`direction fence for ${Object.keys(intents).join(", ") || "no intent"} did not answer: ${errorText(err)}`);
+      return { landed: [], unconfirmed: [...proposalIds] };
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+    for (const l of Array.isArray(answer?.landings) ? answer.landings : []) {
+      try {
+        await this.onLanding(l);
+      } catch (err) {
+        console.error(`landing ${l?.id} named by the direction fence not settled: ${errorText(err)}`);
+      }
+    }
+    const asked = new Set(proposalIds);
+    const landed = (Array.isArray(answer?.landed) ? answer.landed : []).filter((x) => asked.has(x.proposalId));
+    const done = new Set(landed.map((x) => x.proposalId));
+    const unconfirmed = (Array.isArray(answer?.undetermined) ? answer.undetermined : []).filter((id) => asked.has(id) && !done.has(id));
+    return { landed, unconfirmed };
   }
 
   /**
@@ -1966,7 +2046,9 @@ export class ColonyDO extends DurableObject<Env> {
       if (p.status === "landed") continue; // already settled through updateProposal
       // Built on an older revision than a later substantive amendment: it lands, and says what is left.
       const missed = this.missedRevision(p);
-      const next: Proposal = { ...p, status: "landed", landingId: l.id, ...(missed ? { reason: missed.text } : {}) };
+      // Sent back by a change of direction that reached the trunk writer after its cycle read the old one: it landed, and says so.
+      const raced = !missed && p.status === "returned" && isRedirect(p.reason) ? landedAnywayText(p.reason ?? "") : null;
+      const next: Proposal = { ...p, status: "landed", landingId: l.id, ...(missed ? { reason: missed.text } : raced ? { reason: raced } : {}) };
       this.writeProposal(next, now);
       this.landingMissed = missed;
       try {
@@ -4440,7 +4522,8 @@ export class ColonyDO extends DurableObject<Env> {
    * Mark an intent landed: its need is met and its rule has one fewer open violation file. When the
    * change that landed was built on an older revision than a later substantive amendment
    * (landingMissed), the intent stays live at its current revision instead (keepRevised). A withdrawn
-   * intent still shows landed: a withdrawal that loses the race to the trunk writer is documented so.
+   * intent shows landed when its change landed first (the trunk writer's cycle had read the old
+   * direction); the withdrawal's answer names that landing (the direction fence).
    */
   private landIntent(intentId: Id, now: number, fx: Effects): void {
     const row = this.intentRow(intentId);

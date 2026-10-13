@@ -17,7 +17,7 @@ import type { CausalEvent, ColonyEvent, FieldReading, FileVersion, Id, Landing, 
 import type { Env } from "../env.ts";
 import { errorText } from "../colony/errors.ts";
 import { coalesceEvents } from "../colony/events.ts";
-import { splitByDirection } from "../colony/direction.ts";
+import { isRedirect, splitByDirection } from "../colony/direction.ts";
 import type { ClearFilter, FieldOps } from "../colony/logic.ts";
 import { settleLane, suspects } from "../trunk/outcome.ts";
 import type { LandResult } from "../trunk/plan.ts";
@@ -987,9 +987,11 @@ export class RegionDO extends DurableObject<Env> {
       remove.add(r.id);
       updates.push({ id: r.id, patch: { status: "returned", reason: r.reason } });
       // A revalidation candidate the trunk writer sent back is still a stale return: its cause is a landing.
-      if (r.p) this.recordReturn(r.p, r.stale ?? candidates.get(r.id) ?? null, now);
+      // One it sent back at its direction check is not: a person changed course, so sigma never sees it.
+      if (r.p && !isRedirect(r.reason)) this.recordReturn(r.p, r.stale ?? candidates.get(r.id) ?? null, now);
     }
-    // Stale direction never lands. A human changed course, not a landing: no causal event.
+    // Stale direction goes back here, before the trunk writer (which checks again at its commit point,
+    // TrunkDO.direction). A human changed course, not a landing: no causal event.
     for (const r of direction.returned) {
       remove.add(r.p.id);
       updates.push({ id: r.p.id, patch: { status: "returned", reason: r.reason } });

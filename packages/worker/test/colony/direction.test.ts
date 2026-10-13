@@ -14,6 +14,7 @@ import {
   intentChanges,
   isInboxDirective,
   isRedirect,
+  landedAnywayText,
   landedStaleText,
   landingMessage,
   migrateDirection,
@@ -22,6 +23,7 @@ import {
   noteDecisions,
   parseEscalation,
   parseLandingNotice,
+  redirectOutcome,
   reportText,
   revisedReturn,
   splitByDirection,
@@ -247,6 +249,33 @@ describe("missedRevisions (a change that landed after an amendment)", () => {
   it("says what is left to do", () => {
     expect(landedStaleText(1, 2)).toBe("landed a change built on r1; r2 still to do");
     expect(landedStaleText(null, 3)).toBe("landed a change built on an older revision; r3 still to do");
+  });
+});
+
+describe("what a change of direction tells the person (the direction fence's answer)", () => {
+  const landed = { proposalId: "p2", landingId: "lnd_1", trunkSha: "a".repeat(40) };
+
+  it("counts only the changes the trunk writer stopped, names the ones it had landed, and flags the ones it did not answer for", () => {
+    expect(redirectOutcome(["p1", "p2", "p3"], [landed], [])).toEqual({ returned: 2, landed: [landed], confirmed: true });
+    expect(redirectOutcome(["p1", "p2", "p3"], [landed], ["p3"])).toEqual({ returned: 1, landed: [landed], confirmed: false, unconfirmed: ["p3"] });
+    // The writer did not answer at all: nothing is claimed stopped.
+    expect(redirectOutcome(["p1", "p2"], [], ["p1", "p2"])).toEqual({ returned: 0, landed: [], confirmed: false, unconfirmed: ["p1", "p2"] });
+    // Nothing was in flight: confirmed, nothing to say.
+    expect(redirectOutcome([], [], [])).toEqual({ returned: 0, landed: [], confirmed: true });
+    // A change named landed is never also unconfirmed.
+    expect(redirectOutcome(["p2"], [landed], ["p2"])).toEqual({ returned: 0, landed: [landed], confirmed: true });
+  });
+
+  it("explains a change that landed after a change of direction sent it back", () => {
+    expect(landedAnywayText("withdrawn: not needed")).toBe("landed before the withdrawal reached the trunk writer (withdrawn: not needed)");
+    expect(landedAnywayText("intent revised: r1 → r2, why changed (x)")).toBe("landed before the amendment reached the trunk writer (intent revised: r1 → r2, why changed (x))");
+    expect(landedAnywayText("superseded: recalled by its agent")).toBe("landed before the change of direction reached the trunk writer (superseded: recalled by its agent)");
+    expect(isRedirect(landedAnywayText("withdrawn: x"))).toBe(false);
+  });
+
+  it("no longer promises a withdrawn agent that nothing lands", () => {
+    const d: Directive = { id: "dir_1", colonyId: "c", agentId: "agt_1", kind: "withdrawal", intentId: "int_1", message: "not needed", by: "matt", at: 0 };
+    expect(directiveText(d)).toBe("Intent int_1 withdrawn: not needed. Stop working on it (it is no longer wanted) and call take for other work.");
   });
 });
 

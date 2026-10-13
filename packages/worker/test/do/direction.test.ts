@@ -2,11 +2,11 @@ import { runInDurableObject } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import type { AgentInfo, ColonySnapshot, FieldReading, InboxDirective, Intent, Proposal, Rule } from "@fire_trident/core";
 import type { Assignment } from "./helpers.ts";
-import { addAgent, addIntent, api, colony, eventually, externalLanding, fakeSha, newColony, pool, proposal, proposeEdit, region, take, tick, trunk } from "./helpers.ts";
+import { addAgent, addIntent, api, colony, eventually, externalLanding, fakeSha, newColony, pool, proposal, proposeEdit, region, rows, take, tick, trunk } from "./helpers.ts";
 
 /**
  * Changing direction against the real ColonyDO and RegionDO: amend, withdraw, retract, direct,
- * relay, recall, and the lane's pre-land check (stale direction never lands).
+ * relay, recall, the lane's pre-land check, and the trunk writer's direction fence (its commit point).
  */
 
 /** Propose new content for the intent's footprint, built on `intentRevision` (omitted when undefined). */
@@ -51,7 +51,9 @@ describe("amend an intent", () => {
     const res = await api("PATCH", `/colonies/${c.id}/intents/${i.id}`, { why: "test, second take", footprint: ["src/lib/util.ts", "src/app/main.ts"], reason: "main needs it too", by: "matt" });
     expect(res.status).toBe(200);
     expect(res.body.revision).toMatchObject({ revision: 2, changed: ["why", "footprint"], substantive: true, by: "matt", reason: "main needs it too", before: { why: "test" }, after: { why: "test, second take" } });
-    expect(res.body.returned).toBe(1);
+    // p1 was waiting in its lane: the trunk writer's fence confirms it is stopped, and records r2 for every later cycle.
+    expect(res.body).toMatchObject({ returned: 1, landed: [], confirmed: true });
+    expect(await trunk(c.id).directionRecord(i.id)).toMatchObject({ revision: 2, revisions: [{ revision: 2, changed: ["why", "footprint"], reason: "main needs it too" }] });
     // The harness has no AgentDO: the push fails and the notice waits in the colony's record.
     expect(res.body.notified).toEqual([{ agentId: a.id, directiveId: expect.stringMatching(/^dir_/), delivery: "failed" }]);
     expect(await proposal(c.id, p1.id)).toMatchObject({ status: "returned", reason: "intent revised: r1 → r2, why and footprint changed (main needs it too)" });
@@ -149,8 +151,9 @@ describe("withdraw an intent", () => {
     const p1 = await proposeEdit(c.id, got, a.id);
     const res = await api("POST", `/colonies/${c.id}/intents/${i.id}/withdraw`, { reason: "not needed", by: "matt" });
     expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({ intent: { status: "withdrawn", withdrawnReason: "not needed" }, returned: 1 });
+    expect(res.body).toMatchObject({ intent: { status: "withdrawn", withdrawnReason: "not needed" }, returned: 1, landed: [], confirmed: true });
     expect(res.body.intent.assignedTo).toBeUndefined();
+    expect(await trunk(c.id).directionRecord(i.id)).toMatchObject({ status: "withdrawn", withdrawnReason: "not needed" });
     expect(await proposal(c.id, p1.id)).toMatchObject({ status: "returned", reason: "withdrawn: not needed" });
     expect(await agentRow(c.id, a.id)).toMatchObject({ state: "idle" });
     expect((await agentRow(c.id, a.id)).intentId).toBeUndefined();
@@ -206,13 +209,16 @@ describe("retract a rule", () => {
     expect((await api("DELETE", `/colonies/${c.id}/rules/${rule.id}`, {})).status).toBe(400);
     const res = await api("DELETE", `/colonies/${c.id}/rules/${rule.id}?reason=${encodeURIComponent("logging is fine here")}&by=matt`);
     expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({ withdrawn: 1, returned: 0, rule: { id: rule.id, retractedBy: "matt", retractReason: "logging is fine here", retractedAt: expect.any(Number) } });
+    expect(res.body).toMatchObject({ withdrawn: 1, returned: 0, landed: [], confirmed: true, rule: { id: rule.id, retractedBy: "matt", retractReason: "logging is fine here", retractedAt: expect.any(Number) } });
     const snap = (await api<ColonySnapshot>("GET", `/colonies/${c.id}`)).body;
     expect(snap.violations.total).toBe(0);
     expect(snap.rules[0]).toMatchObject({ id: rule.id, retractedBy: "matt", retractReason: "logging is fine here" });
     const mine = snap.intents.filter((x) => x.ruleId === rule.id);
     expect(mine.find((x) => x.id === got.intent.id)).toMatchObject({ status: "landed" });
     expect(mine.find((x) => x.id !== got.intent.id)).toMatchObject({ status: "withdrawn", withdrawnReason: `rule ${rule.id} retracted: logging is fine here` });
+    // The trunk writer's fence holds the withdrawal for every later cycle; the landed intent has no record.
+    expect(await trunk(c.id).directionRecord(mine.find((x) => x.id !== got.intent.id)!.id)).toMatchObject({ status: "withdrawn" });
+    expect(await trunk(c.id).directionRecord(got.intent.id)).toBeNull();
     expect((await api("DELETE", `/colonies/${c.id}/rules/${rule.id}`, { reason: "again" })).body).toMatchObject({ already: true });
     expect((await api("DELETE", `/colonies/${c.id}/rules/rul_nope`, { reason: "x" })).status).toBe(404);
   });
@@ -375,8 +381,8 @@ describe("the lane's pre-land check and the lineage context", () => {
   });
 });
 
-describe("a change of direction that loses the race to the trunk writer", () => {
-  /** An intent with one agent's change built on r1, sitting in its lane (the trunk writer is about to land it). */
+describe("the direction fence: a change of direction meets a trunk writer mid-cycle", () => {
+  /** An intent with one agent's change built on r1, sitting in its lane (the trunk writer is about to take it). */
   async function inFlight() {
     const c = await newColony();
     const i = await addIntent(c.id, ["src/lib/util.ts"]);
@@ -387,17 +393,107 @@ describe("a change of direction that loses the race to the trunk writer", () => 
     return { c, i, a, p1 };
   }
 
+  /** Wait until `check` passes, or fail. */
+  async function until<T>(read: () => Promise<T>, check: (v: T) => boolean, what: string): Promise<T> {
+    const v = await eventually(read, check, 10_000);
+    if (!check(v)) throw new Error(`timed out waiting for ${what}`);
+    return v;
+  }
+
+  /**
+   * The trunk writer's cycle holding `batch` has passed its direction check and is pushing when `act` (an
+   * amendment or a withdrawal through the API) runs: the fence waits for the cycle. Returns the act's answer.
+   */
+  async function midPush<T>(colonyId: string, batch: Proposal[], act: () => Promise<T>): Promise<T> {
+    await trunk(colonyId).holdNextLand("push");
+    const cycle = trunk(colonyId).land(batch);
+    await until(() => trunk(colonyId).held(), (h) => h, "the cycle to reach its push");
+    const answer = act();
+    await until(() => trunk(colonyId).fenceWaiting(), (n) => n > 0, "the fence to wait for the cycle");
+    await trunk(colonyId).releaseLand();
+    await cycle;
+    return answer;
+  }
+
+  /** The lane's causal record of a return (sigma's input); a person's change of course leaves none. */
+  async function returnCause(colonyId: string, proposalId: string): Promise<unknown[]> {
+    return rows(region(colonyId, "src"), "SELECT id FROM causes WHERE id = ?", `ret:${proposalId}`);
+  }
+
+  it("stops a change queued before the writer's direction check: the answer says stopped and nothing lands", async () => {
+    const { c, i, p1 } = await inFlight();
+    await trunk(c.id).setReportLandings(false);
+    await trunk(c.id).holdNextLand("read");
+    // The lane checks direction (still live) and hands p1 to the writer, where it waits for a cycle.
+    const ticking = tick(c.id, "src");
+    await until(() => trunk(c.id).held(), (h) => h, "the lane's batch to wait for a cycle");
+    const res = await api("POST", `/colonies/${c.id}/intents/${i.id}/withdraw`, { reason: "not needed", by: "matt" });
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ intent: { status: "withdrawn" }, returned: 1, landed: [], confirmed: true });
+    expect(res.body.unconfirmed).toBeUndefined();
+    expect(await trunk(c.id).directionRecord(i.id)).toMatchObject({ status: "withdrawn", withdrawnReason: "not needed" });
+
+    await trunk(c.id).releaseLand();
+    await ticking;
+    expect((await trunk(c.id).state()).landings).toHaveLength(0);
+    expect(await proposal(c.id, p1.id)).toMatchObject({ status: "returned", reason: "withdrawn: not needed" });
+    expect((await api<{ intent: Intent }>("GET", `/colonies/${c.id}/intents/${i.id}`)).body.intent).toMatchObject({ status: "withdrawn" });
+    expect(await returnCause(c.id, p1.id)).toEqual([]);
+  });
+
+  it("waits for a cycle that read the old direction, then names its landing: the withdrawal lost the race", async () => {
+    const { c, i, p1 } = await inFlight();
+    await trunk(c.id).setReportLandings(false);
+    await trunk(c.id).holdNextLand("push");
+    const ticking = tick(c.id, "src");
+    await until(() => trunk(c.id).held(), (h) => h, "the cycle to reach its push");
+    const withdrawing = api("POST", `/colonies/${c.id}/intents/${i.id}/withdraw`, { reason: "not needed", by: "matt" });
+    await until(() => trunk(c.id).fenceWaiting(), (n) => n > 0, "the fence to wait for the cycle");
+    await trunk(c.id).releaseLand();
+    const res = await withdrawing;
+    await ticking;
+
+    const landings = (await trunk(c.id).state()).landings;
+    expect(landings.map((l) => l.proposalIds)).toEqual([[p1.id]]);
+    const l = landings[0]!;
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ returned: 0, confirmed: true, landed: [{ proposalId: p1.id, landingId: l.id, trunkSha: l.trunkSha }] });
+    // Settled before the answer: the change and the intent show landed, and the change says why.
+    expect(res.body.intent).toMatchObject({ status: "landed", withdrawnReason: "not needed" });
+    expect(await proposal(c.id, p1.id)).toMatchObject({ status: "landed", landingId: l.id, reason: "landed before the withdrawal reached the trunk writer (withdrawn: not needed)" });
+    expect(await returnCause(c.id, p1.id)).toEqual([]);
+    expect((await region(c.id, "src").status()).lane).toBe(0);
+  });
+
+  it("repairs a landing whose answer was lost: the lane kept the change, the withdrawal dequeued it, the fence names it", async () => {
+    const { c, i, p1 } = await inFlight();
+    // The writer lands p1 and its answer is lost (a deploy reset it mid-call); nobody reports the landing.
+    await trunk(c.id).loseNextAnswers(1);
+    await tick(c.id, "src");
+    const l = (await trunk(c.id).state()).landings[0]!;
+    expect(l.proposalIds).toEqual([p1.id]);
+    expect((await proposal(c.id, p1.id)).status).toBe("ready");
+
+    const res = await api("POST", `/colonies/${c.id}/intents/${i.id}/withdraw`, { reason: "not needed", by: "matt" });
+    expect(res.body).toMatchObject({ returned: 0, confirmed: true, landed: [{ proposalId: p1.id, landingId: l.id, trunkSha: l.trunkSha }] });
+    expect(res.body.intent).toMatchObject({ status: "landed" });
+    expect(await proposal(c.id, p1.id)).toMatchObject({ status: "landed", landingId: l.id });
+    expect((await region(c.id, "src").status()).lane).toBe(0);
+    await tick(c.id, "src");
+    expect((await trunk(c.id).state()).landings).toHaveLength(1);
+  });
+
   it("lands the change built on r1 but keeps the intent open at r2, and says so", async () => {
     const { c, i, a, p1 } = await inFlight();
-    const amend = await api("PATCH", `/colonies/${c.id}/intents/${i.id}`, { why: "test, the other way", reason: "do it the other way", by: "matt" });
-    expect(amend.body.returned).toBe(1);
-    // The trunk writer had already taken p1: it lands and reports the landing after the amendment.
-    await trunk(c.id).land([p1]);
-    expect((await trunk(c.id).state()).landings).toHaveLength(1);
+    const amend = await midPush(c.id, [p1], () => api("PATCH", `/colonies/${c.id}/intents/${i.id}`, { why: "test, the other way", reason: "do it the other way", by: "matt" }));
+    const landings = (await trunk(c.id).state()).landings;
+    expect(landings).toHaveLength(1);
+    expect(amend.body).toMatchObject({ returned: 0, confirmed: true, landed: [{ proposalId: p1.id, landingId: landings[0]!.id, trunkSha: landings[0]!.trunkSha }] });
+    expect(amend.body.intent).toMatchObject({ status: "open", revision: 2 });
+    expect(await trunk(c.id).directionRecord(i.id)).toMatchObject({ revision: 2, revisions: [{ revision: 2, changed: ["why"], reason: "do it the other way" }] });
 
     const landed = await proposal(c.id, p1.id);
-    expect(landed).toMatchObject({ status: "landed", reason: "landed a change built on r1; r2 still to do" });
-    expect(landed.landingId).toEqual(expect.any(String));
+    expect(landed).toMatchObject({ status: "landed", landingId: landings[0]!.id, reason: "landed a change built on r1; r2 still to do" });
     const detail = (await api("GET", `/colonies/${c.id}/intents/${i.id}`)).body;
     expect(detail.intent).toMatchObject({ status: "open", revision: 2, why: "test, the other way" });
     expect(detail.intent.assignedTo).toBeUndefined();
@@ -427,13 +523,19 @@ describe("a change of direction that loses the race to the trunk writer", () => 
 
   it("leaves the intent with a holder already working on r2", async () => {
     const { c, i, a, p1 } = await inFlight();
-    await api("PATCH", `/colonies/${c.id}/intents/${i.id}`, { footprint: ["src/lib/util.ts", "src/app/main.ts"], reason: "main too", by: "matt" });
-    // The first agent stops; another takes the intent at r2 before p1's landing is reported.
+    await trunk(c.id).holdNextLand("push");
+    const cycle = trunk(c.id).land([p1]);
+    await until(() => trunk(c.id).held(), (h) => h, "the cycle to reach its push");
+    const amending = api("PATCH", `/colonies/${c.id}/intents/${i.id}`, { footprint: ["src/lib/util.ts", "src/app/main.ts"], reason: "main too", by: "matt" });
+    await until(() => trunk(c.id).fenceWaiting(), (n) => n > 0, "the fence to wait for the cycle");
+    // While the writer pushes p1, the first agent stops and another takes the intent at r2.
     expect((await api("POST", `/colonies/${c.id}/agents/${a.id}/stop`, { reason: "gone" })).status).toBe(200);
     const b = await addAgent(c.id, "b");
     const got = await take(c.id, b.id);
     expect(got.intent).toMatchObject({ id: i.id, revision: 2 });
-    await trunk(c.id).land([p1]);
+    await trunk(c.id).releaseLand();
+    await cycle;
+    expect((await amending).body).toMatchObject({ returned: 0, confirmed: true, landed: [{ proposalId: p1.id }] });
     expect(await proposal(c.id, p1.id)).toMatchObject({ status: "landed", reason: "landed a change built on r1; r2 still to do" });
     expect((await api("GET", `/colonies/${c.id}/intents/${i.id}`)).body.intent).toMatchObject({ status: "claimed", assignedTo: b.id, revision: 2 });
     expect(await agentRow(c.id, b.id)).toMatchObject({ state: "working", intentId: i.id });
@@ -459,17 +561,22 @@ describe("a change of direction that loses the race to the trunk writer", () => 
   it("closes the intent as before when only the priority moved", async () => {
     const { c, i, p1 } = await inFlight();
     await api("PATCH", `/colonies/${c.id}/intents/${i.id}`, { priority: 3, reason: "urgent" });
+    // A priority-only amendment redirects nothing: the writer has no record for the intent, and p1 lands.
+    expect(await trunk(c.id).directionRecord(i.id)).toBeNull();
     await trunk(c.id).land([p1]);
     expect(await proposal(c.id, p1.id)).toMatchObject({ status: "landed" });
     expect((await proposal(c.id, p1.id)).reason).toBeUndefined();
     expect((await api("GET", `/colonies/${c.id}/intents/${i.id}`)).body.intent).toMatchObject({ status: "landed", revision: 2 });
   });
 
-  it("keeps the documented outcome of a withdrawal that loses the race: the change lands and the intent shows landed", async () => {
+  it("says unconfirmed when the trunk writer does not answer", async () => {
     const { c, i, p1 } = await inFlight();
-    expect((await api("POST", `/colonies/${c.id}/intents/${i.id}/withdraw`, { reason: "not needed", by: "matt" })).body.returned).toBe(1);
-    await trunk(c.id).land([p1]);
-    expect(await proposal(c.id, p1.id)).toMatchObject({ status: "landed" });
-    expect((await api("GET", `/colonies/${c.id}/intents/${i.id}`)).body.intent).toMatchObject({ status: "landed" });
+    await trunk(c.id).failNextFences(1);
+    const res = await api("POST", `/colonies/${c.id}/intents/${i.id}/withdraw`, { reason: "not needed", by: "matt" });
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ intent: { status: "withdrawn" }, returned: 0, landed: [], confirmed: false, unconfirmed: [p1.id] });
+    // The colony's own state changed as before: the change went back and left its lane.
+    expect(await proposal(c.id, p1.id)).toMatchObject({ status: "returned", reason: "withdrawn: not needed" });
+    expect((await region(c.id, "src").status()).lane).toBe(0);
   });
 });

@@ -11,6 +11,8 @@ import { createApi } from "../../src/api/app.ts";
 import type { ApiDeps } from "../../src/api/app.ts";
 import type { Env } from "../../src/env.ts";
 import { SCRIPT_FILE, importedDeletions, importedText, movedText, planRevert, relativeSpecifiers, type RevertResult } from "../../src/trunk/revert.ts";
+import { FENCE_WAIT_MS, directionReturns, fenceAnswer, mergeDirection, parseDirection, settlesWithin, type FenceAnswer } from "../../src/trunk/direction.ts";
+import type { DirectionInfo } from "../../src/colony/direction.ts";
 
 export { ColonyDO } from "../../src/colony/ColonyDO.ts";
 export { RegionDO } from "../../src/region/RegionDO.ts";
@@ -52,6 +54,17 @@ interface TrunkState {
   contexts?: string[];
 }
 
+/** A point where a held land() call waits until releaseLand() (see holdNextLand). */
+interface LandGate {
+  phase: "read" | "push";
+  taken: boolean;
+  reached: boolean;
+  open: () => void;
+  opened: Promise<void>;
+}
+
+type Returned = { proposalId: Id; reason: string };
+
 const DEFAULT_FILES: Record<Path, string> = {
   "README.md": "# demo\n",
   "src/app/main.ts": 'import { helper } from "../lib/util";\nconsole.log(helper());\n',
@@ -61,6 +74,14 @@ const DEFAULT_FILES: Record<Path, string> = {
 
 /** In-storage trunk: a path → blob index, commit snapshots, and landings. */
 export class TrunkDO extends DurableObject<Env> {
+  /** The gate the next land() call stops at (holdNextLand). */
+  private gate: LandGate | null = null;
+  /** land() calls between their direction check and their end: the direction fence waits for them, as the real one waits for its serial chain. */
+  private readonly cycles = new Set<Promise<void>>();
+  /** direction() calls waiting for those, and how many of the next ones fail. */
+  private fenceWaits = 0;
+  private failFences = 0;
+
   private async load(): Promise<TrunkState> {
     const s = await this.ctx.storage.get<TrunkState>("state");
     if (s) return s;
@@ -141,6 +162,90 @@ export class TrunkDO extends DurableObject<Env> {
     await this.save(s);
   }
 
+  /**
+   * Test helper: hold the next land() call before its direction check ("read") or between that check and
+   * its commit ("push", the real writer's build and push) until releaseLand().
+   */
+  async holdNextLand(phase: "read" | "push"): Promise<void> {
+    let open!: () => void;
+    const opened = new Promise<void>((resolve) => (open = resolve));
+    this.gate = { phase, taken: false, reached: false, open, opened };
+  }
+
+  /** Test helper: whether the held land() call has reached its gate. */
+  async held(): Promise<boolean> {
+    return this.gate?.reached ?? false;
+  }
+
+  /** Test helper: let the held land() call go on. */
+  async releaseLand(): Promise<void> {
+    const g = this.gate;
+    this.gate = null;
+    g?.open();
+  }
+
+  /** Test helper: direction() calls waiting for a cycle that may have read the old direction. */
+  async fenceWaiting(): Promise<number> {
+    return this.fenceWaits;
+  }
+
+  /** Test helper: the next n direction() calls fail (the trunk writer does not answer). */
+  async failNextFences(n: number): Promise<void> {
+    this.failFences = n;
+  }
+
+  /** Test helper: the fence's record for an intent (null when it has none). */
+  async directionRecord(intentId: Id): Promise<DirectionInfo | null> {
+    return (await this.directionRecords()).get(intentId) ?? null;
+  }
+
+  /** Test helper: whether land() reports its landing to the colony itself (the real writer never does; its lane does). */
+  async setReportLandings(report: boolean): Promise<void> {
+    const s = await this.load();
+    s.reportLandings = report;
+    await this.save(s);
+  }
+
+  /**
+   * The direction fence, as the real TrunkDO runs it: record each intent's new direction (merged), wait for
+   * the land() calls past their direction check, then answer from the landings.
+   */
+  async direction(p: { intents: Record<Id, DirectionInfo>; proposalIds: Id[] }): Promise<FenceAnswer> {
+    if (this.failFences > 0) {
+      this.failFences--;
+      throw new Error("simulated direction fence failure");
+    }
+    const records = (await this.ctx.storage.get<Record<Id, DirectionInfo>>("direction")) ?? {};
+    for (const [id, x] of Object.entries(p?.intents ?? {})) {
+      const info = parseDirection(x);
+      if (info) records[id] = mergeDirection(parseDirection(records[id]), info);
+    }
+    await this.ctx.storage.put("direction", records);
+    const ids = [...new Set(p?.proposalIds ?? [])];
+    if (ids.length === 0) return { landed: [], landings: [], undetermined: [] };
+    this.fenceWaits++;
+    let settled: boolean;
+    try {
+      settled = await settlesWithin(Promise.all([...this.cycles]), FENCE_WAIT_MS);
+    } finally {
+      this.fenceWaits--;
+    }
+    const byProposal = new Map<Id, Landing>();
+    for (const l of (await this.load()).landings) for (const id of l.proposalIds) if (ids.includes(id)) byProposal.set(id, l);
+    return fenceAnswer(ids, byProposal, settled, new Set());
+  }
+
+  /** The fence's records by intent id (what each land() call's direction check reads). */
+  private async directionRecords(): Promise<Map<Id, DirectionInfo>> {
+    const records = (await this.ctx.storage.get<Record<Id, DirectionInfo>>("direction")) ?? {};
+    const out = new Map<Id, DirectionInfo>();
+    for (const [id, x] of Object.entries(records)) {
+      const info = parseDirection(x);
+      if (info) out.set(id, info);
+    }
+    return out;
+  }
+
   /** The landing of each proposal that has landed (by proposal id), as the real TrunkDO answers. */
   async landingsOf(ids: Id[]): Promise<Record<Id, Landing>> {
     const s = await this.load();
@@ -215,7 +320,7 @@ export class TrunkDO extends DurableObject<Env> {
     return paths.map((path) => ({ path, blob: snap[path] ?? null }));
   }
 
-  async land(batch: Proposal[], ctx?: unknown): Promise<{ landing?: Landing; returned: Array<{ proposalId: Id; reason: string }> }> {
+  async land(batch: Proposal[], ctx?: unknown): Promise<{ landing?: Landing; returned: Returned[] }> {
     const s = await this.load();
     s.contexts = [...(s.contexts ?? []), JSON.stringify(ctx ?? null)].slice(-20);
     if (s.failLands > 0) {
@@ -223,46 +328,81 @@ export class TrunkDO extends DurableObject<Env> {
       await this.save(s);
       throw new Error("simulated push rejection");
     }
-    const returned: Array<{ proposalId: Id; reason: string }> = [];
-    const landed: Proposal[] = [];
-    for (const p of batch) {
-      if (s.returnNext.includes(p.id)) returned.push({ proposalId: p.id, reason: "conflict at land time: src/lib/util.ts" });
-      else landed.push(p);
-    }
-    if (landed.length === 0) {
-      await this.save(s);
-      return { returned };
-    }
-    for (const p of landed) {
-      for (const w of p.writeSet) {
-        if (w.blob === null) delete s.files[w.path];
-        else s.files[w.path] = { blob: w.blob, content: s.contents?.[w.blob] ?? `// blob ${w.blob}\n` };
-      }
-    }
-    const parent = s.head;
-    const sha = this.commit(s);
-    const paths = [...new Set(landed.flatMap((p) => p.writeSet.map((w) => w.path)))];
-    const landing: Landing = {
-      id: newId("lnd_"),
-      colonyId: s.colonyId,
-      trunkSha: sha,
-      parentSha: parent,
-      proposalIds: landed.map((p) => p.id),
-      intentIds: [...new Set(landed.map((p) => p.intentId))],
-      paths,
-      regions: [...new Set(paths.map((p) => regionOf(p, 1)))],
-      at: Date.now(),
-    };
-    s.landings.push(landing);
     await this.save(s);
-    // The real TrunkDO reports landings too; the ColonyDO must treat the second report as a no-op.
-    if (s.reportLandings) await this.env.COLONY.get(this.env.COLONY.idFromName(s.colonyId)).onLanding(landing);
-    if ((s.loseAnswers ?? 0) > 0) {
-      s.loseAnswers = (s.loseAnswers ?? 0) - 1;
-      await this.save(s);
+    // One cycle, as the real writer runs it: its direction check (the fence's commit point), then the commit.
+    const gate = this.gate && !this.gate.taken ? this.gate : null;
+    if (gate) gate.taken = true;
+    if (gate?.phase === "read") {
+      gate.reached = true;
+      await gate.opened;
+    }
+    const { landing, returned, report } = await this.cycle(batch, gate);
+    if (!landing) return { returned };
+    // A convenience of this stand-in (reportLandings): the real TrunkDO never reports; its lane does, and the ColonyDO treats a second report as a no-op.
+    if (report) await this.env.COLONY.get(this.env.COLONY.idFromName(landing.colonyId)).onLanding(landing);
+    const after = await this.load();
+    if ((after.loseAnswers ?? 0) > 0) {
+      after.loseAnswers = (after.loseAnswers ?? 0) - 1;
+      await this.save(after);
       throw new Error("Durable Object reset because its code was updated.");
     }
     return { landing, returned };
+  }
+
+  /**
+   * One cycle of land(): the direction check, then (past a "push" gate) the commit. It counts as a cycle the
+   * direction fence waits for from just before its direction check until it ends.
+   */
+  private async cycle(batch: Proposal[], gate: LandGate | null): Promise<{ landing?: Landing; returned: Returned[]; report: boolean }> {
+    let finish!: () => void;
+    const running = new Promise<void>((resolve) => (finish = resolve));
+    this.cycles.add(running);
+    try {
+      const redirected = directionReturns(batch, await this.directionRecords());
+      if (gate?.phase === "push") {
+        gate.reached = true;
+        await gate.opened;
+      }
+      const s = await this.load();
+      const returned: Returned[] = [];
+      const landed: Proposal[] = [];
+      for (const p of batch) {
+        const back = redirected.get(p.id);
+        if (back) returned.push({ proposalId: p.id, reason: back });
+        else if (s.returnNext.includes(p.id)) returned.push({ proposalId: p.id, reason: "conflict at land time: src/lib/util.ts" });
+        else landed.push(p);
+      }
+      if (landed.length === 0) {
+        await this.save(s);
+        return { returned, report: false };
+      }
+      for (const p of landed) {
+        for (const w of p.writeSet) {
+          if (w.blob === null) delete s.files[w.path];
+          else s.files[w.path] = { blob: w.blob, content: s.contents?.[w.blob] ?? `// blob ${w.blob}\n` };
+        }
+      }
+      const parent = s.head;
+      const sha = this.commit(s);
+      const paths = [...new Set(landed.flatMap((p) => p.writeSet.map((w) => w.path)))];
+      const landing: Landing = {
+        id: newId("lnd_"),
+        colonyId: s.colonyId,
+        trunkSha: sha,
+        parentSha: parent,
+        proposalIds: landed.map((p) => p.id),
+        intentIds: [...new Set(landed.map((p) => p.intentId))],
+        paths,
+        regions: [...new Set(paths.map((p) => regionOf(p, 1)))],
+        at: Date.now(),
+      };
+      s.landings.push(landing);
+      await this.save(s);
+      return { landing, returned, report: s.reportLandings };
+    } finally {
+      this.cycles.delete(running);
+      finish();
+    }
   }
 
   async why(_path: Path, _line?: number): Promise<Array<{ landing: Landing; note: LineageNote }>> {
