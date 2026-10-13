@@ -713,8 +713,9 @@ agents: a RegExp replacement string ($1 allowed) applied to each violating line.
 
 retract takes a rule back: it stays in history but is no longer checked, its
 open violations stop counting, and every intent it created that has not landed
-is withdrawn (needs evaporate, changes in flight go back, agents stop). Landed
-work is untouched.
+is withdrawn (needs evaporate, changes in flight are stopped, agents stop).
+Landed work is untouched: a change the trunk writer landed before the
+retraction reached it is named, with the ft revert that undoes it.
 
 Examples
   ft rule add web --pattern "console\\\\.(log|warn|error)\\\\(" --include "src/**" \\
@@ -767,10 +768,13 @@ ft intent show <colony> <intentId>
 
 Change direction while the colony works. amend raises the intent's revision and
 records what changed and why. Needs move with the footprint. When the title, why
-or footprint changes, changes built on the older revision go back, and the agent
-holding the intent is told: it keeps the intent and redoes the work against the
-new revision. withdraw calls the intent off: its needs evaporate, changes in
-flight go back, and its agent stops. Landed work is never touched.
+or footprint changes, changes built on the older revision are stopped, and the
+agent holding the intent is told: it keeps the intent and redoes the work against
+the new revision. withdraw calls the intent off: its needs evaporate, changes in
+flight are stopped, and its agent stops. Landed work is never touched: a change
+the trunk writer landed before the amendment or withdrawal reached it is named,
+with the ft revert that undoes it. "unconfirmed" means the trunk writer did not
+answer, so a change sent back may still land.
 
 Examples
   ft intent amend web int_42 --why "Return 'bonjour', not 'hello'" --reason "French UI"

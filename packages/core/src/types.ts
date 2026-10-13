@@ -393,6 +393,28 @@ export interface Landing {
   at: Millis;
 }
 
+/**
+ * A change in flight that landed although a person withdrew or amended its intent: the trunk writer's
+ * cycle had read the old direction (its commit point) before the change of direction reached it.
+ */
+export interface LandedChange {
+  proposalId: Id;
+  landingId: Id;
+  trunkSha: Sha;
+}
+
+/**
+ * What became of the changes in flight when a person withdrew or amended intents, or retracted a rule:
+ * `returned` were stopped and never land; `landed` had already landed (ft revert undoes a landing); when
+ * `confirmed` is false the trunk writer did not answer for `unconfirmed`, which may still land.
+ */
+export interface RedirectOutcome {
+  returned: number;
+  landed: LandedChange[];
+  confirmed: boolean;
+  unconfirmed?: Id[];
+}
+
 /** One decide-arc decision as a lineage note records it (the optional fields are compact context). */
 export interface NoteDecision extends Pick<Decision, "kind" | "layer" | "p" | "action"> {
   at?: Millis;

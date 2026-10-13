@@ -628,11 +628,22 @@ export function decisionSteps(decisions: NoteDecision[] | undefined, checks: Che
   return out;
 }
 
+/**
+ * What withdraw, amend and retract say about the changes in flight, from the trunk writer's direction fence:
+ * `returned` were stopped, `landed` had already landed, and when `confirmed` is false the writer did not answer
+ * for `unconfirmed`, which may still land. A server without the fence sends only `returned` (changes sent back).
+ */
+export interface Redirected {
+  returned?: number;
+  landed?: Array<{ proposalId: string; landingId: string; trunkSha: string }>;
+  confirmed?: boolean;
+  unconfirmed?: string[];
+}
+
 /** What PATCH /intents/:iid answered. */
-export interface AmendResult {
+export interface AmendResult extends Redirected {
   intent?: Partial<Intent>;
   revision?: { revision: number; changed: string[]; reason: string; substantive: boolean } | null;
-  returned?: number;
   notified?: Array<{ agentId: string; delivery: string }>;
 }
 
@@ -644,27 +655,53 @@ function deliveries(list: Array<{ agentId: string; delivery: string }> | undefin
   return `${num(l.length)} agents told (${[...by].map(([k, n]) => `${num(n)} ${k}`).join(", ")})`;
 }
 
+/** "2 changes in flight stopped" (the trunk writer confirmed it), or "sent back" from a server that cannot say. */
+function stoppedPart(res: Redirected, which: string): string | null {
+  const n = res.returned ?? 0;
+  if (n === 0) return null;
+  return `${num(n)} change${n === 1 ? "" : "s"} ${which} ${res.confirmed === undefined ? "sent back" : "stopped"}`;
+}
+
+/** Whether the outcome needs a second look: a change landed anyway, or the trunk writer did not answer. */
+function raced(res: Redirected): boolean {
+  return (res.landed?.length ?? 0) > 0 || res.confirmed === false;
+}
+
+/** One line per change that landed before the change of direction reached the trunk writer, and one when it did not answer. */
+function racedLines(colony: string | undefined, res: Redirected, c: Colors): string[] {
+  const out = (res.landed ?? []).map(
+    (l) => `  ${c.yellow("!")} ${l.proposalId} already landed in ${shortSha(l.trunkSha)} as ${l.landingId}; undo with ${c.bold(`ft revert ${colony ?? "<colony>"} ${l.landingId}`)}`,
+  );
+  if (res.confirmed === false) {
+    const n = res.unconfirmed?.length ?? 0;
+    out.push(`  ${c.yellow("!")} unconfirmed: the trunk writer did not answer${n > 0 ? `; ${num(n)} change${n === 1 ? "" : "s"} sent back may still land` : ""}`);
+  }
+  return out;
+}
+
 /** The outcome of `ft intent amend`. */
 export function formatAmend(intentId: string, res: AmendResult, c: Colors): string {
   const title = res.intent?.title ? ` ${quote(res.intent.title, 60)}` : "";
   if (!res.revision) return `${c.green("✓")} Nothing changed: ${c.bold(intentId)}${title} already says that ${c.dim(`(r${res.intent?.revision ?? 1})`)}`;
   const r = res.revision;
-  const out = [`${c.green("✓")} Amended ${c.bold(intentId)}${title} to ${c.bold(`r${r.revision}`)}: ${r.changed.join(", ")} changed`];
+  const out = [`${raced(res) ? c.yellow("!") : c.green("✓")} Amended ${c.bold(intentId)}${title} to ${c.bold(`r${r.revision}`)}: ${r.changed.join(", ")} changed`];
   out.push(c.dim(`  reason: ${r.reason}`));
   const parts: string[] = [];
   if (!r.substantive) parts.push("priority only: work in progress still fits");
-  if ((res.returned ?? 0) > 0) parts.push(`${num(res.returned ?? 0)} change${res.returned === 1 ? "" : "s"} built on r${r.revision - 1} went back`);
+  const stopped = stoppedPart(res, `built on r${r.revision - 1}`);
+  if (stopped) parts.push(stopped);
   const told = deliveries(res.notified);
   if (told) parts.push(told);
   if (parts.length) out.push(`  ${parts.join("; ")}`);
-  if (r.substantive) out.push(c.dim("  The agent holding it keeps it and redoes the work against the new revision; stale changes never land."));
+  out.push(...racedLines(res.intent?.colonyId, res, c));
+  if (r.substantive) out.push(c.dim("  The agent holding it keeps it and redoes the work against the new revision."));
+  if ((res.landed?.length ?? 0) > 0) out.push(c.dim(`  The change that landed was built on an older revision: the intent stays live and r${r.revision} is still to do.`));
   return out.join("\n");
 }
 
 /** What POST /intents/:iid/withdraw answered. */
-export interface WithdrawResult {
+export interface WithdrawResult extends Redirected {
   intent?: Partial<Intent>;
-  returned?: number;
   notified?: Array<{ agentId: string; delivery: string }>;
   already?: boolean;
 }
@@ -673,20 +710,22 @@ export interface WithdrawResult {
 export function formatWithdraw(intentId: string, reason: string, res: WithdrawResult, c: Colors): string {
   const title = res.intent?.title ? ` ${quote(res.intent.title, 60)}` : "";
   if (res.already) return `${c.green("✓")} ${c.bold(intentId)}${title} was already withdrawn${res.intent?.withdrawnReason ? `: ${res.intent.withdrawnReason}` : ""}`;
-  const out = [`${c.green("✓")} Withdrew ${c.bold(intentId)}${title}: ${reason}`];
+  const out = [`${raced(res) ? c.yellow("!") : c.green("✓")} Withdrew ${c.bold(intentId)}${title}: ${reason}`];
   const parts = ["its needs evaporated"];
-  if ((res.returned ?? 0) > 0) parts.push(`${num(res.returned ?? 0)} change${res.returned === 1 ? "" : "s"} in flight went back`);
+  const stopped = stoppedPart(res, "in flight");
+  if (stopped) parts.push(stopped);
   const told = deliveries(res.notified);
   if (told) parts.push(told);
   out.push(`  ${parts.join("; ")}`);
+  out.push(...racedLines(res.intent?.colonyId, res, c));
+  if ((res.landed?.length ?? 0) > 0 && res.intent?.status === "landed") out.push(c.dim("  The intent shows landed: its change reached trunk before the withdrawal did."));
   return out.join("\n");
 }
 
 /** What DELETE /rules/:rid answered. */
-export interface RetractResult {
+export interface RetractResult extends Redirected {
   rule?: Partial<Rule>;
   withdrawn?: number;
-  returned?: number;
   notified?: Array<{ agentId: string; delivery: string }>;
   already?: boolean;
 }
@@ -695,12 +734,14 @@ export interface RetractResult {
 export function formatRetract(ruleId: string, reason: string, res: RetractResult, c: Colors): string {
   const desc = res.rule?.description ? ` ${quote(res.rule.description, 60)}` : "";
   if (res.already) return `${c.green("✓")} ${c.bold(ruleId)}${desc} was already retracted${res.rule?.retractReason ? `: ${res.rule.retractReason}` : ""}`;
-  const out = [`${c.green("✓")} Retracted ${c.bold(ruleId)}${desc}: ${reason}`];
+  const out = [`${raced(res) ? c.yellow("!") : c.green("✓")} Retracted ${c.bold(ruleId)}${desc}: ${reason}`];
   const parts = [`${num(res.withdrawn ?? 0)} unlanded intent${res.withdrawn === 1 ? "" : "s"} withdrawn`];
-  if ((res.returned ?? 0) > 0) parts.push(`${num(res.returned ?? 0)} change${res.returned === 1 ? "" : "s"} in flight went back`);
+  const stopped = stoppedPart(res, "in flight");
+  if (stopped) parts.push(stopped);
   const told = deliveries(res.notified);
   if (told) parts.push(told);
   out.push(`  ${parts.join("; ")}`);
+  out.push(...racedLines(res.rule?.colonyId, res, c));
   out.push(c.dim("  The rule stays in history; landed work is untouched."));
   return out.join("\n");
 }

@@ -51,6 +51,8 @@ import { runRevert, sqlRevertTrunk, type RevertResult, type RevertTrunk } from "
 import { durableFs } from "../artifacts/workspace.ts";
 import { TRUNK_NAMESPACE, bindingFor } from "../artifacts/shards.ts";
 import { noteAlternatives, type ContestAlternative } from "../decide/contest.ts";
+import type { DirectionInfo } from "../colony/direction.ts";
+import { DIRECTION_TABLE, FENCE_WAIT_MS, directionReturns, fenceAnswer, mergeDirection, parseDirection, pushDelayMs, settlesWithin, type FenceAnswer } from "./direction.ts";
 
 export type { LandResult, Returned } from "./plan.ts";
 
@@ -215,6 +217,8 @@ export class TrunkDO extends DurableObject<Env> {
     this.sql.exec(
       `CREATE TABLE IF NOT EXISTS ft_journal (landing_id TEXT PRIMARY KEY, state TEXT NOT NULL, commit_sha TEXT NOT NULL, parent_sha TEXT NOT NULL, data TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`,
     );
+    // The direction fence (direction()): each intent's latest change of direction, read by every landing cycle.
+    this.sql.exec(DIRECTION_TABLE);
   }
 
   // -------------------------------------------------------------------------
@@ -321,6 +325,48 @@ export class TrunkDO extends DurableObject<Env> {
     }
     const ids = Array.isArray(proposalIds) ? proposalIds.filter((x): x is Id => typeof x === "string" && x !== "") : [];
     return Object.fromEntries(this.landingsByProposal(ids));
+  }
+
+  /**
+   * The direction fence: the commit point of a change of direction. The colony calls it after a person
+   * withdrew or amended intents (`intents`: their new direction) and it sent their changes in flight back
+   * (`proposalIds`). The direction is recorded first (merged with any earlier record, trunk/direction.ts);
+   * every landing cycle reads the record once before it builds, and a change whose direction is stale goes
+   * back. Then the fence waits for the cycles that may have read the old direction (the serial chain as it
+   * stands, at most FENCE_WAIT_MS), settles any push whose outcome was not recorded, and answers from the
+   * landing records: each change that landed with its landing, and the ones it cannot vouch for yet
+   * (`undetermined`). Every other change asked about never lands. The answer leaves only once the record
+   * is durable (output gate).
+   */
+  async direction(p: { intents: Record<Id, DirectionInfo>; proposalIds: Id[] }): Promise<FenceAnswer> {
+    this.state();
+    const now = Date.now();
+    const incoming: Array<[Id, DirectionInfo]> = [];
+    for (const [id, x] of Object.entries(p?.intents ?? {})) {
+      const info = parseDirection(x);
+      if (id !== "" && info) incoming.push([id, info]);
+    }
+    if (incoming.length > 0) {
+      this.ctx.storage.transactionSync(() => {
+        for (const [id, info] of incoming) {
+          const prev = parseDirection(this.sql.exec<{ info: string | null }>(`SELECT info FROM ft_direction WHERE intent_id = ?`, id).toArray()[0]?.info);
+          this.sql.exec(`INSERT OR REPLACE INTO ft_direction (intent_id, info, at) VALUES (?, ?, ?)`, id, JSON.stringify(mergeDirection(prev, info)), now);
+        }
+      });
+    }
+    const ids = [...new Set((Array.isArray(p?.proposalIds) ? p.proposalIds : []).filter((x): x is Id => typeof x === "string" && x !== ""))];
+    if (ids.length === 0) return { landed: [], landings: [], undetermined: [] };
+    // Every cycle that may have read the old direction is on the serial chain as it stands now; a later one reads the record.
+    const settled = await settlesWithin(this.chain, FENCE_WAIT_MS);
+    // A push of one of these changes whose outcome was not recorded (a later cycle's push never holds one): settle it now.
+    const pending = this.pushingProposals();
+    let open = pending;
+    if (pending === null || ids.some((id) => pending.has(id))) {
+      const recovery = this.serial(() => this.recoverJournal()).catch((e: unknown) => console.error(`direction fence: journal recovery failed: ${errorText(e)}`));
+      await settlesWithin(recovery, Math.max(0, now + FENCE_WAIT_MS - Date.now()));
+      open = this.pushingProposals();
+    }
+    return fenceAnswer(ids, this.landingsByProposal(ids), settled, open);
   }
 
   /**
@@ -918,6 +964,14 @@ export class TrunkDO extends DurableObject<Env> {
     live = live.filter((e) => !prior.has(e.p.id));
     stat.prior = prior.size;
 
+    // 2b. Direction, the fence's commit point (see direction()): a change whose intent was withdrawn, or amended
+    //     substantively after the revision it was built on, goes back before anything is built. One read per cycle.
+    const redirected = this.redirected(live.map((e) => e.p), new Set(prior.keys()));
+    if (redirected.size > 0) {
+      for (const [id, reason] of redirected) outcome.set(id, { kind: "returned", reason });
+      live = live.filter((e) => !redirected.has(e.p.id));
+    }
+
     // 3. Screen against current trunk with local reads (base blobs, OCC, structure); stale ones never pull.
     const caches: BaseCaches = { commits: new Map(), trees: new Map(), remote: new Map() };
     const bases = new Map<Id, FileVersion[]>();
@@ -990,6 +1044,9 @@ export class TrunkDO extends DurableObject<Env> {
         back();
         break;
       }
+      // Test hook (FT_TEST_PUSH_DELAY_MS, previews only): hold the cycle between its direction read and its push.
+      const hold = pushDelayMs((this.env as unknown as { FT_TEST_PUSH_DELAY_MS?: string } | undefined)?.FT_TEST_PUSH_DELAY_MS);
+      if (hold > 0) await sleep(hold);
       const pushed = await this.pushChain(chain);
       lap("push");
       if (pushed.ok) {
@@ -1212,6 +1269,46 @@ export class TrunkDO extends DurableObject<Env> {
           parsed.set(r.landing_id, l);
         }
         out.set(r.proposal_id, l);
+      }
+    }
+    return out;
+  }
+
+  /**
+   * One cycle's direction check (the fence's commit point): the reason each change whose direction went stale
+   * goes back, by proposal id, from one read of the fence's record; one that already landed (`landed`) stays
+   * landed. A read that fails is logged and stops nothing, as before the fence existed (the lane checked
+   * direction just before it handed the batch over).
+   */
+  private redirected(proposals: Proposal[], landed: ReadonlySet<Id>): Map<Id, string> {
+    if (proposals.length === 0) return new Map();
+    try {
+      const direction = new Map<Id, DirectionInfo>();
+      const intents = unique(proposals.map((p) => p.intentId));
+      for (let i = 0; i < intents.length; i += 500) {
+        const rows = this.sql
+          .exec<{ intent_id: string; info: string | null }>(`SELECT intent_id, info FROM ft_direction WHERE intent_id IN (SELECT value FROM json_each(?))`, JSON.stringify(intents.slice(i, i + 500)))
+          .toArray();
+        for (const r of rows) {
+          const info = parseDirection(r.info);
+          if (info) direction.set(r.intent_id, info);
+        }
+      }
+      return directionReturns(proposals, direction, landed);
+    } catch (e) {
+      console.error(`direction check skipped in this cycle: ${errorText(e)}`);
+      return new Map();
+    }
+  }
+
+  /** The proposals of the landings whose push outcome is not recorded yet; null when a journal row cannot be read. */
+  private pushingProposals(): Set<Id> | null {
+    const out = new Set<Id>();
+    for (const r of this.sql.exec<{ data: string }>(`SELECT data FROM ft_journal WHERE state = 'pushing'`).toArray()) {
+      try {
+        for (const id of (JSON.parse(r.data) as JournalData).landing.proposalIds ?? []) out.add(id);
+      } catch {
+        return null;
       }
     }
     return out;

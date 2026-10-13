@@ -83,12 +83,20 @@ beforeAll(async () => {
           intent: { id: "int_1", title: "Greet", status: "claimed", revision: 2 },
           revision: { revision: 2, changed: ["why"], reason: (body as { reason: string }).reason, substantive: true },
           returned: 1,
+          landed: [],
+          confirmed: true,
           notified: [{ agentId: "agt_1", directiveId: "dir_1", delivery: "pushed" }],
         });
       case "POST /api/colonies/web/intents/int_1/withdraw":
-        return json(200, { intent: { id: "int_1", title: "Greet", status: "withdrawn" }, returned: 0, notified: [{ agentId: "agt_1", directiveId: "dir_2", delivery: "inbox" }] });
+        return json(200, {
+          intent: { id: "int_1", colonyId: "web", title: "Greet", status: "landed" },
+          returned: 0,
+          landed: [{ proposalId: "prp_1", landingId: "lnd_9", trunkSha: "abcdef1234567890abcdef1234567890abcdef12" }],
+          confirmed: true,
+          notified: [{ agentId: "agt_1", directiveId: "dir_2", delivery: "inbox" }],
+        });
       case "DELETE /api/colonies/web/rules/rule_1":
-        return json(200, { rule: { id: "rule_1", description: "No console" }, withdrawn: 3, returned: 1, notified: [] });
+        return json(200, { rule: { id: "rule_1", description: "No console" }, withdrawn: 3, returned: 1, landed: [], confirmed: true, notified: [] });
       case "POST /api/colonies/web/agents/agt_1/directive":
         return json(201, { id: "dir_3", agentId: "agt_1", intentId: "int_1", message: (body as { message: string }).message, delivery: "pushed" });
       case "GET /api/colonies/web/intents/int_1":
@@ -359,18 +367,20 @@ describe("changing direction from the CLI", () => {
     expect(await main(["intent", "amend", "web", "int_1", "--why", "say bonjour", "--reason", "French UI"], t)).toBe(0);
     expect(seen.at(-1)).toMatchObject({ method: "PATCH", url: "/api/colonies/web/intents/int_1", body: { why: "say bonjour", reason: "French UI", by: "tester" } });
     expect(t.out.join("\n")).toContain('Amended int_1 "Greet" to r2: why changed');
-    expect(t.out.join("\n")).toContain("1 change built on r1 went back; agt_1 was told at once");
+    expect(t.out.join("\n")).toContain("1 change built on r1 stopped; agt_1 was told at once");
 
     expect(await main(["intent", "withdraw", "web", "int_1", "--reason", "not needed"], t)).toBe(0);
     expect(seen.at(-1)).toMatchObject({ method: "POST", url: "/api/colonies/web/intents/int_1/withdraw", body: { reason: "not needed", by: "tester" } });
     expect(t.out.join("\n")).toContain("agt_1 will read it in its inbox");
+    // The withdrawal lost the race to the trunk writer: the landing is named, with the command that undoes it.
+    expect(t.out.join("\n")).toContain("! prp_1 already landed in abcdef1 as lnd_9; undo with ft revert web lnd_9");
 
     expect(await main(["intent", "show", "web", "int_1"], t)).toBe(0);
     expect(t.out.join("\n")).toMatch(/r2 +why changed by tester .*: "French UI"/);
 
     expect(await main(["rule", "retract", "web", "rule_1", "--reason", "logging is fine"], t)).toBe(0);
     expect(seen.at(-1)).toMatchObject({ method: "DELETE", url: "/api/colonies/web/rules/rule_1", body: { reason: "logging is fine", by: "tester" } });
-    expect(t.out.join("\n")).toContain("3 unlanded intents withdrawn; 1 change in flight went back");
+    expect(t.out.join("\n")).toContain("3 unlanded intents withdrawn; 1 change in flight stopped");
 
     expect(await main(["direct", "web", "agt_1", "keep", "it", "short"], t)).toBe(0);
     expect(seen.at(-1)).toMatchObject({ method: "POST", url: "/api/colonies/web/agents/agt_1/directive", body: { message: "keep it short", by: "tester" } });

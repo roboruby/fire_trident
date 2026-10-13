@@ -10,10 +10,12 @@ import type {
   IntentField,
   IntentRevision,
   IntentStatus,
+  LandedChange,
   LandingNotice,
   NoteDecision,
   Path,
   Proposal,
+  RedirectOutcome,
 } from "@fire_trident/core";
 
 /**
@@ -238,9 +240,10 @@ export interface DirectionInfo {
 
 /**
  * Why a change must not land because its direction is stale, or null. A withdrawn intent's changes
- * never land. A change built on an older revision is stale when a substantive amendment came after
+ * go back. A change built on an older revision is stale when a substantive amendment came after
  * that revision; a change with no recorded revision is stale when such an amendment came after it
- * was proposed. Unknown intents (an older colony object) are not judged.
+ * was proposed. Unknown intents (an older colony object) are not judged. The lane asks before it
+ * hands a batch to the trunk writer, and the trunk writer asks again at its commit point.
  */
 export function staleDirection(p: Pick<Proposal, "intentRevision" | "createdAt">, info: DirectionInfo | undefined): string | null {
   if (!info) return null;
@@ -278,6 +281,28 @@ export interface MissedRevision {
 /** What is left when a change built on an older revision landed anyway: "landed a change built on r1; r2 still to do". */
 export function landedStaleText(built: number | null, current: number): string {
   return `landed a change built on ${built === null ? "an older revision" : `r${built}`}; r${current} still to do`;
+}
+
+/**
+ * The reason a change keeps when it landed after a change of direction had sent it back: the trunk
+ * writer's cycle read the old direction before the new one reached it.
+ */
+export function landedAnywayText(reason: string): string {
+  const what = /^withdrawn: /.test(reason) ? "the withdrawal" : /^intent revised: /.test(reason) ? "the amendment" : "the change of direction";
+  return `landed before ${what} reached the trunk writer (${oneLine(reason, 300)})`;
+}
+
+/**
+ * What a withdrawal, amendment or retraction tells the person about the changes it sent back (`sent`):
+ * the ones the trunk writer had already landed (`landed`), the ones it did not answer for (`unconfirmed`:
+ * they may still land), and the rest, which it stopped.
+ */
+export function redirectOutcome(sent: readonly Id[], landed: readonly LandedChange[], unconfirmed: readonly Id[]): RedirectOutcome {
+  const done = new Set(landed.map((l) => l.proposalId));
+  const open = new Set(unconfirmed.filter((id) => !done.has(id)));
+  const out: RedirectOutcome = { returned: new Set(sent.filter((id) => !done.has(id) && !open.has(id))).size, landed: [...landed], confirmed: open.size === 0 };
+  if (open.size > 0) out.unconfirmed = [...open];
+  return out;
 }
 
 /** Split a lane batch: changes whose direction still holds, and the ones that go back with the reason. */
@@ -465,7 +490,7 @@ export function directiveText(d: Directive): string {
     case "revision":
       return `Intent ${d.intentId ?? "?"} revised to r${d.revision ?? "?"} (${describeChanges(d.changed ?? [])}): ${d.message}. Call take to get the new revision and redo the change against it; changes built on an older revision are sent back.`;
     case "withdrawal":
-      return `Intent ${d.intentId ?? "?"} withdrawn: ${d.message}. Stop working on it (nothing for it will land) and call take for other work.`;
+      return `Intent ${d.intentId ?? "?"} withdrawn: ${d.message}. Stop working on it (it is no longer wanted) and call take for other work.`;
     case "landing":
       // Facts about trunk, not instructions: the notice's text is the message the colony wrote from them.
       return `Trunk moved under intent ${d.intentId ?? "?"}: ${d.landing ? landingMessage(d.landing) : d.message}`;
