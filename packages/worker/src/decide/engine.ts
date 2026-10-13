@@ -11,12 +11,13 @@ import type {
   IntentSource,
   Landing,
   LineageNote,
+  NameAssumption,
   Path,
   Proposal,
   Rule,
   Sha,
 } from "@fire_trident/core";
-import { newId } from "@fire_trident/core";
+import { newId, revalidationEnabled } from "@fire_trident/core";
 import type { Env } from "../env.ts";
 import { runInnateChecks, type InnateResult } from "../colony/innate.ts";
 import { errorText, ftError } from "../colony/errors.ts";
@@ -25,7 +26,7 @@ import { addedFromHunks, fileDiff, type FileDiff } from "./diff.ts";
 import { agentReason, gate, type GateVerdict, type ReflexSignals, type SecondOpinion } from "./gate.ts";
 import { applyAllowances, dangerLabels, scanDanger, triageDanger, whyAuthor, type DangerAllowance } from "./danger.ts";
 import { CallLimiter } from "./limiter.ts";
-import { candidatePaths, mechanicalCheck, proofAssumptions, type MechanicalResult } from "./mechanical.ts";
+import { candidatePaths, mechanicalCheck, nameAssumptionCandidates, nameAssumptions, proofAssumptions, type MechanicalResult } from "./mechanical.ts";
 import { pickSecondOpinion, secondOpinionCandidates, type DecidePolicy } from "./policy.ts";
 import { pushQuarantine } from "./quarantine.ts";
 import {
@@ -274,8 +275,9 @@ export class DecideEngine {
     const observed = await this.mechanical(p, innate, rule);
     const mech = policy.deterministic ? observed : null;
     // The files those facts found: the trunk writer re-checks that they still exist when the change lands.
+    // Name assumptions (the names it imports from trunk files) let it land over a read file that changed.
     const assumptions = proofAssumptions(observed.result.changes, new Set(p.writeSet.map((w) => w.path)));
-    const relied = assumptions.length > 0 ? { assumptions } : {};
+    const relied = { ...(assumptions.length > 0 ? { assumptions } : {}), ...(observed.names.length > 0 ? { nameAssumptions: observed.names } : {}) };
     const clefStates = this.store.clefStates();
     // What each model layer is shown: its approval counts only when it saw every changed line.
     const seen = { reflex: stateCoverage(diffs), llm: secondOpinionDiff(diffs).coverage };
@@ -478,25 +480,30 @@ export class DecideEngine {
   /**
    * The deterministic stage for one proposal: every candidate path its changed import specifiers
    * could resolve to is looked up in one TrunkDO.blobsFor call (the proposal's own writes layered
-   * on top), then the mechanical proof runs.
+   * on top), then the mechanical proof runs. With assumption revalidation on for the colony
+   * (FT_REVALIDATE), the same call also resolves every relative import of the written files, for the
+   * name assumptions; when that lookup would be cut short, none are recorded.
    */
-  private async mechanical(p: Proposal, innate: InnateResult, rule: Rule | null): Promise<{ result: MechanicalResult; ms: number }> {
+  private async mechanical(p: Proposal, innate: InnateResult, rule: Rule | null): Promise<{ result: MechanicalResult; ms: number; names: NameAssumption[] }> {
     const t0 = Date.now();
     const files = innate.files.map((f) => ({ path: f.path, before: f.before, after: f.after, unreadable: f.unreadable, binary: f.binary }));
-    const wanted = candidatePaths(files).slice(0, MAX_RESOLUTION_PATHS);
+    const based = revalidationEnabled((this.host.env as unknown as { FT_REVALIDATE?: string }).FT_REVALIDATE, this.host.colony().id);
+    const all = [...new Set([...candidatePaths(files), ...(based ? nameAssumptionCandidates(files) : [])])];
+    const wanted = all.slice(0, MAX_RESOLUTION_PATHS);
     let trunk: Record<Path, Sha | null> = {};
     if (wanted.length > 0) {
       try {
         trunk = await this.host.trunk().blobsFor(wanted);
       } catch (err) {
         const why = `trunk tree unavailable: ${errorText(err)}`;
-        return { result: { verdict: "inconclusive", reasons: [why], changes: [], facts: [], checks: [{ name: "deterministic: mechanical proof", ok: false, ms: 0, detail: `inconclusive: ${why}` }] }, ms: Date.now() - t0 };
+        return { result: { verdict: "inconclusive", reasons: [why], changes: [], facts: [], checks: [{ name: "deterministic: mechanical proof", ok: false, ms: 0, detail: `inconclusive: ${why}` }] }, ms: Date.now() - t0, names: [] };
       }
     }
     const writes = new Map(p.writeSet.map((w) => [w.path, w.blob !== null]));
     const existed = (path: Path): boolean => (trunk[path] ?? null) !== null;
     const exists = (path: Path): boolean => (writes.has(path) ? writes.get(path)! : existed(path));
-    return { result: mechanicalCheck({ files, residual: innate.residual, rule, innateOk: innate.ok, exists, existed }), ms: Date.now() - t0 };
+    const names = based && all.length <= MAX_RESOLUTION_PATHS ? nameAssumptions(files, exists, existed) : [];
+    return { result: mechanicalCheck({ files, residual: innate.residual, rule, innateOk: innate.ok, exists, existed }), ms: Date.now() - t0, names };
   }
 
   /**

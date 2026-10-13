@@ -17,9 +17,16 @@
  * /api/colonies/:id/field?region= every second as a second source.
  *
  *   node packages/bench/src/scenarios/cascade.ts --colony bench-w2-cascade --readers 30 --out cascade.json
+ *
+ * With --imports (assumption revalidation): each reader's new file is a real TypeScript module that
+ * imports a name S already exports (found in S, or --import-name), pushed to the reader's workspace,
+ * and the writer's real edit to S adds a new export without removing any. With FT_REVALIDATE on for
+ * the colony (and the decide stage on, which records the readers' name assumptions), the readers land
+ * instead of going back; without it they go back as above. Proposals then pass through review, so
+ * outcomes are awaited for --settle seconds (default 300; 60 without --imports).
  */
 import { mkdirSync, readFileSync, writeFileSync, appendFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, posix } from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { parseArgs } from "node:util";
@@ -33,6 +40,29 @@ type Assignment = { intent: Intent; lease: WorkspaceLease };
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const run = promisify(execFile);
 
+/** The first plain named export of a module's text (`export const|let|var|function|class|interface|type NAME`), and whether it is a type. */
+function firstExport(text: string): { name: string; type: boolean } | null {
+  const m = /^export\s+(?:declare\s+)?(?:async\s+)?(?:abstract\s+)?(function\*?|class|const|let|var|interface|type)\s+([A-Za-z_$][\w$]*)/m.exec(text);
+  return m ? { name: m[2]!, type: m[1] === "interface" || m[1] === "type" } : null;
+}
+
+/** A reader's new module for --imports: it imports `name` from the shared file and uses it. */
+function readerModule(path: string, shared: string, name: string, type: boolean, n: number): string {
+  const rel = posix.relative(posix.dirname(path), shared);
+  const spec = rel.startsWith("../") ? rel : `./${rel}`;
+  return type
+    ? `import type { ${name} } from "${spec}";\n\n/** Cascade demo reader ${n}: built on ${name} from ${shared}. */\nexport type CascadeReader${n} = ${name};\n`
+    : `import { ${name} } from "${spec}";\n\n/** Cascade demo reader ${n}: built on ${name} from ${shared}. */\nexport const cascadeReader${n} = typeof ${name};\n`;
+}
+
+/** `fn` over `items`, at most `limit` at once. */
+async function eachLimit<T>(items: T[], limit: number, fn: (item: T) => Promise<unknown>): Promise<void> {
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) await fn(items[next++]!);
+  }));
+}
+
 async function main(): Promise<void> {
   const { values } = parseArgs({
     args: process.argv.slice(2),
@@ -45,6 +75,9 @@ async function main(): Promise<void> {
       observe: { type: "string" },
       out: { type: "string" },
       state: { type: "string" },
+      imports: { type: "boolean" },
+      "import-name": { type: "string" },
+      settle: { type: "string" },
     },
     strict: true,
   });
@@ -55,6 +88,8 @@ async function main(): Promise<void> {
   const reworkMax = Number(values["rework-max"] ?? 30) * 1000;
   const observeMs = Number(values.observe ?? 90) * 1000;
   const stateDir = values.state ?? "/tmp/ft-w2";
+  const imports = values.imports === true;
+  const settleMs = Number(values.settle ?? (imports ? 300 : 60)) * 1000;
   const cfg = liveConfig();
   const rec = new Recorder();
   const client = new Client(cfg, colony, rec);
@@ -93,9 +128,9 @@ async function main(): Promise<void> {
   await Promise.all(
     readerIds.map((id, i) =>
       client.call<Intent>("intent", "POST", "/intents", {
-        title: `cascade: reader ${i + 1} adds ${region}/cascade-${tag}-r${i + 1}.txt`,
+        title: `cascade: reader ${i + 1} adds ${region}/cascade-${tag}-r${i + 1}.${imports ? "ts" : "txt"}`,
         why: `uses ${shared}`,
-        footprint: [`${region}/cascade-${tag}-r${i + 1}.txt`],
+        footprint: [`${region}/cascade-${tag}-r${i + 1}.${imports ? "ts" : "txt"}`],
         assignedTo: id,
         createdBy: "bench-cascade",
       }),
@@ -114,7 +149,34 @@ async function main(): Promise<void> {
   mkdirSync(dirname(dir), { recursive: true });
   await git(["clone", "--quiet", "--depth", "1", "--branch", "main", wt.lease.trunk.remote, dir], wt.lease.trunk.token);
   const oldBlob = (await git(["rev-parse", `HEAD:${shared}`], wt.lease.trunk.token, dir)).trim();
-  appendFileSync(join(dir, shared), `\n// FireTrident cascade demo ${new Date().toISOString()}: shared configuration changed.\n`);
+  // --imports: every reader's module goes into one commit on trunk, pushed to each reader's workspace
+  // (the trunk writer reads a proposal's new blobs from its workspace); the clone then returns to trunk.
+  const readerBlob = new Map<string, string>();
+  let imported: { name: string; type: boolean } | null = null;
+  if (imports) {
+    const given = values["import-name"];
+    imported = given ? { name: given, type: false } : firstExport(readFileSync(join(dir, shared), "utf8"));
+    if (!imported) throw new Error(`${shared} has no plain named export to import; pass --import-name`);
+    const trunkHead = (await git(["rev-parse", "HEAD"], wt.lease.trunk.token, dir)).trim();
+    for (const [i, r] of readers.entries()) {
+      const path = r.t.intent.footprint[0]!;
+      writeFileSync(join(dir, path), readerModule(path, shared, imported.name, imported.type, i + 1));
+      await git(["add", "--", path], wt.lease.trunk.token, dir);
+    }
+    await git(["-c", "user.name=FireTrident bench", "-c", "user.email=bench@agents.firetrident.dev", "commit", "-qm", `cascade: ${readers.length} readers import ${imported.name} from ${shared}`], wt.lease.trunk.token, dir);
+    for (const r of readers) {
+      const path = r.t.intent.footprint[0]!;
+      readerBlob.set(r.id, (await git(["rev-parse", `HEAD:${path}`], wt.lease.trunk.token, dir)).trim());
+    }
+    await eachLimit(readers, 6, (r) => git(["push", "--quiet", "--force", r.t.lease.repo.remote, "HEAD:refs/heads/main"], r.t.lease.token, dir));
+    await git(["reset", "--quiet", "--hard", trunkHead], wt.lease.trunk.token, dir);
+    mark("readers pushed their modules", { readers: readers.length, imports: imported.name, from: shared });
+  }
+  // The writer's real edit: a comment, or with --imports a new export (nothing removed).
+  appendFileSync(
+    join(dir, shared),
+    imports ? `\nexport const cascade_${tag} = "${new Date().toISOString()}";\n` : `\n// FireTrident cascade demo ${new Date().toISOString()}: shared configuration changed.\n`,
+  );
   await git(["-c", "user.name=FireTrident bench", "-c", "user.email=bench@agents.firetrident.dev", "commit", "-qam", `cascade: change ${shared}\n\nFT-Intent: ${wIntent.id}`], wt.lease.trunk.token, dir);
   const headSha = (await git(["rev-parse", "HEAD"], wt.lease.trunk.token, dir)).trim();
   const newBlob = (await git(["rev-parse", `HEAD:${shared}`], wt.lease.trunk.token, dir)).trim();
@@ -129,7 +191,7 @@ async function main(): Promise<void> {
     workspace: a.lease.repo,
     baseSha: a.lease.baseSha,
     headSha: fakeSha("cascade", agentId, String(seq)),
-    writeSet: [{ path: a.intent.footprint[0]!, blob: state.blob }],
+    writeSet: [{ path: a.intent.footprint[0]!, blob: readerBlob.get(agentId) ?? state.blob }],
     readSet: reads,
     declared: { footprint: a.intent.footprint, summary: `reader change that depends on ${shared}` },
     evidence: { checks: [], notVerified: "synthetic cascade reader (no model, no agent-side git)" },
@@ -144,18 +206,18 @@ async function main(): Promise<void> {
     writeSet: [{ path: shared, blob: newBlob }],
     readSet: [{ path: shared, blob: oldBlob }],
     declared: { footprint: [shared], summary: `change ${shared}` },
-    evidence: { checks: [], notVerified: "cascade demo writer: a one-line comment appended" },
+    evidence: { checks: [], notVerified: imports ? "cascade demo writer: one new export appended, nothing removed" : "cascade demo writer: a one-line comment appended" },
   });
   if (!wp) throw new Error(`writer propose failed: ${rec.errorSamples.join("; ")}`);
   mark("writer proposed", { proposal: wp.id });
-  const landedBy = Date.now() + 60_000;
+  const landedBy = Date.now() + settleMs;
   let writerLanding: { id: string; at: number } | null = null;
   while (Date.now() < landedBy && !writerLanding) {
     const l = feed.landings.find((x) => x.proposalIds.includes(wp.id));
     if (l) writerLanding = { id: l.id, at: l.at };
     else await sleep(100);
   }
-  if (!writerLanding) throw new Error("writer did not land within 60 s");
+  if (!writerLanding) throw new Error(`writer did not land within ${settleMs / 1000} s`);
   mark("writer landed", { landing: writerLanding.id });
 
   // 3. The readers were in flight: they propose now, against the blob they read.
@@ -166,7 +228,7 @@ async function main(): Promise<void> {
   // 4. Each reader learns it was returned (stale on S), re-reads S, reworks, and re-proposes.
   const returnedAt = new Map<string, number>();
   const reproposed: Array<Promise<unknown>> = [];
-  const until = Date.now() + 60_000;
+  const until = Date.now() + settleMs;
   while (Date.now() < until && returnedAt.size < firstIds.size) {
     for (const [pid, r] of firstIds) {
       if (!pid || returnedAt.has(pid)) continue;
@@ -184,6 +246,15 @@ async function main(): Promise<void> {
     await sleep(100);
   }
   const returnedCount = [...returnedAt.values()].filter((v) => v >= 0).length;
+  // --imports: did the decide stage record the readers' name assumptions on S? (none: it is off for this colony)
+  let based = 0;
+  if (imports) {
+    const ids = [...firstIds.keys()].filter(Boolean);
+    const recorded = await Promise.all(ids.map((id) => client.call<Proposal>("proposal", "GET", `/proposals/${id}`)));
+    based = recorded.filter((p) => p?.nameAssumptions?.some((np) => np.path === shared)).length;
+    mark("reader name assumptions", { recorded: based, of: ids.length, landedFirstTry: returnedAt.size - returnedCount });
+    if (based === 0) log("no name assumptions recorded: assumption revalidation needs the decide stage on for this colony (Workers AI bound, decide policy enabled)");
+  }
   mark("readers returned", { returned: returnedCount, landedInstead: returnedAt.size - returnedCount, reasons: [...new Set([...firstIds.keys()].map((id) => feed.proposalStatus.get(id)?.reason?.slice(0, 80)))].slice(0, 3) });
   const second = (await Promise.all(reproposed)) as Array<Proposal | null>;
   mark("readers re-proposed after rework", { proposals: second.filter(Boolean).length });
@@ -212,13 +283,16 @@ async function main(): Promise<void> {
     startedAt: new Date(T0).toISOString(),
     writerLanding: { id: writerLanding.id, tMs: writerLanding.at - T0 },
     returned: returnedCount,
+    ...(imports && imported ? { imports: { name: imported.name, type: imported.type, assumptionsRecorded: based, landedFirstTry: returnedAt.size - returnedCount, returnedFirstTry: returnedCount } } : {}),
     relandings,
     sigma: { max: sigmaMax, firstAboveOneMs: above[0]?.tMs ?? null, lastAboveOneMs: above[above.length - 1]?.tMs ?? null, events: regionSigma, polled },
     inhibition,
     laneDelay,
     timeline,
     errors: rec.errorSamples,
-    note: "Readers are synthetic API agents (their writes reuse an existing blob); the writer's change to the shared file is a real git commit pushed to its workspace fork and landed on trunk.",
+    note: imports
+      ? "Readers are synthetic API agents whose new modules import a name the shared file exports (one real commit pushed to every reader's workspace fork); the writer's change to the shared file adds one export, a real git commit pushed to its workspace fork and landed on trunk."
+      : "Readers are synthetic API agents (their writes reuse an existing blob); the writer's change to the shared file is a real git commit pushed to its workspace fork and landed on trunk.",
   };
   const out = values.out ?? "cascade.json";
   mkdirSync(dirname(out), { recursive: true });

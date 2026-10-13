@@ -1,6 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
-import { landingMessage, newId, regionOf, serializeNote, validateProposal } from "@fire_trident/core";
-import type { AgentKind, ColonySnapshot, Decision, FileVersion, Id, Landing, LineageNote, OccResult, Path, Proposal, RepoRef, Sha } from "@fire_trident/core";
+import { landingMessage, newId, regionOf, revalidationCandidate, revalidationEnabled, serializeNote, validateProposal } from "@fire_trident/core";
+import type { AgentKind, ColonyEvent, ColonySnapshot, Decision, ExportSurface, FileVersion, Id, Landing, LineageNote, OccResult, Path, Proposal, RepoRef, Revalidated, Sha } from "@fire_trident/core";
 import type { TreeEntry } from "isomorphic-git";
 import type { Env } from "../env.ts";
 import {
@@ -45,7 +45,7 @@ import { BoundedMap, applyTreeChangesDeferred, writePending, type PendingObject 
 import { commitContent, objectId } from "./objects.ts";
 import { pushPack } from "./push.ts";
 import { CoChangeStore, mineHistory, type CoChangeStats, type Neighbor } from "./cochange.ts";
-import { planCycle, resultsFor, uniqueProposals, type LandResult, type Outcome, type PlanProposal, type Returned } from "./plan.ts";
+import { exportSurface, planCycle, resultsFor, surfaceBlobs, uniqueProposals, type LandResult, type Outcome, type PlanProposal, type Returned } from "./plan.ts";
 import { IMPORT_SCAN, SCRIPT_FILE, importedDeletions, importedText, movedText, planRevert, relativeSpecifiers, type RevertResult } from "./revert.ts";
 import { durableFs } from "../artifacts/workspace.ts";
 import { TRUNK_NAMESPACE, bindingFor } from "../artifacts/shards.ts";
@@ -71,6 +71,10 @@ const TREE_CACHE = 4_000;
 /** Objects of a cycle written to the git store at once. */
 const WRITE_CONCURRENCY = 16;
 const COMMIT_CACHE = 2_000;
+/** Assumption revalidation: export surfaces kept by blob id, and what one cycle reads at most to compute new ones. */
+const SURFACE_CACHE = 2_000;
+const SURFACE_READS = 400;
+const SURFACE_BYTES = 8 * 1024 * 1024;
 /** Recent cycle summaries kept for stats(). */
 const CYCLE_LOG_KEEP = 50;
 const STAGING_REF = "refs/heads/ft-landing";
@@ -128,9 +132,11 @@ export interface CycleStat {
   returned: number;
   deferred: number;
   rebuilds: number;
+  /** Proposals that landed over files they read that changed, their imported names still exported (assumption revalidation). */
+  revalidated?: number;
   /** Oldest request's time in the queue before the cycle started. */
   waitMs: number;
-  /** Time per phase: recover, screen, pull, plan, build, push, finalize. */
+  /** Time per phase: recover, screen, pull, assumptions (revalidation on), plan, build, push, finalize. */
   ms: Record<string, number>;
   totalMs: number;
   error?: string;
@@ -184,6 +190,8 @@ export class TrunkDO extends DurableObject<Env> {
   /** Co-change map (trunk/cochange.ts), and its history mining run while one is in flight. */
   private cochangeStore: CoChangeStore | null = null;
   private mining: Promise<void> | null = null;
+  /** Assumption revalidation: the names each version of a file exports, by blob id (immutable, so cached across cycles). */
+  private readonly surfaces = new BoundedMap<Sha, ExportSurface | null>(SURFACE_CACHE);
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -855,6 +863,61 @@ export class TrunkDO extends DurableObject<Env> {
   }
 
   /**
+   * Publish a `revalidated` event on the colony's live feed for each landed proposal that landed over
+   * files it read that changed (assumption revalidation): which files, and the names that held.
+   */
+  private async emitRevalidated(landed: Proposal[], revalidated: Map<Id, Revalidated[]>): Promise<void> {
+    const colonyId = this.meta("colony_id");
+    const ns = this.env.COLONY as DurableObjectNamespace | undefined;
+    if (colonyId === null || !ns) return;
+    const at = Date.now();
+    const events: ColonyEvent[] = [];
+    for (const p of landed) {
+      const r = revalidated.get(p.id);
+      if (!r) continue;
+      events.push({ t: "revalidated", at, proposalId: p.id, intentId: p.intentId, paths: unique(r.map((x) => x.path)), names: unique(r.flatMap((x) => x.names)).sort() });
+    }
+    if (events.length === 0) return;
+    const stub = ns.get(ns.idFromName(colonyId)) as unknown as { emit(e: unknown[]): Promise<unknown> };
+    await stub.emit(events);
+  }
+
+  /**
+   * Assumption revalidation: the export surface of every version a stale read of this cycle could land on.
+   * For each file a proposal read and imports names from, that is trunk's blob and each new blob a
+   * proposal of the cycle writes there (pulled already). Read from the local store and cached by blob
+   * id; at most SURFACE_READS new blobs and SURFACE_BYTES per cycle. A blob that cannot be read maps to
+   * null, and its readers go back as stale.
+   */
+  private async assumptionSurfaces(proposals: Proposal[]): Promise<Map<Sha, ExportSurface | null>> {
+    const out = new Map<Sha, ExportSurface | null>();
+    let reads = 0;
+    let bytes = 0;
+    for (const blob of surfaceBlobs(proposals, (path) => this.indexBlob(path))) {
+      const hit = this.surfaces.get(blob);
+      if (hit !== undefined) {
+        out.set(blob, hit);
+        continue;
+      }
+      if (reads >= SURFACE_READS || bytes > SURFACE_BYTES) {
+        out.set(blob, null);
+        continue;
+      }
+      reads++;
+      const data = await this.blobBytes(blob).catch(() => null);
+      if (data === null) {
+        out.set(blob, null); // not cached: a read that failed now may work next cycle
+        continue;
+      }
+      bytes += data.length;
+      const surface = exportSurface(data);
+      this.surfaces.set(blob, surface);
+      out.set(blob, surface);
+    }
+    return out;
+  }
+
+  /**
    * One group-commit cycle: idempotency per proposal id, screening against trunk, blob pulls,
    * the plan over the virtual trunk (plan.ts), one chained commit per batch, one push of the tip
    * with compare-and-swap, and the record of every landing in one transaction.
@@ -866,9 +929,12 @@ export class TrunkDO extends DurableObject<Env> {
       stat.ms[phase] = (stat.ms[phase] ?? 0) + (now - mark);
       mark = now;
     };
-    this.state();
+    const st = this.state();
     await this.recoverJournal();
     lap("recover");
+    // Assumption revalidation (FT_REVALIDATE): a proposal stale only through files it read can still land
+    // when the names it imports from them hold on the trunk it lands on. Off: stale means back.
+    const revalidating = revalidationEnabled((this.env as unknown as { FT_REVALIDATE?: string } | undefined)?.FT_REVALIDATE, st.colonyId);
     const batches = reqs.map((r) => r.batch);
     const outcome = new Map<Id, Outcome>();
     const own: Array<Landing | undefined> = reqs.map(() => undefined);
@@ -901,7 +967,9 @@ export class TrunkDO extends DurableObject<Env> {
         const fv = w.map((path) => ({ path, blob: base.get(path) ?? null }));
         bases.set(e.p.id, fv);
         const occ = validateProposal(e.p, (path) => this.indexBlob(path), fv);
-        if (!occ.eligible) return { kind: "returned", reason: `stale: ${staleDetail(occ.stale)}` };
+        // A revalidation candidate (stale only through files it read, each covered by a name assumption)
+        // is decided by the plan, which reads those files.
+        if (!occ.eligible && !(revalidating && revalidationCandidate(e.p, occ.stale))) return { kind: "returned", reason: `stale: ${staleDetail(occ.stale)}` };
         const structural = this.structuralProblem(e.p);
         return structural ? { kind: "returned", reason: structural } : null;
       } catch (err) {
@@ -945,12 +1013,14 @@ export class TrunkDO extends DurableObject<Env> {
       }
       const input: PlanProposal[][] = reqs.map(() => []);
       for (const e of live) input[e.request]!.push({ p: e.p, base: bases.get(e.p.id) ?? [] });
-      const plan = planCycle(input, (path) => this.indexBlob(path));
+      const surfaces = revalidating ? await this.assumptionSurfaces(live.map((e) => e.p)) : null;
+      if (surfaces) lap("assumptions");
+      const plan = planCycle(input, (path) => this.indexBlob(path), surfaces ? (_path, blob) => surfaces.get(blob) ?? null : undefined);
       const back = (): void => {
         for (const r of plan.returned.flat()) outcome.set(r.proposalId, { kind: "returned", reason: r.reason });
       };
       lap("plan");
-      const chain = await this.buildChain(reqs, plan.accepted, sizes, stat);
+      const chain = await this.buildChain(reqs, plan.accepted, sizes, stat, plan.revalidated);
       lap("build");
       if (chain === null) {
         back();
@@ -969,6 +1039,10 @@ export class TrunkDO extends DurableObject<Env> {
           stat.landed += it.data.landing.proposalIds.length;
         }
         stat.landings = chain.items.length;
+        if (plan.revalidated.size > 0) {
+          stat.revalidated = plan.revalidated.size;
+          void this.emitRevalidated(plan.accepted.flat(), plan.revalidated).catch(() => undefined);
+        }
         back();
         lap("finalize");
         break;
@@ -1004,6 +1078,7 @@ export class TrunkDO extends DurableObject<Env> {
     accepted: Proposal[][],
     sizes: Map<Id, Map<Path, number>>,
     stat?: CycleStat,
+    revalidated: Map<Id, Revalidated[]> = new Map(),
   ): Promise<{ parent: Sha; tip: Sha; items: Array<{ request: number; data: JournalData }>; objects: string[] } | null> {
     if (accepted.every((a) => a.length === 0)) return null;
     const st = this.state();
@@ -1069,7 +1144,7 @@ export class TrunkDO extends DurableObject<Env> {
         regions: unique(paths.map((path) => regionOf(path, st.regionDepth))).sort(),
         at,
       };
-      const note = serializeNote(buildNote(landing, proposals, info, ctx));
+      const note = serializeNote(buildNote(landing, proposals, info, ctx, revalidated));
       items.push({ request: i, data: { landing, note, changes: [...changes] } });
       parent = commit;
       lap("note");
@@ -1794,8 +1869,17 @@ export class TrunkDO extends DurableObject<Env> {
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** The lineage note for a landing. */
-function buildNote(landing: Landing, proposals: Proposal[], info: { intents: Map<Id, IntentInfo>; agents: Map<Id, AgentLite> }, ctx: LandContext): LineageNote {
+/**
+ * The lineage note for a landing. A proposal that landed over files it read that changed records each
+ * of them under `revalidated`: the blob it read, the blob it landed on, and the names that held.
+ */
+function buildNote(
+  landing: Landing,
+  proposals: Proposal[],
+  info: { intents: Map<Id, IntentInfo>; agents: Map<Id, AgentLite> },
+  ctx: LandContext,
+  revalidated: Map<Id, Revalidated[]> = new Map(),
+): LineageNote {
   return {
     schema: "firetrident.lineage/v1",
     landingId: landing.id,
@@ -1813,6 +1897,7 @@ function buildNote(landing: Landing, proposals: Proposal[], info: { intents: Map
         readSet: p.readSet,
         decisions: ctx.decisions?.[p.id] ?? [],
         evidence: p.evidence ?? { checks: [] },
+        ...(revalidated.has(p.id) ? { revalidated: revalidated.get(p.id) } : {}),
       };
     }),
   };
