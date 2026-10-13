@@ -142,6 +142,10 @@ describe("certification runner (Node process, compared with node --test)", () =>
       { path: "test/foreign.test.ts", reason: "does not import node:test" },
       { path: "test/pkg.test.ts", reason: "imports the package some-pad (test/pkg.test.ts); nothing is installed" },
     ]);
+    expect([...loaded.via]).toEqual([
+      ["test/foreign.test.ts", "test/foreign.test.ts"],
+      ["test/pkg.test.ts", "test/pkg.test.ts"],
+    ]);
     expect(loaded.tests).toEqual(["lib/util.test.js", "test/enum.test.ts", "test/math.test.ts", "test/missing.test.ts", "test/state-a.test.ts", "test/state-b.test.ts", "test/value-type.test.ts"]);
     // Only what the tests reach is read.
     expect(loaded.modules.has("src/unused.ts")).toBe(false);

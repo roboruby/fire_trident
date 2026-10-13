@@ -184,8 +184,11 @@ describe("the module map", () => {
     const b = trunkOf({ "test/x.test.ts": small, "src/big.ts": `export function big() {}\n${"// padding\n".repeat(20)}` });
     const big = await load(b.index, b.read, { maxModules: 100, maxBytes: 1 << 20, maxFileBytes: small.length });
     expect(big.unsupported).toEqual([{ path: "test/x.test.ts", reason: "reaches src/big.ts, larger than one run reads" }]);
+    // The file that kept it out, for a repair to fix.
+    expect(big.via.get("test/x.test.ts")).toBe("src/big.ts");
     const tiny = await load(b.index, b.read, { maxModules: 100, maxBytes: 1 << 20, maxFileBytes: 10 });
     expect(tiny.unsupported).toEqual([{ path: "test/x.test.ts", reason: "larger than one run reads (10 bytes)" }]);
+    expect(tiny.via.get("test/x.test.ts")).toBe("test/x.test.ts");
     expect(loaded.truncated).toBe(false);
   });
 });

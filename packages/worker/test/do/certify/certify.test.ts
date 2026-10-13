@@ -50,8 +50,10 @@ describe("trunk certification (Dynamic Workers)", () => {
 
     const declared = await repairs(c.id);
     expect(declared).toHaveLength(1);
-    expect(declared[0]).toMatchObject({ id: red.repairIntentId, source: "certify", status: "open", priority: 10, footprint: ["test/math.test.ts", "src/math.ts"], title: "Make the failing tests pass: subtracts" });
+    // The code under test is the footprint; the failing test file is read-only context ("Builds on").
+    expect(declared[0]).toMatchObject({ id: red.repairIntentId, source: "certify", status: "open", priority: 10, footprint: ["src/math.ts"], title: "Make the failing tests pass: subtracts" });
     expect(declared[0]!.why).toContain("test/math.test.ts > subtracts: AssertionError (strictEqual): actual 8, expected 2");
+    expect(declared[0]!.why).toContain("\nBuilds on: test/math.test.ts\n");
     const snap = (await api<ColonySnapshot>("GET", `/colonies/${c.id}`)).body;
     expect(snap.colony.certification).toMatchObject({ trunkSha: sha1, status: "red" });
 
@@ -71,7 +73,7 @@ describe("trunk certification (Dynamic Workers)", () => {
       () => repairs(c.id),
       (list) => list[0]?.status === "withdrawn",
     );
-    expect(after[0]).toMatchObject({ status: "withdrawn", withdrawnReason: `satisfied: trunk ${sha3.slice(0, 7)} passes 2 of 2 tests` });
+    expect(after[0]).toMatchObject({ status: "withdrawn", withdrawnReason: `satisfied: every test it was declared for passes on trunk ${sha3.slice(0, 7)} (2/2 tests)` });
 
     // Only green moves the certified branch.
     const moved = await eventually(
@@ -109,7 +111,8 @@ describe("trunk certification (Dynamic Workers)", () => {
 
   it("certifies only the newest trunk when landings come faster than runs, one run at a time", async () => {
     const c = await newColony();
-    await api("POST", `/colonies/${c.id}/certify/policy`, { minIntervalMs: 300 });
+    // Runs at least 1.5 s apart, so the six landings below come faster than runs even on a busy machine.
+    await api("POST", `/colonies/${c.id}/certify/policy`, { minIntervalMs: 1_500 });
     const shas: string[] = [];
     shas.push(await externalLanding(c.id, { "src/math.ts": MATH_FIXED, "test/math.test.ts": MATH_TEST }));
     for (let i = 0; i < 5; i++) shas.push(await externalLanding(c.id, { "docs/guide.md": `guide ${i}\n` }));

@@ -388,6 +388,23 @@ export interface FailingTest {
   error?: string;
 }
 
+/**
+ * A test that passed on the certified commit (or that a repair intent was declared for) and did not
+ * run and pass on this one: it is todo or skipped now, no longer defined, or its file did not run
+ * (deleted, or left out by the runner). A result that lost a test is red.
+ */
+export interface LostTest {
+  file: Path;
+  /** The test's name with its suites; absent when the whole file did not run. */
+  name?: string;
+  /** What happened to it, in words ("todo now", "deleted from trunk", "did not run: imports the package ..."). */
+  why: string;
+  /** The commit it last ran on: the certified commit, or the red commit its repair intent was declared on. */
+  since: Sha;
+  /** The repair intent it is owed to, when no green run included it. */
+  repairIntentId?: Id;
+}
+
 /** Counts in the order `node --test` prints them. `tests` = pass + fail + cancelled + skipped + todo. */
 export interface TestCounts {
   tests: number;
@@ -408,6 +425,8 @@ export interface Certification {
   counts?: TestCounts;
   /** Failing and cancelled tests (at most 50), plus any test file that could not load. */
   failing?: FailingTest[];
+  /** Tests this result lost (at most 50; `failing` lists them too, with the reason as the error). */
+  lost?: LostTest[];
   /** Test files run, and test files left out with the reason (a package import, the size cap). */
   files?: number;
   unsupported?: Array<{ path: Path; reason: string }>;

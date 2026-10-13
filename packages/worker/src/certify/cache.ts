@@ -22,7 +22,7 @@ export function fileKeyText(path: Path, closure: readonly Path[], blobs: Readonl
 }
 
 /** A test's outcome depended on the run, not on the code (the run's budget, an unfinished file): never reuse it. */
-const RUN_DEPENDENT = /ran out of time|not finished when the file ended|did not finish loading/;
+export const RUN_DEPENDENT = /ran out of time|not finished when the file ended|did not finish loading/;
 
 /**
  * Split a run's report into per-file results. Files whose results depended on the run itself (the
