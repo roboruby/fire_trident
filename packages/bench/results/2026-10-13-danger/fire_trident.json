@@ -1,0 +1,1836 @@
+{
+  "schema": "firetrident.danger-history/v1",
+  "name": "fire_trident",
+  "rev": "555f92a249f7f66419d063142565abd7f3843e83",
+  "maxCount": null,
+  "exclude": null,
+  "command": "node --experimental-transform-types packages/bench/src/danger/history.ts --repo . --name fire_trident --rev 555f92a249f7f66419d063142565abd7f3843e83 --out packages/bench/results/2026-10-13-danger",
+  "generatedAt": "2026-10-13T18:56:11.258Z",
+  "selection": "non-merge commits from git log --no-merges (rename detection off), each against its parent; modified (M) regular files with new content, scripts (.js .jsx .mjs .cjs .ts .tsx .mts .cts), not tests (decide/signals.ts isTestPath), not matched by --exclude",
+  "checks": "decide/danger.ts scanDanger on each file with no intent (danger patterns, loosened guards, governance paths), the default policy's allowances (none), then triageDanger; texts read under the decide stage's limits (512 KiB, a NUL in the first 8 KiB, invalid UTF-8); flagged = a must-human hit or a danger signal",
+  "commits": {
+    "walked": 80,
+    "withScannedFiles": 60,
+    "flagged": 21,
+    "flaggedRate": {
+      "k": 21,
+      "n": 60,
+      "p": 0.35,
+      "lo": 0.242,
+      "hi": 0.476
+    },
+    "newest": {
+      "sha": "555f92a249f7f66419d063142565abd7f3843e83",
+      "date": "2026-10-13T10:17:30-04:00"
+    },
+    "oldest": {
+      "sha": "50f143c89b38b36568f6ae5a5e849a5b666eee2d",
+      "date": "2026-10-12T00:42:38-04:00"
+    }
+  },
+  "entries": {
+    "total": 992,
+    "modified": 510,
+    "modifiedScripts": 409,
+    "skipped": {
+      "not-modified": 482,
+      "not-script": 101,
+      "test": 83,
+      "excluded": 0,
+      "not-regular-file": 0,
+      "mode-only": 0
+    }
+  },
+  "files": {
+    "scanned": 326,
+    "distinctPaths": 110,
+    "unreadable": 0,
+    "missingBlobs": 0,
+    "flagged": 31,
+    "flaggedRate": {
+      "k": 31,
+      "n": 326,
+      "p": 0.095,
+      "lo": 0.068,
+      "hi": 0.132
+    },
+    "toPerson": 28,
+    "toPersonRate": {
+      "k": 28,
+      "n": 326,
+      "p": 0.086,
+      "lo": 0.06,
+      "hi": 0.121
+    },
+    "secondOpinionOnly": 3
+  },
+  "byClass": {
+    "capability": {
+      "files": 22,
+      "hits": 166,
+      "rate": {
+        "k": 22,
+        "n": 326,
+        "p": 0.067,
+        "lo": 0.045,
+        "hi": 0.1
+      }
+    },
+    "auth": {
+      "files": 6,
+      "hits": 11,
+      "rate": {
+        "k": 6,
+        "n": 326,
+        "p": 0.018,
+        "lo": 0.008,
+        "hi": 0.04
+      }
+    },
+    "loosened-guard": {
+      "files": 2,
+      "hits": 2,
+      "rate": {
+        "k": 2,
+        "n": 326,
+        "p": 0.006,
+        "lo": 0.002,
+        "hi": 0.022
+      }
+    },
+    "crypto": {
+      "files": 1,
+      "hits": 1,
+      "rate": {
+        "k": 1,
+        "n": 326,
+        "p": 0.003,
+        "lo": 0.001,
+        "hi": 0.017
+      }
+    },
+    "test-weakening": {
+      "files": 1,
+      "hits": 1,
+      "rate": {
+        "k": 1,
+        "n": 326,
+        "p": 0.003,
+        "lo": 0.001,
+        "hi": 0.017
+      }
+    }
+  },
+  "byPattern": {
+    "capability:process": {
+      "files": 21,
+      "hits": 165
+    },
+    "auth:unauthorized": {
+      "files": 5,
+      "hits": 5
+    },
+    "auth:authorization-header": {
+      "files": 2,
+      "hits": 2
+    },
+    "auth:bearer-scheme": {
+      "files": 2,
+      "hits": 3
+    },
+    "crypto:primitive": {
+      "files": 1,
+      "hits": 1
+    },
+    "loosened-guard:deleted-limit-check": {
+      "files": 1,
+      "hits": 1
+    },
+    "loosened-guard:removed-expiry-check": {
+      "files": 1,
+      "hits": 1
+    },
+    "capability:network": {
+      "files": 1,
+      "hits": 1
+    },
+    "test-weakening:skip-or-only": {
+      "files": 1,
+      "hits": 1
+    },
+    "auth:admin-gate": {
+      "files": 1,
+      "hits": 1
+    }
+  },
+  "topPaths": [
+    {
+      "path": "packages/worker/src/colony/ColonyDO.ts",
+      "flagged": 12
+    },
+    {
+      "path": "packages/worker/src/api/app.ts",
+      "flagged": 3
+    },
+    {
+      "path": "packages/worker/src/region/RegionDO.ts",
+      "flagged": 3
+    },
+    {
+      "path": "packages/worker/src/pool/PoolDO.ts",
+      "flagged": 2
+    },
+    {
+      "path": "packages/worker/src/trunk/TrunkDO.ts",
+      "flagged": 2
+    },
+    {
+      "path": "packages/web/src/App.tsx",
+      "flagged": 1
+    },
+    {
+      "path": "packages/worker/src/agents/gitfs.ts",
+      "flagged": 1
+    },
+    {
+      "path": "packages/worker/src/api/vaccinate.ts",
+      "flagged": 1
+    },
+    {
+      "path": "packages/worker/src/certify/certifier.ts",
+      "flagged": 1
+    },
+    {
+      "path": "packages/worker/src/colony/direction.ts",
+      "flagged": 1
+    },
+    {
+      "path": "packages/worker/src/decide/danger.ts",
+      "flagged": 1
+    },
+    {
+      "path": "packages/worker/src/decide/store.ts",
+      "flagged": 1
+    },
+    {
+      "path": "packages/worker/src/index.ts",
+      "flagged": 1
+    },
+    {
+      "path": "packages/worker/src/pool/slots.ts",
+      "flagged": 1
+    }
+  ],
+  "flagged": [
+    {
+      "commit": "9887501e0568df16e9eac22db5a88a19e762704d",
+      "date": "2026-10-13T09:31:20-04:00",
+      "path": "packages/worker/src/decide/danger.ts",
+      "tier": "person",
+      "classes": [
+        "auth",
+        "crypto"
+      ],
+      "hits": [
+        {
+          "cls": "auth",
+          "pattern": "auth:unauthorized",
+          "path": "packages/worker/src/decide/danger.ts",
+          "line": 547,
+          "excerpt": "if (AUTH_DENIAL.test(t) && DENIAL_CONTEXT.test(t)) return { status: /\\b401\\b|unauthori[sz]ed/i.test(t) ? \"401\" : \"403\", thrown };"
+        },
+        {
+          "cls": "crypto",
+          "pattern": "crypto:primitive",
+          "path": "packages/worker/src/decide/danger.ts",
+          "line": 509,
+          "excerpt": "const CONSTANT_TIME = /\\b(?:timingSafeEqual|timingSafeCompare|constantTimeEqual|constantTimeCompare|safeCompare|secureCompare|safeEqual)\\s*…"
+        }
+      ]
+    },
+    {
+      "commit": "3a6ed0322a7cac8b1c9b8344fe6d0d26ffb5292d",
+      "date": "2026-10-13T09:02:37-04:00",
+      "path": "packages/worker/src/colony/ColonyDO.ts",
+      "tier": "second-opinion",
+      "classes": [
+        "loosened-guard"
+      ],
+      "hits": [
+        {
+          "cls": "loosened-guard",
+          "pattern": "loosened-guard:deleted-limit-check",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 2865,
+          "excerpt": "removed: if (shared instanceof CallLimiter)"
+        }
+      ]
+    },
+    {
+      "commit": "e8012ba62e21067d30a482683637010b9f85923d",
+      "date": "2026-10-13T09:00:57-04:00",
+      "path": "packages/worker/src/colony/ColonyDO.ts",
+      "tier": "person",
+      "classes": [
+        "capability"
+      ],
+      "hits": [
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 2162,
+          "excerpt": "this.sql.exec(\"UPDATE intents SET contest = ? WHERE id = ?\", seats, intent.id);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 2230,
+          "excerpt": "if (this.sql.exec(\"SELECT 1 FROM proposals WHERE agent_id = ? AND intent_id = ? AND status IN ('pending', 'checking', 'ready', 'escalated')…"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 2317,
+          "excerpt": "const won = this.sql.exec(\"UPDATE intents SET status = 'claimed', assigned_to = ?, updated_at = ? WHERE id = ? AND status = 'open' RETURNIN…"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 2322,
+          "excerpt": "this.sql.exec(\"UPDATE agents SET intent_id = ?, workspace = NULL WHERE id = ?\", intentId, agentId);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 2359,
+          "excerpt": "this.sql.exec(\"UPDATE contest_seats SET state = 'out', at = ? WHERE intent_id = ? AND agent_id = ?\", now, intentId, agentId);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 2363,
+          "excerpt": "if (other) this.sql.exec(\"UPDATE intents SET assigned_to = ?, updated_at = ? WHERE id = ?\", other, now, intentId);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 2365,
+          "excerpt": "this.sql.exec(\"UPDATE intents SET status = 'open', assigned_to = NULL, updated_at = ? WHERE id = ?\", now, intentId);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 2370,
+          "excerpt": "this.sql.exec(\"UPDATE agents SET intent_id = NULL, workspace = NULL WHERE id = ? AND intent_id = ?\", agentId, intentId);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 2376,
+          "excerpt": "this.sql.exec(\"UPDATE agents SET state = 'working', intent_id = ?, workspace = ?, last_seen = ? WHERE id = ?\", intentId, JSON.stringify(lea…"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 2443,
+          "excerpt": "this.sql.exec(\"UPDATE agents SET state = 'idle', intent_id = NULL, workspace = NULL WHERE id = ?\", agent.id);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 2448,
+          "excerpt": "this.sql.exec(\"UPDATE contest_seats SET state = 'out', at = ? WHERE intent_id = ? AND state = 'seated'\", now, row.id);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 2463,
+          "excerpt": "this.sql.exec(\"INSERT INTO intent_acks (intent_id, agent_id, revision, at) VALUES (?, ?, ?, ?) ON CONFLICT(intent_id, agent_id) DO NOTHING\"…"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 2477,
+          "excerpt": "this.sql.exec(\"UPDATE contest_seats SET state = 'out', at = ? WHERE intent_id = ? AND agent_id = ?\", now, id, agent.id);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 2497,
+          "excerpt": "this.sql.exec(\"INSERT OR REPLACE INTO contest_entries (proposal_id, intent_id, agent_id, at) VALUES (?, ?, ?, ?)\", p.id, p.intentId, p.agen…"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 2513,
+          "excerpt": "if (this.sql.exec(\"SELECT 1 FROM contests WHERE state = 'open' LIMIT 1\").toArray().length === 0) return;"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 2568,
+          "excerpt": "else this.sql.exec(\"DELETE FROM contest_entries WHERE proposal_id = ?\", e.proposal_id);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 2574,
+          "excerpt": "this.sql.exec(\"UPDATE contests SET state = 'open', opened_at = ?, deadline = ?, winner = NULL, reason = NULL, alternatives = NULL, decided_…"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 2580,
+          "excerpt": "this.sql.exec(\"DELETE FROM contests WHERE intent_id = ? AND state = 'open'\", intentId);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 2684,
+          "excerpt": "this.sql.exec(\"UPDATE intents SET status = 'proposed', assigned_to = ?, updated_at = ? WHERE id = ?\", winner.agentId, now, intentId);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 2705,
+          "excerpt": "this.sql.exec(\"UPDATE contest_seats SET state = 'out', at = ? WHERE intent_id = ? AND agent_id != ? AND state = 'seated'\", now, intentId, w…"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 2706,
+          "excerpt": "this.sql.exec(\"DELETE FROM contest_entries WHERE intent_id = ?\", intentId);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 2734,
+          "excerpt": "this.sql.exec(\"DELETE FROM contest_entries WHERE intent_id = ?\", intentId);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 2756,
+          "excerpt": "this.sql.exec(\"UPDATE agents SET state = 'idle', intent_id = NULL, workspace = NULL WHERE id = ?\", agent.id);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 2767,
+          "excerpt": "this.sql.exec(\"UPDATE agents SET state = 'idle', intent_id = NULL, workspace = NULL WHERE id = ?\", agent.id);"
+        }
+      ]
+    },
+    {
+      "commit": "a5d42a9a6f93d00b2bc611d2b60d2667748b2c7c",
+      "date": "2026-10-13T08:56:07-04:00",
+      "path": "packages/worker/src/colony/ColonyDO.ts",
+      "tier": "person",
+      "classes": [
+        "capability"
+      ],
+      "hits": [
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 1290,
+          "excerpt": "this.sql.exec(\"UPDATE intents SET status = 'open', assigned_to = NULL, escalation = ?, escalation_open = 1, updated_at = ? WHERE id = ?\", J…"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 1291,
+          "excerpt": "this.sql.exec(\"INSERT OR REPLACE INTO intent_escalations (intent_id, at, agent_id, kind, report, resolved) VALUES (?, ?, ?, ?, ?, NULL)\", r…"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 1296,
+          "excerpt": "this.sql.exec(\"UPDATE agents SET state = 'idle', intent_id = NULL, workspace = NULL WHERE id = ?\", agentId);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 1355,
+          "excerpt": "this.sql.exec(\"UPDATE intents SET escalation = ?, escalation_open = 0, updated_at = ? WHERE id = ?\", JSON.stringify({ ...open, resolved }),…"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 1356,
+          "excerpt": "this.sql.exec(\"UPDATE intent_escalations SET resolved = ? WHERE intent_id = ? AND resolved IS NULL\", JSON.stringify(resolved), intentId);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 3216,
+          "excerpt": "this.sql.exec(\"INSERT OR IGNORE INTO landing_paths (path, at, landing_id, intent_id) VALUES (?, ?, ?, ?)\", r.path, r.at, r.landingId, r.int…"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 3233,
+          "excerpt": "if (this.sql.exec(\"SELECT 1 AS x FROM landing_paths LIMIT 1\").toArray().length > 0) return;"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 3372,
+          "excerpt": "this.sql.exec(\"DELETE FROM directives WHERE kind = 'landing' AND at < ?\", now - NOTICE_KEEP_MS);"
+        }
+      ]
+    },
+    {
+      "commit": "a5d42a9a6f93d00b2bc611d2b60d2667748b2c7c",
+      "date": "2026-10-13T08:56:07-04:00",
+      "path": "packages/worker/src/colony/direction.ts",
+      "tier": "person",
+      "classes": [
+        "capability"
+      ],
+      "hits": [
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/direction.ts",
+          "line": 70,
+          "excerpt": "const rows = (sql.exec(`PRAGMA table_info(${table})`) as { toArray?: () => unknown[] } | null)?.toArray?.();"
+        }
+      ]
+    },
+    {
+      "commit": "cf7c20b52c2f11be1976f836b9c09c8179244050",
+      "date": "2026-10-13T07:30:12-04:00",
+      "path": "packages/worker/src/certify/certifier.ts",
+      "tier": "person",
+      "classes": [
+        "capability"
+      ],
+      "hits": [
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/certify/certifier.ts",
+          "line": 593,
+          "excerpt": "this.host.sql.exec(\"UPDATE certify_repairs SET state = 'satisfied' WHERE state NOT IN ('satisfied', 'released')\");"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/certify/certifier.ts",
+          "line": 769,
+          "excerpt": "if (old.get(path) !== data) this.host.sql.exec(\"INSERT OR REPLACE INTO certify_baseline (path, data) VALUES (?, ?)\", path, data);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/certify/certifier.ts",
+          "line": 772,
+          "excerpt": "for (const path of old.keys()) this.host.sql.exec(\"DELETE FROM certify_baseline WHERE path = ?\", path);"
+        }
+      ]
+    },
+    {
+      "commit": "c1ee436a18ac47704e2207a739206b7079ea2cc3",
+      "date": "2026-10-13T07:26:17-04:00",
+      "path": "packages/worker/src/colony/ColonyDO.ts",
+      "tier": "person",
+      "classes": [
+        "capability"
+      ],
+      "hits": [
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 3179,
+          "excerpt": "this.sql.exec(\"UPDATE intents SET status = 'open', assigned_to = NULL, updated_at = ? WHERE id = ?\", now, row.id);"
+        }
+      ]
+    },
+    {
+      "commit": "e62779717475616aa5667a7c2275638197779107",
+      "date": "2026-10-13T07:23:20-04:00",
+      "path": "packages/worker/src/decide/store.ts",
+      "tier": "person",
+      "classes": [
+        "capability"
+      ],
+      "hits": [
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/decide/store.ts",
+          "line": 128,
+          "excerpt": "if (!has) sql.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${decl}`);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/decide/store.ts",
+          "line": 358,
+          "excerpt": "this.sql.exec(\"UPDATE antibodies SET recurrences = COALESCE(recurrences, 0) + 1, last_recurrence = ? WHERE id = ?\", proposalId, id);"
+        }
+      ]
+    },
+    {
+      "commit": "2636553d552806bae379eceef9605f1bd5d58fe9",
+      "date": "2026-10-13T07:02:31-04:00",
+      "path": "packages/worker/src/colony/ColonyDO.ts",
+      "tier": "person",
+      "classes": [
+        "capability"
+      ],
+      "hits": [
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 1762,
+          "excerpt": "if (this.sql.exec(\"SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'decide_review'\").toArray().length === 0) return views;"
+        }
+      ]
+    },
+    {
+      "commit": "320dd908a88b5d0d3c265112b3def0fc0c714879",
+      "date": "2026-10-13T03:07:49-04:00",
+      "path": "packages/worker/src/colony/ColonyDO.ts",
+      "tier": "person",
+      "classes": [
+        "capability"
+      ],
+      "hits": [
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 880,
+          "excerpt": "this.sql.exec(\"INSERT OR REPLACE INTO reverts (landing_id, of, redo, restored, at) VALUES (?, ?, ?, ?, ?)\", res.landing.id, res.reverted.id…"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 891,
+          "excerpt": "this.sql.exec(\"UPDATE rules SET open_violations = MAX(0, open_violations - ?) WHERE id = ?\", r.violations, r.ruleId);"
+        }
+      ]
+    },
+    {
+      "commit": "0b48ae324a3e4db03be1f9967dec306605a812fd",
+      "date": "2026-10-13T02:59:59-04:00",
+      "path": "packages/worker/src/colony/ColonyDO.ts",
+      "tier": "person",
+      "classes": [
+        "capability"
+      ],
+      "hits": [
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 877,
+          "excerpt": "for (const r of restored) this.sql.exec(\"UPDATE rules SET open_violations = open_violations + ? WHERE id = ?\", r.violations, r.ruleId);"
+        }
+      ]
+    },
+    {
+      "commit": "93fdf0814f1299975244c39d85c228e3bd3a0e10",
+      "date": "2026-10-12T22:32:17-04:00",
+      "path": "packages/worker/src/colony/ColonyDO.ts",
+      "tier": "person",
+      "classes": [
+        "capability"
+      ],
+      "hits": [
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 1961,
+          "excerpt": "this.sql.exec(\"UPDATE colony SET green_sha = ?\", sha);"
+        }
+      ]
+    },
+    {
+      "commit": "93fdf0814f1299975244c39d85c228e3bd3a0e10",
+      "date": "2026-10-12T22:32:17-04:00",
+      "path": "packages/worker/src/trunk/TrunkDO.ts",
+      "tier": "person",
+      "classes": [
+        "capability"
+      ],
+      "hits": [
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/trunk/TrunkDO.ts",
+          "line": 426,
+          "excerpt": "this.sql.exec(`UPDATE ft_notes SET note = ? WHERE landing_id = ?`, text, landingId);"
+        }
+      ]
+    },
+    {
+      "commit": "e2d1db9016a9975987f5a36e187f4896ace9d376",
+      "date": "2026-10-12T20:17:31-04:00",
+      "path": "packages/worker/src/api/app.ts",
+      "tier": "person",
+      "classes": [
+        "auth"
+      ],
+      "hits": [
+        {
+          "cls": "auth",
+          "pattern": "auth:authorization-header",
+          "path": "packages/worker/src/api/app.ts",
+          "line": 86,
+          "excerpt": "const m = /^Bearer\\s+(\\S+)\\s*$/i.exec(c.req.header(\"Authorization\") ?? \"\");"
+        },
+        {
+          "cls": "auth",
+          "pattern": "auth:bearer-scheme",
+          "path": "packages/worker/src/api/app.ts",
+          "line": 86,
+          "excerpt": "const m = /^Bearer\\s+(\\S+)\\s*$/i.exec(c.req.header(\"Authorization\") ?? \"\");"
+        }
+      ]
+    },
+    {
+      "commit": "29902e189ffdda200fd4419036de6c44a3c21cf6",
+      "date": "2026-10-12T19:54:29-04:00",
+      "path": "packages/worker/src/api/app.ts",
+      "tier": "person",
+      "classes": [
+        "auth"
+      ],
+      "hits": [
+        {
+          "cls": "auth",
+          "pattern": "auth:unauthorized",
+          "path": "packages/worker/src/api/app.ts",
+          "line": 77,
+          "excerpt": "return json({ error: \"forbidden: writes need FT_ADMIN_TOKEN configured on the server\" }, 403);"
+        }
+      ]
+    },
+    {
+      "commit": "29902e189ffdda200fd4419036de6c44a3c21cf6",
+      "date": "2026-10-12T19:54:29-04:00",
+      "path": "packages/worker/src/api/vaccinate.ts",
+      "tier": "person",
+      "classes": [
+        "auth"
+      ],
+      "hits": [
+        {
+          "cls": "auth",
+          "pattern": "auth:unauthorized",
+          "path": "packages/worker/src/api/vaccinate.ts",
+          "line": 41,
+          "excerpt": "return json({ error: \"forbidden: writes need FT_ADMIN_TOKEN configured on the server\" }, 403);"
+        }
+      ]
+    },
+    {
+      "commit": "29902e189ffdda200fd4419036de6c44a3c21cf6",
+      "date": "2026-10-12T19:54:29-04:00",
+      "path": "packages/worker/src/colony/ColonyDO.ts",
+      "tier": "person",
+      "classes": [
+        "capability"
+      ],
+      "hits": [
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 1938,
+          "excerpt": "this.sql.exec(\"DELETE FROM events WHERE seq <= (SELECT MAX(seq) FROM events) - ?\", RECORD_KEEP);"
+        }
+      ]
+    },
+    {
+      "commit": "29902e189ffdda200fd4419036de6c44a3c21cf6",
+      "date": "2026-10-12T19:54:29-04:00",
+      "path": "packages/worker/src/pool/slots.ts",
+      "tier": "person",
+      "classes": [
+        "capability"
+      ],
+      "hits": [
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/pool/slots.ts",
+          "line": 213,
+          "excerpt": "this.sql.exec(`UPDATE ft_pool_ws SET state = 'failed', error = ? WHERE n = ? AND state = 'ready'`, `workspace vanished: ${message}`, row.n);"
+        }
+      ]
+    },
+    {
+      "commit": "24b8e8d7a49ad8a81e871b6eba806fe135e6e382",
+      "date": "2026-10-12T08:13:15-04:00",
+      "path": "packages/worker/src/colony/ColonyDO.ts",
+      "tier": "person",
+      "classes": [
+        "capability"
+      ],
+      "hits": [
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 717,
+          "excerpt": "this.sql.exec(\"INSERT INTO intent_acks (intent_id, agent_id, revision, at) VALUES (?, ?, ?, ?) ON CONFLICT(intent_id, agent_id) DO NOTHING\"…"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 767,
+          "excerpt": "this.sql.exec(\"UPDATE rules SET retracted_at = ?, retracted_by = ?, retract_reason = ?, open_violations = 0 WHERE id = ?\", now, by, reason,…"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 839,
+          "excerpt": "this.sql.exec(\"UPDATE agents SET note = ?, note_at = ?, last_seen = ? WHERE id = ?\", text, now, now, agentId);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 889,
+          "excerpt": "this.sql.exec(\"UPDATE intents SET status = 'withdrawn', withdrawn_reason = ?, assigned_to = NULL, updated_at = ? WHERE id = ?\", reason, now…"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 905,
+          "excerpt": "this.sql.exec(\"UPDATE agents SET state = 'idle', intent_id = NULL, workspace = NULL WHERE id = ?\", agent.id);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 924,
+          "excerpt": "this.sql.exec(\"UPDATE agents SET state = 'idle', intent_id = NULL, workspace = NULL WHERE id = ?\", agent.id);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 931,
+          "excerpt": "this.sql.exec(\"UPDATE intents SET status = 'claimed', updated_at = ? WHERE id = ? AND status = 'proposed'\", now, intent.id);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 935,
+          "excerpt": "this.sql.exec(\"UPDATE agents SET state = 'working' WHERE id = ?\", agent.id);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 1061,
+          "excerpt": "this.sql.exec(\"UPDATE directives SET delivered_at = ?, via = 'push' WHERE id = ? AND delivered_at IS NULL\", Date.now(), d.id);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 1207,
+          "excerpt": "this.sql.exec(\"UPDATE agents SET last_seen = ?, state = CASE WHEN state = 'dead' THEN 'idle' ELSE state END WHERE id = ?\", now, agentId);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 1503,
+          "excerpt": "this.sql.exec(\"UPDATE directives SET delivered_at = ?, via = 'inbox' WHERE id = ? AND delivered_at IS NULL\", now, r.id);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 2533,
+          "excerpt": "this.sql.exec(\"INSERT OR REPLACE INTO outcome_watch (proposal_id, agent_id, at) VALUES (?, ?, ?)\", proposalId, agentId, Date.now());"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 2549,
+          "excerpt": "if (final.length > 0) this.sql.exec(\"DELETE FROM outcome_watch WHERE proposal_id IN (SELECT value FROM json_each(?))\", JSON.stringify(final…"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 3050,
+          "excerpt": "this.sql.exec(\"INSERT INTO metrics (name, value, at) VALUES (?, ?, ?) ON CONFLICT(name) DO UPDATE SET value = excluded.value, at = excluded…"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 3052,
+          "excerpt": "this.sql.exec(\"INSERT INTO metrics (name, value, at) VALUES (?, ?, ?) ON CONFLICT(name) DO UPDATE SET value = value + excluded.value, at = …"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 3068,
+          "excerpt": "this.sql.exec(\"INSERT OR IGNORE INTO series (name, minute, value) SELECT name, ?, value FROM series WHERE name = ? AND minute < ? ORDER BY …"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 3070,
+          "excerpt": "this.sql.exec(\"DELETE FROM series WHERE minute < ?\", cutoff);"
+        }
+      ]
+    },
+    {
+      "commit": "24b8e8d7a49ad8a81e871b6eba806fe135e6e382",
+      "date": "2026-10-12T08:13:15-04:00",
+      "path": "packages/worker/src/region/RegionDO.ts",
+      "tier": "second-opinion",
+      "classes": [
+        "loosened-guard"
+      ],
+      "hits": [
+        {
+          "cls": "loosened-guard",
+          "pattern": "loosened-guard:removed-expiry-check",
+          "path": "packages/worker/src/region/RegionDO.ts",
+          "line": 714,
+          "excerpt": "if (!isExpired(toMark(r), now)) -> if (markValue(toMark(r), now) >= bar)"
+        }
+      ]
+    },
+    {
+      "commit": "09d17c900c050eb7fe156211a7a3983998b6407d",
+      "date": "2026-10-12T05:05:55-04:00",
+      "path": "packages/worker/src/region/RegionDO.ts",
+      "tier": "person",
+      "classes": [
+        "capability"
+      ],
+      "hits": [
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/region/RegionDO.ts",
+          "line": 649,
+          "excerpt": "this.sql.exec(\"DELETE FROM landed_paths WHERE at < ?\", now - PATH_LANDING_KEEP_MS);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/region/RegionDO.ts",
+          "line": 650,
+          "excerpt": "this.sql.exec(\"DELETE FROM pending_causes WHERE at < ?\", now - SIGMA_KEEP_MS);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/region/RegionDO.ts",
+          "line": 957,
+          "excerpt": "this.sql.exec(\"INSERT OR IGNORE INTO causes (id, cause_id, at) VALUES (?, NULL, ?)\", id, at);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/region/RegionDO.ts",
+          "line": 1041,
+          "excerpt": "this.sql.exec(\"UPDATE causes SET cause_id = ? WHERE id = ? AND cause_id IS NULL\", cause, r.id);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/region/RegionDO.ts",
+          "line": 1042,
+          "excerpt": "this.sql.exec(\"DELETE FROM pending_causes WHERE id = ?\", r.id);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/region/RegionDO.ts",
+          "line": 1044,
+          "excerpt": "this.sql.exec(\"DELETE FROM pending_causes WHERE id = ?\", r.id);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/region/RegionDO.ts",
+          "line": 1046,
+          "excerpt": "this.sql.exec(\"UPDATE pending_causes SET attempts = attempts + 1 WHERE id = ?\", r.id);"
+        }
+      ]
+    },
+    {
+      "commit": "15238ddf8998ab26ec9aba00007db650fd2f70a8",
+      "date": "2026-10-12T03:21:38-04:00",
+      "path": "packages/worker/src/agents/gitfs.ts",
+      "tier": "person",
+      "classes": [
+        "capability"
+      ],
+      "hits": [
+        {
+          "cls": "capability",
+          "pattern": "capability:network",
+          "path": "packages/worker/src/agents/gitfs.ts",
+          "line": 111,
+          "excerpt": "const res = await fetch(req.url, {"
+        }
+      ]
+    },
+    {
+      "commit": "15238ddf8998ab26ec9aba00007db650fd2f70a8",
+      "date": "2026-10-12T03:21:38-04:00",
+      "path": "packages/worker/src/pool/PoolDO.ts",
+      "tier": "person",
+      "classes": [
+        "capability"
+      ],
+      "hits": [
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/pool/PoolDO.ts",
+          "line": 92,
+          "excerpt": "this.sql.exec(`ALTER TABLE ft_pool_ws ADD COLUMN last_agent TEXT`);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/pool/PoolDO.ts",
+          "line": 188,
+          "excerpt": "this.sql.exec(`UPDATE ft_pool_ws SET state = 'ready', agent_id = NULL, last_agent = ?, token_id = NULL, leased_at = NULL, released_at = ? W…"
+        }
+      ]
+    },
+    {
+      "commit": "1c67f217461160128510fffe9b190f335369040a",
+      "date": "2026-10-12T02:58:11-04:00",
+      "path": "packages/web/src/App.tsx",
+      "tier": "second-opinion",
+      "classes": [
+        "test-weakening"
+      ],
+      "hits": [
+        {
+          "cls": "test-weakening",
+          "pattern": "test-weakening:skip-or-only",
+          "path": "packages/web/src/App.tsx",
+          "line": 84,
+          "excerpt": "fit();"
+        }
+      ]
+    },
+    {
+      "commit": "d235cf4822befc425fcdb9790a1a8b92952a7fcf",
+      "date": "2026-10-12T02:40:54-04:00",
+      "path": "packages/worker/src/api/app.ts",
+      "tier": "person",
+      "classes": [
+        "auth"
+      ],
+      "hits": [
+        {
+          "cls": "auth",
+          "pattern": "auth:unauthorized",
+          "path": "packages/worker/src/api/app.ts",
+          "line": 64,
+          "excerpt": "if (!c.env.FT_ADMIN_TOKEN) return json({ error: \"forbidden: this route needs FT_ADMIN_TOKEN configured on the server\" }, 403);"
+        },
+        {
+          "cls": "auth",
+          "pattern": "auth:admin-gate",
+          "path": "packages/worker/src/api/app.ts",
+          "line": 65,
+          "excerpt": "return requireAdmin(c, next);"
+        }
+      ]
+    },
+    {
+      "commit": "d235cf4822befc425fcdb9790a1a8b92952a7fcf",
+      "date": "2026-10-12T02:40:54-04:00",
+      "path": "packages/worker/src/colony/ColonyDO.ts",
+      "tier": "person",
+      "classes": [
+        "capability"
+      ],
+      "hits": [
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 783,
+          "excerpt": "this.sql.exec(\"UPDATE intents SET status = 'proposed', updated_at = ? WHERE id = ? AND status = 'claimed'\", now, fresh.id);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 1064,
+          "excerpt": "this.sql.exec(\"UPDATE agents SET last_seen = ?, state = 'idle' WHERE id = ?\", Date.now(), known);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 1103,
+          "excerpt": "this.sql.exec(\"UPDATE intents SET status = 'abandoned', updated_at = ? WHERE id = ?\", now, intent.id);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 1113,
+          "excerpt": "this.sql.exec(\"UPDATE colony SET trunk_sha = ?, last_landing_at = ?\", l.trunkSha, l.at);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 1247,
+          "excerpt": "this.sql.exec(\"UPDATE intents SET status = 'open', assigned_to = NULL, updated_at = ? WHERE id = ?\", now, h.id);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 1253,
+          "excerpt": "this.sql.exec(\"UPDATE agents SET state = 'dead' WHERE id = ?\", id);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 1255,
+          "excerpt": "this.sql.exec(\"UPDATE agents SET state = 'dead', intent_id = NULL, workspace = NULL WHERE id = ?\", id);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 1324,
+          "excerpt": "return this.sql.exec(\"DELETE FROM registry WHERE id = ? RETURNING id\", id).toArray().length > 0;"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 1336,
+          "excerpt": "if (value !== undefined) this.sql.exec(\"INSERT INTO registry_meta (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v\", key, v…"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 1430,
+          "excerpt": "this.sql.exec(\"INSERT OR IGNORE INTO series (name, minute, value) SELECT name, ?, value FROM series WHERE name = ? AND minute < ? ORDER BY …"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 1432,
+          "excerpt": "this.sql.exec(\"DELETE FROM series WHERE minute < ?\", cutoff);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 1437,
+          "excerpt": "if (this.sql.exec(\"SELECT 1 AS x FROM series LIMIT 1\").toArray().length > 0) return;"
+        }
+      ]
+    },
+    {
+      "commit": "652597b880b9bff15d18df10353d1057da82b309",
+      "date": "2026-10-12T01:56:36-04:00",
+      "path": "packages/worker/src/index.ts",
+      "tier": "person",
+      "classes": [
+        "auth"
+      ],
+      "hits": [
+        {
+          "cls": "auth",
+          "pattern": "auth:authorization-header",
+          "path": "packages/worker/src/index.ts",
+          "line": 26,
+          "excerpt": "const header = req.headers.get(\"authorization\") ?? \"\";"
+        },
+        {
+          "cls": "auth",
+          "pattern": "auth:bearer-scheme",
+          "path": "packages/worker/src/index.ts",
+          "line": 27,
+          "excerpt": "const bearer <redacted> header.startsWith(\"Bearer \") ? header.slice(7) : \"\";"
+        },
+        {
+          "cls": "auth",
+          "pattern": "auth:bearer-scheme",
+          "path": "packages/worker/src/index.ts",
+          "line": 29,
+          "excerpt": "return bearer <redacted> expected || query === expected;"
+        },
+        {
+          "cls": "auth",
+          "pattern": "auth:unauthorized",
+          "path": "packages/worker/src/index.ts",
+          "line": 35,
+          "excerpt": ": new Response(JSON.stringify({ error: \"unauthorized: send the FireTrident MCP token\" }), { status: 401, headers: { \"content-type\": \"applic…"
+        }
+      ]
+    },
+    {
+      "commit": "b64dcc1ed46a7ec863383fb3f14892b453cf909b",
+      "date": "2026-10-12T01:50:28-04:00",
+      "path": "packages/worker/src/pool/PoolDO.ts",
+      "tier": "person",
+      "classes": [
+        "capability"
+      ],
+      "hits": [
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/pool/PoolDO.ts",
+          "line": 84,
+          "excerpt": "this.sql.exec(`CREATE TABLE IF NOT EXISTS ft_pool_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)`);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/pool/PoolDO.ts",
+          "line": 88,
+          "excerpt": "this.sql.exec(`CREATE INDEX IF NOT EXISTS ft_pool_ws_state ON ft_pool_ws (state)`);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/pool/PoolDO.ts",
+          "line": 89,
+          "excerpt": "this.sql.exec(`CREATE INDEX IF NOT EXISTS ft_pool_ws_agent ON ft_pool_ws (agent_id)`);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/pool/PoolDO.ts",
+          "line": 90,
+          "excerpt": "this.sql.exec(`CREATE TABLE IF NOT EXISTS ft_pool_seeds (shard INTEGER PRIMARY KEY, name TEXT NOT NULL, remote TEXT NOT NULL, sha TEXT, pus…"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/pool/PoolDO.ts",
+          "line": 106,
+          "excerpt": "this.sql.exec(`DELETE FROM ft_pool_ws`);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/pool/PoolDO.ts",
+          "line": 107,
+          "excerpt": "this.sql.exec(`DELETE FROM ft_pool_seeds`);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/pool/PoolDO.ts",
+          "line": 132,
+          "excerpt": "this.sql.exec(`UPDATE ft_pool_ws SET state = 'leased', agent_id = ?, leased_at = ? WHERE n = ?`, agentId, now, row.n);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/pool/PoolDO.ts",
+          "line": 150,
+          "excerpt": "this.sql.exec(`UPDATE ft_pool_ws SET state = 'failed', agent_id = NULL, error = ? WHERE n = ?`, `workspace vanished: ${errorText(e)}`, row.…"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/pool/PoolDO.ts",
+          "line": 153,
+          "excerpt": "this.sql.exec(`UPDATE ft_pool_ws SET state = 'ready', agent_id = NULL, leased_at = NULL WHERE n = ? AND agent_id = ?`, row.n, agentId);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/pool/PoolDO.ts",
+          "line": 156,
+          "excerpt": "this.sql.exec(`UPDATE ft_pool_ws SET token_id = ? WHERE n = ?`, ws.id, row.n);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/pool/PoolDO.ts",
+          "line": 175,
+          "excerpt": "this.sql.exec(`UPDATE ft_pool_ws SET state = 'ready', agent_id = NULL, token_id = NULL, leased_at = NULL, released_at = ? WHERE n = ?`, now…"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/pool/PoolDO.ts",
+          "line": 229,
+          "excerpt": "this.sql.exec(`DELETE FROM ft_pool_ws`);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/pool/PoolDO.ts",
+          "line": 230,
+          "excerpt": "this.sql.exec(`DELETE FROM ft_pool_seeds`);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/pool/PoolDO.ts",
+          "line": 267,
+          "excerpt": "for (const r of rows) this.sql.exec(`UPDATE ft_pool_ws SET state = 'forking' WHERE n = ?`, r.n);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/pool/PoolDO.ts",
+          "line": 292,
+          "excerpt": "this.sql.exec(`INSERT INTO ft_pool_ws (n, shard, name, state, agent_id, created_at) VALUES (?, ?, ?, 'forking', ?, ?)`, n, shard, name, age…"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/pool/PoolDO.ts",
+          "line": 304,
+          "excerpt": "this.sql.exec(`UPDATE ft_pool_ws SET agent_id = NULL WHERE n = ?`, row.n);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/pool/PoolDO.ts",
+          "line": 314,
+          "excerpt": "this.sql.exec(`UPDATE ft_pool_ws SET state = 'failed', attempts = attempts + 1, error = ? WHERE n = ?`, `no seed in shard ${row.shard}`, ro…"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/pool/PoolDO.ts",
+          "line": 333,
+          "excerpt": "this.sql.exec(`UPDATE ft_pool_ws SET state = 'failed', attempts = attempts + 1, error = ? WHERE n = ?`, errorText(e), row.n);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/pool/PoolDO.ts",
+          "line": 380,
+          "excerpt": "this.sql.exec(`INSERT OR REPLACE INTO ft_pool_seeds (shard, name, remote, sha, pushed_at) VALUES (?, ?, ?, NULL, NULL)`, shard, name, remot…"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/pool/PoolDO.ts",
+          "line": 385,
+          "excerpt": "this.sql.exec(`UPDATE ft_pool_seeds SET sha = ?, pushed_at = ? WHERE shard = ?`, fetched, Date.now(), shard);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/pool/PoolDO.ts",
+          "line": 473,
+          "excerpt": "this.sql.exec(`INSERT OR REPLACE INTO ft_pool_meta (key, value) VALUES (?, ?)`, key, value);"
+        }
+      ]
+    },
+    {
+      "commit": "b64dcc1ed46a7ec863383fb3f14892b453cf909b",
+      "date": "2026-10-12T01:50:28-04:00",
+      "path": "packages/worker/src/trunk/TrunkDO.ts",
+      "tier": "person",
+      "classes": [
+        "capability"
+      ],
+      "hits": [
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/trunk/TrunkDO.ts",
+          "line": 112,
+          "excerpt": "this.sql.exec(`CREATE TABLE IF NOT EXISTS ft_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)`);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/trunk/TrunkDO.ts",
+          "line": 113,
+          "excerpt": "this.sql.exec(`CREATE TABLE IF NOT EXISTS ft_files (path TEXT PRIMARY KEY, blob TEXT NOT NULL, size INTEGER NOT NULL, mode TEXT NOT NULL)`);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/trunk/TrunkDO.ts",
+          "line": 120,
+          "excerpt": "this.sql.exec(`CREATE TABLE IF NOT EXISTS ft_notes (landing_id TEXT PRIMARY KEY, commit_sha TEXT NOT NULL, note TEXT NOT NULL)`);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/trunk/TrunkDO.ts",
+          "line": 121,
+          "excerpt": "this.sql.exec(`CREATE TABLE IF NOT EXISTS ft_landed (proposal_id TEXT PRIMARY KEY, landing_id TEXT NOT NULL)`);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/trunk/TrunkDO.ts",
+          "line": 320,
+          "excerpt": "this.sql.exec(`DELETE FROM ft_files`);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/trunk/TrunkDO.ts",
+          "line": 321,
+          "excerpt": "for (const r of rows) this.sql.exec(`INSERT INTO ft_files (path, blob, size, mode) VALUES (?, ?, ?, ?)`, r.path, r.blob, r.size, r.mode);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/trunk/TrunkDO.ts",
+          "line": 356,
+          "excerpt": "if (r.blob === null) this.sql.exec(`DELETE FROM ft_files WHERE path = ?`, r.path);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/trunk/TrunkDO.ts",
+          "line": 357,
+          "excerpt": "else this.sql.exec(`INSERT OR REPLACE INTO ft_files (path, blob, size, mode) VALUES (?, ?, ?, ?)`, r.path, r.blob, r.size, r.mode);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/trunk/TrunkDO.ts",
+          "line": 461,
+          "excerpt": "const child = this.sql.exec(`SELECT 1 AS x FROM ft_files WHERE path > ? AND path < ? LIMIT 1`, `${w.path}/`, `${w.path}0`).toArray();"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/trunk/TrunkDO.ts",
+          "line": 581,
+          "excerpt": "if (c.blob === null) this.sql.exec(`DELETE FROM ft_files WHERE path = ?`, path);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/trunk/TrunkDO.ts",
+          "line": 582,
+          "excerpt": "else this.sql.exec(`INSERT OR REPLACE INTO ft_files (path, blob, size, mode) VALUES (?, ?, ?, ?)`, path, c.blob, c.size, c.mode);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/trunk/TrunkDO.ts",
+          "line": 604,
+          "excerpt": "this.sql.exec(`INSERT OR REPLACE INTO ft_notes (landing_id, commit_sha, note) VALUES (?, ?, ?)`, landing.id, landing.trunkSha, note);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/trunk/TrunkDO.ts",
+          "line": 605,
+          "excerpt": "for (const pid of landing.proposalIds) this.sql.exec(`INSERT OR REPLACE INTO ft_landed (proposal_id, landing_id) VALUES (?, ?)`, pid, landi…"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/trunk/TrunkDO.ts",
+          "line": 607,
+          "excerpt": "this.sql.exec(`UPDATE ft_journal SET state = 'pending_note', updated_at = ? WHERE landing_id = ?`, Date.now(), landing.id);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/trunk/TrunkDO.ts",
+          "line": 629,
+          "excerpt": "this.sql.exec(`DELETE FROM ft_journal WHERE landing_id = ?`, landingId);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/trunk/TrunkDO.ts",
+          "line": 664,
+          "excerpt": "for (const row of pending) this.sql.exec(`DELETE FROM ft_journal WHERE landing_id = ? AND state = 'pending_note'`, row.landing_id);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/trunk/TrunkDO.ts",
+          "line": 891,
+          "excerpt": "this.sql.exec(`INSERT OR REPLACE INTO ft_meta (key, value) VALUES (?, ?)`, key, value);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/trunk/TrunkDO.ts",
+          "line": 897,
+          "excerpt": "for (const t of [\"ft_files\", \"ft_landings\", \"ft_landing_paths\", \"ft_notes\", \"ft_landed\", \"ft_journal\", \"ft_meta\"]) this.sql.exec(`DELETE FR…"
+        }
+      ]
+    },
+    {
+      "commit": "6b2447ebee882f5fa3200cbc774612bb214833f5",
+      "date": "2026-10-12T01:29:40-04:00",
+      "path": "packages/worker/src/colony/ColonyDO.ts",
+      "tier": "person",
+      "classes": [
+        "capability"
+      ],
+      "hits": [
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 504,
+          "excerpt": "this.sql.exec(\"UPDATE agents SET last_seen = ?, state = CASE WHEN state = 'dead' THEN 'idle' ELSE state END WHERE id = ?\", now, agentId);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 591,
+          "excerpt": "this.sql.exec(\"UPDATE agents SET last_seen = ? WHERE id = ?\", now, agentId);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 614,
+          "excerpt": "this.sql.exec(\"UPDATE intents SET status = 'open', assigned_to = NULL, updated_at = ? WHERE id = ?\", now, row.id);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 618,
+          "excerpt": "this.sql.exec(\"UPDATE agents SET state = 'idle', intent_id = NULL, workspace = NULL WHERE id = ?\", agentId);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 765,
+          "excerpt": ".exec(\"INSERT OR IGNORE INTO landings (id, at, received_at, trunk_sha, data) VALUES (?, ?, ?, ?, ?) RETURNING id\", l.id, l.at ?? now, now, …"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 770,
+          "excerpt": "this.sql.exec(\"UPDATE colony SET trunk_sha = ?, last_landing_at = ?\", l.trunkSha, l.at ?? now);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 894,
+          "excerpt": ".exec(\"UPDATE intents SET status = 'claimed', assigned_to = ?, updated_at = ? WHERE id = ? AND status = 'open' RETURNING id\", agentId, Date…"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 897,
+          "excerpt": "this.sql.exec(\"UPDATE agents SET intent_id = ?, workspace = NULL WHERE id = ?\", intentId, agentId);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 921,
+          "excerpt": "this.sql.exec(\"UPDATE intents SET status = 'open', assigned_to = NULL, updated_at = ? WHERE id = ?\", now, intent.id);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 925,
+          "excerpt": "this.sql.exec(\"UPDATE agents SET intent_id = NULL, workspace = NULL WHERE id = ? AND intent_id = ?\", agentId, intent.id);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 931,
+          "excerpt": "this.sql.exec(\"UPDATE agents SET state = 'working', intent_id = ?, workspace = ?, last_seen = ? WHERE id = ?\", intent.id, JSON.stringify(le…"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 1073,
+          "excerpt": "this.sql.exec(\"UPDATE intents SET status = 'open', assigned_to = NULL, updated_at = ? WHERE id = ?\", now, h.id);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 1077,
+          "excerpt": "this.sql.exec(\"UPDATE agents SET state = 'dead', intent_id = NULL, workspace = NULL WHERE id = ?\", a.id);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 1113,
+          "excerpt": "this.sql.exec(\"UPDATE intents SET status = 'proposed', assigned_to = ?, updated_at = ? WHERE id = ?\", p.agentId, now, intent.id);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 1119,
+          "excerpt": "this.sql.exec(\"UPDATE agents SET state = 'proposing', intent_id = ? WHERE id = ?\", p.intentId, agent.id);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 1130,
+          "excerpt": "this.sql.exec(\"UPDATE intents SET status = 'open', assigned_to = NULL, updated_at = ? WHERE id = ?\", now, intent.id);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 1137,
+          "excerpt": "this.sql.exec(\"UPDATE agents SET state = 'idle', intent_id = NULL, workspace = NULL WHERE id = ?\", agent.id);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 1151,
+          "excerpt": "this.sql.exec(\"UPDATE agents SET thresholds = ?, state = 'idle', intent_id = NULL, workspace = NULL WHERE id = ?\", thresholds, agent.id);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 1155,
+          "excerpt": "this.sql.exec(\"UPDATE agents SET thresholds = ? WHERE id = ?\", thresholds, agent.id);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 1171,
+          "excerpt": "this.sql.exec(\"UPDATE intents SET status = 'landed', updated_at = ? WHERE id = ?\", now, intentId);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 1177,
+          "excerpt": "this.sql.exec(\"UPDATE rules SET open_violations = MAX(0, open_violations - ?) WHERE id = ?\", row.violations, row.rule_id);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 1245,
+          "excerpt": "this.sql.exec(\"INSERT OR IGNORE INTO regions (name, created_at) VALUES (?, ?)\", region, Date.now());"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 1332,
+          "excerpt": "this.sql.exec(\"UPDATE agents SET state = 'working', intent_id = ?, last_seen = ? WHERE id = ?\", intent.id, now, assignedTo);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 1425,
+          "excerpt": "this.sql.exec(\"UPDATE proposals SET status = ?, updated_at = ?, data = ? WHERE id = ?\", p.status, now, JSON.stringify(p), p.id);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 1502,
+          "excerpt": "this.sql.exec(\"DELETE FROM landings WHERE id IN (SELECT id FROM landings ORDER BY received_at DESC LIMIT -1 OFFSET ?)\", LANDINGS_KEEP);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 1518,
+          "excerpt": "this.sql.exec(\"INSERT INTO metrics (name, value, at) VALUES (?, ?, ?) ON CONFLICT(name) DO UPDATE SET value = excluded.value, at = excluded…"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 1566,
+          "excerpt": "this.sql.exec(\"INSERT INTO funnel (layer, n) VALUES (?, 1) ON CONFLICT(layer) DO UPDATE SET n = n + 1\", d.layer);"
+        }
+      ]
+    },
+    {
+      "commit": "6b2447ebee882f5fa3200cbc774612bb214833f5",
+      "date": "2026-10-12T01:29:40-04:00",
+      "path": "packages/worker/src/region/RegionDO.ts",
+      "tier": "person",
+      "classes": [
+        "capability"
+      ],
+      "hits": [
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/region/RegionDO.ts",
+          "line": 480,
+          "excerpt": "this.sql.exec(\"INSERT OR IGNORE INTO log (id, kind, at) VALUES (?, ?, ?)\", id, kind, at);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/region/RegionDO.ts",
+          "line": 496,
+          "excerpt": "this.sql.exec(\"DELETE FROM marks WHERE mkey IN (SELECT value FROM json_each(?))\", JSON.stringify(part));"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/region/RegionDO.ts",
+          "line": 498,
+          "excerpt": "this.sql.exec(\"DELETE FROM log WHERE at < ?\", now - LOG_KEEP_MS);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/region/RegionDO.ts",
+          "line": 499,
+          "excerpt": "this.sql.exec(\"DELETE FROM causes WHERE at < ?\", now - SIGMA_KEEP_MS);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/region/RegionDO.ts",
+          "line": 500,
+          "excerpt": "this.sql.exec(\"DELETE FROM path_landing WHERE at < ?\", now - PATH_LANDING_KEEP_MS);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/region/RegionDO.ts",
+          "line": 501,
+          "excerpt": "this.sql.exec(\"DELETE FROM intent_returns WHERE at < ?\", now - LOG_KEEP_MS);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/region/RegionDO.ts",
+          "line": 564,
+          "excerpt": "n += this.sql.exec(\"DELETE FROM lane WHERE id IN (SELECT value FROM json_each(?)) RETURNING id\", JSON.stringify(part)).toArray().length;"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/region/RegionDO.ts",
+          "line": 675,
+          "excerpt": "this.sql.exec(\"UPDATE lane SET attempts = ? WHERE id = ?\", n, p.id);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/region/RegionDO.ts",
+          "line": 702,
+          "excerpt": "this.sql.exec(\"INSERT OR IGNORE INTO causes (id, cause_id, at) VALUES (?, ?, ?)\", eventId, prior?.event_id ?? null, now);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/region/RegionDO.ts",
+          "line": 739,
+          "excerpt": "this.sql.exec(\"INSERT OR IGNORE INTO causes (id, cause_id, at) VALUES (?, ?, ?)\", eventId, cause, now);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/region/RegionDO.ts",
+          "line": 756,
+          "excerpt": "this.sql.exec(\"INSERT INTO reports (id, at, attempts, data) VALUES (?, ?, 0, ?)\", `${no…`, now, JSON.stringify(r));"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/region/RegionDO.ts",
+          "line": 775,
+          "excerpt": "this.sql.exec(\"DELETE FROM reports WHERE id = ?\", row.id);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/region/RegionDO.ts",
+          "line": 778,
+          "excerpt": "this.sql.exec(\"DELETE FROM reports WHERE id = ?\", row.id);"
+        },
+        {
+          "cls": "capability",
+          "pattern": "capability:process",
+          "path": "packages/worker/src/region/RegionDO.ts",
+          "line": 780,
+          "excerpt": "this.sql.exec(\"UPDATE reports SET attempts = attempts + 1 WHERE id = ?\", row.id);"
+        }
+      ]
+    }
+  ],
+  "elapsedMs": 2938
+}

