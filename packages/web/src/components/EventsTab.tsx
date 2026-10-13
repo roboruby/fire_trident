@@ -120,7 +120,7 @@ function describe(le: LoggedEvent, store: ColonyStore): Line {
     case "certify": {
       const cert = { trunkSha: e.trunkSha, status: e.status, at: e.at, ...(e.counts ? { counts: e.counts } : {}), ...(e.failing ? { failing: e.failing } : {}), ...(e.detail ? { detail: e.detail } : {}) };
       if (e.status === "running") return { tag: "tests", color: "#ffb469", text: "running the project's tests", mono: shortSha(e.trunkSha) };
-      if (e.status === "green") return { tag: "tests", color: TESTS_GREEN, text: `✓ ${certCounts(cert)} pass${e.reusedFrom ? " (same tested files)" : ""}`, mono: shortSha(e.trunkSha), title: certTitle(cert) };
+      if (e.status === "green") return { tag: "tests", color: TESTS_GREEN, text: `✓ ${certCounts(cert, "pass")}${e.reusedFrom ? " (same tested files)" : ""}`, mono: shortSha(e.trunkSha), title: certTitle(cert) };
       if (e.status === "red") return { tag: "tests", color: TESTS_RED, text: `✗ ${certCounts(cert)}: ${(e.failing ?? []).map((f) => f.name).slice(0, 3).join(", ")}`, mono: shortSha(e.trunkSha), title: certTitle(cert) };
       return { tag: "tests", color: "#8b97a8", text: `${e.status}${e.detail ? ` · ${e.detail}` : ""}`, mono: shortSha(e.trunkSha), title: e.detail };
     }

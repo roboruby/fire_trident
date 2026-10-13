@@ -209,8 +209,10 @@ describe("why", () => {
 });
 
 describe("review", () => {
-  it("lists the queue with only a colony", () => {
-    expect(ok(["review", "web"]).command).toEqual({ name: "review-list", colony: "web" });
+  it("lists the queue with only a colony, with full diffs on --diff", () => {
+    expect(ok(["review", "web"]).command).toEqual({ name: "review-list", colony: "web", diff: false });
+    expect(ok(["review", "web", "--diff"]).command).toEqual({ name: "review-list", colony: "web", diff: true });
+    expect(err(["review", "web", "prp_1", "approve", "--diff"])).toMatch(/--diff applies to listing the queue: ft review web --diff/);
   });
 
   it("decides a proposal", () => {

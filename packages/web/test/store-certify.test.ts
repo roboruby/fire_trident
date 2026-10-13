@@ -57,6 +57,18 @@ describe("trunk certification in the UI store", () => {
     expect(s.typeCounts.get("certify")).toBe(3);
   });
 
+  it("names skipped and todo tests whenever there are any", () => {
+    const green = { trunkSha: A, status: "green" as const, at: 1, counts: { ...counts(58, 0), tests: 60, skipped: 2 } };
+    expect(certCounts(green)).toBe("58/60 tests · 2 skipped");
+    expect(certCounts(green, "pass")).toBe("58/60 tests pass · 2 skipped");
+    expect(certCounts({ counts: { ...counts(57, 0), tests: 60, skipped: 2, todo: 1 } })).toBe("57/60 tests · 2 skipped · 1 todo");
+    expect(certCounts({ counts: { ...counts(62, 5), tests: 68, todo: 1 } })).toBe("5 failing · 1 todo");
+    expect(certCounts({ counts: counts(60, 0) }, "pass")).toBe("60/60 tests pass");
+    expect(certTitle(green)).toBe("aaaaaaa: 58 of 60 tests pass, 2 skipped (node:test in a Dynamic Worker)");
+    expect(certTitle({ ...green, counts: counts(60, 0) })).toBe("aaaaaaa: all 60 tests pass (node:test in a Dynamic Worker)");
+    expect(certTitle({ ...green, status: "red", counts: { ...counts(62, 5), tests: 69, skipped: 2 }, failing: [] })).toMatch(/^aaaaaaa: 5 of 69 tests failing \(2 skipped\)\n/);
+  });
+
   it("starts a replay without the finished run's green commit or result", () => {
     const snap = snapshot({ greenSha: A, certification: { trunkSha: A, status: "green", startedAt: 1 } });
     const { snapshot: start } = startingPoint(snap, { first: 0, last: 1, events: [] } as unknown as Parameters<typeof startingPoint>[1]);

@@ -16,6 +16,7 @@ import type {
   ProposalStatus,
   Rule,
 } from "@fire_trident/core";
+import { changeSize, dangerLines, lookHereFirst, parseHunks, reviewOf, visible, type DiffLine, type ReviewFile, type ReviewView } from "./review.ts";
 import { whySummary } from "./spec.ts";
 
 /** ANSI styling functions; identity functions when color is off. */
@@ -125,13 +126,17 @@ export function sparkline(values: readonly number[]): string {
   return finite.map((v) => (max <= 0 || v <= 0 ? BARS[0] : BARS[Math.min(7, Math.max(1, Math.ceil((v / max) * 7)))])).join("");
 }
 
-/** Test counts in one phrase: "60/60 tests", "5 of 67 failing". */
-export function testsPhrase(cert: Pick<Certification, "counts">): string {
+/**
+ * Test counts in one phrase: "60/60 tests", "58/60 tests · 2 skipped", "5 of 67 failing" (skipped and
+ * todo tests named whenever there are any). `verb` follows a passing count: "58/60 tests pass · 2 skipped".
+ */
+export function testsPhrase(cert: Pick<Certification, "counts">, verb = ""): string {
   const k = cert.counts;
   if (!k) return "";
   const bad = k.fail + k.cancelled;
-  const ran = k.tests - k.skipped - k.todo;
-  return bad === 0 ? `${num(k.pass)}/${num(ran)} tests` : `${num(bad)} of ${num(k.tests)} failing`;
+  const head = bad === 0 ? `${num(k.pass)}/${num(k.tests)} tests${verb ? ` ${verb}` : ""}` : `${num(bad)} of ${num(k.tests)} failing`;
+  const notRun = [k.skipped > 0 ? `${num(k.skipped)} skipped` : "", k.todo > 0 ? `${num(k.todo)} todo` : ""].filter(Boolean);
+  return [head, ...notRun].join(" · ");
 }
 
 /** Names of failing tests, "a, b +3". */
@@ -174,12 +179,11 @@ export function trunkLine(col: Pick<ColonySnapshot["colony"], "trunkSha" | "gree
 
 /** One line for a certification recorded in a lineage note (ft why). */
 export function noteCertLine(cert: NoteCertification, c: Colors): string {
-  const phrase = testsPhrase(cert);
   const reused = cert.reusedFrom ? c.dim(` (same tested files as ${shortSha(cert.reusedFrom)})`) : "";
   const took = typeof cert.durationMs === "number" ? c.dim(` in ${(cert.durationMs / 1000).toFixed(1)} s`) : "";
-  if (cert.status === "green") return `${c.green(`✓ ${phrase} pass`)}${took}${reused}`;
+  if (cert.status === "green") return `${c.green(`✓ ${testsPhrase(cert, "pass")}`)}${took}${reused}`;
   const names = failingNames(cert);
-  return `${c.red(`✗ ${phrase}`)}${names ? ` ${names}` : ""}${took}${reused}`;
+  return `${c.red(`✗ ${testsPhrase(cert)}`)}${names ? ` ${names}` : ""}${took}${reused}`;
 }
 
 /** What `ft certify` prints: the state and latest results, or the outcome of --now / --on / --off. */
@@ -746,21 +750,108 @@ export function formatIntentShow(res: IntentShowResult, c: Colors, now: number):
   return out.join("\n");
 }
 
-/** The review queue: escalated proposals with their intent, size, residual, and reason. */
-export function formatReview(proposals: Proposal[], intents: Intent[] | undefined, c: Colors, now: number): string {
+/** What `ft review` adds to the queue: every kept file's diff in full (`--diff`), and the colony its hints name. */
+export interface ReviewOptions {
+  diff?: boolean;
+  colony?: string;
+}
+
+/** Danger lines listed under "look here first"; --diff marks every one. */
+const LOOK_SPOTS = 8;
+/** Lines of a file changed outside the footprint shown under "look here first"; --diff shows them all. */
+const LOOK_LINES = 12;
+
+/** One diff line for a terminal: marker, line number and text; added lines green, removed red, a danger line flagged. */
+function diffText(l: DiffLine, c: Colors, hit = false): string {
+  if (l.kind === "hunk" || l.kind === "note") return c.cyan(visible(l.text));
+  const n = l.kind === "del" ? l.old : l.new;
+  const body = `${l.kind === "add" ? "+" : l.kind === "del" ? "-" : " "}${String(n ?? "").padStart(5)}  ${visible(l.text)}`;
+  const colored = l.kind === "add" ? c.green(body) : l.kind === "del" ? c.red(body) : c.dim(body);
+  return hit ? `${colored}  ${c.red("← danger")}` : colored;
+}
+
+function plusMinus(added: number, removed: number, c: Colors): string {
+  return `${c.green(`+${num(added)}`)} ${c.red(`−${num(removed)}`)}`;
+}
+
+/** Why a file shows no diff lines. */
+function noLines(f: ReviewFile | null): string {
+  if (!f) return "its diff was not kept";
+  if (f.status === "binary") return "binary file: no text diff";
+  if (f.status === "unreadable") return "the file could not be read for review";
+  return f.truncated ? "too large to keep" : "no line changes kept";
+}
+
+/** "Look here first" for one change: its danger lines with the line itself, then each file changed outside the declared footprint. */
+function lookLines(view: ReviewView, colony: string, diff: boolean, c: Colors): string[] {
+  const look = lookHereFirst(view, 0);
+  if (look.danger.length === 0 && look.residual.length === 0) return [];
+  const out = [`  ${c.bold("look here first")}`];
+  for (const s of look.danger.slice(0, LOOK_SPOTS)) {
+    const what = s.what.map(visible).join(" · ");
+    out.push(`    ${visible(s.line > 0 ? `${s.path}:${s.line}` : s.path)}  ${s.severe ? c.red(what) : c.yellow(what)}`);
+    for (const l of s.lines) out.push(`      ${diffText(l, c)}`);
+  }
+  if (look.danger.length > LOOK_SPOTS) out.push(c.dim(`    … ${num(look.danger.length - LOOK_SPOTS)} more danger lines${diff ? ", marked below" : `: ft review ${colony} --diff`}`));
+  for (const r of look.residual) {
+    const f = r.file;
+    out.push(`    ${visible(r.path)}  ${c.yellow("changed outside the declared footprint")}${f ? `  ${plusMinus(f.added, f.removed, c)}${f.truncated ? c.dim("  truncated") : ""}` : ""}`);
+    const lines = f ? parseHunks(f.hunks) : [];
+    if (lines.length === 0) out.push(c.dim(`      ${noLines(f)}`));
+    for (const l of lines.slice(0, LOOK_LINES)) out.push(`      ${diffText(l, c)}`);
+    if (lines.length > LOOK_LINES) out.push(c.dim(`      … ${num(lines.length - LOOK_LINES)} more lines${diff ? " below" : `: ft review ${colony} --diff`}`));
+  }
+  return out;
+}
+
+/** Every kept file's diff in full, with its danger lines flagged (`ft review --diff`). */
+function fullDiff(view: ReviewView, c: Colors): string[] {
+  const hits = dangerLines(view);
+  const out: string[] = [];
+  for (const f of view.files) {
+    out.push(`    ${c.bold(visible(f.path))}  ${c.dim(visible(f.status) || "changed")}  ${plusMinus(f.added, f.removed, c)}${f.truncated ? c.yellow("  truncated") : ""}`);
+    const lines = parseHunks(f.hunks);
+    if (lines.length === 0) out.push(c.dim(`      ${noLines(f)}`));
+    const h = hits.get(f.path);
+    for (const l of lines) out.push(`      ${diffText(l, c, l.kind === "add" && l.new !== undefined && h?.has(l.new) === true)}`);
+  }
+  const left = view.filesChanged - view.files.length;
+  if (left > 0) out.push(c.dim(`    ${num(left)} more changed file${left === 1 ? " was" : "s were"} not kept`));
+  return out;
+}
+
+/**
+ * The review queue: escalated proposals with their intent and size, code first. When the server kept
+ * a proposal's change, "look here first" shows its danger lines and the files it changed outside its
+ * declared footprint, before the reason and the checks; `opts.diff` adds every kept file's diff.
+ */
+export function formatReview(proposals: Proposal[], intents: Intent[] | undefined, c: Colors, now: number, opts: ReviewOptions = {}): string {
   if (proposals.length === 0) return c.green("Review queue is empty: nothing needs a human.");
+  const colony = opts.colony ?? "<colony>";
   const byId = new Map((intents ?? []).map((i) => [i.id, i]));
   const out = [`${c.bold(String(proposals.length))} proposal${proposals.length === 1 ? "" : "s"} waiting for a human`];
+  let kept = 0;
   for (const p of [...proposals].sort((a, b) => a.createdAt - b.createdAt)) {
     const intent = byId.get(p.intentId);
+    const view = reviewOf(p);
     out.push("");
     out.push(`${c.magenta(p.id)}  ${intent ? quote(intent.title, 60) : p.intentId}  ${c.dim(`${p.agentId} · ${p.writeSet.length} file(s) · ${ago(p.createdAt, now)}`)}`);
     if (p.declared?.summary) out.push(`  ${c.dim("summary ")} ${p.declared.summary.replace(/\s+/g, " ").trim()}`);
-    if (p.evidence?.residual?.length) out.push(`  ${c.dim("residual")} ${c.yellow(paths(p.evidence.residual, 4))}`);
+    if (view) out.push(...lookLines(view, colony, opts.diff === true, c));
+    else if (p.evidence?.residual?.length) out.push(`  ${c.dim("residual")} ${c.yellow(paths(p.evidence.residual, 4))}`);
     if (p.reason) out.push(`  ${c.dim("reason  ")} ${p.reason}`);
     out.push(`  ${c.dim("checks  ")} ${checkLine(p.evidence?.checks, c)}`);
+    if (view) {
+      kept++;
+      const size = changeSize(view);
+      out.push(`  ${c.dim("diff    ")} ${num(view.filesChanged)} file${view.filesChanged === 1 ? "" : "s"}, ${plusMinus(size.added, size.removed, c)}`);
+      if (opts.diff) out.push(...fullDiff(view, c));
+    } else {
+      out.push(`  ${c.dim("diff     not kept for this proposal")}`);
+    }
   }
   out.push("");
+  if (kept > 0 && !opts.diff) out.push(c.dim(`Full diffs: ft review ${colony} --diff`));
   out.push(c.dim("Decide with: ft review <colony> <proposalId> approve|reject|return --reason <text>"));
   return out.join("\n");
 }

@@ -1728,18 +1728,86 @@ export class ColonyDO extends DurableObject<Env> {
     this.certifier.landed(l);
   }
 
-  /** The human review queue: escalated proposals, highest risk first, then oldest first. */
+  /**
+   * The human review queue: escalated proposals, highest risk first, then oldest first. A proposal
+   * whose change the decide engine kept for its reviewer carries it as `review` (see reviewViews).
+   */
   async review(): Promise<Proposal[]> {
     this.requireColony();
     const engine = this.decider();
     engine.sweep();
-    return this.sql
+    const queue = this.sql
       .exec<{ data: string }>(
         `SELECT p.data AS data FROM proposals p LEFT JOIN decide_outcomes d ON d.proposal_id = p.id
          WHERE p.status = 'escalated' ORDER BY COALESCE(d.risk, 0) DESC, p.created_at ASC LIMIT 500`,
       )
       .toArray()
       .map((r) => JSON.parse(r.data) as Proposal);
+    const views = this.reviewViews(queue.map((p) => p.id));
+    for (const p of queue) {
+      const review = views.get(p.id);
+      if (review) Object.assign(p, { review });
+    }
+    return queue;
+  }
+
+  /**
+   * The change behind each escalated proposal as its reviewer should see it: the view the decide
+   * engine keeps in `decide_review` when it escalates (diff per file, danger lines, residual paths;
+   * secret lines already masked). Only those fields are copied, each one checked. A proposal escalated
+   * before views were kept, a row that does not parse, and a colony without the table get none. Views
+   * go to the first proposals of the queue until about a million characters, so a long queue stays one
+   * bounded reply; the others get theirs once the ones ahead of them are decided.
+   */
+  private reviewViews(ids: readonly Id[]): Map<Id, Record<string, unknown>> {
+    const views = new Map<Id, Record<string, unknown>>();
+    if (ids.length === 0) return views;
+    // The decide engine creates the table: a colony it has not escalated with yet has none.
+    if (this.sql.exec("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'decide_review'").toArray().length === 0) return views;
+    let rows: Array<{ id: string; view: SqlStorageValue }>;
+    try {
+      // Sizes first, so views past the budget are never read into memory.
+      const sizes = this.sql
+        .exec<{ id: string; n: number | null }>("SELECT proposal_id AS id, length(view) AS n FROM decide_review WHERE proposal_id IN (SELECT value FROM json_each(?))", JSON.stringify(ids))
+        .toArray();
+      const size = new Map(sizes.map((s) => [s.id, typeof s.n === "number" ? s.n : Infinity]));
+      let left = 1_000_000;
+      const wanted: Id[] = [];
+      for (const id of ids) {
+        const n = size.get(id);
+        if (n === undefined || n > left) continue;
+        wanted.push(id);
+        left -= n;
+      }
+      if (wanted.length === 0) return views;
+      rows = this.sql.exec<{ id: string; view: SqlStorageValue }>("SELECT proposal_id AS id, view FROM decide_review WHERE proposal_id IN (SELECT value FROM json_each(?))", JSON.stringify(wanted)).toArray();
+    } catch {
+      // A table without the expected columns: nothing to show rather than no queue.
+      return views;
+    }
+    const text = (v: unknown): string => (typeof v === "string" ? v : "");
+    const count = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) && v > 0 ? Math.floor(v) : 0);
+    const objects = (v: unknown): Array<Record<string, unknown>> => (Array.isArray(v) ? v.filter((x): x is Record<string, unknown> => !!x && typeof x === "object" && !Array.isArray(x)) : []);
+    for (const r of rows) {
+      let v: unknown;
+      try {
+        v = typeof r.view === "string" ? JSON.parse(r.view) : null;
+      } catch {
+        continue;
+      }
+      if (!v || typeof v !== "object" || Array.isArray(v)) continue;
+      const o = v as Record<string, unknown>;
+      const files = objects(o.files)
+        .filter((f) => typeof f.path === "string" && f.path !== "")
+        .map((f) => ({ path: f.path as Path, status: text(f.status), added: count(f.added), removed: count(f.removed), hunks: text(f.hunks), truncated: f.truncated === true }));
+      const danger = objects(o.danger)
+        .filter((d) => typeof d.path === "string" && d.path !== "" && typeof d.cls === "string" && d.cls !== "")
+        .map((d) => ({ path: d.path as Path, line: count(d.line), cls: d.cls as string, pattern: text(d.pattern), label: text(d.label) }));
+      const residual = Array.isArray(o.residual) ? o.residual.filter((p): p is Path => typeof p === "string" && p !== "") : [];
+      if (files.length === 0 && danger.length === 0 && residual.length === 0) continue;
+      views.set(r.id, { files, filesChanged: Math.max(count(o.filesChanged), files.length), danger, residual });
+    }
+    return views;
   }
 
   /** A human decision on a proposal: approve (back to its lane), reject (intent reopened) or return. */
