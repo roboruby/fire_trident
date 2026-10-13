@@ -42,7 +42,8 @@ const CONN_LABEL: Record<ConnState, string> = {
   replay: "Replay",
 };
 
-function ConnPill({ conn, replay }: { conn: ConnState; replay: ReplayInfo | null }) {
+/** The feed state; a live feed from a colony with no agent alive says so, so a finished colony does not read as running. */
+function ConnPill({ conn, replay, idle }: { conn: ConnState; replay: ReplayInfo | null; idle: boolean }) {
   if (replay) {
     const rebuilt = replay.source === "reconstructed";
     const title = `A replay of the run that started ${new Date(replay.startedAt).toLocaleString()}${rebuilt ? ", reconstructed from what the colony stores (claim times are estimated)" : ", from the events the colony recorded as it happened"}.`;
@@ -55,9 +56,10 @@ function ConnPill({ conn, replay }: { conn: ConnState; replay: ReplayInfo | null
     );
   }
   return (
-    <span className={`conn conn-${conn}`}>
+    <span className={`conn conn-${conn}${conn === "live" && idle ? " conn-idle" : ""}`} title={conn === "live" && idle ? "Connected. No agent is working in this colony now." : undefined}>
       <i />
       {CONN_LABEL[conn]}
+      {conn === "live" && idle ? " · idle" : null}
     </span>
   );
 }
@@ -211,7 +213,7 @@ export function TopBar({ store, director = false, mock = false }: { store: Colon
           <div className="brand-name">FireTrident</div>
           <div className="brand-colony">
             {director ? <span className="mono brand-colony-name">{label}</span> : <ColonyPicker current={store.colonyId} label={label} mock={mock} />}
-            <ConnPill conn={store.conn} replay={store.replay} />
+            <ConnPill conn={store.conn} replay={store.replay} idle={store.loaded && store.agentsActive() === 0} />
           </div>
         </div>
       </div>

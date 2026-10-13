@@ -179,6 +179,14 @@ input {
   box-shadow: 0 0 8px var(--accent);
   animation: breathe 2s ease-in-out infinite;
 }
+.conn-idle {
+  color: var(--text-3);
+}
+.conn-idle i {
+  animation: none;
+  box-shadow: none;
+  opacity: 0.6;
+}
 .conn-reconnecting {
   color: var(--need);
 }
