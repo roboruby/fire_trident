@@ -56,6 +56,13 @@ export interface Env {
    * The colony, the decide stage and the trunk writer handle an inline change whoever sends it (colony/inline.ts).
    */
   FT_INLINE?: string;
+  /**
+   * Optional: virtual checkouts for in-platform agents, "on", or a comma-separated list of colony ids; absent or "off" is
+   * off. An agent then never clones: it reads trunk object by object through the ARTIFACTS binding at its lease base
+   * (agents/virtual.ts) and proposes its change inline (Proposal.contents). A change over the inline limits, or with
+   * binary content, is still committed and pushed to the agent's workspace.
+   */
+  FT_VIRTUAL_CHECKOUT?: string;
   /** Optional (load tests only): when set, ColonyDO logs event-loop lag and streams it as colony.lagMs. */
   FT_LAG_PROBE?: string;
   /**

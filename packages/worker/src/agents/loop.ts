@@ -1,10 +1,10 @@
 import { checkFile, importsOf, ruleApplies } from "@fire_trident/core";
 import type { AgentKind, AgentState, CheckResult, EscalationKind, FileVersion, Id, Intent, Path, Proposal, ProposalStatus, Rule, Sha, WorkspaceLease } from "@fire_trident/core";
-import { agentIdentity, applyReplacement, changeSummary, cleanPath, commitMessage, decodeText, expandFootprint, isLiteralPath, oneLine, recheck, ruleReplacement } from "./change.ts";
+import { agentIdentity, applyReplacement, changeSummary, cleanPath, commitMessage, decodeText, expandFootprint, inlineChange, isLiteralPath, oneLine, recheck, ruleReplacement } from "./change.ts";
 import { TreeIndex, applySpecifierEdits, isImportRule, parseSpecifierEdits, specifierFacts } from "./context.ts";
 import { checkWrittenFile, parseIntentSpec, resolveImport, wantsErasable, writeOrder } from "./create.ts";
 import { cleanContext, noticeEntry, withLanded, type LandedWhy } from "./landed.ts";
-import { buildEditMessages, buildSpecifierMessages, buildWriteMessages, cleanLastReturn, maxTokensFor, parseEscalateReply, parseFileReply, retryMessages, specifierRetryMessages, violationProblem } from "./prompt.ts";
+import { TREE_MAX, buildEditMessages, buildSpecifierMessages, buildWriteMessages, cleanLastReturn, maxTokensFor, parseEscalateReply, parseFileReply, retryMessages, specifierRetryMessages, violationProblem } from "./prompt.ts";
 import type { ChatMessage, LastReturn, TokenUsage } from "./prompt.ts";
 import { cleanPreview, type AntibodyQuestion } from "./preview.ts";
 import { TERMINAL_STATUSES, errorMessage, errorStatus } from "./rpc.ts";
@@ -13,6 +13,7 @@ import { MAX_GUIDANCE, directionError, directiveNote, guidanceFor, holdDirective
 import type { Guidance, HeldDirective } from "./direction.ts";
 import type { Directive } from "@fire_trident/core";
 import { isInboxDirective } from "../colony/direction.ts";
+import type { VirtualReads } from "./virtual.ts";
 
 /**
  * The in-platform agent loop as a journaled state machine.
@@ -28,6 +29,11 @@ import { isInboxDirective } from "../colony/direction.ts";
  * - commit uses the job's take time as the commit time, so a repeat yields the same sha,
  * - push force-pushes that same commit,
  * - propose first looks for a proposal it may already have made (inbox) before proposing.
+ *
+ * A job taken with a virtual checkout (FT_VIRTUAL_CHECKOUT, agents/virtual.ts) reads trunk object by
+ * object through the binding instead of a clone, and its commit step only computes the change's inline
+ * form (blob ids and changeset id; the journal keeps the files), so it skips push and proposes the
+ * contents. A change too large or binary for that is committed and pushed as above.
  *
  * Nothing here touches Cloudflare APIs: the Durable Object injects the colony stub,
  * git, the model, the journal, and the clock.
@@ -82,6 +88,16 @@ export interface Job {
   baseSha?: Sha;
   /** True when lease.baseSha was unreachable and the trunk tip was used instead. */
   baseFallback?: boolean;
+  /**
+   * "virtual": the job reads trunk object by object through the binding (agents/virtual.ts) and proposes its change
+   * inline when it can. Set at take when FT_VIRTUAL_CHECKOUT is on for the colony; a job keeps the way it started.
+   * Absent: the job reads the agent's clone and pushes its commit, as before.
+   */
+  checkout?: "virtual";
+  /** The change is proposed inline: its files travel in Proposal.contents and its headSha is its changeset id. */
+  inline?: boolean;
+  /** Why a virtual job's change was committed and pushed instead of proposed inline. */
+  inlineSkipped?: string;
   reads?: FileRead[];
   /** Paths whose outcome in `produce` is final (changed or left alone). */
   produced?: Path[];
@@ -109,8 +125,8 @@ export interface Job {
   parentHow?: string;
   /** Model usage of this job. */
   usage?: JobUsage;
-  /** Git network cost of this job, by phase. */
-  net?: { fetch?: NetStats; probe?: NetStats; push?: NetStats };
+  /** Git network cost of this job, by phase; `reads` is what a virtual checkout read through the binding. */
+  net?: { fetch?: NetStats; probe?: NetStats; push?: NetStats; reads?: NetStats };
   proposalId?: Id;
   proposedAt?: number;
   pollMs?: number;
@@ -159,6 +175,8 @@ export interface NetStats {
   sentBytes: number;
   receivedBytes: number;
   ms: number;
+  /** Objects a virtual checkout's cache answered without a call. */
+  hits?: number;
 }
 
 /** One finished job. */
@@ -243,6 +261,16 @@ export interface GitOps {
   fetchTip?(p: { remote: string; token: string }): Promise<Sha | null>;
 }
 
+/**
+ * What a job reads trunk through: the agent's clone (GitOps) or a virtual checkout (agents/virtual.ts), which answer
+ * alike. A job reads through the one it was taken with (Job.checkout).
+ */
+export interface ReadOps {
+  /** Every file path at the commit; a virtual checkout given footprint entries (`scope`) walks only where they can match. */
+  listFiles(baseSha: Sha, scope?: string[]): Promise<Path[]>;
+  readFile(baseSha: Sha, path: Path): Promise<BaseFile | null>;
+}
+
 /** A model reply. */
 export interface ModelReply {
   text: string | null;
@@ -290,6 +318,12 @@ export interface LoopDeps {
    * re-orients without waiting for a reply that no longer matters.
    */
   signal?: AbortSignal;
+  /**
+   * Virtual checkouts (agents/virtual.ts): `reads` reads trunk by object id through the binding. `on`
+   * (FT_VIRTUAL_CHECKOUT for the colony) makes new jobs use it and lets their changes go inline; a job
+   * taken with it keeps reading through it whatever `on` says later.
+   */
+  virtual?: { on: boolean; reads: VirtualReads };
 }
 
 export const MAX_STEP_ATTEMPTS = 4;
@@ -562,18 +596,21 @@ async function takeWork(deps: LoopDeps, cfg: AgentConfig): Promise<StepResult> {
   // A spec-declared intent names the files it builds on; its agent waits for them to land first.
   const own = new Set((res.intent.footprint ?? []).map(cleanPath));
   const buildsOn = rule ? [] : parseIntentSpec(res.intent.why ?? "").buildsOn.filter((p) => isLiteralPath(p) && !own.has(p));
+  // A virtual checkout reads trunk through the binding, and so does its wait for the files the intent builds on.
+  const virtual = deps.virtual?.on === true;
   const job: Job = {
     intentId: res.intent.id,
     intent: res.intent,
     lease: res.lease,
     rule,
-    step: buildsOn.length > 0 && deps.trunk ? "deps" : "fetch",
+    step: buildsOn.length > 0 && (deps.trunk || virtual) ? "deps" : "fetch",
     attempts: 0,
     takenAt: now,
     stepStartedAt: now,
     llmCalls: 0,
     lastHeartbeatAt: now,
   };
+  if (virtual) job.checkout = "virtual";
   if (buildsOn.length > 0) job.buildsOn = buildsOn;
   // What review will ask of the change, so the model can avoid what a person rejected before.
   const antibodies = cleanPreview(res.review)?.antibodies ?? [];
@@ -596,12 +633,17 @@ async function takeWork(deps: LoopDeps, cfg: AgentConfig): Promise<StepResult> {
  * The colony checks every new import against trunk, so a file written before its
  * dependencies land would only come back; waiting also lets the agent read the real code.
  * The claim stays held (heartbeats refresh it). After DEPS_MAX_WAIT_MS the intent is given
- * back, so a colony whose dependencies stall never deadlocks on waiting agents.
+ * back, so a colony whose dependencies stall never deadlocks on waiting agents. A virtual
+ * checkout looks at trunk's tip in the repo instead (what it will build on), sparing the trunk writer.
  */
 async function depsStep(deps: LoopDeps, cfg: AgentConfig, job: Job): Promise<StepResult> {
   const needed = job.buildsOn ?? [];
-  if (needed.length === 0 || !deps.trunk) return advance(deps, cfg, job, "fetch");
-  const blobs = await deps.trunk.blobsFor(needed);
+  if (needed.length === 0) return advance(deps, cfg, job, "fetch");
+  let blobs: Record<Path, Sha | null>;
+  if (job.checkout === "virtual") blobs = await blobsAtTip(virtualOf(deps), needed);
+  else if (deps.trunk) blobs = await deps.trunk.blobsFor(needed);
+  else return advance(deps, cfg, job, "fetch");
+  bookReads(deps, job);
   const missing = needed.filter((p) => !blobs[p]);
   const now = deps.now();
   const waited = Math.max(0, now - job.stepStartedAt);
@@ -622,6 +664,7 @@ async function depsStep(deps: LoopDeps, cfg: AgentConfig, job: Job): Promise<Ste
 }
 
 async function fetchStep(deps: LoopDeps, cfg: AgentConfig, job: Job): Promise<StepResult> {
+  if (job.checkout === "virtual") return virtualFetchStep(deps, cfg, job);
   deps.git.takeNetStats?.();
   // A job that waited for files to land builds on trunk as it is now: the lease base predates them. So
   // does a job a landing notice restarted (freshBase): files it covers changed after the lease base.
@@ -642,6 +685,64 @@ async function fetchStep(deps: LoopDeps, cfg: AgentConfig, job: Job): Promise<St
   const net = deps.git.takeNetStats?.();
   if (net) job.net = { ...job.net, fetch: net };
   return advance(deps, cfg, job, "read");
+}
+
+/**
+ * The base of a virtual checkout: the lease base when the trunk repo has it (the trunk writer makes sure it does
+ * before leasing it), else trunk's tip; the tip itself for a job that waited for files to land or that a landing
+ * notice restarted. Only the commit is read here; trees and blobs are read when a path needs them.
+ */
+async function virtualFetchStep(deps: LoopDeps, cfg: AgentConfig, job: Job): Promise<StepResult> {
+  const v = virtualOf(deps);
+  const atTip = (job.buildsOn ?? []).length > 0 || job.freshBase === true;
+  const tip = atTip ? await v.fetchTip() : null;
+  if (tip) {
+    job.baseSha = tip;
+  } else {
+    const r = await v.ensureBase({ baseSha: job.lease.baseSha });
+    job.baseSha = r.baseSha;
+    if (r.fallback) job.baseFallback = true;
+  }
+  bookReads(deps, job);
+  return advance(deps, cfg, job, "read");
+}
+
+/** `fn` on each item in order: together for a virtual checkout (each read is a call to the trunk repo), in turn for a clone. */
+async function eachRead<T, R>(job: Job, items: readonly T[], fn: (item: T) => Promise<R>): Promise<R[]> {
+  if (job.checkout === "virtual") return Promise.all(items.map(fn));
+  const out: R[] = [];
+  for (const item of items) out.push(await fn(item));
+  return out;
+}
+
+/** Where the job reads trunk: the virtual checkout it was taken with, or the agent's clone. */
+function readsOf(deps: LoopDeps, job: Job): ReadOps {
+  return job.checkout === "virtual" ? virtualOf(deps) : deps.git;
+}
+
+/** The virtual checkout of a job taken with one. */
+function virtualOf(deps: LoopDeps): VirtualReads {
+  if (!deps.virtual) throw new Error("this job reads trunk through a virtual checkout, which this agent was not given");
+  return deps.virtual.reads;
+}
+
+/** Blob of each path at trunk's tip as the trunk repo serves it (null when absent, or when trunk has no main). */
+async function blobsAtTip(v: VirtualReads, paths: Path[]): Promise<Record<Path, Sha | null>> {
+  const tip = await v.fetchTip();
+  const at = tip ? await v.blobsAt(tip, paths) : new Map<Path, Sha | null>();
+  return Object.fromEntries(paths.map((p) => [p, at.get(p) ?? null]));
+}
+
+/** Add what the job's virtual checkout read since the last call to its telemetry (job.net.reads). */
+function bookReads(deps: LoopDeps, job: Job): void {
+  if (job.checkout !== "virtual" || !deps.virtual) return;
+  const s = deps.virtual.reads.takeNetStats();
+  if (s.requests === 0 && !s.hits) return;
+  const r = job.net?.reads;
+  job.net = {
+    ...job.net,
+    reads: { requests: (r?.requests ?? 0) + s.requests, sentBytes: 0, receivedBytes: (r?.receivedBytes ?? 0) + s.receivedBytes, ms: (r?.ms ?? 0) + s.ms, hits: (r?.hits ?? 0) + (s.hits ?? 0) },
+  };
 }
 
 /**
@@ -688,23 +789,24 @@ async function workspaceBase(deps: LoopDeps, job: Job): Promise<{ sha: Sha; how:
 
 async function readStep(deps: LoopDeps, cfg: AgentConfig, job: Job): Promise<StepResult> {
   const baseSha = requireBase(job);
+  const files = readsOf(deps, job);
   const footprint = job.intent.footprint ?? [];
-  const listing = footprint.some((e) => !isLiteralPath(e)) ? await deps.git.listFiles(baseSha) : null;
+  const listing = footprint.some((e) => !isLiteralPath(e)) ? await files.listFiles(baseSha, footprint) : null;
   let paths = expandFootprint(footprint, listing, MAX_FILES * 4);
   const rule = job.rule;
   if (rule) paths = paths.filter((p) => ruleApplies(rule, p));
   paths = paths.slice(0, MAX_FILES);
   if (paths.length === 0) return abandon(deps, cfg, job, "the footprint names no file this agent can edit");
   const at = async (path: Path): Promise<FileRead | null> => {
-    const f = await deps.git.readFile(baseSha, path);
+    const f = await files.readFile(baseSha, path);
     if (!f) return null;
     const regular = f.mode === "100644" || f.mode === "100755";
     return { path, blob: f.blob, mode: f.mode, size: f.bytes.length, text: regular && decodeText(f.bytes) !== null };
   };
-  const reads: FileRead[] = [];
-  for (const path of paths) reads.push((await at(path)) ?? { path, blob: null, mode: null, size: 0, text: true });
+  const reads: FileRead[] = (await eachRead(job, paths, at)).map((f, i) => f ?? { path: paths[i]!, blob: null, mode: null, size: 0, text: true });
   if (rule) {
     job.reads = reads;
+    bookReads(deps, job);
     return advance(deps, cfg, job, "produce");
   }
   // A non-rule intent writes its files with a model: sources before tests, so a test sees the code it tests;
@@ -713,19 +815,22 @@ async function readStep(deps: LoopDeps, cfg: AgentConfig, job: Job): Promise<Ste
   const context: FileRead[] = [];
   const missing: Path[] = [];
   let chars = 0;
-  for (const path of (job.buildsOn ?? []).slice(0, MAX_CONTEXT_FILES)) {
-    const f = await at(path);
+  const wanted = (job.buildsOn ?? []).slice(0, MAX_CONTEXT_FILES);
+  const found = await eachRead(job, wanted, at);
+  wanted.forEach((path, i) => {
+    const f = found[i];
     if (!f) missing.push(path);
     else if (f.text && chars + f.size <= MAX_CONTEXT_CHARS) {
       context.push(f);
       chars += f.size;
     }
-  }
+  });
   job.context = context;
   if (missing.length > 0) job.depsMissing = missing;
   else delete job.depsMissing;
   // A retracted rule stays in history but is no longer checked.
   job.rules = ((await deps.colony.snapshot()).rules ?? []).filter((r) => !r.retractedAt);
+  bookReads(deps, job);
   return advance(deps, cfg, job, "produce");
 }
 
@@ -737,9 +842,10 @@ type FileOutcome = { kind: "change"; content: string } | { kind: "skip" } | { ki
 async function produceStep(deps: LoopDeps, cfg: AgentConfig, job: Job): Promise<StepResult> {
   const baseSha = requireBase(job);
   const done = new Set(job.produced ?? []);
-  // The base tree's listing, read once per step and only when a file needs it.
+  // The base tree's listing, read once per step and only when a file needs it. A virtual checkout's tree
+  // loads only the directories the questions asked of it touch.
   let tree: TreeIndex | null = null;
-  const treeAt = async (): Promise<TreeIndex> => (tree ??= new TreeIndex(await deps.git.listFiles(baseSha)));
+  const treeAt = async (): Promise<TreeIndex> => (tree ??= job.checkout === "virtual" ? await virtualOf(deps).tree(baseSha) : new TreeIndex(await deps.git.listFiles(baseSha)));
   for (const f of job.reads ?? []) {
     if (done.has(f.path)) continue;
     const out = await produceFile(deps, cfg, job, baseSha, f, treeAt);
@@ -755,6 +861,7 @@ async function produceStep(deps: LoopDeps, cfg: AgentConfig, job: Job): Promise<
   if (changed.length === 0) return abandon(deps, cfg, job, "no change needed: the files already satisfy the intent");
   const how = job.method === "replacement" ? "applied the rule's replacement" : job.method === "write" ? "written with a model and checked" : "edited with a model";
   job.summary = changeSummary(job.intent, changed, how);
+  bookReads(deps, job);
   return advance(deps, cfg, job, "commit");
 }
 
@@ -762,8 +869,8 @@ async function produceFile(deps: LoopDeps, cfg: AgentConfig, job: Job, baseSha: 
   if (!f.text) return { kind: "skip" };
   let original: string | null = null;
   if (f.blob !== null) {
-    const file = await deps.git.readFile(baseSha, f.path);
-    if (!file) throw new Error(`${f.path} is missing from the local clone of ${baseSha}`);
+    const file = await readsOf(deps, job).readFile(baseSha, f.path);
+    if (!file) throw new Error(job.checkout === "virtual" ? `${f.path} is missing from trunk at ${baseSha}` : `${f.path} is missing from the local clone of ${baseSha}`);
     original = decodeText(file.bytes);
     if (original === null) return { kind: "skip" };
   }
@@ -818,20 +925,26 @@ async function writeFile(
     return { ok: false, reason: `${path} is too large to rewrite with a model (${original.length} characters)` };
   }
   const tree = await treeAt();
+  const files = readsOf(deps, job);
   const siblings = (job.reads ?? []).map((r) => r.path);
   const written = deps.journal.changes().filter((c) => c.path !== path);
   const context: Array<{ path: Path; content: string }> = [];
-  for (const c of job.context ?? []) {
-    const file = await deps.git.readFile(baseSha, c.path);
+  const contextFiles = await eachRead(job, job.context ?? [], (c) => files.readFile(baseSha, c.path));
+  (job.context ?? []).forEach((c, i) => {
+    const file = contextFiles[i];
     const text = file ? decodeText(file.bytes) : null;
     if (text !== null) context.push({ path: c.path, content: text });
-  }
+  });
   const spec = parseIntentSpec(job.intent.why ?? "");
-  const tsconfig = written.find((w) => w.path === "tsconfig.json")?.content ?? (tree.isFile("tsconfig.json") ? decodeText((await deps.git.readFile(baseSha, "tsconfig.json"))?.bytes ?? new Uint8Array()) : null);
+  const tsconfig =
+    written.find((w) => w.path === "tsconfig.json")?.content ??
+    ((await tree.settle(() => tree.isFile("tsconfig.json"))) ? decodeText((await files.readFile(baseSha, "tsconfig.json"))?.bytes ?? new Uint8Array()) : null);
   const erasable = wantsErasable(`${job.intent.why ?? ""}\n${(job.intent.acceptance ?? []).join("\n")}`, tsconfig);
   const rules = job.rules ?? [];
   const exists = (p: Path): boolean => tree.isFile(p) || siblings.includes(p);
   const planned = new Set(spec.planned);
+  // The project tree the prompt lists: every path from a clone; from a virtual checkout, the first TREE_MAX in path order.
+  const listed = await tree.paths(TREE_MAX);
   const first = buildWriteMessages({
     intent: job.intent,
     directives: job.directives ?? [],
@@ -842,7 +955,8 @@ async function writeFile(
     content: original,
     siblings,
     rules: rules.filter((r) => ruleApplies(r, path)),
-    tree: [...tree.files].sort(),
+    tree: listed.paths,
+    ...(listed.complete ? {} : { treeComplete: false }),
     context,
     missing: job.depsMissing ?? [],
     written,
@@ -850,12 +964,12 @@ async function writeFile(
   // Modules the written file imports, read once, so the binding check sees what they export.
   const sources = new Map<Path, string | null>();
   const loadSources = async (content: string): Promise<void> => {
-    for (const imp of importsOf(content)) {
-      const target = resolveImport(path, imp.specifier, exists);
+    const targets = await tree.settle(() => importsOf(content).map((imp) => resolveImport(path, imp.specifier, exists)));
+    for (const target of targets) {
       if (target === null || sources.has(target)) continue;
       const mine = written.find((w) => w.path === target);
       if (mine) sources.set(target, mine.content);
-      else sources.set(target, tree.isFile(target) ? decodeText((await deps.git.readFile(baseSha, target))?.bytes ?? new Uint8Array()) : null);
+      else sources.set(target, tree.isFile(target) ? decodeText((await files.readFile(baseSha, target))?.bytes ?? new Uint8Array()) : null);
     }
   };
   const maxTokens = maxTokensFor(original, WRITE_MIN_TOKENS);
@@ -881,7 +995,7 @@ async function writeFile(
       if (!parsed.ok) problem = parsed.reason;
       else {
         await loadSources(parsed.content);
-        const check = checkWrittenFile({ path, before: original, after: parsed.content, rules, exists, planned, erasable, source: (p) => sources.get(p) ?? null });
+        const check = await tree.settle(() => checkWrittenFile({ path, before: original, after: parsed.content, rules, exists, planned, erasable, source: (p) => sources.get(p) ?? null }));
         if (check.problems.length === 0) {
           addCheck(job, { name: `write ${path}`, ok: true, ms: deps.now() - t0, detail: `${check.detail} (model ${used}, attempt ${attempt + 1})` });
           return { ok: true, content: parsed.content };
@@ -994,9 +1108,12 @@ async function specifierEdit(
 ): Promise<{ ok: true; content: string } | { ok: false; reason: string }> {
   const rule = job.rule;
   if (!rule) return { ok: false, reason: "no rule" };
-  const facts = specifierFacts(rule, path, original, tree);
+  // Each question about the tree is settled: a virtual checkout's tree loads the directories it touches first.
+  const facts = await tree.settle(() => specifierFacts(rule, path, original, tree));
   if (facts.length === 0) return { ok: true, content: original };
-  const first = buildSpecifierMessages({ intent: job.intent, directives: job.directives ?? [], antibodies: job.antibodies ?? [], lastReturn: job.lastReturn, rule, path, content: original, facts, tree });
+  const first = await tree.settle(() =>
+    buildSpecifierMessages({ intent: job.intent, directives: job.directives ?? [], antibodies: job.antibodies ?? [], lastReturn: job.lastReturn, rule, path, content: original, facts, tree }),
+  );
   let messages = first;
   let problems: string[] = [];
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -1009,7 +1126,7 @@ async function specifierEdit(
     if (!parsed.ok) {
       problems = [reply.finishReason === "length" ? "the reply was cut off before </edits>; reply with only the <edits> block" : parsed.reason];
     } else {
-      const applied = applySpecifierEdits(rule, path, original, facts, parsed.edits, tree);
+      const applied = await tree.settle(() => applySpecifierEdits(rule, path, original, facts, parsed.edits, tree));
       if (applied.problems.length === 0) {
         const rc = recheck(rule, path, original, applied.content);
         const dirs = applied.rewrites.filter((r) => r.directory).map((r) => `${r.from} -> ${r.to}`);
@@ -1036,9 +1153,29 @@ async function specifierEdit(
 async function commitStep(deps: LoopDeps, cfg: AgentConfig, job: Job): Promise<StepResult> {
   const changes = deps.journal.changes().sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
   if (changes.length === 0) return abandon(deps, cfg, job, "nothing to commit");
+  if (job.checkout === "virtual" && !job.inlineSkipped) {
+    // Inline: the blob ids and the changeset id are the commit (the journal keeps the files until the proposal is made).
+    // A change the inline limits refuse, or one made after virtual checkouts were turned off, is committed and pushed.
+    const change = deps.virtual?.on ? inlineChange(requireBase(job), changes) : ({ ok: false, reason: "virtual checkouts are off for this colony now" } as const);
+    if (change.ok) {
+      job.headSha = change.headSha;
+      job.writeSet = change.writeSet;
+      job.inline = true;
+      return advance(deps, cfg, job, "propose");
+    }
+    job.inlineSkipped = change.reason;
+    deps.journal.log({ at: deps.now(), intentId: job.intentId, step: "inline", ok: false, ms: 0, detail: `committing and pushing instead: ${change.reason}` });
+    save(deps, cfg, job);
+  }
   // The clone lives in durable storage, but make sure the base is still there after a restart.
+  // (A virtual job's change that went the git way fetches its base into the clone here.)
+  if (job.checkout === "virtual") deps.git.takeNetStats?.();
   const base = await deps.git.ensureBase({ remote: job.lease.trunk.remote, token: job.lease.trunk.token, baseSha: requireBase(job) });
   if (base.baseSha !== job.baseSha) throw new Error(`base ${job.baseSha} is no longer reachable`);
+  if (job.checkout === "virtual") {
+    const fetched = deps.git.takeNetStats?.();
+    if (fetched && fetched.requests > 0) job.net = { ...job.net, fetch: fetched };
+  }
   if (!job.parentSha) {
     deps.git.takeNetStats?.();
     const paths = [...new Set([...changes.map((c) => c.path), ...(job.reads ?? []).map((f) => f.path)])];
@@ -1145,6 +1282,12 @@ function telemetryChecks(cfg: AgentConfig, job: Job): CheckResult[] {
     if (job.parentHow) parts.push(`built on ${job.parentHow}`);
     out.push({ name: "agent git transfer", ok: true, ms: (n.fetch?.ms ?? 0) + (n.probe?.ms ?? 0) + (n.push?.ms ?? 0), detail: parts.join("; ") });
   }
+  if (job.checkout === "virtual") {
+    const r = n?.reads;
+    const parts = [r ? `${r.requests} object read(s) from the trunk repo (${kb(r.receivedBytes)}), ${r.hits ?? 0} from cache` : "no object reads"];
+    parts.push(job.inline ? `proposed inline (${(job.writeSet ?? []).length} file(s), no clone, commit or push)` : `committed and pushed: ${job.inlineSkipped ?? "not inline"}`);
+    out.push({ name: "agent virtual checkout", ok: true, ms: r?.ms ?? 0, detail: parts.join("; ").slice(0, 500) });
+  }
   return out;
 }
 
@@ -1186,6 +1329,15 @@ async function proposeStep(deps: LoopDeps, cfg: AgentConfig, job: Job): Promise<
     proposal = recent.find((p) => !isInboxDirective(p) && p.intentId === job.intentId && p.headSha === headSha);
   }
   if (!proposal) {
+    // An inline change carries the text of every file it writes, rebuilt from the journal (which keeps the files
+    // until the job ends) and checked against the change's id before it goes.
+    let contents: Record<Sha, string> | undefined;
+    if (job.inline) {
+      const change = inlineChange(requireBase(job), deps.journal.changes());
+      if (!change.ok) return toGitPath(deps, cfg, job, change.reason);
+      if (change.headSha !== headSha) return toGitPath(deps, cfg, job, "the journal's files no longer match the change's id");
+      contents = change.contents;
+    }
     // The files read as context belong in the read set: if one changes before landing, the change is re-checked.
     const readSet: FileVersion[] = [...(job.reads ?? []), ...(job.context ?? [])].filter((f) => f.text).map((f) => ({ path: f.path, blob: f.blob }));
     // Reviewers read the start of this statement (the decide stream's second opinion keeps 400 characters),
@@ -1210,22 +1362,32 @@ async function proposeStep(deps: LoopDeps, cfg: AgentConfig, job: Job): Promise<
     ]
       .filter(Boolean)
       .join(" ");
-    proposal = await deps.colony.propose({
-      colonyId: cfg.colonyId,
-      intentId: job.intentId,
-      agentId: cfg.agentId,
-      workspace: job.lease.repo,
-      baseSha: job.parentSha ?? requireBase(job),
-      headSha,
-      writeSet: job.writeSet ?? [],
-      readSet,
-      declared: { footprint: job.intent.footprint, summary: job.summary ?? job.intent.title },
-      // The revision this change was built on: the colony refuses it if the intent was revised since.
-      intentRevision: job.intent.revision ?? 1,
-      evidence: { checks: [...(job.checks ?? []), ...telemetryChecks(cfg, job), ...directionChecks(job)], notVerified },
-      // With pushed outcomes the colony tells this agent when the proposal settles (no polling).
-      ...(deps.outcome ? { notify: true } : {}),
-    });
+    try {
+      proposal = await deps.colony.propose({
+        colonyId: cfg.colonyId,
+        intentId: job.intentId,
+        agentId: cfg.agentId,
+        workspace: job.lease.repo,
+        baseSha: job.parentSha ?? requireBase(job),
+        headSha,
+        writeSet: job.writeSet ?? [],
+        readSet,
+        declared: { footprint: job.intent.footprint, summary: job.summary ?? job.intent.title },
+        // The revision this change was built on: the colony refuses it if the intent was revised since.
+        intentRevision: job.intent.revision ?? 1,
+        evidence: { checks: [...(job.checks ?? []), ...telemetryChecks(cfg, job), ...directionChecks(job)], notVerified },
+        // With pushed outcomes the colony tells this agent when the proposal settles (no polling).
+        ...(deps.outcome ? { notify: true } : {}),
+        ...(contents ? { contents } : {}),
+      });
+    } catch (e) {
+      // A colony that refuses the inline form (bad request, too large) gets the change committed and pushed instead.
+      const status = errorStatus(e);
+      if (contents && !(e instanceof Halt) && (status === 400 || status === 413 || status === 422)) {
+        return toGitPath(deps, cfg, job, `the colony refused the inline change: ${errorMessage(e, 200)}`);
+      }
+      throw e;
+    }
     deps.journal.bump("proposed");
   }
   job.proposalId = proposal.id;
@@ -1235,6 +1397,16 @@ async function proposeStep(deps: LoopDeps, cfg: AgentConfig, job: Job): Promise<
   if (TERMINAL_STATUSES.has(proposal.status)) return finishJob(deps, cfg, job, proposal.status as Outcome, proposal.reason);
   advance(deps, cfg, job, "await");
   return { sleepMs: job.pollMs };
+}
+
+/** Commit and push a virtual job's change instead of proposing it inline (the commit step's git path), saying why. */
+function toGitPath(deps: LoopDeps, cfg: AgentConfig, job: Job, why: string): StepResult {
+  deps.journal.log({ at: deps.now(), intentId: job.intentId, step: "inline", ok: false, ms: 0, detail: `committing and pushing instead: ${why}` });
+  delete job.inline;
+  delete job.headSha;
+  delete job.writeSet;
+  job.inlineSkipped = why;
+  return advance(deps, cfg, job, "commit");
 }
 
 async function awaitStep(deps: LoopDeps, cfg: AgentConfig, job: Job): Promise<StepResult> {
@@ -1306,6 +1478,14 @@ function finishJob(deps: LoopDeps, cfg: AgentConfig, job: Job, outcome: Outcome,
     probeMs: job.net?.probe?.ms ?? null,
     pushUp: job.net?.push?.sentBytes ?? null,
     pushMs: job.net?.push?.ms ?? null,
+    // Virtual checkouts: how the job read trunk, what that cost, and whether its change went inline.
+    checkout: job.checkout ?? "clone",
+    inline: job.inline === true,
+    inlineSkipped: job.inlineSkipped ? job.inlineSkipped.slice(0, 200) : null,
+    objectReads: job.net?.reads?.requests ?? null,
+    objectHits: job.net?.reads?.hits ?? null,
+    objectBytes: job.net?.reads?.receivedBytes ?? null,
+    objectMs: job.net?.reads?.ms ?? null,
     parent: job.parentHow ?? null,
     depsWaitMs: job.depsWaitedMs ?? 0,
     workspace: job.lease.repo.name,
@@ -1500,7 +1680,7 @@ async function applyDirection(deps: LoopDeps, cfg: AgentConfig, job: Job): Promi
       mark("already proposed: the lane checks the change against trunk");
       return null;
     }
-    if (!deps.git.fetchTip) {
+    if (job.checkout === "virtual" ? !deps.virtual : !deps.git.fetchTip) {
       mark("noted: this agent cannot fetch the new trunk; the lane checks the change against it");
       return null;
     }
@@ -1557,6 +1737,8 @@ function replan(deps: LoopDeps, cfg: AgentConfig, job: Job): void {
   delete job.writeModel;
   delete job.headSha;
   delete job.writeSet;
+  delete job.inline;
+  delete job.inlineSkipped;
   delete job.summary;
   delete job.parentSha;
   delete job.parentHow;
@@ -1604,6 +1786,8 @@ function rebase(deps: LoopDeps, cfg: AgentConfig, job: Job, d: Directive): void 
   delete job.writeModel;
   delete job.headSha;
   delete job.writeSet;
+  delete job.inline;
+  delete job.inlineSkipped;
   delete job.summary;
   delete job.parentSha;
   delete job.parentHow;
