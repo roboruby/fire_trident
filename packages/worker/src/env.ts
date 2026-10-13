@@ -72,6 +72,12 @@ export interface Env {
   LOADER?: WorkerLoader;
   /** "on": certify trunk after landings by running the colony's own tests (each colony's policy can turn it off). */
   FT_TRUNK_TESTS?: string;
+  /**
+   * Optional: culprit finding, "on", or a comma-separated list of colony ids; absent or "off" is off. A red certification
+   * names the landings that changed what its failing test files load since the last green commit (its `suspects`), and
+   * its repair intent's why names them too.
+   */
+  FT_CULPRITS?: string;
 }
 
 export const WORKSPACE_SHARDS = 4;

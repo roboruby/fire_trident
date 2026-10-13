@@ -1,7 +1,7 @@
 import { fmtInt, shortSha } from "./format.ts";
 import type { CertView } from "./store.ts";
 
-/** Trunk certification as the UI words it (the trunk bar, the Why tab, the event log). */
+/** Trunk certification as the UI words it (the trunk bar, the Why tab, the event log), with a red result's suspects. */
 
 /** Tests that did not run: "2 skipped · 1 todo", or "" when every test ran. */
 export function certNotRun(c: Pick<CertView, "counts">): string {
@@ -23,6 +23,51 @@ export function certCounts(c: Pick<CertView, "counts">, verb = ""): string {
   return notRun ? `${head} · ${notRun}` : head;
 }
 
+/** One suspect as the certification card shows it: the change to look at first, and the command that undoes it. */
+export interface SuspectView {
+  key: string;
+  /** The proposal the undo command names (the landing, when the colony knew no single proposal). */
+  ref: string;
+  title: string;
+  /** The files it changed under the failing tests, and the failing test files it is a suspect for. */
+  paths: string;
+  files: string;
+  /** Its trunk commit, short ("" when unknown). */
+  commit: string;
+  undo: string;
+}
+
+/** Names joined with ", ", the ones past `max` counted ("a, b +2"). */
+function names(list: string[], max: number): string {
+  return list.length > max ? `${list.slice(0, max).join(", ")} +${list.length - max}` : list.join(", ");
+}
+
+/**
+ * A red result's suspects (culprit finding) for the card, newest first, at most `max`, each with its
+ * undo command (`ft revert <colony> <prp>`). Malformed entries (older or odd data) are left out.
+ */
+export function certSuspects(c: Pick<CertView, "suspects">, colonyId: string, max = 3): SuspectView[] {
+  const list: unknown[] = Array.isArray(c.suspects) ? c.suspects : [];
+  const strings = (x: unknown): string[] => (Array.isArray(x) ? x.filter((p): p is string => typeof p === "string" && p !== "") : []);
+  const out: SuspectView[] = [];
+  for (const raw of list) {
+    if (out.length >= max) break;
+    const s = (raw ?? {}) as Record<string, unknown>;
+    if (typeof s.landingId !== "string" || s.landingId === "") continue;
+    const ref = typeof s.proposalId === "string" && s.proposalId ? s.proposalId : s.landingId;
+    out.push({
+      key: `${s.landingId}:${ref}`,
+      ref,
+      title: typeof s.title === "string" ? s.title : "",
+      paths: names(strings(s.paths), 3),
+      files: names(strings(s.files), 2),
+      commit: typeof s.trunkSha === "string" ? shortSha(s.trunkSha) : "",
+      undo: `ft revert ${colonyId || "<colony>"} ${ref}`,
+    });
+  }
+  return out;
+}
+
 /** The hover text of a certification: what ran and, when red, which tests failed and why. */
 export function certTitle(c: CertView): string {
   const k = c.counts;
@@ -38,5 +83,7 @@ export function certTitle(c: CertView): string {
   }
   const lines = (c.failing ?? []).slice(0, 10).map((f) => `• ${f.name}${f.error ? `: ${f.error}` : ""}`);
   const more = k ? k.fail + k.cancelled - lines.length : 0;
-  return `${shortSha(c.trunkSha)}: ${fmtInt(k ? k.fail + k.cancelled : lines.length)} of ${fmtInt(k?.tests ?? 0)} tests failing${notRun ? ` (${notRun})` : ""}${took}\n${lines.join("\n")}${more > 0 ? `\n… and ${more} more` : ""}${reused}`;
+  const suspects = certSuspects(c, "");
+  const suspected = suspects.length > 0 ? `\nSuspects, newest first:\n${suspects.map((s) => `• ${s.ref}${s.title ? ` “${s.title}”` : ""}${s.paths ? ` changed ${s.paths}` : ""}`).join("\n")}` : "";
+  return `${shortSha(c.trunkSha)}: ${fmtInt(k ? k.fail + k.cancelled : lines.length)} of ${fmtInt(k?.tests ?? 0)} tests failing${notRun ? ` (${notRun})` : ""}${took}\n${lines.join("\n")}${more > 0 ? `\n… and ${more} more` : ""}${suspected}${reused}`;
 }

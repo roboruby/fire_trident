@@ -1,5 +1,6 @@
-import type { Certification, CertificationStatus, ColonyEvent, FailingTest, Id, Landing, NoteCertification, Path, Sha } from "@fire_trident/core";
+import type { Certification, CertificationStatus, ColonyEvent, FailingTest, FileVersion, Id, Landing, NoteCertification, Path, Sha } from "@fire_trident/core";
 import { TEST_FILE } from "./compile.ts";
+import { SUSPECT_MS, findSuspects, publicSuspect, type FoundSuspect, type LandedOn } from "./culprit.ts";
 import { DEFAULT_CAPS, load, testFiles, type CompileMemo, type IndexedFile, type Loaded } from "./load.ts";
 import { RUNNER_FAILED, RUNNER_VERSION, buildPlan, closureOf, type Plan } from "./plan.ts";
 import { DEFAULT_POLICY, isOpen, mergePolicy, repairAction, repairIntent, type CertifyPolicy, type RepairIntentInput, type RepairRow } from "./repair.ts";
@@ -36,7 +37,8 @@ import {
  * reach (by blob id, so the snapshot is one commit), transpile TypeScript, load every test file
  * into one Dynamic Worker with no network (globalOutbound: null) and a CPU and wall-clock limit,
  * and count the results the way `node --test` does. Green moves the colony's greenSha; red keeps
- * the last green and may declare a repair intent. Results are recorded, published as `certify`
+ * the last green, names the changes that most likely broke it when culprit finding is on
+ * (culprit.ts), and may declare a repair intent. Results are recorded, published as `certify`
  * events (so replays show them), and added to the certified landing's lineage note.
  *
  * A run is green only when it also ran and passed everything it owes (owed.ts): the tests that
@@ -51,6 +53,8 @@ export interface CertifyTrunk {
   annotate(landingId: Id, patch: Record<string, unknown>): Promise<boolean>;
   /** Move the trunk repository's `certified` branch to a commit whose tests passed. */
   markCertified(sha: Sha): Promise<boolean>;
+  /** Blob of each path at a commit (null when absent; all null for an unknown commit): culprit finding reads the last green commit. */
+  baseBlobs?(baseSha: Sha, paths: Path[]): Promise<FileVersion[]>;
 }
 
 /** What the colony gives the certifier. */
@@ -72,6 +76,15 @@ export interface CertifyHost {
   satisfy(intentId: Id, reason: string): Promise<void>;
   /** The spec context of the intents that wrote these files, when the colony grew from a spec. */
   specFor(paths: Path[]): { spec: string; label: string | null } | null;
+  /** Culprit finding is on for this colony (FT_CULPRITS); absent means off. */
+  culprits?(): boolean;
+  /**
+   * The latest landings that changed any of `paths` (at most three, newest first), from the colony's
+   * per-path landing index, each with its proposal and intent and the blobs it wrote for those paths.
+   */
+  landedOn?(paths: Path[]): Promise<LandedOn[]>;
+  /** The colony's landing that made commit `sha`, or null (a commit FireTrident made itself, or one no longer kept). */
+  landingOf?(sha: Sha): { landingId: Id; at: number } | null;
 }
 
 /**
@@ -87,6 +100,8 @@ const KEEP = 500;
 /** Failing tests a live event carries, and the length of each error there. */
 const EVENT_FAILING = 10;
 const EVENT_ERROR = 160;
+/** Suspects a live event carries (culprit finding). */
+const EVENT_SUSPECTS = 5;
 /** Failing tests a lineage note carries. */
 const NOTE_FAILING = 20;
 /** CPU the test Worker may use per run at most (it also stops at the wall-clock limit). */
@@ -142,6 +157,10 @@ interface Judged {
   failing: FailingTest[];
   /** Everything it lost (a result lists at most MAX_LOST). */
   lost: Lost[];
+  /** The trunk index the run read (the red commit's blobs, for culprit finding). */
+  index?: readonly IndexedFile[];
+  /** Culprit finding's suspects with their intents' whys (the repair intent names them). */
+  suspects?: FoundSuspect[];
 }
 
 /** One repair intent's record (certify_repairs): what it owes until a green run proves it. */
@@ -381,7 +400,7 @@ export class Certifier {
     const listing: Listing = { has: (p) => onTrunk.has(p), truncated: snap.truncated === true };
 
     const tests = testFiles(snap.files);
-    if (tests.length === 0) return this.nothingRan(base, "no test files (*.test.ts or *.test.js)", null, last, false, owing, listing, null);
+    if (tests.length === 0) return this.nothingRan(base, "no test files (*.test.ts or *.test.js)", null, last, false, owing, listing, null, snap.files);
     const testKey = await digest(tests.map((t) => `${t.path} ${t.blob}`).join("\n"));
     if (last && last.foreign && last.testKey === testKey && !owes(owing)) return this.skip(base, last.cert.detail ?? "no test file imports node:test", testKey, last, true);
 
@@ -400,7 +419,7 @@ export class Certifier {
     if (loaded.tests.length === 0) {
       const foreign = loaded.unsupported.every((u) => u.reason === "does not import node:test");
       const detail = foreign ? `no test file imports node:test (${tests.length} test file${tests.length === 1 ? "" : "s"})` : `no test file can run here: ${loaded.unsupported.slice(0, 3).map((u) => `${u.path} ${u.reason}`).join("; ")}`;
-      return this.nothingRan({ ...base, unsupported: loaded.unsupported.slice(0, 20) }, detail, testKey, last, foreign, owing, listing, loaded);
+      return this.nothingRan({ ...base, unsupported: loaded.unsupported.slice(0, 20) }, detail, testKey, last, foreign, owing, listing, loaded, snap.files);
     }
     // Each test file's key: what it reaches (paths and blob ids), the runner, the per-test limit.
     const keys = new Map<Path, string>();
@@ -445,7 +464,7 @@ export class Certifier {
     if (cached.size > 0) cert.cached = cached.size;
     if (modules) cert.modules = modules;
     if (s.detail) cert.detail = s.detail;
-    const judged = this.judge(cert, runFiles(merged, loaded), owing, listing, loaded);
+    const judged = this.judge(cert, runFiles(merged, loaded), owing, listing, loaded, snap.files);
     // Nothing ran: these are the results of an earlier run of the same tested files (named when its verdict was the same).
     if (toRun.length === 0 && !forced) {
       const same = this.byInputs(inputs);
@@ -512,19 +531,19 @@ export class Certifier {
    * No test file ran (none on trunk, none written for node:test, or none the runner can run). That
    * judges nothing, unless the run owes tests (owed.ts): then they are lost and the run is red.
    */
-  private async nothingRan(base: Certification, detail: string, testKey: string | null, last: Stored | null, foreign: boolean, owing: Owing, listing: Listing, loaded: Loaded | null): Promise<void> {
+  private async nothingRan(base: Certification, detail: string, testKey: string | null, last: Stored | null, foreign: boolean, owing: Owing, listing: Listing, loaded: Loaded | null, index: readonly IndexedFile[]): Promise<void> {
     if (owes(owing)) {
       const cert: Certification = { ...base, status: "skipped", files: 0, counts: { tests: 0, pass: 0, fail: 0, cancelled: 0, skipped: 0, todo: 0, suites: 0 }, failing: [] };
-      const judged = this.judge(cert, runFiles(null, loaded), owing, listing, loaded);
+      const judged = this.judge(cert, runFiles(null, loaded), owing, listing, loaded, index);
       if (judged.lost.length > 0) return this.finish(cert, null, testKey, judged);
     }
     this.skip(base, detail, testKey, last, foreign);
   }
 
   /** Hold a run against what it owes (owed.ts): a run that lost a test is red, whatever its own tests say. */
-  private judge(cert: Certification, run: RunFiles, owing: Owing, listing: Listing, loaded: Loaded | null): Judged {
+  private judge(cert: Certification, run: RunFiles, owing: Owing, listing: Listing, loaded: Loaded | null, index: readonly IndexedFile[]): Judged {
     const failing = cert.failing ?? [];
-    const judged: Judged = { loaded, run, failing, lost: [] };
+    const judged: Judged = { loaded, run, failing, lost: [], index };
     if (cert.status !== "green" && cert.status !== "red" && cert.status !== "skipped") return judged;
     judged.lost = findLost({ baseline: owing.baseline, repairs: owing.repairs, run, listing });
     if (judged.lost.length === 0) return judged;
@@ -552,6 +571,14 @@ export class Certifier {
     }
     const green = this.host.greenSha();
     if (green) cert.greenSha = green;
+    // Culprit finding (FT_CULPRITS): the changes that may have broken the failing tests, for the result and the repair intent.
+    if (cert.status === "red" && judged) {
+      const found = await this.suspects(cert, judged);
+      if (found.length > 0) {
+        judged.suspects = found;
+        cert.suspects = found.map(publicSuspect);
+      }
+    }
     if (cert.status === "red" || cert.status === "green") {
       try {
         const repairId = await this.repair(cert, judged);
@@ -599,6 +626,7 @@ export class Certifier {
       lostTotal: lost.length,
       spec: spec?.spec ?? null,
       ...(spec?.label ? { sourceLabel: spec.label } : {}),
+      ...(judged?.suspects ? { suspects: judged.suspects } : {}),
     });
     const id = await this.host.declare(input);
     // The repair counts only once the tests it was declared for run and pass (owed.ts).
@@ -636,7 +664,40 @@ export class Certifier {
     if (cert.greenSha) e.greenSha = cert.greenSha;
     if (cert.detail) e.detail = cert.detail;
     if (cert.reusedFrom) e.reusedFrom = cert.reusedFrom;
+    if (cert.suspects && cert.suspects.length > 0) e.suspects = cert.suspects.slice(0, EVENT_SUSPECTS);
     return e;
+  }
+
+  /**
+   * Culprit finding for a red result (culprit.ts): the changes that may have broken its failing tests,
+   * from one TrunkDO call (the green commit's blobs) and the colony's landing index. Off unless the
+   * colony turns it on (FT_CULPRITS). Bounded by SUSPECT_MS: a lookup that fails or takes longer
+   * leaves the result without suspects, and certification goes on as before.
+   */
+  private async suspects(cert: Certification, judged: Judged): Promise<FoundSuspect[]> {
+    const host = this.host;
+    try {
+      const trunk = host.trunk();
+      if (!host.culprits?.() || !host.landedOn || !trunk.baseBlobs) return [];
+      const greenSha = host.greenSha();
+      let red: Map<Path, Sha> | null = null;
+      const search = findSuspects({
+        files: (cert.failing ?? []).map((f) => f.file),
+        modules: judged.loaded?.modules ?? null,
+        red: (path) => {
+          red ??= new Map((judged.index ?? []).map((f) => [f.path, f.blob]));
+          return red.get(path) ?? null;
+        },
+        green: greenSha && greenSha !== cert.trunkSha ? { sha: greenSha, landing: host.landingOf?.(greenSha) ?? null, startedAt: this.stored(greenSha)?.cert.startedAt ?? null } : null,
+        // Called as methods: the trunk is a Durable Object stub.
+        blobsAt: (sha, paths) => trunk.baseBlobs!(sha, paths),
+        landedOn: (paths) => host.landedOn!(paths),
+      });
+      return await withTimeout(search, SUSPECT_MS, `took longer than ${SUSPECT_MS} ms`);
+    } catch (err) {
+      console.warn(`certification: no suspects for ${cert.trunkSha.slice(0, 7)}: ${errorText(err)}`);
+      return [];
+    }
   }
 
   // -------------------------------------------------------------------------

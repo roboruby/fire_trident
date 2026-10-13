@@ -671,6 +671,19 @@ input {
   word-break: break-word;
 }
 
+/* culprit finding: a red result's suspects, each with the command that undoes it */
+.trunk-cert-suspect {
+  border-left-color: rgba(243, 128, 32, 0.6);
+}
+
+.trunk-cert-undo {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-2);
+  user-select: all;
+  word-break: break-all;
+}
+
 .trunk-cert-more,
 .trunk-cert-foot {
   color: var(--text-3);

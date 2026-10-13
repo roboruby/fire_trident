@@ -130,6 +130,7 @@ import {
 } from "./metrics.ts";
 import type { AgentListEntry, ColonySeries, ColonySummary, RegistryEntry, SnapshotWithSeries } from "./metrics.ts";
 import { Certifier, type CertifyHost, type CertifyTrunk } from "../certify/certifier.ts";
+import { culpritsEnabled, type LandedOn } from "../certify/culprit.ts";
 import type { CertifyPolicy } from "../certify/repair.ts";
 import { reviewPreview, type ReviewPreview } from "../agents/preview.ts";
 import { RETURN_PATHS, extractUsage, returnReason, type LastReturn } from "../agents/prompt.ts";
@@ -3246,7 +3247,47 @@ export class ColonyDO extends DurableObject<Env> {
         await this.withdrawIntent(id, { reason, by: "certify" });
       },
       specFor: (paths) => this.specContextFor(paths),
+      // Culprit finding (certify/culprit.ts): off unless FT_CULPRITS names this colony.
+      culprits: () => culpritsEnabled(this.env.FT_CULPRITS, this.loadColony()?.colony.id ?? ""),
+      landedOn: (paths) => this.suspectLandings(paths),
+      landingOf: (sha) => {
+        const r = this.sql.exec<{ id: string; at: number }>("SELECT id, at FROM landings WHERE trunk_sha = ? ORDER BY at DESC LIMIT 1", sha).toArray()[0];
+        return r ? { landingId: r.id, at: r.at } : null;
+      },
     };
+  }
+
+  /**
+   * Culprit finding: the latest landings that changed any of `paths` (at most three, newest first),
+   * read from the per-path landing index through whyContext, each with the proposal of its intent in
+   * that landing and the blobs that proposal wrote for those paths (one query for all of them).
+   */
+  private async suspectLandings(paths: Path[]): Promise<LandedOn[]> {
+    // whyContext reads only the footprint, and the id for its log line.
+    const found = (await this.whyContext({ id: "certify-suspects", footprint: paths } as Intent)) ?? [];
+    if (found.length === 0) return [];
+    const writes = this.sql
+      .exec<{ landing_id: string; proposal_id: string; intent_id: string; path: string | null; blob: string | null }>(
+        `SELECT l.id AS landing_id, p.id AS proposal_id, p.intent_id AS intent_id, json_extract(w.value, '$.path') AS path, json_extract(w.value, '$.blob') AS blob
+           FROM landings l JOIN json_each(l.data, '$.proposalIds') j JOIN proposals p ON p.id = j.value JOIN json_each(p.data, '$.writeSet') w
+          WHERE l.id IN (SELECT value FROM json_each(?)) AND json_extract(w.value, '$.path') IN (SELECT value FROM json_each(?))`,
+        JSON.stringify(found.map((e) => e.landingId)),
+        JSON.stringify(paths),
+      )
+      .toArray();
+    return found.map((e) => {
+      const out: LandedOn = { landingId: e.landingId, at: e.at, title: e.title, why: e.why, paths: e.paths };
+      if (e.trunkSha) out.trunkSha = e.trunkSha;
+      if (e.intentId) out.intentId = e.intentId;
+      // The proposal of this landing (for its intent, when known) that wrote these paths: named only when it is one.
+      const mine = writes.filter((w) => w.landing_id === e.landingId && (!e.intentId || w.intent_id === e.intentId) && w.path !== null && e.paths.includes(w.path));
+      const ids = [...new Set(mine.map((w) => w.proposal_id))];
+      if (ids.length === 1) {
+        out.proposalId = ids[0]!;
+        out.wrote = Object.fromEntries(mine.map((w) => [w.path!, typeof w.blob === "string" ? w.blob : null]));
+      }
+      return out;
+    });
   }
 
   /** The spec context carried by the intent that wrote one of `paths` (else the newest spec intent's), when the colony grew from a spec. */

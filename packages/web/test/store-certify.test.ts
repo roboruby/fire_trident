@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { ColonySnapshot } from "@fire_trident/core";
-import { certCounts, certTitle } from "../src/certs.ts";
+import { certCounts, certSuspects, certTitle } from "../src/certs.ts";
 import { startingPoint } from "../src/replay.ts";
-import { ColonyStore } from "../src/store.ts";
+import { ColonyStore, type CertView } from "../src/store.ts";
 
 /** Trunk certification in the UI store: the snapshot's latest result, live certify events, greenSha. */
 const A = "a".repeat(40);
@@ -67,6 +67,32 @@ describe("trunk certification in the UI store", () => {
     expect(certTitle(green)).toBe("aaaaaaa: 58 of 60 tests pass, 2 skipped (node:test in a Dynamic Worker)");
     expect(certTitle({ ...green, counts: counts(60, 0) })).toBe("aaaaaaa: all 60 tests pass (node:test in a Dynamic Worker)");
     expect(certTitle({ ...green, status: "red", counts: { ...counts(62, 5), tests: 69, skipped: 2 }, failing: [] })).toMatch(/^aaaaaaa: 5 of 69 tests failing \(2 skipped\)\n/);
+  });
+
+  it("keeps a red result's suspects from the snapshot and from live events, and words each with its undo command", () => {
+    const failing = [{ name: "subtracts", file: "test/math.test.ts" }];
+    const suspect = { landingId: "lnd_2", trunkSha: C, proposalId: "prp_2", intentId: "int_2", title: "Speed up subtraction", paths: ["src/math.ts"], files: ["test/math.test.ts"], at: 2 };
+    const s = new ColonyStore("web");
+    s.applySnapshot(snapshot({ greenSha: B, certification: { trunkSha: A, status: "red", startedAt: 1, finishedAt: 2, counts: counts(1, 1), failing, suspects: [suspect] } }));
+    const red = s.headCert()!.cert;
+    expect(red.suspects).toEqual([suspect]);
+    // The card: the proposal, its intent's title, what it changed, and `ft revert <colony> <prp>`.
+    expect(certSuspects(red, s.colonyId)).toEqual([{ key: "lnd_2:prp_2", ref: "prp_2", title: "Speed up subtraction", paths: "src/math.ts", files: "test/math.test.ts", commit: "ccccccc", undo: "ft revert web prp_2" }]);
+    expect(certTitle(red)).toContain("\nSuspects, newest first:\n• prp_2 “Speed up subtraction” changed src/math.ts");
+
+    // A live result: a suspect with no single proposal is undone by its landing.
+    s.applyEvents([{ t: "landing", at: 3, landingId: "l3", trunkSha: B, proposalIds: [], paths: [] }]);
+    s.applyEvents([
+      { t: "certify", at: 4, trunkSha: B, status: "red", counts: counts(1, 1), failing, greenSha: C, suspects: [{ landingId: "lnd_3", paths: ["src/a.ts", "src/b.ts", "src/c.ts", "src/d.ts"], files: ["test/a.test.ts"], at: 3 }] },
+    ]);
+    expect(certSuspects(s.headCert()!.cert, s.colonyId)).toEqual([{ key: "lnd_3:lnd_3", ref: "lnd_3", title: "", paths: "src/a.ts, src/b.ts, src/c.ts +1", files: "test/a.test.ts", commit: "", undo: "ft revert web lnd_3" }]);
+    // Green results and results without suspects show none; malformed entries are left out.
+    s.applyEvents([{ t: "certify", at: 5, trunkSha: B, status: "red", counts: counts(1, 1), failing }]);
+    expect(s.headCert()!.cert.suspects).toBeUndefined();
+    expect(certTitle(s.headCert()!.cert)).not.toContain("Suspects");
+    expect(certSuspects({ suspects: [null, { landingId: 5 }, { landingId: "lnd_4", paths: "src/x.ts" }] as unknown as CertView["suspects"] }, "web")).toEqual([
+      { key: "lnd_4:lnd_4", ref: "lnd_4", title: "", paths: "", files: "", commit: "", undo: "ft revert web lnd_4" },
+    ]);
   });
 
   it("starts a replay without the finished run's green commit or result", () => {

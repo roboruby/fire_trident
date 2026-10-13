@@ -211,20 +211,68 @@ export function formatCertify(colony: string, action: "show" | "now" | "on" | "o
   if (r.policy) out.push(`${c.dim("repairs".padEnd(11))}${r.policy.repair === false ? "off" : `on, at most ${r.policy.repairsPerHour ?? 3} an hour`}`);
   const results = Array.isArray(r.results) ? r.results : [];
   if (results.length === 0) out.push(c.dim("no results yet"));
+  // A run of red results with the same suspects lists them once, under the newest.
+  let listed = "";
   for (const cert of results) {
     const when = typeof cert.startedAt === "number" ? c.dim(ago(cert.finishedAt ?? cert.startedAt, now).padStart(8)) : "";
     let what: string;
     if (cert.status === "green") what = c.green(`✓ ${testsPhrase(cert)}`);
     else if (cert.status === "red") what = `${c.red(`✗ ${testsPhrase(cert)}`)} ${failingNames(cert, 2)}`;
     else what = c.dim(`${cert.status}${cert.detail ? `: ${cert.detail}` : ""}`);
+    const suspects = cert.status === "red" ? suspectsOf(cert) : [];
     const extra = [
       typeof cert.durationMs === "number" ? `${cert.durationMs} ms` : "",
       cert.reusedFrom ? `as ${shortSha(cert.reusedFrom)}` : cert.cached ? `${cert.cached} file${cert.cached === 1 ? "" : "s"} reused` : "",
       cert.repairIntentId ? `repair ${cert.repairIntentId}` : "",
+      suspects.length > 0 ? `${suspects.length} suspect${suspects.length === 1 ? "" : "s"}` : "",
     ].filter(Boolean);
     out.push(`  ${shortSha(cert.trunkSha)} ${when}  ${what}${extra.length ? c.dim(`  (${extra.join(", ")})`) : ""}`);
+    const key = suspects.map((s) => s.proposalId ?? s.landingId).join(" ");
+    if (suspects.length > 0 && key !== listed) out.push(...suspectLines(colony, suspects, c));
+    if (suspects.length > 0) listed = key;
   }
   return out.join("\n");
+}
+
+/** Suspects listed under one red result of `ft certify`. */
+const SUSPECTS_SHOWN = 3;
+
+/** A change culprit finding suspects of breaking failing tests (core's Suspect). */
+type Suspect = NonNullable<Certification["suspects"]>[number];
+
+/** A result's suspects (culprit finding), keeping only well-formed entries (a server may send odd or older data). */
+function suspectsOf(cert: Pick<Certification, "suspects">): Suspect[] {
+  const list: unknown[] = Array.isArray(cert.suspects) ? cert.suspects : [];
+  const strings = (x: unknown): string[] => (Array.isArray(x) ? x.filter((p): p is string => typeof p === "string" && p !== "") : []);
+  return list.flatMap((raw): Suspect[] => {
+    const s = (raw ?? {}) as Partial<Record<keyof Suspect, unknown>>;
+    if (typeof s.landingId !== "string" || s.landingId === "") return [];
+    const out: Suspect = { landingId: s.landingId, paths: strings(s.paths), files: strings(s.files), at: typeof s.at === "number" ? s.at : 0 };
+    if (typeof s.proposalId === "string" && s.proposalId) out.proposalId = s.proposalId;
+    if (typeof s.intentId === "string" && s.intentId) out.intentId = s.intentId;
+    if (typeof s.title === "string" && s.title) out.title = s.title;
+    if (typeof s.trunkSha === "string" && s.trunkSha) out.trunkSha = s.trunkSha;
+    return [out];
+  });
+}
+
+/**
+ * A red result's suspects for `ft certify`, newest first: the proposal (or landing) that changed what
+ * the failing tests load, its intent's title, the files it changed, and the command that undoes it.
+ */
+function suspectLines(colony: string, suspects: Suspect[], c: Colors): string[] {
+  const out: string[] = [];
+  const names = (list: string[], max: number): string => (list.length > max ? `${list.slice(0, max).join(", ")} +${list.length - max}` : list.join(", "));
+  for (const s of suspects.slice(0, SUSPECTS_SHOWN)) {
+    const ref = s.proposalId ?? s.landingId;
+    const where = [s.proposalId ? `landing ${s.landingId}` : "", s.trunkSha ? shortSha(s.trunkSha) : ""].filter(Boolean).join(", ");
+    const changed = s.paths.length > 0 ? ` changed ${names(s.paths, 3)}` : "";
+    const files = s.files.length > 0 ? ` for ${names(s.files, 2)}` : "";
+    out.push(`    ${c.yellow("suspect")} ${c.bold(ref)}${s.title ? ` ${quote(s.title, 60)}` : ""}${changed}${c.dim(`${where ? ` (${where})` : ""}${files}`)}`);
+    out.push(`      ${c.dim("undo:")} ft revert ${colony} ${ref}`);
+  }
+  if (suspects.length > SUSPECTS_SHOWN) out.push(c.dim(`    and ${suspects.length - SUSPECTS_SHOWN} more (--json lists them)`));
+  return out;
 }
 
 /** Compact human summary of a colony snapshot. */

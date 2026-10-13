@@ -111,6 +111,48 @@ describe("ft certify", () => {
     expect(formatCertify("web", "off", { enabled: false }, plain, 0)).toBe("✓ trunk certification off for web");
   });
 
+  it("lists a red result's suspects with the command that undoes each, once for a run of red results with the same ones", async () => {
+    const { formatCertify } = await import("../src/format.ts");
+    const failing = [{ name: "subtracts", file: "test/math.test.ts" }];
+    const suspects = [
+      { landingId: "lnd_2", trunkSha: "c".repeat(40), proposalId: "prp_2", intentId: "int_2", title: "Speed up subtraction", paths: ["src/math.ts"], files: ["test/math.test.ts"], at: 0 },
+      // No single proposal known: the landing is what an undo names.
+      { landingId: "lnd_1", paths: ["src/a.ts", "src/b.ts", "src/c.ts", "src/d.ts"], files: ["test/math.test.ts"], at: 0 },
+    ];
+    const text = formatCertify(
+      "web",
+      "show",
+      {
+        on: true,
+        greenSha: GREEN,
+        policy: { enabled: true, repair: true, repairsPerHour: 3 },
+        results: [
+          cert({ status: "red", counts: counts(1, 1), failing, durationMs: 120, repairIntentId: "int_9", suspects }),
+          cert({ trunkSha: "d".repeat(40), status: "red", counts: counts(1, 1), failing, durationMs: 90, reusedFrom: HEAD, suspects }),
+          cert({ trunkSha: GREEN, counts: counts(2, 0), durationMs: 80 }),
+        ],
+      },
+      plain,
+      0,
+    );
+    expect(text.split("\n")).toEqual([
+      "web trunk certification on",
+      "green      bbbbbbb",
+      "repairs    on, at most 3 an hour",
+      '  aaaaaaa just now  ✗ 1 of 2 failing "subtracts"  (120 ms, repair int_9, 2 suspects)',
+      '    suspect prp_2 "Speed up subtraction" changed src/math.ts (landing lnd_2, ccccccc) for test/math.test.ts',
+      "      undo: ft revert web prp_2",
+      "    suspect lnd_1 changed src/a.ts, src/b.ts, src/c.ts +1 for test/math.test.ts",
+      "      undo: ft revert web lnd_1",
+      '  ddddddd just now  ✗ 1 of 2 failing "subtracts"  (90 ms, as aaaaaaa, 2 suspects)',
+      "  bbbbbbb just now  ✓ 2/2 tests  (80 ms)",
+    ]);
+    // Malformed suspects from a server are left out rather than printed or thrown on.
+    const odd = [null, 5, { landingId: "" }, { landingId: "lnd_3", paths: "src/x.ts", files: [7] }] as unknown as Certification["suspects"];
+    const oddText = formatCertify("web", "show", { on: true, results: [cert({ status: "red", counts: counts(1, 1), failing, suspects: odd })] }, plain, 0);
+    expect(oddText.split("\n").slice(-2)).toEqual(["    suspect lnd_3", "      undo: ft revert web lnd_3"]);
+  });
+
   it("says in its help what the certified branch holds and to deploy from it", async () => {
     const { helpText } = await import("../src/args.ts");
     const help = helpText("certify").replace(/\s+/g, " ");

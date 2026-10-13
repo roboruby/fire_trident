@@ -1,7 +1,7 @@
 import { useEffect, useRef, type RefObject } from "react";
 import { fmtInt, shortSha } from "../format.ts";
 import type { ColonyStore } from "../store.ts";
-import { certCounts, certNotRun, certTitle } from "../certs.ts";
+import { certCounts, certNotRun, certSuspects, certTitle } from "../certs.ts";
 import { FIELD_COLOR, KINDS } from "../theme.ts";
 import { usePolled, useThrottledVersion } from "../useStore.ts";
 import { MapRenderer } from "./renderer.ts";
@@ -100,7 +100,7 @@ function TrunkBar({ store, headRef, shaRef }: { store: ColonyStore; headRef: Ref
   );
 }
 
-/** The head commit's trunk certification: a green check or a red cross with the counts (failing names on hover). */
+/** The head commit's trunk certification: a green check or a red cross with the counts (failing names, and a red result's suspects with their undo commands, on hover). */
 function CertBadge({ store }: { store: ColonyStore }) {
   const hc = store.headCert();
   if (!hc || hc.cert.status === "skipped") return null;
@@ -124,6 +124,7 @@ function CertBadge({ store }: { store: ColonyStore }) {
   const k = cert.counts;
   const failing = cert.failing ?? [];
   const notRun = certNotRun(cert);
+  const suspects = green ? [] : certSuspects(cert, store.colony?.id ?? store.colonyId);
   return (
     <span className={`trunk-cert ${green ? "is-green" : "is-red"}${onHead ? "" : " is-stale"}`} tabIndex={0} aria-label={certTitle(cert)}>
       <b className="trunk-cert-mark">{green ? "✓" : "✗"}</b>
@@ -142,6 +143,14 @@ function CertBadge({ store }: { store: ColonyStore }) {
           </span>
         ))}
         {failing.length > 8 ? <span className="trunk-cert-more">and {fmtInt(failing.length - 8)} more</span> : null}
+        {suspects.length > 0 ? <span className="trunk-cert-more">Suspects, newest first (the changes under the failing tests):</span> : null}
+        {suspects.map((s) => (
+          <span className="trunk-cert-fail trunk-cert-suspect" key={s.key}>
+            <b>{s.title || s.ref}</b>
+            <span className="mono">{[s.title ? s.ref : "", s.paths ? `changed ${s.paths}` : "", s.commit, s.files ? `for ${s.files}` : ""].filter(Boolean).join(" · ")}</span>
+            <code className="trunk-cert-undo">{s.undo}</code>
+          </span>
+        ))}
         <span className="trunk-cert-foot">
           node:test in a Dynamic Worker{typeof cert.durationMs === "number" ? ` · ${(cert.durationMs / 1000).toFixed(1)} s` : ""}
           {cert.reusedFrom ? ` · same tested files as ${shortSha(cert.reusedFrom)}` : ""}

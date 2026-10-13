@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import type { Certification, Path, Sha } from "@fire_trident/core";
+import type { Certification, ColonyEvent, Path, Sha } from "@fire_trident/core";
 import { Certifier, RUNNER_COMPAT_DATE, type CertifyHost, type CertifyTrunk } from "../../src/certify/certifier.ts";
+import type { LandedOn } from "../../src/certify/culprit.ts";
 import { MAIN_MODULE, RUNNER_FAILED, RUNNER_VERSION, SHIM_MODULE, type Plan } from "../../src/certify/plan.ts";
 import type { RepairIntentInput } from "../../src/certify/repair.ts";
 import type { RunReport } from "../../src/certify/report.ts";
@@ -48,7 +49,11 @@ class Trunk implements CertifyTrunk {
   sha: Sha = "";
   readonly files = new Map<Path, string>();
   readonly certified: Sha[] = [];
+  /** baseBlobs() calls (culprit finding reads the green commit). */
+  blobReads = 0;
   private readonly blobs = new Map<Sha, string>();
+  /** Every commit's blob of each path, for baseBlobs(). */
+  private readonly history = new Map<Sha, Map<Path, Sha>>();
   private n = 0;
 
   commit(changes: Record<Path, string | null>): Sha {
@@ -57,7 +62,14 @@ class Trunk implements CertifyTrunk {
       else this.files.set(path, text);
     }
     this.sha = (++this.n).toString(16).padStart(40, "0");
+    this.history.set(this.sha, new Map([...this.files].map(([path, text]) => [path, blobOf(text)])));
     return this.sha;
+  }
+
+  async baseBlobs(sha: Sha, paths: Path[]): Promise<Array<{ path: Path; blob: Sha | null }>> {
+    this.blobReads++;
+    const at = this.history.get(sha);
+    return paths.map((path) => ({ path, blob: at?.get(path) ?? null }));
   }
 
   async certifySnapshot(): Promise<{ trunkSha: Sha; landingId: null; files: Array<{ path: Path; blob: Sha; size: number }>; truncated: boolean }> {
@@ -121,12 +133,15 @@ const allPass: Answer = async (code) => {
   return new Response(JSON.stringify(report));
 };
 
-/** A certifier over `trunk` with a fresh database: runs start at once and red declares no repair (unless `policy` says otherwise). */
-function setup(trunk: Trunk, loader: WorkerLoader, policy: Record<string, unknown> = {}): { certifier: Certifier; db: DatabaseSync; declared: RepairIntentInput[] } {
+/**
+ * A certifier over `trunk` with a fresh database: runs start at once and red declares no repair (unless `policy` says otherwise).
+ * `host` replaces parts of the colony (culprit finding is off unless it says otherwise).
+ */
+function setup(trunk: Trunk, loader: WorkerLoader, policy: Record<string, unknown> = {}, host: Partial<CertifyHost> = {}): { certifier: Certifier; db: DatabaseSync; declared: RepairIntentInput[] } {
   const { sql, db } = sqlStorage();
   let green: Sha | null = null;
   const declared: RepairIntentInput[] = [];
-  const host: CertifyHost = {
+  const colony: CertifyHost = {
     sql,
     enabled: () => true,
     loader: () => loader,
@@ -145,7 +160,7 @@ function setup(trunk: Trunk, loader: WorkerLoader, policy: Record<string, unknow
     satisfy: async () => undefined,
     specFor: () => null,
   };
-  const certifier = new Certifier(host);
+  const certifier = new Certifier({ ...colony, ...host });
   const set = certifier.setPolicy({ minIntervalMs: 0, repair: false, ...policy });
   if ("error" in set) throw new Error(set.error);
   return { certifier, db, declared };
@@ -377,5 +392,96 @@ describe("reading the test Worker's answer", () => {
       const { certifier } = setup(trunk, loaderOf(async () => new Response(body)));
       expect(await land(certifier, trunk, ["test/a.test.ts"])).toMatchObject({ status: "error", detail: "the test runner failed: the test Worker answered without a report" });
     }
+  }, 60_000);
+});
+
+describe("culprit finding in a red run", () => {
+  const SUB = (op: string): string => `export function sub(a: number, b: number): number {\n  return a ${op} b;\n}\n`;
+  const SUB_TEST = 'import { test } from "node:test";\nimport assert from "node:assert/strict";\nimport { sub } from "../src/math.ts";\ntest("subtracts", () => {\n  assert.equal(sub(5, 3), 2);\n});\n';
+
+  it("names the landings since green that changed what a failing test loads: on the result, its event and its repair intent", async () => {
+    const trunk = new Trunk();
+    const sha1 = trunk.commit({ "src/math.ts": SUB("-"), "test/math.test.ts": SUB_TEST, "README.md": "# x\n" });
+    const asked: Path[][] = [];
+    const events: ColonyEvent[] = [];
+    let found: LandedOn[] = [];
+    const { certifier, declared } = setup(
+      trunk,
+      loaderOf(inNode),
+      { repair: true },
+      {
+        culprits: () => true,
+        landedOn: async (paths) => {
+          asked.push(paths);
+          return found;
+        },
+        landingOf: (sha) => (sha === sha1 ? { landingId: "lnd_1", at: 100 } : null),
+        publish: (e) => {
+          events.push(...(Array.isArray(e) ? e : [e]));
+        },
+      },
+    );
+    expect(await land(certifier, trunk, ["src/math.ts", "test/math.test.ts"])).toMatchObject({ status: "green" });
+    const sha2 = trunk.commit({ "src/math.ts": SUB("+") });
+    found = [
+      { landingId: "lnd_2", at: 200, trunkSha: sha2, proposalId: "prp_2", intentId: "int_2", title: "Speed up sub", why: "It was slow.", paths: ["src/math.ts"], wrote: { "src/math.ts": "x" } },
+      // The green commit's own landing: not a suspect.
+      { landingId: "lnd_1", at: 100, trunkSha: sha1, proposalId: "prp_1", intentId: "int_1", title: "Add sub", why: "We need it.", paths: ["src/math.ts"] },
+    ];
+    const red = await land(certifier, trunk, ["src/math.ts"]);
+    expect(red).toMatchObject({ status: "red", greenSha: sha1, repairIntentId: "int_1" });
+    // One read of the green commit, one index lookup with what changed under the failing file.
+    expect(trunk.blobReads).toBe(1);
+    expect(asked).toEqual([["src/math.ts"]]);
+    const suspect = { landingId: "lnd_2", at: 200, trunkSha: sha2, proposalId: "prp_2", intentId: "int_2", title: "Speed up sub", paths: ["src/math.ts"], files: ["test/math.test.ts"] };
+    expect(red.suspects).toEqual([suspect]);
+    expect(certifier.state().latest?.suspects).toEqual([suspect]);
+    const published = events.filter((e): e is Extract<ColonyEvent, { t: "certify" }> => e.t === "certify" && e.status === "red");
+    expect(published.at(-1)?.suspects).toEqual([suspect]);
+    // The repair intent names it as data and can write the file it changed.
+    expect(declared).toHaveLength(1);
+    expect(declared[0]!.footprint).toEqual(["src/math.ts"]);
+    expect(declared[0]!.why).toMatch(
+      /\n<<<SUSPECTS ([0-9a-f]{12})>>>\n- proposal prp_2 \(landing lnd_2, commit 0000000\) for intent int_2 "Speed up sub" changed src\/math\.ts; a suspect for test\/math\.test\.ts\. Why it was written: It was slow\.\n<<<END SUSPECTS \1>>>\n/,
+    );
+  }, 60_000);
+
+  it("fails open: a lookup that throws or takes too long leaves the result without suspects, and the repair comes as before", async () => {
+    const failing: Array<NonNullable<CertifyHost["landedOn"]>> = [
+      async () => {
+        throw new Error("the landing index is unavailable");
+      },
+      () => new Promise<LandedOn[]>(() => undefined),
+    ];
+    for (const landedOn of failing) {
+      const trunk = new Trunk();
+      trunk.commit({ "src/math.ts": SUB("-"), "test/math.test.ts": SUB_TEST });
+      const { certifier, declared } = setup(trunk, loaderOf(inNode), { repair: true }, { culprits: () => true, landedOn });
+      expect(await land(certifier, trunk, ["src/math.ts", "test/math.test.ts"])).toMatchObject({ status: "green" });
+      trunk.commit({ "src/math.ts": SUB("+") });
+      const red = await land(certifier, trunk, ["src/math.ts"]);
+      expect(red).toMatchObject({ status: "red", repairIntentId: "int_1", counts: { fail: 1 } });
+      expect(red.suspects).toBeUndefined();
+      expect(declared).toHaveLength(1);
+      expect(declared[0]!.why).not.toContain("SUSPECTS");
+    }
+  }, 60_000);
+
+  it("is off unless the colony turns it on: no trunk read, no index lookup", async () => {
+    const trunk = new Trunk();
+    trunk.commit({ "src/math.ts": SUB("-"), "test/math.test.ts": SUB_TEST });
+    let lookups = 0;
+    const landedOn = async (): Promise<LandedOn[]> => {
+      lookups++;
+      return [];
+    };
+    const { certifier } = setup(trunk, loaderOf(inNode), {}, { culprits: () => false, landedOn });
+    await land(certifier, trunk, ["src/math.ts", "test/math.test.ts"]);
+    trunk.commit({ "src/math.ts": SUB("+") });
+    const red = await land(certifier, trunk, ["src/math.ts"]);
+    expect(red.status).toBe("red");
+    expect(red.suspects).toBeUndefined();
+    expect(trunk.blobReads).toBe(0);
+    expect(lookups).toBe(0);
   }, 60_000);
 });

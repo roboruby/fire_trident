@@ -44,6 +44,8 @@ export interface CertView {
   durationMs?: number;
   detail?: string;
   reusedFrom?: Sha;
+  /** A red result's suspects (culprit finding): the changes that most likely broke its tests. */
+  suspects?: Extract<ColonyEvent, { t: "certify" }>["suspects"];
   at: number;
 }
 
@@ -503,6 +505,7 @@ export class ColonyStore {
     if (typeof c.durationMs === "number") view.durationMs = c.durationMs;
     if (c.detail) view.detail = c.detail;
     if (c.reusedFrom) view.reusedFrom = c.reusedFrom;
+    if (Array.isArray(c.suspects) && c.suspects.length > 0) view.suspects = c.suspects;
     this.certs.delete(c.trunkSha);
     this.certs.set(c.trunkSha, view);
     this.lastCertSha = c.trunkSha;

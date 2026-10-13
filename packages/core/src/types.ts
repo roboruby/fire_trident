@@ -491,6 +491,29 @@ export interface LostTest {
   repairIntentId?: Id;
 }
 
+/**
+ * A change that may have broken failing tests (culprit finding): a landing since the last green commit
+ * that changed a file a failing test file loads (the test file included) whose blob differs between the
+ * two commits, or, for a test file new since then (or before the first green run), a landing that added
+ * or last changed it or a file it loads. `ft revert <colony> <proposalId>` undoes it.
+ */
+export interface Suspect {
+  landingId: Id;
+  /** The trunk commit the landing made, when the colony still has it. */
+  trunkSha?: Sha;
+  /** The proposal that wrote the paths; absent when the colony knows no single proposal for them. */
+  proposalId?: Id;
+  intentId?: Id;
+  /** The intent's title (one line). */
+  title?: string;
+  /** The files it changed among the ones the failing test files load. */
+  paths: Path[];
+  /** The failing test files it is a suspect for. */
+  files: Path[];
+  /** When it landed. */
+  at: Millis;
+}
+
 /** Counts in the order `node --test` prints them. `tests` = pass + fail + cancelled + skipped + todo. */
 export interface TestCounts {
   tests: number;
@@ -527,6 +550,8 @@ export interface Certification {
   modules?: { count: number; chars: number };
   /** The repair intent this red result declared. */
   repairIntentId?: Id;
+  /** Red only, when culprit finding is on (FT_CULPRITS): the changes that may have broken the failing tests, newest first (at most 10). */
+  suspects?: Suspect[];
   /** Why it was skipped or could not run. */
   detail?: string;
   /** The tested files were identical to this earlier commit's run: its result was reused. */
@@ -624,6 +649,8 @@ export type ColonyEvent =
       greenSha?: Sha;
       detail?: string;
       reusedFrom?: Sha;
+      /** The result's suspects (culprit finding), at most 5. */
+      suspects?: Suspect[];
     };
 
 /** Per-minute history for sparklines and the violations burn-down. */
