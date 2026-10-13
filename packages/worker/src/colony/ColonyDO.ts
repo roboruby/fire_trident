@@ -143,6 +143,7 @@ import { MAX_RESUME_KEY, MIN_RESUME_KEY, resumeDigest, resumeKeyMatches } from "
 import { CONTEST_LOOK_MS, CONTEST_MIN, CONTEST_RETRY_MS, CONTEST_WAIT_MS, cleanAlternatives, contestEvidence, contestSeats, judgeModels, loadDiffs, migrateContest, pairJudge, selectWinner, supersededReason } from "../decide/contest.ts";
 import type { ContestAlternative, ContestCandidate, ContestOutcome, ContestRound, PairJudge } from "../decide/contest.ts";
 import { whyAuthor } from "../decide/danger.ts";
+import { protectedHits } from "../decide/signals.ts";
 import type { FileDiff } from "../decide/diff.ts";
 import { CallLimiter } from "../decide/limiter.ts";
 import type { AiRunner } from "../decide/reflex.ts";
@@ -1991,7 +1992,10 @@ export class ColonyDO extends DurableObject<Env> {
     // innate checks, the reflex arc and the two-signal gate decide where it goes; without it, it
     // goes straight to its lane. A sealed vaccine always takes the decide path, so it can never reach a lane.
     const engine = this.decider();
-    const deciding = engine.enabled() || engine.store.vaccineByIntent(intentRow.id) !== null;
+    // A change to a protected path (the colony policy) needs a person even with review off: it takes the decide path,
+    // where rule P3 escalates it before any model is asked.
+    const touchesProtected = protectedHits(writeSet.map((w) => w.path), engine.store.policy().protectedPaths ?? []).length > 0;
+    const deciding = engine.enabled() || engine.store.vaccineByIntent(intentRow.id) !== null || touchesProtected;
     const proposal: Proposal = { ...draft, status: deciding ? "checking" : OPEN_LIKE.has(draft.status) ? "ready" : draft.status };
 
     const fresh = this.intentRow(proposal.intentId);
