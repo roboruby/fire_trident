@@ -350,6 +350,16 @@ end
 
 # --- 4. a plain clone -------------------------------------------------------------
 scene("Plain git clone of trunk")
+# With asynchronous publishing (FT_ASYNC_PUBLISH) a landing counts once the trunk writer records it; wait until the
+# trunk repository has every recorded commit, so the clone is the trunk the colony reports.
+60.times do
+  pub = snap.dig("colony", "publish")
+  break unless pub.is_a?(Hash) && pub["unpublished"].to_i.positive?
+
+  say("waiting for #{pub["unpublished"]} recorded landing(s) to be published")
+  sleep 2
+  _, snap = api(:get, "/colonies/#{colony}")
+end
 trunk = snap.dig("colony", "trunk") || {}
 # A short-lived read token from wrangler (your Cloudflare login); it is never printed.
 raw, st = Open3.capture2e("npx", "wrangler", "artifacts", "repos", "issue-token", trunk["name"].to_s, "--namespace", trunk["namespace"].to_s, "--scope", "read", "--ttl", "900", "--json", chdir: WORKER)

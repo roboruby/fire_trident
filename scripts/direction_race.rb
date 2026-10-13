@@ -152,9 +152,22 @@ def propose_file(colony, agent, took, path, text)
   end
 end
 
+# With asynchronous publishing (FT_ASYNC_PUBLISH), wait (at most 60 s) until the trunk repository has every commit the
+# trunk writer recorded, so reading trunk with git sees what the colony reports.
+def wait_published(colony)
+  30.times do
+    code, snap = api(:get, "/colonies/#{colony}", timeout: 60)
+    pub = code == 200 ? snap.dig("colony", "publish") : nil
+    return unless pub.is_a?(Hash) && pub["unpublished"].to_i.positive?
+
+    sleep 2
+  end
+end
+
 # The blob that trunk's main holds at `path`, read with git through the latest lease's trunk read token
 # (the colony snapshot lists paths and sizes, not blob ids); nil when the path is absent.
-def trunk_blob(_colony, path)
+def trunk_blob(colony, path)
+  wait_published(colony)
   remote, token = $trunk_read
   raise "no lease seen yet: cannot read trunk" unless remote
 
