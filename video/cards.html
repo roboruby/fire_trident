@@ -15,6 +15,8 @@
   * { box-sizing: border-box; }
   html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: var(--bg); color: var(--text); -webkit-font-smoothing: antialiased; font-family: var(--sans); }
   .glow { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(1000px 560px at 50% -12%, rgba(243,128,32,0.12), transparent 70%), radial-gradient(1200px 700px at 100% 115%, rgba(61,139,255,0.07), transparent 70%); }
+  /* #root fills the frame, so the recorder's slow push-in (a transform on #root) keeps every card's layout. */
+  #root { position: absolute; inset: 0; }
   .r { opacity: 0; will-change: opacity, transform; }
   .kicker { display: flex; align-items: center; gap: 16px; font: 700 20px/1 var(--sans); letter-spacing: 0.22em; text-transform: uppercase; color: var(--accent); }
   .kicker::before { content: ""; width: 44px; height: 2px; background: var(--accent); border-radius: 2px; }
@@ -156,64 +158,83 @@
   cards.stack = () => {
     root.innerHTML = `
       <div class="head"><div class="kicker r" data-at="0.05">${esc(P.kicker ?? "Built on Cloudflare")}</div><div class="h1 r" data-at="0.2">${P.title ?? ""}</div></div>
-      <div class="rows">${(P.rows ?? []).map((r, i) => `<div class="row r" data-at="${beat(i, 0.6 + i * 0.6)}"><div class="n">${esc(r.name)}</div><div class="t">${r.text}</div></div>`).join("")}</div>`;
+      <div class="rows" style="${P.top ? `top: ${P.top}px;` : ""}${P.gap ? ` gap: ${P.gap}px;` : ""}">${(P.rows ?? []).map((r, i) => `<div class="row r" data-at="${beat(i, 0.6 + i * 0.6)}"${P.rowPad ? ` style="padding: ${P.rowPad}px 36px"` : ""}><div class="n">${esc(r.name)}</div><div class="t">${r.text}</div></div>`).join("")}</div>`;
   };
 
-  // -- nature: three systems that coordinate with no queue ----------------------
+  // -- nature: systems that coordinate with no queue (P.systems picks which, in order) ----
   cards.nature = () => {
+    const ALL = {
+      ants: { color: "var(--need)", name: "Ant colony", text: "Millions of workers and no manager." },
+      slime: { color: "var(--trail)", name: "Slime mold", text: "Finds the shortest path through a maze without a map." },
+      immune: { color: "var(--calm)", name: "Immune system", text: "Checks billions of cells and remembers every attack it has seen." },
+    };
+    const systems = (P.systems ?? ["ants", "slime", "immune"]).filter((k) => ALL[k]);
+    const n = systems.length;
+    const narrow = n < 3 ? "left: 220px; right: 220px;" : "";
+    // Beats: one per system, then the "no queue" line, then the three chips.
     root.innerHTML = `
       <div class="head" style="top: 110px"><div class="kicker r" data-at="0.05">Nature solved this</div></div>
-      <div class="cols">
-        <div class="col r" data-at="${beat(0, 0.5)}"><svg id="ants" viewBox="0 0 500 250"></svg><div class="n" style="color: var(--need)">Ant colony</div><div class="t">Millions of workers and no manager.</div></div>
-        <div class="col r" data-at="${beat(1, 3)}"><svg id="slime" viewBox="0 0 500 250"></svg><div class="n" style="color: var(--trail)">Slime mold</div><div class="t">Finds the shortest path through a maze without a map.</div></div>
-        <div class="col r" data-at="${beat(2, 6)}"><svg id="immune" viewBox="0 0 500 250"></svg><div class="n" style="color: var(--calm)">Immune system</div><div class="t">Checks billions of cells and remembers every attack.</div></div>
-      </div>
-      <div class="bottom"><span class="q r" data-at="${beat(3, 9)}">No queue.</span><span class="chip a r" data-at="${beat(4, 11)}">Signals left in the environment</span><span class="chip b r" data-at="${beat(5, 11.6)}">Local decisions</span><span class="chip c r" data-at="${beat(6, 12.2)}">Parallel work</span></div>`;
+      <div class="cols" style="grid-template-columns: repeat(${n}, 1fr); ${narrow}${n < 3 ? " gap: 60px;" : ""}">${systems
+        .map((k, i) => `<div class="col r" data-at="${beat(i, 0.5 + i * 2.5)}"><svg id="${k}" viewBox="0 0 500 250"></svg><div class="n" style="color: ${ALL[k].color}">${ALL[k].name}</div><div class="t">${ALL[k].text}</div></div>`)
+        .join("")}</div>
+      <div class="bottom" style="${narrow}"><span class="q r" data-at="${beat(n, 9)}">${esc(P.noQueue ?? "No queue.")}</span><span class="chip a r" data-at="${beat(n + 1, 11)}">Signals left in the environment</span><span class="chip b r" data-at="${beat(n + 2, 11.6)}">Local decisions</span><span class="chip c r" data-at="${beat(n + 3, 12.2)}">Parallel work</span></div>`;
     const ants = document.getElementById("ants");
     const slime = document.getElementById("slime");
     const immune = document.getElementById("immune");
-    // Ant trail: a wavy pheromone path from nest to food, ants walking both ways.
-    const trail = "M40 200 C 120 60, 200 230, 270 120 S 420 40, 460 70";
-    ants.innerHTML = `<path d="${trail}" fill="none" stroke="rgba(255,181,61,0.25)" stroke-width="10" stroke-linecap="round"/><path id="antpath" d="${trail}" fill="none" stroke="rgba(255,181,61,0.55)" stroke-width="2" stroke-dasharray="3 9"/><circle cx="40" cy="200" r="16" fill="rgba(255,181,61,0.18)" stroke="#ffb53d" stroke-width="2"/><circle cx="460" cy="70" r="12" fill="#ffb53d" opacity="0.85"/>${Array.from({ length: 14 }, (_, i) => `<circle class="ant" r="4.2" fill="#ffd18a"/>`).join("")}`;
-    const antPath = ants.querySelector("#antpath");
-    const len = antPath.getTotalLength();
-    // Slime mold: a network of tubes from food sources, the shortest path thickening.
-    const nodes = [[40, 130], [150, 118], [150, 210], [255, 128], [355, 115], [345, 212], [460, 125], [250, 38]];
-    const edges = [[0, 1], [1, 3], [3, 4], [4, 6], [0, 2], [2, 5], [5, 6], [1, 7], [7, 4], [2, 3], [3, 5], [7, 3]];
-    const best = new Set(["0-1", "1-3", "3-4", "4-6"]);
-    slime.innerHTML = edges.map(([a, b]) => `<line class="tube" data-best="${best.has(`${a}-${b}`) ? 1 : 0}" x1="${nodes[a][0]}" y1="${nodes[a][1]}" x2="${nodes[b][0]}" y2="${nodes[b][1]}" stroke="#1fe08e" stroke-linecap="round"/>`).join("") + nodes.map(([x, y], i) => `<circle cx="${x}" cy="${y}" r="${i === 0 || i === 6 ? 13 : 6}" fill="${i === 0 || i === 6 ? "#1fe08e" : "rgba(31,224,142,0.35)"}"/>`).join("");
-    // Immune system: cells drifting past a sentinel; one marked cell gets tagged.
-    immune.innerHTML = Array.from({ length: 16 }, (_, i) => `<circle class="cell" r="${i === 5 ? 15 : 12}" fill="${i === 5 ? "rgba(255,46,79,0.25)" : "rgba(95,208,255,0.14)"}" stroke="${i === 5 ? "#ff2e4f" : "rgba(95,208,255,0.55)"}" stroke-width="2"/>`).join("") +
-      `<g id="ab" stroke="#5fd0ff" stroke-width="4" stroke-linecap="round" fill="none"><path d="M0 22 V2 M0 2 L-12 -14 M0 2 L12 -14"/></g>`;
-    const tubes = [...slime.querySelectorAll(".tube")];
-    const antEls = [...ants.querySelectorAll(".ant")];
-    const cells = [...immune.querySelectorAll(".cell")];
-    const ab = immune.querySelector("#ab");
-    tick = (t) => {
-      antEls.forEach((el, i) => {
-        const dir = i % 2 ? 1 : -1;
-        let u = ((t * 0.09 + i / antEls.length) % 1 + 1) % 1;
-        if (dir < 0) u = 1 - u;
-        const p = antPath.getPointAtLength(u * len);
-        el.setAttribute("cx", p.x.toFixed(1));
-        el.setAttribute("cy", p.y.toFixed(1));
+    const ticks = [];
+    if (ants) {
+      // Ant trail: a wavy pheromone path from nest to food, ants walking both ways.
+      const trail = "M40 200 C 120 60, 200 230, 270 120 S 420 40, 460 70";
+      ants.innerHTML = `<path d="${trail}" fill="none" stroke="rgba(255,181,61,0.25)" stroke-width="10" stroke-linecap="round"/><path id="antpath" d="${trail}" fill="none" stroke="rgba(255,181,61,0.55)" stroke-width="2" stroke-dasharray="3 9"/><circle cx="40" cy="200" r="16" fill="rgba(255,181,61,0.18)" stroke="#ffb53d" stroke-width="2"/><circle cx="460" cy="70" r="12" fill="#ffb53d" opacity="0.85"/>${Array.from({ length: 14 }, () => `<circle class="ant" r="4.2" fill="#ffd18a"/>`).join("")}`;
+      const antPath = ants.querySelector("#antpath");
+      const len = antPath.getTotalLength();
+      const antEls = [...ants.querySelectorAll(".ant")];
+      ticks.push((t) =>
+        antEls.forEach((el, i) => {
+          const dir = i % 2 ? 1 : -1;
+          let u = ((t * 0.09 + i / antEls.length) % 1 + 1) % 1;
+          if (dir < 0) u = 1 - u;
+          const p = antPath.getPointAtLength(u * len);
+          el.setAttribute("cx", p.x.toFixed(1));
+          el.setAttribute("cy", p.y.toFixed(1));
+        }),
+      );
+    }
+    if (slime) {
+      // Slime mold: a network of tubes from food sources, the shortest path thickening.
+      const nodes = [[40, 130], [150, 118], [150, 210], [255, 128], [355, 115], [345, 212], [460, 125], [250, 38]];
+      const edges = [[0, 1], [1, 3], [3, 4], [4, 6], [0, 2], [2, 5], [5, 6], [1, 7], [7, 4], [2, 3], [3, 5], [7, 3]];
+      const best = new Set(["0-1", "1-3", "3-4", "4-6"]);
+      slime.innerHTML = edges.map(([a, b]) => `<line class="tube" data-best="${best.has(`${a}-${b}`) ? 1 : 0}" x1="${nodes[a][0]}" y1="${nodes[a][1]}" x2="${nodes[b][0]}" y2="${nodes[b][1]}" stroke="#1fe08e" stroke-linecap="round"/>`).join("") + nodes.map(([x, y], i) => `<circle cx="${x}" cy="${y}" r="${i === 0 || i === 6 ? 13 : 6}" fill="${i === 0 || i === 6 ? "#1fe08e" : "rgba(31,224,142,0.35)"}"/>`).join("");
+      const tubes = [...slime.querySelectorAll(".tube")];
+      const at = beat(systems.indexOf("slime"), 3);
+      ticks.push((t) => {
+        const g = clamp((t - at) / 4);
+        tubes.forEach((el) => {
+          const isBest = el.dataset.best === "1";
+          el.setAttribute("stroke-width", (isBest ? 3 + 9 * g : 3 * (1 - 0.8 * g)).toFixed(2));
+          el.setAttribute("stroke-opacity", (isBest ? 0.5 + 0.5 * g : 0.5 * (1 - 0.7 * g)).toFixed(2));
+        });
       });
-      const g = clamp((t - beat(1, 3)) / 4);
-      tubes.forEach((el) => {
-        const isBest = el.dataset.best === "1";
-        const w = isBest ? 3 + 9 * g : 3 * (1 - 0.8 * g);
-        el.setAttribute("stroke-width", w.toFixed(2));
-        el.setAttribute("stroke-opacity", (isBest ? 0.5 + 0.5 * g : 0.5 * (1 - 0.7 * g)).toFixed(2));
-      });
-      cells.forEach((el, i) => {
-        const row = i % 4;
-        const x = ((i * 97 + t * (26 + row * 7)) % 560) - 30;
-        const y = 40 + row * 55 + Math.sin(t * 0.8 + i) * 6;
-        el.setAttribute("cx", x.toFixed(1));
-        el.setAttribute("cy", y.toFixed(1));
-        if (i === 5) ab.setAttribute("transform", `translate(${(x + 6).toFixed(1)} ${(y - 36).toFixed(1)}) scale(${(0.9 + 0.1 * Math.sin(t * 4)).toFixed(3)})`);
-      });
-    };
+    }
+    if (immune) {
+      // Immune system: cells drifting past a sentinel; one marked cell gets tagged.
+      immune.innerHTML = Array.from({ length: 16 }, (_, i) => `<circle class="cell" r="${i === 5 ? 15 : 12}" fill="${i === 5 ? "rgba(255,46,79,0.25)" : "rgba(95,208,255,0.14)"}" stroke="${i === 5 ? "#ff2e4f" : "rgba(95,208,255,0.55)"}" stroke-width="2"/>`).join("") +
+        `<g id="ab" stroke="#5fd0ff" stroke-width="4" stroke-linecap="round" fill="none"><path d="M0 22 V2 M0 2 L-12 -14 M0 2 L12 -14"/></g>`;
+      const cells = [...immune.querySelectorAll(".cell")];
+      const ab = immune.querySelector("#ab");
+      ticks.push((t) =>
+        cells.forEach((el, i) => {
+          const row = i % 4;
+          const x = ((i * 97 + t * (26 + row * 7)) % 560) - 30;
+          const y = 40 + row * 55 + Math.sin(t * 0.8 + i) * 6;
+          el.setAttribute("cx", x.toFixed(1));
+          el.setAttribute("cy", y.toFixed(1));
+          if (i === 5) ab.setAttribute("transform", `translate(${(x + 6).toFixed(1)} ${(y - 36).toFixed(1)}) scale(${(0.9 + 0.1 * Math.sin(t * 4)).toFixed(3)})`);
+        }),
+      );
+    }
+    tick = (t) => ticks.forEach((fn) => fn(t));
   };
 
   // -- the queue chart: one queue (left), many lanes (right, in "compare" mode) ---------
@@ -242,13 +263,15 @@
     const rateQ = (t) => {
       if (compare) return 26;
       const b1 = beat(1, 6), b2 = beat(2, 12);
-      if (t < b1) return 0.35;
-      if (t < b2) return 0.35 + 12 * clamp((t - b1) / 1.5);
-      return 12.35 + 80 * clamp((t - b2) / 2.5);
+      // People: about one change every two seconds, which the queue keeps up with.
+      if (t < b1) return 0.5;
+      if (t < b2) return 0.5 + 12 * clamp((t - b1) / 1.5);
+      return 12.5 + 80 * clamp((t - b2) / 2.5);
     };
     const total = (P.dur ?? 30) + 2;
     const arrivals = [];
-    for (let t = compare ? -40 : 0, acc = 0; t < total; t += 0.01) {
+    // Arrivals start before the card does, so people are already on their way in the first frame.
+    for (let t = compare ? -40 : -6, acc = 0; t < total; t += 0.01) {
       acc += rateQ(Math.max(0, t)) * 0.01;
       while (acc >= 1) {
         acc -= 1;

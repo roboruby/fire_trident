@@ -1,0 +1,345 @@
+# title: git · hono trunk, no account
+# note: Real output · git 2.55 with no account and no token, on the production hono trunk, 2026-10-12
+$ git clone https://firetrident.mattsolt.workers.dev/git/hono.git
+Cloning into 'hono'...
+$ cd hono && git fetch origin refs/notes/firetrident:refs/notes/firetrident
+From https://firetrident.mattsolt.workers.dev/git/hono
+ * [new ref]         refs/notes/firetrident -> refs/notes/firetrident
+$ git log --notes=firetrident -3
+commit 6f3279ae6fc3eb8791e5e1387fe2fb258e971002
+Author: FireTrident <lanes@firetrident.dev>
+Date:   Mon Oct 12 09:11:06 2026 +0000
+
+    Land 1 change: Publish to JSR without sloppy imports
+    
+    - Publish to JSR without sloppy imports
+    
+    FT-Landing: lnd_mv518fj2lm4qx5
+    FT-Intent: int_mv517nmgeumthh
+    FT-Proposal: prp_mv518emafa2y6t
+    FT-Agent: agt_mv515qs6qiib8d
+
+Notes (firetrident):
+    {
+      "colonyId": "hono",
+      "landingId": "lnd_mv518fj2lm4qx5",
+      "proposals": [
+        {
+          "agentId": "agt_mv515qs6qiib8d",
+          "agentKind": "internal",
+          "decisions": [],
+          "evidence": {
+            "checks": [
+              {
+                "detail": "syntax ok, 1 rule(s), 0 violations (model @cf/moonshotai/kimi-k2.7-code, attempt 1)",
+                "ms": 34170,
+                "name": "write jsr.json",
+                "ok": true
+              },
+              {
+                "detail": "@cf/moonshotai/kimi-k2.7-code: 1 call(s), 5322 input / 1596 output tokens, 1040.0 neurons",
+                "ms": 34170,
+                "name": "agent model usage",
+                "ok": true
+              },
+              {
+                "detail": "fetch 0.2 KB down; push 2.3 KB up; built on base of the workspace's last push",
+                "ms": 302,
+                "name": "agent git transfer",
+                "ok": true
+              },
+              {
+                "detail": "1 file(s) read",
+                "ms": 67,
+                "name": "innate: blobs",
+                "ok": true
+              },
+              {
+                "detail": "every write is inside the intent's footprint",
+                "ms": 0,
+                "name": "innate: footprint",
+                "ok": true
+              },
+              {
+                "detail": "Complete files (each parses); a diff ending in \"… (truncated)\" is a display limit, not the file. Checked by the agent before proposing: the colony's 1 rule(s) hold, and each relative import names a fi",
+                "ms": 0,
+                "name": "innate: not-verified",
+                "ok": true
+              },
+              {
+                "detail": "inconclusive: the intent has no rule to prove against",
+                "ms": 0,
+                "name": "deterministic: mechanical proof",
+                "ok": false
+              },
+              {
+                "detail": "needs_human 0.14, touches_sensitive 0.40, off_intent 0.04, risk 1.20; confidence 0.2",
+                "ms": 400,
+                "name": "reflex: @cf/cloudflare/clef",
+                "ok": true
+              },
+              {
+                "detail": "approve, needs_human 0: The change correctly removes the unstable sloppy-imports flag from jsr.json as intended.",
+                "ms": 563,
+                "name": "llm: @cf/google/gemma-4-26b-a4b-it",
+                "ok": true
+              },
+              {
+                "detail": "L3 innate+llm → land by llm at head 54e63bb8c980 (confirmations: innate + llm): @cf/google/gemma-4-26b-a4b-it approves: The change correctly removes the unstable sloppy-imports flag from jsr.json as intended.",
+                "ms": 0,
+                "name": "gate",
+                "ok": true
+              }
+            ],
+            "notVerified": "Complete files (each parses); a diff ending in \"… (truncated)\" is a display limit, not the file. Checked by the agent before proposing: the colony's 1 rule(s) hold, and each relative import names a file in trunk or in this change and only names it exports. No tests, type checks or builds were run. Written by model @cf/moonshotai/kimi-k2.7-code from the intent and its spec context.",
+            "residual": []
+          },
+          "id": "prp_mv518emafa2y6t",
+          "intent": {
+            "id": "int_mv517nmgeumthh",
+            "title": "Publish to JSR without sloppy imports",
+            "why": "Every relative import in src now names its file, so JSR no longer needs the unstable sloppy-imports flag."
+          },
+          "model": "@cf/moonshotai/kimi-k2.7-code",
+          "readSet": [
+            {
+              "blob": "8faa57f84b07dab4cd51a9159cf5eead1fb868ae",
+              "path": "jsr.json"
+            }
+          ],
+          "writeSet": [
+            {
+              "blob": "2e590a887bc218f49b521a939a503784efa59442",
+              "path": "jsr.json"
+            }
+          ]
+        }
+      ],
+      "schema": "firetrident.lineage/v1"
+    }
+
+commit e428a38b8b7c529f70c736f0e583a42d7be9c3cb
+Author: FireTrident <lanes@firetrident.dev>
+Date:   Mon Oct 12 09:10:22 2026 +0000
+
+    Land 1 change: Relative imports in src name their file, so Hono runs on…
+    
+    - Relative imports in src name their file, so Hono runs on Deno, JSR and Node built-in TypeScript without the unstable sloppy-imports flag in src/utils/buffer.ts
+    
+    FT-Landing: lnd_mv517htym4tqh4
+    FT-Intent: int_mv5166dlu6tisn
+    FT-Proposal: prp_mv517hobd30o8z
+    FT-Agent: agt_mv5169om743wk9
+
+Notes (firetrident):
+    {
+      "colonyId": "hono",
+      "landingId": "lnd_mv517htym4tqh4",
+      "proposals": [
+        {
+          "agentId": "agt_mv5169om743wk9",
+          "agentKind": "internal",
+          "decisions": [],
+          "evidence": {
+            "checks": [
+              {
+                "detail": "1 -> 0 violations; 1 specifier(s) rewritten, every new path exists in trunk (model @cf/google/gemma-4-26b-a4b-it, attempt 1)",
+                "ms": 625,
+                "name": "recheck src/utils/buffer.ts",
+                "ok": true
+              },
+              {
+                "detail": "@cf/google/gemma-4-26b-a4b-it: 1 call(s), 683 input / 22 output tokens (128 cached), 6.2 neurons",
+                "ms": 625,
+                "name": "agent model usage",
+                "ok": true
+              },
+              {
+                "detail": "fetch 0.2 KB down; push 4.1 KB up; built on base of the workspace's last push",
+                "ms": 352,
+                "name": "agent git transfer",
+                "ok": true
+              },
+              {
+                "detail": "1 file(s) read",
+                "ms": 73,
+                "name": "innate: blobs",
+                "ok": true
+              },
+              {
+                "detail": "src/utils/buffer.ts 1→0",
+                "ms": 0,
+                "name": "innate: rule rul_mv51663hu2jmz8",
+                "ok": true
+              },
+              {
+                "detail": "every write is inside the intent's footprint",
+                "ms": 0,
+                "name": "innate: footprint",
+                "ok": true
+              },
+              {
+                "detail": "No tests, type checks or builds were run. Checked by the agent against the trunk tree: the rule reports 0 violations after the edit; every rewritten import names an existing file, the one TypeScript r",
+                "ms": 0,
+                "name": "innate: not-verified",
+                "ok": true
+              },
+              {
+                "detail": "1/1 changed relative specifier(s) resolve in the trunk tree to the same module",
+                "ms": 6,
+                "name": "deterministic: imports resolve",
+                "ok": true
+              },
+              {
+                "detail": "pass: 1 file proven: only import specifiers changed, each still resolving to the same file (or exactly the rule's replacement); inside the footprint; no sensitive path; rule re-check passes",
+                "ms": 0,
+                "name": "deterministic: mechanical proof",
+                "ok": true
+              },
+              {
+                "detail": "D3 innate+proof → land by deterministic at head 2910542ea843 (confirmations: innate + deterministic): deterministic proof: 1 file proven: only import specifiers changed, each still resolving to the same file (or exactly the rule's replacement); inside the footprint; no sensitive path; rule re-check passes",
+                "ms": 0,
+                "name": "gate",
+                "ok": true
+              }
+            ],
+            "notVerified": "No tests, type checks or builds were run. Checked by the agent against the trunk tree: the rule reports 0 violations after the edit; every rewritten import names an existing file, the one TypeScript resolved before (x.ts before x/index.ts). Edited by model @cf/google/gemma-4-26b-a4b-it. Based on trunk 552ea024250093a48071b3ded9710de4c6e05f14, which the workspace already held; every footprint file matched current trunk when the work started.",
+            "residual": []
+          },
+          "id": "prp_mv517hobd30o8z",
+          "intent": {
+            "id": "int_mv5166dlu6tisn",
+            "ruleId": "rul_mv51663hu2jmz8",
+            "title": "Relative imports in src name their file, so Hono runs on Deno, JSR and Node built-in TypeScript without the unstable sloppy-imports flag in src/utils/buffer.ts",
+            "why": "Relative imports in src name their file, so Hono runs on Deno, JSR and Node built-in TypeScript without the unstable sloppy-imports flag.\nHint: Name the file in every relative import: ./x becomes ./x.ts when x.ts exists; a directory ./d becomes ./d/index.ts (\".\", \"..\" and \"../..\" are directories). Check the tree. Change nothing else.\nViolation on line 6."
+          },
+          "model": "@cf/google/gemma-4-26b-a4b-it",
+          "readSet": [
+            {
+              "blob": "86cf3d00f567d0591cad5763291ef6baac38c8ab",
+              "path": "src/utils/buffer.ts"
+            }
+          ],
+          "writeSet": [
+            {
+              "blob": "c91ebea94a7803d641f2bf061df93f69142444b7",
+              "path": "src/utils/buffer.ts"
+            }
+          ]
+        }
+      ],
+      "schema": "firetrident.lineage/v1"
+    }
+
+commit 91a485cde7b58c661ca7ff4f75056800897c67f6
+Author: FireTrident <lanes@firetrident.dev>
+Date:   Mon Oct 12 09:10:22 2026 +0000
+
+    Land 1 change: Relative imports in src name their file, so Hono runs on…
+    
+    - Relative imports in src name their file, so Hono runs on Deno, JSR and Node built-in TypeScript without the unstable sloppy-imports flag in src/jsx/intrinsic-element/components.ts
+    
+    FT-Landing: lnd_mv517hc5f485z4
+    FT-Intent: int_mv5166dl2mkwie
+    FT-Proposal: prp_mv517ekwe0ry3v
+    FT-Agent: agt_mv5169om3ksfby
+
+Notes (firetrident):
+    {
+      "colonyId": "hono",
+      "landingId": "lnd_mv517hc5f485z4",
+      "proposals": [
+        {
+          "agentId": "agt_mv5169om3ksfby",
+          "agentKind": "internal",
+          "decisions": [],
+          "evidence": {
+            "checks": [
+              {
+                "detail": "10 -> 0 violations; 10 specifier(s) rewritten, every new path exists in trunk (model @cf/google/gemma-4-26b-a4b-it, attempt 1)",
+                "ms": 3632,
+                "name": "recheck src/jsx/intrinsic-element/components.ts",
+                "ok": true
+              },
+              {
+                "detail": "@cf/google/gemma-4-26b-a4b-it: 1 call(s), 1218 input / 145 output tokens (128 cached), 14.4 neurons",
+                "ms": 3632,
+                "name": "agent model usage",
+                "ok": true
+              },
+              {
+                "detail": "fetch 0.2 KB down; push 4.8 KB up; built on base of the workspace's last push",
+                "ms": 267,
+                "name": "agent git transfer",
+                "ok": true
+              },
+              {
+                "detail": "1 file(s) read",
+                "ms": 502,
+                "name": "innate: blobs",
+                "ok": true
+              },
+              {
+                "detail": "src/jsx/intrinsic-element/components.ts 10→0",
+                "ms": 0,
+                "name": "innate: rule rul_mv51663hu2jmz8",
+                "ok": true
+              },
+              {
+                "detail": "every write is inside the intent's footprint",
+                "ms": 0,
+                "name": "innate: footprint",
+                "ok": true
+              },
+              {
+                "detail": "No tests, type checks or builds were run. Checked by the agent against the trunk tree: the rule reports 0 violations after the edit; every rewritten import names an existing file, the one TypeScript r",
+                "ms": 0,
+                "name": "innate: not-verified",
+                "ok": true
+              },
+              {
+                "detail": "10/10 changed relative specifier(s) resolve in the trunk tree to the same module",
+                "ms": 20,
+                "name": "deterministic: imports resolve",
+                "ok": true
+              },
+              {
+                "detail": "pass: 1 file proven: only import specifiers changed, each still resolving to the same file (or exactly the rule's replacement); inside the footprint; no sensitive path; rule re-check passes",
+                "ms": 0,
+                "name": "deterministic: mechanical proof",
+                "ok": true
+              },
+              {
+                "detail": "D3 innate+proof → land by deterministic at head ed897e70f9a9 (confirmations: innate + deterministic): deterministic proof: 1 file proven: only import specifiers changed, each still resolving to the same file (or exactly the rule's replacement); inside the footprint; no sensitive path; rule re-check passes",
+                "ms": 0,
+                "name": "gate",
+                "ok": true
+              }
+            ],
+            "notVerified": "No tests, type checks or builds were run. Checked by the agent against the trunk tree: the rule reports 0 violations after the edit; every rewritten import names an existing file, the one TypeScript resolved before (x.ts before x/index.ts); directories name their index file: ../../helper/html -> ../../helper/html/index.ts. Edited by model @cf/google/gemma-4-26b-a4b-it. Based on trunk 552ea024250093a48071b3ded9710de4c6e05f14, which the workspace already held; every footprint file matched current trunk when the work started.",
+            "residual": []
+          },
+          "id": "prp_mv517ekwe0ry3v",
+          "intent": {
+            "id": "int_mv5166dl2mkwie",
+            "ruleId": "rul_mv51663hu2jmz8",
+            "title": "Relative imports in src name their file, so Hono runs on Deno, JSR and Node built-in TypeScript without the unstable sloppy-imports flag in src/jsx/intrinsic-element/components.ts",
+            "why": "Relative imports in src name their file, so Hono runs on Deno, JSR and Node built-in TypeScript without the unstable sloppy-imports flag.\nHint: Name the file in every relative import: ./x becomes ./x.ts when x.ts exists; a directory ./d becomes ./d/index.ts (\".\", \"..\" and \"../..\" are directories). Check the tree. Change nothing else.\n10 violations on lines 1, 2, 3, 4, 5, 6, 7, 8, 9, 15."
+          },
+          "model": "@cf/google/gemma-4-26b-a4b-it",
+          "readSet": [
+            {
+              "blob": "7821f1fd1706d28d49faabc010f47158060c073c",
+              "path": "src/jsx/intrinsic-element/components.ts"
+            }
+          ],
+          "writeSet": [
+            {
+              "blob": "ac5cc75707b25926de606c33f679f88dab118bc5",
+              "path": "src/jsx/intrinsic-element/components.ts"
+            }
+          ]
+        }
+      ],
+      "schema": "firetrident.lineage/v1"
+    }

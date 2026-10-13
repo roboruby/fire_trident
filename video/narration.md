@@ -1,10 +1,10 @@
 # FireTrident video — narration draft v1
 
-Target 7:30–8:30. About 145 words a minute. Every number is checked against the production colonies and the result files before recording; placeholders are marked {like this}.
+Target 7:30–8:30. About 145 words a minute. Every number was checked against the production colonies and the result files on 2026-10-12 (video/README.md names the sources); a {braced} value is one still to check.
 
 ## 0:00 Cold open (replay of the hono colony: 80 agents converging, violation counter falling)
 
-Eighty AI agents are working on one codebase. There is no branch per agent, no pull request queue, and no merge queue. In about a minute they will fix {958} problems in a real open source project, and every change will land on trunk with a record of why it was made.
+Eighty AI agents are working on one codebase. There is no branch per agent, no pull request queue, and no merge queue. In about a minute they will fix 958 problems in a real open source project, and every change will land on trunk with a record of why it was made.
 
 This is FireTrident. A colony, not a queue.
 
@@ -18,9 +18,9 @@ FireTrident brings those ideas to a repository. Four moves. Sense, decide, land,
 
 ## 1:30 Import and declare (terminal, then the map)
 
-This is Hono, a popular web framework with {583} files. One command imports it into a Cloudflare Artifacts repository. Every tile on this map is a file.
+This is Hono, a popular web framework with 583 files. One command imports it into a Cloudflare Artifacts repository. Every tile on this map is a file.
 
-Now a person declares how the code should look. One rule: relative imports must name their file. The platform scans trunk, and every violation becomes a need in the field. {958} of them. Nobody assigns this work.
+Now a person declares how the code should look. One rule: relative imports must name their file. The platform scans trunk, and every violation becomes a need in the field. 958 of them. Nobody assigns this work.
 
 ## 2:00 Sense (map: needs glow, claims appear and fade)
 
@@ -38,11 +38,11 @@ Sometimes one change sends a wave of proposals back. FireTrident watches for tha
 
 ## 3:50 Decide (funnel panel, then the review tab with a person approving)
 
-Every proposal passes through a reflex arc. Proof comes first. For this rule the platform can prove an edit is correct by resolving every import against the real file tree. {283} of {283} edits landed on proof alone, without asking a model.
+Every proposal passes through a reflex arc. Proof comes first. For this rule the platform can prove an edit is correct by resolving every import against the real file tree. All 282 of the rule's edits landed on proof alone, without asking a model.
 
 When proof isn't possible, Cloudflare's Clef decision model answers typed questions in a fraction of a second. If it is unsure, a model from a different family gives a second opinion. Some changes never land on a model's word. Code that touches authentication, secrets, or new network access always goes to a person, with the intent, the rule and the agent's own account of what it did not verify.
 
-When a person rejects a change, the colony learns. The rejection becomes an antibody, a check committed to the repository that screens every later proposal. And the immune system is measurable. The vaccination meter sends known bad changes through the normal path. It caught {28 of 28}, and none of them landed.
+When a person rejects a change, the colony learns. The rejection becomes an antibody, a check committed to the repository that screens every later proposal. And the immune system is measurable. The vaccination meter sends known bad changes through the normal path. It caught 28 of 28, and none of them landed.
 
 ## 5:00 Remember (Why panel; then a plain git clone and `git log --notes` in a terminal)
 
@@ -50,13 +50,15 @@ Ask why any line exists. Every landed commit carries trailers and a git note wit
 
 ## 5:30 Change direction (map and events tab: a rule retracted, an intent amended, a directive)
 
-People change their minds while the work is in flight. Here a person retracts a rule in the middle of a run. In under a second, {35} open intents are withdrawn and the change in flight goes back. Nothing lands for that rule again.
+People change their minds while the work is in flight. Here a person retracts a rule in the middle of a run. In under a second, 35 open intents are withdrawn and the 3 changes in flight go back. Nothing lands for that rule again.
 
-Here a person amends an intent an agent is working on. The agent restarts on the new revision within about a second, and the new version lands {6} seconds later. Work built on the old revision is refused. A person can also send one agent a note while it works, and it re-plans in {2} seconds. The lineage records every revision and every note.
+Here a person amends an intent an agent is working on. The agent restarts on the new revision within about a second, and the new version lands 23 seconds later. Work built on the old revision is refused. A person can also send one agent a note while it works, and it re-plans in 2 seconds. The lineage records every revision and every note.
 
 ## 6:20 A new project (replay: the map growing from an empty repository)
 
-FireTrident doesn't only fix existing code. Give it a spec and it grows a project from an empty repository. {13} intents and {5} architecture rules. Agents wait for the files they build on and write the rest. Eight minutes later, clone the result with plain git and run its tests. {60 of 60} pass, and so does the reference acceptance suite, {7 of 7}.
+FireTrident doesn't only fix existing code. Give it a spec and it grows a project from an empty repository. 13 intents and 5 architecture rules. Agents wait for the files they build on and write the rest.
+
+Eight minutes later, clone the result with plain git and run its tests. 60 of 60 pass, and so does the reference acceptance suite, 7 of 7.
 
 ## 7:00 Bring your own agent (terminal: Claude Code over MCP; the map shows it landing)
 
@@ -64,7 +66,7 @@ Agents don't have to live inside the platform. Any MCP client can join a colony,
 
 ## 7:30 Scale (benchmark chart, measured vs. simulated labels)
 
-How far does it go? On the live service, five thousand concurrent agents landed about {2,800} changes a minute with no platform errors. Those were synthetic agents, to load the coordination layer itself. With language models, the model's rate limit is reached long before the colony's. Optimism has a cost and we measure it. Agents redo some work when trunk moves under them, and inhibition and co-change learning cut that rework to {31} percent.
+How far does it go? On a preview deployment, five thousand concurrent agents landed about 2,800 changes a minute. Of fifty thousand calls, 78 failed, all while the load was ramping up. Those were synthetic agents, to load the coordination layer itself. With language models, the model's rate limit is reached long before the colony's. Optimism has a cost and we measure it. Agents redo some work when trunk moves under them, and inhibition and co-change learning cut that rework to 31 percent.
 
 ## 8:00 Close (title card)
 

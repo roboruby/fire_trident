@@ -41,7 +41,7 @@ const opt = (name, fallback) => {
 };
 const voice = opt("voice", VOICE);
 const only = new Set((opt("only", "") || "").split(",").filter(Boolean));
-const name = opt("name", "firetrident-roughcut-v0");
+const name = opt("name", "firetrident-final");
 const SAMPLE_VOICES = (opt("voices", "electra,thalia,odysseus,orpheus") || "").split(",");
 
 // -- media stays outside any notes folder ---------------------------------------------------------
@@ -71,6 +71,8 @@ async function pool(items, n, fn) {
   return out;
 }
 const ffprobeDur = (file) => Number(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", file]).toString().trim());
+/** A replay starts this long before the run's first event (LEAD_MS in packages/web/src/replay.ts); ?t= counts from there. */
+const REPLAY_LEAD_S = 1.5;
 const WHISPER_HINT = "FireTrident, Hono, Clef, Artifacts, Durable Objects, Workers AI, MCP, Claude Code";
 
 // -- 1. narration --------------------------------------------------------------------------
@@ -136,11 +138,20 @@ for (const s of scenes) {
   const tail = plan.tail ?? PACE.tail;
   const start = clock;
   let pos = start + lead;
-  for (const p of s.paragraphs) {
+  // plan.gaps holds longer pauses after given paragraphs ({2: 4.5}: 4.5 s after the second).
+  s.paragraphs.forEach((p, i) => {
     p.start = pos;
-    pos += p.duration + gap;
-  }
-  const end = pos - gap + tail;
+    pos += p.duration + (i < s.paragraphs.length - 1 ? (plan.gaps?.[i + 1] ?? gap) : 0);
+  });
+  const end = pos + tail;
+  /** "@start:2" / "@end:2+0.4": when paragraph 2 starts or ends (absolute), or null for other anchors. */
+  const markAt = (anchor) => {
+    const m = typeof anchor === "string" ? /^@(start|end):(\d+)([+-][\d.]+)?$/.exec(anchor) : null;
+    if (!m) return null;
+    const p = s.paragraphs[Number(m[2]) - 1];
+    if (!p) throw new Error(`${s.id} has no paragraph ${m[2]} (anchor ${anchor})`);
+    return (m[1] === "start" ? p.start : p.start + p.duration) + Number(m[3] ?? 0);
+  };
   /** Absolute time a phrase is spoken, first occurrence at or after `after`. */
   const spokenAt = (phrase, after) => {
     const needle = phrase.toLowerCase();
@@ -158,7 +169,7 @@ for (const s of scenes) {
   const starts = [];
   let prev = start;
   for (const shot of plan.shots) {
-    let t = typeof shot.at === "number" ? start + shot.at : spokenAt(shot.at, prev) - PACE.cutLead;
+    let t = typeof shot.at === "number" ? start + shot.at : (markAt(shot.at) ?? spokenAt(shot.at, prev) - PACE.cutLead);
     t = Math.max(t, prev);
     starts.push(t);
     prev = t;
@@ -166,12 +177,26 @@ for (const s of scenes) {
   plan.shots.forEach((spec, i) => {
     const s0 = starts[i];
     const s1 = starts[i + 1] ?? end;
-    const rel = (anchor, lead = 0) => (typeof anchor === "number" ? anchor : Math.max(0, spokenAt(anchor, s0) - s0 - lead));
+    const rel = (anchor, lead = 0) => {
+      if (typeof anchor === "number") return anchor;
+      const m = markAt(anchor);
+      return Math.max(0, (m ?? spokenAt(anchor, s0) - lead) - s0);
+    };
     const resolved = { ...spec };
-    if (spec.actions) resolved.actions = spec.actions.map((a) => ({ ...a, at: rel(a.at, 0.3) }));
+    if (spec.actions) resolved.actions = spec.actions.map((a) => (a.atRun === undefined ? { ...a, at: rel(a.at, 0.3) } : a));
     if (spec.cues) resolved.cues = spec.cues.map((c) => rel(c, 0.15));
     if (spec.beats) resolved.beats = spec.beats.map((b) => rel(b, 0.12));
     if (spec.scroll) resolved.scroll = { ...spec.scroll, keys: spec.scroll.keys.map((k) => ({ ...k, at: rel(k.at, 0.3) })) };
+    // A replay synced to the narration: the run's moment `run` (seconds after its first event) is
+    // on screen when `at` is spoken (plus `offset`), given the replay speed and the time-lapse factor.
+    if (spec.sync) {
+      const speed = Number(new URL(spec.url).searchParams.get("speed") ?? 1) * (spec.timeScale ?? 1);
+      const t = spec.sync.run + REPLAY_LEAD_S - (rel(spec.sync.at, 0) + (spec.sync.offset ?? 0)) * speed;
+      if (t < 0) throw new Error(`${s.id} shot ${i + 1}: the replay would have to start ${(-t).toFixed(1)} s before the run`);
+      resolved.url = `${spec.url}&t=${t.toFixed(2)}`;
+      // Actions can also be timed to a moment of the run: {atRun: seconds after its first event}.
+      if (resolved.actions) resolved.actions = resolved.actions.map((a) => (a.atRun === undefined ? a : { ...a, at: Math.max(0, (a.atRun + REPLAY_LEAD_S - Number(t.toFixed(2))) / speed + (a.lag ?? 0)) }));
+    }
     shots.push({ scene: s.id, index: i, spec: resolved, start: s0, end: s1, fadeIn: i === 0 ? PACE.fade : 0, fadeOut: i === plan.shots.length - 1 ? PACE.fade : 0 });
   });
   for (const p of s.paragraphs) for (const x of sentences(p.text.replace(/[{}]/g, ""), words(p.text.replace(/[{}]/g, "")), p.times)) subs.push({ text: x.text, start: p.start + x.start, end: p.start + x.end });
@@ -216,7 +241,7 @@ writeFileSync(
       total,
       placeholders: placeholders(scenes),
       scenes: scenes.map((s) => ({ id: s.id, title: s.title, start: s.start, end: s.end, paragraphs: s.paragraphs.map((p) => ({ start: p.start, duration: p.duration, wer: p.wer, text: p.text })) })),
-      shots: shots.map((sh) => ({ scene: sh.scene, index: sh.index, kind: sh.spec.kind, start: sh.start, end: sh.end, frames: sh.frames, source: sh.spec.url ?? sh.spec.t ?? sh.spec.card })),
+      shots: shots.map((sh) => ({ scene: sh.scene, index: sh.index, kind: sh.spec.kind, start: sh.start, end: sh.end, frames: sh.frames, source: sh.spec.url ?? sh.spec.t ?? sh.spec.card ?? sh.spec.file, badge: sh.spec.badge?.text ?? sh.spec.tag?.text ?? null })),
     },
     null,
     2,
@@ -254,7 +279,11 @@ window.__ftTarget = (sel, to) => {
   if (!el) return 0;
   let node = null;
   if (to.startsWith("text:")) node = [...document.querySelectorAll("h1,h2,h3")].find((h) => h.textContent.includes(to.slice(5)));
-  else node = document.querySelector(to);
+  else if (to.startsWith("match:")) {
+    // "match:<selector>|<text>": the first element matching the selector whose text starts with <text>.
+    const [s, text] = to.slice(6).split("|");
+    node = [...document.querySelectorAll(s)].find((e) => e.textContent.trim().startsWith(text));
+  } else node = document.querySelector(to);
   if (!node) return 0;
   const base = el === document.scrollingElement ? 0 : el.getBoundingClientRect().top;
   return node.getBoundingClientRect().top - base + el.scrollTop;
@@ -265,7 +294,7 @@ function shotUrl(sh, origin) {
   const sp = sh.spec;
   const dur = sh.seconds;
   if (sp.kind === "terminal") {
-    const params = { t: sp.t, dur, cues: sp.cues, mark: sp.mark, maxType: sp.maxType, lps: sp.lps, blockLps: sp.blockLps, hold: sp.hold };
+    const params = { t: sp.t, dur, cues: sp.cues, mark: sp.mark, maxType: sp.maxType, lps: sp.lps, blockLps: sp.blockLps, hold: sp.hold, blocks: sp.blocks };
     return `${origin}/terminal.html#${encodeURIComponent(JSON.stringify(params))}`;
   }
   if (sp.kind === "card") {
@@ -281,12 +310,34 @@ const recorderVersion = hash(source("lib/timeshim.js") + source("lib/record.mjs"
 function shotKey(sh) {
   const sp = sh.spec;
   const extra = sp.kind === "terminal" ? source("terminal.html") + source(`transcripts/${sp.t}.txt`) : sp.kind === "card" ? source("cards.html") : "";
-  return hash(JSON.stringify({ sp, frames: sh.frames, fps: FPS, recorderVersion, extra: hash(extra) })).slice(0, 12);
+  return hash(JSON.stringify({ sp, frames: sh.frames, fps: FPS, recorderVersion, drift: driftOf(sp), extra: hash(extra) })).slice(0, 12);
+}
+
+/**
+ * A slow push-in keeps a still picture alive: the zoom reached at the end of the shot, on the page's
+ * #root (so the badge stays put) or the body. Finished production colonies 0.035; replays move on
+ * their own, 0.012; the simulator none; cards, terminals and other pages 0.02; a camera move replaces it.
+ */
+function driftOf(sp) {
+  if (sp.camera || sp.kind === "clip") return 0;
+  if (sp.drift !== undefined) return sp.drift;
+  const url = sp.url ?? "";
+  if (/[?&]mock=1/.test(url)) return 0;
+  if (/[?&]director=1/.test(url)) return /[?&]replay=1/.test(url) ? 0.012 : 0.035;
+  return 0.02;
 }
 
 const server = await serve({ "/": HERE, "/bench/": join(REPO, "packages/bench/results") });
 const todo = [];
 for (const sh of shots) {
+  if (sh.spec.kind === "clip") {
+    // A shot recorded ahead of the cut (a live state that does not last), trimmed from `from`.
+    sh.file = resolve(OUT, sh.spec.file);
+    if (!existsSync(sh.file)) throw new Error(`${sh.scene} shot ${sh.index + 1}: clip ${sh.file} is missing`);
+    const have = ffprobeDur(sh.file) - (sh.spec.from ?? 0);
+    if (have + 0.02 < sh.seconds) throw new Error(`${sh.scene} shot ${sh.index + 1}: clip ${sh.spec.file} has ${have.toFixed(2)} s after ${sh.spec.from ?? 0} s, the shot needs ${sh.seconds.toFixed(2)} s`);
+    continue;
+  }
   sh.file = join(DIRS.captures, `${sh.scene}-${sh.index}-${shotKey(sh)}.mp4`);
   const forced = flag("recapture") || only.has(sh.scene);
   if (forced && existsSync(sh.file)) rmSync(sh.file);
@@ -300,6 +351,10 @@ if (todo.length) {
       const sp = sh.spec;
       const url = shotUrl(sh, server.origin);
       const director = sp.kind === "page" && /[?&]director=1/.test(url);
+      // A replay in director mode is held (?delay) while the page loads and settles, paused with the
+      // director's space key before the clock freezes, and resumed on the shot's first frame, so it
+      // plays from exactly its ?t= offset.
+      const replay = director && /[?&]replay=1/.test(url);
       const ready = READY[sp.ready ?? (sp.kind !== "page" ? "local" : director ? "director" : "complete")];
       const settle = sp.settleMs ?? SETTLE[sp.ready ?? (sp.kind !== "page" ? "local" : director ? "director" : "complete")];
       let css = BADGE_CSS;
@@ -313,11 +368,11 @@ if (todo.length) {
       const page = await newPage(browser.cdp);
       try {
         await page.send("Page.addScriptToEvaluateOnNewDocument", { source: SCROLL_JS });
-        await openPage(page, { url, css, html: badge, ready, settleMs: settle });
-        for (const a of sp.prep ?? []) {
+        await openPage(page, { url: replay ? `${url}&delay=600` : url, css, html: badge, ready, settleMs: settle });
+        for (const a of [...(replay ? [{ key: " " }] : []), ...(sp.prep ?? [])]) {
           if (a.key) await press(page, a.key);
           if (a.js) await evaluate(page, a.js);
-          await sleep(500);
+          await sleep(a.wait ?? 500);
         }
         let perFrame = null;
         if (sp.scroll) {
@@ -339,9 +394,7 @@ if (todo.length) {
           await sleep(200);
           perFrame = (t) => `window.__ftScrollTo(${el}, ${yAt(t)})`;
         }
-        // Finished production colonies do not move; a slow push-in (scale on the app root, so the
-        // badge stays put) keeps those shots alive. drift is the zoom reached at the end of the shot.
-        const drift = sp.drift ?? (director && !/[?&]mock=1/.test(url) && !sp.camera ? 0.035 : 0);
+        const drift = driftOf(sp);
         if (sp.camera) {
           // Move in on one element: bring its center to the middle of the frame and scale it from
           // 1 to scale[0] over `move` seconds, then drift on to scale[1] by the end of the shot.
@@ -349,23 +402,28 @@ if (todo.length) {
           if (!c) throw new Error(`camera target ${sp.camera.on} not found on ${url}`);
           const [s0, s1] = sp.camera.scale ?? [1.3, 1.4];
           const move = sp.camera.move ?? 1.6;
+          const delay = sp.camera.delay ?? 0;
+          // alignRight keeps the page's right edge on the frame's (the side panel stays whole); y puts
+          // that page height at the middle of the frame instead of the element's center.
+          if (sp.camera.alignRight) c[0] = 1920 - 960 / s0;
+          if (typeof sp.camera.y === "number") c[1] = sp.camera.y;
           const scroll = perFrame;
           const cam = (t) => {
-            const u = Math.min(1, t / move);
+            const u = Math.min(1, Math.max(0, (t - delay) / move));
             const e = u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2;
-            const s = 1 + (s0 - 1) * e + (s1 - s0) * Math.max(0, (t - move) / Math.max(0.1, sh.seconds - move));
+            const s = 1 + (s0 - 1) * e + (s1 - s0) * Math.max(0, (t - delay - move) / Math.max(0.1, sh.seconds - delay - move));
             return `(() => { const r = document.getElementById("root"); if (r) { r.style.transformOrigin = "${c[0].toFixed(1)}px ${c[1].toFixed(1)}px"; r.style.transform = "translate(${((960 - c[0]) * e).toFixed(2)}px, ${((540 - c[1]) * e).toFixed(2)}px) scale(${s.toFixed(5)})"; } })()`;
           };
           perFrame = (t) => [scroll ? scroll(t) : null, cam(t)].filter(Boolean).join(";");
         }
         if (drift) {
           const scroll = perFrame;
-          const zoom = (t) => `(() => { const r = document.getElementById("root"); if (r) { r.style.transformOrigin = "50% 50%"; r.style.transform = "scale(${(1 + (drift * t) / sh.seconds).toFixed(5)})"; } })()`;
+          const zoom = (t) => `(() => { const r = document.getElementById("root") || document.body; if (r) { r.style.transformOrigin = r === document.body ? "50% " + (window.scrollY + innerHeight / 2) + "px" : "50% 50%"; r.style.transform = "scale(${(1 + (drift * t) / sh.seconds).toFixed(5)})"; } })()`;
           perFrame = (t) => [scroll ? scroll(t) : null, zoom(t)].filter(Boolean).join(";");
         }
-        const timeline = (sp.actions ?? []).map((a) => ({ at: a.at, key: a.key, js: a.js }));
+        const timeline = [...(replay ? [{ at: 0, key: " " }] : []), ...(sp.actions ?? []).map((a) => ({ at: a.at, key: a.key, js: a.js }))];
         const tmp = `${sh.file}.part.mp4`;
-        await recordPage(page, { seconds: sh.seconds, out: tmp, fps: FPS, timeline, perFrame, skipMs: sp.skipMs ?? 0, log });
+        await recordPage(page, { seconds: sh.seconds, out: tmp, fps: FPS, timeline, perFrame, skipMs: sp.skipMs ?? 0, timeScale: sp.timeScale ?? 1, log });
         renameSync(tmp, sh.file);
         log(`    recorded ${sh.frames} frames in ${((Date.now() - t0) / 1000).toFixed(0)} s`);
       } finally {
@@ -381,7 +439,7 @@ await server.close();
 // Review stills: one frame from the middle of every shot.
 for (const sh of shots) {
   const still = join(DIRS.review, `${String(shots.indexOf(sh)).padStart(2, "0")}-${sh.scene}-${sh.index + 1}.jpg`);
-  execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-ss", (sh.seconds * 0.6).toFixed(2), "-i", sh.file, "-frames:v", "1", "-vf", "scale=960:-1", "-q:v", "4", still]);
+  execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-ss", ((sh.spec.kind === "clip" ? (sh.spec.from ?? 0) : 0) + sh.seconds * 0.6).toFixed(2), "-i", sh.file, "-frames:v", "1", "-vf", "scale=960:-1", "-q:v", "4", still]);
 }
 
 // -- 4. assembly -----------------------------------------------------------------------------------
@@ -405,7 +463,8 @@ shots.forEach((sh, i) => {
   const fades = [];
   if (sh.fadeIn) fades.push(`fade=t=in:st=0:d=${sh.fadeIn}`);
   if (sh.fadeOut) fades.push(`fade=t=out:st=${(sh.seconds - sh.fadeOut).toFixed(3)}:d=${sh.fadeOut}`);
-  parts.push(`[${i}:v]trim=end_frame=${sh.frames},setpts=PTS-STARTPTS,fps=${FPS},format=yuv420p${fades.length ? `,${fades.join(",")}` : ""}[v${i}]`);
+  const from = sh.spec.kind === "clip" ? Math.round((sh.spec.from ?? 0) * FPS) : 0;
+  parts.push(`[${i}:v]trim=start_frame=${from}:end_frame=${from + sh.frames},setpts=PTS-STARTPTS,fps=${FPS},format=yuv420p${fades.length ? `,${fades.join(",")}` : ""}[v${i}]`);
 });
 inputs.push("-i", narrationWav);
 const graph = `${parts.join(";")};${shots.map((_, i) => `[v${i}]`).join("")}concat=n=${shots.length}:v=1:a=0[v];[${shots.length}:a]${loud},aresample=48000[a]`;

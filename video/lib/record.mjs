@@ -61,8 +61,9 @@ async function act(page, a) {
  * timeline: [{at: seconds, js | key | click | fn}], applied before the frame at that time.
  * perFrame(t): an expression string (or null) evaluated before each frame, e.g. a scroll position.
  * skipMs: virtual time to fast-forward after freezing, before frame 0.
+ * timeScale: virtual time that passes per recorded frame, in frame lengths (2 records a time-lapse at double speed).
  */
-export async function recordPage(page, { seconds, out, fps = 30, timeline = [], perFrame, skipMs = 0, quality = 92, crf = 12, log = () => {} }) {
+export async function recordPage(page, { seconds, out, fps = 30, timeline = [], perFrame, skipMs = 0, timeScale = 1, quality = 92, crf = 12, log = () => {} }) {
   const frames = Math.max(1, Math.round(seconds * fps));
   const ff = spawn(
     "ffmpeg",
@@ -86,7 +87,7 @@ export async function recordPage(page, { seconds, out, fps = 30, timeline = [], 
     while (next < events.length && events[next].at <= t + 1e-6) await act(page, events[next++]);
     const pre = perFrame ? perFrame(t, i) : null;
     if (pre) await evaluate(page, pre);
-    await evaluate(page, `window.__ft.step(${i === 0 ? 0 : dt})`);
+    await evaluate(page, `window.__ft.step(${i === 0 ? 0 : dt * timeScale})`);
     const { data } = await page.send("Page.captureScreenshot", { format: "jpeg", quality, optimizeForSpeed: true });
     if (!ff.stdin.write(Buffer.from(data, "base64"))) await once(ff.stdin, "drain");
     if (i % (fps * 5) === 0 && i) log(`  ${(t).toFixed(0)}s of ${seconds.toFixed(1)}s (${((i / (Date.now() - t0)) * 1000).toFixed(1)} frames/s)`);

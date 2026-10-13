@@ -6,24 +6,40 @@ Narration, picture and the final cut for the submission video, from one command:
 node video/render.mjs
 ```
 
-The result is `~/.firetrident/video/out/firetrident-roughcut-v0.mp4` (H.264 1080p30, AAC 48 kHz, loudness-normalized to about -16 LUFS), with an `.srt` subtitle file and a `.timeline.json` of every scene and shot next to it. All media (speech, recorded shots, the cut) goes to `$FT_VIDEO_OUT`, default `~/.firetrident/video`. The script refuses to write media inside a notes folder that holds this repository, because Obsidian indexes every file on disk.
+The result is `~/.firetrident/video/out/firetrident-final.mp4` (H.264 1080p30, AAC 48 kHz, loudness-normalized to about -16 LUFS), with an `.srt` subtitle file and a `.timeline.json` of every scene and shot next to it. All media (speech, recorded shots, the cut) goes to `$FT_VIDEO_OUT`, default `~/.firetrident/video`. The script refuses to write media inside a notes folder that holds this repository, because Obsidian indexes every file on disk.
 
 ## What it does
 
 1. **Voice.** Each paragraph of `narration.md` is spoken by Workers AI `@cf/deepgram/aura-2-en` through the `ft-voice` Worker (`voice-worker/`), as 48 kHz WAV. Every paragraph is also transcribed with Whisper (`@cf/openai/whisper-large-v3-turbo`) to get word timings, so cuts land on the words that motivate them, and to catch mispronunciations. Speech and transcriptions are cached by content hash; only changed paragraphs are billed again (Aura-2 is $0.03 per 1,000 characters; the whole script is about $0.20).
-2. **Timeline.** Scene lengths come from the speech: 0.55 s of air before the first paragraph, 0.5 s between paragraphs, 0.85 s after the last, a 0.28 s dip through black between scenes, and title cards at both ends.
-3. **Picture.** `scenes.mjs` says what is on screen during each scene. Headless Chrome (`/Applications/Google Chrome.app`, driven over the DevTools protocol with Node's built-in WebSocket) records each shot frame by frame at 1920x1080: a virtual clock (`lib/timeshim.js`) freezes the page, then every frame advances timers, animation frames, CSS animations and SVG timelines by exactly 1/30 s before a screenshot. Motion is smooth regardless of machine speed, and the simulator is deterministic.
+2. **Timeline.** Scene lengths come from the speech: 0.6 s of air before the first paragraph, 0.65 s between paragraphs, 1.1 s after the last, a 0.28 s dip through black between scenes, and title cards at both ends. A scene can hold a longer pause after a paragraph (`gaps`) or a longer tail, where the picture needs a moment without words (the approval in Decide, the time-lapse in A new project, the landing in Bring your own agent).
+3. **Picture.** `scenes.mjs` says what is on screen during each scene. Headless Chrome (`/Applications/Google Chrome.app`, driven over the DevTools protocol with Node's built-in WebSocket) records each shot frame by frame at 1920x1080: a virtual clock (`lib/timeshim.js`) freezes the page, then every frame advances timers, animation frames, CSS animations and SVG timelines by exactly 1/30 s before a screenshot. Motion is smooth regardless of machine speed, and the simulator is deterministic. Production colonies are filmed as replays of their own record (`/c/<id>?replay=1`, director mode on top): the recorder holds a replay while the page loads (`?delay`), pauses it with the director's space key, and resumes it on the shot's first frame, so it plays from exactly the `?t=` that the shot's `sync` computes. `sync: {at, run}` puts a moment of the run (seconds after its first event) on screen when a phrase is spoken; actions can be timed to the run too (`atRun`). A `timeScale` records a time-lapse.
 4. **Cut.** ffmpeg trims every shot to its frame count, adds the scene fades, concatenates, lays the narration under it with a two-pass `loudnorm`, and encodes.
 
 ## After the numbers or the UI change
 
-- **Numbers.** `{braced}` values in `narration.md` are placeholders to verify against the final production runs. Edit the value inside the braces (keep the braces until it is checked) and run `node video/render.mjs`. Only the changed paragraphs are spoken again; shots whose timing moved are re-recorded automatically.
+- **Numbers.** A `{braced}` value in `narration.md` is a placeholder still to verify; once checked, the braces go (the timeline's `placeholders` list is then empty). Edit and run `node video/render.mjs`. Only the changed paragraphs are spoken again; shots whose timing moved are re-recorded automatically. The numbers in the final script and where each comes from are listed below.
 - **UI or production data.** Shots of production pages and the simulator are cached. Re-record them with `node video/render.mjs --recapture`, or one scene with `--only decide` (comma-separate several).
 - **Wording.** Edit `narration.md` the same way. Phrases in `scenes.mjs` anchor cuts to the narration; if a phrase disappears, the render stops and names it.
 - **Voice.** `node video/render.mjs --samples` writes the cold open in several voices to `voices/<speaker>.mp3` (`--voices a,b,c` to choose). Narrate with another speaker using `--voice <speaker>`, or change `VOICE` in `scenes.mjs`. Words the synthesizer gets wrong are respelled for it only in `pronounce.json` ("Hono" is heard as "Hano" otherwise).
 - **Audio only.** `--audio-only` writes the narration track, subtitles and timeline without recording.
 
-A full render records about 12,000 frames; on an Apple Silicon laptop that is roughly 12 minutes, and seconds when every shot is cached.
+A full render records about 14,000 frames; on an Apple Silicon laptop that is roughly 15 minutes, and a minute or two when every shot is cached.
+
+## The numbers in the script
+
+Checked on 2026-10-12 against the production colonies (GET requests only) and the result files:
+
+| Narration | Source |
+| --- | --- |
+| 958 problems fixed in about a minute; 583 files; 282 intents; 80 agents | the hono colony's record (`GET /api/colonies/hono/events`: the rule at 21.0 s, 0 violations at 82.8 s, "958 fixed in 1 min 2 s" on screen) and `packages/bench/results/2026-10-12-prod/hono-run.log` |
+| All 282 of the rule's edits landed on proof alone | `colony-hono.json`: proof 282, a model 2 (the prerequisite and the follow-up, which are not the rule's) |
+| 28 of 28, none landed | `vaccination-openspec-w1.json` |
+| 35 intents withdrawn and 3 changes in flight back, in under a second; nothing lands for the rule again | the direction-retract record: the retraction, 35 withdrawals and 3 returned proposals share one timestamp; the only landing is 2 s before it |
+| the agent restarts within about a second; the new version lands 23 seconds later | the direction-steer record: amended 20:12:29.259, restarting 166 ms later, the r2 change landed 23.5 s after the amendment |
+| re-plans in 2 seconds | the direction-steer record: the directive at 20:12:30.180, the change in flight returned 92 ms and "redoing" 144 ms later, the redone file committed 2.4 s after the directive |
+| 13 intents, 5 rules, eight minutes, 60 of 60, 7 of 7 | `shortlinks-run.log` (479.1 s) and the `shortlinks-test` transcript |
+| 2,800 changes a minute at 5,000 agents on a preview deployment; 78 of fifty thousand calls failed, all in the ramp | `packages/bench/results/2026-10-12-scale/summary.json` (2,777.7/min; synthetic agents on a preview deployment; 78 of 50,368 calls failed during the ramp) |
+| rework cut to 31 percent | `packages/bench/results/2026-10-12-inhibition/summary.json` (simulated, 42.5% to 31.2%) |
 
 ## Files
 
@@ -31,21 +47,23 @@ A full render records about 12,000 frames; on an Apple Silicon laptop that is ro
 | --- | --- |
 | `render.mjs` | The one command: voice, timeline, capture, assembly |
 | `narration.md` | The script, `## m:ss Title (picture note)` per scene |
-| `scenes.mjs` | The picture per scene: shots, phrase anchors, badges |
+| `scenes.mjs` | The picture per scene: shots, phrase anchors, replay sync, badges; the precapture specs |
+| `precapture.mjs` | Records a shot ahead of the cut, for a live state that will not last (`node video/precapture.mjs <name>`) |
 | `pronounce.json` | Respellings for the synthesizer |
 | `terminal.html` | Replays a transcript with typing, in the app's palette |
-| `cards.html` | Title and end cards, the queue chart, nature, stat, stack and pending cards |
+| `cards.html` | Title and end cards, the queue chart, nature (the systems the narration names), stat, stack and pending cards |
 | `transcripts/` | Real CLI and git output (see below) |
 | `lib/` | DevTools client, virtual clock, recorder, speech client, word alignment, WAV helpers, static server |
 | `voice-worker/` | The `ft-voice` Worker |
 
 ## Honesty rules on screen
 
-- Simulator footage carries a **Simulator** badge; production colonies carry a **Production** badge naming the run.
+- Simulator footage carries a **Simulator** badge; production colonies carry a **Production** badge naming the run and how it is shown: a replay says so, says **reconstructed** when the run predates the event record (claim times are estimated from what the colony stores) or **recorded**, and gives the speed when it is not 1x. Direction actions taken by `scripts/demo_direction.rb` are labeled as the script's (`operator-script`); the only person's decision on screen is the approval of the escalated route in shortlinks-review, which its lineage records as `ms`. The only simulator on screen is the landing page's hero colony (its own page labels it too), badged **Simulator**.
 - Stat cards say **Measured** or **Simulated** and name the result file under `packages/bench/results/` that holds the numbers. The queue chart is labeled an illustration.
-- Terminal scenes replay real output, verbatim. `transcripts/*.txt` come from the production runs of 2026-10-12: `hono-import` and `hono-rule` from the Hono demo log (the source URL's host is elided as `https://…/honojs/hono`, so no other git host is named on screen), `shortlinks-new` and `shortlinks-test` from `demo/run_new_project.rb`'s log (an excerpt; one local temporary path is shortened to `…/shortlinks`), `why` from `ft why hono src/index.ts:17`, and `git-land` and `git-notes` from a plain clone of the hono trunk and its `refs/notes/firetrident` (a read token from `wrangler artifacts repos issue-token`, never stored). No transcript may contain a token: `grep -E 'art_v[0-9]+_' video/transcripts/*` must print nothing.
-- Shots of finished production colonies get a slow push-in (they do not move on their own); the bring-your-own-agent shot moves in on the landing page's MCP column and hides the rest of that section.
-- Placeholder scenes that wait for footage say so on screen (**Footage pending**).
+- Terminal scenes replay real output, verbatim. `transcripts/*.txt` come from the production runs of 2026-10-12: `hono-import` and `hono-rule` from the Hono demo log (the source URL's host is elided as `https://…/honojs/hono`, so no other git host is named on screen), `shortlinks-new` and `shortlinks-test` from `demo/run_new_project.rb`'s log (an excerpt; one local temporary path is shortened to `…/shortlinks`), `why` from `ft why hono src/index.ts:17`, `git-land` and `git-notes` from a plain clone of the hono trunk and its `refs/notes/firetrident` (a read token from `wrangler artifacts repos issue-token`, never stored), `git-clone` from `git clone https://firetrident.mattsolt.workers.dev/git/hono.git` with no account and no token (the full output of `git log --notes=firetrident -3`), and `byo-session` from `packages/bench/results/2026-10-12-prod/byo-run.log` (an excerpt of the outside agent's session from its start to the landing; its tool-search lines are left out and local paths shortened). No transcript may contain a token: `grep -E 'art_v[0-9]+_' video/transcripts/*` must print nothing.
+- Still pictures get a slow push-in so nothing sits frozen: finished production colonies 3.5%, cards, terminals and other pages 2%, replays (which move on their own) 1.2%. The review card, the approval and its lineage instead frame the side panel with a camera move, so their text is readable. A director sub-caption that would state what has not happened yet in a replay ("no change of course", "an outside agent ... landed a change") stays hidden until the moment it describes.
+- The review-tab shot of the escalated route was recorded live while it waited for a person (`precapture.mjs`, badge burned in); the approval, the landing and the lineage that follow are a replay and the finished colony.
+- Placeholder scenes that wait for footage say so on screen (**Footage pending**); the final cut has none.
 
 ## The voice Worker
 

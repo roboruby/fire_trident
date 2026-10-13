@@ -90,6 +90,8 @@
       else if (!blocks.length) blocks.push({ cmd: null, out: [l] });
       else blocks[blocks.length - 1].out.push(l);
     }
+    // P.blocks: show only the first N commands of the transcript.
+    if (P.blocks) blocks.splice(P.blocks);
     const dur = P.dur ?? 10;
     const cues = P.cues ?? [];
     const lps = P.lps ?? 28;
@@ -148,7 +150,9 @@
     if (html !== last) {
       screen.innerHTML = html;
       last = html;
-      screen.classList.toggle("full", screen.scrollHeight > screen.clientHeight + 2);
+      // Output longer than the window keeps its newest lines in view. (Bottom-aligning with
+      // justify-content: flex-end hid the overflow from scrollHeight, so the check flipped every frame.)
+      screen.scrollTop = screen.scrollHeight;
     }
     const a = Math.min(1, t / 0.45);
     const e = 1 - Math.pow(1 - a, 3);
