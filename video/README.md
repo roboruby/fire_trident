@@ -27,7 +27,7 @@ A full render records about 14,000 frames; on an Apple Silicon laptop that is ro
 
 ## The numbers in the script
 
-Checked on 2026-10-12 against the production colonies (GET requests only) and the result files:
+Checked on 2026-10-12 and 2026-10-13 against the production colonies (GET requests only) and the result files:
 
 | Narration | Source |
 | --- | --- |
@@ -38,6 +38,8 @@ Checked on 2026-10-12 against the production colonies (GET requests only) and th
 | the agent restarts within about a second; the new version lands 23 seconds later | the direction-steer record: amended 20:12:29.259, restarting 166 ms later, the r2 change landed 23.5 s after the amendment |
 | re-plans in 2 seconds | the direction-steer record: the directive at 20:12:30.180, the change in flight returned 92 ms and "redoing" 144 ms later, the redone file committed 2.4 s after the directive |
 | 13 intents, 5 rules, eight minutes, 60 of 60, 7 of 7 | `shortlinks-run.log` (479.1 s) and the `shortlinks-test` transcript |
+| a second run of the spec had left five tests failing; certification found them in a quarter of a second and the colony turned them into a repair | the shortlinks-review record (`GET /api/colonies/shortlinks-review/events`) and `shortlinks-review-certify-events.jsonl`: at 22:38:33 EDT (an operator's `ft certify --now`) e1468ea certified red, 62 of 67 passing, 5 failing, in 267 ms; the repair intent `int_mv62ngu7hcins0` opened the same millisecond (`shortlinks-review-certify-run.log`) |
+| two fixes landed, review turned back a broken one, trunk went green: 67 of 67 | the same record: 48f74b8 landed 22:50:06 (certified 66 of 67; the colony opened repair `int_mv632bs6omjsyf`), an attempt was returned 23:22:10 by the second-opinion model (`@cf/openai/gpt-oss-120b`), 97b1036 landed 23:45:33 and certified green, 67 of 67, in 88 ms; `certifications-shortlinks-review.json`; a plain clone of 97b1036 passes `node --test` 67 of 67 (`shortlinks-review-certify-green.log`) |
 | 2,800 changes a minute at 5,000 agents on a preview deployment; 78 of fifty thousand calls failed, all in the ramp | `packages/bench/results/2026-10-12-scale/summary.json` (2,777.7/min; synthetic agents on a preview deployment; 78 of 50,368 calls failed during the ramp) |
 | rework cut to 31 percent | `packages/bench/results/2026-10-12-inhibition/summary.json` (simulated, 42.5% to 31.2%) |
 
@@ -63,6 +65,7 @@ Checked on 2026-10-12 against the production colonies (GET requests only) and th
 - Terminal scenes replay real output, verbatim. `transcripts/*.txt` come from the production runs of 2026-10-12: `hono-import` and `hono-rule` from the Hono demo log (the source URL's host is elided as `https://…/honojs/hono`, so no other git host is named on screen), `shortlinks-new` and `shortlinks-test` from `demo/run_new_project.rb`'s log (an excerpt; one local temporary path is shortened to `…/shortlinks`), `why` from `ft why hono src/index.ts:17`, `git-land` and `git-notes` from a plain clone of the hono trunk and its `refs/notes/firetrident` (a read token from `wrangler artifacts repos issue-token`, never stored), `git-clone` from `git clone https://firetrident.mattsolt.workers.dev/git/hono.git` with no account and no token (the full output of `git log --notes=firetrident -3`), and `byo-session` from `packages/bench/results/2026-10-12-prod/byo-run.log` (an excerpt of the outside agent's session from its start to the landing; its tool-search lines are left out and local paths shortened). No transcript may contain a token: `grep -E 'art_v[0-9]+_' video/transcripts/*` must print nothing.
 - Still pictures get a slow push-in so nothing sits frozen: finished production colonies 3.5%, cards, terminals and other pages 2%, replays (which move on their own) 1.2%. The review card, the approval and its lineage instead frame the side panel with a camera move, so their text is readable. A director sub-caption that would state what has not happened yet in a replay ("no change of course", "an outside agent ... landed a change") stays hidden until the moment it describes.
 - The review-tab shot of the escalated route was recorded live while it waited for a person (`precapture.mjs`, badge burned in); the approval, the landing and the lineage that follow are a replay and the finished colony.
+- Trunk certification (A new project) is a card on how it runs (a Dynamic Worker, no network, CPU and time limits) and two 1x shots of the shortlinks-review replay, framed on the trunk bar's test badge and the events panel: the red run at 22:38:33 EDT and, after a cut, the fix landing and certifying green at 23:45:33. The second shot's badge says **67 minutes later**, so the cut does not read as speed. Their badges carry a second line: an operator started the certification (`ft certify --now`) and the two agents; the repair intents, the fixes, the returned attempt and the green run are the colony's.
 - Placeholder scenes that wait for footage say so on screen (**Footage pending**); the final cut has none.
 
 ## The voice Worker

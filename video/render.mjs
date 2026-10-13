@@ -241,7 +241,7 @@ writeFileSync(
       total,
       placeholders: placeholders(scenes),
       scenes: scenes.map((s) => ({ id: s.id, title: s.title, start: s.start, end: s.end, paragraphs: s.paragraphs.map((p) => ({ start: p.start, duration: p.duration, wer: p.wer, text: p.text })) })),
-      shots: shots.map((sh) => ({ scene: sh.scene, index: sh.index, kind: sh.spec.kind, start: sh.start, end: sh.end, frames: sh.frames, source: sh.spec.url ?? sh.spec.t ?? sh.spec.card ?? sh.spec.file, badge: sh.spec.badge?.text ?? sh.spec.tag?.text ?? null })),
+      shots: shots.map((sh) => ({ scene: sh.scene, index: sh.index, kind: sh.spec.kind, start: sh.start, end: sh.end, frames: sh.frames, source: sh.spec.url ?? sh.spec.t ?? sh.spec.card ?? sh.spec.file, badge: sh.spec.badge ? [sh.spec.badge.text, sh.spec.badge.note].filter(Boolean).join(" / ") : (sh.spec.tag?.text ?? null) })),
     },
     null,
     2,
@@ -264,7 +264,8 @@ const SETTLE = { director: 2600, landing: 2600, why: 1800, complete: 500, local:
 const BADGE_CSS = `.ftv-badge{position:fixed;z-index:2147483647;display:flex;align-items:center;gap:10px;font:600 15px/1 ui-monospace,"SF Mono",Menlo,monospace;letter-spacing:.12em;text-transform:uppercase;padding:10px 16px;border-radius:999px;background:rgba(5,7,11,.86);border:1px solid;box-shadow:0 6px 24px rgba(0,0,0,.4)}
 .ftv-badge i{width:8px;height:8px;border-radius:50%;background:currentColor;display:block}
 .ftv-badge.sim{color:#5fd0ff;border-color:rgba(95,208,255,.5)}.ftv-badge.prod{color:#1fe08e;border-color:rgba(31,224,142,.45)}
-.ftv-badge.br{right:30px;bottom:28px}.ftv-badge.bl{left:26px;bottom:50px}.ftv-badge.tc{left:420px;top:104px}`;
+.ftv-badge.br{right:30px;bottom:28px}.ftv-badge.bl{left:26px;bottom:50px}.ftv-badge.tc{left:420px;top:104px}
+.ftv-badge.has-note{flex-wrap:wrap;row-gap:7px;max-width:1120px}.ftv-badge small{flex-basis:100%;padding-left:18px;font:500 14px/1.3 system-ui,-apple-system,"Segoe UI",sans-serif;letter-spacing:.01em;text-transform:none;color:#aab5c6}`;
 const SCROLL_JS = `window.__ftScroller = (sel) => {
   if (!sel) return document.scrollingElement;
   if (sel.startsWith("auto:")) {
@@ -362,7 +363,8 @@ if (todo.length) {
       if (sp.hideSub) css += ".dir-sub{display:none!important}";
       if (sp.css) css += sp.css;
       css += ".landing{scroll-behavior:auto!important}html{scroll-behavior:auto!important}";
-      const badge = sp.badge ? `<div class="ftv-badge ${sp.badge.kind} ${sp.badge.pos ?? "br"}"><i></i>${sp.badge.text}</div>` : "";
+      // A badge can carry a note on a second line (who started what, when the picture jumps in time).
+      const badge = sp.badge ? `<div class="ftv-badge ${sp.badge.kind} ${sp.badge.pos ?? "br"}${sp.badge.note ? " has-note" : ""}"><i></i><span>${sp.badge.text}</span>${sp.badge.note ? `<small>${sp.badge.note}</small>` : ""}</div>` : "";
       const t0 = Date.now();
       log(`  ${sh.scene} #${sh.index + 1} ${sp.kind} ${sh.seconds.toFixed(1)} s  ${sp.kind === "page" ? url : sp.t ?? sp.card}`);
       const page = await newPage(browser.cdp);

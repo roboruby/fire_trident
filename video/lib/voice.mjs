@@ -32,7 +32,8 @@ async function post(path, body, headers, tries = 4) {
   let last;
   for (let i = 0; i < tries; i++) {
     try {
-      const res = await fetch(`${url}${path}`, { method: "POST", headers: { authorization: `Bearer ${token}`, ...headers }, body });
+      // A synthesis call that hangs (seen once with Aura-2) is abandoned after two minutes and retried.
+      const res = await fetch(`${url}${path}`, { method: "POST", headers: { authorization: `Bearer ${token}`, ...headers }, body, signal: AbortSignal.timeout(120_000) });
       if (res.ok) return res;
       last = new Error(`${path} ${res.status}: ${(await res.text()).slice(0, 300)}`);
       if (res.status === 400 || res.status === 401) break;

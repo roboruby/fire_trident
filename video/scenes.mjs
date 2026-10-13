@@ -52,6 +52,8 @@ const select = (path) => `window.ftStore && window.ftStore.select(${JSON.stringi
 /** The director's sub-caption stays hidden until SHOW_SUB runs (before then it would state what has not happened yet). */
 const SUB_LATER = ".dir-sub{opacity:0!important}html.ftv-sub .dir-sub{opacity:1!important;transition:opacity .5s}";
 const SHOW_SUB = 'document.documentElement.classList.add("ftv-sub")';
+/** Certification shots frame the trunk bar's head (its test badge) and the events panel: right edge kept, 1.32x. */
+const CERT_CAMERA = { on: ".side", scale: [1.32, 1.345], move: 0.001, alignRight: true, y: 500 };
 const tab = (name) => `[...document.querySelectorAll('.side .tab')].find((b) => b.textContent.trim().startsWith(${JSON.stringify(name)}))?.click()`;
 
 export const VOICE = "electra";
@@ -85,6 +87,8 @@ const RUN = {
   steer: { amended: 5.12, directive: 6.04 },
   byo: { joined: 7.33, landed: 39.04 },
   review: { approved: 1243.61 },
+  // shortlinks-review's trunk certification: red (5 of 67 failing) and, 67 minutes later, the fix landing and certifying green.
+  certify: { red: 8769.74, fixed: 12789.04 },
 };
 
 export const SCENES = {
@@ -220,11 +224,47 @@ export const SCENES = {
 
   "a-new-project": {
     gaps: { 1: 3.2 },
+    tail: 1.8,
     shots: [
       { at: 0, kind: "terminal", t: "shortlinks-new", blocks: 1, cues: [0.3], blockLps: [9], mark: ["5 rules and 13 intents painted into the field"] },
       // The run's 8 minutes as a time-lapse (16x replay, 3x time-lapse; the replay also skips idle minutes): files appear as they land.
       { at: "Agents wait for", kind: "page", url: rep("shortlinks", "map", { speed: 16 }), timeScale: 3, sync: { at: 0, run: 0 }, badge: replayOf("the shortlinks run", "reconstructed", "time-lapse of 8 minutes") },
       { at: "Eight minutes later", kind: "terminal", t: "shortlinks-test", lps: 6, mark: ["node --test: 60 tests, 60 pass, 0 fail", "reference acceptance: 7/7 pass"] },
+      // Trunk certification (shipped to production on 2026-10-12): how it runs, then the second run of the spec going red and, 67 minutes of model work later, green.
+      {
+        at: "The colony also checks",
+        kind: "card",
+        card: "stack",
+        kicker: "Certification",
+        title: "The colony checks its own work.",
+        top: 430,
+        rows: [
+          { name: "Dynamic Worker", text: "runs the project's own node:test files <span>on trunk, after changes land</span>" },
+          { name: "Sealed off", text: "no network <span>(globalOutbound: null)</span>, CPU and time limits" },
+        ],
+        beats: ["it runs the project's tests", "sealed off from the network"],
+      },
+      // 22:38:33 EDT: red, 5 of 67 failing in 267 ms; the repair intent and its needs on the map appear the same instant. (The badge's
+      // popover with the failing tests opens behind the director's side panel, so it stays closed.)
+      {
+        at: "A second run of this spec",
+        kind: "page",
+        url: rep("shortlinks-review", "review"),
+        sync: { at: "five tests failing", run: RUN.certify.red, offset: -0.5 },
+        prep: [{ key: "c" }, { key: "z" }, { js: tab("Events"), wait: 1200 }],
+        camera: CERT_CAMERA,
+        badge: { ...replayOf("shortlinks-review", "recorded"), note: "An operator started this certification at 22:38 (ft certify --now). The repair intent is the colony's own." },
+      },
+      // 23:45:33 EDT: the second fix lands (router.ts only) and certifies green, 67 of 67; the list below holds the first fix and the returned attempt.
+      {
+        at: "Agents landed two fixes",
+        kind: "page",
+        url: rep("shortlinks-review", "review"),
+        sync: { at: "and trunk went green", run: RUN.certify.fixed, offset: -1.0 },
+        prep: [{ key: "c" }, { key: "z" }, { js: tab("Events"), wait: 1200 }],
+        camera: CERT_CAMERA,
+        badge: { ...replayOf("shortlinks-review", "recorded", "67 minutes later"), note: "An operator started the two agents at 22:38. The fixes, the returned attempt and the green run are the colony's." },
+      },
     ],
   },
 

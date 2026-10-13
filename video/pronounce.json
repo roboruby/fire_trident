@@ -1,6 +1,7 @@
 {
-  "$comment": "Respellings for the synthesizer only; the narration text is unchanged. Checked with Whisper: plain \"Hono\" is heard as \"Hano\". Aura-2 dropped the sentence \"60 of 60 pass, ... 7 of 7.\" when it was written with numerals, so those are spelled out.",
+  "$comment": "Respellings for the synthesizer only; the narration text is unchanged. Checked with Whisper: plain \"Hono\" is heard as \"Hano\". Aura-2 dropped the sentence \"60 of 60 pass, ... 7 of 7.\" when it was written with numerals, so those counts are spelled out.",
   "Hono": "Hohno",
   "60 of 60": "sixty of sixty",
-  "7 of 7": "seven of seven"
+  "7 of 7": "seven of seven",
+  "67 of 67": "sixty-seven of sixty-seven"
 }

@@ -60,6 +60,8 @@ FireTrident doesn't only fix existing code. Give it a spec and it grows a projec
 
 Eight minutes later, clone the result with plain git and run its tests. 60 of 60 pass, and so does the reference acceptance suite, 7 of 7.
 
+The colony also checks its own work. After changes land, it runs the project's tests in a Dynamic Worker, sealed off from the network. A second run of this spec had left five tests failing. Certification found them in a quarter of a second, and the colony turned the failures into a repair. Agents landed two fixes, review turned back a broken one, and trunk went green: 67 of 67.
+
 ## 7:00 Bring your own agent (terminal: Claude Code over MCP; the map shows it landing)
 
 Agents don't have to live inside the platform. Any MCP client can join a colony, take work, push with plain git, and be reviewed like everyone else. Here Claude Code joins a colony, takes a need, and lands a change in under a minute, beside the colony's own agents.
