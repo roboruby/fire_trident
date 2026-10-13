@@ -10,9 +10,10 @@
  * - it is built the first time it is read (when FT_IMPORT_WEIGHT turns the term on, or in the first
  *   cycle that deletes a file while FT_DELETION_GUARD is on), from every script file of the trunk
  *   index within the caps;
- * - finalizeRows marks each landing's changed paths (markLanded), and the next read re-parses the
- *   files whose blob changed and resolves again the specifiers a path that appeared or disappeared
- *   can change;
+ * - each landing marks its changed paths (markLanded, applied by the landing hook in finalizeRows:
+ *   the index is an eager derived index, importsDerived and trunk/derived.ts), and the next read
+ *   re-parses the files whose blob changed and resolves again the specifiers a path that appeared or
+ *   disappeared can change;
  * - when trunk moved outside the landing path (an external push, a replaced trunk), the next read
  *   compares the index with the trunk index file by file and reads only what differs, so a restart
  *   never rebuilds it unless it must.
@@ -26,6 +27,7 @@
 import type { Neighbor, Path, Proposal, Sha } from "@fire_trident/core";
 import { importsOf } from "@fire_trident/core";
 import { RESOLVE_EXTS, isRelative, resolutionCandidates, resolveModule, specifierTarget } from "../decide/mechanical.ts";
+import type { Derived, TrunkLanding } from "./derived.ts";
 import type { DeletionImports } from "./plan.ts";
 import { SCRIPT_FILE } from "./revert.ts";
 
@@ -163,12 +165,13 @@ export function dependentTargets(path: Path): string[] {
 }
 
 /**
- * Note one landing's changed paths for the import index (TrunkDO.finalizeRows calls this inside the
- * landing's transaction). Changed script files are re-read by the next sync, and a path that was
- * created or deleted is marked `moved`, so the specifiers whose resolution it takes part in are
- * resolved again. Nothing is marked before the index is first built, or when the landing does not
- * continue the trunk commit the index describes (the next sync then compares the whole index with
- * trunk). Never throws: the import index must not fail a landing.
+ * Note one landing's changed paths for the import index (its derived apply, importsDerived, which the
+ * landing hook in TrunkDO.finalizeRows runs inside the landing's transaction). Changed script files
+ * are re-read by the next sync, and a path that was created or deleted is marked `moved`, so the
+ * specifiers whose resolution it takes part in are resolved again. Idempotent per landing: the
+ * index's commit moves with the marks. Nothing is marked before the index is first built, or when
+ * the landing does not continue the trunk commit the index describes (the next sync then compares
+ * the whole index with trunk). Never throws: the import index must not fail a landing.
  */
 export function markLanded(sql: SqlStorage, parentSha: Sha, trunkSha: Sha, changes: Iterable<readonly [Path, LandedChange]>): void {
   try {
@@ -187,6 +190,37 @@ export function markLanded(sql: SqlStorage, parentSha: Sha, trunkSha: Sha, chang
     // The index's sha did not move, so the next sync compares the whole index with trunk.
     console.warn(`import index not marked for landing ${trunkSha}: ${e instanceof Error ? e.message : String(e)}`);
   }
+}
+
+/** The import index's name among the trunk's derived indexes (trunk/derived.ts). */
+export const IMPORTS_INDEX = "imports";
+
+/**
+ * The import index as a derived index of the trunk writer's landing log. Eager: the landing hook
+ * marks each landing's changed paths (markLanded) and the next sync reads them. Its value comes from
+ * the trunk tree, not from history, so a version change forgets it (its rows) and the next sync
+ * builds it again from the trunk index, and an index kept before cursors existed resumes at the
+ * newest landing. A landing read back from the log (one the hook left behind) has no blobs: each path
+ * it changed is marked as appearing or disappearing, which costs the next sync more resolving but
+ * misses nothing.
+ */
+export function importsDerived(sql: SqlStorage): Derived<TrunkLanding> {
+  return {
+    name: IMPORTS_INDEX,
+    version: 1,
+    mode: "eager",
+    apply: ({ landing: t }) => {
+      markLanded(sql, t.landing.parentSha, t.landing.trunkSha, t.changes ?? t.landing.paths.map((path) => [path, { blob: null }] as const));
+    },
+    reset: (head) => {
+      // Never built in this object: nothing to forget.
+      if (sql.exec("SELECT 1 AS x FROM sqlite_master WHERE type = 'table' AND name = 'ft_imp_meta'").toArray().length > 0) {
+        for (const t of ["ft_imp_files", "ft_imp_edges", "ft_imp_dirty", "ft_imp_meta"]) sql.exec(`DELETE FROM ${t}`);
+      }
+      return head;
+    },
+    adopt: (base) => base,
+  };
 }
 
 /**
