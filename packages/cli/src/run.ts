@@ -18,6 +18,7 @@ import {
   formatEscalations,
   formatEvent,
   formatIntentShow,
+  formatPolicy,
   formatRetract,
   formatRevert,
   formatReview,
@@ -28,12 +29,14 @@ import {
   formatWhy,
   formatWithdraw,
   num,
+  policyRows,
 } from "./format.ts";
 import type {
   AgentRow,
   AmendResult,
   ColonyRow,
   Colors,
+  DecidePolicyView,
   DeleteResult,
   DirectResult,
   EscalationResult,
@@ -172,6 +175,7 @@ async function execute(cmd: Command, ctx: Ctx): Promise<number> {
   if (cmd.name === "watch") return watch(cmd, ctx);
   if (cmd.name === "new") return newColony(cmd, ctx);
   if (cmd.name === "revert") return revert(cmd, ctx);
+  if (cmd.name === "policy") return policy(cmd, ctx);
   const req = planRequest(cmd, ctx.by);
   if (!req) throw new Error(`nothing to do for ${cmd.name}`);
   if (ctx.flags.dryRun) return dryRun(ctx, [req]);
@@ -184,7 +188,12 @@ async function execute(cmd: Command, ctx: Ctx): Promise<number> {
       const snap = await send<SnapshotLike>(ctx.http, req);
       // An unexpected shape is shown raw rather than crashing the summary.
       if (ctx.flags.json || !snap?.colony?.id) printJson(ctx, snap);
-      else io.stdout(formatStatus(snap, c, io.now()));
+      else {
+        io.stdout(formatStatus(snap, c, io.now()));
+        // The paths only a person may change, read after the summary (a server that predates them shows none).
+        const rows = policyRows(await tryGet<DecidePolicyView>(ctx, { method: "GET", path: colonyPath(cmd.colony, "/decide/policy") }), c);
+        if (rows.length > 0) io.stdout(rows.join("\n"));
+      }
       return 0;
     }
     case "rule-add":
@@ -412,6 +421,44 @@ async function revert(cmd: Extract<Command, { name: "revert" }>, ctx: Ctx): Prom
   if (proposal && res?.proposal !== cmd.ref) {
     io.stderr(`ft: the server undid all of ${landing}, not only ${cmd.ref}: it predates reverting one proposal. To put ${landing} back: ft revert ${cmd.colony} ${res?.landing?.id ?? "<the revert's landing>"} --reason "<why>"`);
     return 1;
+  }
+  return 0;
+}
+
+/**
+ * `ft policy`: show the decide policy, or change it. Adding or removing protected paths reads the
+ * colony's list first and writes it back whole (the policy route sets fields, not list entries).
+ */
+async function policy(cmd: Extract<Command, { name: "policy" }>, ctx: Ctx): Promise<number> {
+  const { io, c } = ctx;
+  const read: ApiRequest = { method: "GET", path: colonyPath(cmd.colony, "/decide/policy") };
+  const proof = cmd.commentProof !== undefined ? { commentProof: cmd.commentProof } : {};
+  const single = planRequest(cmd, ctx.by);
+  if (single) {
+    if (ctx.flags.dryRun) return dryRun(ctx, [single]);
+    const res = await send<DecidePolicyView | null>(ctx.http, single);
+    if (ctx.flags.json) printJson(ctx, res);
+    else io.stdout(formatPolicy(cmd.colony, res ?? {}, c));
+    if (cmd.commentProof !== undefined && res?.commentProof !== cmd.commentProof) {
+      io.stderr("ft: the server did not change the comment-only proof: it predates it");
+      return 1;
+    }
+    return 0;
+  }
+  if (ctx.flags.dryRun) {
+    // The list is known once it is read; the dry run says what the second call sends.
+    const change = [cmd.protect.length > 0 ? `plus ${cmd.protect.join(", ")}` : "", cmd.unprotect.length > 0 ? `without ${cmd.unprotect.join(", ")}` : ""].filter(Boolean).join(", ");
+    return dryRun(ctx, [read, { method: "POST", path: read.path, body: { protectedPaths: `<the current list, ${change}>`, ...proof } }]);
+  }
+  const current = await send<DecidePolicyView | null>(ctx.http, read);
+  const list = Array.isArray(current?.protectedPaths) ? current.protectedPaths : null;
+  if (list === null) throw new Error("the server does not keep protected paths: it predates them");
+  const protectedPaths = [...list.filter((g) => !cmd.unprotect.includes(g)), ...cmd.protect.filter((g) => !list.includes(g))];
+  const res = await send<DecidePolicyView | null>(ctx.http, { method: "POST", path: read.path, body: { protectedPaths, ...proof } });
+  if (ctx.flags.json) printJson(ctx, res);
+  else {
+    io.stdout(formatPolicy(cmd.colony, res ?? {}, c));
+    for (const g of cmd.unprotect.filter((x) => !list.includes(x))) io.stdout(c.dim(`  ${g} was not protected`));
   }
   return 0;
 }

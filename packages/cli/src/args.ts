@@ -48,6 +48,7 @@ export type Command =
   | { name: "delete"; colony: string }
   | { name: "vaccinate"; colony: string; count: number }
   | { name: "certify"; colony: string; action: "show" | "now" | "on" | "off" }
+  | { name: "policy"; colony: string; protect: string[]; unprotect: string[]; commentProof?: boolean }
   | { name: "intent-amend"; colony: string; intentId: string; title?: string; why?: string; footprint?: string[]; priority?: number; reason: string; by?: string }
   | { name: "intent-withdraw"; colony: string; intentId: string; reason: string; by?: string }
   | { name: "intent-show"; colony: string; intentId: string }
@@ -116,6 +117,7 @@ const COMMAND_OPTIONS: Record<string, Record<string, OptionSpec>> = {
   delete: { yes: { type: "boolean" } },
   vaccinate: { count: { type: "string" } },
   certify: { now: { type: "boolean" }, on: { type: "boolean" }, off: { type: "boolean" } },
+  policy: { protect: { type: "string", multiple: true }, unprotect: { type: "string", multiple: true }, "comment-proof": { type: "string" } },
   help: {},
 };
 
@@ -212,6 +214,11 @@ export function parseLocation(input: string): { path: string; line?: number } {
   const line = Number(m[2]);
   if (line < 1) fail(`line must be 1 or more, got ${line}`);
   return { path, line };
+}
+
+/** A protected-path glob as the server keeps it: trimmed, without a leading "./" or "/" or a trailing "/". */
+function protectedGlob(glob: string): string {
+  return glob.trim().replace(/^(?:\.\/|\/)+/, "").replace(/\/+$/, "");
 }
 
 /** Locate the command word: the first token that is neither an option nor a global option's value. */
@@ -410,6 +417,27 @@ function build(word: string, v: Record<string, unknown>, p: string[]): Command {
       const picked = (["now", "on", "off"] as const).filter((k) => v[k] === true);
       if (picked.length > 1) fail(`choose one of --now, --on, --off (${usage})`);
       return { name: "certify", colony, action: picked[0] ?? "show" };
+    }
+    case "policy": {
+      const usage = "ft policy <colony> [--protect <glob>]... [--unprotect <glob>]... [--comment-proof on|off]";
+      noExtras(p, 1, usage);
+      const colony = colonyArg(p[0], usage);
+      const globs = (flag: string): string[] => {
+        const out = list(v[flag]).map(protectedGlob);
+        if (out.some((g) => g === "")) fail(`--${flag} needs a glob, such as "src/auth/**"`);
+        return [...new Set(out)];
+      };
+      const protect = globs("protect");
+      const unprotect = globs("unprotect");
+      const both = protect.find((g) => unprotect.includes(g));
+      if (both !== undefined) fail(`"${both}" is given to both --protect and --unprotect`);
+      const cmd: Extract<Command, { name: "policy" }> = { name: "policy", colony, protect, unprotect };
+      const proof = str(v["comment-proof"]);
+      if (proof !== undefined) {
+        if (proof !== "on" && proof !== "off") fail(`--comment-proof must be on or off, got "${proof}"`);
+        cmd.commentProof = proof === "on";
+      }
+      return cmd;
     }
     case "intent":
       return buildIntent(v, p);
@@ -626,6 +654,7 @@ Commands
   stop <colony> <agentId>|--all    Stop one agent, or every in-platform agent
   vaccinate <colony> --count <n>   Inject planted bad changes to test the immune layer
   certify <colony>                 Trunk certification: results, --now, --on/--off
+  policy <colony>                  Paths only a person may change; the comment-only proof
   why <colony> <path[:line]>       Show the lineage behind a file or line
   review <colony> [--diff]         List proposals escalated to a human, code first
   review <colony> <id> <decision>  Approve, reject, or return a proposal
@@ -695,8 +724,8 @@ Example
 ft status <colony>
 
 Print a compact summary: source, trunk and green commits, files and regions,
-intents by status, agents by state, violations left, the decision funnel, and
-recent landings.
+intents by status, agents by state, violations left, the decision funnel,
+recent landings, and the paths only a person may change (ft policy).
 `,
   rule: `
 ft rule add <colony> --pattern <regex> [--flags <f>] [--include <glob>]... [--exclude <glob>]...
@@ -885,6 +914,27 @@ tested or not; deploy, release and pin from certified
 commit and the latest results. --now certifies the current trunk now; --off
 and --on change the colony's policy (the deployment's FT_TRUNK_TESTS must be
 "on" as well).
+`,
+  policy: `
+ft policy <colony> [--protect <glob>]... [--unprotect <glob>]... [--comment-proof on|off]
+
+Show or change how the colony reviews changes. Without options, show whether
+review runs, the deterministic proofs, and the protected paths.
+
+  --protect <glob>       Add a protected path. Any change that writes, deletes or
+                         renames a path it covers goes to a person, whatever its
+                         intent, antibodies or proofs say. Globs are written as for
+                         rules (**, *, ?, {a,b}); one naming a directory covers
+                         everything under it. At most 50
+  --unprotect <glob>     Remove a protected path
+  --comment-proof on|off A change to existing .ts, .tsx, .js, .jsx, .mjs or .cjs
+                         files that only changes comments and whitespace (no
+                         directive comment) lands without a model. On by default
+
+Examples
+  ft policy web --protect "src/auth/**" --protect db/migrations
+  ft policy web --unprotect db/migrations
+  ft policy web --comment-proof off
 `,
   vaccinate: `
 ft vaccinate <colony> --count <n>

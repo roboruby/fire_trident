@@ -3,6 +3,7 @@ import type { Context, MiddlewareHandler } from "hono";
 import type { Id } from "@fire_trident/core";
 import type { Env } from "../env.ts";
 import { decodeError, ftError } from "../colony/errors.ts";
+import { policyProblems } from "../decide/policy.ts";
 import { VACCINE_CLASSES } from "../decide/vaccine.ts";
 
 /**
@@ -12,7 +13,9 @@ import { VACCINE_CLASSES } from "../decide/vaccine.ts";
  *                                           (a model or check stopped it) apart from escalated (sent to a person, not
  *                                           measured), errors (a model layer unavailable) left out
  *   GET  /colonies/:id/immune              antibodies, detector probation, earned autonomy, alert budget, policy
- *   POST /colonies/:id/decide/policy        change the decide policy (partial)
+ *   GET  /colonies/:id/decide/policy        the decide policy
+ *   POST /colonies/:id/decide/policy        change the decide policy (partial; returns it). commentProof must be a
+ *                                           boolean and protectedPaths a list of at most 50 usable globs (400 otherwise)
  *   POST /colonies/:id/detectors/:did       { useful } mark a detector (clef:<question> or antibody:<id>)
  * POST routes require the admin bearer token when FT_ADMIN_TOKEN is set.
  */
@@ -93,9 +96,18 @@ decideApi.get("/colonies/:id/vaccinate", async (c) => json(await stub(c.env, col
 
 decideApi.get("/colonies/:id/immune", async (c) => json(await stub(c.env, colonyOf(c)).immune()));
 
+decideApi.get("/colonies/:id/decide/policy", async (c) => {
+  const immune = (await stub(c.env, colonyOf(c)).immune()) as { policy?: unknown };
+  return json(immune.policy ?? null);
+});
+
 decideApi.post("/colonies/:id/decide/policy", adminOnly, async (c) => {
   const colonyId = colonyOf(c);
-  return json(await stub(c.env, colonyId).setDecidePolicy(await jsonBody(c)));
+  const body = await jsonBody(c);
+  // Fields the policy would otherwise drop silently (a person would believe them set) are refused instead.
+  const problems = policyProblems(body);
+  if (problems.length > 0) throw ftError(400, `invalid request: ${problems.join("; ")}`);
+  return json(await stub(c.env, colonyId).setDecidePolicy(body));
 });
 
 decideApi.post("/colonies/:id/detectors/:did", adminOnly, async (c) => {

@@ -1,3 +1,4 @@
+import { globMatch } from "@fire_trident/core";
 import type { DangerClass } from "./danger.ts";
 
 /**
@@ -14,6 +15,11 @@ export interface DecidePolicy {
   enabled: boolean;
   /** Let a mechanical proof (decide/mechanical.ts) confirm a change without any model. */
   deterministic: boolean;
+  /**
+   * Let the comment-only proof (decide/comments.ts) confirm a change to existing script files whose code
+   * is unchanged outside comments and whitespace (only while `deterministic` is on).
+   */
+  commentProof: boolean;
   /** System 1: the decision model asked first. */
   reflexModel: string;
   /** System 2 candidates; the first whose family differs from the authoring agent's is used. */
@@ -43,6 +49,12 @@ export interface DecidePolicy {
    * (globs). Allowed hits stay danger signals: a reviewer's approval is still needed to land.
    */
   dangerAllow: Array<{ cls: DangerClass; paths?: string[] }>;
+  /**
+   * Paths only a person may change (globs as rules write them, at most 50): a proposal that writes,
+   * deletes or renames one goes to a person, whatever its intent, antibodies or the rest of this
+   * policy say. A glob also covers everything under a directory it matches.
+   */
+  protectedPaths: string[];
 }
 
 /**
@@ -54,6 +66,7 @@ export interface DecidePolicy {
 export const DEFAULT_POLICY: DecidePolicy = {
   enabled: true,
   deterministic: true,
+  commentProof: true,
   reflexModel: "@cf/cloudflare/clef",
   secondOpinionModels: ["@cf/google/gemma-4-26b-a4b-it", "@cf/openai/gpt-oss-120b", "@cf/zai-org/glm-4.7-flash"],
   confidence: 0.8,
@@ -67,6 +80,7 @@ export const DEFAULT_POLICY: DecidePolicy = {
   llmConcurrency: 8,
   llmPerMinute: 120,
   dangerAllow: [],
+  protectedPaths: [],
 };
 
 const DANGER_CLASSES: readonly DangerClass[] = ["auth", "secret", "capability", "crypto", "ci", "dependency", "test-weakening"];
@@ -86,6 +100,84 @@ function allowances(v: unknown, fallback: DecidePolicy["dangerAllow"]): DecidePo
   return out;
 }
 
+/** The most protected paths a colony keeps. */
+export const MAX_PROTECTED_PATHS = 50;
+/** The longest protected path (a glob). */
+const MAX_GLOB_CHARS = 300;
+
+/** A protected glob as the policy keeps it: trimmed, without a leading "./" or "/" or a trailing "/". */
+export function normalizeGlob(glob: string): string {
+  return glob.trim().replace(/^(?:\.\/|\/)+/, "").replace(/\/+$/, "");
+}
+
+/** `glob` with each {a,b} group (as the glob matcher reads them) replaced by its first alternative. */
+function firstExpansion(glob: string): string {
+  for (let open = glob.indexOf("{"); open !== -1; open = glob.indexOf("{", open + 1)) {
+    let depth = 0;
+    let close = -1;
+    let comma = -1;
+    for (let k = open; k < glob.length && close === -1; k++) {
+      const c = glob[k];
+      if (c === "{") depth++;
+      else if (c === "}" && --depth === 0) close = k;
+      else if (c === "," && depth === 1 && comma === -1) comma = k;
+    }
+    if (close === -1 || comma === -1) continue;
+    return glob.slice(0, open) + firstExpansion(glob.slice(open + 1, comma)) + firstExpansion(glob.slice(close + 1));
+  }
+  return glob;
+}
+
+/**
+ * Why `glob` cannot be a protected path, or null: it is empty, longer than 300 characters, not one line
+ * of text, or has so many {a,b} alternatives that the glob matcher gives up on it (it would protect
+ * nothing). The last is found by matching the glob against a path built from it.
+ */
+export function globProblem(glob: string): string | null {
+  const g = normalizeGlob(glob);
+  if (g === "") return "a protected path cannot be empty";
+  if (g.length > MAX_GLOB_CHARS) return `a protected path has at most ${MAX_GLOB_CHARS} characters`;
+  if (/[\x00-\x1f\x7f]/.test(g)) return "a protected path is one line of text";
+  if (!globMatch(g, firstExpansion(g).replace(/[*?]/g, "a"))) return "a protected path with this many {a,b} alternatives would match nothing";
+  return null;
+}
+
+/** Valid protected paths of a policy patch (normalized, each once, at most 50); entries that are not usable globs are dropped. */
+function protectedGlobs(v: unknown, fallback: string[]): string[] {
+  if (!Array.isArray(v)) return fallback;
+  const out: string[] = [];
+  for (const g of v.slice(0, 500)) {
+    if (typeof g !== "string" || globProblem(g) !== null) continue;
+    const glob = normalizeGlob(g);
+    if (!out.includes(glob)) out.push(glob);
+    if (out.length >= MAX_PROTECTED_PATHS) break;
+  }
+  return out;
+}
+
+/**
+ * Problems with the fields of a policy patch that mergePolicy would otherwise drop without a word, so a
+ * person could believe them set: commentProof that is not a boolean, protectedPaths that is not a list
+ * of at most 50 usable globs. Each reads "field: problem". Empty when the patch can be applied.
+ */
+export function policyProblems(patch: Record<string, unknown>): string[] {
+  const out: string[] = [];
+  if (patch.commentProof !== undefined && typeof patch.commentProof !== "boolean") out.push("commentProof: must be true or false");
+  const globs = patch.protectedPaths;
+  if (globs !== undefined) {
+    if (!Array.isArray(globs)) {
+      out.push("protectedPaths: must be a list of globs");
+    } else {
+      if (globs.length > MAX_PROTECTED_PATHS) out.push(`protectedPaths: at most ${MAX_PROTECTED_PATHS} globs, got ${globs.length}`);
+      globs.slice(0, MAX_PROTECTED_PATHS).forEach((g, k) => {
+        const why = typeof g === "string" ? globProblem(g) : "must be a string";
+        if (why) out.push(`protectedPaths.${k}: ${why}`);
+      });
+    }
+  }
+  return out.slice(0, 10);
+}
+
 function num(v: unknown, lo: number, hi: number, fallback: number): number {
   return typeof v === "number" && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : fallback;
 }
@@ -103,6 +195,7 @@ export function mergePolicy(base: DecidePolicy, patch: unknown): DecidePolicy {
   return {
     enabled: typeof p.enabled === "boolean" ? p.enabled : base.enabled,
     deterministic: typeof p.deterministic === "boolean" ? p.deterministic : base.deterministic,
+    commentProof: typeof p.commentProof === "boolean" ? p.commentProof : base.commentProof,
     reflexModel: model(p.reflexModel, base.reflexModel),
     secondOpinionModels: models.length > 0 ? models.slice(0, 5) : base.secondOpinionModels,
     confidence: num(p.confidence, 0, 1, base.confidence),
@@ -120,6 +213,7 @@ export function mergePolicy(base: DecidePolicy, patch: unknown): DecidePolicy {
     llmConcurrency: Math.floor(num(p.llmConcurrency, 1, 64, base.llmConcurrency)),
     llmPerMinute: Math.floor(num(p.llmPerMinute, 1, 3_000, base.llmPerMinute)),
     dangerAllow: allowances(p.dangerAllow, base.dangerAllow),
+    protectedPaths: protectedGlobs(p.protectedPaths, base.protectedPaths),
   };
 }
 

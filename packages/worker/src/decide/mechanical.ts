@@ -1,6 +1,7 @@
 import type { CheckResult, NameAssumption, Path, Rule } from "@fire_trident/core";
 import { importsOf } from "@fire_trident/core";
 import { applyReplacement } from "../agents/change.ts";
+import { commentOnlyProof } from "./comments.ts";
 import { splitLines } from "./diff.ts";
 import { sensitiveReason } from "./signals.ts";
 
@@ -12,6 +13,10 @@ import { sensitiveReason } from "./signals.ts";
  *   rewritten, each still resolving to the same file (or exactly the rule's declared replacement),
  *   that stays inside the intent's footprint, touches no sensitive path and passes the rule
  *   re-check, is proven correct. Such a proof is a confirmation in its own right.
+ * - Comment-only proof (comments.ts, unless the colony policy turns it off): a change to existing
+ *   script files whose code is unchanged outside comments and whitespace, with no directive comment,
+ *   inside the footprint, on no sensitive path and passing the innate checks, is proven too, with or
+ *   without a rule.
  * - Name assumptions: the names each written file imports from the trunk files its relative imports
  *   resolve to, and a reader of the names a file exports, so the trunk writer can land a change whose
  *   read file changed when the names it relies on still hold (assumption revalidation).
@@ -182,6 +187,8 @@ export interface MechanicalInput {
   exists: (p: Path) => boolean;
   /** Did it exist before the change (trunk tree)? Defaults to `exists`. */
   existed?: (p: Path) => boolean;
+  /** Also try the comment-only proof (the colony policy's commentProof); on when absent. */
+  commentProof?: boolean;
 }
 
 /** What the deterministic stage concluded. */
@@ -278,6 +285,30 @@ export function mechanicalCheck(x: MechanicalInput): MechanicalResult {
   } else {
     verdict = "pass";
     reasons.push(`${proven} file${proven === 1 ? "" : "s"} proven: only import specifiers changed, each still resolving to the same file (or exactly the rule's replacement); inside the footprint; no sensitive path; rule re-check passes`);
+  }
+
+  // The comment-only proof, when the import proof neither held nor failed: code unchanged outside
+  // comments and whitespace changes no behavior, whatever rule the intent has (or none).
+  if (verdict === "inconclusive" && x.commentProof !== false) {
+    const comment = commentOnlyProof(x.files);
+    if (comment.verdict !== "no") {
+      facts.push(...comment.files.map((p) => `${p}: outside comments and whitespace the code is unchanged (the same tokens, with line breaks in the same places)`));
+      const but = !x.innateOk
+        ? "the rule re-check or another innate check failed"
+        : x.residual.length > 0
+          ? `it writes outside the footprint (${x.residual.slice(0, 5).join(", ")})`
+          : sensitive.length > 0
+            ? `it touches sensitive paths (${sensitive.slice(0, 5).join(", ")})`
+            : comment.verdict === "blocked"
+              ? comment.reasons.join("; ")
+              : null;
+      if (but === null) {
+        verdict = "pass";
+        reasons.splice(0, reasons.length, `${comment.reasons.join("; ")}; inside the footprint; no sensitive path; the innate checks pass`);
+      } else {
+        reasons.push(`only comments and whitespace changed, but ${but}`);
+      }
+    }
   }
 
   const relative = changes.filter((c) => c.relative);

@@ -1,5 +1,5 @@
 import type { Path } from "@fire_trident/core";
-import { importsOf } from "@fire_trident/core";
+import { globMatch, importsOf } from "@fire_trident/core";
 
 /**
  * Damage and capability signals: deterministic facts about what a change could do if it landed.
@@ -46,6 +46,34 @@ const SENSITIVE: Array<{ re: RegExp; why: string }> = [
 export function sensitiveReason(path: Path): string | null {
   for (const s of SENSITIVE) if (s.re.test(path)) return s.why;
   return null;
+}
+
+/** A path a change writes, deletes or renames that the colony's policy protects, with the glob that protects it. */
+export interface ProtectedHit {
+  path: Path;
+  glob: string;
+}
+
+/** Does `glob` cover `path`: match it, or match a directory it is under ("src/auth" covers src/auth/login.ts)? */
+function covers(glob: string, path: Path): boolean {
+  if (globMatch(glob, path)) return true;
+  for (let k = path.indexOf("/"); k !== -1; k = path.indexOf("/", k + 1)) if (globMatch(glob, path.slice(0, k))) return true;
+  return false;
+}
+
+/**
+ * The paths of a change that the colony's protected globs (DecidePolicy.protectedPaths) cover, each once
+ * with the first glob that covers it. A proposal's write set lists deleted paths too, and a rename is a
+ * deletion plus a write, so writing, deleting or renaming into or out of a protected path all count.
+ */
+export function protectedHits(paths: readonly Path[], globs: readonly string[]): ProtectedHit[] {
+  if (globs.length === 0) return [];
+  const out: ProtectedHit[] = [];
+  for (const path of new Set(paths)) {
+    const glob = globs.find((g) => covers(g, path));
+    if (glob !== undefined) out.push({ path, glob });
+  }
+  return out;
 }
 
 /** Is `path` a test file (by directory or name)? */
