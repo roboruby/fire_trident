@@ -241,9 +241,11 @@ describe("waivers come only from text a person, a rule or certification wrote", 
     expect(dangerLabels(hits)[0]).toContain("[asked for by the intent, written by a person]");
   });
 
-  it("rule and certification intents can ask too", () => {
+  it("a rule intent can ask too, but a repair intent cannot: it quotes test names agents wrote", () => {
     expect(scanNew("src/hook.ts", hook, webhook, "rule")[0]).toMatchObject({ requested: true, requestedBy: "rule" });
-    expect(scanNew("src/hook.ts", hook, webhook, "certify")[0]).toMatchObject({ requested: true, requestedBy: "certification" });
+    const repair = scanNew("src/hook.ts", hook, webhook, "certify");
+    expect(repair[0]?.requested).toBeFalsy();
+    expect(triageDanger(repair).mustHuman.length).toBe(1);
   });
 
   it("with no intent nothing is asked for: a proposal's own summary never waives", () => {

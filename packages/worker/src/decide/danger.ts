@@ -55,8 +55,12 @@ export interface DangerIntent {
   source: IntentSource;
 }
 
-/** Intent sources whose text may ask for a capability: written by a person, a rule or certification. */
-const TRUSTED_SOURCES: ReadonlySet<string> = new Set<IntentSource>(["human", "rule", "certify"]);
+/**
+ * Intent sources whose text may ask for a capability: written by a person or a rule. A repair
+ * intent from certification quotes test names and errors from the repository, which agents write,
+ * so its text never waives a gate either.
+ */
+const TRUSTED_SOURCES: ReadonlySet<string> = new Set<IntentSource>(["human", "rule"]);
 
 /** Paths that decide on agents: the colony's memory and agent instructions, anywhere in the tree. */
 const GOVERNANCE: ReadonlyArray<{ id: string; re: RegExp }> = [
