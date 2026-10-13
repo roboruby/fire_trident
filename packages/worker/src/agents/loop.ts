@@ -1,9 +1,10 @@
 import { checkFile, importsOf, ruleApplies } from "@fire_trident/core";
-import type { AgentKind, AgentState, CheckResult, FileVersion, Id, Intent, Path, Proposal, ProposalStatus, Rule, Sha, WorkspaceLease } from "@fire_trident/core";
+import type { AgentKind, AgentState, CheckResult, EscalationKind, FileVersion, Id, Intent, Path, Proposal, ProposalStatus, Rule, Sha, WorkspaceLease } from "@fire_trident/core";
 import { agentIdentity, applyReplacement, changeSummary, cleanPath, commitMessage, decodeText, expandFootprint, isLiteralPath, oneLine, recheck, ruleReplacement } from "./change.ts";
 import { TreeIndex, applySpecifierEdits, isImportRule, parseSpecifierEdits, specifierFacts } from "./context.ts";
 import { checkWrittenFile, parseIntentSpec, resolveImport, wantsErasable, writeOrder } from "./create.ts";
-import { buildEditMessages, buildSpecifierMessages, buildWriteMessages, maxTokensFor, parseFileReply, retryMessages, specifierRetryMessages, violationProblem } from "./prompt.ts";
+import { cleanContext, noticeEntry, withLanded, type LandedWhy } from "./landed.ts";
+import { buildEditMessages, buildSpecifierMessages, buildWriteMessages, maxTokensFor, parseEscalateReply, parseFileReply, retryMessages, specifierRetryMessages, violationProblem } from "./prompt.ts";
 import type { ChatMessage, TokenUsage } from "./prompt.ts";
 import { cleanPreview, type AntibodyQuestion } from "./preview.ts";
 import { TERMINAL_STATUSES, errorMessage, errorStatus } from "./rpc.ts";
@@ -33,8 +34,11 @@ import { isInboxDirective } from "../colony/direction.ts";
  */
 
 export type JobStep = "deps" | "fetch" | "read" | "produce" | "commit" | "push" | "propose" | "await";
-/** `redirected`: the intent was revised under the job (it restarts from the new revision); `withdrawn`: called off. */
-export type Outcome = "landed" | "returned" | "rejected" | "abandoned" | "timeout" | "lost" | "redirected" | "withdrawn";
+/**
+ * `redirected`: the intent was revised under the job (it restarts from the new revision); `withdrawn`: called off;
+ * `escalated`: the model reported that the intent cannot be done as written, and the intent waits for a person.
+ */
+export type Outcome = "landed" | "returned" | "rejected" | "abandoned" | "timeout" | "lost" | "redirected" | "withdrawn" | "escalated";
 
 /** Persistent configuration of one agent. `epoch` changes on every start/stop. */
 export interface AgentConfig {
@@ -125,6 +129,13 @@ export interface Job {
   directives?: Guidance[];
   /** Questions review will ask of this change, from the take (agents/preview.ts); every prompt shows them. */
   antibodies?: AntibodyQuestion[];
+  /** The latest landings that changed the intent's files, with their intents' whys (the take's context, agents/landed.ts). */
+  history?: LandedWhy[];
+  /** Build on trunk as it is now, not the lease base: a landing notice changed files this job covers (fetch takes the tip). */
+  freshBase?: boolean;
+  /** Times a landing notice restarted this job, and the landings it rebased past (for the evidence). */
+  rebases?: number;
+  rebasedOn?: Id[];
   /** The last status note relayed to the colony, and when. */
   relayedNote?: string;
   relayedAt?: number;
@@ -565,6 +576,9 @@ async function takeWork(deps: LoopDeps, cfg: AgentConfig): Promise<StepResult> {
   // What review will ask of the change, so the model can avoid what a person rejected before.
   const antibodies = cleanPreview(res.review)?.antibodies ?? [];
   if (antibodies.length > 0) job.antibodies = antibodies;
+  // Why the code is the way it is: the latest landings on these files and their intents' whys.
+  const history = cleanContext(res.context);
+  if (history) job.history = history;
   await adoptGuidance(deps, cfg, job, now);
   save(deps, cfg, job);
   deps.journal.bump("taken");
@@ -604,8 +618,10 @@ async function depsStep(deps: LoopDeps, cfg: AgentConfig, job: Job): Promise<Ste
 
 async function fetchStep(deps: LoopDeps, cfg: AgentConfig, job: Job): Promise<StepResult> {
   deps.git.takeNetStats?.();
-  // A job that waited for files to land builds on trunk as it is now: the lease base predates them.
-  const tip = (job.buildsOn ?? []).length > 0 && deps.git.fetchTip ? await deps.git.fetchTip({ remote: job.lease.trunk.remote, token: job.lease.trunk.token }) : null;
+  // A job that waited for files to land builds on trunk as it is now: the lease base predates them. So
+  // does a job a landing notice restarted (freshBase): files it covers changed after the lease base.
+  const atTip = (job.buildsOn ?? []).length > 0 || job.freshBase === true;
+  const tip = atTip && deps.git.fetchTip ? await deps.git.fetchTip({ remote: job.lease.trunk.remote, token: job.lease.trunk.token }) : null;
   const reuse = tip ? null : await workspaceBase(deps, job);
   if (tip) {
     job.baseSha = tip;
@@ -708,7 +724,10 @@ async function readStep(deps: LoopDeps, cfg: AgentConfig, job: Job): Promise<Ste
   return advance(deps, cfg, job, "produce");
 }
 
-type FileOutcome = { kind: "change"; content: string } | { kind: "skip" } | { kind: "abandon"; reason: string };
+/** What the model reported instead of writing a file (an ESCALATE reply). */
+type Escalation = { kind: EscalationKind; report: string };
+
+type FileOutcome = { kind: "change"; content: string } | { kind: "skip" } | { kind: "abandon"; reason: string } | { kind: "escalate"; escalation: Escalation };
 
 async function produceStep(deps: LoopDeps, cfg: AgentConfig, job: Job): Promise<StepResult> {
   const baseSha = requireBase(job);
@@ -720,6 +739,7 @@ async function produceStep(deps: LoopDeps, cfg: AgentConfig, job: Job): Promise<
     if (done.has(f.path)) continue;
     const out = await produceFile(deps, cfg, job, baseSha, f, treeAt);
     if (out.kind === "abandon") return abandon(deps, cfg, job, out.reason);
+    if (out.kind === "escalate") return escalateJob(deps, cfg, job, out.escalation);
     guard(deps, cfg.epoch);
     if (out.kind === "change") deps.journal.putChange(f.path, out.content);
     done.add(f.path);
@@ -767,7 +787,7 @@ async function produceFile(deps: LoopDeps, cfg: AgentConfig, job: Job, baseSha: 
     return r.content === original ? { kind: "skip" } : { kind: "change", content: r.content };
   }
   const r = await writeFile(deps, cfg, job, baseSha, f.path, original, treeAt);
-  if (!r.ok) return { kind: "abandon", reason: r.reason };
+  if (!r.ok) return r.escalate ? { kind: "escalate", escalation: r.escalate } : { kind: "abandon", reason: r.reason };
   return r.content === (original ?? "") ? { kind: "skip" } : { kind: "change", content: r.content };
 }
 
@@ -777,7 +797,8 @@ async function produceFile(deps: LoopDeps, cfg: AgentConfig, job: Job, baseSha: 
  * project tree, the files the intent builds on and the files this change already wrote.
  * The reply must parse and pass every check (syntax, rules, erasable TypeScript when the
  * project asks for it, imports that resolve in trunk or this change); otherwise the model
- * gets the problems and tries again, MAX_WRITE_ATTEMPTS times in all.
+ * gets the problems and tries again, MAX_WRITE_ATTEMPTS times in all. A reply that starts with
+ * `ESCALATE <kind>: <report>` writes nothing: the model says the intent cannot be done as written.
  */
 async function writeFile(
   deps: LoopDeps,
@@ -787,7 +808,7 @@ async function writeFile(
   path: Path,
   original: string | null,
   treeAt: () => Promise<TreeIndex>,
-): Promise<{ ok: true; content: string } | { ok: false; reason: string }> {
+): Promise<{ ok: true; content: string } | { ok: false; reason: string; escalate?: Escalation }> {
   if (original !== null && original.length > MAX_MODEL_CHARS) {
     return { ok: false, reason: `${path} is too large to rewrite with a model (${original.length} characters)` };
   }
@@ -810,6 +831,7 @@ async function writeFile(
     intent: job.intent,
     directives: job.directives ?? [],
     antibodies: job.antibodies ?? [],
+    history: job.history ?? [],
     path,
     content: original,
     siblings,
@@ -844,6 +866,8 @@ async function writeFile(
     const used = reply.model ?? asked;
     if (used !== cfg.model) job.writeModel = used;
     const text = reply.text ?? "";
+    const escalation = parseEscalateReply(text);
+    if (escalation) return { ok: false, reason: `escalated (${escalation.kind}) by model ${used}`, escalate: escalation };
     if (reply.finishReason === "length" && !text.includes("</file>")) {
       problem = "the reply was cut off before </file>; return the complete file and nothing else";
     } else {
@@ -897,7 +921,7 @@ async function modelEdit(
   if (original !== null && original.length > MAX_MODEL_CHARS) {
     return { ok: false, reason: `${path} is too large to rewrite with a model (${original.length} characters)` };
   }
-  const first = buildEditMessages({ intent: job.intent, directives: job.directives ?? [], antibodies: job.antibodies ?? [], rule: job.rule, path, content: original, violations });
+  const first = buildEditMessages({ intent: job.intent, directives: job.directives ?? [], antibodies: job.antibodies ?? [], history: job.history ?? [], rule: job.rule, path, content: original, violations });
   const maxTokens = maxTokensFor(original);
   let messages = first;
   let problem = "";
@@ -1123,7 +1147,10 @@ function telemetryChecks(cfg: AgentConfig, job: Job): CheckResult[] {
  * syntax, the colony's rules and import resolution before it was proposed), what it read, and
  * what it did not run. Reviewers see the first 400 characters, so the facts come first.
  */
-export function writeStatement(cfg: Pick<AgentConfig, "model">, job: Pick<Job, "rules" | "context" | "depsMissing" | "buildsOn" | "baseSha" | "lease" | "checks" | "writeModel">): string {
+export function writeStatement(
+  cfg: Pick<AgentConfig, "model">,
+  job: Pick<Job, "rules" | "context" | "depsMissing" | "buildsOn" | "baseSha" | "lease" | "checks" | "writeModel" | "freshBase" | "rebasedOn">,
+): string {
   const read = (job.context ?? []).map((c) => c.path);
   const erasable = (job.checks ?? []).some((c) => c.name.startsWith("write ") && (c.detail ?? "").includes("erasable TypeScript"));
   const parts = [
@@ -1131,9 +1158,17 @@ export function writeStatement(cfg: Pick<AgentConfig, "model">, job: Pick<Job, "
     `Complete files (each parses); a diff ending in "… (truncated)" is a display limit, not the file. Checked by the agent before proposing: the colony's ${(job.rules ?? []).length} rule(s) hold${erasable ? ", the TypeScript is erasable (Node runs it by stripping types)" : ""}, and each relative import names a file in trunk or in this change and only names it exports. No tests, type checks or builds were run. Written by model ${job.writeModel ?? cfg.model} from the intent and its spec context.`,
     read.length > 0 ? `Built on the landed ${read.slice(0, 4).join(", ")}${read.length > 4 ? ` and ${read.length - 4} more` : ""}.` : "",
     (job.depsMissing ?? []).length > 0 ? `Not in trunk when written (built against the spec's contracts): ${(job.depsMissing ?? []).join(", ")}.` : "",
-    (job.buildsOn ?? []).length > 0 && job.baseSha && job.baseSha !== job.lease.baseSha ? `Based on trunk ${job.baseSha}, the tip once those files had landed.` : "",
+    (job.buildsOn ?? []).length > 0 && !job.freshBase && job.baseSha && job.baseSha !== job.lease.baseSha ? `Based on trunk ${job.baseSha}, the tip once those files had landed.` : "",
+    rebaseStatement(job),
   ];
   return parts.filter(Boolean).join(" ");
+}
+
+/** The evidence sentence of a job a landing notice restarted on the trunk tip, or "". */
+function rebaseStatement(job: Pick<Job, "freshBase" | "rebasedOn" | "baseSha" | "lease">): string {
+  if (!job.freshBase || !job.baseSha || job.baseSha === job.lease.baseSha) return "";
+  const landings = job.rebasedOn ?? [];
+  return `Rebased on trunk ${job.baseSha} after ${landings.length > 0 ? `landing ${landings.join(", ")}` : "a landing"} changed files it covers; every file was read there.`;
 }
 
 async function proposeStep(deps: LoopDeps, cfg: AgentConfig, job: Job): Promise<StepResult> {
@@ -1162,9 +1197,10 @@ async function proposeStep(deps: LoopDeps, cfg: AgentConfig, job: Job): Promise<
       importEdit ? "" : "No tests, type checks or builds were run by the agent.",
       job.baseFallback ? `Based on trunk ${job.baseSha} because the leased base was unreachable.` : "",
       job.parentSha && job.parentSha !== job.baseSha ? `Built on trunk ${job.parentSha} (already in the workspace), where every file read or written matches the leased base ${job.baseSha}.` : "",
-      !job.baseFallback && job.baseSha && job.baseSha !== job.lease.baseSha && job.parentSha === job.baseSha
+      !job.baseFallback && !job.freshBase && job.baseSha && job.baseSha !== job.lease.baseSha && job.parentSha === job.baseSha
         ? `Based on trunk ${job.baseSha}, which the workspace already held; every footprint file matched current trunk when the work started.`
         : "",
+      rebaseStatement(job),
     ]
       .filter(Boolean)
       .join(" ");
@@ -1284,6 +1320,30 @@ async function abandon(deps: LoopDeps, cfg: AgentConfig, job: Job, reason: strin
   return { sleepMs: Math.round(ABANDON_PAUSE_MS * (0.75 + (deps.rand ?? Math.random)() * 0.5)) };
 }
 
+/**
+ * The model reported that the intent cannot be done as written (an ESCALATE reply) instead of working
+ * around it. The colony keeps the intent for a person and takes the claim and lease back (no failure
+ * mark), and the job ends. A colony that cannot take the report (an older version, or a report on
+ * the intent already open) gets the intent back as on a release, with the report as the reason.
+ */
+async function escalateJob(deps: LoopDeps, cfg: AgentConfig, job: Job, e: Escalation): Promise<StepResult> {
+  const reason = `escalated (${e.kind}): ${oneLine(e.report).slice(0, 300)}`;
+  // Called as a method: on a Durable Object stub, a detached function would name a remote property.
+  const colony = deps.colony;
+  if (colony.escalate) {
+    try {
+      await colony.escalate(cfg.agentId, { intentId: job.intentId, kind: e.kind, report: e.report });
+      deps.journal.log({ at: deps.now(), intentId: job.intentId, step: "escalate", ok: true, ms: 0, detail: reason.slice(0, 500) });
+      await relay(deps, cfg, job, `escalated "${oneLine(job.intent.title).slice(0, 60)}" to a person (${e.kind})`, true);
+      return finishJob(deps, cfg, job, "escalated", reason);
+    } catch (err) {
+      if (err instanceof Halt) throw err;
+      deps.journal.log({ at: deps.now(), intentId: job.intentId, step: "escalate", ok: false, ms: 0, detail: errorMessage(err) });
+    }
+  }
+  return abandon(deps, cfg, job, `could not report it to a person, so the intent goes back: ${reason}`);
+}
+
 function halt(deps: LoopDeps, cfg: AgentConfig, reason: string): StepResult {
   const c = guard(deps, cfg.epoch);
   c.running = false;
@@ -1383,18 +1443,25 @@ export function receiveDirective(journal: Journal, d: Directive, intent: Intent 
   else if (!about) action = d.kind === "guidance" ? `kept for intent ${d.intentId}` : "noted (not the current job)";
   else if (d.kind === "withdrawal") action = "stopping the job";
   else if (d.kind === "revision") action = `restarting at r${d.revision ?? "?"}`;
+  else if (d.kind === "landing") action = job.step === "propose" || job.step === "await" ? "noted: the change is already proposed (the lane checks it against trunk)" : "re-reading the changed files on the new trunk";
   else if (interrupted) action = "re-planning with it";
   else if (job.step === "await") action = "recalling the proposal to redo it";
   else action = "folding it into the next prompt";
   return { action, interrupted };
 }
 
+/** Landing notices one job acts on at most (each restarts it on the trunk tip); later ones are left to the lane. */
+export const MAX_REBASES = 2;
+
 /**
  * Act on the first pending directive for this job (nextDirection). A withdrawal ends the job: the
  * colony already took the claim and lease back. A revision ends it too, and the next take hands back
- * the same intent at the new revision (the agent kept its claim and lease). Guidance joins the job's
- * prompts; work already produced is redone with it, after recalling a proposal still in flight.
- * Returns the step result, or null to go on with the step.
+ * the same intent at the new revision (the agent kept its claim and lease). A landing notice (files
+ * the intent covers changed on trunk) restarts a job that has not proposed from fetch, on the trunk
+ * tip, so it re-reads those files before it writes; a job that has proposed does nothing (the lane
+ * checks its change against trunk), and neither does one taken after the notice came (its lease
+ * already has the landing). Guidance joins the job's prompts; work already produced is redone with
+ * it, after recalling a proposal still in flight. Returns the step result, or null to go on.
  */
 async function applyDirection(deps: LoopDeps, cfg: AgentConfig, job: Job): Promise<StepResult | null> {
   if (!deps.journal.directives) return null;
@@ -1417,6 +1484,32 @@ async function applyDirection(deps: LoopDeps, cfg: AgentConfig, job: Job): Promi
     await relay(deps, cfg, job, directiveNote(d, job.intent.title, ""), true);
     finishJob(deps, cfg, job, "redirected", `intent revised to r${d.revision ?? "?"}: ${d.message}`);
     return { sleepMs: 0 }; // take again now: the same intent comes back at its new revision
+  }
+  if (d.kind === "landing") {
+    if (held.receivedAt < job.takenAt) {
+      mark("noted: the job was taken after it, on a trunk that has the landing");
+      return null;
+    }
+    if (job.step === "propose" || job.step === "await") {
+      mark("already proposed: the lane checks the change against trunk");
+      return null;
+    }
+    if (!deps.git.fetchTip) {
+      mark("noted: this agent cannot fetch the new trunk; the lane checks the change against it");
+      return null;
+    }
+    if ((job.rebases ?? 0) >= MAX_REBASES) {
+      mark(`noted: the job already started over ${MAX_REBASES} times; the lane checks the change against trunk`);
+      return null;
+    }
+    rebase(deps, cfg, job, d);
+    mark("re-reading the changed files on the new trunk");
+    await relay(deps, cfg, job, directiveNote(d, job.intent.title, "re-reading them on the new trunk"), true);
+    return { sleepMs: 0 };
+  }
+  if (d.kind !== "guidance") {
+    mark(`noted (${d.kind})`);
+    return null;
   }
   job.directives = withGuidance(job.directives, d);
   if (job.step === "deps" || job.step === "fetch" || job.step === "read") {
@@ -1472,6 +1565,49 @@ function replan(deps: LoopDeps, cfg: AgentConfig, job: Job): void {
   job.attempts = 0;
   job.stepStartedAt = deps.now();
   deps.journal.setJob(null); // drops the old file contents with the old job
+  deps.journal.setJob(job);
+}
+
+/**
+ * Start the job over from fetch, on the trunk tip (freshBase): a landing changed files it covers, so
+ * what it read, and anything it wrote from them, is out of date. The landing joins the job's
+ * why-context, so the next prompt says why those files changed. A job still waiting for the files it
+ * builds on keeps waiting (it fetches the tip once they land).
+ */
+function rebase(deps: LoopDeps, cfg: AgentConfig, job: Job, d: Directive): void {
+  guard(deps, cfg.epoch);
+  job.freshBase = true;
+  job.rebases = (job.rebases ?? 0) + 1;
+  if (d.landing) {
+    job.history = withLanded(job.history, noticeEntry(d.landing, d.at));
+    job.rebasedOn = [...new Set([...(job.rebasedOn ?? []), d.landing.landingId])].slice(-5);
+  }
+  if (job.step === "deps") {
+    deps.journal.setJob(job);
+    return;
+  }
+  delete job.baseSha;
+  delete job.baseFallback;
+  delete job.reads;
+  delete job.context;
+  delete job.depsMissing;
+  delete job.rules;
+  delete job.produced;
+  delete job.checks;
+  delete job.method;
+  delete job.writeModel;
+  delete job.headSha;
+  delete job.writeSet;
+  delete job.summary;
+  delete job.parentSha;
+  delete job.parentHow;
+  delete job.directoryRewrites;
+  delete job.fileOverDirectory;
+  delete job.lastError;
+  job.step = "fetch";
+  job.attempts = 0;
+  job.stepStartedAt = deps.now();
+  deps.journal.setJob(null); // drops the files written from the old content
   deps.journal.setJob(job);
 }
 

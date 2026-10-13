@@ -17,12 +17,16 @@ export const EVENT_TYPES: ReadonlyArray<ColonyEvent["t"]> = [
   "retracted",
   "reverted",
   "directive",
+  "escalation",
   "status",
   "certify",
 ];
 
 /** What a human can do with an escalated proposal. */
 export type ReviewDecision = "approve" | "reject" | "return";
+
+/** What a human can answer to an agent's report that an intent cannot be done as written. */
+export type EscalationDecision = "amend" | "withdraw" | "dismiss";
 
 /** One parsed `ft` invocation. */
 export type Command =
@@ -49,7 +53,9 @@ export type Command =
   | { name: "intent-show"; colony: string; intentId: string }
   | { name: "rule-retract"; colony: string; ruleId: string; reason: string; by?: string }
   | { name: "revert"; colony: string; ref: string; reason: string; by?: string; redo: boolean }
-  | { name: "direct"; colony: string; agentId: string; message: string; intentId?: string; by?: string };
+  | { name: "direct"; colony: string; agentId: string; message: string; intentId?: string; by?: string }
+  | { name: "escalations"; colony: string }
+  | { name: "escalation"; colony: string; intentId: string; decision: EscalationDecision; note: string; title?: string; why?: string; footprint?: string[]; by?: string };
 
 /** Options every command accepts. */
 export interface GlobalFlags {
@@ -96,6 +102,8 @@ const COMMAND_OPTIONS: Record<string, Record<string, OptionSpec>> = {
     by: { type: "string" },
   },
   direct: { intent: { type: "string" }, by: { type: "string" } },
+  escalations: {},
+  escalation: { note: { type: "string" }, title: { type: "string" }, why: { type: "string" }, footprint: { type: "string", multiple: true }, by: { type: "string" } },
   swarm: { agents: { type: "string" }, model: { type: "string" }, kind: { type: "string" } },
   why: {},
   review: { reason: { type: "string" }, by: { type: "string" }, diff: { type: "boolean" } },
@@ -420,9 +428,51 @@ function build(word: string, v: Record<string, unknown>, p: string[]): Command {
       if (by) cmd.by = by;
       return cmd;
     }
+    case "escalations": {
+      const usage = "ft escalations <colony>";
+      noExtras(p, 1, usage);
+      return { name: "escalations", colony: colonyArg(p[0], usage) };
+    }
+    case "escalation":
+      return buildEscalation(v, p);
     default:
       return fail(`unknown command "${word}"`);
   }
+}
+
+function buildEscalation(v: Record<string, unknown>, p: string[]): Command {
+  const usage = "ft escalation <colony> <intentId> amend|withdraw|dismiss --note <text> [--title <t>] [--why <w>] [--footprint <path>]... [--by <name>]";
+  noExtras(p, 3, usage);
+  const colony = colonyArg(p[0], usage);
+  const intentId = p[1]?.trim();
+  if (!intentId) fail(`missing <intentId>. Usage: ${usage}`);
+  const decision = p[2];
+  if (decision !== "amend" && decision !== "withdraw" && decision !== "dismiss") {
+    fail(decision ? `decision must be amend, withdraw or dismiss; got "${decision}"` : `missing decision. Usage: ${usage}`);
+  }
+  const note = str(v.note)?.trim();
+  if (!note) fail("missing --note: the answer is kept with the report (for dismiss, the next agent reads it)");
+  if (note.length > 2_000) fail(`--note is ${note.length} characters; at most 2000`);
+  const cmd: Extract<Command, { name: "escalation" }> = { name: "escalation", colony, intentId, decision, note };
+  if (decision === "amend") {
+    const title = str(v.title)?.trim();
+    if (str(v.title) !== undefined) {
+      if (!title) fail("--title cannot be empty");
+      cmd.title = title;
+    }
+    if (str(v.why) !== undefined) cmd.why = str(v.why) ?? "";
+    const footprint = list(v.footprint).flatMap((s) => s.split(",")).map((s) => s.trim()).filter(Boolean);
+    if (list(v.footprint).length > 0) {
+      if (footprint.length === 0) fail("--footprint needs at least one path");
+      cmd.footprint = [...new Set(footprint)];
+    }
+    if (cmd.title === undefined && cmd.why === undefined && cmd.footprint === undefined) fail(`amend says what changes: --title, --why or --footprint. Usage: ${usage}`);
+  } else {
+    onlyFlags(v, ["note", "by"], `escalation ${decision}`);
+  }
+  const by = str(v.by)?.trim();
+  if (by) cmd.by = by;
+  return cmd;
 }
 
 function buildIntent(v: Record<string, unknown>, p: string[]): Command {
@@ -568,6 +618,8 @@ Commands
   intent withdraw <colony> <id>    Call an intent off before it lands
   intent show <colony> <id>        An intent with its revisions and directives
   direct <colony> <agent> "text"   Send one agent free-text guidance mid-flight
+  escalations <colony>             Agents' reports that an intent cannot be done as written
+  escalation <colony> <intent>     Answer a report: amend, withdraw or dismiss
   swarm <colony> --agents <n>      Spawn in-platform agents
   agents <colony>                  List agents: state, intent, step, what each says it is doing
   stop <colony> <agentId>|--all    Stop one agent, or every in-platform agent
@@ -729,12 +781,36 @@ flight); an external agent reads it in its inbox. The agent's status note
 Example
   ft direct web agt_7 "Use the logger from src/log.ts, not console"
 `,
+  escalations: `
+ft escalations <colony>
+
+List the reports agents made that an intent cannot be done as written (a test
+that is wrong, a contradictory spec, an impossible ask), newest first. No agent
+is offered such an intent until a person answers: ft escalation.
+
+Example
+  ft escalations web
+`,
+  escalation: `
+ft escalation <colony> <intentId> amend --note <text> [--title <t>] [--why <text>]
+              [--footprint <path>]... [--by <name>]
+ft escalation <colony> <intentId> withdraw|dismiss --note <text> [--by <name>]
+
+Answer an agent's report on an intent. amend changes the intent (the note is
+the amendment's reason) and offers it to agents again; withdraw calls it off
+with the note; dismiss offers it again unchanged, and the note becomes guidance
+that whoever takes it next reads. The report keeps the answer.
+
+Examples
+  ft escalation web int_42 dismiss --note "The test is right: 405 is the spec"
+  ft escalation web int_42 amend --why "Return 404 for unknown slugs" --note "spec changed"
+`,
   watch: `
 ft watch <colony> [--only <type,...>]
 
 Stream live colony events, one line each. Types: agent, mark, intent, proposal,
 landing, decision, sigma, violations, metric, amended, withdrawn, retracted,
-directive, status. --json prints raw events. Reconnects automatically; Ctrl-C to stop.
+directive, escalation, status. --json prints raw events. Reconnects automatically; Ctrl-C to stop.
 
 Example
   ft watch web --only landing,proposal,violations

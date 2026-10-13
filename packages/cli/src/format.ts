@@ -6,6 +6,7 @@ import type {
   ColonySnapshot,
   Direction,
   Intent,
+  IntentEscalation,
   IntentStatus,
   Landing,
   LineageNote,
@@ -721,15 +722,28 @@ export interface IntentShowResult {
   intent?: Partial<Intent>;
   revisions?: Array<{ revision: number; changed: string[]; before?: Record<string, unknown>; after?: Record<string, unknown>; reason: string; by: string; at: number; substantive?: boolean }>;
   directives?: Array<{ id: string; kind: string; agentId: string; message: string; by: string; at: number; deliveredAt?: number; via?: string }>;
+  /** The reports agents made on it, newest first (servers before reports send none). */
+  escalations?: IntentEscalation[];
 }
 
-/** An intent with its revision history and the directives about it. */
+const ANSWERED: Record<string, string> = { amend: "amended", withdraw: "withdrawn", dismiss: "dismissed" };
+
+/** One report as a line: kind, reporter, age, the report, and the answer or that it waits. */
+function reportLine(e: IntentEscalation, c: Colors, now: number): string {
+  const head = `${c.yellow(e.kind)} by ${e.by} ${c.dim(ago(e.at, now))}: ${quote(e.report, 100)}`;
+  if (!e.resolved) return `${head} ${c.magenta("(waiting for a person)")}`;
+  return `${head} ${c.dim(`(${ANSWERED[e.resolved.decision] ?? e.resolved.decision} by ${e.resolved.by} ${ago(e.resolved.at, now)}${e.resolved.note ? `: ${cut(e.resolved.note.replace(/\s+/g, " "), 80)}` : ""})`)}`;
+}
+
+/** An intent with its revision history, the directives about it, and the reports agents made on it. */
 export function formatIntentShow(res: IntentShowResult, c: Colors, now: number): string {
   const i = res.intent ?? {};
   const out = [`${c.bold(i.id ?? "?")} ${quote(i.title ?? "", 70)} ${c.dim(`r${i.revision ?? 1} · ${i.status ?? "?"}${i.assignedTo ? ` · held by ${i.assignedTo}` : ""}`)}`];
   if (i.footprint?.length) out.push(`  ${c.dim("footprint".padEnd(10))}${paths(i.footprint, 4)}`);
   if (i.withdrawnReason) out.push(`  ${c.dim("withdrawn".padEnd(10))}${i.withdrawnReason}`);
   if (i.why) out.push(`  ${c.dim("why".padEnd(10))}${cut(i.why.replace(/\s+/g, " "), 160)}`);
+  const reports = res.escalations && res.escalations.length > 0 ? res.escalations : i.escalation ? [i.escalation] : [];
+  for (const [n, e] of reports.slice(0, 5).entries()) out.push(`  ${c.dim((n === 0 ? "report" : "").padEnd(10))}${reportLine(e, c, now)}`);
   for (const r of res.revisions ?? []) {
     out.push(`  ${c.dim(`r${r.revision}`.padEnd(10))}${r.changed.join(", ")} changed by ${r.by} ${c.dim(ago(r.at, now))}: ${quote(r.reason, 80)}${r.substantive === false ? c.dim(" (priority only)") : ""}`);
     for (const f of r.changed) {
@@ -747,6 +761,44 @@ export function formatIntentShow(res: IntentShowResult, c: Colors, now: number):
       out.push(`    ${d.id} ${d.kind} → ${d.agentId} from ${d.by} ${c.dim(ago(d.at, now))}: ${quote(d.message, 80)}${seen}`);
     }
   }
+  return out.join("\n");
+}
+
+/** The reports waiting for a person (`ft escalations`): each intent with its report, newest first, and how to answer. */
+export function formatEscalations(colony: string, intents: Array<Partial<Intent>>, c: Colors, now: number): string {
+  const open = intents.filter((i) => i.escalation && !i.escalation.resolved);
+  if (open.length === 0) return `${c.green("✓")} No reports waiting for a person in ${c.bold(colony)}.`;
+  const out = [`${c.bold(num(open.length))} report${open.length === 1 ? "" : "s"} waiting for a person in ${c.bold(colony)} ${c.dim("(no agent is offered these intents until you answer)")}`];
+  for (const i of open) {
+    const e = i.escalation as IntentEscalation;
+    out.push("");
+    out.push(`${c.bold(i.id ?? "?")} ${quote(i.title ?? "", 70)}${i.footprint?.length ? c.dim(` ${paths(i.footprint, 3)}`) : ""}`);
+    out.push(`  ${c.yellow(e.kind)} by ${e.by} ${c.dim(ago(e.at, now))}`);
+    for (const line of e.report.split("\n").slice(0, 8)) out.push(`  ${c.dim("│")} ${cut(line, 160)}`);
+  }
+  out.push("", c.dim(`  Answer one: ft escalation ${colony} <intentId> amend|withdraw|dismiss --note <text>`));
+  return out.join("\n");
+}
+
+/** What POST /intents/:iid/escalation answered. */
+export interface EscalationResult {
+  intent?: Partial<Intent>;
+}
+
+/** The outcome of `ft escalation`. */
+export function formatEscalationAnswer(intentId: string, decision: string, res: EscalationResult, c: Colors): string {
+  const i = res.intent ?? {};
+  const title = i.title ? ` ${quote(i.title, 60)}` : "";
+  const note = i.escalation?.resolved?.note;
+  const head =
+    decision === "withdraw"
+      ? `${c.green("✓")} Withdrew ${c.bold(intentId)}${title}`
+      : decision === "amend"
+        ? `${c.green("✓")} Amended ${c.bold(intentId)}${title}${i.revision ? ` to ${c.bold(`r${i.revision}`)}` : ""}; agents are offered it again`
+        : `${c.green("✓")} Dismissed the report on ${c.bold(intentId)}${title}; agents are offered it again`;
+  const out = [head];
+  if (note) out.push(c.dim(`  answer: ${cut(note.replace(/\s+/g, " "), 160)}`));
+  if (decision === "dismiss") out.push(c.dim("  The answer is guidance on the intent: the next agent to take it reads it."));
   return out.join("\n");
 }
 
@@ -904,7 +956,12 @@ export function formatEvent(e: ColonyEvent, c: Colors, clock: (at: number) => st
     case "reverted":
       return `${time} ${tag("reverted", "red")} ${e.of} ${c.dim(`by ${e.by}: ${e.reason}`)} as ${e.landingId}${e.redo.length ? ` ${e.redo.length} intent${e.redo.length === 1 ? "" : "s"} declared again` : ""}`;
     case "directive":
-      return `${time} ${tag("directive", "cyan")} ${e.agentId} ← ${e.by}: ${quote(e.message, 80)}${e.intentId ? c.dim(` (${e.intentId})`) : ""}${e.via ? c.dim(` ${e.via}`) : ""}`;
+      return `${time} ${tag("directive", "cyan")} ${e.agentId} ← ${e.by}${e.kind === "landing" ? c.dim(" (landing notice)") : ""}: ${quote(e.message, 80)}${e.intentId ? c.dim(` (${e.intentId})`) : ""}${e.via ? c.dim(` ${e.via}`) : ""}`;
+    case "escalation":
+      if (e.resolved) {
+        return `${time} ${tag("escalation", "magenta")} ${e.intentId} ${ANSWERED[e.resolved.decision] ?? e.resolved.decision} by ${e.resolved.by}: ${quote(e.resolved.note, 80)} ${c.dim(`(${e.kind} report by ${e.agentId})`)}`;
+      }
+      return `${time} ${tag("escalation", "magenta")} ${e.intentId} ${c.yellow(e.kind)} by ${e.agentId} ${quote(e.title, 50)}: ${quote(e.report, 80)}`;
     case "status":
       return `${time} ${tag("status", "blue")} ${e.agentId} ${e.note}`;
     case "certify": {

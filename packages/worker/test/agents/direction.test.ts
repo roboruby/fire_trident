@@ -119,3 +119,35 @@ describe("directives in prompts", () => {
     expect(buildEditMessages({ intent, path: "src/g.ts", content: "x" })[1]!.content).not.toContain("Directives");
   });
 });
+
+describe("landing notices", () => {
+  const held = (dir: Directive): HeldDirective => ({ directive: dir, receivedAt: 0 });
+  const landing = (over: Partial<Directive> = {}): Directive =>
+    d({
+      id: "l",
+      kind: "landing",
+      by: "colony",
+      message: "Landing lnd_1 changed src/a.ts",
+      landing: { landingId: "lnd_1", trunkSha: "c".repeat(40), paths: [{ path: "src/a.ts", before: null, after: "b".repeat(40) }], intentTitle: "Add a", why: "needed" },
+      ...over,
+    });
+
+  it("come after a withdrawal or a revision, before guidance, and only about the job's intent", () => {
+    const list = [held(d({ id: "g" })), held(landing()), held(landing({ id: "x", intentId: "int_9" }))];
+    expect(nextDirection(list, job)?.directive.id).toBe("l");
+    expect(nextDirection([held(d({ id: "w", kind: "withdrawal" })), ...list], job)?.directive.id).toBe("w");
+    expect(nextDirection([held(landing({ intentId: "int_9" }))], job)).toBeNull();
+    // A landing notice is never guidance: it does not reach the job's prompts as a directive.
+    expect(guidanceFor([held(landing())], "int_1")).toEqual([]);
+  });
+
+  it("halt only the work built on the old files, before the change is proposed", () => {
+    for (const step of ["produce", "commit", "push"]) expect(interrupts(landing(), { intentId: "int_1", step })).toBe(true);
+    for (const step of ["fetch", "read", "propose", "await"]) expect(interrupts(landing(), { intentId: "int_1", step })).toBe(false);
+    expect(interrupts(landing({ intentId: "int_2" }), { intentId: "int_1", step: "produce" })).toBe(false);
+  });
+
+  it("show in the agent's status note", () => {
+    expect(directiveNote(landing(), "Create greeting", "re-reading them on the new trunk")).toBe("src/a.ts changed on trunk (lnd_1): re-reading them on the new trunk");
+  });
+});

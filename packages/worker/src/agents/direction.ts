@@ -4,9 +4,10 @@ import { errorMessage, errorStatus } from "./rpc.ts";
 /**
  * How an in-platform agent changes course (pure helpers; the loop acts in loop.ts). The colony pushes
  * directives (AgentDO.direct): human guidance, or a revision or withdrawal of an intent the agent
- * holds. The agent keeps them in its journal and acts at its next step: a withdrawal stops the job, a
- * revision restarts it from the new revision, guidance goes into every later prompt for that intent
- * and work already produced is redone with it.
+ * holds, or a landing notice (files its intent covers changed on trunk). The agent keeps them in its
+ * journal and acts at its next step: a withdrawal stops the job, a revision restarts it from the new
+ * revision, a landing notice makes a job that has not proposed re-read its files on the new trunk,
+ * guidance goes into every later prompt for that intent and work already produced is redone with it.
  */
 
 /** A directive as the agent keeps it. */
@@ -31,6 +32,8 @@ export const MAX_GUIDANCE = 5;
 
 /** Steps whose in-flight work a directive about the job makes moot (the step is halted). */
 const INTERRUPT_STEPS: ReadonlySet<string> = new Set(["produce", "commit", "push", "propose"]);
+/** Steps a landing notice halts: work built on files that just changed (proposing and later, the lane checks staleness). */
+const LANDING_INTERRUPT_STEPS: ReadonlySet<string> = new Set(["produce", "commit", "push"]);
 
 /** Keep a newly received directive (a repeat of the same id is ignored); prunes old entries. */
 export function holdDirective(list: HeldDirective[], d: Directive, intent: Intent | undefined, now: number): HeldDirective[] {
@@ -56,7 +59,7 @@ export function aboutJob(d: Directive, job: { intentId: Id }): boolean {
 
 /**
  * The directive a job must act on first, if any: a withdrawal of its intent, then a revision newer
- * than the one it works from, then guidance about it, oldest first.
+ * than the one it works from, then a landing notice about it, then guidance about it, oldest first.
  */
 export function nextDirection(list: HeldDirective[], job: { intentId: Id; intent: Pick<Intent, "revision"> }): HeldDirective | null {
   const pending = list.filter((h) => h.appliedAt === undefined);
@@ -66,13 +69,20 @@ export function nextDirection(list: HeldDirective[], job: { intentId: Id; intent
   const working = job.intent.revision ?? 1;
   const revision = mine("revision").find((h) => (h.directive.revision ?? 0) > working);
   if (revision) return revision;
+  const landing = mine("landing")[0];
+  if (landing) return landing;
   return pending.find((h) => h.directive.kind === "guidance" && aboutJob(h.directive, job)) ?? null;
 }
 
-/** Should a directive halt the step in flight? Withdrawals and revisions of the job's intent always do; guidance does while the job produces or proposes. */
+/**
+ * Should a directive halt the step in flight? Withdrawals and revisions of the job's intent always do;
+ * a landing notice about it does while the job writes, commits or pushes (that work read the old
+ * files); guidance does while the job produces or proposes.
+ */
 export function interrupts(d: Directive, job: { intentId: Id; step: string } | null): boolean {
   if (!job || !aboutJob(d, job)) return false;
   if (d.kind === "withdrawal" || d.kind === "revision") return d.intentId === job.intentId;
+  if (d.kind === "landing") return d.intentId === job.intentId && LANDING_INTERRUPT_STEPS.has(job.step);
   return INTERRUPT_STEPS.has(job.step);
 }
 
@@ -162,6 +172,8 @@ export function directiveNote(d: Directive, title: string, what: string): string
       return `stopped ${quote(title, 60)}: withdrawn (${d.message.replace(/\s+/g, " ").slice(0, 100)})`;
     case "revision":
       return `intent revised to r${d.revision ?? "?"} (${changedText(d.changed)}): restarting ${quote(title, 60)}`;
+    case "landing":
+      return `${d.landing ? files(d.landing.paths.map((p) => p.path)) : "files"} changed on trunk (${d.landing?.landingId ?? "a landing"}): ${what}`;
     default:
       return `directive from ${d.by} ${quote(d.message, 80)}: ${what}`;
   }
