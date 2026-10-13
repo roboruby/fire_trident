@@ -15,6 +15,7 @@ export const EVENT_TYPES: ReadonlyArray<ColonyEvent["t"]> = [
   "amended",
   "withdrawn",
   "retracted",
+  "reverted",
   "directive",
   "status",
   "certify",
@@ -47,6 +48,7 @@ export type Command =
   | { name: "intent-withdraw"; colony: string; intentId: string; reason: string; by?: string }
   | { name: "intent-show"; colony: string; intentId: string }
   | { name: "rule-retract"; colony: string; ruleId: string; reason: string; by?: string }
+  | { name: "revert"; colony: string; ref: string; reason: string; by?: string; redo: boolean }
   | { name: "direct"; colony: string; agentId: string; message: string; intentId?: string; by?: string };
 
 /** Options every command accepts. */
@@ -97,6 +99,7 @@ const COMMAND_OPTIONS: Record<string, Record<string, OptionSpec>> = {
   swarm: { agents: { type: "string" }, model: { type: "string" }, kind: { type: "string" } },
   why: {},
   review: { reason: { type: "string" }, by: { type: "string" } },
+  revert: { reason: { type: "string" }, by: { type: "string" }, "no-redo": { type: "boolean" } },
   watch: { only: { type: "string", multiple: true } },
   new: { spec: { type: "string" }, name: { type: "string" }, by: { type: "string" } },
   colonies: { scan: { type: "boolean" } },
@@ -318,6 +321,17 @@ function build(word: string, v: Record<string, unknown>, p: string[]): Command {
       const reason = str(v.reason)?.trim() ?? "";
       if (!reason && decision !== "approve") fail(`--reason is required to ${decision} (it becomes the agent's feedback and can mint an antibody)`);
       const cmd: Command = { name: "review-decide", colony, proposalId, decision, reason: reason || "approved" };
+      const by = str(v.by)?.trim();
+      if (by) cmd.by = by;
+      return cmd;
+    }
+    case "revert": {
+      const usage = "ft revert <colony> <landing|commit> --reason <text> [--by <name>] [--no-redo]";
+      noExtras(p, 2, usage);
+      const colony = colonyArg(p[0], usage);
+      const ref = p[1]?.trim() ?? "";
+      if (!ref) fail(`missing <landing|commit>. Usage: ${usage}`);
+      const cmd: Command = { name: "revert", colony, ref, reason: required(v.reason, "reason"), redo: v["no-redo"] !== true };
       const by = str(v.by)?.trim();
       if (by) cmd.by = by;
       return cmd;
@@ -561,6 +575,7 @@ Commands
   why <colony> <path[:line]>       Show the lineage behind a file or line
   review <colony>                  List proposals escalated to a human
   review <colony> <id> <decision>  Approve, reject, or return a proposal
+  revert <colony> <landing>        Undo a landed change unless work landed on top of it
   watch <colony>                   Stream live colony events
   delete <colony> --yes            Delete a colony: agents, repos, and history
 
@@ -742,6 +757,19 @@ ft delete <colony> --yes
 Delete a colony for good: stop its agents, delete its trunk, workspace, seed and
 session repos, clear its objects' storage, and drop it from the registry.
 Safe to repeat; a repeat finishes anything a failed delete left behind.
+`,
+  revert: `
+ft revert <colony> <landing|commit> --reason <text> [--by <name>] [--no-redo]
+
+Undo one landed change as a new commit on trunk. Every file it wrote must still
+hold what it landed: if later work changed one, nothing happens and the answer
+names the file and the landing that changed it. The landing is a landing id or a
+trunk commit (7+ characters). The intents it completed are declared again, their
+why starting with your reason, unless --no-redo; a rule's violations count again
+until they land. The revert is recorded in the events and in the commit's note.
+
+Example
+  ft revert hono lnd_mv5x0aa1 --reason "breaks the router's 405 handling"
 `,
   certify: `
 ft certify <colony> [--now | --on | --off]

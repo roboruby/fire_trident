@@ -83,22 +83,24 @@ describe("the funnel", () => {
 });
 
 describe("direction and outside agents", () => {
-  it("counts amendments, withdrawals and directives, and remembers outside agents' landings", () => {
+  it("counts amendments, withdrawals, reverts and directives, and remembers outside agents' landings", () => {
     const s = new ColonyStore("c");
     s.applySnapshot(
       snapshot({
         intents: [{ id: "i1", colonyId: "c", title: "x", why: "", source: "human", footprint: ["src/a.ts"], priority: 1, status: "claimed", createdAt: 0, createdBy: "m", revision: 2 }],
       }),
     );
-    expect(s.direction).toEqual({ amended: 1, withdrawn: 0, retracted: 0, directives: 0 });
+    expect(s.direction).toEqual({ amended: 1, withdrawn: 0, retracted: 0, reverted: 0, directives: 0 });
     s.applyEvents([
       { t: "directive", at: 1, directiveId: "d", agentId: "a1", message: "short", by: "m" },
       { t: "agent", at: 2, agentId: "x1", kind: "external", state: "working", intentId: "i1" },
       { t: "proposal", at: 3, proposalId: "p1", intentId: "i1", agentId: "x1", status: "ready" },
       { t: "landing", at: 4, landingId: "l1", trunkSha: "b".repeat(40), proposalIds: ["p1"], paths: ["src/a.ts"] },
       { t: "agent", at: 5, agentId: "x1", kind: "external", state: "dead" },
+      { t: "reverted", at: 6, landingId: "l2", of: "l1", trunkSha: "c".repeat(40), paths: ["src/a.ts"], reason: "broke it", by: "m", redo: ["i2"] },
     ]);
     expect(s.direction.directives).toBe(1);
+    expect(s.direction.reverted).toBe(1);
     expect(s.outside).toEqual([{ agentId: "x1", landingId: "l1", paths: ["src/a.ts"], at: 4 }]);
     expect(s.agentKinds.get("x1")).toBe("external");
   });

@@ -170,6 +170,8 @@ export function planRequest(cmd: Command, by: string): ApiRequest | null {
       body.by = cmd.by ?? by;
       return { method: "PATCH", path: colonyPath(cmd.colony, `/intents/${encodeURIComponent(cmd.intentId)}`), body };
     }
+    case "revert":
+      return { method: "POST", path: colonyPath(cmd.colony, `/landings/${encodeURIComponent(cmd.ref)}/revert`), body: { reason: cmd.reason, by: cmd.by ?? by, redo: cmd.redo } };
     case "intent-withdraw":
       return { method: "POST", path: colonyPath(cmd.colony, `/intents/${encodeURIComponent(cmd.intentId)}/withdraw`), body: { reason: cmd.reason, by: cmd.by ?? by } };
     case "intent-show":

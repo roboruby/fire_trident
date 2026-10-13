@@ -84,6 +84,7 @@ import {
 import type { DecisionRow, DirectionInfo, DirectiveRow, IntentPatch, RevisionRow } from "./direction.ts";
 import type { Direction, Directive, DirectiveKind, InboxDirective, IntentField, IntentRevision, NoteDecision } from "@fire_trident/core";
 import { NeighborCache, claimLookup, type Neighbor } from "../trunk/cochange.ts";
+import type { RevertResult } from "../trunk/revert.ts";
 import {
   BUCKET_MS,
   COUNTER_SERIES,
@@ -830,6 +831,53 @@ export class ColonyDO extends DurableObject<Env> {
     const notified = await this.deliver(out.notices);
     const fresh = this.sql.exec<RuleRow>("SELECT * FROM rules WHERE id = ?", ruleId).toArray()[0] ?? row;
     return { rule: this.toRule(fresh, colony.id), withdrawn: rows.length, returned: out.returned, notified };
+  }
+
+  /**
+   * Undo a landed change (`ft revert`): a person's decision, recorded with their reason in the event
+   * record and in the revert commit's lineage note. The trunk writer refuses when work has landed on
+   * top of the change. Unless `redo` is false, each intent the landing completed comes back as a new
+   * intent (its parent is the one undone, its why starts with the reason), and the violations a rule
+   * fix had cleared count again until that intent lands.
+   */
+  async revertLanding(ref: string, p: { reason: string; by?: string; redo?: boolean }): Promise<{ landing: Landing; reverted: Landing; redo: Id[] }> {
+    const colony = this.requireColony();
+    const reason = oneLine(String(p?.reason ?? ""), 500);
+    if (!reason) throw ftError(400, "a reason is required: it is recorded with the revert and given to the intents it brings back");
+    const by = oneLine(p.by ?? "", 200) || "unknown";
+    const res = (await this.trunkStub().revert(String(ref ?? ""), { by, reason })) as RevertResult;
+    if (!res.ok) throw ftError(res.status, res.error);
+    this.noteSystemCommit(res.landing);
+    const now = Date.now();
+    const drafts: Array<IntentInput & { violations?: number }> = [];
+    const restored: Array<{ ruleId: Id; violations: number }> = [];
+    if (p.redo !== false) {
+      for (const intentId of res.reverted.intentIds) {
+        const row = this.intentRow(intentId);
+        if (!row || row.status !== "landed") continue;
+        const original = this.toIntent(row, colony.id);
+        const rule = row.rule_id ? this.sql.exec<{ retracted_at: number | null }>("SELECT retracted_at FROM rules WHERE id = ?", row.rule_id).toArray()[0] : undefined;
+        const ruleId = rule && !rule.retracted_at ? row.rule_id : null;
+        drafts.push({
+          colonyId: colony.id,
+          title: oneLine(`Redo after revert: ${original.title}`, 200),
+          why: `${by} reverted ${res.reverted.id} (${res.reverted.trunkSha.slice(0, 7)}): ${reason}\n\n${original.why}`,
+          source: ruleId ? "rule" : "human",
+          ...(ruleId ? { ruleId, violations: row.violations } : {}),
+          parentId: original.id,
+          footprint: original.footprint,
+          ...(original.acceptance ? { acceptance: original.acceptance } : {}),
+          priority: original.priority,
+          createdBy: by,
+        });
+        if (ruleId && row.violations > 0) restored.push({ ruleId, violations: row.violations });
+      }
+    }
+    const redo = drafts.length > 0 ? (await this.createIntents(drafts)).map((i) => i.id) : [];
+    for (const r of restored) this.sql.exec("UPDATE rules SET open_violations = open_violations + ? WHERE id = ?", r.violations, r.ruleId);
+    this.publish({ t: "reverted", at: now, landingId: res.landing.id, of: res.reverted.id, trunkSha: res.landing.trunkSha, paths: res.landing.paths, reason, by, redo });
+    if (restored.length > 0) this.publish(this.violationsEvent(now));
+    return { landing: res.landing, reverted: res.reverted, redo };
   }
 
   /**

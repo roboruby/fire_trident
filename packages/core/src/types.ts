@@ -496,6 +496,8 @@ export type ColonyEvent =
   | { t: "amended"; at: Millis; intentId: Id; revision: number; changed: IntentField[]; reason: string; by: string; title: string; returned: number }
   | { t: "withdrawn"; at: Millis; intentId: Id; reason: string; by: string; title: string; returned: number; ruleId?: Id }
   | { t: "retracted"; at: Millis; ruleId: Id; reason: string; by: string; withdrawn: number }
+  /** A person undid a landing (`ft revert`): `landingId` is the revert commit, `of` the landing undone; `redo` the intents declared again. */
+  | { t: "reverted"; at: Millis; landingId: Id; of: Id; trunkSha: Sha; paths: Path[]; reason: string; by: string; redo: Id[] }
   | { t: "directive"; at: Millis; directiveId: Id; agentId: Id; intentId?: Id; message: string; by: string; via?: "push" | "inbox" }
   | { t: "status"; at: Millis; agentId: Id; intentId?: Id; note: string }
   // Trunk certification: a run started, or its result (failing names capped at 10).

@@ -46,6 +46,7 @@ import { commitContent, objectId } from "./objects.ts";
 import { pushPack } from "./push.ts";
 import { CoChangeStore, mineHistory, type CoChangeStats, type Neighbor } from "./cochange.ts";
 import { planCycle, resultsFor, uniqueProposals, type LandResult, type Outcome, type PlanProposal, type Returned } from "./plan.ts";
+import { movedText, planRevert, type RevertResult } from "./revert.ts";
 import { durableFs } from "../artifacts/workspace.ts";
 import { TRUNK_NAMESPACE, bindingFor } from "../artifacts/shards.ts";
 
@@ -140,6 +141,9 @@ class ProposalProblem extends Error {}
 
 /** A trunk push whose outcome could not be learned; its journal rows stay for recovery. */
 class UnknownPush extends Error {}
+
+/** A system commit file whose trunk blob is not the one the caller expected (a guarded revert raced a landing). */
+class StaleSystemCommit extends Error {}
 
 /**
  * The only writer of trunk. Holds trunk cloned into a @cloudflare/computer Workspace (SQLite VFS,
@@ -311,10 +315,68 @@ export class TrunkDO extends DurableObject<Env> {
    * compare-and-swap and rebuilt on a moved trunk. It is recorded like a landing with no proposals
    * (index, `why`, and `note` as its lineage note), so its history explains itself.
    */
-  async systemCommit(p: { files: Array<{ path: Path; content: string | null }>; message: string; note: LineageNote & Record<string, unknown> }): Promise<Landing> {
+  async systemCommit(p: { files: Array<{ path: Path; content: string | null; expect?: Sha | null }>; message: string; note: LineageNote & Record<string, unknown> }): Promise<Landing> {
     const landing = await this.serial(() => this.systemCommitNow(p));
     await this.notesSoon();
     return landing;
+  }
+
+  /**
+   * Undo one landing as a new commit on current main (`ft revert`, a person's decision), through
+   * the same serialized path as system commits. Guarded like a landing: every path the landing wrote
+   * must still hold the blob it produced, or nothing changes and the answer names the paths that
+   * moved and the landing that moved each (checked again inside the commit, so a landing cycle cannot
+   * slip in between). `ref` is a landing id or a trunk commit (40 hex, or a unique prefix of 7+).
+   */
+  async revert(ref: string, p: { by: string; reason: string }): Promise<RevertResult> {
+    this.state();
+    const target = this.landingByRef(String(ref ?? "").trim());
+    if (!target) return { ok: false, status: 404, error: `no landing ${ref} on this trunk` };
+    const seq = this.sql.exec<{ seq: number }>(`SELECT seq FROM ft_landings WHERE id = ?`, target.id).toArray()[0]?.seq ?? 0;
+    const rows = this.sql
+      .exec<{ path: string; before_blob: string | null; after_blob: string | null }>(`SELECT path, before_blob, after_blob FROM ft_landing_paths WHERE landing_id = ? ORDER BY path`, target.id)
+      .toArray();
+    if (rows.length === 0) return { ok: false, status: 422, error: `landing ${target.id} recorded no file changes` };
+    const plan = planRevert(
+      rows.map((r) => ({ path: r.path, before: r.before_blob, after: r.after_blob })),
+      (path) => this.indexBlob(path),
+      (path) => this.sql.exec<{ landing_id: string }>(`SELECT landing_id FROM ft_landing_paths WHERE path = ? AND seq > ? ORDER BY seq LIMIT 1`, path, seq).toArray()[0]?.landing_id ?? null,
+    );
+    if (!plan.ok) return { ok: false, status: 409, error: `work landed on top of ${target.id}: ${movedText(plan.moved)}`, moved: plan.moved };
+    if (plan.restore.length === 0) return { ok: false, status: 422, error: `landing ${target.id} changed nothing to undo` };
+    const files: Array<{ path: Path; content: string | null; expect: Sha | null }> = [];
+    const strict = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
+    for (const r of plan.restore) {
+      if (r.blob === null) {
+        files.push({ path: r.path, content: null, expect: r.expect });
+        continue;
+      }
+      const bytes = await this.blobBytes(r.blob);
+      if (bytes === null) return { ok: false, status: 422, error: `cannot read ${r.path} as it was before ${target.id}` };
+      let content: string;
+      try {
+        content = strict.decode(bytes);
+      } catch {
+        return { ok: false, status: 422, error: `${r.path} is not UTF-8 text; revert it by hand` };
+      }
+      files.push({ path: r.path, content, expect: r.expect });
+    }
+    const why = p.reason.replace(/\s+/g, " ").trim().slice(0, 500);
+    const message = `Revert ${target.id} (${target.trunkSha.slice(0, 7)})\n\n${p.by} reverted ${target.trunkSha}: ${why}\n\nFT-Revert-Of: ${target.id}`;
+    const note = {
+      schema: "firetrident.lineage/v1",
+      landingId: "",
+      colonyId: "",
+      proposals: [],
+      revert: { of: target.id, commit: target.trunkSha, by: p.by, reason: why, at: Date.now() },
+    } as unknown as LineageNote & Record<string, unknown>;
+    try {
+      const landing = await this.systemCommit({ files, message, note });
+      return { ok: true, landing, reverted: target };
+    } catch (e) {
+      if (e instanceof StaleSystemCommit) return { ok: false, status: 409, error: `work landed on top of ${target.id}: ${e.message}` };
+      throw e;
+    }
   }
 
   /**
@@ -1118,7 +1180,7 @@ export class TrunkDO extends DurableObject<Env> {
   }
 
   /** Build, push and record one system commit (see systemCommit); up to MAX_REBUILDS retries on a moved trunk. */
-  private async systemCommitNow(p: { files: Array<{ path: Path; content: string | null }>; message: string; note: LineageNote & Record<string, unknown> }): Promise<Landing> {
+  private async systemCommitNow(p: { files: Array<{ path: Path; content: string | null; expect?: Sha | null }>; message: string; note: LineageNote & Record<string, unknown> }): Promise<Landing> {
     this.state();
     await this.recoverJournal();
     if (!Array.isArray(p.files) || p.files.length === 0) throw new Error("system commit has no files");
@@ -1134,6 +1196,7 @@ export class TrunkDO extends DurableObject<Env> {
       const changes = new Map<Path, StagedChange>();
       for (const f of p.files) {
         const before = this.indexBlob(f.path);
+        if (f.expect !== undefined && before !== f.expect) throw new StaleSystemCommit(`${f.path} ${before === null ? "deleted" : "changed"} since`);
         if (f.content === null) {
           if (before !== null) changes.set(f.path, { blob: null, before });
           continue;
@@ -1603,6 +1666,30 @@ export class TrunkDO extends DurableObject<Env> {
       blob = h.before_blob;
     }
     return null;
+  }
+
+  /** A landing by id, or by the trunk commit it produced (40 hex, or a unique prefix of 7+). */
+  private landingByRef(ref: string): Landing | null {
+    if (ref.startsWith("lnd_")) return this.landingById(ref);
+    if (!/^[0-9a-f]{7,40}$/.test(ref)) return null;
+    const rows = this.sql.exec<{ data: string }>(`SELECT data FROM ft_landings WHERE substr(trunk_sha, 1, ?) = ? LIMIT 2`, ref.length, ref).toArray();
+    return rows.length === 1 ? (JSON.parse(rows[0]!.data) as Landing) : null;
+  }
+
+  /** A blob's bytes: the local repository first, else the trunk repository (verified, then kept locally). */
+  private async blobBytes(blob: Sha): Promise<Uint8Array | null> {
+    const g = this.repo();
+    try {
+      return await readLocalBlob(g, blob);
+    } catch {
+      const st = this.state();
+      const remote = await withRepo(this.trunkBinding(st.trunk), st.trunk.name, (r) => r.readBlob(blob)).catch(() => null);
+      if (!remote) return null;
+      const bytes = new Uint8Array(await remote.arrayBuffer());
+      if ((await blobSha(bytes)) !== blob) return null;
+      await writeLocalBlob(g, bytes);
+      return bytes;
+    }
   }
 
   private landingById(id: Id): Landing | null {

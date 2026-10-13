@@ -79,6 +79,14 @@ export const DecisionBody = z.object({
   by: z.string().trim().min(1).max(200).optional(),
 });
 
+/** POST /api/colonies/:id/landings/:ref/revert: a person undoes a landing (`ref`: landing id or trunk commit). */
+export const RevertBody = z.object({
+  reason: z.string().trim().min(1).max(5_000),
+  by: z.string().trim().min(1).max(200).optional(),
+  /** Declare the intents it completed again (default true). */
+  redo: z.boolean().default(true),
+});
+
 /** POST /api/colonies/:id/swarm (the CLI sends `agents` for the count). */
 export const SwarmBody = z
   .object({

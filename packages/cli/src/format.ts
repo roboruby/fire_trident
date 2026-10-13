@@ -810,6 +810,8 @@ export function formatEvent(e: ColonyEvent, c: Colors, clock: (at: number) => st
       return `${time} ${tag("withdrawn", "red")} ${e.intentId} ${quote(e.title, 50)} ${c.dim(`by ${e.by}: ${e.reason}`)}${e.returned ? c.yellow(` (${e.returned} returned)`) : ""}`;
     case "retracted":
       return `${time} ${tag("retracted", "red")} ${e.ruleId} ${c.dim(`by ${e.by}: ${e.reason}`)} ${e.withdrawn} intent${e.withdrawn === 1 ? "" : "s"} withdrawn`;
+    case "reverted":
+      return `${time} ${tag("reverted", "red")} ${e.of} ${c.dim(`by ${e.by}: ${e.reason}`)} as ${e.landingId}${e.redo.length ? ` ${e.redo.length} intent${e.redo.length === 1 ? "" : "s"} declared again` : ""}`;
     case "directive":
       return `${time} ${tag("directive", "cyan")} ${e.agentId} ← ${e.by}: ${quote(e.message, 80)}${e.intentId ? c.dim(` (${e.intentId})`) : ""}${e.via ? c.dim(` ${e.via}`) : ""}`;
     case "status":

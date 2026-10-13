@@ -6,7 +6,7 @@ import { ACCENT, FIELD_COLOR, LAYER_COLOR } from "../theme.ts";
 import { useThrottledVersion } from "../useStore.ts";
 import { certCounts, certTitle } from "../certs.ts";
 
-/** Changing direction: amendments, withdrawals, retracted rules and human directives. */
+/** Changing direction: amendments, withdrawals, retracted rules, reverted landings and human directives. */
 const DIRECTION_COLOR = "#c084fc";
 const STATUS_COLOR = "#9fd8ff";
 const TESTS_GREEN = "#6fd9a6";
@@ -18,7 +18,7 @@ const FILTERS: ReadonlyArray<[key: string, label: string, color: string, types: 
   ["decision", "Decisions", LAYER_COLOR.reflex, ["decision"]],
   ["proposal", "Proposals", LAYER_COLOR.llm, ["proposal"]],
   ["intent", "Intents", "#7cc4ff", ["intent"]],
-  ["direction", "Direction", DIRECTION_COLOR, ["amended", "withdrawn", "retracted", "directive"]],
+  ["direction", "Direction", DIRECTION_COLOR, ["amended", "withdrawn", "retracted", "reverted", "directive"]],
   ["status", "Status", STATUS_COLOR, ["status"]],
   ["certify", "Tests", TESTS_GREEN, ["certify"]],
   ["agent", "Agents", "#c9d4e5", ["agent"]],
@@ -108,6 +108,11 @@ function describe(le: LoggedEvent, store: ColonyStore): Line {
       return { tag: "withdrawn", color: FIELD_COLOR.failure, text: `${e.title} · ${e.reason}`, mono: e.by, title: `${e.by}: ${e.reason}` };
     case "retracted":
       return { tag: "retracted", color: FIELD_COLOR.failure, text: `rule ${shortId(e.ruleId)} · ${fmtInt(e.withdrawn)} intents withdrawn · ${e.reason}`, mono: e.by, title: e.reason };
+    case "reverted": {
+      const files = `${fmtInt(e.paths.length)} file${e.paths.length === 1 ? "" : "s"}`;
+      const redo = e.redo.length > 0 ? ` · ${fmtInt(e.redo.length)} intent${e.redo.length === 1 ? "" : "s"} declared again` : "";
+      return { tag: "reverted", color: FIELD_COLOR.failure, text: `${shortId(e.of)} undone · ${files}${redo} · ${e.reason}`, mono: e.by, title: `${e.by}: ${e.reason}` };
+    }
     case "directive":
       return { tag: "directive", color: DIRECTION_COLOR, text: `${e.by} → ${store.agentName(e.agentId)}: “${e.message}”`, mono: e.via, title: e.message };
     case "status":

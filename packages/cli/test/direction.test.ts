@@ -50,9 +50,22 @@ describe("parsing changes of direction", () => {
     expect(err(["direct", "web", "agt_1", "x".repeat(2_001)])).toMatch(/at most 2000/);
     expect(err(["watch", "web", "--only", "nope"])).toMatch(/expected agent, mark/);
     expect(ok(["watch", "web", "--only", "amended,status"])).toEqual({ name: "watch", colony: "web", only: ["amended", "status"] });
-    for (const t of ["amended", "withdrawn", "retracted", "directive", "status"]) expect(EVENT_TYPES).toContain(t);
+    for (const t of ["amended", "withdrawn", "retracted", "reverted", "directive", "status"]) expect(EVENT_TYPES).toContain(t);
     for (const t of ["intent", "direct"]) expect(helpText(t)).toContain(`ft ${t}`);
     expect(helpText("rule")).toContain("ft rule retract");
+  });
+
+  it("reverts a landing by id or commit, with a reason, redoing its intents unless --no-redo", () => {
+    expect(ok(["revert", "web", "lnd_1", "--reason", "breaks 405 handling"])).toEqual({ name: "revert", colony: "web", ref: "lnd_1", reason: "breaks 405 handling", redo: true });
+    expect(ok(["revert", "web", "97b1036", "--reason", "r", "--no-redo", "--by", "matt"])).toEqual({ name: "revert", colony: "web", ref: "97b1036", reason: "r", redo: false, by: "matt" });
+    expect(err(["revert", "web", "lnd_1"])).toMatch(/--reason/);
+    expect(err(["revert", "web", "--reason", "r"])).toMatch(/missing <landing\|commit>/);
+    expect(helpText("revert")).toContain("ft revert <colony> <landing|commit>");
+    expect(planRequest({ name: "revert", colony: "web", ref: "lnd_1", reason: "r", redo: true }, "me")).toEqual({
+      method: "POST",
+      path: "/api/colonies/web/landings/lnd_1/revert",
+      body: { reason: "r", by: "me", redo: true },
+    });
   });
 
   it("maps each to one HTTP call", () => {
@@ -79,6 +92,7 @@ describe("formatting changes of direction", () => {
       { t: "amended", at: 0, intentId: "int_1", revision: 2, changed: ["why"], reason: "French UI", by: "matt", title: "Greet", returned: 1 },
       { t: "withdrawn", at: 0, intentId: "int_1", reason: "not needed", by: "matt", title: "Greet", returned: 0 },
       { t: "retracted", at: 0, ruleId: "rul_1", reason: "fine", by: "matt", withdrawn: 3 },
+      { t: "reverted", at: 0, landingId: "lnd_2", of: "lnd_1", trunkSha: "a".repeat(40), paths: ["src/a.ts"], reason: "breaks it", by: "matt", redo: ["int_9"] },
       { t: "directive", at: 0, directiveId: "dir_1", agentId: "agt_1", intentId: "int_1", message: "keep it short", by: "matt", via: "push" },
       { t: "status", at: 0, agentId: "agt_1", note: "writing src/a.ts" },
     ] as ColonyEvent[]).map((e) => formatEvent(e, c, clock));
@@ -86,6 +100,7 @@ describe("formatting changes of direction", () => {
       '12:00:00 amended    int_1 r2 why changed "Greet" by matt: French UI (1 returned)',
       '12:00:00 withdrawn  int_1 "Greet" by matt: not needed',
       "12:00:00 retracted  rul_1 by matt: fine 3 intents withdrawn",
+      "12:00:00 reverted   lnd_1 by matt: breaks it as lnd_2 1 intent declared again",
       '12:00:00 directive  agt_1 ← matt: "keep it short" (int_1) push',
       "12:00:00 status     agt_1 writing src/a.ts",
     ]);

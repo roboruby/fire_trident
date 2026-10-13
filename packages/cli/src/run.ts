@@ -240,6 +240,17 @@ async function execute(cmd: Command, ctx: Ctx): Promise<number> {
       }
       return 0;
     }
+    case "revert": {
+      const res = await send<{ landing?: { id?: string; trunkSha?: string }; reverted?: { id?: string; trunkSha?: string }; redo?: string[] }>(ctx.http, req);
+      if (ctx.flags.json) printJson(ctx, res ?? { ok: true });
+      else {
+        const short = (sha?: string) => (sha ? ` (${sha.slice(0, 7)})` : "");
+        io.stdout(`${c.yellow("Reverted")} ${c.bold(res?.reverted?.id ?? cmd.ref)}${short(res?.reverted?.trunkSha)} as ${c.bold(res?.landing?.id ?? "?")}${short(res?.landing?.trunkSha)}: ${cmd.reason}`);
+        const redo = res?.redo ?? [];
+        if (redo.length > 0) io.stdout(c.dim(`  ${redo.length} intent${redo.length === 1 ? "" : "s"} declared again: ${redo.join(", ")}`));
+      }
+      return 0;
+    }
     case "colonies": {
       const res = await send<unknown>(ctx.http, req, 60_000);
       if (ctx.flags.json) printJson(ctx, res);

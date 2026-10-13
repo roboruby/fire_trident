@@ -10,6 +10,7 @@ import type { AgentKind, FileVersion, Id, Landing, LineageNote, NoteCertificatio
 import { createApi } from "../../src/api/app.ts";
 import type { ApiDeps } from "../../src/api/app.ts";
 import type { Env } from "../../src/env.ts";
+import { movedText, planRevert, type RevertResult } from "../../src/trunk/revert.ts";
 
 export { ColonyDO } from "../../src/colony/ColonyDO.ts";
 export { RegionDO } from "../../src/region/RegionDO.ts";
@@ -41,6 +42,8 @@ interface TrunkState {
   certifyReads?: number;
   /** markCertified() calls in order: the certified branch's moves. */
   certified?: Sha[];
+  /** Every blob's content as of each commit, so a revert can restore it. */
+  contents?: Record<Sha, string>;
 }
 
 const DEFAULT_FILES: Record<Path, string> = {
@@ -65,6 +68,7 @@ export class TrunkDO extends DurableObject<Env> {
   private commit(s: TrunkState): Sha {
     const sha = fakeSha();
     s.commits[sha] = Object.fromEntries(Object.entries(s.files).map(([p, f]) => [p, f.blob]));
+    s.contents = { ...(s.contents ?? {}), ...Object.fromEntries(Object.values(s.files).map((f) => [f.blob, f.content])) };
     s.head = sha;
     return sha;
   }
@@ -260,6 +264,35 @@ export class TrunkDO extends DurableObject<Env> {
     await this.save(s);
     return true;
   }
+
+/** Undo a landing as the real TrunkDO does: a new commit, refused when a path it wrote has changed since. */
+async revert(ref: string, p: { by: string; reason: string }): Promise<RevertResult> {
+  const s = await this.load();
+  const at = s.landings.findIndex((l) => l.id === ref || (ref.length >= 7 && l.trunkSha.startsWith(ref)));
+  const target = s.landings[at];
+  if (!target) return { ok: false, status: 404, error: `no landing ${ref} on this trunk` };
+  const before = s.commits[target.parentSha] ?? {};
+  const after = s.commits[target.trunkSha] ?? {};
+  const later = s.landings.slice(at + 1);
+  const plan = planRevert(
+    target.paths.map((path) => ({ path, before: before[path] ?? null, after: after[path] ?? null })),
+    (path) => s.files[path]?.blob ?? null,
+    (path) => later.find((l) => l.paths.includes(path))?.id ?? null,
+  );
+  if (!plan.ok) return { ok: false, status: 409, error: `work landed on top of ${target.id}: ${movedText(plan.moved)}`, moved: plan.moved };
+  for (const r of plan.restore) {
+    if (r.blob === null) delete s.files[r.path];
+    else s.files[r.path] = { blob: r.blob, content: s.contents?.[r.blob] ?? "" };
+  }
+  const parent = s.head;
+  const sha = this.commit(s);
+  const paths = plan.restore.map((r) => r.path);
+  const landing: Landing = { id: newId("lnd_"), colonyId: s.colonyId, trunkSha: sha, parentSha: parent, proposalIds: [], intentIds: [], paths, regions: [...new Set(paths.map((x) => regionOf(x, 1)))], at: Date.now() };
+  s.landings.push(landing);
+  await this.save(s);
+  void p;
+  return { ok: true, landing, reverted: target };
+}
 
   /** The certified branch moves (recorded for assertions). */
   async markCertified(sha: Sha): Promise<boolean> {

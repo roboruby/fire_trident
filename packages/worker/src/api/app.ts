@@ -13,6 +13,7 @@ import {
   AmendIntentBody,
   CreateColonyBody,
   DecisionBody,
+  RevertBody,
   DirectiveBody,
   IntentBody,
   ProposalBody,
@@ -481,6 +482,12 @@ export function createApi(deps: ApiDeps): Hono<ApiEnv> {
     const b = await body(c, DecisionBody);
     await colonyStub(c.env, colonyId).decide(c.req.param("pid"), b.decision, b.reason, b.by ?? "human");
     return json({ ok: true });
+  });
+
+  app.post("/colonies/:id/landings/:ref/revert", requireAdmin, async (c) => {
+    const colonyId = colonyParam(c);
+    const b = await body(c, RevertBody);
+    return json(await colonyStub(c.env, colonyId).revertLanding(c.req.param("ref"), { reason: b.reason, redo: b.redo, ...(b.by ? { by: b.by } : {}) }));
   });
 
   app.post("/colonies/:id/swarm", requireAdmin, async (c) => {

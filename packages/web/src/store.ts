@@ -60,6 +60,7 @@ export interface DirectionCounts {
   amended: number;
   withdrawn: number;
   retracted: number;
+  reverted: number;
   directives: number;
 }
 
@@ -193,6 +194,7 @@ const EVENT_TYPES: ReadonlySet<string> = new Set([
   "amended",
   "withdrawn",
   "retracted",
+  "reverted",
   "directive",
   "status",
   "certify",
@@ -322,7 +324,7 @@ export class ColonyStore {
   /** Wall time each stage last moved (the funnel flashes). */
   readonly lastDecisionAt: Record<FunnelStage, number> = { proof: 0, reflex: 0, llm: 0, human: 0 };
   /** Changes of direction: amendments, withdrawals, retracted rules, directives. */
-  readonly direction: DirectionCounts = { amended: 0, withdrawn: 0, retracted: 0, directives: 0 };
+  readonly direction: DirectionCounts = { amended: 0, withdrawn: 0, retracted: 0, reverted: 0, directives: 0 };
   /** Every agent's kind, including agents that have stopped (outside agents' landings are told apart by it). */
   readonly agentKinds = new Map<Id, AgentKind>();
   /** Changes outside agents (over MCP) landed, oldest first. */
@@ -499,6 +501,7 @@ export class ColonyStore {
     this.direction.amended = 0;
     this.direction.withdrawn = 0;
     this.direction.retracted = 0;
+    this.direction.reverted = 0;
     this.direction.directives = 0;
     for (const it of this.intents.values()) {
       this.direction.amended += Math.max(0, it.revision - 1);
@@ -621,6 +624,11 @@ export class ColonyStore {
         this.intentsVersion++;
         break;
       }
+      case "reverted":
+        // A person undid a landing; its redo intents and the restored violations arrive as their own events.
+        this.direction.reverted++;
+        this.intentsVersion++;
+        break;
       case "status": {
         const a = typeof ev.agentId === "string" ? this.agents.get(ev.agentId) : undefined;
         if (a && typeof ev.note === "string") {
