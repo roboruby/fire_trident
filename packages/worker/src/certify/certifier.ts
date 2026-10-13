@@ -25,6 +25,8 @@ export interface CertifyTrunk {
   certifySnapshot(p?: { maxFiles?: number }): Promise<{ trunkSha: Sha; landingId: Id | null; files: IndexedFile[]; truncated: boolean }>;
   readBlobs(blobs: Sha[]): Promise<Record<Sha, string | null>>;
   annotate(landingId: Id, patch: Record<string, unknown>): Promise<boolean>;
+  /** Move the trunk repository's `certified` branch to a commit whose tests passed. */
+  markCertified(sha: Sha): Promise<boolean>;
 }
 
 /** What the colony gives the certifier. */
@@ -420,7 +422,14 @@ export class Certifier {
   private async finish(cert: Certification, inputs: string | null, testKey: string | null, loaded: Loaded | null): Promise<void> {
     cert.finishedAt = Date.now();
     cert.durationMs = cert.finishedAt - cert.startedAt;
-    if (cert.status === "green") this.host.setGreen(cert.trunkSha);
+    if (cert.status === "green") {
+      this.host.setGreen(cert.trunkSha);
+      // The `certified` branch follows green, so plain git can check out the last trunk whose tests passed.
+      void this.host
+        .trunk()
+        .markCertified(cert.trunkSha)
+        .catch((err: unknown) => console.warn(`certification: certified branch not moved: ${errorText(err)}`));
+    }
     const green = this.host.greenSha();
     if (green) cert.greenSha = green;
     if (cert.status === "red" || cert.status === "green") {

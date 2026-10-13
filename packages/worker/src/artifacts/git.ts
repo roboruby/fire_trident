@@ -311,6 +311,16 @@ export async function setRef(repo: GitRepo, ref: string, oid: string): Promise<v
   await git.writeRef({ fs: repo.fs, dir: repo.dir, ref, value: oid, force: true });
 }
 
+/** Is `ancestor` the same commit as `oid` or one of its ancestors? Null when the local history cannot tell. */
+export async function isAncestor(repo: GitRepo, ancestor: string, oid: string): Promise<boolean | null> {
+  if (ancestor === oid) return true;
+  try {
+    return await git.isDescendent({ fs: repo.fs, dir: repo.dir, oid, ancestor, depth: -1, cache: repo.cache });
+  } catch {
+    return null;
+  }
+}
+
 /** Delete local `ref` if it exists. */
 export async function deleteLocalRef(repo: GitRepo, ref: string): Promise<void> {
   try {

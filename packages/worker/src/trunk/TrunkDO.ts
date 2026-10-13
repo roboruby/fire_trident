@@ -19,6 +19,7 @@ import {
   ensureRepo,
   errorText,
   fetchRef,
+  isAncestor,
   isAuthError,
   isSha,
   listTreeFiles,
@@ -73,6 +74,8 @@ const COMMIT_CACHE = 2_000;
 const CYCLE_LOG_KEEP = 50;
 const STAGING_REF = "refs/heads/ft-landing";
 const MAIN_REF = "refs/heads/main";
+/** Moves only to trunk commits whose own tests passed (trunk certification). */
+const CERTIFIED_REF = "refs/heads/certified";
 const WHY_LIMIT = 50;
 
 /**
@@ -434,6 +437,38 @@ export class TrunkDO extends DurableObject<Env> {
       );
     });
     await this.notesSoon();
+    return true;
+  }
+
+  /**
+   * Point the trunk repository's `certified` branch at a commit whose tests passed (trunk
+   * certification calls this on every green verdict). Main moves on every landing; `certified` only
+   * moves to commits the project's own tests passed, so any git client can check out the last green
+   * trunk. Forward only: a commit that does not descend from the current certified one is ignored.
+   * The remote update is a compare-and-swap; a remote that moved without being recorded here (a push
+   * that landed but whose answer was lost) is followed when it is behind. False when nothing moved.
+   */
+  async markCertified(sha: Sha): Promise<boolean> {
+    const st = this.state();
+    if (!isSha(sha)) return false;
+    const current = this.meta("certified_sha");
+    if (current === sha) return true;
+    const g = this.repo();
+    if (current !== null && (await isAncestor(g, current, sha)) === false) return false;
+    await setRef(g, CERTIFIED_REF, sha);
+    const push = (expectedOld: string | null): Promise<PushOutcome> =>
+      this.authed((token) => pushRef(g, { url: st.trunk.remote, token, localRef: CERTIFIED_REF, remoteRef: CERTIFIED_REF, expectedOld }));
+    let out = await push(current);
+    if (!out.ok && out.stale && out.remoteOid !== current) {
+      const remote = out.remoteOid;
+      if (remote === sha) out = { ok: true };
+      else if (remote === null || (await isAncestor(g, remote, sha)) !== false) out = await push(remote);
+    }
+    if (!out.ok) {
+      console.warn(`certified ref not moved to ${sha.slice(0, 7)}: ${out.detail}`);
+      return false;
+    }
+    this.setMeta("certified_sha", sha);
     return true;
   }
 

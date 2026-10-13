@@ -73,6 +73,13 @@ describe("trunk certification (Dynamic Workers)", () => {
     );
     expect(after[0]).toMatchObject({ status: "withdrawn", withdrawnReason: `satisfied: trunk ${sha3.slice(0, 7)} passes 2 of 2 tests` });
 
+    // Only green moves the certified branch.
+    const moved = await eventually(
+      () => trunk(c.id).state(),
+      (st) => (st.certified ?? []).length > 0,
+    );
+    expect(moved.certified).toEqual([sha3]);
+
     // The certified landings' lineage notes carry the results.
     const notes = (await trunk(c.id).state()).annotations ?? {};
     expect(notes[`lnd_external_${sha1.slice(0, 8)}`]).toMatchObject({ certification: { status: "red", counts: { fail: 1 } } });

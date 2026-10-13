@@ -39,6 +39,8 @@ interface TrunkState {
   annotations?: Record<Id, { certification?: NoteCertification }>;
   /** certifySnapshot() calls, for asserting how often certification read trunk. */
   certifyReads?: number;
+  /** markCertified() calls in order: the certified branch's moves. */
+  certified?: Sha[];
 }
 
 const DEFAULT_FILES: Record<Path, string> = {
@@ -255,6 +257,14 @@ export class TrunkDO extends DurableObject<Env> {
   async annotate(landingId: Id, patch: Record<string, unknown>): Promise<boolean> {
     const s = await this.load();
     s.annotations = { ...(s.annotations ?? {}), [landingId]: { ...(s.annotations?.[landingId] ?? {}), ...(patch as { certification?: NoteCertification }) } };
+    await this.save(s);
+    return true;
+  }
+
+  /** The certified branch moves (recorded for assertions). */
+  async markCertified(sha: Sha): Promise<boolean> {
+    const s = await this.load();
+    s.certified = [...(s.certified ?? []), sha];
     await this.save(s);
     return true;
   }
