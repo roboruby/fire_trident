@@ -1,0 +1,179 @@
+{
+  "request": "GET /api/colonies/shortlinks-review/certifications",
+  "base": "https://firetrident.mattsolt.workers.dev",
+  "fetchedAt": "2026-10-13T03:47:04.788Z",
+  "response": {
+    "colonyId": "shortlinks-review",
+    "on": true,
+    "deployment": true,
+    "runner": true,
+    "policy": {
+      "enabled": true,
+      "repair": true,
+      "repairsPerHour": 3,
+      "timeoutMs": 60000,
+      "testTimeoutMs": 10000,
+      "minIntervalMs": 2000
+    },
+    "running": false,
+    "pending": false,
+    "greenSha": "97b10361a625b6a09746f2b668c54732d86f5e9c",
+    "latest": {
+      "trunkSha": "97b10361a625b6a09746f2b668c54732d86f5e9c",
+      "status": "green",
+      "startedAt": 1791863133079,
+      "landingId": "lnd_mv651ljvntx10p",
+      "files": 7,
+      "counts": {
+        "tests": 67,
+        "pass": 67,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "suites": 4
+      },
+      "failing": [],
+      "runMs": 0,
+      "timing": {
+        "indexMs": 29,
+        "loadMs": 16,
+        "workerMs": 43
+      },
+      "cached": 5,
+      "modules": {
+        "count": 17,
+        "chars": 68200
+      },
+      "finishedAt": 1791863133167,
+      "durationMs": 88,
+      "greenSha": "97b10361a625b6a09746f2b668c54732d86f5e9c"
+    },
+    "results": [
+      {
+        "trunkSha": "97b10361a625b6a09746f2b668c54732d86f5e9c",
+        "status": "green",
+        "startedAt": 1791863133079,
+        "landingId": "lnd_mv651ljvntx10p",
+        "files": 7,
+        "counts": {
+          "tests": 67,
+          "pass": 67,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0,
+          "todo": 0,
+          "suites": 4
+        },
+        "failing": [],
+        "runMs": 0,
+        "timing": {
+          "indexMs": 29,
+          "loadMs": 16,
+          "workerMs": 43
+        },
+        "cached": 5,
+        "modules": {
+          "count": 17,
+          "chars": 68200
+        },
+        "finishedAt": 1791863133167,
+        "durationMs": 88,
+        "greenSha": "97b10361a625b6a09746f2b668c54732d86f5e9c"
+      },
+      {
+        "trunkSha": "48f74b880d004670c2d75efdadaa7de20dae5343",
+        "status": "red",
+        "startedAt": 1791859806695,
+        "landingId": "lnd_mv632al6t5r9py",
+        "files": 7,
+        "counts": {
+          "tests": 67,
+          "pass": 66,
+          "fail": 1,
+          "cancelled": 0,
+          "skipped": 0,
+          "todo": 0,
+          "suites": 4
+        },
+        "failing": [
+          {
+            "name": "createRouter > stops at the first matching pattern even when a later route would match the method",
+            "file": "test/router.test.ts",
+            "error": "AssertionError (strictEqual): actual 200, expected 405 (at test/router.test.ts:171)"
+          }
+        ],
+        "runMs": 0,
+        "timing": {
+          "indexMs": 234,
+          "loadMs": 42,
+          "workerMs": 43
+        },
+        "cached": 2,
+        "modules": {
+          "count": 26,
+          "chars": 137942
+        },
+        "finishedAt": 1791859807014,
+        "durationMs": 319,
+        "repairIntentId": "int_mv632bs6omjsyf"
+      },
+      {
+        "trunkSha": "e1468ea88fadd47680acdbfc9194367d86ea6690",
+        "status": "red",
+        "startedAt": 1791859113460,
+        "landingId": "lnd_mv5y9o2t15t0c1",
+        "files": 7,
+        "counts": {
+          "tests": 67,
+          "pass": 62,
+          "fail": 5,
+          "cancelled": 0,
+          "skipped": 0,
+          "todo": 0,
+          "suites": 4
+        },
+        "failing": [
+          {
+            "name": "A6: DELETE /api/links/:slug requires admin token",
+            "file": "test/acceptance.test.ts",
+            "error": "AssertionError (strictEqual): actual 405, expected 401 (at test/acceptance.test.ts:36)"
+          },
+          {
+            "name": "readJson > rejects an empty body as invalid_json",
+            "file": "test/http.test.ts",
+            "error": "ReferenceError: expect is not defined (at test/http.test.ts:90)"
+          },
+          {
+            "name": "readJson > accepts a body of exactly MAX_BODY_BYTES bytes",
+            "file": "test/http.test.ts",
+            "error": "AssertionError (strictEqual): actual false, expected true (at test/http.test.ts:138)"
+          },
+          {
+            "name": "KvStore",
+            "file": "test/store.kv.test.ts",
+            "error": "Error: 1 subtest failed"
+          },
+          {
+            "name": "KvStore > hit increments clicks and returns true",
+            "file": "test/store.kv.test.ts",
+            "error": "TypeError: Cannot read properties of undefined (reading 'strictEqual') (at test/store.kv.test.ts:91)"
+          }
+        ],
+        "runMs": 0,
+        "timing": {
+          "indexMs": 31,
+          "loadMs": 169,
+          "workerMs": 67
+        },
+        "modules": {
+          "count": 32,
+          "chars": 182287
+        },
+        "finishedAt": 1791859113727,
+        "durationMs": 267,
+        "repairIntentId": "int_mv62ngu7hcins0"
+      }
+    ]
+  }
+}
