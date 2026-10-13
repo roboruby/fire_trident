@@ -13,7 +13,17 @@ describe("trunk certification in the CLI", () => {
   it("phrases test counts", () => {
     expect(testsPhrase({ counts: counts(60, 0) })).toBe("60/60 tests");
     expect(testsPhrase({ counts: counts(62, 5) })).toBe("5 of 67 failing");
-    expect(testsPhrase({ counts: { ...counts(3, 0), tests: 5, skipped: 1, todo: 1 } })).toBe("3/3 tests");
+    expect(testsPhrase({ counts: { ...counts(3, 0), tests: 5, skipped: 1, todo: 1 } })).toBe("3/5 tests · 1 skipped · 1 todo");
+    expect(testsPhrase({ counts: { ...counts(58, 0), tests: 60, skipped: 2 } })).toBe("58/60 tests · 2 skipped");
+    expect(testsPhrase({ counts: { ...counts(58, 0), tests: 60, skipped: 2 } }, "pass")).toBe("58/60 tests pass · 2 skipped");
+    expect(testsPhrase({ counts: { ...counts(62, 5), tests: 68, todo: 1 } })).toBe("5 of 68 failing · 1 todo");
+  });
+
+  it("names skipped and todo tests wherever it prints counts", () => {
+    const skipped = { ...counts(58, 0), tests: 60, skipped: 2 };
+    expect(trunkLine({ trunkSha: HEAD, greenSha: HEAD, certification: cert({ counts: skipped }) }, plain)).toBe("aaaaaaa  ✓ green, 58/60 tests · 2 skipped");
+    expect(noteCertLine({ runner: "x", status: "green", counts: skipped, durationMs: 1_234 }, plain)).toBe("✓ 58/60 tests pass · 2 skipped in 1.2 s");
+    expect(formatEvent({ t: "certify", at: 0, trunkSha: HEAD, status: "green", counts: { ...skipped, todo: 1, tests: 61 } }, plain, clock)).toMatch(/✓ green, 58\/61 tests · 2 skipped · 1 todo$/);
   });
 
   it("shows the head's tests and the newest green commit on the trunk row", () => {

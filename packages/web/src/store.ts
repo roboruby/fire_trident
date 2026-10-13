@@ -174,6 +174,12 @@ export interface Vaccination {
   recall: number | null;
   seeded: number | null;
   caught: number | null;
+  /**
+   * The caught ones split by where they stopped: sent to a person (whose own catch is not measured)
+   * and returned by a model or a check. Null when the colony does not report the split.
+   */
+  escalated: number | null;
+  returned: number | null;
   /** 95% interval on recall in [0, 1]: from metrics when present, else Wilson's interval from caught/seeded. */
   low: number | null;
   high: number | null;
@@ -1089,8 +1095,14 @@ export class ColonyStore {
     const recallRaw = pick(/(recall|rate)$/);
     const lowRaw = pick(/(lo|low|lower)$/);
     const highRaw = pick(/(hi|high|upper)$/);
+    const escalatedRaw = pick(/escalated$/);
+    const returnedRaw = pick(/returned$/);
     const seeded = seededRaw === null ? null : Math.max(0, seededRaw);
     const caught = caughtRaw === null ? null : Math.max(0, caughtRaw);
+    // The split shows only when both halves are reported, so the two numbers always add up.
+    const split = escalatedRaw !== null && returnedRaw !== null;
+    const escalated = split ? Math.max(0, escalatedRaw) : null;
+    const returned = split ? Math.max(0, returnedRaw) : null;
     // Nothing settled yet (n = 0): no recall to report, whatever the interval says.
     const settled = seeded === null || seeded > 0;
     let recall = settled && recallRaw !== null ? unit(recallRaw) : null;
@@ -1108,7 +1120,7 @@ export class ColonyStore {
     const hits = hitsRaw === undefined ? null : Math.max(0, hitsRaw);
     // Show the meter once there is something to show: vaccine results, or antibodies that exist or have fired.
     if (recall === null && !(seeded && seeded > 0) && !(antibodies && antibodies > 0) && !(hits && hits > 0)) return null;
-    return { recall, seeded, caught, low, high, antibodies, hits };
+    return { recall, seeded, caught, escalated, returned, low, high, antibodies, hits };
   }
 
   /** Newest-first events matching `keep`, at most `limit`. */

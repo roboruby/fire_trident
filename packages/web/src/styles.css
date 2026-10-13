@@ -2246,6 +2246,12 @@ input {
   stroke: var(--danger);
 }
 
+/* Catches sent to a person, whose own catch is not measured: the human color, set apart from the returned ones. */
+.vaccine .vaccine-fill.vaccine-fill-person {
+  stroke: var(--human);
+  opacity: 0.8;
+}
+
 .vaccine-pct {
   fill: var(--text);
   font: 700 12px var(--sans);
@@ -2744,6 +2750,238 @@ textarea.note {
 
 .btn:disabled {
   cursor: not-allowed;
+}
+
+/* review: the change itself (look here first, then the full change) */
+
+/* A card never grows past the panel: long code lines scroll inside their diff box. */
+.cards {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.change {
+  margin: 10px 0 4px;
+}
+
+.look .spot + .spot {
+  margin-top: 6px;
+}
+
+.spot {
+  padding: 7px 9px 8px;
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--need);
+  border-radius: 0 8px 8px 0;
+  background: #0b1018;
+}
+
+.spot.is-severe {
+  border-left-color: var(--danger);
+}
+
+.spot-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 3px 8px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.spot-where {
+  font-size: 11.5px;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.spot-what {
+  color: var(--text-2);
+}
+
+.spot.is-severe .spot-what {
+  color: #ff8a9b;
+}
+
+.spot-none,
+.look-more,
+.nodiff {
+  margin-top: 6px;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--text-3);
+}
+
+.look .declared {
+  margin-top: 6px;
+}
+
+.full {
+  margin-top: 4px;
+}
+
+.files {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1px;
+}
+
+.file-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-2);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  appearance: none;
+}
+
+.file-row:hover,
+.file.is-open .file-row {
+  background: #121a26;
+}
+
+.file-caret {
+  flex: none;
+  width: 10px;
+  color: var(--text-3);
+}
+
+.file-path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-stat {
+  flex: none;
+  font: 11px var(--mono);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.file-stat b {
+  font-weight: 500;
+  color: #8fe8bd;
+}
+
+.file-stat i {
+  font-style: normal;
+  color: #ff8a9b;
+}
+
+.file-tag {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #18212f;
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.file-tag.is-cut {
+  background: rgba(255, 181, 61, 0.12);
+  color: var(--need);
+}
+
+.file-tag.is-hit {
+  background: rgba(255, 46, 79, 0.12);
+  color: #ff8a9b;
+}
+
+.file-body {
+  margin: 2px 0 8px 18px;
+}
+
+.diff {
+  margin-top: 6px;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #070a10;
+  font: 11px/1.55 var(--mono);
+}
+
+.diff-in {
+  display: inline-block;
+  min-width: 100%;
+  padding: 3px 0;
+}
+
+.dl {
+  display: flex;
+  white-space: pre;
+}
+
+.dl-n {
+  flex: none;
+  width: 3.6em;
+  padding-right: 8px;
+  text-align: right;
+  color: var(--text-4);
+  user-select: none;
+}
+
+.dl-t {
+  padding-right: 12px;
+  color: var(--text-3);
+}
+
+.dl-add {
+  background: rgba(31, 224, 142, 0.07);
+}
+
+.dl-add .dl-t {
+  color: #b4f5d6;
+}
+
+.dl-del {
+  background: rgba(255, 46, 79, 0.08);
+}
+
+.dl-del .dl-t {
+  color: #ffb0bc;
+}
+
+.dl-hunk .dl-t,
+.dl-note .dl-t {
+  color: var(--calm);
+  opacity: 0.7;
+}
+
+.dl.is-hit {
+  background: rgba(255, 46, 79, 0.2);
+  box-shadow: inset 2px 0 0 var(--danger);
+}
+
+.dl.is-hit .dl-t {
+  color: #fff1f3;
+}
+
+.diff-more {
+  margin-top: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent-2);
+  font-size: 11.5px;
+  cursor: pointer;
+  appearance: none;
+}
+
+.diff-more:hover {
+  text-decoration: underline;
 }
 
 /* ------------------------------------------------------------- perf readout */

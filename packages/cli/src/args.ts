@@ -34,7 +34,7 @@ export type Command =
   | { name: "rule-import-boundary"; colony: string; from: string[]; module: string; hint: string; description: string; by?: string }
   | { name: "swarm"; colony: string; agents: number; model?: string; kind?: Extract<AgentKind, "internal" | "synthetic"> }
   | { name: "why"; colony: string; path: string; line?: number }
-  | { name: "review-list"; colony: string }
+  | { name: "review-list"; colony: string; diff: boolean }
   | { name: "review-decide"; colony: string; proposalId: string; decision: ReviewDecision; reason: string; by?: string }
   | { name: "watch"; colony: string; only: string[] }
   | { name: "new"; specPath: string; colonyName?: string; by?: string }
@@ -98,7 +98,7 @@ const COMMAND_OPTIONS: Record<string, Record<string, OptionSpec>> = {
   direct: { intent: { type: "string" }, by: { type: "string" } },
   swarm: { agents: { type: "string" }, model: { type: "string" }, kind: { type: "string" } },
   why: {},
-  review: { reason: { type: "string" }, by: { type: "string" } },
+  review: { reason: { type: "string" }, by: { type: "string" }, diff: { type: "boolean" } },
   revert: { reason: { type: "string" }, by: { type: "string" }, "no-redo": { type: "boolean" } },
   watch: { only: { type: "string", multiple: true } },
   new: { spec: { type: "string" }, name: { type: "string" }, by: { type: "string" } },
@@ -306,12 +306,13 @@ function build(word: string, v: Record<string, unknown>, p: string[]): Command {
       return { name: "why", colony, ...parseLocation(p[1]) };
     }
     case "review": {
-      const usage = "ft review <colony> [<proposalId> approve|reject|return --reason <text>]";
+      const usage = "ft review <colony> [--diff] | ft review <colony> <proposalId> approve|reject|return --reason <text>";
       const colony = colonyArg(p[0], usage);
       if (p.length === 1) {
-        onlyFlags(v, [], "listing the review queue");
-        return { name: "review-list", colony };
+        onlyFlags(v, ["diff"], "listing the review queue");
+        return { name: "review-list", colony, diff: v.diff === true };
       }
+      if (v.diff === true) fail(`--diff applies to listing the queue: ft review ${colony} --diff`);
       noExtras(p, 3, usage);
       const proposalId = p[1] ?? "";
       const decision = p[2];
@@ -573,7 +574,7 @@ Commands
   vaccinate <colony> --count <n>   Inject planted bad changes to test the immune layer
   certify <colony>                 Trunk certification: results, --now, --on/--off
   why <colony> <path[:line]>       Show the lineage behind a file or line
-  review <colony>                  List proposals escalated to a human
+  review <colony> [--diff]         List proposals escalated to a human, code first
   review <colony> <id> <decision>  Approve, reject, or return a proposal
   revert <colony> <landing>        Undo a landed change unless work landed on top of it
   watch <colony>                   Stream live colony events
@@ -683,11 +684,21 @@ Example
   ft why web src/server/links.ts:42
 `,
   review: `
-ft review <colony>
+ft review <colony> [--diff]
 ft review <colony> <proposalId> approve|reject|return [--reason <text>] [--by <name>]
 
-List proposals escalated to a human, or decide one. --reason is required to
-reject or return; a rejection can mint an antibody.
+List proposals escalated to a human, code first, or decide one. For each
+proposal whose change the server kept, "look here first" shows its danger lines
+(path:line, what matched, the line itself with secrets masked) and the diff of
+each file it changed outside its declared footprint. The reason, the checks and
+the size of the change follow. --diff adds every kept file's full diff, with its
+danger lines flagged.
+
+--reason is required to reject or return; a rejection can mint an antibody.
+
+Examples
+  ft review web --diff
+  ft review web prp_42 approve
 `,
   intent: `
 ft intent amend <colony> <intentId> [--title <t>] [--why <text>] [--footprint <path>]...

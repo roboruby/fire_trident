@@ -226,7 +226,7 @@ async function execute(cmd: Command, ctx: Ctx): Promise<number> {
       const snapReq = planRequest({ name: "status", colony: cmd.colony }, ctx.by) as ApiRequest;
       const [res, snap] = await Promise.all([send<unknown>(ctx.http, req), ctx.flags.json ? undefined : tryGet<SnapshotLike>(ctx, snapReq)]);
       if (ctx.flags.json) printJson(ctx, res);
-      else io.stdout(formatReview(asArray<Proposal>(res, ["proposals", "queue"]), snap?.intents, c, io.now()));
+      else io.stdout(formatReview(asArray<Proposal>(res, ["proposals", "queue"]), snap?.intents, c, io.now(), { diff: cmd.diff, colony: cmd.colony }));
       return 0;
     }
     case "review-decide": {

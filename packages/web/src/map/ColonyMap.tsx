@@ -1,7 +1,7 @@
 import { useEffect, useRef, type RefObject } from "react";
 import { fmtInt, shortSha } from "../format.ts";
 import type { ColonyStore } from "../store.ts";
-import { certCounts, certTitle } from "../certs.ts";
+import { certCounts, certNotRun, certTitle } from "../certs.ts";
 import { FIELD_COLOR, KINDS } from "../theme.ts";
 import { usePolled, useThrottledVersion } from "../useStore.ts";
 import { MapRenderer } from "./renderer.ts";
@@ -119,6 +119,7 @@ function CertBadge({ store }: { store: ColonyStore }) {
   const green = cert.status === "green";
   const k = cert.counts;
   const failing = cert.failing ?? [];
+  const notRun = certNotRun(cert);
   return (
     <span className={`trunk-cert ${green ? "is-green" : "is-red"}${onHead ? "" : " is-stale"}`} tabIndex={0} aria-label={certTitle(cert)}>
       <b className="trunk-cert-mark">{green ? "✓" : "✗"}</b>
@@ -126,7 +127,7 @@ function CertBadge({ store }: { store: ColonyStore }) {
       {onHead ? null : <span className="trunk-cert-at mono">{shortSha(cert.trunkSha)}</span>}
       <span className="trunk-cert-pop" role="tooltip">
         <span className="trunk-cert-pop-head">
-          {green ? `All ${fmtInt(k?.pass ?? 0)} tests pass` : `${fmtInt(k ? k.fail + k.cancelled : failing.length)} of ${fmtInt(k?.tests ?? 0)} tests failing`} on <span className="mono">{shortSha(cert.trunkSha)}</span>
+          {green ? (notRun ? `${fmtInt(k?.pass ?? 0)} of ${fmtInt(k?.tests ?? 0)} tests pass (${notRun})` : `All ${fmtInt(k?.pass ?? 0)} tests pass`) : `${fmtInt(k ? k.fail + k.cancelled : failing.length)} of ${fmtInt(k?.tests ?? 0)} tests failing${notRun ? ` (${notRun})` : ""}`} on <span className="mono">{shortSha(cert.trunkSha)}</span>
           {onHead ? "" : " (the newer head is waiting for its run)"}
         </span>
         {failing.slice(0, 8).map((f, i) => (

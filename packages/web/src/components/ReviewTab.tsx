@@ -1,12 +1,16 @@
 import type { DecisionLayer, Proposal } from "@fire_trident/core";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { HttpError, readReviewer, readToken, saveReviewer, saveToken, type Backend, type ReviewDecision } from "../api.ts";
 import { fmtInt, fmtMs, fmtPct, shortId, timeAgo } from "../format.ts";
+import { reviewOf } from "../review.ts";
 import type { ColonyStore, DecisionView } from "../store.ts";
 import { LAYER_COLOR } from "../theme.ts";
 import { decisionsFromChecks } from "../decisions.ts";
 import { useThrottledVersion } from "../useStore.ts";
+import { ReviewChange } from "./ReviewChange.tsx";
 import { VaccineMeter } from "./VaccineMeter.tsx";
+
+const NONE: readonly string[] = [];
 
 /** What happened, said back to the reviewer. */
 function doneText(decision: ReviewDecision, agent: string): string {
@@ -87,10 +91,16 @@ function DecisionPath({ path }: { path: DecisionView[] }) {
   );
 }
 
-/** Proposals escalated to a human: residual paths, the decision path, checks, and approve/return/reject. */
+/**
+ * Proposals escalated to a human, code first: the change itself (danger lines and files outside the
+ * footprint, then the full diff), then the decision path, checks and model verdicts, and
+ * approve/return/reject.
+ */
 export function ReviewTab({ store, backend, director = false }: { store: ColonyStore; backend: Backend; director?: boolean }) {
   useThrottledVersion(store, 500);
   const [items, setItems] = useState<Proposal[] | null>(null);
+  // Read once per fetch: the tab re-renders with the store twice a second, the queue only every few seconds.
+  const views = useMemo(() => new Map((items ?? []).map((p) => [p.id, reviewOf(p)])), [items]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [notes, setNotes] = useState<Record<string, string>>({});
@@ -190,6 +200,7 @@ export function ReviewTab({ store, backend, director = false }: { store: ColonyS
           const hasReason = reason.trim().length > 0;
           const path = decisionPath(p, store);
           const antibodies = matchedAntibodies(p);
+          const view = views.get(p.id) ?? null;
           return (
             <article key={p.id} className="card" onMouseEnter={() => store.setHighlight(paths)} onMouseLeave={() => store.setHighlight([])}>
               <header className="card-head">
@@ -203,23 +214,37 @@ export function ReviewTab({ store, backend, director = false }: { store: ColonyS
               <div className="card-meta">
                 by <span className="mono">{store.agentName(p.agentId)}</span> · wrote {fmtInt(p.writeSet?.length ?? 0)} · read {fmtInt(p.readSet?.length ?? 0)}
               </div>
-              {p.reason ? <p className="card-reason">{p.reason}</p> : null}
-              {residual.length ? (
-                <div className="residual">
-                  <div className="k">Residual · changed outside the declared footprint</div>
-                  {residual.map((rp) => (
-                    <div className="mono residual-path" key={rp}>
-                      {rp}
-                    </div>
-                  ))}
-                  {declared.length ? (
-                    <div className="declared">
-                      declared <span className="mono">{declared.slice(0, 3).join(", ")}</span>
-                      {declared.length > 3 ? ` +${declared.length - 3}` : ""}
+              {view ? (
+                <>
+                  <ReviewChange view={view} declared={p.declared?.footprint ?? NONE} />
+                  {p.reason ? <p className="card-reason">{p.reason}</p> : null}
+                </>
+              ) : (
+                <>
+                  {p.reason ? <p className="card-reason">{p.reason}</p> : null}
+                  {residual.length ? (
+                    <div className="residual">
+                      <div className="k">Residual · changed outside the declared footprint</div>
+                      {residual.map((rp) => (
+                        <div className="mono residual-path" key={rp}>
+                          {rp}
+                        </div>
+                      ))}
+                      {declared.length ? (
+                        <div className="declared">
+                          declared <span className="mono">{declared.slice(0, 3).join(", ")}</span>
+                          {declared.length > 3 ? ` +${declared.length - 3}` : ""}
+                        </div>
+                      ) : null}
                     </div>
                   ) : null}
-                </div>
-              ) : null}
+                  {backend.mode === "live" ? (
+                    <div className="nodiff" title="Proposals escalated before diffs were kept carry none, and a long queue sends diffs with its first cards only.">
+                      No diff came with this card.
+                    </div>
+                  ) : null}
+                </>
+              )}
               <div className="k card-k">Decision path</div>
               <DecisionPath path={path} />
               {checks.length ? (

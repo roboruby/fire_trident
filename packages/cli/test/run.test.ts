@@ -16,6 +16,8 @@ interface Seen {
 const seen: Seen[] = [];
 let wsAuth: string | undefined;
 let importPolls = 0;
+/** What GET /review answers (the review test fills it). */
+let reviewQueue: unknown[] = [];
 let server: Server;
 let base = "";
 
@@ -96,7 +98,7 @@ beforeAll(async () => {
           directives: [{ id: "dir_3", kind: "guidance", agentId: "agt_1", message: "keep it short", by: "tester", at: 2_000, deliveredAt: 2_500, via: "push" }],
         });
       case "GET /api/colonies/web/review":
-        return json(200, []);
+        return json(200, reviewQueue);
       case "POST /api/colonies/web/review/prp_1":
         return json(200, { ok: true });
       case "GET /api/colonies/web/why":
@@ -232,6 +234,45 @@ describe("ft against a server", () => {
     expect(await main(["review", "web", "prp_1", "reject", "--reason", "touches auth"], t)).toBe(0);
     expect(seen.at(-1)).toMatchObject({ method: "POST", url: "/api/colonies/web/review/prp_1", body: { decision: "reject", reason: "touches auth", by: "tester" } });
     expect(t.out.join("\n")).toContain("Rejected prp_1: touches auth");
+  });
+
+  it("lists the queue code first, and every kept diff with --diff", async () => {
+    const hunks = "@@ -1,1 +1,2 @@\n const a = 1;\n+console.log(process.env.API_TOKEN);";
+    reviewQueue = [
+      {
+        id: "prp_2",
+        intentId: "int_1",
+        agentId: "agt_1",
+        writeSet: [{ path: "src/a.ts", blob: "c" }],
+        declared: { footprint: ["src/a.ts"], summary: "log less" },
+        evidence: { checks: [] },
+        status: "escalated",
+        createdAt: 0,
+        review: {
+          files: [{ path: "src/a.ts", status: "modified", added: 1, removed: 0, hunks, truncated: false }],
+          filesChanged: 1,
+          danger: [{ path: "src/a.ts", line: 2, cls: "secret", pattern: "secret:logged", label: "secret (logged) at src/a.ts:2: console.log(process.env.API_TOKEN);" }],
+          residual: [],
+        },
+      },
+    ];
+    try {
+      const t = io();
+      expect(await main(["review", "web"], t)).toBe(0);
+      let text = t.out.join("\n");
+      expect(text).toContain('prp_2  "Remove console.log from src/a.ts"');
+      expect(text).toContain("    src/a.ts:2  secret (logged)");
+      expect(text).toContain("      +    2  console.log(process.env.API_TOKEN);");
+      expect(text).toContain("Full diffs: ft review web --diff");
+      t.out.length = 0;
+      expect(await main(["review", "web", "--diff"], t)).toBe(0);
+      text = t.out.join("\n");
+      expect(text).toContain("    src/a.ts  modified  +1 −0");
+      expect(text).toContain("      +    2  console.log(process.env.API_TOKEN);  ← danger");
+      expect(seen.filter((x) => x.url === "/api/colonies/web/review")).toHaveLength(2);
+    } finally {
+      reviewQueue = [];
+    }
   });
 
   it("exits 1 with the server's error message", async () => {
