@@ -17,6 +17,7 @@ import type {
   ProposalStatus,
   Rule,
 } from "@fire_trident/core";
+import type { StuckAction, StuckItem, StuckReport } from "@fire_trident/core";
 import { changeSize, dangerLines, lookHereFirst, parseHunks, reviewOf, visible, type DiffLine, type ReviewFile, type ReviewView } from "./review.ts";
 import { whySummary } from "./spec.ts";
 
@@ -281,7 +282,58 @@ export function formatStatus(s: SnapshotLike, c: Colors, now: number): string {
     const trend = first !== undefined && last !== undefined && first !== last ? `${c.dim(" · violations ")}${num(first)} → ${num(last)}` : "";
     row("last 30m", `${total > 0 ? `${sparkline(series.landings)} ${num(total)} landing${total === 1 ? "" : "s"}` : c.dim("no landings")}${trend}`);
   }
+  if (s.stuck) out.push(...stuckLines(s.stuck, col.id, c, now));
   return out.join("\n");
+}
+
+/** What a person can do about a stuck item, in words. */
+const STUCK_DO: Readonly<Record<StuckAction, string>> = {
+  agent: "look at the agent",
+  intent: "amend or withdraw the intent",
+  tests: "look at the failing tests",
+  answer: "answer the report",
+  review: "review the change",
+};
+
+/** Text from the server (it quotes agents' words) as one terminal line: no control characters. */
+function plainLine(s: unknown): string {
+  return typeof s === "string" ? s.replace(/[\u0000-\u001f\u007f-\u009f]+/g, " ").trim() : "";
+}
+
+/** The command that does what a stuck item asks, for `colony`. */
+export function stuckCommand(item: Pick<StuckItem, "action" | "intentId" | "agentId" | "proposalId">, colony: string): string {
+  switch (item.action) {
+    case "answer":
+      return `ft escalation ${colony} ${item.intentId ?? "<intentId>"} amend|withdraw|dismiss --note <text>`;
+    case "review":
+      return `ft review ${colony}`;
+    case "intent":
+      return `ft intent show ${colony} ${item.intentId ?? "<intentId>"}`;
+    case "tests":
+      return `ft certify ${colony}`;
+    default:
+      return item.agentId ? `ft agents ${colony}  (steer it: ft direct ${colony} ${item.agentId} "<message>")` : `ft agents ${colony}`;
+  }
+}
+
+/**
+ * The stuck rows of `ft status`: how many items, then each one with how long it has been stuck, what
+ * is stuck, and what to do about it (the command). "none" when nothing is stuck.
+ */
+export function stuckLines(report: StuckReport, colony: string, c: Colors, now: number): string[] {
+  const items = Array.isArray(report.items) ? report.items.filter((i) => i && typeof i.text === "string") : [];
+  const total = typeof report.total === "number" && report.total > items.length ? report.total : items.length;
+  if (total === 0) return [`${c.dim("stuck".padEnd(11))}${c.green("none")}`];
+  const oldest = Math.min(...items.map((i) => (Number.isFinite(i.since) ? i.since : now)));
+  const out = [`${c.dim("stuck".padEnd(11))}${c.yellow(`${num(total)} item${total === 1 ? "" : "s"}`)}${items.length ? c.dim(`, the oldest for ${ago(oldest, now).replace(/ ago$/, "")}`) : ""}`];
+  for (const item of items) {
+    const age = ago(Number.isFinite(item.since) ? item.since : now, now).replace(/ ago$/, "").padStart(4);
+    const what = STUCK_DO[item.action] ?? STUCK_DO.agent;
+    out.push(`  ${item.kind === "red" ? c.red(age) : c.yellow(age)}  ${plainLine(item.text)}`);
+    out.push(`        ${c.dim("→")} ${what}: ${c.cyan(stuckCommand(item, colony))}`);
+  }
+  if (total > items.length) out.push(c.dim(`  +${num(total - items.length)} more`));
+  return out;
 }
 
 /** One row of GET /api/colonies as the CLI reads it. */
@@ -1041,6 +1093,11 @@ export function formatEvent(e: ColonyEvent, c: Colors, clock: (at: number) => st
         return `${time} ${tag("escalation", "magenta")} ${e.intentId} ${ANSWERED[e.resolved.decision] ?? e.resolved.decision} by ${e.resolved.by}: ${quote(e.resolved.note, 80)} ${c.dim(`(${e.kind} report by ${e.agentId})`)}`;
       }
       return `${time} ${tag("escalation", "magenta")} ${e.intentId} ${c.yellow(e.kind)} by ${e.agentId} ${quote(e.title, 50)}: ${quote(e.report, 80)}`;
+    case "stuck": {
+      const item: Partial<StuckItem> = e.item ?? {};
+      const what = (item.action && STUCK_DO[item.action]) || "look at it";
+      return `${time} ${tag("stuck", item.kind === "red" ? "red" : "yellow")} ${item.kind ?? "?"} ${plainLine(item.text)} ${c.dim(`→ ${what}`)}`;
+    }
     case "status":
       return `${time} ${tag("status", "blue")} ${e.agentId} ${e.note}`;
     case "certify": {

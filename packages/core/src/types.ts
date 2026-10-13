@@ -608,6 +608,8 @@ export type ColonyEvent =
   | { t: "reverted"; at: Millis; landingId: Id; of: Id; trunkSha: Sha; paths: Path[]; reason: string; by: string; redo: Id[]; proposal?: Id }
   | { t: "directive"; at: Millis; directiveId: Id; agentId: Id; intentId?: Id; message: string; by: string; via?: "push" | "inbox"; kind?: DirectiveKind; landingId?: Id; paths?: Path[] }
   | { t: "escalation"; at: Millis; intentId: Id; agentId: Id; kind: EscalationKind; report: string; title: string; resolved?: IntentEscalation["resolved"] }
+  /** The stuck-work detector found an item: published once per item key, and nothing when it clears. */
+  | { t: "stuck"; at: Millis; item: StuckItem }
   | { t: "contest"; at: Millis; intentId: Id; title: string; winner: Id; losers: Id[]; reason: string }
   | { t: "revalidated"; at: Millis; proposalId: Id; intentId: Id; paths: Path[]; names: string[] }
   | { t: "status"; at: Millis; agentId: Id; intentId?: Id; note: string }
@@ -659,6 +661,63 @@ export interface Convergence {
   convergedAt: Millis | null;
 }
 
+/**
+ * What the stuck-work detector checks (it only reports):
+ * - `claimed`: an intent claimed for too long with no change proposed
+ * - `returns`: an intent whose changes came back three times or more
+ * - `red`: trunk certification red for too long
+ * - `report`: an agent's report that an intent cannot be done as written, waiting for a person
+ * - `review`: a change waiting for a person's review
+ * - `agent`: an agent alive but not progressing
+ */
+export type StuckKind = "claimed" | "returns" | "red" | "report" | "review" | "agent";
+
+/** What a person can do about stuck work: look at the agent, amend or withdraw the intent, look at the failing tests, answer the report, review the change. */
+export type StuckAction = "agent" | "intent" | "tests" | "answer" | "review";
+
+/**
+ * Where a red trunk's repair intent stands: no agent holds it (`open`), an agent works on it, its change
+ * is being checked or waits for its lane (`proposed`), its change waits for a person's review, or an agent
+ * reported that it cannot be done as written and a person must answer (`reported`).
+ */
+export type StuckRepairState = "open" | "working" | "proposed" | "review" | "reported";
+
+/** Work that stopped moving, as the stuck-work detector found it. */
+export interface StuckItem {
+  /** The item and its episode (a new claim, red run or report is a new key); one `stuck` event is published per key. */
+  key: string;
+  kind: StuckKind;
+  /** When the work stopped moving: the claim, the third return, the first red result, the report, the escalation, the agent's last step. */
+  since: Millis;
+  /** What is stuck, in one line. It quotes titles, notes and reasons (untrusted text): render it as text. */
+  text: string;
+  /** What a person can do about it. */
+  action: StuckAction;
+  /** The intent it is about (`red`: the repair intent, when one is open). */
+  intentId?: Id;
+  title?: string;
+  /** The agent it is about (`red`: the agent working on the repair). */
+  agentId?: Id;
+  /** That agent's own last status note. */
+  note?: string;
+  /** The change it is about (`red`: the repair's change in flight). */
+  proposalId?: Id;
+  /** `returns`: how many times the intent's changes came back, and the latest reasons, newest first. */
+  returns?: number;
+  reasons?: string[];
+  /** `red`: the first red commit since the last green one, and where its repair stands (absent when no repair is open). */
+  trunkSha?: Sha;
+  repair?: StuckRepairState;
+}
+
+/** The stuck-work detector's findings at one time: the kinds most in need of a person first, oldest first within a kind. */
+export interface StuckReport {
+  at: Millis;
+  items: StuckItem[];
+  /** Items found in all: more than `items` lists when the list was cut. */
+  total: number;
+}
+
 /** Snapshot the UI loads before applying live events. */
 export interface ColonySnapshot {
   colony: Colony;
@@ -679,6 +738,8 @@ export interface ColonySnapshot {
   series?: ColonySeries;
   /** Violations fixed since the latest rule change, and when the colony converged (served by the Worker). */
   convergence?: Convergence;
+  /** Work that stopped moving (the stuck-work detector, computed on demand; served by the Worker). */
+  stuck?: StuckReport;
 }
 
 // ---------------------------------------------------------------------------

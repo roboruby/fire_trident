@@ -16,6 +16,8 @@ const TESTS_RED = "#ff8d98";
 /** Landing notices: the colony telling agents what changed under them. */
 const NOTICE_COLOR = "#8fe8bd";
 const CONTEST_COLOR = "#7aa8ff";
+/** Stuck work: the colony's detector found work that stopped moving. */
+const STUCK_COLOR = "#d6a2ff";
 
 /** Filter chips: a key, a label, a color, and the event types the chip covers. */
 const FILTERS: ReadonlyArray<[key: string, label: string, color: string, types: ReadonlyArray<ColonyEvent["t"]>]> = [
@@ -24,6 +26,7 @@ const FILTERS: ReadonlyArray<[key: string, label: string, color: string, types: 
   ["proposal", "Proposals", LAYER_COLOR.llm, ["proposal", "contest"]],
   ["intent", "Intents", "#7cc4ff", ["intent"]],
   ["escalation", "Reports", ACCENT, ["escalation"]],
+  ["stuck", "Stuck", STUCK_COLOR, ["stuck"]],
   ["direction", "Direction", DIRECTION_COLOR, ["amended", "withdrawn", "retracted", "reverted", "directive"]],
   ["status", "Status", STATUS_COLOR, ["status"]],
   ["certify", "Tests", TESTS_GREEN, ["certify"]],
@@ -37,7 +40,7 @@ const FILTERS: ReadonlyArray<[key: string, label: string, color: string, types: 
 /** The chip that covers each event type. */
 const CHIP_OF: ReadonlyMap<string, string> = new Map(FILTERS.flatMap(([key, , , types]) => types.map((t) => [t, key] as const)));
 
-const DEFAULT_ON: ReadonlySet<string> = new Set(["landing", "decision", "proposal", "intent", "escalation", "direction", "status", "violations", "sigma", "certify"]);
+const DEFAULT_ON: ReadonlySet<string> = new Set(["landing", "decision", "proposal", "intent", "escalation", "stuck", "direction", "status", "violations", "sigma", "certify"]);
 
 /** The events worth reading at a glance; routine status steps are hidden unless the viewer asks for everything. */
 function notable(e: ColonyEvent): boolean {
@@ -103,6 +106,10 @@ function describe(le: LoggedEvent, store: ColonyStore): Line {
       const agent = typeof e.agentId === "string" && e.agentId ? store.agentName(e.agentId) : "An agent";
       if (view.resolved) return { tag: "answered", color: DIRECTION_COLOR, text: escalationText(view, agent), title: view.resolved.note ? `${escalationText(view, agent)}\n“${view.resolved.note}”` : undefined };
       return { tag: "report", color: ACCENT, text: escalationText(view, agent), title: view.report ? `${escalationText(view, agent)}\n“${firstLine(view.report, 600)}”` : undefined };
+    }
+    case "stuck": {
+      const text = typeof e.item?.text === "string" ? e.item.text : "";
+      return { tag: "stuck", color: STUCK_COLOR, text, mono: typeof e.item?.kind === "string" ? e.item.kind : undefined, title: text };
     }
     case "contest":
       return { tag: "contest", color: CONTEST_COLOR, text: contestText(e), mono: typeof e.winner === "string" ? shortId(e.winner) : undefined, title: e.reason ? `${contestText(e)}\n${e.reason}` : undefined };

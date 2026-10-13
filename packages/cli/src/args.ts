@@ -18,6 +18,7 @@ export const EVENT_TYPES: ReadonlyArray<ColonyEvent["t"]> = [
   "reverted",
   "directive",
   "escalation",
+  "stuck",
   "status",
   "certify",
 ];
@@ -695,8 +696,11 @@ Example
 ft status <colony>
 
 Print a compact summary: source, trunk and green commits, files and regions,
-intents by status, agents by state, violations left, the decision funnel, and
-recent landings.
+intents by status, agents by state, violations left, the decision funnel,
+recent landings, and stuck work: intents claimed for 10 minutes with no change,
+intents whose changes came back 3 or more times, a trunk red for 15 minutes,
+reports and changes waiting 10 minutes for a person, and agents alive but not
+moving for 10 minutes, each with what to do about it.
 `,
   rule: `
 ft rule add <colony> --pattern <regex> [--flags <f>] [--include <glob>]... [--exclude <glob>]...
@@ -821,7 +825,7 @@ ft watch <colony> [--only <type,...>]
 
 Stream live colony events, one line each. Types: agent, mark, intent, proposal,
 landing, decision, sigma, violations, metric, amended, withdrawn, retracted,
-directive, escalation, status. --json prints raw events. Reconnects automatically; Ctrl-C to stop.
+directive, escalation, stuck, status. --json prints raw events. Reconnects automatically; Ctrl-C to stop.
 
 Example
   ft watch web --only landing,proposal,violations

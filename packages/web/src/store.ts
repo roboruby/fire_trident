@@ -21,6 +21,7 @@ import type {
   Sha,
   TestCounts,
 } from "@fire_trident/core";
+import type { StuckAction, StuckItem, StuckKind, StuckRepairState } from "@fire_trident/core";
 import { finite } from "./format.ts";
 import { parseSeries, type Series } from "./series.ts";
 import { KIND_INDEX, KINDS, decayed } from "./theme.ts";
@@ -157,6 +158,11 @@ export interface ReturnedIntent {
   reason?: string;
 }
 
+/** Work the colony's stuck-work detector found, and when this page learned of it (the colony's clock). */
+export interface StuckView extends StuckItem {
+  seenAt: number;
+}
+
 /**
  * Landing notices the colony sent for one landing (directive events of kind "landing"). The log
  * shows one line per group: who was told, and what changed.
@@ -251,6 +257,7 @@ const EVENT_TYPES: ReadonlySet<string> = new Set([
   "reverted",
   "directive",
   "escalation",
+  "stuck",
   "contest",
   "revalidated",
   "status",
@@ -263,6 +270,11 @@ const ESCALATION_DECISIONS: ReadonlySet<string> = new Set(["amend", "withdraw", 
 const REDIRECT = /^(withdrawn|intent revised|superseded)\b/i;
 /** An intent returned this many times is worth a person's look. */
 export const REPEATED_RETURNS = 3;
+const STUCK_KINDS: ReadonlySet<string> = new Set<StuckKind>(["claimed", "returns", "red", "report", "review", "agent"]);
+const STUCK_ACTIONS: ReadonlySet<string> = new Set<StuckAction>(["agent", "intent", "tests", "answer", "review"]);
+const REPAIR_STATES: ReadonlySet<string> = new Set<StuckRepairState>(["open", "working", "proposed", "review", "reported"]);
+/** Stuck items kept at most (each published once; the server's report replaces them every 30 s). */
+const STUCK_KEEP = 500;
 /** Landing notices more than this far apart never share a line, even for the same landing. */
 const NOTICE_WINDOW_MS = 15_000;
 /** Resolved reports kept for the review tab and lineage (open ones are always kept). */
@@ -327,6 +339,41 @@ export function escalationOf(
       note: typeof r.note === "string" ? r.note : "",
     };
   }
+  return view;
+}
+
+/**
+ * A stuck item from the server (a report or a `stuck` event), checked field by field; null when it is
+ * not one. Its text quotes agents' words: always rendered as text.
+ */
+export function stuckOf(raw: unknown, seenAt: number): StuckView | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.key !== "string" || !r.key || typeof r.kind !== "string" || !STUCK_KINDS.has(r.kind) || typeof r.text !== "string") return null;
+  const view: StuckView = {
+    key: r.key,
+    kind: r.kind as StuckKind,
+    since: finite(r.since, seenAt),
+    text: r.text,
+    action: typeof r.action === "string" && STUCK_ACTIONS.has(r.action) ? (r.action as StuckAction) : "agent",
+    seenAt,
+  };
+  const text = (k: string): string | undefined => (typeof r[k] === "string" && r[k] !== "" ? (r[k] as string) : undefined);
+  const intentId = text("intentId");
+  if (intentId) view.intentId = intentId;
+  const title = text("title");
+  if (title) view.title = title;
+  const agentId = text("agentId");
+  if (agentId) view.agentId = agentId;
+  const note = text("note");
+  if (note) view.note = note;
+  const proposalId = text("proposalId");
+  if (proposalId) view.proposalId = proposalId;
+  const trunkSha = text("trunkSha");
+  if (trunkSha) view.trunkSha = trunkSha;
+  if (typeof r.repair === "string" && REPAIR_STATES.has(r.repair)) view.repair = r.repair as StuckRepairState;
+  if (typeof r.returns === "number" && Number.isFinite(r.returns)) view.returns = r.returns;
+  if (Array.isArray(r.reasons)) view.reasons = r.reasons.filter((x): x is string => typeof x === "string");
   return view;
 }
 
@@ -451,6 +498,13 @@ export class ColonyStore {
   readonly superseded = new Map<Id, Id>();
   /** Returns (stale or conflicting) this page saw per intent, with the latest reason; direction changes excluded. */
   readonly returns = new Map<Id, { n: number; reason?: string; at: number }>();
+  /**
+   * Stuck work by key: the server's report (snapshot, then every metrics refresh) plus `stuck` events
+   * since. An item stays until the next report; needs.ts shows only those this page has not seen move.
+   */
+  readonly stuck = new Map<string, StuckView>();
+  /** Items the server found but did not list (its report is cut at 50). */
+  stuckMore = 0;
   /** Landing notices sent (directive events of kind "landing"), and their groups by landing. */
   landingNotices = 0;
   private readonly noticeGroups = new Map<string, NoticeGroup>();
@@ -648,6 +702,10 @@ export class ColonyStore {
     this.metrics.clear();
     for (const [k, v] of Object.entries(s.metrics ?? {})) if (typeof v === "number" && Number.isFinite(v)) this.metrics.set(metricKey(k), v);
     this.series = parseSeries((s as { series?: unknown }).series);
+    // A server without the stuck-work detector sends no report: nothing is stuck as far as this page knows.
+    this.stuck.clear();
+    this.stuckMore = 0;
+    this.setStuck(s.stuck);
 
     this.loaded = true;
     this.error = null;
@@ -683,6 +741,38 @@ export class ColonyStore {
     if (!next) return;
     this.series = next;
     this.bump();
+  }
+
+  /** Replace the stuck work with the server's report (a periodic /metrics refresh); a reply without one changes nothing. */
+  applyStuck(raw: unknown): void {
+    if (!this.setStuck(raw)) return;
+    this.bump();
+  }
+
+  /** Load a stuck-work report (StuckReport) in place of the items kept; false when `raw` is not one. */
+  private setStuck(raw: unknown): boolean {
+    const r = raw as { items?: unknown; total?: unknown } | null | undefined;
+    if (!r || typeof r !== "object" || !Array.isArray(r.items)) return false;
+    const now = this.now();
+    this.stuck.clear();
+    for (const x of r.items) {
+      const view = stuckOf(x, now);
+      if (view && this.stuck.size < STUCK_KEEP) this.stuck.set(view.key, view);
+    }
+    this.stuckMore = Math.max(0, finite(r.total, this.stuck.size) - this.stuck.size);
+    return true;
+  }
+
+  /** A `stuck` event: the colony found an item (each key is published once). */
+  private onStuck(ev: Extract<ColonyEvent, { t: "stuck" }>, now: number): void {
+    const view = stuckOf(ev.item, now);
+    if (!view) return;
+    this.stuck.delete(view.key);
+    this.stuck.set(view.key, view);
+    if (this.stuck.size > STUCK_KEEP) {
+      const oldest = this.stuck.keys().next().value;
+      if (oldest !== undefined) this.stuck.delete(oldest);
+    }
   }
 
   /** Apply a batch of live events. */
@@ -782,6 +872,9 @@ export class ColonyStore {
         break; // otherwise shown in the log only
       case "escalation":
         this.onEscalation(ev, now);
+        break;
+      case "stuck":
+        this.onStuck(ev, now);
         break;
       case "contest":
         this.onContest(ev);
@@ -1194,6 +1287,8 @@ export class ColonyStore {
     this.escalations.clear();
     this.superseded.clear();
     this.returns.clear();
+    this.stuck.clear();
+    this.stuckMore = 0;
     this.noticeGroups.clear();
     this.landingNotices = 0;
     for (const k of STAGES) this.lastDecisionAt[k] = 0;

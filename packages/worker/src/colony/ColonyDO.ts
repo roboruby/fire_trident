@@ -63,6 +63,8 @@ import { ANTIBODY_DIR, antibodyAllows, parseAntibodyFile, type AllowingAntibody 
 import { DEFAULT_NOT_VERIFIED, FieldBatch, groupByRegion, jitter, normalizePath, normalizePaths, overlapCount, primaryRegion, violationIntents } from "./logic.ts";
 import { EmitPacer, Gate, WaitPacer, fastRepulsion, fieldIndex, unseenByRegion, type FieldIndex, type RecentClaim } from "./views.ts";
 import { LagProbe } from "./lag.ts";
+import { SWEEP_MS as STUCK_SWEEP_MS, StuckDetector } from "./stuck.ts";
+import type { StuckReport } from "@fire_trident/core";
 import {
   MAX_DIRECTIVE_CHARS,
   MAX_NOTE_DIRECTIVES,
@@ -681,6 +683,7 @@ export class ColonyDO extends DurableObject<Env> {
       });
     const violations = this.violationTotals();
     const certification = this.certifier.latestCertification();
+    const stuck = this.stuckReport(now);
     return {
       colony: certification ? { ...colony, certification } : colony,
       files,
@@ -693,6 +696,7 @@ export class ColonyDO extends DurableObject<Env> {
       rules: this.sql.exec<RuleRow>("SELECT * FROM rules ORDER BY created_at").toArray().map((r) => this.toRule(r, colony.id)),
       series: this.seriesReport(now),
       convergence: this.convergence(violations.total),
+      ...(stuck ? { stuck } : {}),
     };
   }
 
@@ -3545,7 +3549,7 @@ export class ColonyDO extends DurableObject<Env> {
     return summaryOf(loaded.colony, loaded.lastLandingAt, this.currentMetrics(Date.now()));
   }
 
-  /** Metrics, funnel, violations and the per-minute series without the snapshot's lists (GET /api/colonies/:id/metrics). */
+  /** Metrics, funnel, violations, the per-minute series and stuck work, without the snapshot's lists (GET /api/colonies/:id/metrics). */
   async metricsReport(): Promise<{
     colonyId: Id;
     at: number;
@@ -3554,11 +3558,13 @@ export class ColonyDO extends DurableObject<Env> {
     violations: { total: number; byRule: Record<Id, number> };
     series: ColonySeries;
     convergence: Convergence;
+    stuck?: StuckReport;
   }> {
     const colony = this.requireColony();
     const now = Date.now();
     this.maybeReap(now);
     const violations = this.violationTotals();
+    const stuck = this.stuckReport(now);
     return {
       colonyId: colony.id,
       at: now,
@@ -3567,6 +3573,7 @@ export class ColonyDO extends DurableObject<Env> {
       violations,
       series: this.seriesReport(now),
       convergence: this.convergence(violations.total),
+      ...(stuck ? { stuck } : {}),
     };
   }
 
@@ -3751,13 +3758,14 @@ export class ColonyDO extends DurableObject<Env> {
     return this.sql.exec<{ v: string }>("SELECT v FROM registry_meta WHERE k = ?", key).toArray()[0]?.v ?? null;
   }
 
-  /** Metrics tick: while UI sockets are connected, re-send live metrics that changed (all every 30 s) and reap silent agents. */
+  /** Metrics tick: while UI sockets are connected, re-send live metrics that changed (all every 30 s), reap silent agents and publish newly stuck work. */
   async alarm(): Promise<void> {
     // Contest mode: contests whose deadline passed are decided (the alarm is shared with this tick).
     await this.contestAlarm(Date.now());
     if (this.ctx.getWebSockets().length === 0 || !this.loadColony()) return;
     const now = Date.now();
     this.maybeReap(now);
+    this.stuckSweep(now);
     const full = now - this.lastFullMetricsAt >= METRICS_FULL_MS;
     if (full) this.lastFullMetricsAt = now;
     const changed = changedMetrics(this.currentMetrics(now, true), this.sentMetrics, full);
@@ -3775,6 +3783,44 @@ export class ColonyDO extends DurableObject<Env> {
       if (at === null || at > Date.now() + METRICS_TICK_MS) await this.ctx.storage.setAlarm(Date.now() + METRICS_TICK_MS);
     } catch (err) {
       console.warn(`metrics tick not armed: ${errorText(err)}`);
+    }
+  }
+
+  // =========================================================================
+  // Stuck work (colony/stuck.ts)
+  // =========================================================================
+
+  /** The stuck-work detector (made on first use), and when the periodic tick last looked for stuck work. */
+  private stuckDetector: StuckDetector | null = null;
+  private lastStuckSweep = 0;
+
+  /** The detector, on this colony's tables; an agent counts as alive as long as the reaper lets it live. */
+  private stuck(): StuckDetector {
+    return (this.stuckDetector ??= new StuckDetector(this.sql, AGENT_TTL_MS));
+  }
+
+  /** What is stuck now, for the snapshot and the metrics report; undefined when the checks cannot run (the rest of the answer stands). */
+  private stuckReport(now: number): StuckReport | undefined {
+    try {
+      return this.stuck().report(now);
+    } catch (err) {
+      console.warn(`stuck work not computed: ${errorText(err)}`);
+      return undefined;
+    }
+  }
+
+  /**
+   * On the metrics tick, at most every STUCK_SWEEP_MS: publish one `stuck` event per item not
+   * published before (the detector's ledger remembers them). Never throws: the tick goes on.
+   */
+  private stuckSweep(now: number): void {
+    if (now - this.lastStuckSweep < STUCK_SWEEP_MS) return;
+    this.lastStuckSweep = now;
+    try {
+      const found = this.stuck().sweep(now);
+      if (found.length > 0) this.publish(found.map((item): ColonyEvent => ({ t: "stuck", at: now, item })));
+    } catch (err) {
+      console.warn(`stuck work sweep failed: ${errorText(err)}`);
     }
   }
 
