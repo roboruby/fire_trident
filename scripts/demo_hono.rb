@@ -301,7 +301,11 @@ models.each do |model, x|
   say(format("%-40s %3d agents, %4d calls, %7d in / %6d out tokens, %4d throttled waits, $%.4f",
              model, x[:agents], x[:calls], x[:in], x[:out], x[:throttled], x[:usd]))
 end
-say(format("model cost estimate: $%.4f", models.values.sum { |x| x[:usd] }))
+cost = models.values.sum { |x| x[:usd] }
+say(format("model cost estimate: $%.4f", cost))
+landed_all = (m["intentsLanded"] || m["landedIntents"]).to_i
+say(format("cost per landed intent: $%.4f (the estimate above over %d intents landed)", cost / landed_all, landed_all)) if landed_all.positive?
+say("cost per certified intent: does not apply (Hono's tests are not node:test tests, so trunk certification has none to run)")
 begin
   Process.kill("INT", watch_pid)
   Process.wait(watch_pid)

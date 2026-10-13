@@ -100,4 +100,38 @@ describe("formatWhy", () => {
     expect(text).toContain('intent   ? "(intent not recorded)"');
     expect(text).toContain("decided  reflex triage → land");
   });
+
+  // Two landings that each wrote src/a.ts with another proposal beside it; the older one wrote line 3.
+  const landingOf = (id: string, at: number) => ({
+    landing: { id, colonyId: "c", trunkSha: id.padEnd(40, "0"), parentSha: "p".padEnd(40, "0"), proposalIds: [`prp_${id}`, `prp_${id}b`], intentIds: [`int_${id}`, `int_${id}b`], paths: ["src/a.ts", "src/x.ts"], regions: ["src"], at },
+    note: {
+      schema: "firetrident.lineage/v1",
+      landingId: id,
+      colonyId: "c",
+      proposals: [
+        { id: `prp_${id}`, agentId: "a1", agentKind: "internal", intent: { id: `int_${id}`, title: `wrote src/a.ts in ${id}`, why: "" }, writeSet: [{ path: "src/a.ts", blob: null }], readSet: [], decisions: [], evidence: { checks: [] } },
+        { id: `prp_${id}b`, agentId: "a2", agentKind: "internal", intent: { id: `int_${id}b`, title: `wrote src/x.ts in ${id}`, why: "" }, writeSet: [{ path: "src/x.ts", blob: null }], readSet: [], decisions: [], evidence: { checks: [] } },
+      ],
+    },
+  });
+  const ownerFirst = [landingOf("lnd_owner", 1_000), landingOf("lnd_newer", 2_000)] as unknown as Parameters<typeof formatWhy>[1];
+
+  it("keeps the server's order for a line, so the landing that wrote it prints first", () => {
+    const text = formatWhy({ path: "src/a.ts", line: 3 }, ownerFirst, {}, plain, 3_000);
+    expect(text).toContain("src/a.ts:3  2 landings, the landing that wrote line 3 first, then newest first");
+    expect(text.indexOf("landing lnd_owner")).toBeGreaterThan(-1);
+    expect(text.indexOf("landing lnd_owner")).toBeLessThan(text.indexOf("landing lnd_newer"));
+    expect(text).toContain('intent   int_lnd_owner "wrote src/a.ts in lnd_owner"');
+    expect(text).not.toContain("wrote src/x.ts");
+  });
+
+  it("lists a whole file newest first, and a line whose landing is the newest as newest first", () => {
+    const file = formatWhy({ path: "src/a.ts" }, ownerFirst, {}, plain, 3_000);
+    expect(file).toContain("src/a.ts  2 landings, newest first");
+    expect(file.indexOf("landing lnd_newer")).toBeLessThan(file.indexOf("landing lnd_owner"));
+    const newest = [...(ownerFirst as unknown[])].reverse() as Parameters<typeof formatWhy>[1];
+    const line = formatWhy({ path: "src/a.ts", line: 9 }, newest, {}, plain, 3_000);
+    expect(line).toContain("src/a.ts:9  2 landings, newest first");
+    expect(line.indexOf("landing lnd_newer")).toBeLessThan(line.indexOf("landing lnd_owner"));
+  });
 });
