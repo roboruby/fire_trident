@@ -167,7 +167,7 @@ Measured on a preview (`packages/bench/results/2026-10-12-scale/`) with syntheti
 | 2,000 | 2,714 | 14.8 / 19.5 s | 0 |
 | 5,000 | 2,778 | 12.5 / 17.4 s | 0 from load; 78 of 50,368 calls failed in the first 33 s: the load generator's own DNS and connection errors, and one reset when the preview's code was updated (`live-n5000.json`) |
 
-Before these changes, 1,000 agents reached 515 landings/min and the run stopped at 60 s with a 38% error rate. The next limit is TrunkDO, the single writer: every 3.4 to 3.9 s commit cycle hits the 200-proposal cap, so throughput no longer grows with agents, and about 6 s of queueing dominates time to land.
+These runs predate the event record (see Replay). Their driver held a live feed open, so regions were already emitting field events to the colony; the record adds one batched insert per published batch. Before these changes, 1,000 agents reached 515 landings/min and the run stopped at 60 s with a 38% error rate. The next limit is TrunkDO, the single writer: every 3.4 to 3.9 s commit cycle hits the 200-proposal cap, so throughput no longer grows with agents, and about 6 s of queueing dominates time to land.
 
 ## Replay
 
