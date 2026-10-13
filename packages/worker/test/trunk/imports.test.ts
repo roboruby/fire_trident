@@ -1,9 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { neighborRepulsion } from "@fire_trident/core";
+import type { Proposal } from "@fire_trident/core";
 import { resolutionCandidates, resolveModule, specifierTarget } from "../../src/decide/mechanical.ts";
 import {
   IMPORT_PATHS_MAX,
   ImportIndex,
+  deletionImports,
   dependentTargets,
   importNeighbors,
   importTargets,
@@ -11,6 +13,7 @@ import {
   type ImportCaps,
   type ImportSource,
 } from "../../src/trunk/imports.ts";
+import { planCycle } from "../../src/trunk/plan.ts";
 
 /** The part of node:sqlite these tests use (the worker compiles against workers types, not Node's). */
 interface DatabaseSync {
@@ -130,13 +133,19 @@ class Trunk {
     this.texts.delete(this.blob(path));
   }
 
-  private put(path: string, text: string): string {
+  /** A blob with this content that is not on trunk (a proposal's new version). */
+  stage(text: string): string {
     let id = this.ids.get(text);
     if (id === undefined) {
       id = hex(++this.n);
       this.ids.set(text, id);
       this.texts.set(id, text);
     }
+    return id;
+  }
+
+  private put(path: string, text: string): string {
+    const id = this.stage(text);
     this.sql.exec("INSERT OR REPLACE INTO ft_files (path, blob, size, mode) VALUES (?, ?, ?, '100644')", path, id, new TextEncoder().encode(text).length);
     return id;
   }
@@ -456,5 +465,193 @@ describe("import repulsion (the caller's side)", () => {
     // hub.ts once (both files import it) plus c.ts; a.ts is in the footprint, so its claim repels directly instead.
     expect(term(1)).toBeCloseTo(1.5, 12);
     expect(term(2)).toBeCloseTo(3, 12);
+  });
+});
+
+describe("deletionImports (the deletion guard's input)", () => {
+  /** A proposal writing these blobs (null deletes). */
+  const proposal = (id: string, writes: Record<string, string | null>): Proposal => ({
+    id,
+    colonyId: "c",
+    intentId: `int_${id}`,
+    agentId: `agt_${id}`,
+    workspace: { namespace: "ft-ws-0", name: `c--ws-${id}`, remote: "https://example.invalid/ws.git" },
+    baseSha: hex(0),
+    headSha: hex(0),
+    writeSet: Object.entries(writes).map(([path, blob]) => ({ path, blob })),
+    readSet: [],
+    declared: { footprint: Object.keys(writes), summary: id },
+    evidence: { checks: [] },
+    status: "ready",
+    createdAt: 0,
+  });
+  const trunkOf = (t: Trunk) => (path: string) => t.blob(path) || null;
+  const guard = (t: Trunk, ps: Proposal[], waitMs?: number) => deletionImports(() => t.index, t.source(), ps, trunkOf(t), waitMs);
+  /** planCycle over trunk as it is, one batch per list, each proposal based on trunk. */
+  const plan = (t: Trunk, batches: Proposal[][], input: Awaited<ReturnType<typeof deletionImports>>) =>
+    planCycle(
+      batches.map((b) => b.map((p) => ({ p, base: p.writeSet.map((w) => ({ path: w.path, blob: t.blob(w.path) || null })) }))),
+      trunkOf(t),
+      undefined,
+      input,
+    );
+
+  it("costs nothing in a cycle that deletes no trunk file: the index is not even built", async () => {
+    const t = new Trunk({ "src/a.ts": imports("./x"), "src/x.ts": "" });
+    expect(await guard(t, [proposal("p", { "src/a.ts": t.stage("// edit\n") }), proposal("q", { "src/never.ts": null })])).toBeUndefined();
+    expect(t.reads).toEqual([]);
+    expect(t.index.stats().sha).toBeNull();
+  });
+
+  it("builds the index on first use and lists every trunk import a deleted file takes part in resolving", async () => {
+    const t = new Trunk({
+      "src/a.ts": imports("./lib/x"),
+      "src/b.ts": imports("./lib/x.js"),
+      "src/c.ts": imports("./lib/x.ts", "./other"),
+      "src/lib/index.ts": imports("./x"),
+      "src/lib/x.ts": imports("./x"),
+      "src/other.ts": "",
+      "src/d.ts": imports("./other"),
+    });
+    const input = await guard(t, [proposal("p", { "src/lib/x.ts": null })]);
+    expect(t.index.stats()).toMatchObject({ sha: t.head, pending: 0 });
+    expect(input?.importers).toEqual(
+      new Map([
+        [
+          "src/lib/x.ts",
+          new Map([
+            ["src/a.ts", ["src/lib/x"]],
+            ["src/b.ts", ["src/lib/x.js"]],
+            ["src/c.ts", ["src/lib/x.ts"]],
+            ["src/lib/index.ts", ["src/lib/x"]],
+          ]),
+        ],
+      ]),
+    );
+    expect(input?.targets.size).toBe(0);
+  });
+
+  it("covers data files and a directory's index file, which the index's own links leave out", async () => {
+    const t = new Trunk({
+      "src/a.ts": 'import data from "./data.json";\nimport * as lib from "./lib";\n',
+      "src/data.json": "{}",
+      "src/lib/index.ts": "export const x = 1;\n",
+    });
+    const data = proposal("data", { "src/data.json": null });
+    const lib = proposal("lib", { "src/lib/index.ts": null });
+    const input = await guard(t, [data, lib]);
+    expect(t.links(["src/data.json"])).toEqual({});
+    expect(plan(t, [[data], [lib]], input).returned).toEqual([
+      [{ proposalId: "data", reason: "deleting src/data.json breaks the imports of src/a.ts: change them in the same change, or first" }],
+      [{ proposalId: "lib", reason: "deleting src/lib/index.ts breaks the imports of src/a.ts: change them in the same change, or first" }],
+    ]);
+  });
+
+  it("across cycles: finds an importer that landed after the index was built, and reads a rewrite of it in the same cycle", async () => {
+    const t = new Trunk({ "src/lib/fresh.ts": "export const fresh = 1;\n", "src/app/main.ts": "console.log(1);\n", "src/old.ts": "" });
+    // Cycle 1 deletes a file nothing imports: the index is built and the deletion lands.
+    const c1 = proposal("c1", { "src/old.ts": null });
+    expect(plan(t, [[c1]], await guard(t, [c1])).accepted).toEqual([[c1]]);
+    t.land({ "src/old.ts": null });
+    // Cycle 2 lands an importer of fresh.ts; it deletes nothing, so the index is only marked (old.ts's deletion too).
+    t.land({ "src/app/main.ts": 'import { fresh } from "../lib/fresh.ts";\nconsole.log(fresh);\n' });
+    expect(t.index.stats().pending).toBe(2);
+    // Cycle 3 deletes fresh.ts: the index catches up with one read, and the deletion goes back.
+    t.reads = [];
+    const del = proposal("del", { "src/lib/fresh.ts": null });
+    const in3 = await guard(t, [del]);
+    expect(t.reads).toEqual([t.blob("src/app/main.ts")]);
+    expect(plan(t, [[del]], in3).returned[0]).toEqual([
+      { proposalId: "del", reason: "deleting src/lib/fresh.ts breaks the imports of src/app/main.ts: change them in the same change, or first" },
+    ]);
+    // With main.ts rewritten in the same change, its new version is read and the deletion lands.
+    const fixed = t.stage("console.log(2);\n");
+    const both = proposal("both", { "src/lib/fresh.ts": null, "src/app/main.ts": fixed });
+    const in4 = await guard(t, [both]);
+    expect(in4?.targets).toEqual(new Map([[fixed, []]]));
+    expect(plan(t, [[both]], in4).accepted).toEqual([[both]]);
+  });
+
+  it("sits the cycle out (null, logged) while the index is not ready, waits at most once per sync, and is ready for the next one", async () => {
+    const t = new Trunk({ "src/a.ts": imports("./x"), "src/x.ts": "" });
+    let release = (): void => undefined;
+    const gate = new Promise<void>((r) => (release = r));
+    const slow: ImportSource = {
+      head: () => t.head,
+      read: async (blob) => {
+        await gate;
+        return t.source().read(blob);
+      },
+    };
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    let now = Date.now();
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
+    try {
+      const del = proposal("d", { "src/x.ts": null });
+      expect(await deletionImports(() => t.index, slow, [del], trunkOf(t), 20)).toBeNull();
+      // Ten seconds later the same sync is still stuck: the next cycle does not wait for it again.
+      now += 10_000;
+      const t0 = performance.now();
+      expect(await deletionImports(() => t.index, slow, [del], trunkOf(t), 5_000)).toBeNull();
+      expect(performance.now() - t0).toBeLessThan(2_000);
+      expect(warn.mock.calls.map((c) => JSON.parse(String(c[0])) as { ft: string; why: string })).toEqual([
+        expect.objectContaining({ ft: "deletion-guard-open", why: "import index still syncing after 0 ms" }),
+        expect.objectContaining({ ft: "deletion-guard-open", why: "import index still syncing after 10000 ms" }),
+      ]);
+      // The sync went on in the background; once it ends, the guard has its answer.
+      release();
+      await t.index.sync(slow);
+      expect((await deletionImports(() => t.index, slow, [del], trunkOf(t), 1_000))?.importers.get("src/x.ts")).toEqual(new Map([["src/a.ts", ["src/x"]]]));
+    } finally {
+      clock.mockRestore();
+      warn.mockRestore();
+    }
+  });
+
+  it("leaves out a rewritten importer whose new version cannot be read in time, rather than hold the cycle", async () => {
+    const t = new Trunk({ "src/a.ts": imports("./x"), "src/x.ts": "" });
+    await t.sync();
+    const fixed = t.stage("// no import\n");
+    const hanging: ImportSource = { head: () => t.head, read: (blob) => (blob === fixed ? new Promise(() => undefined) : t.source().read(blob)) };
+    const both = proposal("both", { "src/x.ts": null, "src/a.ts": fixed });
+    const t0 = performance.now();
+    const input = await deletionImports(() => t.index, hanging, [both], trunkOf(t), 50);
+    expect(performance.now() - t0).toBeLessThan(1_000);
+    expect(input?.importers.get("src/x.ts")).toEqual(new Map([["src/a.ts", ["src/x"]]]));
+    expect(input?.targets.size).toBe(0);
+    expect(plan(t, [[both]], input).accepted).toEqual([[both]]);
+  });
+
+  it("sits the cycle out when the sync leaves files behind or fails", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    try {
+      const files = Object.fromEntries(Array.from({ length: 6 }, (_, i) => [`src/f${i}.ts`, imports(`./f${(i + 1) % 6}`)]));
+      const budget = new Trunk(files, { budgetBytes: 40 });
+      expect(await guard(budget, [proposal("d", { "src/f0.ts": null })])).toBeNull();
+      const t = new Trunk({ "src/a.ts": imports("./x"), "src/x.ts": "" });
+      const down: ImportSource = {
+        head: () => t.head,
+        read: async () => {
+          throw new Error("down");
+        },
+      };
+      expect(await deletionImports(() => t.index, down, [proposal("d", { "src/x.ts": null })], trunkOf(t))).toBeNull();
+      const erased: ImportSource = {
+        head: () => {
+          throw new Error("erased");
+        },
+        read: async () => null,
+      };
+      expect(await deletionImports(() => t.index, erased, [proposal("d", { "src/x.ts": null })], trunkOf(t))).toBeNull();
+      expect(warn.mock.calls.map((c) => (JSON.parse(String(c[0])) as { why: string }).why)).toEqual([
+        "import index not current (a budget ran out or a read failed)",
+        "import index not current (a budget ran out or a read failed)",
+        "import index failed: erased",
+      ]);
+    } finally {
+      warn.mockRestore();
+      log.mockRestore();
+    }
   });
 });

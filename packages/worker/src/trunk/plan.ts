@@ -10,9 +10,9 @@
  * trunk as it will be once every earlier accepted proposal of the cycle has landed. That is
  * what serving the batches one commit at a time would decide, without a push per batch.
  */
-import { revalidate, validateProposal } from "@fire_trident/core";
+import { revalidate, revalidationEnabled, validateProposal } from "@fire_trident/core";
 import type { ExportSurface, ExportedNames, FileVersion, Id, Landing, Path, Proposal, Revalidated, Sha } from "@fire_trident/core";
-import { exportedNames } from "../decide/mechanical.ts";
+import { exportedNames, resolveModule } from "../decide/mechanical.ts";
 
 /** A proposal sent back from `land`, with the exact reason. */
 export interface Returned {
@@ -57,6 +57,26 @@ export interface PlanResult {
   revalidated: Map<Id, Revalidated[]>;
 }
 
+/**
+ * The deletion guard's input (FT_DELETION_GUARD), read from trunk's import index (imports.ts deletionImports). For
+ * each path a proposal of the cycle deletes: the trunk script files with an import whose resolution it takes part in,
+ * each with the targets of those imports (the path a specifier names, before extensions and index files are tried).
+ * `targets`: the import targets of each new version (blob) the cycle writes at one of those files; a new version
+ * missing here was not read, and its file is not checked.
+ */
+export interface DeletionImports {
+  importers: ReadonlyMap<Path, ReadonlyMap<Path, readonly string[]>>;
+  targets: ReadonlyMap<Sha, readonly string[]>;
+}
+
+/**
+ * Is the deletion guard on for this colony? `setting` is FT_DELETION_GUARD, read like FT_REVALIDATE: "on" (every
+ * colony), a comma-separated list of colony ids, or absent / empty / "off" (no colony).
+ */
+export function deletionGuardEnabled(setting: string | undefined, colonyId: Id): boolean {
+  return revalidationEnabled(setting, colonyId);
+}
+
 /** Same path, or one is a directory prefix of the other. */
 export function overlaps(a: Path, b: Path): boolean {
   return a === b || a.startsWith(`${b}/`) || b.startsWith(`${a}/`);
@@ -87,10 +107,14 @@ function short(blob: Sha | null): string {
  *   imports from each is exported by the version on the virtual trunk (trunk, or the new blob of a
  *   proposal accepted earlier in the cycle). A name that is gone is named in the reason; anything
  *   else goes back as above. Without `exported`, stale means back.
+ * - Deletion guard (with `deletions`, see brokenImports): a proposal that deletes a file goes back
+ *   while a trunk file's import of it would resolve to nothing once the proposal lands, unless the
+ *   proposal itself or one accepted earlier in the cycle deletes that file or rewrites it. Checked
+ *   last, so a proposal that goes back for another reason gets that reason.
  *
  * Proposal ids must be unique across the cycle (the caller dedupes); a repeated id is skipped.
  */
-export function planCycle(batches: PlanProposal[][], trunk: (path: Path) => Sha | null, exported?: ExportedNames): PlanResult {
+export function planCycle(batches: PlanProposal[][], trunk: (path: Path) => Sha | null, exported?: ExportedNames, deletions?: DeletionImports | null): PlanResult {
   const ahead = new Map<Path, { blob: Sha | null; by: Id }>();
   const aheadPaths: Path[] = [];
   /** Assumptions of the proposals accepted in earlier batches, with the proposal relying on each. */
@@ -111,6 +135,12 @@ export function planCycle(batches: PlanProposal[][], trunk: (path: Path) => Sha 
     /** Paths this batch's accepted proposals delete, and the assumptions they rely on. */
     const deleted = new Map<Path, Id>();
     const relied = new Map<Path, Id>();
+    /** What this batch's accepted proposals write: the deletion guard reads trunk as it will be with them. */
+    const batchWrites = new Map<Path, Sha | null>();
+    const before = (path: Path): Sha | null => {
+      const w = batchWrites.get(path);
+      return w !== undefined ? w : virtual(path);
+    };
     for (const { p, base } of batch) {
       if (seen.has(p.id)) continue;
       seen.add(p.id);
@@ -165,10 +195,16 @@ export function planCycle(batches: PlanProposal[][], trunk: (path: Path) => Sha 
         back.push({ proposalId: p.id, reason: `conflicts with ${a.by} on ${shape}: ${a.by} ${a.blob === null ? "deletes" : `writes ${short(a.blob)} at`} ${x}, landing ahead in this cycle` });
         continue;
       }
+      const broken = deletions ? brokenImports(p, before, trunk, deletions) : null;
+      if (broken !== null) {
+        back.push({ proposalId: p.id, reason: broken });
+        continue;
+      }
       ok.push(p);
       if (kept) revalidated.set(p.id, kept);
       for (const path of w) writes.add(path);
       for (const path of r) reads.add(path);
+      for (const f of p.writeSet) batchWrites.set(f.path, f.blob ?? null);
       for (const f of p.writeSet) if ((f.blob ?? null) === null) deleted.set(f.path, p.id);
       for (const path of assumptions) if (!relied.has(path)) relied.set(path, p.id);
     }
@@ -184,6 +220,66 @@ export function planCycle(batches: PlanProposal[][], trunk: (path: Path) => Sha 
     returned.push(back);
   }
   return { accepted, returned, revalidated };
+}
+
+/** Importers a deletion guard reason names at most, and deleted files. */
+const GUARD_IMPORTERS_NAMED = 10;
+const GUARD_FILES_NAMED = 3;
+
+/**
+ * The deletion guard for one proposal: why it goes back, or null. `before` is trunk as it will be just before `p`
+ * lands (trunk, the proposals accepted earlier in the cycle, and the ones accepted earlier in its batch). For each
+ * file `p` deletes that is there, the importers `deletions` lists are checked: one that `p` or an earlier proposal
+ * deletes is fine; one rewritten in the cycle is checked in its new version; and an import breaks when it resolves
+ * on `before` but to nothing once `p` lands, resolved as the decide stage and `ft revert` resolve relative imports.
+ * An import that finds another file afterwards (the module moved into a directory, or a .js name now finds its
+ * TypeScript twin) does not break.
+ */
+function brokenImports(p: Proposal, before: (path: Path) => Sha | null, trunk: (path: Path) => Sha | null, deletions: DeletionImports): string | null {
+  const own = new Map<Path, Sha | null>();
+  for (const f of p.writeSet) own.set(f.path, f.blob ?? null);
+  const gone = new Set<Path>();
+  for (const [path, blob] of own) if (blob === null && before(path) !== null) gone.add(path);
+  if (gone.size === 0) return null;
+  const existed = (path: Path): boolean => before(path) !== null;
+  const exists = (path: Path): boolean => {
+    const w = own.get(path);
+    return w !== undefined ? w !== null : before(path) !== null;
+  };
+  // Each importer once, with the targets of its trunk imports that a deleted file takes part in resolving.
+  const candidates = new Map<Path, Set<string>>();
+  for (const path of gone) {
+    for (const [importer, targets] of deletions.importers.get(path) ?? []) {
+      const set = candidates.get(importer) ?? new Set<string>();
+      for (const t of targets) set.add(t);
+      candidates.set(importer, set);
+    }
+  }
+  const broken = new Map<Path, Set<Path>>();
+  for (const [importer, onTrunk] of candidates) {
+    const mine = own.get(importer);
+    const blob = mine !== undefined ? mine : before(importer);
+    if (blob === null) continue;
+    const targets = blob === trunk(importer) ? onTrunk : deletions.targets.get(blob);
+    if (!targets) continue;
+    for (const t of targets) {
+      const was = resolveModule(t, existed);
+      if (was === null || !gone.has(was) || resolveModule(t, exists) !== null) continue;
+      const by = broken.get(was) ?? new Set<Path>();
+      by.add(importer);
+      broken.set(was, by);
+    }
+  }
+  if (broken.size === 0) return null;
+  const files = [...broken.keys()].sort();
+  const importers = [...new Set([...broken.values()].flatMap((s) => [...s]))].sort();
+  return `deleting ${listText(files, GUARD_FILES_NAMED)} breaks the imports of ${listText(importers, GUARD_IMPORTERS_NAMED)}: change them in the same change, or first`;
+}
+
+/** "a", "a and b", "a, b and c"; past `max` items, the first `max` and "N more". */
+function listText(items: readonly string[], max: number): string {
+  const parts = items.length > max ? [...items.slice(0, max), `${items.length - max} more`] : [...items];
+  return parts.length <= 1 ? (parts[0] ?? "") : `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
 }
 
 /** Larger files are never read for their exports (their readers go back as stale). */

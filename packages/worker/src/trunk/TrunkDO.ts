@@ -45,8 +45,8 @@ import { BoundedMap, applyTreeChangesDeferred, writePending, type PendingObject 
 import { commitContent, objectId } from "./objects.ts";
 import { pushPack } from "./push.ts";
 import { CoChangeStore, mineHistory, type CoChangeStats, type Neighbor } from "./cochange.ts";
-import { IMPORT_LINKS_MAX, ImportIndex, markLanded, type ImportLinks } from "./imports.ts";
-import { exportSurface, planCycle, resultsFor, surfaceBlobs, uniqueProposals, type LandResult, type Outcome, type PlanProposal, type Returned } from "./plan.ts";
+import { IMPORT_LINKS_MAX, ImportIndex, deletionImports, markLanded, type ImportLinks } from "./imports.ts";
+import { deletionGuardEnabled, exportSurface, planCycle, resultsFor, surfaceBlobs, uniqueProposals, type DeletionImports, type LandResult, type Outcome, type PlanProposal, type Returned } from "./plan.ts";
 import { runRevert, sqlRevertTrunk, type RevertResult, type RevertTrunk } from "./revert.ts";
 import { durableFs } from "../artifacts/workspace.ts";
 import { TRUNK_NAMESPACE, bindingFor } from "../artifacts/shards.ts";
@@ -140,7 +140,7 @@ export interface CycleStat {
   revalidated?: number;
   /** Oldest request's time in the queue before the cycle started. */
   waitMs: number;
-  /** Time per phase: recover, screen, pull, assumptions (revalidation on), plan, build, push, finalize. */
+  /** Time per phase: recover, screen, pull, assumptions (revalidation on), deletions (deletion guard on, cycles that delete files), plan, build, push, finalize. */
   ms: Record<string, number>;
   totalMs: number;
   error?: string;
@@ -633,7 +633,8 @@ export class TrunkDO extends DurableObject<Env> {
    * For each path, its direct relative imports and the trunk script files that import it (each
    * sorted, at most `max`), from the import index: built from the trunk index on the first call and
    * brought up to date with the landings since before each answer. Paths with neither are left out.
-   * Import-aware take() reads it (ColonyDO, FT_IMPORT_WEIGHT); nothing else builds the index.
+   * Import-aware take() reads it (ColonyDO, FT_IMPORT_WEIGHT); the deletion guard (FT_DELETION_GUARD)
+   * also builds and reads the index, in cycles that delete files.
    */
   async importLinks(paths: Path[], max = IMPORT_LINKS_MAX): Promise<Record<Path, ImportLinks>> {
     const st = this.state();
@@ -893,6 +894,9 @@ export class TrunkDO extends DurableObject<Env> {
     // Assumption revalidation (FT_REVALIDATE): a proposal stale only through files it read can still land
     // when the names it imports from them hold on the trunk it lands on. Off: stale means back.
     const revalidating = revalidationEnabled((this.env as unknown as { FT_REVALIDATE?: string } | undefined)?.FT_REVALIDATE, st.colonyId);
+    // Deletion guard (FT_DELETION_GUARD): a change goes back while a trunk file's import of a file it deletes would
+    // resolve to nothing. Only cycles that delete a trunk file read the import index.
+    const guarding = deletionGuardEnabled((this.env as unknown as { FT_DELETION_GUARD?: string } | undefined)?.FT_DELETION_GUARD, st.colonyId);
     const batches = reqs.map((r) => r.batch);
     const outcome = new Map<Id, Outcome>();
     const own: Array<Landing | undefined> = reqs.map(() => undefined);
@@ -973,7 +977,9 @@ export class TrunkDO extends DurableObject<Env> {
       for (const e of live) input[e.request]!.push({ p: e.p, base: bases.get(e.p.id) ?? [] });
       const surfaces = revalidating ? await this.assumptionSurfaces(live.map((e) => e.p)) : null;
       if (surfaces) lap("assumptions");
-      const plan = planCycle(input, (path) => this.indexBlob(path), surfaces ? (_path, blob) => surfaces.get(blob) ?? null : undefined);
+      const deletions = guarding ? await this.deletionGuardInput(live.map((e) => e.p)) : undefined;
+      if (deletions !== undefined) lap("deletions");
+      const plan = planCycle(input, (path) => this.indexBlob(path), surfaces ? (_path, blob) => surfaces.get(blob) ?? null : undefined, deletions);
       const back = (): void => {
         for (const r of plan.returned.flat()) outcome.set(r.proposalId, { kind: "returned", reason: r.reason });
       };
@@ -1622,6 +1628,21 @@ export class TrunkDO extends DurableObject<Env> {
   private importIndex(): ImportIndex {
     if (!this.importStore) this.importStore = new ImportIndex(this.sql, (fn) => this.ctx.storage.transactionSync(fn));
     return this.importStore;
+  }
+
+  /**
+   * The deletion guard's input for one cycle's proposals (imports.ts deletionImports): undefined when none deletes a
+   * trunk file; null when the import index could not be brought up to date in time (the guard sits the cycle out).
+   */
+  private async deletionGuardInput(proposals: Proposal[]): Promise<DeletionImports | null | undefined> {
+    try {
+      const source = { head: () => this.meta("trunk_sha"), read: (blob: Sha) => this.blobBytes(blob), label: this.state().colonyId };
+      return await deletionImports(() => this.importIndex(), source, proposals, (path) => this.indexBlob(path));
+    } catch (e) {
+      // The guard never fails a cycle.
+      console.error(`deletion guard skipped: ${errorText(e)}`);
+      return null;
+    }
   }
 
   // -------------------------------------------------------------------------

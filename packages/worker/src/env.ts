@@ -44,6 +44,11 @@ export interface Env {
    * stale only on files it read lands when the names it imports from them are still exported.
    */
   FT_REVALIDATE?: string;
+  /**
+   * Optional: the deletion guard, "on", or a comma-separated list of colony ids; absent or "off" is off. In a trunk
+   * cycle that deletes files, a change goes back while a trunk file's import of a file it deletes would resolve to nothing.
+   */
+  FT_DELETION_GUARD?: string;
   /** Optional (load tests only): when set, ColonyDO logs event-loop lag and streams it as colony.lagMs. */
   FT_LAG_PROBE?: string;
   /**
