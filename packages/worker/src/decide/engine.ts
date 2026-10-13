@@ -234,8 +234,8 @@ export class DecideEngine {
 
     // Danger patterns: fixed receptors over added lines and paths. Auth, secrets and unrequested
     // capabilities reach a human unless the policy or a tolerating antibody explicitly allows them.
-    // Only an intent a person, a rule or certification wrote can ask for a capability: never an
-    // agent-declared intent, never the proposal's own summary.
+    // Only an intent a person or a rule wrote can ask for a capability: never an agent-declared
+    // intent, never a repair intent (it quotes test names agents wrote), never the proposal's summary.
     const allowances: DangerAllowance[] = [
       ...policy.dangerAllow.map((a) => ({ cls: a.cls, ...(a.paths ? { paths: a.paths } : {}), by: "policy" })),
       ...this.store.allowingAntibodies(paths, added).flatMap((a) => a.allows.map((cls) => ({ cls, paths: a.paths, by: `antibody ${a.id}` }))),
@@ -859,6 +859,24 @@ export class DecideEngine {
       outcomes: VACCINE_OUTCOMES,
       recent: rows.slice(0, 50).map((r) => ({ proposalId: r.proposalId, cls: r.cls, batch: r.batch, outcome: r.outcome, layer: r.layer, reason: r.reason, at: r.decidedAt ?? r.createdAt })),
     };
+  }
+
+  /**
+   * Keep the review view of an escalated proposal that has none (escalated before views were kept):
+   * the files, danger patterns and residual decide would have used, masked the same way. Returns
+   * whether a view was written; a proposal no longer escalated, or one that has a view, is left alone.
+   */
+  async backfillReview(proposalId: Id): Promise<boolean> {
+    const p = this.host.proposal(proposalId);
+    if (!p || p.status !== "escalated" || this.store.reviewView(p.id)) return false;
+    const intent = this.host.intent(p.intentId);
+    const innate = await runInnateChecks(p, { env: this.host.env, colony: this.host.colony(), intent, rules: this.host.rules(), baseBlobs: (sha, paths) => this.host.trunk().baseBlobs(sha, paths) });
+    const hits = scanDanger(
+      innate.files.map((f) => ({ path: f.path, before: f.before, after: f.afterBlob === null ? null : (f.after ?? ""), deleted: f.afterBlob === null })),
+      intent ? { title: intent.title, why: intent.why, acceptance: intent.acceptance, source: intent.source } : null,
+    );
+    this.store.putReview(p.id, buildReviewView({ files: innate.files, danger: hits, residual: innate.residual }), Date.now());
+    return true;
   }
 
   /** Publish recall per class (and overall) as metrics. */

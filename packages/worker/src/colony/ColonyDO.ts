@@ -120,6 +120,9 @@ import { reviewPreview, type ReviewPreview } from "../agents/preview.ts";
  */
 export type TakeResult = { intent: Intent; lease: WorkspaceLease; rule?: Rule; review?: ReviewPreview } | { wait: true; retryInMs: number; reason: string };
 
+/** Review views built per review-queue read for proposals escalated before views were kept. */
+const REVIEW_BACKFILLS = 3;
+
 /** Input of ColonyDO.addIntent. */
 export type IntentInput = Omit<Intent, "id" | "status" | "createdAt">;
 
@@ -1767,9 +1770,12 @@ export class ColonyDO extends DurableObject<Env> {
       .toArray()
       .map((r) => JSON.parse(r.data) as Proposal);
     const views = this.reviewViews(queue.map((p) => p.id));
+    let backfills = 0;
     for (const p of queue) {
       const review = views.get(p.id);
       if (review) Object.assign(p, { review });
+      // Escalated before views were kept: build one in the background, for the next read.
+      else if (backfills++ < REVIEW_BACKFILLS) this.ctx.waitUntil(engine.backfillReview(p.id).catch((err) => console.warn(`review view of ${p.id} not built: ${errorText(err)}`)));
     }
     return queue;
   }

@@ -50,11 +50,20 @@ describe("review queue: the change kept for the reviewer", () => {
     let q = await queue(colonyId);
     expect([...q.keys()].sort()).toEqual([a.id, b.id].sort());
     expect([...q.values()].some((p) => "review" in p)).toBe(false);
-    // The table exists but holds no row for these proposals (escalated before views were kept).
-    await keep(colonyId, []);
-    q = await queue(colonyId);
-    expect([...q.values()].some((p) => "review" in p)).toBe(false);
   });
+
+  it("builds the view of a proposal escalated before views were kept, for the next read", async () => {
+    const { colonyId, a } = await escalatedPair();
+    const built = await runInDurableObject(colony(colonyId), async (instance: unknown) => {
+      const engine = (instance as { decider(): { backfillReview(id: string): Promise<boolean> } }).decider();
+      return [await engine.backfillReview(a.id), await engine.backfillReview(a.id)];
+    });
+    expect(built).toEqual([true, false]); // built once, then left alone
+    const q = await queue(colonyId);
+    const view = q.get(a.id)?.review as { files: Array<{ path: string }> } | undefined;
+    expect(view?.files.map((f) => f.path)).toContain("src/app/main.ts");
+  });
+
 
   it("still sends the queue when the table has another shape", async () => {
     const { colonyId, a, b } = await escalatedPair();
