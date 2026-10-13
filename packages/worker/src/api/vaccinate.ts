@@ -8,8 +8,10 @@ import { VACCINE_CLASSES } from "../decide/vaccine.ts";
 /**
  * Decide-prong routes (mounted on the API root):
  *   POST /colonies/:id/vaccinate            { count?, classes? } start a vaccination batch (sealed bad proposals)
- *   GET  /colonies/:id/vaccinate            the vaccination meter: recall per class with Wilson 95% intervals
- *   GET  /colonies/:id/immune               antibodies, detector probation, earned autonomy, alert budget, policy
+ *   GET  /colonies/:id/vaccinate            the vaccination meter: recall per class with Wilson 95% intervals; returned
+ *                                           (a model or check stopped it) apart from escalated (sent to a person, not
+ *                                           measured), errors (a model layer unavailable) left out
+ *   GET  /colonies/:id/immune              antibodies, detector probation, earned autonomy, alert budget, policy
  *   POST /colonies/:id/decide/policy        change the decide policy (partial)
  *   POST /colonies/:id/detectors/:did       { useful } mark a detector (clef:<question> or antibody:<id>)
  * POST routes require the admin bearer token when FT_ADMIN_TOKEN is set.

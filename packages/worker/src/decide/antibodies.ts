@@ -54,6 +54,15 @@ export function deriveMatcher(paths: readonly Path[], addedLines: readonly strin
   return matcher;
 }
 
+/**
+ * An antibody learned from a change that carried capability tokens (secrets, logging, processes,
+ * network, eval, skipped tests): a change it returns goes back as a security return, so its agent
+ * is told the class, never the question that would show how to slip past it.
+ */
+export function securityAntibody(ab: Pick<Antibody, "matcher">): boolean {
+  return typeof ab.matcher?.pattern === "string" && ab.matcher.pattern !== "";
+}
+
 /** Does an antibody apply to a proposal writing `paths` with these added lines? */
 export function antibodyMatches(ab: Pick<Antibody, "matcher">, paths: readonly Path[], addedLines: readonly string[]): boolean {
   const globs = ab.matcher?.paths ?? [];

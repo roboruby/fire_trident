@@ -8,6 +8,7 @@ import type {
   FileVersion,
   Id,
   Intent,
+  IntentSource,
   Landing,
   LineageNote,
   Path,
@@ -19,10 +20,10 @@ import { newId } from "@fire_trident/core";
 import type { Env } from "../env.ts";
 import { runInnateChecks, type InnateResult } from "../colony/innate.ts";
 import { errorText, ftError } from "../colony/errors.ts";
-import { ANTIBODY_DIR, antibodyFile, antibodyPath, calibrateThreshold, cleanQuestion, deriveMatcher, fallbackQuestion, parseAntibodyFile } from "./antibodies.ts";
+import { ANTIBODY_DIR, antibodyFile, antibodyPath, calibrateThreshold, cleanQuestion, deriveMatcher, fallbackQuestion, parseAntibodyFile, securityAntibody } from "./antibodies.ts";
 import { addedFromHunks, fileDiff, type FileDiff } from "./diff.ts";
-import { gate, type GateVerdict, type ReflexSignals, type SecondOpinion } from "./gate.ts";
-import { applyAllowances, dangerLabels, scanDanger, triageDanger, type DangerAllowance } from "./danger.ts";
+import { agentReason, gate, type GateVerdict, type ReflexSignals, type SecondOpinion } from "./gate.ts";
+import { applyAllowances, dangerLabels, scanDanger, triageDanger, whyAuthor, type DangerAllowance } from "./danger.ts";
 import { CallLimiter } from "./limiter.ts";
 import { candidatePaths, mechanicalCheck, proofAssumptions, type MechanicalResult } from "./mechanical.ts";
 import { pickSecondOpinion, secondOpinionCandidates, type DecidePolicy } from "./policy.ts";
@@ -30,6 +31,7 @@ import { pushQuarantine } from "./quarantine.ts";
 import {
   askClef,
   askSecondOpinion,
+  coverageText,
   isThrottled,
   noul,
   readReflex,
@@ -37,13 +39,16 @@ import {
   reflexState,
   reflexSummary,
   rephraseAsQuestion,
+  secondOpinionDiff,
   secondOpinionMessages,
+  stateCoverage,
   type AiRunner,
   type ReflexInput,
 } from "./reflex.ts";
+import { buildReviewView } from "./review.ts";
 import { damageSignals, isTestPath } from "./signals.ts";
 import { DecideStore, type DetectorStats, type StoredAntibody } from "./store.ts";
-import { VACCINE_CLASSES, VACCINE_LABELS, makeVaccine, recallReport, type SourceFile, type VaccineChange, type VaccineClass } from "./vaccine.ts";
+import { VACCINE_CLASSES, VACCINE_LABELS, VACCINE_OUTCOMES, makeVaccine, recallReport, recallSummary, type SourceFile, type VaccineChange, type VaccineClass } from "./vaccine.ts";
 
 /**
  * The Decide prong's pipeline for one colony: innate checks, System 1 (Clef), the two-signal gate,
@@ -208,6 +213,12 @@ export class DecideEngine {
     const rule = intent?.ruleId ? (rules.find((r) => r.id === intent.ruleId) ?? null) : null;
     const region = this.host.proposalRegion(p.id);
     const vaccine = this.store.vaccineByIntent(p.intentId);
+    // Who wrote the why decides what it may ask for and whether earned autonomy covers it. A sealed
+    // vaccine copies a rule intent (or a platform-written cleanup), so it is judged as that intent would be.
+    const source: IntentSource | null = intent ? (vaccine ? (intent.ruleId ? "rule" : "human") : intent.source) : null;
+    const whyBy = whyAuthor(source);
+    // After a security return on this intent, its proposals go to a person instead of a model.
+    const probation = vaccine ? null : this.store.securityProbation(p.intentId);
     await this.syncAntibodies();
 
     // Innate checks, then what the change looks like and what it could damage.
@@ -223,7 +234,8 @@ export class DecideEngine {
 
     // Danger patterns: fixed receptors over added lines and paths. Auth, secrets and unrequested
     // capabilities reach a human unless the policy or a tolerating antibody explicitly allows them.
-    const intentText = intent ? [intent.title, intent.why, ...(intent.acceptance ?? [])].join("\n") : p.declared.summary;
+    // Only an intent a person, a rule or certification wrote can ask for a capability: never an
+    // agent-declared intent, never the proposal's own summary.
     const allowances: DangerAllowance[] = [
       ...policy.dangerAllow.map((a) => ({ cls: a.cls, ...(a.paths ? { paths: a.paths } : {}), by: "policy" })),
       ...this.store.allowingAntibodies(paths, added).flatMap((a) => a.allows.map((cls) => ({ cls, paths: a.paths, by: `antibody ${a.id}` }))),
@@ -231,7 +243,7 @@ export class DecideEngine {
     const dangerHits = applyAllowances(
       scanDanger(
         innate.files.map((f) => ({ path: f.path, before: f.before, after: f.afterBlob === null ? null : (f.after ?? ""), deleted: f.afterBlob === null })),
-        intentText,
+        intent && source ? { title: intent.title, why: intent.why, acceptance: intent.acceptance, source } : null,
       ),
       allowances,
     );
@@ -265,6 +277,8 @@ export class DecideEngine {
     const assumptions = proofAssumptions(observed.result.changes, new Set(p.writeSet.map((w) => w.path)));
     const relied = assumptions.length > 0 ? { assumptions } : {};
     const clefStates = this.store.clefStates();
+    // What each model layer is shown: its approval counts only when it saw every changed line.
+    const seen = { reflex: stateCoverage(diffs), llm: secondOpinionDiff(diffs).coverage };
     const base = {
       innate: { ok: innate.ok, failures: innate.failures },
       damage,
@@ -272,6 +286,12 @@ export class DecideEngine {
       danger: { mustHuman: dangerLabels(danger.mustHuman), signals: dangerSignals },
       antibodies: matching.length,
       autonomy: !vaccine && this.store.approvedLandings(region) >= policy.autonomyAfter,
+      whyBy,
+      coverage: {
+        reflex: { complete: seen.reflex.complete, seen: `the reflex ${coverageText(seen.reflex)}` },
+        llm: { complete: seen.llm.complete, seen: `the second opinion ${coverageText(seen.llm)}` },
+      },
+      probation: probation ? { classes: probation.classes } : null,
       alerts: { used: this.store.escalationsSince(Date.now() - HOUR_MS), max: policy.alertsPerHour },
       detectors: clefStates,
       policy,
@@ -290,7 +310,7 @@ export class DecideEngine {
     if (final.action === "screen") {
       // System 1, given the deterministic facts.
       const input: ReflexInput = {
-        intent: intent ?? { title: p.declared.summary || p.intentId, why: "" },
+        intent: { title: intent?.title ?? (p.declared.summary || p.intentId), why: intent?.why ?? "", whyBy },
         rule,
         footprint: intent?.footprint ?? p.declared.footprint,
         residual: innate.residual,
@@ -306,7 +326,7 @@ export class DecideEngine {
         const r = await askClef(this.ai(), policy.reflexModel, state, reflexQuestions(input.antibodies, skip));
         reflex = readReflex(
           r.answers,
-          matching.map((s) => ({ id: s.antibody.id, threshold: s.antibody.threshold, state: s.state })),
+          matching.map((s) => ({ id: s.antibody.id, threshold: s.antibody.threshold, state: s.state, question: s.antibody.question, security: securityAntibody(s.antibody) })),
         );
         clefMs = r.ms;
         this.host.bump("decide.clef.tokens", r.tokens);
@@ -316,7 +336,12 @@ export class DecideEngine {
       }
       v1 = gate({ ...base, reflex });
       final = v1;
-      checks.push({ name: `reflex: ${policy.reflexModel}`, ok: v1.action !== "escalate" && v1.detectors.length === 0, ms: clefMs, detail: reflex ? `${reflexSummary(reflex)}; confidence ${v1.confidence}` : `unavailable: ${clefError}` });
+      checks.push({
+        name: `reflex: ${policy.reflexModel}`,
+        ok: v1.action !== "escalate" && v1.detectors.length === 0,
+        ms: clefMs,
+        detail: reflex ? `${reflexSummary(reflex)}; confidence ${v1.confidence}; ${coverageText(seen.reflex)}` : `unavailable: ${clefError}`,
+      });
       // Only decisions a model made go into the funnel; a proof that only needed antibody screening is not one.
       const d1 =
         v1.layer === "reflex"
@@ -324,7 +349,17 @@ export class DecideEngine {
               kind: "triage",
               subject: p.id,
               layer: "reflex",
-              answers: { head: p.headSha, model: policy.reflexModel, ...(reflex ? { reflex } : { error: clefError }), rule: v1.rule, reasons: v1.reasons, damage: v1.damage, confidence: v1.confidence, ...(vaccine ? { vaccine: true } : {}) },
+              answers: {
+                head: p.headSha,
+                model: policy.reflexModel,
+                ...(reflex ? { reflex } : { error: clefError }),
+                rule: v1.rule,
+                reasons: v1.reasons,
+                damage: v1.damage,
+                confidence: v1.confidence,
+                coverage: seen.reflex,
+                ...(vaccine ? { vaccine: true } : {}),
+              },
               p: v1.p,
               action: v1.action,
             })
@@ -335,12 +370,26 @@ export class DecideEngine {
         const so = await this.secondOpinion(p, input, policy);
         llm = so.opinion;
         final = gate({ ...base, reflex, llm });
-        checks.push({ name: `llm: ${so.model}`, ok: llm?.verdict === "approve", ms: so.ms, detail: llm ? `${llm.verdict}, needs_human ${llm.needsHuman}: ${llm.reason}` : `unavailable: ${so.error}` });
+        checks.push({
+          name: `llm: ${so.model}`,
+          ok: llm?.verdict === "approve",
+          ms: so.ms,
+          detail: llm ? `${llm.verdict}, needs_human ${llm.needsHuman}: ${llm.reason}; ${coverageText(seen.llm)}` : `unavailable: ${so.error}`,
+        });
         await this.host.recordDecision({
           kind: "triage",
           subject: p.id,
           layer: "llm",
-          answers: { head: p.headSha, model: so.model, ...(llm ? { verdict: llm } : { error: so.error }), rule: final.rule, reasons: final.reasons, damage: final.damage, ...(vaccine ? { vaccine: true } : {}) },
+          answers: {
+            head: p.headSha,
+            model: so.model,
+            ...(llm ? { verdict: llm } : { error: so.error }),
+            rule: final.rule,
+            reasons: final.reasons,
+            damage: final.damage,
+            coverage: seen.llm,
+            ...(vaccine ? { vaccine: true } : {}),
+          },
           p: final.p,
           action: final.action,
           ...(d1 ? { escalatedFrom: d1.id } : {}),
@@ -382,24 +431,46 @@ export class DecideEngine {
     }
     const reason = final.reasons.join("; ").slice(0, 1_500);
     if (vaccine) {
-      // A vaccine stopped only because every model layer was down is not a catch: it is an error.
-      const blind = reflex === null && !llm && innate.ok && final.layer !== "deterministic";
+      // A vaccine stopped only because a model layer was down is not a catch: it is an error, left
+      // out of recall. That is System 2 consulted and unavailable (outage, throttling, timeout), or
+      // every model layer down.
+      const blind = llm === null || (reflex === null && !llm && innate.ok && final.layer !== "deterministic");
       const outcome = blind ? "error" : final.action === "land" ? "missed" : final.action === "escalate" ? "escalated" : "returned";
       this.store.settleVaccine(vaccine.intentId, outcome, final.layer, reason, now);
       const verdict =
-        outcome === "missed" ? "missed by every layer, discarded (it can never land)" : outcome === "error" ? "not judged (model layers unavailable), discarded" : `caught: ${final.action} by ${final.layer}`;
+        outcome === "missed"
+          ? "missed by every layer, discarded (it can never land)"
+          : outcome === "error"
+            ? "not judged (a model layer was unavailable), discarded"
+            : outcome === "escalated"
+              ? `sent to a person by ${final.layer} (a person's catch is not measured)`
+              : `caught: returned by ${final.layer}`;
       this.host.seal(p.id, `vaccine ${vaccine.cls} (sealed): ${verdict}: ${reason}`, evidence);
       this.publishVaccineMetrics();
       return;
+    }
+    // A security finding (a return or an escalation) puts the intent on probation: its next
+    // proposals go to a person instead of a model, so its agent cannot probe the reviewers.
+    if (final.security && final.action !== "land") {
+      this.store.markSecurityFinding(p.intentId, final.security, now);
+      this.host.bump("decide.security.findings", 1);
     }
     if (final.action === "land") {
       await this.host.updateProposals([{ id: p.id, patch: { status: "ready", evidence, ...relied } }]);
     } else if (final.action === "escalate") {
       this.store.revokeAutonomy(region, `escalated ${p.id}`, now);
+      // What the person sees: the change itself, its danger patterns and residual, secrets masked.
+      try {
+        this.store.putReview(p.id, buildReviewView({ files: innate.files, danger: dangerHits, residual: innate.residual }), now);
+      } catch (err) {
+        console.error(`review view of ${p.id} not stored: ${errorText(err)}`);
+      }
       // A person's approval later lands the same proposal, so it keeps the assumptions too.
       await this.host.updateProposals([{ id: p.id, patch: { status: "escalated", reason: `escalated by ${final.layer}: ${reason}`, evidence, ...relied } }]);
     } else {
-      await this.host.updateProposals([{ id: p.id, patch: { status: "returned", reason: `${final.layer}: ${reason}`, evidence } }]);
+      // A security return tells its agent only the class; people read the full reasons in the
+      // evidence and the decisions.
+      await this.host.updateProposals([{ id: p.id, patch: { status: "returned", reason: agentReason(final, base.danger), evidence } }]);
     }
     this.publishMetrics(policy);
   }
@@ -497,7 +568,8 @@ export class DecideEngine {
 
   /**
    * A human decided an escalated (or queued) proposal. Approvals mark the detectors that fired as
-   * not useful; rejections mark them useful, revoke the region's autonomy, and mint an antibody.
+   * not useful; rejections mark them useful and revoke the region's autonomy. A rejection an
+   * antibody had already caught counts as a recurrence on that antibody; only a miss mints one.
    */
   onHumanDecision(p: Proposal, d: "approve" | "reject" | "return", reason: string, by: string): void {
     const policy = this.store.policy();
@@ -512,8 +584,15 @@ export class DecideEngine {
     this.store.recordHuman(p.id, region, p.headSha, d, now);
     if (d === "reject") {
       this.store.revokeAutonomy(region, `rejected ${p.id} by ${by}`, now);
-      // Minting calibrates on Clef and commits to trunk, so it needs the reflex arc.
-      if (reason.trim() && this.enabled()) this.host.waitUntil(this.mintAntibody(p, reason.trim(), by).catch((err) => console.error(`antibody from ${p.id} failed: ${errorText(err)}`)));
+      // The immune memory already knew this problem: count it again instead of minting a near-copy.
+      const caught = (out?.detectors ?? []).filter((x) => x.startsWith("antibody:")).map((x) => x.slice("antibody:".length)).filter((id) => this.store.antibody(id) !== null);
+      if (caught.length > 0) {
+        for (const id of caught) this.store.recordRecurrence(id, p.id);
+        console.log(`rejection of ${p.id} recurs on ${caught.join(", ")}: no new antibody`);
+      } else if (reason.trim() && this.enabled()) {
+        // Minting calibrates on Clef and commits to trunk, so it needs the reflex arc.
+        this.host.waitUntil(this.mintAntibody(p, reason.trim(), by).catch((err) => console.error(`antibody from ${p.id} failed: ${errorText(err)}`)));
+      }
     }
     this.publishMetrics(policy);
   }
@@ -538,7 +617,13 @@ export class DecideEngine {
       const innate = await runInnateChecks(p, { env: this.host.env, colony, intent, rules: this.host.rules(), baseBlobs: (sha, paths) => this.host.trunk().baseBlobs(sha, paths) });
       const diffs: FileDiff[] = innate.files.map((f) => fileDiff(f.path, f.before, f.after, { binary: f.binary, unreadable: f.unreadable, maxChars: REVIEW_FILE_CHARS }));
       added = diffs.flatMap((d) => d.addedLines);
-      state = reflexState({ intent: intent ?? { title: p.declared.summary, why: "" }, footprint: intent?.footprint ?? p.declared.footprint, residual: innate.residual, diffs, antibodies: [] });
+      state = reflexState({
+        intent: { title: intent?.title ?? p.declared.summary, why: intent?.why ?? "", whyBy: whyAuthor(intent?.source) },
+        footprint: intent?.footprint ?? p.declared.footprint,
+        residual: innate.residual,
+        diffs,
+        antibodies: [],
+      });
     }
     const model = pickSecondOpinion(this.host.agent(p.agentId)?.model, policy.secondOpinionModels);
     const rephrased = this.host.env.AI ? await rephraseAsQuestion(ai, model, reason, intent?.title ?? p.declared.summary).catch(() => null) : null;
@@ -644,7 +729,7 @@ export class DecideEngine {
     return {
       enabled: this.enabled(),
       policy,
-      antibodies: this.store.antibodies().map((s) => ({ ...s.antibody, state: s.state, path: s.path, landingId: s.landingId })),
+      antibodies: this.store.antibodies().map((s) => ({ ...s.antibody, state: s.state, path: s.path, landingId: s.landingId, recurrences: s.recurrences, lastRecurrence: s.lastRecurrence })),
       detectors: this.store.detectors(),
       autonomy: this.store.autonomyTable(policy.autonomyAfter),
       alerts: { lastHour: this.store.escalationsSince(Date.now() - HOUR_MS), budget: policy.alertsPerHour },
@@ -759,13 +844,19 @@ export class DecideEngine {
     return { batch, requested: count, started: out.length, vaccines: out, skipped };
   }
 
-  /** Recall per class with Wilson 95% intervals, plus the most recent vaccines. */
+  /**
+   * Recall per class with Wilson 95% intervals, plus the most recent vaccines. Returned (a model or
+   * a check stopped it) is reported apart from escalated (sent to a person, whose catch is not
+   * measured); errors (a model layer unavailable) are left out of recall.
+   */
   vaccineReport(): Record<string, unknown> {
     const rows = this.store.vaccines();
     const report = recallReport(rows.map((r) => ({ cls: r.cls, outcome: r.outcome, layer: r.layer })));
     return {
-      classes: Object.fromEntries(Object.entries(report.classes).map(([cls, row]) => [cls, { label: VACCINE_LABELS[cls as VaccineClass] ?? cls, ...row }])),
+      classes: Object.fromEntries(Object.entries(report.classes).map(([cls, row]) => [cls, { label: VACCINE_LABELS[cls as VaccineClass] ?? cls, ...row, summary: recallSummary(row) }])),
       overall: report.overall,
+      summary: recallSummary(report.overall),
+      outcomes: VACCINE_OUTCOMES,
       recent: rows.slice(0, 50).map((r) => ({ proposalId: r.proposalId, cls: r.cls, batch: r.batch, outcome: r.outcome, layer: r.layer, reason: r.reason, at: r.decidedAt ?? r.createdAt })),
     };
   }
@@ -786,6 +877,10 @@ export class DecideEngine {
       put(`vaccine.${cls}.recall`, row.recall);
       put(`vaccine.${cls}.lo`, row.lo);
       put(`vaccine.${cls}.hi`, row.hi);
+      // Stopped by a model or a check, apart from sent to a person (not measured), and the vaccines not judged.
+      put(`vaccine.${cls}.returned`, row.returned);
+      put(`vaccine.${cls}.escalated`, row.escalated);
+      put(`vaccine.${cls}.errors`, row.errors);
     }
     this.host.emit(events);
   }

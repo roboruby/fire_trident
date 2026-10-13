@@ -199,14 +199,29 @@ export function wilson(k: number, n: number, z = 1.959964): { p: number; lo: num
   return { p: round(p), lo: round(Math.max(0, center - half)), hi: round(Math.min(1, center + half)) };
 }
 
-/** Outcome of one vaccine: caught by an escalation or a return, missed (would have landed), or still pending. */
+/**
+ * Outcome of one vaccine: returned (a model or a deterministic check stopped it), escalated (sent
+ * to a person), missed (would have landed), error (not judged: a model layer was unavailable or
+ * the pipeline failed), or still pending.
+ */
 export type VaccineOutcome = "pending" | "escalated" | "returned" | "missed" | "error";
+
+/** What each settled outcome means, for reports: only a return is a catch the meter measures. */
+export const VACCINE_OUTCOMES: Record<Exclude<VaccineOutcome, "pending">, string> = {
+  returned: "a model or a deterministic check stopped it and sent it back to its agent: a measured catch",
+  escalated: "sent to a person; a sealed vaccine is never put to one, so whether a person would catch it is not measured",
+  missed: "every layer would have let it land",
+  error: "not judged (a model layer was unavailable: outage, throttling or timeout; or the pipeline failed): left out of recall",
+};
 
 /** Recall of one class (or all classes). */
 export interface RecallRow {
   n: number;
+  /** Returned plus escalated. */
   caught: number;
+  /** Sent to a person, whose catch is not measured. */
   escalated: number;
+  /** Stopped by a model or a deterministic check: the measured catch. */
   returned: number;
   missed: number;
   pending: number;
@@ -214,13 +229,30 @@ export interface RecallRow {
   recall: number;
   lo: number;
   hi: number;
+  /** Returned over judged (n), with its Wilson 95% interval: recall without counting a person's unmeasured catch. */
+  returnedRecall: number;
+  returnedLo: number;
+  returnedHi: number;
   /** Catches by the layer that made them (deterministic, reflex, llm, human). */
   byLayer: Record<string, number>;
 }
 
+/** One line for a recall row: what a model or a check stopped, apart from what went to a person. */
+export function recallSummary(r: RecallRow): string {
+  const errors = r.errors > 0 ? `${r.errors} not judged (a model layer was unavailable), left out` : "";
+  if (r.n === 0) return ["no vaccine judged yet", errors].filter(Boolean).join("; ");
+  return [
+    `caught ${r.caught} of ${r.n}`,
+    `${r.returned} returned by a model or check`,
+    `${r.escalated} sent to a person (their catch is not measured)`,
+    ...(r.missed > 0 ? [`${r.missed} missed`] : []),
+    ...(errors ? [errors] : []),
+  ].join("; ");
+}
+
 /** Recall per class and overall, with Wilson 95% intervals; pending and errored vaccines are left out of n. */
 export function recallReport(rows: ReadonlyArray<{ cls: string; outcome: VaccineOutcome; layer?: string | null }>): { classes: Record<string, RecallRow>; overall: RecallRow } {
-  const empty = (): RecallRow => ({ n: 0, caught: 0, escalated: 0, returned: 0, missed: 0, pending: 0, errors: 0, recall: 0, lo: 0, hi: 1, byLayer: {} });
+  const empty = (): RecallRow => ({ n: 0, caught: 0, escalated: 0, returned: 0, missed: 0, pending: 0, errors: 0, recall: 0, lo: 0, hi: 1, returnedRecall: 0, returnedLo: 0, returnedHi: 1, byLayer: {} });
   const classes: Record<string, RecallRow> = {};
   for (const c of VACCINE_CLASSES) classes[c] = empty();
   const overall = empty();
@@ -246,6 +278,10 @@ export function recallReport(rows: ReadonlyArray<{ cls: string; outcome: Vaccine
     x.recall = w.p;
     x.lo = w.lo;
     x.hi = w.hi;
+    const b = wilson(x.returned, x.n);
+    x.returnedRecall = b.p;
+    x.returnedLo = b.lo;
+    x.returnedHi = b.hi;
   }
   return { classes, overall };
 }
