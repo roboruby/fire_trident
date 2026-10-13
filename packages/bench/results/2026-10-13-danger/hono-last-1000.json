@@ -1,0 +1,457 @@
+{
+  "schema": "firetrident.danger-history/v1",
+  "name": "hono-last-1000",
+  "rev": "588ec13fa68ea44fed1b5e1b503341db2bf09d70",
+  "maxCount": 1000,
+  "exclude": null,
+  "command": "node --experimental-transform-types packages/bench/src/danger/history.ts --repo <scratch>/hono-history --name hono-last-1000 --rev 588ec13fa68ea44fed1b5e1b503341db2bf09d70 --max-count 1000 --link https://github.com/honojs/hono --out packages/bench/results/2026-10-13-danger",
+  "generatedAt": "2026-10-13T18:56:36.121Z",
+  "selection": "non-merge commits from git log --no-merges (rename detection off), each against its parent; modified (M) regular files with new content, scripts (.js .jsx .mjs .cjs .ts .tsx .mts .cts), not tests (decide/signals.ts isTestPath), not matched by --exclude",
+  "checks": "decide/danger.ts scanDanger on each file with no intent (danger patterns, loosened guards, governance paths), the default policy's allowances (none), then triageDanger; texts read under the decide stage's limits (512 KiB, a NUL in the first 8 KiB, invalid UTF-8); flagged = a must-human hit or a danger signal",
+  "commits": {
+    "walked": 1000,
+    "withScannedFiles": 690,
+    "flagged": 11,
+    "flaggedRate": {
+      "k": 11,
+      "n": 690,
+      "p": 0.016,
+      "lo": 0.009,
+      "hi": 0.028
+    },
+    "newest": {
+      "sha": "588ec13fa68ea44fed1b5e1b503341db2bf09d70",
+      "date": "2026-10-13T17:18:10+09:00"
+    },
+    "oldest": {
+      "sha": "8c5463f62b283a59e674e16de1c6a88445c0a2ba",
+      "date": "2024-06-06T22:55:37+09:00"
+    }
+  },
+  "entries": {
+    "total": 2895,
+    "modified": 2447,
+    "modifiedScripts": 1906,
+    "skipped": {
+      "not-modified": 448,
+      "not-script": 541,
+      "test": 769,
+      "excluded": 0,
+      "not-regular-file": 0,
+      "mode-only": 0
+    }
+  },
+  "files": {
+    "scanned": 1137,
+    "distinctPaths": 217,
+    "unreadable": 0,
+    "missingBlobs": 0,
+    "flagged": 12,
+    "flaggedRate": {
+      "k": 12,
+      "n": 1137,
+      "p": 0.011,
+      "lo": 0.006,
+      "hi": 0.018
+    },
+    "toPerson": 6,
+    "toPersonRate": {
+      "k": 6,
+      "n": 1137,
+      "p": 0.005,
+      "lo": 0.002,
+      "hi": 0.011
+    },
+    "secondOpinionOnly": 6
+  },
+  "byClass": {
+    "auth": {
+      "files": 5,
+      "hits": 6,
+      "rate": {
+        "k": 5,
+        "n": 1137,
+        "p": 0.004,
+        "lo": 0.002,
+        "hi": 0.01
+      }
+    },
+    "loosened-guard": {
+      "files": 5,
+      "hits": 7,
+      "rate": {
+        "k": 5,
+        "n": 1137,
+        "p": 0.004,
+        "lo": 0.002,
+        "hi": 0.01
+      }
+    },
+    "crypto": {
+      "files": 2,
+      "hits": 3,
+      "rate": {
+        "k": 2,
+        "n": 1137,
+        "p": 0.002,
+        "lo": 0,
+        "hi": 0.006
+      }
+    },
+    "capability": {
+      "files": 1,
+      "hits": 1,
+      "rate": {
+        "k": 1,
+        "n": 1137,
+        "p": 0.001,
+        "lo": 0,
+        "hi": 0.005
+      }
+    }
+  },
+  "byPattern": {
+    "loosened-guard:weakened-condition": {
+      "files": 3,
+      "hits": 4
+    },
+    "auth:bearer-scheme": {
+      "files": 2,
+      "hits": 2
+    },
+    "auth:credential-compare": {
+      "files": 2,
+      "hits": 3
+    },
+    "crypto:primitive": {
+      "files": 2,
+      "hits": 3
+    },
+    "auth:authorization-header": {
+      "files": 1,
+      "hits": 1
+    },
+    "loosened-guard:deleted-401-return": {
+      "files": 1,
+      "hits": 2
+    },
+    "loosened-guard:deleted-throw": {
+      "files": 1,
+      "hits": 1
+    },
+    "capability:network": {
+      "files": 1,
+      "hits": 1
+    }
+  },
+  "topPaths": [
+    {
+      "path": "src/utils/jwt/jwt.ts",
+      "flagged": 3
+    },
+    {
+      "path": "src/middleware/etag/index.ts",
+      "flagged": 2
+    },
+    {
+      "path": "src/middleware/bearer-auth/index.ts",
+      "flagged": 1
+    },
+    {
+      "path": "src/middleware/cache/index.ts",
+      "flagged": 1
+    },
+    {
+      "path": "src/middleware/cors/index.ts",
+      "flagged": 1
+    },
+    {
+      "path": "src/middleware/csrf/index.ts",
+      "flagged": 1
+    },
+    {
+      "path": "src/middleware/jwk/jwk.ts",
+      "flagged": 1
+    },
+    {
+      "path": "src/middleware/jwt/jwt.ts",
+      "flagged": 1
+    },
+    {
+      "path": "src/utils/jwt/jws.ts",
+      "flagged": 1
+    }
+  ],
+  "flagged": [
+    {
+      "commit": "5463db2735476959b8af67756f4e513f4fe19115",
+      "date": "2026-05-19T20:29:23+09:00",
+      "path": "src/middleware/jwk/jwk.ts",
+      "tier": "person",
+      "classes": [
+        "auth"
+      ],
+      "hits": [
+        {
+          "cls": "auth",
+          "pattern": "auth:bearer-scheme",
+          "path": "src/middleware/jwk/jwk.ts",
+          "line": 82,
+          "excerpt": "if (parts.length !== 2 || parts[0].toLowerCase() !== 'bearer') {",
+          "link": "https://github.com/honojs/hono/blob/5463db2735476959b8af67756f4e513f4fe19115/src/middleware/jwk/jwk.ts#L82"
+        }
+      ]
+    },
+    {
+      "commit": "5463db2735476959b8af67756f4e513f4fe19115",
+      "date": "2026-05-19T20:29:23+09:00",
+      "path": "src/middleware/jwt/jwt.ts",
+      "tier": "person",
+      "classes": [
+        "auth"
+      ],
+      "hits": [
+        {
+          "cls": "auth",
+          "pattern": "auth:bearer-scheme",
+          "path": "src/middleware/jwt/jwt.ts",
+          "line": 83,
+          "excerpt": "if (parts.length !== 2 || parts[0].toLowerCase() !== 'bearer') {",
+          "link": "https://github.com/honojs/hono/blob/5463db2735476959b8af67756f4e513f4fe19115/src/middleware/jwt/jwt.ts#L83"
+        }
+      ]
+    },
+    {
+      "commit": "568c2ecc1dd556894fad4dfa4a7ba499db6dba9c",
+      "date": "2026-05-06T20:24:27+09:00",
+      "path": "src/middleware/cache/index.ts",
+      "tier": "person",
+      "classes": [
+        "auth"
+      ],
+      "hits": [
+        {
+          "cls": "auth",
+          "pattern": "auth:authorization-header",
+          "path": "src/middleware/cache/index.ts",
+          "line": 142,
+          "excerpt": "if (c.req.method !== 'GET' || c.req.raw.headers.has('Authorization')) {",
+          "link": "https://github.com/honojs/hono/blob/568c2ecc1dd556894fad4dfa4a7ba499db6dba9c/src/middleware/cache/index.ts#L142"
+        }
+      ]
+    },
+    {
+      "commit": "66fe9feec2bf0dc7bb2b8bcdcb5a380d527e8ae2",
+      "date": "2026-03-23T19:35:34+09:00",
+      "path": "src/middleware/cors/index.ts",
+      "tier": "person",
+      "classes": [
+        "auth"
+      ],
+      "hits": [
+        {
+          "cls": "auth",
+          "pattern": "auth:credential-compare",
+          "path": "src/middleware/cors/index.ts",
+          "line": 123,
+          "excerpt": "if (opts.origin !== '*' || opts.credentials) {",
+          "link": "https://github.com/honojs/hono/blob/66fe9feec2bf0dc7bb2b8bcdcb5a380d527e8ae2/src/middleware/cors/index.ts#L123"
+        },
+        {
+          "cls": "auth",
+          "pattern": "auth:credential-compare",
+          "path": "src/middleware/cors/index.ts",
+          "line": 161,
+          "excerpt": "if (opts.origin !== '*' || opts.credentials) {",
+          "link": "https://github.com/honojs/hono/blob/66fe9feec2bf0dc7bb2b8bcdcb5a380d527e8ae2/src/middleware/cors/index.ts#L161"
+        }
+      ]
+    },
+    {
+      "commit": "96d2a89c57a20b4c3ef5acbe16c880c71c0df60a",
+      "date": "2025-11-14T23:30:28+09:00",
+      "path": "src/middleware/bearer-auth/index.ts",
+      "tier": "second-opinion",
+      "classes": [
+        "loosened-guard"
+      ],
+      "hits": [
+        {
+          "cls": "loosened-guard",
+          "pattern": "loosened-guard:deleted-401-return",
+          "path": "src/middleware/bearer-auth/index.ts",
+          "line": 162,
+          "excerpt": "removed: if (!headerToken) { await throwHTTPException(c, 401, `${wwwAuthenticatePrefix}realm=\"${realm}\"`, options.noAuthenticationHeaderMes…",
+          "link": "https://github.com/honojs/hono/blob/96d2a89c57a20b4c3ef5acbe16c880c71c0df60a/src/middleware/bearer-auth/index.ts#L162"
+        },
+        {
+          "cls": "loosened-guard",
+          "pattern": "loosened-guard:deleted-401-return",
+          "path": "src/middleware/bearer-auth/index.ts",
+          "line": 200,
+          "excerpt": "removed: if (!equal) { await throwHTTPException(c, 401, `${wwwAuthenticatePrefix}error=\"invalid_token\"`, options.invalidTokenMessage || 'Un…",
+          "link": "https://github.com/honojs/hono/blob/96d2a89c57a20b4c3ef5acbe16c880c71c0df60a/src/middleware/bearer-auth/index.ts#L200"
+        }
+      ]
+    },
+    {
+      "commit": "95ae4d372119cddba32e4935d2bbc6f4e2768dab",
+      "date": "2025-10-25T01:59:18+09:00",
+      "path": "src/utils/jwt/jwt.ts",
+      "tier": "second-opinion",
+      "classes": [
+        "loosened-guard"
+      ],
+      "hits": [
+        {
+          "cls": "loosened-guard",
+          "pattern": "loosened-guard:deleted-throw",
+          "path": "src/utils/jwt/jwt.ts",
+          "line": 161,
+          "excerpt": "removed: if (opts.aud && !matched) { throw new JwtTokenAudience(opts.aud, payload.aud)",
+          "link": "https://github.com/honojs/hono/blob/95ae4d372119cddba32e4935d2bbc6f4e2768dab/src/utils/jwt/jwt.ts#L161"
+        }
+      ]
+    },
+    {
+      "commit": "117d0a413fb021804e4996c3c79cdbac56e17b43",
+      "date": "2025-08-19T17:07:33+09:00",
+      "path": "src/middleware/csrf/index.ts",
+      "tier": "second-opinion",
+      "classes": [
+        "loosened-guard"
+      ],
+      "hits": [
+        {
+          "cls": "loosened-guard",
+          "pattern": "loosened-guard:weakened-condition",
+          "path": "src/middleware/csrf/index.ts",
+          "line": 136,
+          "excerpt": "if (!isSafeMethodRe.test(c.req.method) && isRequestedByFormElem…) gained !isAllowedSecFetchSite(c.req.header('sec-fetch-site'), c)",
+          "link": "https://github.com/honojs/hono/blob/117d0a413fb021804e4996c3c79cdbac56e17b43/src/middleware/csrf/index.ts#L136"
+        }
+      ]
+    },
+    {
+      "commit": "cf0e01ee9ecdfcaea6828dc060426d10d64a54f7",
+      "date": "2025-08-07T09:39:24+09:00",
+      "path": "src/utils/jwt/jwt.ts",
+      "tier": "second-opinion",
+      "classes": [
+        "loosened-guard"
+      ],
+      "hits": [
+        {
+          "cls": "loosened-guard",
+          "pattern": "loosened-guard:weakened-condition",
+          "path": "src/utils/jwt/jwt.ts",
+          "line": 123,
+          "excerpt": "if (payload.nbf && payload.nbf > now) -> if (opts.nbf && payload.nbf && payload.nbf > now)",
+          "link": "https://github.com/honojs/hono/blob/cf0e01ee9ecdfcaea6828dc060426d10d64a54f7/src/utils/jwt/jwt.ts#L123"
+        },
+        {
+          "cls": "loosened-guard",
+          "pattern": "loosened-guard:weakened-condition",
+          "path": "src/utils/jwt/jwt.ts",
+          "line": 126,
+          "excerpt": "if (payload.exp && payload.exp <= now) -> if (opts.exp && payload.exp && payload.exp <= now)",
+          "link": "https://github.com/honojs/hono/blob/cf0e01ee9ecdfcaea6828dc060426d10d64a54f7/src/utils/jwt/jwt.ts#L126"
+        }
+      ]
+    },
+    {
+      "commit": "d6757c7241ae9776bf0677e62216b33eaf67307d",
+      "date": "2025-02-13T17:40:57+09:00",
+      "path": "src/middleware/etag/index.ts",
+      "tier": "second-opinion",
+      "classes": [
+        "crypto"
+      ],
+      "hits": [
+        {
+          "cls": "crypto",
+          "pattern": "crypto:primitive",
+          "path": "src/middleware/etag/index.ts",
+          "line": 38,
+          "excerpt": "if (crypto && crypto.subtle) {",
+          "link": "https://github.com/honojs/hono/blob/d6757c7241ae9776bf0677e62216b33eaf67307d/src/middleware/etag/index.ts#L38"
+        },
+        {
+          "cls": "crypto",
+          "pattern": "crypto:primitive",
+          "path": "src/middleware/etag/index.ts",
+          "line": 40,
+          "excerpt": "crypto.subtle.digest(",
+          "link": "https://github.com/honojs/hono/blob/d6757c7241ae9776bf0677e62216b33eaf67307d/src/middleware/etag/index.ts#L40"
+        }
+      ]
+    },
+    {
+      "commit": "438983b3bb3d459bf9d9d2e5adf1d21a7e6588d8",
+      "date": "2025-02-06T22:19:13+09:00",
+      "path": "src/middleware/etag/index.ts",
+      "tier": "second-opinion",
+      "classes": [
+        "crypto"
+      ],
+      "hits": [
+        {
+          "cls": "crypto",
+          "pattern": "crypto:primitive",
+          "path": "src/middleware/etag/index.ts",
+          "line": 63,
+          "excerpt": "crypto.subtle.digest(",
+          "link": "https://github.com/honojs/hono/blob/438983b3bb3d459bf9d9d2e5adf1d21a7e6588d8/src/middleware/etag/index.ts#L63"
+        }
+      ]
+    },
+    {
+      "commit": "6837649cd104b1886e6cb6653bf26d0700c4c3e6",
+      "date": "2025-02-06T22:16:29+09:00",
+      "path": "src/utils/jwt/jwt.ts",
+      "tier": "person",
+      "classes": [
+        "capability"
+      ],
+      "hits": [
+        {
+          "cls": "capability",
+          "pattern": "capability:network",
+          "path": "src/utils/jwt/jwt.ts",
+          "line": 130,
+          "excerpt": "const response = await fetch(options.jwks_uri, init)",
+          "link": "https://github.com/honojs/hono/blob/6837649cd104b1886e6cb6653bf26d0700c4c3e6/src/utils/jwt/jwt.ts#L130"
+        }
+      ]
+    },
+    {
+      "commit": "0a99bd3e74cc444d4b968dab775c99674b89835f",
+      "date": "2024-10-23T17:59:09+09:00",
+      "path": "src/utils/jwt/jws.ts",
+      "tier": "person",
+      "classes": [
+        "auth",
+        "loosened-guard"
+      ],
+      "hits": [
+        {
+          "cls": "auth",
+          "pattern": "auth:credential-compare",
+          "path": "src/utils/jwt/jws.ts",
+          "line": 53,
+          "excerpt": "if (key.type !== 'private' && key.type !== 'secret') {",
+          "link": "https://github.com/honojs/hono/blob/0a99bd3e74cc444d4b968dab775c99674b89835f/src/utils/jwt/jws.ts#L53"
+        },
+        {
+          "cls": "loosened-guard",
+          "pattern": "loosened-guard:weakened-condition",
+          "path": "src/utils/jwt/jws.ts",
+          "line": 53,
+          "excerpt": "if (key.type !== 'private') -> if (key.type !== 'private' && key.type !== 'secret')",
+          "link": "https://github.com/honojs/hono/blob/0a99bd3e74cc444d4b968dab775c99674b89835f/src/utils/jwt/jws.ts#L53"
+        }
+      ]
+    }
+  ],
+  "elapsedMs": 4476
+}
