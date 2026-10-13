@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { AgentInfo, Colony, Directive, FieldReading, Id, InboxDirective, Intent, Proposal, ProposalStatus, Rule, WorkspaceLease } from "@fire_trident/core";
+import type { ReviewPreview } from "../../src/agents/preview.ts";
 import type { ProposeInput, TakeResult } from "../../src/agents/rpc.ts";
 import { EXTERNAL_NOT_VERIFIED, FireTridentTools, HEARTBEAT_EVERY_MS, MAX_WAIT_S } from "../../src/mcp/tools.ts";
 import type { McpColonyRpc, RepoReader, Session, ToolContext } from "../../src/mcp/tools.ts";
 import type { TreeEntryLike } from "../../src/mcp/gitread.ts";
+import { SERVER_INSTRUCTIONS } from "../../src/mcp/instructions.ts";
 
 const sha = (c: string): string => c.repeat(40).slice(0, 40);
 const BASE = sha("b");
@@ -123,11 +125,13 @@ class FakeColony implements Partial<McpColonyRpc> {
   async listRegions(): Promise<string[]> {
     return this.regions;
   }
+  /** What review will ask, sent with every assignment when set (as the colony sends it, unchecked). */
+  review: unknown = undefined;
   async take(): Promise<TakeResult> {
     this.takes++;
     if (this.takes <= this.waitsBeforeWork) return { wait: true, retryInMs: 5_000, reason: "no open intents" };
     const rule: Rule = { id: "rul_1", colonyId: "col", kind: "forbid-pattern", spec: { pattern: "x", hint: "h" }, description: "d", approvedBy: "t", createdAt: 0 };
-    return { intent: theIntent, lease, rule };
+    return { intent: theIntent, lease, rule, ...(this.review ? { review: this.review as ReviewPreview } : {}) };
   }
   async propose(p: ProposeInput): Promise<Proposal> {
     this.proposals.push(p);
@@ -250,6 +254,41 @@ describe("MCP tools", () => {
     clock.slept = 0;
     expect(await tools.take({ wait: 999 })).toMatchObject({ wait: true });
     expect(clock.slept).toBeLessThanOrEqual(MAX_WAIT_S * 1000);
+  });
+
+  it("take and checkout show the questions review will ask and the rules for the footprint, and the next step points at them", async () => {
+    const { tools, colony, session } = setup();
+    colony.review = {
+      antibodies: [{ id: "ab_1", question: "Does this change log the session token?" }],
+      rules: ["No console.log in src. Use the logger."],
+    };
+    await tools.join({ colony: "col" });
+    const t = (await tools.take()) as Record<string, any>;
+    expect(t.review).toEqual({ questions: [{ id: "ab_1", question: "Does this change log the session token?" }], rules: ["No console.log in src. Use the logger."] });
+    expect(t.next).toMatch(/^Review will ask the questions in review\.questions of your change\. A person rejected changes like this before, so write yours so that every answer is no\. Keep every rule in review\.rules/);
+    expect(t.next).toContain("then call propose with the head commit id.");
+    expect(await tools.checkout()).toEqual(t);
+    // The review goes with the intent: proposing drops it, and a take with nothing to say shows none.
+    await tools.propose({ headSha: sha("c") });
+    expect(session().review).toBeUndefined();
+    colony.review = undefined;
+    const again = (await tools.take()) as Record<string, any>;
+    expect(again.review).toBeUndefined();
+    expect(again.next).toBe("Call read for every file you depend on, edit only the footprint, commit and push with the git commands, then call propose with the head commit id.");
+  });
+
+  it("take shows only the usable part of a malformed review", async () => {
+    const { tools, colony } = setup();
+    colony.review = { antibodies: [{ id: 7, question: "No id?" }, { id: "ab_2", question: "Does this change\n disable auth?" }], rules: "not a list" };
+    await tools.join({ colony: "col" });
+    const t = (await tools.take()) as Record<string, any>;
+    expect(t.review).toEqual({ questions: [{ id: "ab_2", question: "Does this change disable auth?" }], rules: [] });
+    expect(t.next).not.toContain("review.rules");
+  });
+
+  it("tells every client that review will ask these questions of its change", () => {
+    expect(SERVER_INSTRUCTIONS).toContain("review will ask these questions of your change");
+    expect(SERVER_INSTRUCTIONS).toContain("every review question is answered no");
   });
 
   it("read returns the file at the lease base and records it in the read set", async () => {

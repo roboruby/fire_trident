@@ -107,9 +107,13 @@ import {
 import type { AgentListEntry, ColonySeries, ColonySummary, RegistryEntry, SnapshotWithSeries } from "./metrics.ts";
 import { Certifier, type CertifyHost, type CertifyTrunk } from "../certify/certifier.ts";
 import type { CertifyPolicy } from "../certify/repair.ts";
+import { reviewPreview, type ReviewPreview } from "../agents/preview.ts";
 
-/** Result of ColonyDO.take: an assignment, or advice to wait and retry. */
-export type TakeResult = { intent: Intent; lease: WorkspaceLease; rule?: Rule } | { wait: true; retryInMs: number; reason: string };
+/**
+ * Result of ColonyDO.take: an assignment, or advice to wait and retry. `review`: what review will
+ * ask of the change (agents/preview.ts), shown to the agent before it writes; absent when nothing.
+ */
+export type TakeResult = { intent: Intent; lease: WorkspaceLease; rule?: Rule; review?: ReviewPreview } | { wait: true; retryInMs: number; reason: string };
 
 /** Input of ColonyDO.addIntent. */
 export type IntentInput = Omit<Intent, "id" | "status" | "createdAt">;
@@ -2820,7 +2824,26 @@ export class ColonyDO extends DurableObject<Env> {
 
   private assignment(intent: Intent, lease: WorkspaceLease): TakeResult {
     const rule = intent.ruleId ? this.sql.exec<RuleRow>("SELECT * FROM rules WHERE id = ?", intent.ruleId).toArray()[0] : undefined;
-    return rule ? { intent, lease, rule: this.toRule(rule, intent.colonyId) } : { intent, lease };
+    const review = this.reviewAhead(intent);
+    return { intent, lease, ...(rule ? { rule: this.toRule(rule, intent.colonyId) } : {}), ...(review ? { review } : {}) };
+  }
+
+  /**
+   * What review will ask of a change to the intent's footprint (agents/preview.ts): the questions
+   * of the antibodies people's rejections minted for those paths, and the colony's other rules
+   * that cover them. Nothing when a person switched the colony's reflex arc off (then nothing
+   * reviews the change). Best effort: a take never fails over it.
+   */
+  private reviewAhead(intent: Intent): ReviewPreview | undefined {
+    try {
+      const store = this.decider().store;
+      if (!store.policy().enabled) return undefined;
+      const rules = this.sql.exec<RuleRow>("SELECT * FROM rules WHERE retracted_at IS NULL ORDER BY created_at").toArray().map((r) => this.toRule(r, intent.colonyId));
+      return reviewPreview(intent, store.antibodies(), rules);
+    } catch (err) {
+      console.warn(`review preview for intent ${intent.id} failed: ${errorText(err)}`);
+      return undefined;
+    }
   }
 
   /**

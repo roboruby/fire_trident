@@ -19,6 +19,7 @@ import type {
   WorkspaceLease,
 } from "@fire_trident/core";
 import type { Env } from "../env.ts";
+import type { ReviewPreview } from "./preview.ts";
 
 /**
  * The RPC surfaces the agents and the MCP server call, typed from the contracts in
@@ -27,8 +28,11 @@ import type { Env } from "../env.ts";
  * substitute plain objects.
  */
 
-/** What ColonyDO.take returns: work plus a workspace lease, or a hint to come back later. */
-export type TakeResult = { intent: Intent; lease: WorkspaceLease; rule?: Rule } | { wait: true; retryInMs: number; reason: string };
+/**
+ * What ColonyDO.take returns: work plus a workspace lease, or a hint to come back later. `review`
+ * is what review will ask of the change (agents/preview.ts); a colony on the previous version sends none.
+ */
+export type TakeResult = { intent: Intent; lease: WorkspaceLease; rule?: Rule; review?: ReviewPreview } | { wait: true; retryInMs: number; reason: string };
 
 /** Input of ColonyDO.propose. */
 export type ProposeInput = Omit<Proposal, "id" | "status" | "createdAt" | "evidence"> & {

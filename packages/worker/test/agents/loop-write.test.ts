@@ -4,6 +4,7 @@ import { MemoryJournal } from "../../src/agents/journal.ts";
 import { DEPS_MAX_WAIT_MS, FIRST_POLL_MS, tick, writeStatement } from "../../src/agents/loop.ts";
 import type { AgentConfig, BaseFile, GitOps, LoopDeps, ModelClient, ModelReply } from "../../src/agents/loop.ts";
 import type { ChatMessage } from "../../src/agents/prompt.ts";
+import type { ReviewPreview } from "../../src/agents/preview.ts";
 import type { ColonyRpc, ProposeInput, TakeResult } from "../../src/agents/rpc.ts";
 
 /**
@@ -82,6 +83,8 @@ class FakeColony implements ColonyRpc {
   proposals = new Map<Id, Proposal>();
   abandoned: string[] = [];
   snapshots = 0;
+  /** What review will ask, sent with every assignment when set. */
+  review: ReviewPreview | null = null;
   async getColony(): Promise<Colony | null> {
     return null;
   }
@@ -107,7 +110,7 @@ class FakeColony implements ColonyRpc {
     if (!i) return { wait: true, retryInMs: 5000, reason: "no open intents" };
     i.status = "claimed";
     i.assignedTo = agentId;
-    return { intent: { ...i }, lease: LEASE };
+    return this.review ? { intent: { ...i }, lease: LEASE, review: this.review } : { intent: { ...i }, lease: LEASE };
   }
   async heartbeat(): Promise<void> {}
   async propose(p: ProposeInput): Promise<Proposal> {
@@ -290,6 +293,17 @@ describe("agent loop: writing files from a spec", () => {
     expect(s.model.calls).toHaveLength(3);
     expect(s.colony.proposals.size).toBe(0);
     expect(s.colony.abandoned[0]).toMatch(/the model did not write a valid src\/router\.ts/);
+  });
+
+  it("writes each file knowing the questions review will ask, beside the rules for its path", async () => {
+    const s = setup([`<file>\nexport const VERSION = "1";\n</file>`]);
+    s.colony.intents = [intent({ why: "Expose the version.", footprint: ["src/version.ts"] })];
+    s.colony.review = { antibodies: [{ id: "ab_1", question: "Does this change hard-code a release token?" }], rules: [] };
+    expect(await tick(s.deps())).toEqual({ sleepMs: FIRST_POLL_MS });
+    const prompt = user(s.model.calls[0]!);
+    expect(prompt).toMatch(/Rules src\/version\.ts must follow[\s\S]*A person rejected changes like this before\. Review will ask these questions of your change/);
+    expect(prompt).toMatch(/<<<QUESTIONS [0-9a-f]{12}>>>\n- Does this change hard-code a release token\?\n<<<END QUESTIONS [0-9a-f]{12}>>>/);
+    expect(s.colony.proposals.size).toBe(1);
   });
 
   it("writes a new file of an intent with no spec layout, with no waiting", async () => {

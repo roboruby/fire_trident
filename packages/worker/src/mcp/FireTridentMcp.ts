@@ -129,7 +129,7 @@ export class FireTridentMcp extends McpAgent<Env, Record<string, never>, Record<
       {
         title: "Take work",
         description:
-          "Self-assign an intent. Returns the intent (what to change, why, footprint), its rule if any, a workspace lease with a trunk read token and a workspace write token, and self-contained git commands that use them. When there is no work it returns wait; pass wait (seconds) to let the server keep trying for you.",
+          "Self-assign an intent. Returns the intent (what to change, why, footprint), its rule if any, review when there is something to say (the questions review will ask of your change, learned from changes a person rejected, and the colony's rules for these paths), a workspace lease with a trunk read token and a workspace write token, and self-contained git commands that use them. When there is no work it returns wait; pass wait (seconds) to let the server keep trying for you.",
         inputSchema: { wait: wait.describe(`Seconds to keep trying while there is no work for you (at most ${MAX_WAIT_S})`) },
         annotations: { openWorldHint: false },
       },
@@ -140,7 +140,7 @@ export class FireTridentMcp extends McpAgent<Env, Record<string, never>, Record<
       "checkout",
       {
         title: "Show the lease",
-        description: "The intent, lease, tokens and git commands for the work you currently hold (same as take returned).",
+        description: "The intent, review questions, lease, tokens and git commands for the work you currently hold (same as take returned).",
         inputSchema: {},
         annotations: readOnly,
       },

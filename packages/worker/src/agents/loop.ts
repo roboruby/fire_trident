@@ -5,6 +5,7 @@ import { TreeIndex, applySpecifierEdits, isImportRule, parseSpecifierEdits, spec
 import { checkWrittenFile, parseIntentSpec, resolveImport, wantsErasable, writeOrder } from "./create.ts";
 import { buildEditMessages, buildSpecifierMessages, buildWriteMessages, maxTokensFor, parseFileReply, retryMessages, specifierRetryMessages, violationProblem } from "./prompt.ts";
 import type { ChatMessage, TokenUsage } from "./prompt.ts";
+import { cleanPreview, type AntibodyQuestion } from "./preview.ts";
 import { TERMINAL_STATUSES, errorMessage, errorStatus } from "./rpc.ts";
 import type { ColonyRpc, TakeResult } from "./rpc.ts";
 import { MAX_GUIDANCE, directionError, directiveNote, guidanceFor, holdDirective, interrupts, markApplied, nextDirection, stepNote, withGuidance } from "./direction.ts";
@@ -122,6 +123,8 @@ export interface Job {
   fileOverDirectory?: string[];
   /** Human guidance this job follows (it goes into every prompt; see agents/direction.ts). */
   directives?: Guidance[];
+  /** Questions review will ask of this change, from the take (agents/preview.ts); every prompt shows them. */
+  antibodies?: AntibodyQuestion[];
   /** The last status note relayed to the colony, and when. */
   relayedNote?: string;
   relayedAt?: number;
@@ -559,6 +562,9 @@ async function takeWork(deps: LoopDeps, cfg: AgentConfig): Promise<StepResult> {
     lastHeartbeatAt: now,
   };
   if (buildsOn.length > 0) job.buildsOn = buildsOn;
+  // What review will ask of the change, so the model can avoid what a person rejected before.
+  const antibodies = cleanPreview(res.review)?.antibodies ?? [];
+  if (antibodies.length > 0) job.antibodies = antibodies;
   await adoptGuidance(deps, cfg, job, now);
   save(deps, cfg, job);
   deps.journal.bump("taken");
@@ -803,6 +809,7 @@ async function writeFile(
   const first = buildWriteMessages({
     intent: job.intent,
     directives: job.directives ?? [],
+    antibodies: job.antibodies ?? [],
     path,
     content: original,
     siblings,
@@ -890,7 +897,7 @@ async function modelEdit(
   if (original !== null && original.length > MAX_MODEL_CHARS) {
     return { ok: false, reason: `${path} is too large to rewrite with a model (${original.length} characters)` };
   }
-  const first = buildEditMessages({ intent: job.intent, directives: job.directives ?? [], rule: job.rule, path, content: original, violations });
+  const first = buildEditMessages({ intent: job.intent, directives: job.directives ?? [], antibodies: job.antibodies ?? [], rule: job.rule, path, content: original, violations });
   const maxTokens = maxTokensFor(original);
   let messages = first;
   let problem = "";
@@ -959,7 +966,7 @@ async function specifierEdit(
   if (!rule) return { ok: false, reason: "no rule" };
   const facts = specifierFacts(rule, path, original, tree);
   if (facts.length === 0) return { ok: true, content: original };
-  const first = buildSpecifierMessages({ intent: job.intent, directives: job.directives ?? [], rule, path, content: original, facts, tree });
+  const first = buildSpecifierMessages({ intent: job.intent, directives: job.directives ?? [], antibodies: job.antibodies ?? [], rule, path, content: original, facts, tree });
   let messages = first;
   let problems: string[] = [];
   for (let attempt = 0; attempt < 2; attempt++) {

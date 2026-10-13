@@ -4,6 +4,7 @@ import { MemoryJournal } from "../../src/agents/journal.ts";
 import { FIRST_POLL_MS, agentState, stopAgent, tick } from "../../src/agents/loop.ts";
 import type { AgentConfig, BaseFile, GitOps, LoopDeps, ModelClient, ModelReply } from "../../src/agents/loop.ts";
 import type { ChatMessage } from "../../src/agents/prompt.ts";
+import type { ReviewPreview } from "../../src/agents/preview.ts";
 import type { ColonyRpc, ProposeInput, TakeResult } from "../../src/agents/rpc.ts";
 
 const BASE = "b".repeat(40);
@@ -70,6 +71,8 @@ class FakeColony implements ColonyRpc {
   takeError: Error | null = null;
   hangAfterPropose = false;
   lease: WorkspaceLease = LEASE;
+  /** What review will ask, sent with every assignment when set. */
+  review: ReviewPreview | null = null;
 
   async getColony(): Promise<Colony | null> {
     return null;
@@ -102,7 +105,8 @@ class FakeColony implements ColonyRpc {
     if (!i) return { wait: true, retryInMs: 5000, reason: "no open intents" };
     i.status = "claimed";
     i.assignedTo = agentId;
-    return this.rule ? { intent: { ...i }, lease: this.lease, rule: this.rule } : { intent: { ...i }, lease: this.lease };
+    const got = this.rule ? { intent: { ...i }, lease: this.lease, rule: this.rule } : { intent: { ...i }, lease: this.lease };
+    return this.review ? { ...got, review: this.review } : got;
   }
   async heartbeat(): Promise<void> {
     this.heartbeats++;
@@ -259,6 +263,26 @@ describe("agent loop", () => {
     expect(model.calls[1]!.map((m) => m.role)).toEqual(["system", "user", "assistant", "user"]);
     expect(model.calls[1]![3]!.content).toContain("src/a.ts still violates the rule on line 2");
     expect(colony.proposals.size).toBe(1);
+  });
+
+  it("shows the model the questions review will ask of the change, on every attempt, and keeps them with the job", async () => {
+    const { journal, colony, model, deps } = setup("internal", [`<file>\n${ORIGINAL}</file>`, `<file>\n${FIXED}</file>`]);
+    colony.review = { antibodies: [{ id: "ab_1", question: "Does this change print the user's email?" }], rules: ["Shown to external agents only."] };
+    await tick(deps());
+    expect(model.calls).toHaveLength(2);
+    for (const call of model.calls) {
+      expect(call[1]!.content).toMatch(/A person rejected changes like this before\. Review will ask these questions of your change[^\n]*\n<<<QUESTIONS [0-9a-f]{12}>>>\n- Does this change print the user's email\?\n<<<END QUESTIONS [0-9a-f]{12}>>>/);
+      expect(call[1]!.content).not.toContain("Shown to external agents only.");
+    }
+    expect(journal.job()).toMatchObject({ step: "await", antibodies: [{ id: "ab_1", question: "Does this change print the user's email?" }] });
+    expect(colony.proposals.size).toBe(1);
+  });
+
+  it("writes no review block when the take carries none", async () => {
+    const { journal, model, deps } = setup();
+    await tick(deps());
+    expect(model.calls[0]![1]!.content).not.toContain("Review will ask");
+    expect(journal.job()?.antibodies).toBeUndefined();
   });
 
   it("abandons after the retry also fails, and gives the intent back", async () => {

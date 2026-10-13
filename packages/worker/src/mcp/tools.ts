@@ -2,10 +2,11 @@ import { regionOf } from "@fire_trident/core";
 import type { AgentInfo, Directive, FieldReading, FileVersion, Id, Intent, Path, Proposal, ProposalStatus, RepoRef, Rule, Sha, WorkspaceLease } from "@fire_trident/core";
 import { isInboxDirective } from "../colony/direction.ts";
 import { cleanPath } from "../agents/change.ts";
+import { cleanPreview, type ReviewPreview } from "../agents/preview.ts";
 import type { ColonyRpc, RegionRpc, TakeResult, TrunkRpc } from "../agents/rpc.ts";
 import { diffTrees, onFirstParentChain, readFileAt } from "./gitread.ts";
 import type { ReadBlob, ReadCommit, ReadTree } from "./gitread.ts";
-import { gitInstructions, ruleBrief } from "./instructions.ts";
+import { gitInstructions, leaseNext, reviewBrief, ruleBrief } from "./instructions.ts";
 
 /** What one MCP session remembers (stored in the session's Durable Object). */
 export interface Session {
@@ -16,6 +17,8 @@ export interface Session {
   intent?: Intent;
   lease?: WorkspaceLease;
   rule?: Rule | null;
+  /** What review will ask of the held intent's change, as take returned it (sessions saved before it have none). */
+  review?: ReviewPreview;
   /** Read set of the current intent: path -> blob seen at the lease base (null = absent). */
   reads: Record<Path, Sha | null>;
   proposals: Array<{ id: Id; intentId: Id; headSha: Sha; at: number }>;
@@ -298,6 +301,7 @@ export class FireTridentTools {
 
   private leaseView(s: Session & { intent: Intent; lease: WorkspaceLease }): Record<string, unknown> {
     const { intent, lease } = s;
+    const review = reviewBrief(s.review);
     return {
       intent: {
         id: intent.id,
@@ -310,6 +314,7 @@ export class FireTridentTools {
         parentId: intent.parentId ?? null,
       },
       rule: ruleBrief(s.rule),
+      ...(review ? { review } : {}),
       lease: {
         baseSha: lease.baseSha,
         trunk: { remote: lease.trunk.remote, sha: lease.trunk.sha },
@@ -318,7 +323,7 @@ export class FireTridentTools {
       },
       tokens: { trunkRead: lease.trunk.token, workspaceWrite: lease.token },
       git: gitInstructions(lease, intent),
-      next: "Call read for every file you depend on, edit only the footprint, commit and push with the git commands, then call propose with the head commit id.",
+      next: leaseNext(s.review),
     };
   }
 
@@ -341,11 +346,14 @@ export class FireTridentTools {
     }
     const got = res;
     const now = this.ctx.now();
+    const review = cleanPreview(got.review);
     const next = await this.update((x) => {
       if (x.intent?.id !== got.intent.id) x.reads = {};
       x.intent = got.intent;
       x.lease = got.lease;
       x.rule = got.rule ?? null;
+      if (review) x.review = review;
+      else delete x.review;
       x.lastBeat = now; // a take deposits fresh claims
     });
     return this.leaseView(next as Session & { intent: Intent; lease: WorkspaceLease });
@@ -453,6 +461,7 @@ export class FireTridentTools {
       delete x.intent;
       delete x.lease;
       delete x.rule;
+      delete x.review;
       x.reads = {};
     });
     return {
@@ -509,6 +518,7 @@ export class FireTridentTools {
         delete x.intent;
         delete x.lease;
         delete x.rule;
+        delete x.review;
         x.reads = {};
       });
       current = undefined;
@@ -549,6 +559,7 @@ export class FireTridentTools {
       delete x.intent;
       delete x.lease;
       delete x.rule;
+      delete x.review;
       x.reads = {};
     });
     return { released: held, next: "Call take for other work." };
