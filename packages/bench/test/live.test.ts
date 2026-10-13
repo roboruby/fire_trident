@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { errorDetail, LiveFeed, errorBackoffMs, publishOf, trunkCycles } from "../src/live.ts";
+import { errorDetail, LiveFeed, errorBackoffMs, publishModeOf, publishOf, trunkCycles } from "../src/live.ts";
 
 /** Feed a raw WebSocket message to the feed, as the socket would. */
 function deliver(feed: LiveFeed, events: unknown[]): void {
@@ -72,6 +72,16 @@ describe("publishOf", () => {
     expect(publishOf({ colony: { id: "c" } })).toBeNull();
     expect(publishOf({ colony: { id: "c", publish: { on: true } } })).toBeNull();
     expect(publishOf(null)).toBeNull();
+  });
+});
+
+describe("publishModeOf", () => {
+  it("is async only when the trunk writer reports it, even when the status carries publish", () => {
+    const publish = { on: true, publishedSha: "a".repeat(40), trunkSha: "a".repeat(40), unpublished: 0, lagMs: 0, running: false, failures: 0 };
+    expect(publishModeOf({ colony: { id: "c", publish } })).toBe("async");
+    expect(publishModeOf({ colony: { id: "c", publish: { ...publish, on: false } } })).toBe("sync");
+    expect(publishModeOf({ colony: { id: "c" } })).toBe("sync");
+    expect(publishModeOf(null)).toBe("sync");
   });
 });
 

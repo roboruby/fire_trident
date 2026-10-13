@@ -299,6 +299,7 @@ const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS landings (
     id TEXT PRIMARY KEY, at INTEGER NOT NULL, received_at INTEGER NOT NULL, trunk_sha TEXT NOT NULL, data TEXT NOT NULL)`,
   "CREATE INDEX IF NOT EXISTS landings_by_received ON landings(received_at)",
+  "CREATE INDEX IF NOT EXISTS landings_by_trunk ON landings(trunk_sha)",
   "CREATE TABLE IF NOT EXISTS regions (name TEXT PRIMARY KEY, created_at INTEGER NOT NULL)",
 ];
 
@@ -576,6 +577,8 @@ export class ColonyDO extends DurableObject<Env> {
   /** Asynchronous publishing (FT_ASYNC_PUBLISH): the trunk writer's published head as leases last saw it, and the read in flight (leaseBase). */
   private publishedBase: { sha: Sha; at: number } | null = null;
   private publishedRead: Promise<void> | null = null;
+  /** The last answer of unpublishedPaths, reused while neither head moves (under load, takes ask many times a second). */
+  private unpublishedMemo: { trunk: Sha; published: Sha; paths: Set<Path> | null } | null = null;
   /** The event record for replays: everything published, written in batches (see publish, recordEvents). */
   private readonly recorder = new EventRecorder(
     (events) => this.recordEvents(events),
@@ -5592,25 +5595,33 @@ export class ColonyDO extends DurableObject<Env> {
    * With asynchronous publishing, the paths changed by landings recorded after `publishedSha` (the colony's own landing
    * records, walked from its trunk head back to that commit through parent links). Null when publishing is synchronous,
    * nothing is waiting, or the walk does not reach the published head within UNPUBLISHED_WALK landings: a take then
-   * leases as before.
+   * leases as before. The commits between two heads never change, so the answer serves every take until a head moves.
    */
   private unpublishedPaths(publishedSha: Sha): Set<Path> | null {
     const colony = this.requireColony();
     if (!asyncPublishEnabled(this.env.FT_ASYNC_PUBLISH, colony.id) || colony.trunkSha === publishedSha) return null;
-    const bySha = new Map<Sha, Landing>();
-    for (const r of this.sql.exec<{ data: string }>("SELECT data FROM landings ORDER BY at DESC LIMIT ?", UNPUBLISHED_WALK).toArray()) {
-      const l = parseJson<Landing | null>(r.data, null);
-      if (l && typeof l.trunkSha === "string") bySha.set(l.trunkSha, l);
-    }
+    const memo = this.unpublishedMemo;
+    if (memo && memo.trunk === colony.trunkSha && memo.published === publishedSha) return memo.paths;
+    const paths = this.walkUnpublished(colony.trunkSha, publishedSha);
+    this.unpublishedMemo = { trunk: colony.trunkSha, published: publishedSha, paths };
+    return paths;
+  }
+
+  /**
+   * The paths changed by the landings from `head` back to `published` through parent links, one indexed lookup a landing.
+   * Null when a landing on the way is not recorded here or the walk passes UNPUBLISHED_WALK landings.
+   */
+  private walkUnpublished(head: Sha, published: Sha): Set<Path> | null {
     const paths = new Set<Path>();
-    let at: Sha | undefined = colony.trunkSha;
-    for (let i = 0; at !== undefined && at !== publishedSha && i < UNPUBLISHED_WALK; i++) {
-      const l = bySha.get(at);
+    let at: Sha | undefined = head;
+    for (let i = 0; at !== undefined && at !== published && i < UNPUBLISHED_WALK; i++) {
+      const row: { data: string } | undefined = this.sql.exec<{ data: string }>("SELECT data FROM landings WHERE trunk_sha = ? LIMIT 1", at).toArray()[0];
+      const l: Landing | null = row ? parseJson<Landing | null>(row.data, null) : null;
       if (!l) return null;
       for (const p of Array.isArray(l.paths) ? l.paths : []) paths.add(p);
       at = l.parentSha;
     }
-    return at === publishedSha ? paths : null;
+    return at === published ? paths : null;
   }
 
   /**

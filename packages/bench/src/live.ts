@@ -80,6 +80,15 @@ export function publishOf(snapshot: unknown): TrunkPublish | null {
   return p && typeof p === "object" && typeof (p as TrunkPublish).publishedSha === "string" ? (p as TrunkPublish) : null;
 }
 
+/**
+ * How the colony's trunk is published: asynchronous only when its trunk writer reports it (`publish.on`). The colony
+ * object and its trunk writer pick up a change to FT_ASYNC_PUBLISH as each restarts on the new deployment, so the
+ * status can carry `publish` while the trunk writer still pushes every cycle.
+ */
+export function publishModeOf(snapshot: unknown): PublishMode {
+  return publishOf(snapshot)?.on === true ? "async" : "sync";
+}
+
 type Assignment = { intent: Intent; lease: WorkspaceLease };
 type TakeResult = Assignment | { wait: true; retryInMs: number; reason: string };
 const TERMINAL = new Set(["landed", "returned", "rejected"]);
@@ -549,11 +558,12 @@ export async function runLive(cfg: LiveConfig, opts: LiveOptions, state: LiveSta
   const tag = `${opts.label}-${Date.now().toString(36)}`;
   await ensureIntents(client, opts.intents, opts.regions, tag, log);
   const before = await client.call<{ metrics?: Record<string, number> }>("metrics", "GET", "/metrics");
-  // Trunk publishing: asynchronous when the colony's status carries `publish` (FT_ASYNC_PUBLISH lists the colony).
+  // Trunk publishing: asynchronous when the colony's trunk writer says so (FT_ASYNC_PUBLISH lists the colony and the
+  // trunk writer runs on a deployment that has it).
   const status = await client.call<ColonySnapshot>("status", "GET", "");
-  const mode: PublishMode = publishOf(status) ? "async" : "sync";
+  const mode: PublishMode = publishModeOf(status);
   if (opts.expectPublish && (status === null || opts.expectPublish !== mode)) {
-    throw new Error(`colony ${opts.colony} publishes ${status === null ? "(status unreadable)" : mode}, not ${opts.expectPublish}: check FT_ASYNC_PUBLISH on the deployment`);
+    throw new Error(`colony ${opts.colony} publishes ${status === null ? "(status unreadable)" : mode}, not ${opts.expectPublish}: check FT_ASYNC_PUBLISH on the deployment, and that the colony's trunk writer has restarted on it (status publish.on)`);
   }
   const feed = new LiveFeed();
   await feed.connect(cfg, opts.colony);

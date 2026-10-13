@@ -111,6 +111,25 @@ describe("takes that would start on a stale base (FT_ASYNC_PUBLISH)", () => {
     expect(base).toBe(recorded);
   });
 
+  it("see a landing recorded after an earlier take checked the heads", async () => {
+    const c = await newColony();
+    await setPublishFlag(c.id, "on");
+    await externalLanding(c.id, { "docs/guide.md": "# Guide\n" });
+    await trunk(c.id).setPublished(c.trunkSha);
+    // Only docs/guide.md is unpublished: a take on another file leases at once (and the colony keeps that answer).
+    await addIntent(c.id, ["src/lib/util.ts"]);
+    const a = await addAgent(c.id, "a");
+    expect((await take(c.id, a.id)).lease.baseSha).toBe(c.trunkSha);
+
+    // A second recorded landing moves the colony head: a take on the file it changed must wait for it to be published.
+    await externalLanding(c.id, { "src/lib/other.ts": "export const other = 1;\n" });
+    await addIntent(c.id, ["src/lib/other.ts"]);
+    const b = await addAgent(c.id, "b");
+    const waited = await api<{ wait?: true; reason?: string }>("POST", `/colonies/${c.id}/agents/${b.id}/take`);
+    expect(waited.body).toMatchObject({ wait: true });
+    expect(waited.body.reason).toMatch(/publish a landing that changed src\/lib\/other\.ts/);
+  });
+
   it("lease at once for intents on other files", async () => {
     const c = await newColony();
     await setPublishFlag(c.id, "on");
