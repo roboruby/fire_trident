@@ -877,7 +877,9 @@ FT_TRUNK_TESTS must be "on" as well).
 ft vaccinate <colony> --count <n>
 
 Inject n vaccine proposals (1 to 64): planted bad changes of known threat
-classes (secret-log, test-weakened, forbidden-import, off-intent) that the
-decide layer must catch. The vaccination meter reports recall per class.
+classes (secret-log, test-weakened, forbidden-import, off-intent,
+loosened-guard) that the decide layer must catch. The vaccination meter
+reports per class how many a model or check returned and how many went to a
+person (whose decision it does not measure).
 `,
 };
