@@ -1,4 +1,4 @@
-import { regionOf } from "@fire_trident/core";
+import { INLINE_LIMITS, blobId, changesetId, inlineProblem, regionOf } from "@fire_trident/core";
 import type { AgentInfo, AgentKind, Directive, EscalationKind, FieldReading, FileVersion, Id, Intent, Landing, LineageNote, Path, Proposal, ProposalStatus, RepoRef, Rule, Sha, WorkspaceLease } from "@fire_trident/core";
 import { ESCALATION_KINDS, isInboxDirective, landingMessage } from "../colony/direction.ts";
 import { cleanPath } from "../agents/change.ts";
@@ -54,11 +54,22 @@ export type McpColonyRpc = Omit<ColonyRpc, "registerAgent"> & {
   resumeAgent(agentId: Id, resumeKey: string): Promise<ResumeCheck>;
 };
 
+/** TrunkDO methods the MCP tools use: lineage, and the blobs at a lease base (inline changes are built against it). */
+export type McpTrunkRpc = TrunkRpc & { baseBlobs?(baseSha: Sha, paths: Path[]): Promise<FileVersion[]> };
+
+/** One file of an inline change as an agent sends it: its whole new text, or null to delete it. */
+export interface InlineFile {
+  path: string;
+  content: string | null;
+}
+
 /** Everything the tools touch, injected by the Durable Object (or a test). */
 export interface ToolContext {
   colony(colonyId: Id): McpColonyRpc;
   region(colonyId: Id, region: string): RegionRpc;
-  trunk(colonyId: Id): TrunkRpc;
+  trunk(colonyId: Id): McpTrunkRpc;
+  /** Whether the colony takes inline changes (FT_INLINE); absent means it does not. */
+  inline?(colonyId: Id): boolean;
   repo(ref: Pick<RepoRef, "namespace" | "name">): Promise<RepoReader>;
   load(): Promise<Session>;
   save(s: Session): Promise<void>;
@@ -94,6 +105,25 @@ export const EXTERNAL_NOT_VERIFIED = "Not verified: external agent over MCP; no 
 
 function fail(status: number, message: string): never {
   throw new Error(`[ft:${status}] ${message}`);
+}
+
+/** Longest path an inline change may write. */
+const MAX_INLINE_PATH = 1_024;
+
+/**
+ * Why an agent cannot write `path` in an inline change, or null: relative POSIX, no empty, "." or ".." segment, nothing
+ * under .git, no leading or trailing space (the colony keeps paths trimmed, so the change would not be the one sent).
+ */
+export function inlinePathProblem(path: unknown): string | null {
+  if (typeof path !== "string" || path === "") return "a file has no path";
+  if (path.length > MAX_INLINE_PATH) return `path ${JSON.stringify(path.slice(0, 80))}... is over ${MAX_INLINE_PATH} characters`;
+  if (path !== path.trim()) return `${JSON.stringify(path)} starts or ends with a space`;
+  if (path.startsWith("/") || path.includes("\\") || path.includes("\0") || /^[A-Za-z]:/.test(path)) return `${JSON.stringify(path)} is not a relative path with / separators`;
+  for (const seg of path.split("/")) {
+    if (seg === "" || seg === "." || seg === "..") return `${JSON.stringify(path)} has an empty, "." or ".." segment`;
+    if (seg.toLowerCase() === ".git") return `${JSON.stringify(path)} is inside .git`;
+  }
+  return null;
 }
 
 function round(n: number): number {
@@ -506,32 +536,42 @@ export class FireTridentTools {
   }
 
   /**
-   * Propose the commit `headSha` already pushed to the workspace. The write set is
-   * computed here by diffing the head tree against the lease base tree in the
-   * workspace repo; the read set is what this session read. Head must descend
-   * from the base on its first-parent chain. `notVerified` is the agent's own
-   * statement of what it did not check (recorded as evidence and shown to review).
+   * Propose a change, given exactly one of: `headSha`, a commit already pushed to the workspace (the
+   * write set is computed here by diffing the head tree against the lease base tree in the workspace
+   * repo; head must descend from the base on its first-parent chain), or `files`, the new text of
+   * each changed file (an inline change, see inlineChange: no git at all). The read set is what this
+   * session read. `notVerified` is the agent's own statement of what it did not check (recorded as
+   * evidence and shown to review).
    */
-  async propose(a: { headSha: string; summary?: string; notVerified?: string }): Promise<unknown> {
+  async propose(a: { headSha?: string; files?: InlineFile[]; summary?: string; notVerified?: string }): Promise<unknown> {
     const s = await this.leased();
-    const headSha = a.headSha.trim().toLowerCase();
-    if (!SHA.test(headSha)) fail(400, "headSha must be a full 40-character commit id");
+    const head = typeof a.headSha === "string" ? a.headSha.trim().toLowerCase() : "";
+    if ((head !== "") === (a.files !== undefined)) fail(400, "pass exactly one of headSha (a commit pushed to your workspace) and files (each changed file's path and new content)");
     const { lease, intent } = s;
-    const ws = await this.ctx.repo(lease.repo);
+    let headSha: Sha;
     let writeSet: FileVersion[];
-    try {
-      const head = await ws.readCommit(headSha);
-      if (!head) fail(404, `commit ${headSha} is not in your workspace ${lease.repo.name}; push it to refs/heads/main first`);
-      if (!(await onFirstParentChain(ws.readCommit, headSha, lease.baseSha, MAX_ANCESTRY))) {
-        fail(409, `commit ${headSha} does not build on the lease base ${lease.baseSha}; commit on top of the base and push again`);
+    let contents: Record<Sha, string> | undefined;
+    let unchanged: Path[] = [];
+    if (a.files !== undefined) {
+      ({ headSha, writeSet, contents, unchanged } = await this.inlineChange(s, a.files));
+    } else {
+      headSha = head;
+      if (!SHA.test(headSha)) fail(400, "headSha must be a full 40-character commit id");
+      const ws = await this.ctx.repo(lease.repo);
+      try {
+        const commit = await ws.readCommit(headSha);
+        if (!commit) fail(404, `commit ${headSha} is not in your workspace ${lease.repo.name}; push it to refs/heads/main first`);
+        if (!(await onFirstParentChain(ws.readCommit, headSha, lease.baseSha, MAX_ANCESTRY))) {
+          fail(409, `commit ${headSha} does not build on the lease base ${lease.baseSha}; commit on top of the base and push again`);
+        }
+        const base = await ws.readCommit(lease.baseSha);
+        if (!base) fail(409, `the lease base ${lease.baseSha} is not in your workspace`);
+        writeSet = await diffTrees(ws.readTree, base.treeHash, commit.treeHash);
+      } finally {
+        ws.release();
       }
-      const base = await ws.readCommit(lease.baseSha);
-      if (!base) fail(409, `the lease base ${lease.baseSha} is not in your workspace`);
-      writeSet = await diffTrees(ws.readTree, base.treeHash, head.treeHash);
-    } finally {
-      ws.release();
+      if (writeSet.length === 0) fail(400, "the head commit changes nothing relative to the base");
     }
-    if (writeSet.length === 0) fail(400, "the head commit changes nothing relative to the base");
     // The freshest read set (a read may have finished while the workspace was being diffed).
     const latest = await this.ctx.load();
     const reads = latest.intent?.id === intent.id ? latest.reads : s.reads;
@@ -546,6 +586,7 @@ export class FireTridentTools {
       headSha,
       writeSet,
       readSet,
+      ...(contents ? { contents } : {}),
       declared: { footprint: intent.footprint, summary: (a.summary ?? "").trim() || intent.title },
       ...(typeof intent.revision === "number" ? { intentRevision: intent.revision } : {}),
       evidence: { notVerified: stated === "" ? EXTERNAL_NOT_VERIFIED : /^not verified/i.test(stated) ? stated : `Not verified: ${stated}` },
@@ -559,9 +600,55 @@ export class FireTridentTools {
     return {
       proposal: { id: proposal.id, status: proposal.status, reason: proposal.reason ?? null, residual: proposal.evidence?.residual ?? [] },
       writeSet,
+      ...(unchanged.length > 0 ? { unchanged } : {}),
       readSet: readSet.length,
       next: `Call inbox with wait: ${MAX_WAIT_S} to wait for the outcome (repeat until it settles), then take for more work.`,
     };
+  }
+
+  /**
+   * An inline change from the files an agent sends (content null deletes), built against its lease base: paths
+   * checked (inlinePathProblem), the base blobs read from the trunk writer (TrunkDO.baseBlobs), a file sent
+   * unchanged dropped (and named in `unchanged`), deleting a file the base does not have refused, then the blob
+   * ids, core's content check and the changeset id that stands in for a head commit. The colony checks it again.
+   */
+  private async inlineChange(s: Session & { colonyId: Id; lease: WorkspaceLease }, files: InlineFile[]): Promise<{ headSha: Sha; writeSet: FileVersion[]; contents: Record<Sha, string>; unchanged: Path[] }> {
+    if (!this.ctx.inline?.(s.colonyId)) fail(409, "inline changes are off for this colony: push a commit to your workspace and propose its headSha");
+    if (!Array.isArray(files) || files.length === 0) fail(400, "files is empty: send each file you change with its new content (null deletes it)");
+    if (files.length > INLINE_LIMITS.files) fail(400, `an inline change sends at most ${INLINE_LIMITS.files} files (this one sends ${files.length}); push larger changes to your workspace and propose the commit`);
+    const sent = new Map<Path, string | null>();
+    for (const f of files) {
+      const problem = inlinePathProblem(f?.path);
+      if (problem) fail(400, problem);
+      if (sent.has(f.path)) fail(400, `${f.path} is sent twice`);
+      if (f.content !== null && typeof f.content !== "string") fail(400, `the content of ${f.path} must be its text, or null to delete it`);
+      sent.set(f.path, f.content);
+    }
+    const trunk = this.ctx.trunk(s.colonyId);
+    if (!trunk.baseBlobs) fail(503, "this colony cannot build inline changes yet: push a commit to your workspace and propose its headSha");
+    const base = new Map((await trunk.baseBlobs(s.lease.baseSha, [...sent.keys()])).map((v) => [v.path, v.blob ?? null]));
+    const writeSet: FileVersion[] = [];
+    const contents: Record<Sha, string> = {};
+    const unchanged: Path[] = [];
+    for (const [path, content] of sent) {
+      const before = base.get(path) ?? null;
+      if (content === null) {
+        if (before === null) fail(400, `${path} does not exist at your lease base, so it cannot be deleted`);
+        writeSet.push({ path, blob: null });
+        continue;
+      }
+      const blob = blobId(content);
+      if (blob === before) {
+        unchanged.push(path);
+        continue;
+      }
+      writeSet.push({ path, blob });
+      contents[blob] = content;
+    }
+    if (writeSet.length === 0) fail(400, "every file you sent is unchanged from your lease base: nothing to propose");
+    const problem = inlineProblem(writeSet, contents);
+    if (problem) fail(400, problem);
+    return { headSha: changesetId(s.lease.baseSha, writeSet), writeSet, contents, unchanged };
   }
 
   /**

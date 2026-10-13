@@ -142,6 +142,7 @@ import type { FileDiff } from "../decide/diff.ts";
 import { CallLimiter } from "../decide/limiter.ts";
 import type { AiRunner } from "../decide/reflex.ts";
 import type { CheckResult } from "@fire_trident/core";
+import { INLINE_FETCH_BYTES, InlineContents, inlineRefusal, isInlineChange, migrateContents } from "./inline.ts";
 
 /**
  * Result of ColonyDO.take: an assignment, or advice to wait and retry. `review`: what review will
@@ -568,6 +569,7 @@ export class ColonyDO extends DurableObject<Env> {
     for (const stmt of OPS_SCHEMA) this.sql.exec(stmt);
     migrateDirection(this.sql);
     migrateContest(this.sql);
+    migrateContents(this.sql);
     this.backfillSeries();
     this.hub = new EventHub(() => this.ctx.getWebSockets());
     this.certifier = new Certifier(this.certifyHost());
@@ -1921,6 +1923,15 @@ export class ColonyDO extends DurableObject<Env> {
     this.assertProposable(intentRow, input.agentId);
     const writeSet = this.normalizeVersions(input.writeSet);
     if (writeSet.length === 0) throw ftError(400, "proposal write set is empty");
+    // An inline change carries the text of every file it writes (colony/inline.ts); its head is the changeset id of its base and write set.
+    const contents = input.contents ?? null;
+    const shape = { baseSha: input.baseSha, headSha: input.headSha, writeSet };
+    if (contents !== null) {
+      const refused = inlineRefusal(shape, contents);
+      if (refused) throw ftError(400, `inline change refused: ${refused}`);
+    } else if (isInlineChange(shape)) {
+      throw ftError(400, "headSha is the changeset id of an inline change: send its contents, or propose a commit pushed to the workspace");
+    }
     const readSet = this.normalizeVersions(input.readSet);
     const declaredFootprint = normalizePaths(input.declared?.footprint ?? []);
     const footprint = declaredFootprint.length > 0 ? declaredFootprint : this.footprintOf(intentRow.id, intentRow.footprint);
@@ -1974,6 +1985,11 @@ export class ColonyDO extends DurableObject<Env> {
       now,
       JSON.stringify(proposal),
     );
+    // The contents go in their own table, written with the row (no await between them), never into it.
+    if (contents !== null) {
+      this.inline().put(proposal.id, contents);
+      this.inline().sweep(now);
+    }
     this.bump("proposals", 1, now);
     if (input.notify === true) this.watchOutcome(proposal.id, proposal.agentId);
     const fx = this.effects(colony.regionDepth);
@@ -1994,6 +2010,35 @@ export class ColonyDO extends DurableObject<Env> {
   /** One proposal by id (agents poll their outcome). */
   async getProposal(id: Id): Promise<Proposal | null> {
     return this.getProposalSync(id);
+  }
+
+  /**
+   * The contents of inline changes for the trunk writer, one call per landing cycle: by proposal id, each text
+   * keyed by its blob id, at most `maxBytes` of text per answer (INLINE_FETCH_BYTES at most); the ids left over
+   * come back in `more`. A change whose contents are gone is in neither.
+   */
+  async inlineContents(ids: Id[], maxBytes?: number): Promise<{ contents: Record<Id, Record<Sha, string>>; more: Id[] }> {
+    const budget = typeof maxBytes === "number" && Number.isFinite(maxBytes) && maxBytes > 0 ? Math.min(maxBytes, INLINE_FETCH_BYTES) : INLINE_FETCH_BYTES;
+    const out = this.inline().fetch(Array.isArray(ids) ? ids : [], budget);
+    this.inline().sweep(Date.now());
+    return out;
+  }
+
+  /** The contents of the colony's inline changes (created on first use; the table exists from the constructor on). */
+  private inline(): InlineContents {
+    return (this.inlineStore ??= new InlineContents(this.sql));
+  }
+
+  private inlineStore: InlineContents | null = null;
+
+  /**
+   * The proposal with its contents when it is an inline change, for the readers of its new files (the decide
+   * stage, contest judging, antibody minting); `{}` when they are gone, so no reader falls back to a workspace
+   * that never held them.
+   */
+  private withContents<P extends Proposal | null>(p: P): P {
+    if (!p || !isInlineChange(p)) return p;
+    return { ...p, contents: this.inline().get(p.id) ?? {} } as P;
   }
 
   /**
@@ -2231,7 +2276,8 @@ export class ColonyDO extends DurableObject<Env> {
     if (d !== "approve" && d !== "reject" && d !== "return") throw ftError(400, `unknown decision ${String(d)}`);
     const row = this.proposalRow(proposalId);
     if (!row) throw ftError(404, `unknown proposal ${proposalId}`);
-    const p = JSON.parse(row.data) as Proposal;
+    // With an inline change's contents: an antibody minted from a rejection reads the change.
+    const p = this.withContents(JSON.parse(row.data) as Proposal);
     if (p.status === "landed" || p.status === "rejected" || p.status === "returned") throw ftError(409, `proposal is already ${p.status}`);
     const engine = this.decider();
     if (d === "approve" && engine.store.vaccineByIntent(p.intentId)) throw ftError(409, "vaccine proposals are sealed and can never land");
@@ -2329,7 +2375,8 @@ export class ColonyDO extends DurableObject<Env> {
         const r = this.agentRow(id);
         return r ? { kind: r.kind as AgentKind, name: r.name, ...(r.model ? { model: r.model } : {}) } : null;
       },
-      proposal: (id) => this.getProposalSync(id),
+      // An inline change with its contents: the decide stage reads its new files from them, never from a workspace.
+      proposal: (id) => this.withContents(this.getProposalSync(id)),
       proposalRegion: (id) => this.proposalRow(id)?.region ?? ".",
       stuckChecking: (before) =>
         this.sql
@@ -3027,7 +3074,7 @@ export class ColonyDO extends DurableObject<Env> {
   /** A contestant's change file by file, for the tie-break and the judge (tests replace it). */
   protected contestDiffs(p: Proposal): Promise<FileDiff[] | null> {
     const trunk = this.trunkStub() as unknown as TrunkRpc;
-    return loadDiffs(p, { env: this.env, trunk: this.requireColony().trunk, baseBlobs: (sha, paths) => trunk.baseBlobs(sha, paths) });
+    return loadDiffs(this.withContents(p), { env: this.env, trunk: this.requireColony().trunk, baseBlobs: (sha, paths) => trunk.baseBlobs(sha, paths) });
   }
 
   /**
@@ -3750,6 +3797,7 @@ export class ColonyDO extends DurableObject<Env> {
     for (const stmt of OPS_SCHEMA) this.sql.exec(stmt);
     migrateDirection(this.sql);
     migrateContest(this.sql);
+    migrateContents(this.sql);
     this.certifier.reset();
     return { cleared: true };
   }
@@ -5106,7 +5154,10 @@ export class ColonyDO extends DurableObject<Env> {
   }
 
   private writeProposal(p: Proposal, now: number): void {
-    this.sql.exec("UPDATE proposals SET status = ?, updated_at = ?, data = ? WHERE id = ?", p.status, now, JSON.stringify(p), p.id);
+    // An inline change's contents stay in their own table, never in the row; they go once it settles (InlineContents.settle).
+    const row = p.contents === undefined ? p : { ...p, contents: undefined };
+    this.sql.exec("UPDATE proposals SET status = ?, updated_at = ?, data = ? WHERE id = ?", p.status, now, JSON.stringify(row), p.id);
+    if ((p.status === "landed" || p.status === "returned" || p.status === "rejected") && isInlineChange(p)) this.inline().settle(p.id, p.status, now);
   }
 
   private footprintOf(id: Id, json: string): Path[] {

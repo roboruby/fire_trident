@@ -11,6 +11,12 @@
  * Artifacts commit. What is synthetic: no agent-side git (no clone, edit or push) and no model.
  *
  *   node packages/bench/src/live.ts --colony bench-w2-load --agents 50 --duration 60 --out run.json
+ *
+ * With --inline every proposal is an inline change instead: it carries the text of the new file it writes, so
+ * nothing is read from a workspace (the trunk writer fetches the texts from the colony once per cycle) and setup
+ * needs no git. The colony must take inline changes (FT_INLINE on for it):
+ *
+ *   node packages/bench/src/live.ts --colony bench-inline --agents 50 --duration 60 --inline --out run.json
  */
 import { execFile } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -18,7 +24,8 @@ import { dirname } from "node:path";
 import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { parseArgs, promisify } from "node:util";
-import type { ColonyEvent, ColonySnapshot, Intent, Proposal, WorkspaceLease } from "@fire_trident/core";
+import { blobId, changesetId } from "@fire_trident/core";
+import type { ColonyEvent, ColonySnapshot, FileVersion, Intent, Proposal, WorkspaceLease } from "@fire_trident/core";
 import { liveConfig, redact, type LiveConfig } from "./env.ts";
 import { Recorder, summarize, type Summary } from "./stats.ts";
 import { fakeSha } from "./swarm.ts";
@@ -27,6 +34,9 @@ const run = promisify(execFile);
 
 export const LIVE_NOTE =
   "MEASURED, real landings: synthetic API agents (no model, no agent-side git); every landed proposal is a real trunk commit built by the trunk writer from a blob read out of the agent's workspace fork.";
+/** The note of an --inline run. */
+export const LIVE_INLINE_NOTE =
+  "MEASURED, real landings: synthetic API agents (no model, no git at all); every proposal is an inline change carrying its new file's text, and every landed one is a real trunk commit built by the trunk writer with no workspace read.";
 
 /** Options for one live run. */
 export interface LiveOptions {
@@ -46,6 +56,8 @@ export interface LiveOptions {
   label: string;
   /** After the run, stop (retire) its agents so their claims never hold admission (default true). */
   stopAgents?: boolean;
+  /** Inline changes: each proposal carries its new file's text, so the trunk writer reads no workspace (FT_INLINE on for the colony). */
+  inline?: boolean;
 }
 
 type Assignment = { intent: Intent; lease: WorkspaceLease };
@@ -236,12 +248,37 @@ export function liveProposal(agentId: string, a: Assignment, blob: string, seq: 
   };
 }
 
-/** Find a trunk blob (cached per colony) and prove one end-to-end landing with it. */
-export async function setup(cfg: LiveConfig, colony: string, stateDir: string, log: (s: string) => void): Promise<LiveState> {
-  const file = `${stateDir}/state-${colony}.json`;
+/**
+ * The POST /proposals body of an --inline run: the same new file per intent, as an inline change. Its text travels
+ * with it (keyed by its git blob id) and its head is the changeset id of the lease base and the write set.
+ */
+export function inlineProposal(agentId: string, a: Assignment, seq: number): Record<string, unknown> {
+  const path = a.intent.footprint[0] ?? `bench/orphan/${agentId}-${seq}.txt`;
+  const text = `bench: synthetic inline landing by ${agentId} (${seq}) for ${a.intent.id}\n`;
+  const writeSet: FileVersion[] = [{ path, blob: blobId(text) }];
+  return {
+    intentId: a.intent.id,
+    agentId,
+    workspace: a.lease.repo,
+    baseSha: a.lease.baseSha,
+    headSha: changesetId(a.lease.baseSha, writeSet),
+    writeSet,
+    readSet: [],
+    contents: { [writeSet[0]!.blob!]: text },
+    declared: { footprint: a.intent.footprint, summary: `bench: synthetic inline landing by ${agentId}` },
+    evidence: { checks: [], notVerified: LIVE_INLINE_NOTE },
+  };
+}
+
+/**
+ * Find a trunk blob (cached per colony) and prove one end-to-end landing with it. With `inline`, prove an inline
+ * landing instead: no trunk blob and no git are needed (cached apart).
+ */
+export async function setup(cfg: LiveConfig, colony: string, stateDir: string, log: (s: string) => void, inline = false): Promise<LiveState> {
+  const file = `${stateDir}/state-${colony}${inline ? "-inline" : ""}.json`;
   try {
     const cached = JSON.parse(readFileSync(file, "utf8")) as LiveState;
-    if (cached.colony === colony && /^[0-9a-f]{40}$/.test(cached.blob)) return cached;
+    if (cached.colony === colony && (inline || /^[0-9a-f]{40}$/.test(cached.blob))) return cached;
   } catch {
     // no cache
   }
@@ -254,6 +291,18 @@ export async function setup(cfg: LiveConfig, colony: string, stateDir: string, l
   if (!intent) throw new Error(`intent failed: ${rec.errorSamples.join("; ")}`);
   const t = await client.call<TakeResult>("take", "POST", `/agents/${agent.id}/take`, {});
   if (!t || "wait" in t) throw new Error(`probe take did not assign: ${JSON.stringify(t)}`);
+  if (inline) {
+    const t0 = performance.now();
+    const p = await client.call<Proposal>("propose", "POST", "/proposals", inlineProposal(agent.id, t, 0));
+    if (!p) throw new Error(`inline probe propose failed (is FT_INLINE on for ${colony}?): ${rec.errorSamples.join("; ")}`);
+    const done = await awaitOutcome(client, p.id, performance.now() + 120_000);
+    const probe = { proposalId: p.id, status: done?.status ?? "unknown", ms: Math.round(performance.now() - t0), ...(done?.landingId ? { landingId: done.landingId } : {}) };
+    if (done?.status !== "landed") throw new Error(`inline probe proposal did not land: ${done?.status} ${done?.reason ?? ""}`);
+    const state: LiveState = { colony, blob: "", blobPath: "", probe };
+    mkdirSync(stateDir, { recursive: true });
+    writeFileSync(file, JSON.stringify(state, null, 2));
+    return state;
+  }
   const blobs = await trunkBlobs(t.lease, `${stateDir}/trunk-${colony}`);
   const license = blobs.find((b) => b.path === "LICENSE") ?? blobs[0];
   if (!license) throw new Error("trunk has no blobs");
@@ -389,6 +438,8 @@ export class LiveFeed {
 export interface LiveReport {
   kind: "live";
   note: string;
+  /** Whether every proposal was an inline change (--inline). */
+  inline?: boolean;
   label: string;
   url: string;
   colony: string;
@@ -455,6 +506,7 @@ function reasonKey(reason: string | undefined): string {
   if (r.startsWith("stale")) return "stale";
   if (r.includes("conflicts with another proposal")) return "conflict-in-batch";
   if (r.includes("not in workspace")) return "blob-missing";
+  if (r.includes("inline change") || r.includes("inline contents")) return "inline-contents";
   if (r.includes("landing failed")) return "landing-failed";
   if (r.includes("trunk kept moving")) return "trunk-moving";
   if (r.startsWith("already landed")) return "already-landed";
@@ -532,7 +584,8 @@ export async function runLive(cfg: LiveConfig, opts: LiveOptions, state: LiveSta
         lastBeat = performance.now();
         await client.call("heartbeat", "POST", `/agents/${reg.id}/heartbeat`, {});
       }
-      const p = await client.call<Proposal>("propose", "POST", "/proposals", liveProposal(reg.id, t, state.blob, ++seq));
+      const body = opts.inline ? inlineProposal(reg.id, t, ++seq) : liveProposal(reg.id, t, state.blob, ++seq);
+      const p = await client.call<Proposal>("propose", "POST", "/proposals", body);
       if (!p) {
         await sleep(500);
         continue;
@@ -603,7 +656,8 @@ export async function runLive(cfg: LiveConfig, opts: LiveOptions, state: LiveSta
 
   return {
     kind: "live",
-    note: LIVE_NOTE,
+    note: opts.inline ? LIVE_INLINE_NOTE : LIVE_NOTE,
+    ...(opts.inline ? { inline: true } : {}),
     label: opts.label,
     url: cfg.url,
     colony: opts.colony,
@@ -662,6 +716,7 @@ async function main(): Promise<void> {
       state: { type: "string" },
       "setup-only": { type: "boolean" },
       "keep-agents": { type: "boolean" },
+      inline: { type: "boolean" },
     },
     strict: true,
   });
@@ -681,11 +736,12 @@ async function main(): Promise<void> {
     label: values.label ?? `n${agents}`,
     ...(values.out ? { out: values.out } : {}),
     stopAgents: values["keep-agents"] !== true,
+    ...(values.inline ? { inline: true } : {}),
   };
   const cfg = liveConfig();
   const log = (s: string) => console.error(`[${new Date().toISOString().slice(11, 19)}] ${s}`);
-  const state = await setup(cfg, colony, values.state ?? "/tmp/ft-w2", log);
-  log(`probe landed ${state.probe.proposalId} in ${state.probe.ms} ms (blob ${state.blob.slice(0, 10)} from ${state.blobPath})`);
+  const state = await setup(cfg, colony, values.state ?? "/tmp/ft-w2", log, opts.inline === true);
+  log(opts.inline ? `inline probe landed ${state.probe.proposalId} in ${state.probe.ms} ms` : `probe landed ${state.probe.proposalId} in ${state.probe.ms} ms (blob ${state.blob.slice(0, 10)} from ${state.blobPath})`);
   if (values["setup-only"]) return;
   const report = await runLive(cfg, opts, state, log);
   const text = JSON.stringify(report, null, 2);

@@ -1,7 +1,7 @@
 import type { Id, LineageNote, Path, Proposal, RepoRef, Sha } from "@fire_trident/core";
 import { residualPaths } from "@fire_trident/core";
 import type { Env } from "../env.ts";
-import { bindingReader, textOf, type BlobReader } from "../colony/innate.ts";
+import { bindingReader, contentsReader, textOf, type BlobReader } from "../colony/innate.ts";
 import type { WhyAuthor } from "./danger.ts";
 import { fileDiff, type FileDiff } from "./diff.ts";
 import type { CallLimiter } from "./limiter.ts";
@@ -456,7 +456,7 @@ export function combine(first: { better: "A" | "B" | "tie"; reason: string }, se
 // Loading a change's diff
 // ---------------------------------------------------------------------------
 
-/** Where a change's text comes from: its workspace (new blobs) and trunk (the blobs it was built on). */
+/** Where a change's text comes from: its workspace (new blobs; an inline change carries them as contents) and trunk (the blobs it was built on). */
 export interface DiffSource {
   env: Env;
   trunk: RepoRef;
@@ -467,11 +467,13 @@ export interface DiffSource {
 
 /**
  * The change file by file as the judge would see it: each written file's text before (the blob it
- * read, else its base) and after (its new blob in the workspace). Never throws: a blob it cannot read
- * makes that file unreadable, and the judge is then not asked about the change.
+ * read, else its base) and after (its new blob in the workspace, or an inline change's contents).
+ * Never throws: a blob it cannot read makes that file unreadable, and the judge is then not asked
+ * about the change.
  */
-export async function loadDiffs(p: Pick<Proposal, "writeSet" | "readSet" | "baseSha" | "workspace">, src: DiffSource): Promise<FileDiff[]> {
+export async function loadDiffs(p: Pick<Proposal, "writeSet" | "readSet" | "baseSha" | "workspace" | "contents">, src: DiffSource): Promise<FileDiff[]> {
   const read = src.read ?? bindingReader(src.env);
+  const readNew = p.contents && typeof p.contents === "object" ? contentsReader(p.contents) : read;
   const before = new Map<Path, Sha | null>((p.readSet ?? []).map((f) => [f.path, f.blob]));
   const missing = p.writeSet.map((w) => w.path).filter((path) => !before.has(path));
   if (missing.length > 0 && src.baseBlobs) {
@@ -484,7 +486,7 @@ export async function loadDiffs(p: Pick<Proposal, "writeSet" | "readSet" | "base
   const afterIds = p.writeSet.map((w) => w.blob).filter((b): b is Sha => typeof b === "string");
   const beforeIds = p.writeSet.map((w) => before.get(w.path) ?? null).filter((b): b is Sha => typeof b === "string");
   const [afterBytes, beforeBytes] = await Promise.all([
-    read({ namespace: p.workspace.namespace, name: p.workspace.name }, afterIds).catch(() => new Map<Sha, Uint8Array | null>()),
+    readNew({ namespace: p.workspace.namespace, name: p.workspace.name }, afterIds).catch(() => new Map<Sha, Uint8Array | null>()),
     read({ namespace: src.trunk.namespace, name: src.trunk.name }, beforeIds).catch(() => new Map<Sha, Uint8Array | null>()),
   ]);
   return p.writeSet.map((w) => {

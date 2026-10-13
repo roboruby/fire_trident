@@ -2,14 +2,16 @@ import { McpAgent } from "agents/mcp";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
+import { INLINE_LIMITS } from "@fire_trident/core";
 import type { RepoRef } from "@fire_trident/core";
 import type { Env } from "../env.ts";
 import { artifactsFor, colonyStub, errorMessage, errorStatus, regionStub, trunkStub } from "../agents/rpc.ts";
 import { withArtifactsRetry } from "../artifacts/git.ts";
 import { ESCALATION_KINDS, MAX_REPORT_CHARS } from "../colony/direction.ts";
-import { SERVER_INSTRUCTIONS } from "./instructions.ts";
+import { inlineEnabled, inlineOffered } from "../colony/inline.ts";
+import { serverInstructions } from "./instructions.ts";
 import { FireTridentTools, MAX_WAIT_S } from "./tools.ts";
-import type { McpColonyRpc, RepoReader, Session, ToolContext } from "./tools.ts";
+import type { McpColonyRpc, McpTrunkRpc, RepoReader, Session, ToolContext } from "./tools.ts";
 
 const SESSION_KEY = "ft:session";
 
@@ -54,7 +56,8 @@ const wait = z.number().min(0).max(MAX_WAIT_S).optional();
  * propose, inbox, release, escalate, why. Served over Streamable HTTP at /mcp and legacy SSE at /sse.
  */
 export class FireTridentMcp extends McpAgent<Env, Record<string, never>, Record<string, unknown>> {
-  server = new McpServer({ name: "firetrident", version: "0.0.1" }, { instructions: SERVER_INSTRUCTIONS });
+  // Where FT_INLINE turns inline changes on, agents are told they may propose without git.
+  server = new McpServer({ name: "firetrident", version: "0.0.1" }, { instructions: serverInstructions(inlineOffered(this.env?.FT_INLINE)) });
 
   private context(): ToolContext {
     const env = this.env;
@@ -62,7 +65,8 @@ export class FireTridentMcp extends McpAgent<Env, Record<string, never>, Record<
     return {
       colony: (colonyId) => colonyStub(env, colonyId) as McpColonyRpc,
       region: (colonyId, region) => regionStub(env, colonyId, region),
-      trunk: (colonyId) => trunkStub(env, colonyId),
+      trunk: (colonyId) => trunkStub(env, colonyId) as McpTrunkRpc,
+      inline: (colonyId) => inlineEnabled(env.FT_INLINE, colonyId),
       repo: async (ref: Pick<RepoRef, "namespace" | "name">): Promise<RepoReader> => {
         const ns = artifactsFor(env, ref.namespace);
         if (!ns) throw new Error(`[ft:400] no binding serves namespace ${ref.namespace}`);
@@ -180,21 +184,43 @@ export class FireTridentMcp extends McpAgent<Env, Record<string, never>, Record<
       async (a) => run(() => this.tools().read(a)),
     );
 
-    this.server.registerTool(
-      "propose",
-      {
-        title: "Propose your change",
-        description:
-          "Propose the commit you pushed to refs/heads/main of your workspace. The server computes the files you wrote by diffing your commit against the lease base; your read set comes from read calls in this session. Say what you did not verify in notVerified: reviewers see it.",
-        inputSchema: {
-          headSha: z.string().regex(/^[0-9a-fA-F]{40}$/).describe("Full commit id of your pushed head"),
-          summary: z.string().max(2_000).optional().describe("One-paragraph summary of the change"),
-          notVerified: z.string().max(5_000).optional().describe("What you did not check (tests not run, platforms not tried, ...)"),
+    const headSha = z.string().regex(/^[0-9a-fA-F]{40}$/).describe("Full commit id of your pushed head");
+    const summary = z.string().max(2_000).optional().describe("One-paragraph summary of the change");
+    const notVerified = z.string().max(5_000).optional().describe("What you did not check (tests not run, platforms not tried, ...)");
+    if (inlineOffered(this.env.FT_INLINE)) {
+      this.server.registerTool(
+        "propose",
+        {
+          title: "Propose your change",
+          description: `Propose your change in one of two ways. With headSha: the commit you pushed to refs/heads/main of your workspace (the server computes the files you wrote by diffing it against the lease base). Or without git, with files: the whole new text of each file you change (content null deletes a file), at most ${INLINE_LIMITS.files} text files, ${INLINE_LIMITS.fileBytes / 1024} KB a file and ${INLINE_LIMITS.totalBytes / 1024} KB in all; the server builds the change against the lease base and drops files you send unchanged. Pass exactly one of the two. Your read set comes from read calls in this session. Say what you did not verify in notVerified: reviewers see it.`,
+          inputSchema: {
+            headSha: headSha.optional(),
+            files: z
+              .array(z.object({ path: path.describe("Repository path, relative, with / separators"), content: z.string().max(INLINE_LIMITS.fileBytes).nullable().describe("The file's whole new text, or null to delete it") }))
+              .min(1)
+              .max(INLINE_LIMITS.files)
+              .optional()
+              .describe("Each file you change with its new content: no git needed (instead of headSha)"),
+            summary,
+            notVerified,
+          },
+          annotations: { openWorldHint: false },
         },
-        annotations: { openWorldHint: false },
-      },
-      async (a) => run(() => this.tools().propose(a)),
-    );
+        async (a) => run(() => this.tools().propose(a)),
+      );
+    } else {
+      this.server.registerTool(
+        "propose",
+        {
+          title: "Propose your change",
+          description:
+            "Propose the commit you pushed to refs/heads/main of your workspace. The server computes the files you wrote by diffing your commit against the lease base; your read set comes from read calls in this session. Say what you did not verify in notVerified: reviewers see it.",
+          inputSchema: { headSha, summary, notVerified },
+          annotations: { openWorldHint: false },
+        },
+        async (a) => run(() => this.tools().propose(a)),
+      );
+    }
 
     this.server.registerTool(
       "inbox",

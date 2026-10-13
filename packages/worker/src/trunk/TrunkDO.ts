@@ -53,6 +53,7 @@ import { durableFs } from "../artifacts/workspace.ts";
 import { TRUNK_NAMESPACE, bindingFor } from "../artifacts/shards.ts";
 import { noteAlternatives, type ContestAlternative } from "../decide/contest.ts";
 import type { DirectionInfo } from "../colony/direction.ts";
+import { INLINE_FETCH_BYTES, isInlineChange } from "../colony/inline.ts";
 import { DIRECTION_TABLE, FENCE_WAIT_MS, directionReturns, fenceAnswer, mergeDirection, parseDirection, pushDelayMs, settlesWithin, type FenceAnswer } from "./direction.ts";
 
 export type { LandResult, Returned } from "./plan.ts";
@@ -1000,9 +1001,13 @@ export class TrunkDO extends DurableObject<Env> {
     });
     lap("screen");
 
-    // 4. Pull the new blobs from the agents' workspaces, many workspaces at once.
+    // 4. Pull the new blobs: an inline change's from its contents (pullInline: no workspace read, one call to the
+    //    colony for the cycle), every other change's from its agent's workspace, many workspaces at once.
     const sizes = new Map<Id, Map<Path, number>>();
+    const inlineIds = new Set(live.filter((e) => isInlineChange(e.p)).map((e) => e.p.id));
+    const inline = inlineIds.size > 0 ? await this.pullInline(live.filter((e) => inlineIds.has(e.p.id)).map((e) => e.p), st.colonyId, sizes) : new Map<Id, Outcome>();
     const pulls = await mapLimit(live, PULL_CONCURRENCY, async (e): Promise<Outcome | null> => {
+      if (inlineIds.has(e.p.id)) return inline.get(e.p.id) ?? null;
       try {
         sizes.set(e.p.id, await this.pullBlobs(e.p));
         return null;
@@ -1367,6 +1372,72 @@ export class TrunkDO extends DurableObject<Env> {
       dispose(repo);
     }
     return sizes;
+  }
+
+  /**
+   * The new blobs of this cycle's inline changes (colony/inline.ts), with no workspace read: a change's texts come
+   * with its batch, or from the colony that keeps them, in one call for the cycle (more only past
+   * INLINE_FETCH_BYTES, so an answer, and the texts held at once, stay bounded). Each text must hash to the blob id
+   * its write set names before it is written to the local store. Fills `sizes` for the changes pulled and returns an
+   * outcome for each one that cannot land: a text missing or wrong sends it back, a colony that does not answer defers it.
+   */
+  private async pullInline(proposals: Proposal[], colonyId: Id, sizes: Map<Id, Map<Path, number>>): Promise<Map<Id, Outcome>> {
+    const out = new Map<Id, Outcome>();
+    const g = this.repo();
+    const enc = new TextEncoder();
+    const needed = (p: Proposal): FileVersion[] => p.writeSet.filter((w) => w.blob !== null && w.blob !== this.indexBlob(w.path));
+    const write = async (p: Proposal, texts: unknown): Promise<void> => {
+      const got = new Map<Path, number>();
+      try {
+        for (const w of needed(p)) {
+          const blob = w.blob as Sha;
+          const text = texts && typeof texts === "object" && Object.hasOwn(texts, blob) ? (texts as Record<Sha, unknown>)[blob] : undefined;
+          if (typeof text !== "string") throw new ProposalProblem(`no text for ${w.path} (blob ${blob}) in this inline change; propose it again`);
+          const bytes = enc.encode(text);
+          const sha = await blobSha(bytes);
+          if (sha !== blob) throw new ProposalProblem(`the text for ${w.path} hashes to ${sha}, not ${blob}`);
+          await writeLocalBlob(g, bytes);
+          got.set(w.path, bytes.length);
+        }
+        sizes.set(p.id, got);
+      } catch (err) {
+        out.set(p.id, err instanceof ProposalProblem ? { kind: "returned", reason: err.message } : { kind: "deferred", reason: `blob write failed: ${errorText(err)}` });
+      }
+    };
+    // A change that needs no new blob asks for nothing; one whose batch carries every text it needs uses them.
+    const carried: Proposal[] = [];
+    let ask: Proposal[] = [];
+    for (const p of proposals) {
+      const need = needed(p);
+      const texts = p.contents && typeof p.contents === "object" ? p.contents : null;
+      if (need.length === 0) sizes.set(p.id, new Map());
+      else if (texts && need.every((w) => Object.hasOwn(texts, w.blob as Sha) && typeof texts[w.blob as Sha] === "string")) carried.push(p);
+      else ask.push(p);
+    }
+    await mapLimit(carried, WRITE_CONCURRENCY, (p) => write(p, p.contents));
+    const ns = this.env.COLONY as DurableObjectNamespace | undefined;
+    const colony = ns ? (ns.get(ns.idFromName(colonyId)) as unknown as { inlineContents(ids: Id[], maxBytes?: number): Promise<{ contents?: Record<Id, Record<Sha, string>>; more?: Id[] }> }) : null;
+    while (ask.length > 0) {
+      let answer: { contents?: Record<Id, Record<Sha, string>>; more?: Id[] };
+      try {
+        if (!colony) throw new Error("no colony binding");
+        answer = await colony.inlineContents(ask.map((p) => p.id), INLINE_FETCH_BYTES);
+      } catch (err) {
+        for (const p of ask) out.set(p.id, { kind: "deferred", reason: `inline contents not fetched from the colony: ${errorText(err)}` });
+        break;
+      }
+      const more = new Set(Array.isArray(answer?.more) ? answer.more : []);
+      const answered = ask.filter((p) => !more.has(p.id));
+      if (answered.length === 0) {
+        // An answer that moves nothing on would loop: the rest waits for a later cycle.
+        for (const p of ask) out.set(p.id, { kind: "deferred", reason: "inline contents not fetched: the colony sent none" });
+        break;
+      }
+      const contents: Record<Id, unknown> = answer?.contents && typeof answer.contents === "object" ? answer.contents : {};
+      await mapLimit(answered, WRITE_CONCURRENCY, (p) => write(p, Object.hasOwn(contents, p.id) ? contents[p.id] : undefined));
+      ask = ask.filter((p) => more.has(p.id));
+    }
+    return out;
   }
 
   /** Build, push and record one system commit (see systemCommit); up to MAX_REBUILDS retries on a moved trunk. */

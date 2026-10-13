@@ -27,6 +27,7 @@ import {
   WithdrawBody,
 } from "./schemas.ts";
 import { decideApi } from "./vaccinate.ts";
+import { inlineEnabled } from "../colony/inline.ts";
 import { certifyRoutes } from "./certify.ts";
 
 /** Hono environment of the API. */
@@ -459,6 +460,10 @@ export function createApi(deps: ApiDeps): Hono<ApiEnv> {
   app.post("/colonies/:id/proposals", requireAdmin, async (c) => {
     const colonyId = colonyParam(c);
     const b = await body(c, ProposalBody);
+    // An inline change carries its files' text instead of a pushed commit; FT_INLINE says which colonies take one.
+    if (b.contents !== undefined && !inlineEnabled(c.env.FT_INLINE, colonyId)) {
+      throw ftError(409, "inline changes are off for this colony (FT_INLINE): push a commit to the workspace and propose its id");
+    }
     const evidence = b.evidence
       ? {
           ...(b.evidence.checks ? { checks: b.evidence.checks.map((k) => ({ name: k.name, ok: k.ok, ms: k.ms, ...(k.detail !== undefined ? { detail: k.detail } : {}) })) } : {}),
@@ -477,6 +482,7 @@ export function createApi(deps: ApiDeps): Hono<ApiEnv> {
       readSet: b.readSet,
       declared: b.declared,
       ...(b.intentRevision !== undefined ? { intentRevision: b.intentRevision } : {}),
+      ...(b.contents !== undefined ? { contents: b.contents } : {}),
       ...(evidence ? { evidence } : {}),
     });
     return json(proposal, 201);
