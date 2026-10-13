@@ -696,6 +696,35 @@ export function formatRetract(ruleId: string, reason: string, res: RetractResult
   return out.join("\n");
 }
 
+/** What POST /landings/:ref/revert answered. */
+export interface RevertResult {
+  landing?: Partial<Landing>;
+  reverted?: Partial<Landing>;
+  redo?: string[];
+  /** The one proposal undone, when the revert named one (the rest of its landing stayed). */
+  proposal?: string;
+}
+
+/**
+ * The outcome of `ft revert`: what was undone (a landing, or one proposal of it) and as which commit,
+ * the files that went back, the other proposals of that landing that stayed, and the intents declared again.
+ */
+export function formatRevert(ref: string, reason: string, res: RevertResult, c: Colors): string {
+  const short = (sha?: string) => (sha ? ` (${sha.slice(0, 7)})` : "");
+  const of = res.reverted?.id ?? ref;
+  const what = res.proposal ? `${c.bold(res.proposal)} of ${c.bold(of)}` : c.bold(of);
+  const out = [`${c.yellow("Reverted")} ${what}${short(res.reverted?.trunkSha)} as ${c.bold(res.landing?.id ?? "?")}${short(res.landing?.trunkSha)}: ${reason}`];
+  const files = res.landing?.paths ?? [];
+  if (files.length > 0) out.push(`  undone  ${paths(files, 5)}`);
+  if (res.proposal) {
+    const kept = (res.reverted?.proposalIds ?? []).filter((id) => id !== res.proposal);
+    out.push(`  stayed  ${kept.length > 0 ? `${paths(kept, 5)} ${c.dim(`(the rest of ${of}, untouched)`)}` : c.dim(`nothing else: it was the only proposal of ${of}`)}`);
+  }
+  const redo = res.redo ?? [];
+  if (redo.length > 0) out.push(c.dim(`  ${redo.length} intent${redo.length === 1 ? "" : "s"} declared again: ${redo.join(", ")}`));
+  return out.join("\n");
+}
+
 /** What POST /agents/:aid/directive answered. */
 export interface DirectResult {
   id?: string;
@@ -954,7 +983,7 @@ export function formatEvent(e: ColonyEvent, c: Colors, clock: (at: number) => st
     case "retracted":
       return `${time} ${tag("retracted", "red")} ${e.ruleId} ${c.dim(`by ${e.by}: ${e.reason}`)} ${e.withdrawn} intent${e.withdrawn === 1 ? "" : "s"} withdrawn`;
     case "reverted":
-      return `${time} ${tag("reverted", "red")} ${e.of} ${c.dim(`by ${e.by}: ${e.reason}`)} as ${e.landingId}${e.redo.length ? ` ${e.redo.length} intent${e.redo.length === 1 ? "" : "s"} declared again` : ""}`;
+      return `${time} ${tag("reverted", "red")} ${e.proposal ? `${e.proposal} of ` : ""}${e.of} ${c.dim(`by ${e.by}: ${e.reason}`)} as ${e.landingId}${e.redo.length ? ` ${e.redo.length} intent${e.redo.length === 1 ? "" : "s"} declared again` : ""}`;
     case "directive":
       return `${time} ${tag("directive", "cyan")} ${e.agentId} ← ${e.by}${e.kind === "landing" ? c.dim(" (landing notice)") : ""}: ${quote(e.message, 80)}${e.intentId ? c.dim(` (${e.intentId})`) : ""}${e.via ? c.dim(` ${e.via}`) : ""}`;
     case "escalation":

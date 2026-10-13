@@ -915,25 +915,44 @@ export class ColonyDO extends DurableObject<Env> {
   }
 
   /**
+   * Undo one proposal of a landed change (`ft revert <colony> <prp_...>`): revertLanding limited to
+   * that proposal, so only the files it wrote go back and only its intent comes back; the landing's
+   * other proposals stay. A method of its own, so an object still on the previous class refuses the
+   * call (deploys reach objects gradually) instead of undoing the whole landing.
+   */
+  async revertProposal(ref: string, p: { proposal: Id; reason: string; by?: string; redo?: boolean }): Promise<{ landing: Landing; reverted: Landing; redo: Id[]; proposal: Id }> {
+    const proposal = String(p?.proposal ?? "").trim();
+    if (!proposal) throw ftError(400, "say which proposal of the landing to revert");
+    return { ...(await this.revertLanding(ref, { ...p, proposal })), proposal };
+  }
+
+  /**
    * Undo a landed change (`ft revert`): a person's decision, recorded with their reason in the event
    * record and in the revert commit's lineage note. The trunk writer refuses when work has landed on
    * top of the change. Unless `redo` is false, each intent the landing completed comes back as a new
    * intent (its parent is the one undone, its why starts with the reason), and the violations a rule
-   * fix had cleared count again until that intent lands.
+   * fix had cleared count again until that intent lands. With `proposal`, only that proposal of the
+   * landing is undone (see revertProposal) and only its intent comes back.
    */
-  async revertLanding(ref: string, p: { reason: string; by?: string; redo?: boolean }): Promise<{ landing: Landing; reverted: Landing; redo: Id[] }> {
+  async revertLanding(ref: string, p: { reason: string; by?: string; redo?: boolean; proposal?: Id }): Promise<{ landing: Landing; reverted: Landing; redo: Id[] }> {
     const colony = this.requireColony();
     const reason = oneLine(String(p?.reason ?? ""), 500);
     if (!reason) throw ftError(400, "a reason is required: it is recorded with the revert and given to the intents it brings back");
     const by = oneLine(p.by ?? "", 200) || "unknown";
-    const res = (await this.trunkStub().revert(String(ref ?? ""), { by, reason })) as RevertResult;
+    const proposal = typeof p.proposal === "string" && p.proposal.trim() !== "" ? p.proposal.trim() : undefined;
+    const trunk = this.trunkStub();
+    const res = (await (proposal ? trunk.revertProposal(String(ref ?? ""), { by, reason, proposal }) : trunk.revert(String(ref ?? ""), { by, reason }))) as RevertResult;
     if (!res.ok) throw ftError(res.status, res.error);
     this.noteSystemCommit(res.landing);
     const now = Date.now();
     const drafts: Array<IntentInput & { violations?: number }> = [];
     const restored: Array<{ ruleId: Id; violations: number }> = [];
+    // One proposal undone: only its intent comes back (from the lineage note, else this colony's record of the proposal).
+    const undone = res.proposal ?? (proposal ? { id: proposal, intentId: null } : undefined);
+    const intentIds = undone ? [undone.intentId ?? this.proposalRow(undone.id)?.intent_id].filter((id): id is Id => typeof id === "string" && id !== "") : res.reverted.intentIds;
+    const what = undone ? `${undone.id} of ${res.reverted.id}` : res.reverted.id;
     if (p.redo !== false) {
-      for (const intentId of res.reverted.intentIds) {
+      for (const intentId of intentIds) {
         const row = this.intentRow(intentId);
         if (!row || row.status !== "landed") continue;
         const original = this.toIntent(row, colony.id);
@@ -942,7 +961,7 @@ export class ColonyDO extends DurableObject<Env> {
         drafts.push({
           colonyId: colony.id,
           title: oneLine(`Redo after revert: ${original.title}`, 200),
-          why: `${by} reverted ${res.reverted.id} (${res.reverted.trunkSha.slice(0, 7)}): ${reason}\n\n${original.why}`,
+          why: `${by} reverted ${what} (${res.reverted.trunkSha.slice(0, 7)}): ${reason}\n\n${original.why}`,
           source: ruleId ? "rule" : "human",
           ...(ruleId ? { ruleId, violations: row.violations } : {}),
           parentId: original.id,
@@ -957,7 +976,7 @@ export class ColonyDO extends DurableObject<Env> {
     const redo = drafts.length > 0 ? (await this.createIntents(drafts)).map((i) => i.id) : [];
     for (const r of restored) this.sql.exec("UPDATE rules SET open_violations = open_violations + ? WHERE id = ?", r.violations, r.ruleId);
     this.sql.exec("INSERT OR REPLACE INTO reverts (landing_id, of, redo, restored, at) VALUES (?, ?, ?, ?, ?)", res.landing.id, res.reverted.id, JSON.stringify(redo), JSON.stringify(restored), now);
-    this.publish({ t: "reverted", at: now, landingId: res.landing.id, of: res.reverted.id, trunkSha: res.landing.trunkSha, paths: res.landing.paths, reason, by, redo });
+    this.publish({ t: "reverted", at: now, landingId: res.landing.id, of: res.reverted.id, trunkSha: res.landing.trunkSha, paths: res.landing.paths, reason, by, redo, ...(undone ? { proposal: undone.id } : {}) });
 
     // Undoing a revert puts its change back: the intents it declared again are not needed any more
     // (none can have landed, or this revert would have been refused), and its violations are fixed again.

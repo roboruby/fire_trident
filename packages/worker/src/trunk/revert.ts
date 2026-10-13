@@ -1,4 +1,4 @@
-import type { Id, Landing, Path, Sha } from "@fire_trident/core";
+import type { Id, Landing, LineageNote, Path, Sha } from "@fire_trident/core";
 import { importsOf } from "@fire_trident/core";
 import { isRelative, resolveModule, specifierTarget } from "../decide/mechanical.ts";
 
@@ -9,7 +9,10 @@ import { isRelative, resolveModule, specifierTarget } from "../decide/mechanical
  * land on top of it, and undoing would overwrite that work, so the revert is refused with the paths
  * and the landings that moved them. A file the landing created is deleted by its revert, so the
  * revert is refused too while other trunk files import it (resolved as the decide stage resolves
- * relative imports). Pure: no I/O.
+ * relative imports). A revert can also undo one proposal of a landing (a landing is one lane batch,
+ * and the write sets of its proposals never overlap): then only the paths that proposal wrote go
+ * back, and the same guards apply to them. The planning functions are pure; runRevert reads trunk
+ * and commits through a RevertTrunk (TrunkDO's tables and serial chain, or a stand-in in tests).
  */
 
 /** One path of a landing as the trunk writer recorded it (null: absent). */
@@ -42,10 +45,16 @@ export interface Imported {
   by: Path[];
 }
 
-/** The answer of TrunkDO.revert. */
+/** The proposal a revert undid on its own, and its intent (null: not recorded). */
+export interface RevertedProposal {
+  id: Id;
+  intentId: Id | null;
+}
+
+/** The answer of TrunkDO.revert and TrunkDO.revertProposal (`proposal`: only that proposal of the landing was undone). */
 export type RevertResult =
-  | { ok: true; landing: Landing; reverted: Landing }
-  | { ok: false; status: 404 | 409 | 422; error: string; moved?: Moved[]; imported?: Imported[] };
+  | { ok: true; landing: Landing; reverted: Landing; proposal?: RevertedProposal }
+  | { ok: false; status: 400 | 404 | 409 | 422; error: string; moved?: Moved[]; imported?: Imported[] };
 
 /** Plan the revert of one landing's paths against current trunk (`later` names the latest landing that changed a path since). */
 export function planRevert(paths: readonly LandedPath[], current: (path: Path) => Sha | null, later: (path: Path) => Id | null): RevertPlan {
@@ -118,4 +127,218 @@ export function importedText(list: readonly Imported[], lastBy: (path: Path) => 
   });
   if (list.length > max) parts.push(`and ${list.length - max} more`);
   return parts.join("; ");
+}
+
+/**
+ * What one proposal of a landing wrote, from the landing's lineage note: its intent (null: not
+ * recorded) and the paths of its write set. Null when the note does not list it or cannot be read.
+ */
+export function proposalWrites(note: unknown, proposalId: Id): { intentId: Id | null; paths: Path[] } | null {
+  const list = note !== null && typeof note === "object" ? (note as { proposals?: unknown }).proposals : undefined;
+  if (!Array.isArray(list)) return null;
+  for (const entry of list as unknown[]) {
+    if (entry === null || typeof entry !== "object") continue;
+    const e = entry as { id?: unknown; intent?: unknown; writeSet?: unknown };
+    if (e.id !== proposalId || !Array.isArray(e.writeSet)) continue;
+    const paths = (e.writeSet as unknown[]).flatMap((w) => (w !== null && typeof w === "object" && typeof (w as { path?: unknown }).path === "string" ? [(w as { path: string }).path] : []));
+    const intent = e.intent !== null && typeof e.intent === "object" ? (e.intent as { id?: unknown }).id : undefined;
+    return { intentId: typeof intent === "string" && intent !== "" ? intent : null, paths };
+  }
+  return null;
+}
+
+/** One file of a revert commit: the text of the blob it goes back to (null: delete it), written only while trunk still holds `expect`. */
+export interface RevertFile extends Restore {
+  content: string | null;
+}
+
+/** The revert commit the trunk writer is asked to make. */
+export interface RevertCommit {
+  files: RevertFile[];
+  message: string;
+  note: LineageNote & Record<string, unknown>;
+}
+
+/** What a revert takes from the trunk writer besides its tables (sqlRevertTrunk adds those). */
+export interface RevertWriter {
+  /** The landing `ref` names (a landing id, or a trunk commit or a unique prefix of 7+), or null. */
+  landing(ref: string): Landing | null;
+  /** A blob's bytes, or null when it cannot be read. */
+  read(blob: Sha): Promise<Uint8Array | null>;
+  /** Run `fn` on the trunk writer's serial chain: no landing cycle runs while it does. */
+  serial<T>(fn: () => Promise<T>): Promise<T>;
+  /** Write and push the commit now (call inside `serial`); `stale` when a file no longer holds its `expect`, and nothing was written. */
+  commitNow(commit: RevertCommit): Promise<{ landing: Landing } | { stale: string }>;
+  /** Start pushing the new lineage note. */
+  notesSoon(): Promise<void>;
+}
+
+/** The trunk as a revert reads it: the writer, the landing records, and the current tree. */
+export interface RevertTrunk extends RevertWriter {
+  /** The paths a landing changed, with their blobs before and after it, sorted by path. */
+  landed(landingId: Id): LandedPath[];
+  /** A landing's lineage note (parsed JSON), or null. */
+  note(landingId: Id): unknown;
+  /** The landing a proposal landed in, or null. */
+  landingOf(proposalId: Id): Id | null;
+  /** The latest landing after `landingId` that changed `path`, or null. */
+  later(landingId: Id, path: Path): Id | null;
+  /** The blob trunk holds at `path` now (null: absent). */
+  blob(path: Path): Sha | null;
+  /** Every trunk file now, with its blob and size. */
+  files(): Array<{ path: Path; blob: Sha; size: number }>;
+}
+
+/** A RevertTrunk over the trunk writer's tables: ft_landings, ft_landing_paths, ft_notes, ft_landed and ft_files. */
+export function sqlRevertTrunk(sql: SqlStorage, w: RevertWriter): RevertTrunk {
+  return {
+    landing: (ref) => w.landing(ref),
+    read: (blob) => w.read(blob),
+    serial: (fn) => w.serial(fn),
+    commitNow: (commit) => w.commitNow(commit),
+    notesSoon: () => w.notesSoon(),
+    landed: (landingId) =>
+      sql
+        .exec<{ path: string; before_blob: string | null; after_blob: string | null }>(`SELECT path, before_blob, after_blob FROM ft_landing_paths WHERE landing_id = ? ORDER BY path`, landingId)
+        .toArray()
+        .map((r) => ({ path: r.path, before: r.before_blob, after: r.after_blob })),
+    note: (landingId) => {
+      const text = sql.exec<{ note: string }>(`SELECT note FROM ft_notes WHERE landing_id = ?`, landingId).toArray()[0]?.note;
+      if (text === undefined) return null;
+      try {
+        return JSON.parse(text) as unknown;
+      } catch {
+        return null;
+      }
+    },
+    landingOf: (proposalId) => sql.exec<{ landing_id: string }>(`SELECT landing_id FROM ft_landed WHERE proposal_id = ?`, proposalId).toArray()[0]?.landing_id ?? null,
+    later: (landingId, path) =>
+      sql
+        .exec<{ landing_id: string }>(
+          `SELECT landing_id FROM ft_landing_paths WHERE path = ? AND seq > (SELECT seq FROM ft_landings WHERE id = ?) ORDER BY seq DESC LIMIT 1`,
+          path,
+          landingId,
+        )
+        .toArray()[0]?.landing_id ?? null,
+    blob: (path) => sql.exec<{ blob: string }>(`SELECT blob FROM ft_files WHERE path = ?`, path).toArray()[0]?.blob ?? null,
+    files: () => sql.exec<{ path: string; blob: string; size: number }>(`SELECT path, blob, size FROM ft_files`).toArray(),
+  };
+}
+
+/**
+ * Undo a landing, or only `p.proposal` of it, as a new commit on current trunk (the body of
+ * TrunkDO.revert and revertProposal). A proposal's paths are the landing's recorded paths that its
+ * write set in the landing's lineage note names; every guard applies to the paths being undone.
+ * Refused (409) while one of them holds other work than the landing produced, or while trunk files
+ * import a file the revert would delete; both are checked again on the serial chain right before the
+ * commit. 422 when a file to restore is not UTF-8 text or the import check would read too much; 404
+ * for an unknown landing, or a proposal that did not land in it.
+ */
+export async function runRevert(trunk: RevertTrunk, ref: string, p: { by: string; reason: string; proposal?: Id }): Promise<RevertResult> {
+  const target = trunk.landing(String(ref ?? "").trim());
+  if (!target) return { ok: false, status: 404, error: `no landing ${ref} on this trunk` };
+  let rows = trunk.landed(target.id);
+  if (rows.length === 0) return { ok: false, status: 422, error: `landing ${target.id} recorded no file changes` };
+  let undone: RevertedProposal | undefined;
+  if (p.proposal !== undefined) {
+    const id = String(p.proposal).trim();
+    if (id === "") return { ok: false, status: 400, error: "say which proposal of the landing to revert" };
+    const proposals = Array.isArray(target.proposalIds) ? target.proposalIds : [];
+    const landedIn = trunk.landingOf(id);
+    if (!proposals.includes(id) && landedIn !== target.id) {
+      return { ok: false, status: 404, error: `proposal ${id} did not land in ${target.id}${landedIn ? ` (it landed in ${landedIn})` : ""}` };
+    }
+    const wrote = proposalWrites(trunk.note(target.id), id);
+    // The only proposal of its landing wrote all of it; otherwise the note says which paths are its own.
+    if (proposals.length !== 1 || proposals[0] !== id) {
+      if (wrote === null) return { ok: false, status: 422, error: `the lineage note of ${target.id} does not say which files ${id} wrote; revert the whole landing` };
+      const mine = new Set(wrote.paths);
+      rows = rows.filter((r) => mine.has(r.path));
+    }
+    const intents = Array.isArray(target.intentIds) ? target.intentIds : [];
+    undone = { id, intentId: wrote?.intentId ?? (intents.length === 1 ? (intents[0] ?? null) : null) };
+  }
+  const what = undone ? `${undone.id} of ${target.id}` : target.id;
+  const later = (path: Path): Id | null => trunk.later(target.id, path);
+  const plan = planRevert(rows, (path) => trunk.blob(path), later);
+  if (!plan.ok) return { ok: false, status: 409, error: `work landed on top of ${what}: ${movedText(plan.moved)}`, moved: plan.moved };
+  if (plan.restore.length === 0) return { ok: false, status: 422, error: `${undone ? what : `landing ${target.id}`} changed nothing to undo` };
+
+  // The files this revert deletes (the landing created them) must not be imported by any other
+  // trunk file. Each script file is read once; a second pass rereads only files whose blob moved.
+  const deleted = plan.restore.filter((r) => r.blob === null).map((r) => r.path);
+  const writes = new Set(plan.restore.map((r) => r.path));
+  const scanned = new Map<Path, { blob: Sha; specifiers: string[] }>();
+  const text = new TextDecoder();
+  const importers = async (): Promise<RevertResult | null> => {
+    const index = trunk.files();
+    const tree = new Set(index.map((f) => f.path));
+    const files: Array<{ path: Path; specifiers: string[] }> = [];
+    let bytes = 0;
+    for (const f of index) {
+      if (writes.has(f.path) || !SCRIPT_FILE.test(f.path)) continue;
+      const known = scanned.get(f.path);
+      if (known && known.blob === f.blob) {
+        files.push({ path: f.path, specifiers: known.specifiers });
+        continue;
+      }
+      bytes += f.size;
+      if (scanned.size >= IMPORT_SCAN.files || bytes > IMPORT_SCAN.bytes) {
+        return { ok: false, status: 422, error: `too many files to check which ones import ${deleted.slice(0, 3).join(", ")}; revert ${what} by hand` };
+      }
+      const data = await trunk.read(f.blob);
+      if (data === null) return { ok: false, status: 422, error: `cannot read ${f.path} to check whether it imports ${deleted.slice(0, 3).join(", ")}` };
+      const specifiers = relativeSpecifiers(text.decode(data));
+      scanned.set(f.path, { blob: f.blob, specifiers });
+      files.push({ path: f.path, specifiers });
+    }
+    const imported = importedDeletions(deleted, files, (path) => tree.has(path));
+    return imported.length === 0 ? null : { ok: false, status: 409, error: `work landed on top of ${what}: ${importedText(imported, later)}`, imported };
+  };
+  if (deleted.length > 0) {
+    const refused = await importers();
+    if (refused) return refused;
+  }
+
+  const files: RevertFile[] = [];
+  const strict = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
+  for (const r of plan.restore) {
+    if (r.blob === null) {
+      files.push({ ...r, content: null });
+      continue;
+    }
+    const bytes = await trunk.read(r.blob);
+    if (bytes === null) return { ok: false, status: 422, error: `cannot read ${r.path} as it was before ${target.id}` };
+    let content: string;
+    try {
+      content = strict.decode(bytes);
+    } catch {
+      return { ok: false, status: 422, error: `${r.path} is not UTF-8 text; revert it by hand` };
+    }
+    files.push({ ...r, content });
+  }
+  const why = p.reason.replace(/\s+/g, " ").trim().slice(0, 500);
+  const of = undone ? `${undone.id} of ${target.trunkSha}` : target.trunkSha;
+  const message = `Revert ${what} (${target.trunkSha.slice(0, 7)})\n\n${p.by} reverted ${of}: ${why}\n\nFT-Revert-Of: ${target.id}${undone ? `\nFT-Revert-Proposal: ${undone.id}` : ""}`;
+  const note = {
+    schema: "firetrident.lineage/v1",
+    landingId: "",
+    colonyId: "",
+    proposals: [],
+    revert: { of: target.id, commit: target.trunkSha, by: p.by, reason: why, at: Date.now(), ...(undone ? { proposal: undone.id } : {}) },
+  } as unknown as LineageNote & Record<string, unknown>;
+  const out = await trunk.serial(async (): Promise<RevertResult> => {
+    // Checked again on the serial chain, right before the commit, so no landing can slip in between:
+    // the import check here, and every file's blob in commitNow.
+    if (deleted.length > 0) {
+      const refused = await importers();
+      if (refused) return refused;
+    }
+    const done = await trunk.commitNow({ files, message, note });
+    if ("stale" in done) return { ok: false, status: 409, error: `work landed on top of ${what}: ${done.stale}` };
+    return { ok: true, landing: done.landing, reverted: target, ...(undone ? { proposal: undone } : {}) };
+  });
+  // The revert is recorded; failing to start the notes push must not fail it (the journal keeps the note).
+  if (out.ok) await trunk.notesSoon().catch((e: unknown) => console.error(`notes flush not started after ${out.landing.id}: ${e instanceof Error ? e.message : String(e)}`));
+  return out;
 }

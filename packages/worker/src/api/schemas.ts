@@ -87,6 +87,8 @@ export const RevertBody = z.object({
   by: z.string().trim().min(1).max(200).optional(),
   /** Declare the intents it completed again (default true). */
   redo: z.boolean().default(true),
+  /** One proposal that landed in that landing: only the files it wrote go back and only its intent is declared again. */
+  proposal: z.string().trim().min(1).max(100).optional(),
 });
 
 /** POST /api/colonies/:id/swarm (the CLI sends `agents` for the count). */
