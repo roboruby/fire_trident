@@ -9,12 +9,13 @@ import { colonyHref } from "../route.ts";
  * what the API cannot know (model spend, a test run from a plain clone) is written here, as measured.
  */
 
-type Kind = "rule" | "spec" | "mcp";
+type Kind = "rule" | "spec" | "mcp" | "certify";
 
 /** The showcase runs, and the facts measured outside the colony (model spend from the agents' token counts, tests run on a plain clone). */
 const SHOWCASE: ReadonlyArray<{ id: string; kind: Kind; measured?: string }> = [
   { id: "hono", kind: "rule", measured: "$0.05 of model calls" },
   { id: "shortlinks", kind: "spec", measured: "60/60 tests pass from a plain clone" },
+  { id: "shortlinks-review", kind: "certify", measured: "67/67 from a plain clone; acceptance 7/7" },
   { id: "byo-demo", kind: "mcp" },
 ];
 
@@ -32,8 +33,12 @@ type Json = Record<string, unknown>;
 const isObj = (x: unknown): x is Json => typeof x === "object" && x !== null && !Array.isArray(x);
 const num = (x: unknown): number | null => (typeof x === "number" && Number.isFinite(x) ? x : null);
 
+/** A request the strip gives up on: its card is left out instead of holding the others. */
+const REQUEST_TIMEOUT_MS = 15_000;
+
 async function getJson(url: string, signal: AbortSignal): Promise<unknown> {
-  const res = await fetch(url, { headers: { accept: "application/json" }, signal });
+  const limited = typeof AbortSignal.any === "function" ? AbortSignal.any([signal, AbortSignal.timeout(REQUEST_TIMEOUT_MS)]) : signal;
+  const res = await fetch(url, { headers: { accept: "application/json" }, signal: limited });
   if (!res.ok) throw new Error(String(res.status));
   return res.json();
 }
@@ -82,6 +87,24 @@ async function loadResult(s: (typeof SHOWCASE)[number], listing: Json[], signal:
     out.headline = created !== null && last !== null && last > created ? runTime(last - created) : `${fmtInt(landed)}`;
     out.lede = created !== null && last !== null && last > created ? `from a spec to a working project: ${fmtInt(landed)} of ${fmtInt(intents)} intents landed` : "intents landed from a spec";
     details.push(`${fmtInt(agents)} agents, ${fmtInt(landings)} commits`);
+} else if (s.kind === "certify") {
+  // Results come newest first: the oldest red one is where the repair began, the newest green one after it is where it ended.
+  const [c, snap] = await Promise.all([getJson(`${base}/certifications?limit=50`, signal).catch(() => null), getJson(base, signal).catch(() => null)]);
+  const results = isObj(c) && Array.isArray(c.results) ? (c.results as Json[]) : [];
+  const reds = results.filter((r) => r.status === "red");
+  const first = reds[reds.length - 1];
+  const began = num(first?.startedAt);
+  const green = began === null ? undefined : results.find((r) => r.status === "green" && (num(r.startedAt) ?? 0) > began);
+  const rc = isObj(first?.counts) ? first.counts : null;
+  const gc = isObj(green?.counts) ? green.counts : null;
+  if (!first || !green || !rc || !gc || began === null) return null;
+  out.headline = `${fmtInt((num(rc.fail) ?? 0) + (num(rc.cancelled) ?? 0))} failing → ${fmtInt(num(gc.pass) ?? 0)}/${fmtInt(num(gc.tests) ?? 0)}`;
+  out.lede = "tests: certification found the failures and the colony repaired them";
+  const ms = num(first.durationMs);
+  if (ms !== null) details.push(`found in ${fmtInt(ms)} ms by the project's own tests in a Dynamic Worker`);
+  const repairs = isObj(snap) && Array.isArray(snap.intents) ? (snap.intents as Json[]).filter((i) => i.source === "certify" && i.status === "landed").length : 0;
+  const ended = num(green.finishedAt);
+  if (repairs > 0) details.push(`${fmtInt(repairs)} repair ${repairs === 1 ? "intent" : "intents"} landed${ended !== null ? `; green ${runTime(ended - began)} later` : ""}`);
   } else {
     const [list, snap] = await Promise.all([getJson(`${base}/agents?all=1&journal=0`, signal).catch(() => null), getJson(base, signal).catch(() => null)]);
     const all = isObj(list) && Array.isArray(list.agents) ? (list.agents as Json[]) : [];
@@ -132,11 +155,11 @@ function Card({ r }: { r: Result }) {
   );
 }
 
-/** The showcase, or ?results=id:kind,id:kind (rule, spec or mcp) for a deployment without the production colonies. */
+/** The showcase, or ?results=id:kind,id:kind (rule, spec, mcp or certify) for a deployment without the production colonies. */
 function showcase(): ReadonlyArray<{ id: string; kind: Kind; measured?: string }> {
   const raw = new URLSearchParams(location.search).get("results");
   if (!raw) return SHOWCASE;
-  const kinds: ReadonlySet<string> = new Set(["rule", "spec", "mcp"]);
+  const kinds: ReadonlySet<string> = new Set(["rule", "spec", "mcp", "certify"]);
   return raw
     .split(",")
     .map((x) => x.trim().split(":"))
@@ -146,20 +169,25 @@ function showcase(): ReadonlyArray<{ id: string; kind: Kind; measured?: string }
 
 /** The results strip on the landing page (hidden when none of the showcase colonies answers). */
 export function Results() {
-  const [results, setResults] = useState<Result[] | null>(null);
   const [list] = useState(showcase);
+  // One slot per showcase run: undefined while it loads, null when it has nothing to show.
+  const [results, setResults] = useState<Array<Result | null | undefined>>(() => list.map(() => undefined));
   useEffect(() => {
     const ctl = new AbortController();
     void (async () => {
       const listing = await getJson("/api/colonies", ctl.signal)
         .then((d) => (isObj(d) && Array.isArray(d.colonies) ? (d.colonies as Json[]) : []))
         .catch(() => [] as Json[]);
-      const out = await Promise.all(list.map((s) => loadResult(s, listing, ctl.signal).catch(() => null)));
-      if (!ctl.signal.aborted) setResults(out.filter((r): r is Result => r !== null));
+      await Promise.all(
+        list.map(async (s, i) => {
+          const r = await loadResult(s, listing, ctl.signal).catch(() => null);
+          if (!ctl.signal.aborted) setResults((cur) => cur.map((x, j) => (j === i ? r : x)));
+        }),
+      );
     })();
     return () => ctl.abort();
   }, [list]);
-  if (results !== null && results.length === 0) return null;
+  if (results.every((r) => r === null)) return null;
   return (
     <section className="l-section" id="results">
       <div className="l-section-head">
@@ -168,9 +196,7 @@ export function Results() {
         <p className="l-section-lede">Every number below comes from the colony's own API. A replay plays the run back from its record, at up to 16 times speed.</p>
       </div>
       <div className="rs-grid">
-        {results === null
-          ? list.map((s) => <div className="rs rs-skeleton" key={s.id} />)
-          : results.map((r) => <Card key={r.id} r={r} />)}
+        {results.map((r, i) => (r === undefined ? <div className="rs rs-skeleton" key={list[i]?.id ?? i} /> : r === null ? null : <Card key={r.id} r={r} />))}
       </div>
     </section>
   );
