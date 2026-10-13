@@ -510,7 +510,11 @@ export interface WhyContext {
   rules?: Rule[];
 }
 
-/** Readable lineage for a file or line: landings, proposals, intent chain, rule, decisions, checks. */
+/**
+ * Readable lineage for a file or line: landings, proposals, intent chain, rule, decisions, checks.
+ * Landings print newest first; for a line, in the server's order, which puts the landing that wrote
+ * the line first when it is known.
+ */
 export function formatWhy(
   target: { path: string; line?: number },
   entries: Array<{ landing: Landing; note: LineageNote }>,
@@ -521,11 +525,16 @@ export function formatWhy(
   const where = target.line !== undefined ? `${target.path}:${target.line}` : target.path;
   // Lineage comes from stored notes; tolerate partial ones rather than crash mid-demo.
   const at = (l: Partial<Landing> | undefined) => (typeof l?.at === "number" && Number.isFinite(l.at) ? l.at : 0);
-  const sorted = entries.filter((e) => e && e.landing).sort((a, b) => at(b.landing) - at(a.landing));
+  const found = entries.filter((e) => e && e.landing);
+  const sorted = target.line !== undefined ? found : found.sort((a, b) => at(b.landing) - at(a.landing));
   if (sorted.length === 0) return `${c.bold(where)}  ${c.dim("no FireTrident landing touched this yet (history before import has no lineage)")}`;
   const intents = new Map((ctx.intents ?? []).map((i) => [i.id, i]));
   const rules = new Map((ctx.rules ?? []).map((r) => [r.id, r]));
-  const out: string[] = [`${c.bold(where)}  ${c.dim(`${sorted.length} landing${sorted.length === 1 ? "" : "s"}, newest first`)}`];
+  // The server only ever moves the line's landing ahead of newer ones: a newer landing after the first means it did.
+  const first = at(sorted[0]?.landing);
+  const owner = target.line !== undefined && sorted.slice(1).some((e) => at(e.landing) > first);
+  const order = owner ? `the landing that wrote line ${target.line} first, then newest first` : "newest first";
+  const out: string[] = [`${c.bold(where)}  ${c.dim(`${sorted.length} landing${sorted.length === 1 ? "" : "s"}, ${order}`)}`];
   const label = (s: string) => c.dim(s.padEnd(9));
 
   for (const { landing, note } of sorted) {

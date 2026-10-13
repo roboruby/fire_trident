@@ -4,8 +4,8 @@ import { agentIdentity, applyReplacement, changeSummary, cleanPath, commitMessag
 import { TreeIndex, applySpecifierEdits, isImportRule, parseSpecifierEdits, specifierFacts } from "./context.ts";
 import { checkWrittenFile, parseIntentSpec, resolveImport, wantsErasable, writeOrder } from "./create.ts";
 import { cleanContext, noticeEntry, withLanded, type LandedWhy } from "./landed.ts";
-import { buildEditMessages, buildSpecifierMessages, buildWriteMessages, maxTokensFor, parseEscalateReply, parseFileReply, retryMessages, specifierRetryMessages, violationProblem } from "./prompt.ts";
-import type { ChatMessage, TokenUsage } from "./prompt.ts";
+import { buildEditMessages, buildSpecifierMessages, buildWriteMessages, cleanLastReturn, maxTokensFor, parseEscalateReply, parseFileReply, retryMessages, specifierRetryMessages, violationProblem } from "./prompt.ts";
+import type { ChatMessage, LastReturn, TokenUsage } from "./prompt.ts";
 import { cleanPreview, type AntibodyQuestion } from "./preview.ts";
 import { TERMINAL_STATUSES, errorMessage, errorStatus } from "./rpc.ts";
 import type { ColonyRpc, TakeResult } from "./rpc.ts";
@@ -131,6 +131,8 @@ export interface Job {
   antibodies?: AntibodyQuestion[];
   /** The latest landings that changed the intent's files, with their intents' whys (the take's context, agents/landed.ts). */
   history?: LandedWhy[];
+  /** Why the intent's latest change came back, from the take (agents/prompt.ts); every prompt shows it, to address first. */
+  lastReturn?: LastReturn;
   /** Build on trunk as it is now, not the lease base: a landing notice changed files this job covers (fetch takes the tip). */
   freshBase?: boolean;
   /** Times a landing notice restarted this job, and the landings it rebased past (for the evidence). */
@@ -579,6 +581,9 @@ async function takeWork(deps: LoopDeps, cfg: AgentConfig): Promise<StepResult> {
   // Why the code is the way it is: the latest landings on these files and their intents' whys.
   const history = cleanContext(res.context);
   if (history) job.history = history;
+  // Why the intent's latest change came back, so this one addresses that first (a colony on the previous version sends none).
+  const lastReturn = cleanLastReturn("lastReturn" in res ? res.lastReturn : undefined);
+  if (lastReturn) job.lastReturn = lastReturn;
   await adoptGuidance(deps, cfg, job, now);
   save(deps, cfg, job);
   deps.journal.bump("taken");
@@ -832,6 +837,7 @@ async function writeFile(
     directives: job.directives ?? [],
     antibodies: job.antibodies ?? [],
     history: job.history ?? [],
+    lastReturn: job.lastReturn,
     path,
     content: original,
     siblings,
@@ -921,7 +927,7 @@ async function modelEdit(
   if (original !== null && original.length > MAX_MODEL_CHARS) {
     return { ok: false, reason: `${path} is too large to rewrite with a model (${original.length} characters)` };
   }
-  const first = buildEditMessages({ intent: job.intent, directives: job.directives ?? [], antibodies: job.antibodies ?? [], history: job.history ?? [], rule: job.rule, path, content: original, violations });
+  const first = buildEditMessages({ intent: job.intent, directives: job.directives ?? [], antibodies: job.antibodies ?? [], history: job.history ?? [], lastReturn: job.lastReturn, rule: job.rule, path, content: original, violations });
   const maxTokens = maxTokensFor(original);
   let messages = first;
   let problem = "";
@@ -990,7 +996,7 @@ async function specifierEdit(
   if (!rule) return { ok: false, reason: "no rule" };
   const facts = specifierFacts(rule, path, original, tree);
   if (facts.length === 0) return { ok: true, content: original };
-  const first = buildSpecifierMessages({ intent: job.intent, directives: job.directives ?? [], antibodies: job.antibodies ?? [], rule, path, content: original, facts, tree });
+  const first = buildSpecifierMessages({ intent: job.intent, directives: job.directives ?? [], antibodies: job.antibodies ?? [], lastReturn: job.lastReturn, rule, path, content: original, facts, tree });
   let messages = first;
   let problems: string[] = [];
   for (let attempt = 0; attempt < 2; attempt++) {

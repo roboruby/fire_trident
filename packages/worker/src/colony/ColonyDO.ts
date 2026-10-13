@@ -129,6 +129,7 @@ import type { AgentListEntry, ColonySeries, ColonySummary, RegistryEntry, Snapsh
 import { Certifier, type CertifyHost, type CertifyTrunk } from "../certify/certifier.ts";
 import type { CertifyPolicy } from "../certify/repair.ts";
 import { reviewPreview, type ReviewPreview } from "../agents/preview.ts";
+import { RETURN_PATHS, extractUsage, returnReason, type LastReturn } from "../agents/prompt.ts";
 import { CONTEST_LOOK_MS, CONTEST_MIN, CONTEST_RETRY_MS, CONTEST_WAIT_MS, cleanAlternatives, contestEvidence, contestSeats, judgeModels, loadDiffs, migrateContest, pairJudge, selectWinner, supersededReason } from "../decide/contest.ts";
 import type { ContestAlternative, ContestCandidate, ContestOutcome, ContestRound, PairJudge } from "../decide/contest.ts";
 import { whyAuthor } from "../decide/danger.ts";
@@ -140,10 +141,11 @@ import type { CheckResult } from "@fire_trident/core";
 /**
  * Result of ColonyDO.take: an assignment, or advice to wait and retry. `review`: what review will
  * ask of the change (agents/preview.ts), shown to the agent before it writes; `context`: the latest
- * landings that changed the intent's files, with their intents' whys (agents/landed.ts). Each is
- * absent when there is nothing to say.
+ * landings that changed the intent's files, with their intents' whys (agents/landed.ts);
+ * `lastReturn`: why the intent's latest change came back, for the agent to address first
+ * (agents/prompt.ts). Each is absent when there is nothing to say.
  */
-export type TakeResult = { intent: Intent; lease: WorkspaceLease; rule?: Rule; review?: ReviewPreview; context?: LandedWhy[] } | { wait: true; retryInMs: number; reason: string };
+export type TakeResult = { intent: Intent; lease: WorkspaceLease; rule?: Rule; review?: ReviewPreview; context?: LandedWhy[]; lastReturn?: LastReturn } | { wait: true; retryInMs: number; reason: string };
 
 /** Review views built per review-queue read for proposals escalated before views were kept. */
 const REVIEW_BACKFILLS = 3;
@@ -323,6 +325,8 @@ const RECON_ROWS = 20_000;
 /** Paths of one landing indexed for why-context at most, and landed proposals that fill the index of a colony from before it. */
 const LANDED_INDEX_PATHS = 1_000;
 const LANDED_BACKFILL = 200;
+/** An intent's latest proposals a take looks through for the last one that came back (lastReturn). */
+const RETURN_LOOKBACK = 10;
 /** Agents told about one landing at most; landing notices are kept this long, pruned every so many notices. */
 const MAX_LANDING_NOTICES = 100;
 const NOTICE_KEEP_MS = 6 * 60 * 60_000;
@@ -2852,12 +2856,30 @@ export class ColonyDO extends DurableObject<Env> {
     const limiter = this.contestLimiter();
     limiter.configure(policy.llmConcurrency, policy.llmPerMinute);
     return pairJudge({
-      ai,
+      ai: this.judgeSpend(ai),
       models: judgeModels(authors, policy.secondOpinionModels),
       limiter,
       intent: { title: intent.title, why: intent.why, whyBy: whyAuthor(intent.source), ...(intent.acceptance ? { acceptance: intent.acceptance } : {}) },
       onCall: () => this.bump("contest.judge.calls", 1, Date.now()),
     });
+  }
+
+  /**
+   * The Workers AI binding for the contest judge, with each call's tokens counted in the decide spend
+   * (decide.llm.tokensIn and decide.llm.tokensOut, where the second opinion's go: the judge runs on
+   * the same second-opinion models). The answer itself passes through untouched.
+   */
+  private judgeSpend(ai: AiRunner): AiRunner {
+    return {
+      run: async (model, input, options) => {
+        const res = await (options === undefined ? ai.run(model, input) : ai.run(model, input, options));
+        const usage = extractUsage(res);
+        const now = Date.now();
+        if (usage && usage.input > 0) this.bump("decide.llm.tokensIn", usage.input, now);
+        if (usage && usage.output > 0) this.bump("decide.llm.tokensOut", usage.output, now);
+        return res;
+      },
+    };
   }
 
   /** The decide engine's call limiter, so judge calls share its per-model rate, concurrency and throttling cooldowns with the second opinion. */
@@ -3886,11 +3908,58 @@ export class ColonyDO extends DurableObject<Env> {
     return out;
   }
 
+  /** The colony (by creation time) for which this object made sure proposals are indexed by intent (lastReturn). */
+  private returnsIndexedFor: number | null = null;
+
+  /**
+   * Why the intent's latest change came back, for its next taker: the newest of its proposals that was
+   * returned or rejected for a reason other than a change of direction (withdrawn, revised, recalled,
+   * a retracted rule) or a lost contest, unless a change for the intent landed after it. It carries
+   * the reason as that change's agent was told it (a security return names only the class, and
+   * nothing is added to it), the proposal, when it came back and the paths it wrote. Two indexed
+   * lookups per take. Best effort: a take never fails over it.
+   */
+  private lastReturn(intentId: Id): LastReturn | undefined {
+    try {
+      const colony = this.requireColony();
+      if (this.returnsIndexedFor !== colony.createdAt) {
+        // Additive and idempotent: a colony gets the index at its first take after a deploy (or after it is made again).
+        this.sql.exec("CREATE INDEX IF NOT EXISTS proposals_by_intent ON proposals(intent_id, created_at)");
+        this.returnsIndexedFor = colony.createdAt;
+      }
+      const rows = this.sql
+        .exec<{ id: string; status: string; updated_at: number; reason: string | null; superseded_by: string | null }>(
+          `SELECT id, status, updated_at, json_extract(data, '$.reason') AS reason, json_extract(data, '$.supersededBy') AS superseded_by
+             FROM proposals WHERE intent_id = ? AND status IN ('returned', 'rejected', 'landed') ORDER BY created_at DESC LIMIT ?`,
+          intentId,
+          RETURN_LOOKBACK,
+        )
+        .toArray();
+      for (const r of rows) {
+        // A change for the intent landed since: what came back before it is history.
+        if (r.status === "landed") return undefined;
+        if (typeof r.reason !== "string" || r.reason.trim() === "" || r.superseded_by || isRedirect(r.reason)) continue;
+        const paths = this.sql
+          .exec<{ path: string | null }>("SELECT json_extract(w.value, '$.path') AS path FROM proposals p JOIN json_each(p.data, '$.writeSet') w WHERE p.id = ?", r.id)
+          .toArray()
+          .flatMap((w) => (typeof w.path === "string" && w.path !== "" ? [w.path] : []));
+        const out: LastReturn = { proposalId: r.id, status: r.status === "rejected" ? "rejected" : "returned", at: r.updated_at, reason: returnReason(r.reason), paths: paths.slice(0, RETURN_PATHS) };
+        if (paths.length > RETURN_PATHS) out.morePaths = paths.length - RETURN_PATHS;
+        return out;
+      }
+      return undefined;
+    } catch (err) {
+      console.warn(`last return for intent ${intentId} failed: ${errorText(err)}`);
+      return undefined;
+    }
+  }
+
   private assignment(intent: Intent, lease: WorkspaceLease): TakeResult {
     const rule = intent.ruleId ? this.sql.exec<RuleRow>("SELECT * FROM rules WHERE id = ?", intent.ruleId).toArray()[0] : undefined;
     const review = this.reviewAhead(intent);
     const context = this.whyContext(intent);
-    return { intent, lease, ...(rule ? { rule: this.toRule(rule, intent.colonyId) } : {}), ...(review ? { review } : {}), ...(context ? { context } : {}) };
+    const lastReturn = this.lastReturn(intent.id);
+    return { intent, lease, ...(rule ? { rule: this.toRule(rule, intent.colonyId) } : {}), ...(review ? { review } : {}), ...(context ? { context } : {}), ...(lastReturn ? { lastReturn } : {}) };
   }
 
   /**

@@ -1,9 +1,10 @@
 import { regionOf } from "@fire_trident/core";
-import type { AgentInfo, Directive, EscalationKind, FieldReading, FileVersion, Id, Intent, Path, Proposal, ProposalStatus, RepoRef, Rule, Sha, WorkspaceLease } from "@fire_trident/core";
+import type { AgentInfo, Directive, EscalationKind, FieldReading, FileVersion, Id, Intent, Landing, LineageNote, Path, Proposal, ProposalStatus, RepoRef, Rule, Sha, WorkspaceLease } from "@fire_trident/core";
 import { ESCALATION_KINDS, isInboxDirective, landingMessage } from "../colony/direction.ts";
 import { cleanPath } from "../agents/change.ts";
 import { cleanContext, type LandedWhy } from "../agents/landed.ts";
 import { cleanPreview, type ReviewPreview } from "../agents/preview.ts";
+import { cleanLastReturn, type LastReturn } from "../agents/prompt.ts";
 import type { ColonyRpc, RegionRpc, TakeResult, TrunkRpc } from "../agents/rpc.ts";
 import { diffTrees, onFirstParentChain, readFileAt } from "./gitread.ts";
 import type { ReadBlob, ReadCommit, ReadTree } from "./gitread.ts";
@@ -22,6 +23,8 @@ export interface Session {
   review?: ReviewPreview;
   /** Why the code is the way it is: the latest landings on the held intent's files, as take returned them. */
   context?: LandedWhy[];
+  /** Why the held intent's latest change came back, as take returned it (to address first). */
+  lastReturn?: LastReturn;
   /** Read set of the current intent: path -> blob seen at the lease base (null = absent). */
   reads: Record<Path, Sha | null>;
   proposals: Array<{ id: Id; intentId: Id; headSha: Sha; at: number }>;
@@ -137,14 +140,36 @@ function directiveView(d: Directive): Record<string, unknown> {
   };
 }
 
-/** Forget the held intent: its lease, rule, review questions, why-context and read set. */
+/** Forget the held intent: its lease, rule, review questions, why-context, last return and read set. */
 function dropHeld(s: Session): void {
   delete s.intent;
   delete s.lease;
   delete s.rule;
   delete s.review;
   delete s.context;
+  delete s.lastReturn;
   s.reads = {};
+}
+
+/** The take's lastReturn as an external agent sees it (the time in ISO form); null without one. */
+function lastReturnView(r: LastReturn | undefined): Record<string, unknown> | null {
+  if (!r) return null;
+  return { proposalId: r.proposalId, status: r.status, at: new Date(r.at).toISOString(), reason: r.reason, paths: r.paths, ...(r.morePaths ? { morePaths: r.morePaths } : {}) };
+}
+
+/** What a take or checkout with a lastReturn asks first. */
+const RETURN_NEXT = "An earlier change for this intent came back: address lastReturn.reason first, so that your change does not come back for the same reason.";
+
+/**
+ * One landing of a why answer, cut to the path asked about: its note keeps only the proposals that
+ * wrote the path (all of them when none did, as `ft why` shows them), and `otherProposals` counts the
+ * proposals of the landing left out.
+ */
+function whyEntry(e: { landing: Landing; note: LineageNote }, path: Path): { landing: Landing; note: LineageNote; otherProposals: number } {
+  const all = Array.isArray(e.note?.proposals) ? e.note.proposals : [];
+  const wrote = all.filter((p) => Array.isArray(p?.writeSet) && p.writeSet.some((w) => w?.path === path));
+  const shown = wrote.length > 0 ? wrote : all;
+  return { landing: e.landing, note: { ...e.note, proposals: shown }, otherProposals: all.length - shown.length };
 }
 
 /** What an agent should do next, given its proposal's status. */
@@ -319,6 +344,7 @@ export class FireTridentTools {
     const { intent, lease } = s;
     const review = reviewBrief(s.review);
     const context = contextBrief(s.context);
+    const lastReturn = lastReturnView(s.lastReturn);
     return {
       intent: {
         id: intent.id,
@@ -333,6 +359,7 @@ export class FireTridentTools {
       rule: ruleBrief(s.rule),
       ...(review ? { review } : {}),
       ...(context ? { context } : {}),
+      ...(lastReturn ? { lastReturn } : {}),
       lease: {
         baseSha: lease.baseSha,
         trunk: { remote: lease.trunk.remote, sha: lease.trunk.sha },
@@ -341,7 +368,7 @@ export class FireTridentTools {
       },
       tokens: { trunkRead: lease.trunk.token, workspaceWrite: lease.token },
       git: gitInstructions(lease, intent),
-      next: leaseNext(s.review),
+      next: lastReturn ? `${RETURN_NEXT} ${leaseNext(s.review)}` : leaseNext(s.review),
     };
   }
 
@@ -366,6 +393,8 @@ export class FireTridentTools {
     const now = this.ctx.now();
     const review = cleanPreview(got.review);
     const context = cleanContext(got.context);
+    // Why the intent's latest change came back (a colony on the previous version sends none).
+    const lastReturn = cleanLastReturn("lastReturn" in got ? got.lastReturn : undefined);
     const next = await this.update((x) => {
       if (x.intent?.id !== got.intent.id) x.reads = {};
       x.intent = got.intent;
@@ -375,6 +404,8 @@ export class FireTridentTools {
       else delete x.review;
       if (context) x.context = context;
       else delete x.context;
+      if (lastReturn) x.lastReturn = lastReturn;
+      else delete x.lastReturn;
       x.lastBeat = now; // a take deposits fresh claims
     });
     return this.leaseView(next as Session & { intent: Intent; lease: WorkspaceLease });
@@ -599,12 +630,16 @@ export class FireTridentTools {
     return { escalated: { intentId: res.intent.id, title: res.intent.title, kind }, receipt: escalateReceipt(res.intent.id), next: "Call take for other work." };
   }
 
-  /** Lineage of a trunk path (optionally one line): the landings and intents behind it. */
+  /**
+   * Lineage of a trunk path (optionally one line): the landings and intents behind it, in the trunk's
+   * order (with a line, the landing that wrote it first). Each landing's note keeps only the proposals
+   * that wrote the path, with a count of the others it carried.
+   */
   async why(a: { path: string; line?: number }): Promise<unknown> {
     const s = await this.joined();
     const path = cleanPath(a.path);
     if (!path) fail(400, `invalid path ${a.path}`);
     const entries = await this.ctx.trunk(s.colonyId).why(path, a.line);
-    return { path, line: a.line ?? null, entries: entries.slice(0, 10) };
+    return { path, line: a.line ?? null, entries: entries.slice(0, 10).map((e) => whyEntry(e, path)) };
   }
 }

@@ -307,8 +307,28 @@ returns.group_by { |e| e["reason"].to_s.split(/[:;(]/).first.to_s.strip[0, 60] }
 per_model.each do |model, x|
   say(format("%-36s %d agents, %3d calls, %7d in / %6d out tokens, %d throttled, landed %d, $%.4f", model, x[:agents], x[:calls], x[:in], x[:out], x[:throttled], x[:landed], x[:usd]))
 end
-say(format("decide: Clef %d tokens ($%.4f), second opinions %d in / %d out ($%.4f)", m["decide.clef.tokens"].to_i, clef_usd, m["decide.llm.tokensIn"].to_i, m["decide.llm.tokensOut"].to_i, s2_usd))
-say(format("model spend: $%.4f (agents $%.4f + decide $%.4f)", agent_usd + clef_usd + s2_usd, agent_usd, clef_usd + s2_usd))
+say(format("decide: Clef %d tokens ($%.4f), second opinions and contest judges %d in / %d out ($%.4f)", m["decide.clef.tokens"].to_i, clef_usd, m["decide.llm.tokensIn"].to_i, m["decide.llm.tokensOut"].to_i, s2_usd))
+spend = agent_usd + clef_usd + s2_usd
+say(format("model spend: $%.4f (agents $%.4f + decide $%.4f)", spend, agent_usd, clef_usd + s2_usd))
+# Cost per change: the whole spend (repairs included) over the intents that landed, spec and repair intents alike,
+# counted in the same snapshot as the certification below.
+landed_all = (snap.dig("metrics", "intentsLanded") || m["landedIntents"]).to_i
+repairs_landed = snap["intents"].count { |i| i["status"] == "landed" && i["source"] == "certify" }
+if landed_all.positive?
+  say(format("cost per landed intent: $%.4f (%d intent%s landed, %d of them repair%s)", spend / landed_all, landed_all, landed_all == 1 ? "" : "s", repairs_landed, repairs_landed == 1 ? "" : "s"))
+  cert = snap.dig("colony", "certification")
+  head = snap.dig("colony", "trunkSha").to_s
+  if cert && cert["status"] == "green" && cert["trunkSha"] == head
+    # Trunk is one line of commits, so every landing is in its head: when the head is certified green, every landed intent is.
+    k = cert["counts"] || {}
+    say(format("cost per certified intent: $%.4f (trunk %s certified green, %d/%d tests pass; all %d landed intents are in it)", spend / landed_all, head[0, 7], k["pass"].to_i, k["tests"].to_i, landed_all))
+  elsif cert
+    why = cert["trunkSha"] == head ? "certification #{cert['status']}" : "no certification of it yet"
+    say("cost per certified intent: none, the head #{head[0, 7]} is not certified green (#{why})")
+  else
+    say("cost per certified intent: none, this server does not certify trunk")
+  end
+end
 
 # --- 4. a plain clone -------------------------------------------------------------
 scene("Plain git clone of trunk")
