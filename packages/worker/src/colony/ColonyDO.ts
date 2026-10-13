@@ -192,6 +192,12 @@ const TRAIL_STRENGTH = 1;
 const LEASE_RETRY_MS = 2_000;
 /** Asynchronous publishing: how long the trunk writer's published head is reused as the base of leases before it is asked again. */
 const LEASE_BASE_TTL_MS = 1_000;
+/**
+ * With asynchronous publishing, how many of the colony's latest landings a walk from its trunk head back to the published
+ * head may cross (past it the take leases as before), and how soon a take that waited for publishing tries again.
+ */
+const UNPUBLISHED_WALK = 500;
+const PUBLISH_WAIT_RETRY_MS = 500;
 const IDLE_RETRY_MS = 5_000;
 const DECLINED_RETRY_MS = 1_500;
 const CLOSED_RETRY_MS = 3_000;
@@ -481,6 +487,16 @@ interface Effects {
 
 /** An antibody as the colony stores it: a retired one remembers the state it had and why it was retired. */
 type AntibodyRecord = AllowingAntibody & { retired?: { state: DetectorState; landingId: Id; at: number; reason: string } };
+
+/** Whether a footprint entry covers any of the paths: the same path, a directory (trailing slash), or a glob's literal prefix. */
+function footprintTouches(entry: string, paths: ReadonlySet<Path>): boolean {
+  if (paths.has(entry)) return true;
+  const star = entry.indexOf("*");
+  const prefix = star >= 0 ? entry.slice(0, star) : entry.endsWith("/") ? entry : null;
+  if (prefix === null) return false;
+  for (const p of paths) if (p.startsWith(prefix)) return true;
+  return false;
+}
 
 function parseJson<T>(text: string | null | undefined, fallback: T): T {
   if (text === null || text === undefined || text === "") return fallback;
@@ -2775,9 +2791,15 @@ export class ColonyDO extends DurableObject<Env> {
     recent.doneAt = claimedAt;
     let lease: WorkspaceLease | null = null;
     let failure = closed.length > 0 ? `admission closed in ${closed.join(", ")}` : "pool empty";
+    let publishWaitMs: number | undefined;
     if (closed.length === 0) {
       try {
-        lease = await this.poolStub().lease(agentId, await this.leaseBase());
+        const got = await this.leaseFresh(agentId, intent);
+        lease = got.lease;
+        if (got.wait) {
+          failure = got.wait;
+          publishWaitMs = PUBLISH_WAIT_RETRY_MS;
+        }
       } catch (err) {
         failure = `lease failed: ${errorText(err)}`;
         console.error(`PoolDO.lease failed for ${agentId}: ${failure}`);
@@ -2804,7 +2826,7 @@ export class ColonyDO extends DurableObject<Env> {
       this.setAgentState(agentId, "waiting", now);
       if (lease) fx.release.add(agentId);
       await this.flushEffects(fx);
-      return { wait: true, retryInMs: jitter(closed.length > 0 ? CLOSED_RETRY_MS : LEASE_RETRY_MS, this.rand), reason: lease ? "the contest seat was lost while leasing" : failure };
+      return { wait: true, retryInMs: jitter(publishWaitMs ?? (closed.length > 0 ? CLOSED_RETRY_MS : LEASE_RETRY_MS), this.rand), reason: lease ? "the contest seat was lost while leasing" : failure };
     }
     this.sql.exec("UPDATE agents SET state = 'working', intent_id = ?, workspace = ?, last_seen = ? WHERE id = ?", intentId, JSON.stringify(lease), now, agentId);
     this.lastRefresh.set(agentId, claimedAt);
@@ -4075,9 +4097,15 @@ export class ColonyDO extends DurableObject<Env> {
     recent.doneAt = claimedAt; // the claims are in the regions' readings from here on
     let lease: WorkspaceLease | null = null;
     let failure = closed.length > 0 ? `admission closed in ${closed.join(", ")}` : "pool empty";
+    let publishWaitMs: number | undefined;
     if (closed.length === 0) {
       try {
-        lease = await this.poolStub().lease(agentId, await this.leaseBase());
+        const got = await this.leaseFresh(agentId, intent);
+        lease = got.lease;
+        if (got.wait) {
+          failure = got.wait;
+          publishWaitMs = PUBLISH_WAIT_RETRY_MS;
+        }
       } catch (err) {
         failure = `lease failed: ${errorText(err)}`;
         console.error(`PoolDO.lease failed for ${agentId}: ${failure}`);
@@ -4100,7 +4128,7 @@ export class ColonyDO extends DurableObject<Env> {
       this.setAgentState(agentId, "waiting", now);
       if (lease) fx.release.add(agentId);
       await this.flushEffects(fx);
-      const retryMs = closed.length > 0 ? CLOSED_RETRY_MS : LEASE_RETRY_MS;
+      const retryMs = publishWaitMs ?? (closed.length > 0 ? CLOSED_RETRY_MS : LEASE_RETRY_MS);
       return { wait: true, retryInMs: jitter(retryMs, this.rand), reason: lease ? "intent was reassigned while leasing" : failure };
     }
     this.sql.exec("UPDATE agents SET state = 'working', intent_id = ?, workspace = ?, last_seen = ? WHERE id = ?", intent.id, JSON.stringify(lease), now, agentId);
@@ -5545,6 +5573,44 @@ export class ColonyDO extends DurableObject<Env> {
 
   private trunkStub() {
     return this.env.TRUNK.get(this.env.TRUNK.idFromName(this.requireColony().id));
+  }
+
+  /**
+   * A workspace lease for the intent, unless asynchronous publishing would start its agent on a stale base: when a landing
+   * recorded after the published head changed a file the intent covers, the take waits (`wait` says why) and tries again
+   * in PUBLISH_WAIT_RETRY_MS, by when the trunk writer has usually published it. Otherwise the lease, as before.
+   */
+  private async leaseFresh(agentId: Id, intent: Intent): Promise<{ lease: WorkspaceLease | null; wait?: string }> {
+    const base = await this.leaseBase();
+    const pending = this.unpublishedPaths(base);
+    const hit = pending ? intent.footprint.find((entry) => footprintTouches(entry, pending)) : undefined;
+    if (hit !== undefined) return { lease: null, wait: `waiting for the trunk writer to publish a landing that changed ${hit}` };
+    return { lease: await this.poolStub().lease(agentId, base) };
+  }
+
+  /**
+   * With asynchronous publishing, the paths changed by landings recorded after `publishedSha` (the colony's own landing
+   * records, walked from its trunk head back to that commit through parent links). Null when publishing is synchronous,
+   * nothing is waiting, or the walk does not reach the published head within UNPUBLISHED_WALK landings: a take then
+   * leases as before.
+   */
+  private unpublishedPaths(publishedSha: Sha): Set<Path> | null {
+    const colony = this.requireColony();
+    if (!asyncPublishEnabled(this.env.FT_ASYNC_PUBLISH, colony.id) || colony.trunkSha === publishedSha) return null;
+    const bySha = new Map<Sha, Landing>();
+    for (const r of this.sql.exec<{ data: string }>("SELECT data FROM landings ORDER BY at DESC LIMIT ?", UNPUBLISHED_WALK).toArray()) {
+      const l = parseJson<Landing | null>(r.data, null);
+      if (l && typeof l.trunkSha === "string") bySha.set(l.trunkSha, l);
+    }
+    const paths = new Set<Path>();
+    let at: Sha | undefined = colony.trunkSha;
+    for (let i = 0; at !== undefined && at !== publishedSha && i < UNPUBLISHED_WALK; i++) {
+      const l = bySha.get(at);
+      if (!l) return null;
+      for (const p of Array.isArray(l.paths) ? l.paths : []) paths.add(p);
+      at = l.parentSha;
+    }
+    return at === publishedSha ? paths : null;
   }
 
   /**

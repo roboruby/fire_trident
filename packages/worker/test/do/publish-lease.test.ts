@@ -83,3 +83,41 @@ describe("leases with asynchronous publishing (FT_ASYNC_PUBLISH)", () => {
     }
   });
 });
+
+describe("takes that would start on a stale base (FT_ASYNC_PUBLISH)", () => {
+  it("wait while a recorded landing on the intent's files is unpublished, then lease from the head that has it", async () => {
+    const c = await newColony();
+    await setPublishFlag(c.id, "on");
+    const recorded = await externalLanding(c.id, { "src/lib/util.ts": "export function helper() {\n  return 2;\n}\n" });
+    await trunk(c.id).setPublished(c.trunkSha);
+    await addIntent(c.id, ["src/lib/util.ts"]);
+    const a = await addAgent(c.id, "a");
+
+    const waited = await api<{ wait?: true; retryInMs?: number; reason?: string }>("POST", `/colonies/${c.id}/agents/${a.id}/take`);
+    expect(waited.status).toBe(200);
+    expect(waited.body).toMatchObject({ wait: true });
+    expect(waited.body.reason).toMatch(/publish a landing that changed src\/lib\/util\.ts/);
+    expect(waited.body.retryInMs).toBeLessThan(1_000);
+
+    // Published: a later take leases from the head with the landing (the colony serves its cached published head while it
+    // asks again, so the agent may wait one more round, as it would after any wait).
+    await trunk(c.id).setPublished(recorded);
+    let base: string | null = null;
+    for (let i = 0; i < 6 && base === null; i++) {
+      await new Promise((r) => setTimeout(r, 600));
+      const res = await api<{ wait?: true; lease?: { baseSha: string } }>("POST", `/colonies/${c.id}/agents/${a.id}/take`);
+      base = res.body.lease?.baseSha ?? null;
+    }
+    expect(base).toBe(recorded);
+  });
+
+  it("lease at once for intents on other files", async () => {
+    const c = await newColony();
+    await setPublishFlag(c.id, "on");
+    await externalLanding(c.id, { "src/lib/util.ts": "export function helper() {\n  return 2;\n}\n" });
+    await trunk(c.id).setPublished(c.trunkSha);
+    await addIntent(c.id, ["docs/guide.md"]);
+    const a = await addAgent(c.id, "a");
+    expect((await take(c.id, a.id)).lease.baseSha).toBe(c.trunkSha);
+  });
+});
