@@ -6,7 +6,7 @@ import type { z } from "zod";
 import type { Env } from "../env.ts";
 import { decodeError, ftError } from "../colony/errors.ts";
 import { slug } from "../colony/logic.ts";
-import { flag, isUnsupportedRpc, mapLimit, messageOf } from "./logic.ts";
+import { flag, isUnsupportedRpc, mapLimit, messageOf, withheldFromAuthors } from "./logic.ts";
 import { UPGRADING, deleteColony, listAgents, listColonies, registerColony, stopAgents, stopSwarm } from "./ops.ts";
 import {
   AgentBody,
@@ -465,7 +465,7 @@ export function createApi(deps: ApiDeps): Hono<ApiEnv> {
   app.get("/colonies/:id/proposals/:pid", async (c) => {
     const proposal = await colonyStub(c.env, colonyParam(c)).getProposal(c.req.param("pid"));
     if (!proposal) throw ftError(404, "proposal not found");
-    return json(proposal);
+    return json((await isAdminRequest(c)) ? proposal : withheldFromAuthors(proposal));
   });
 
   app.get("/colonies/:id/why", async (c) => {

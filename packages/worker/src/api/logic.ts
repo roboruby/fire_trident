@@ -1,3 +1,4 @@
+import type { Proposal } from "@fire_trident/core";
 import type { AgentListEntry } from "../colony/metrics.ts";
 
 /**
@@ -84,4 +85,18 @@ export function journalFields(status: unknown): Partial<AgentListEntry> {
 /** Truthy query flags: 1, true, yes (case-insensitive). */
 export function flag(v: string | undefined): boolean {
   return v !== undefined && /^(1|true|yes)$/i.test(v.trim());
+}
+
+/** The start of the reason a security return gives its agent (decide/gate.ts agentReason). */
+const SECURITY_RETURN = /^returned for review: security\b/;
+
+/**
+ * A proposal as a reader without the operator token sees it. A security return tells its agent only
+ * the class of the finding, and the failing checks' details stay with the reviewers, so an author
+ * cannot read them back through this route and revise around them. Every other proposal is unchanged.
+ */
+export function withheldFromAuthors(p: Proposal): Proposal {
+  if (p.status !== "returned" || !SECURITY_RETURN.test(p.reason ?? "")) return p;
+  const checks = (p.evidence?.checks ?? []).map((ch) => (ch.ok ? ch : { ...ch, detail: "withheld: a security finding; the details are with the reviewers" }));
+  return { ...p, evidence: { ...p.evidence, checks } };
 }

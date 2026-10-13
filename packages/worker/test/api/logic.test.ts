@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { colonyIdsFromTrunks, flag, isUnsupportedRpc, journalFields, mapLimit, messageOf, repoBelongsTo } from "../../src/api/logic.ts";
+import type { Proposal } from "@fire_trident/core";
+import { colonyIdsFromTrunks, flag, isUnsupportedRpc, journalFields, mapLimit, messageOf, repoBelongsTo, withheldFromAuthors } from "../../src/api/logic.ts";
 
 describe("mapLimit", () => {
   it("keeps input order, settles every item, and never exceeds the limit", async () => {
@@ -74,5 +75,26 @@ describe("errors and replies", () => {
   it("reads truthy query flags", () => {
     expect([flag("1"), flag("true"), flag("YES"), flag(" yes ")]).toEqual([true, true, true, true]);
     expect([flag(undefined), flag("0"), flag("no"), flag("")]).toEqual([false, false, false, false]);
+  });
+});
+
+describe("withheldFromAuthors", () => {
+  const base = {
+    id: "p1", colonyId: "c", intentId: "i", agentId: "a", workspace: { namespace: "n", name: "w" }, baseSha: "b", headSha: "h",
+    writeSet: [], readSet: [], declared: { footprint: [], summary: "s" }, createdAt: 0,
+    evidence: { checks: [{ name: "danger patterns", ok: false, ms: 0, detail: "capability (network) at src/x.ts:3: fetch(...)" }, { name: "rules", ok: true, ms: 0, detail: "0 violations" }] },
+  };
+
+  it("hides the failing checks' details of a security return and keeps the rest", () => {
+    const p = { ...base, status: "returned", reason: "returned for review: security (capability); details are with the reviewers" } as unknown as Proposal;
+    const out = withheldFromAuthors(p);
+    expect(out.evidence.checks[0]?.detail).toMatch(/^withheld/);
+    expect(out.evidence.checks[1]?.detail).toBe("0 violations");
+    expect(p.evidence.checks[0]?.detail).toContain("fetch"); // the stored proposal is untouched
+  });
+
+  it("leaves any other proposal as it is", () => {
+    const p = { ...base, status: "returned", reason: "llm: the import points at a missing file" } as unknown as Proposal;
+    expect(withheldFromAuthors(p)).toBe(p);
   });
 });
