@@ -17,6 +17,7 @@ export const EVENT_TYPES: ReadonlyArray<ColonyEvent["t"]> = [
   "retracted",
   "directive",
   "status",
+  "certify",
 ];
 
 /** What a human can do with an escalated proposal. */
@@ -41,6 +42,7 @@ export type Command =
   | { name: "stop"; colony: string; agentId?: string; all: boolean; reason?: string }
   | { name: "delete"; colony: string }
   | { name: "vaccinate"; colony: string; count: number }
+  | { name: "certify"; colony: string; action: "show" | "now" | "on" | "off" }
   | { name: "intent-amend"; colony: string; intentId: string; title?: string; why?: string; footprint?: string[]; priority?: number; reason: string; by?: string }
   | { name: "intent-withdraw"; colony: string; intentId: string; reason: string; by?: string }
   | { name: "intent-show"; colony: string; intentId: string }
@@ -102,6 +104,7 @@ const COMMAND_OPTIONS: Record<string, Record<string, OptionSpec>> = {
   stop: { all: { type: "boolean" }, reason: { type: "string" } },
   delete: { yes: { type: "boolean" } },
   vaccinate: { count: { type: "string" } },
+  certify: { now: { type: "boolean" }, on: { type: "boolean" }, off: { type: "boolean" } },
   help: {},
 };
 
@@ -376,6 +379,14 @@ function build(word: string, v: Record<string, unknown>, p: string[]): Command {
       const colony = colonyArg(p[0], usage);
       return { name: "vaccinate", colony, count: positiveInt(required(v.count, "count"), "--count", 64) };
     }
+    case "certify": {
+      const usage = "ft certify <colony> [--now | --on | --off]";
+      noExtras(p, 1, usage);
+      const colony = colonyArg(p[0], usage);
+      const picked = (["now", "on", "off"] as const).filter((k) => v[k] === true);
+      if (picked.length > 1) fail(`choose one of --now, --on, --off (${usage})`);
+      return { name: "certify", colony, action: picked[0] ?? "show" };
+    }
     case "intent":
       return buildIntent(v, p);
     case "direct": {
@@ -546,6 +557,7 @@ Commands
   agents <colony>                  List agents: state, intent, step, what each says it is doing
   stop <colony> <agentId>|--all    Stop one agent, or every in-platform agent
   vaccinate <colony> --count <n>   Inject planted bad changes to test the immune layer
+  certify <colony>                 Trunk certification: results, --now, --on/--off
   why <colony> <path[:line]>       Show the lineage behind a file or line
   review <colony>                  List proposals escalated to a human
   review <colony> <id> <decision>  Approve, reject, or return a proposal
@@ -730,6 +742,15 @@ ft delete <colony> --yes
 Delete a colony for good: stop its agents, delete its trunk, workspace, seed and
 session repos, clear its objects' storage, and drop it from the registry.
 Safe to repeat; a repeat finishes anything a failed delete left behind.
+`,
+  certify: `
+ft certify <colony> [--now | --on | --off]
+
+Trunk certification runs the colony's own tests (node:test) after landings, in
+a Dynamic Worker, and records the result per trunk commit. Without options,
+show the state, the green commit and the latest results. --now certifies the
+current trunk now; --off and --on change the colony's policy (the deployment's
+FT_TRUNK_TESTS must be "on" as well).
 `,
   vaccinate: `
 ft vaccinate <colony> --count <n>

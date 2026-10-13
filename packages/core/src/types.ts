@@ -31,9 +31,11 @@ export interface Colony {
   id: Id;
   name: string;
   trunk: RepoRef;
-  /** Certified ref; advances only after full verification (hot trunk + green). */
+  /** Certified ref: the newest trunk commit whose own tests all passed (see Certification). */
   greenSha?: Sha;
   trunkSha: Sha;
+  /** The latest trunk certification (served with the snapshot; absent before the first one). */
+  certification?: Certification;
   source?: { url: string; branch: string };
   createdAt: Millis;
   /** Directory depth that defines a region (1 = top-level directories). */
@@ -79,7 +81,8 @@ export interface FieldReading {
 // Intents, rules, morphology
 // ---------------------------------------------------------------------------
 
-export type IntentSource = "human" | "rule" | "agent";
+/** `certify`: declared by trunk certification to repair failing tests (see Certification). */
+export type IntentSource = "human" | "rule" | "agent" | "certify";
 /** `withdrawn`: a human (or a retracted rule) called it off before it landed; it stays in history. */
 export type IntentStatus = "open" | "claimed" | "proposed" | "landed" | "abandoned" | "withdrawn";
 
@@ -356,7 +359,74 @@ export interface LineageNote {
     /** Includes `direction` (intent revision, directives, status note) for changes built under one. */
     evidence: Evidence;
   }>;
+  /** The project's own tests on this commit, when trunk certification ran on it (added after landing). */
+  certification?: NoteCertification;
 }
+
+// ---------------------------------------------------------------------------
+// Trunk certification (the project's own tests, run after landings)
+// ---------------------------------------------------------------------------
+
+/**
+ * `running`: started; `green`: every test passed; `red`: at least one failed; `error`: the run itself
+ * failed (out of time or CPU, no runner), which says nothing about the code; `skipped`: nothing to run
+ * (no test files, none written for node:test, or certification is off).
+ */
+export type CertificationStatus = "running" | "green" | "red" | "error" | "skipped";
+
+/** One failing (or cancelled) test: its name with its suites, its file, and a short error. */
+export interface FailingTest {
+  name: string;
+  file: Path;
+  error?: string;
+}
+
+/** Counts in the order `node --test` prints them. `tests` = pass + fail + cancelled + skipped + todo. */
+export interface TestCounts {
+  tests: number;
+  pass: number;
+  fail: number;
+  cancelled: number;
+  skipped: number;
+  todo: number;
+  suites: number;
+}
+
+/** One trunk commit's certification: its own tests, run on that commit. */
+export interface Certification {
+  trunkSha: Sha;
+  /** The landing that produced the commit (its lineage note carries the result too). */
+  landingId?: Id;
+  status: CertificationStatus;
+  counts?: TestCounts;
+  /** Failing and cancelled tests (at most 50), plus any test file that could not load. */
+  failing?: FailingTest[];
+  /** Test files run, and test files left out with the reason (a package import, the size cap). */
+  files?: number;
+  unsupported?: Array<{ path: Path; reason: string }>;
+  startedAt: Millis;
+  finishedAt?: Millis;
+  /** Wall time from start to result, and the part spent inside the test runner. */
+  durationMs?: number;
+  runMs?: number;
+  /** Where the time went: reading the trunk index, reading and compiling files, the Dynamic Worker (load and run). */
+  timing?: { indexMs: number; loadMs: number; workerMs: number };
+  /** Modules loaded into the Dynamic Worker, and their size in characters. */
+  modules?: { count: number; chars: number };
+  /** The repair intent this red result declared. */
+  repairIntentId?: Id;
+  /** Why it was skipped or could not run. */
+  detail?: string;
+  /** The tested files were identical to this earlier commit's run: its result was reused. */
+  reusedFrom?: Sha;
+  /** Test files whose results were reused because nothing they load changed (the rest ran). */
+  cached?: number;
+  /** The newest green commit when this result was recorded. */
+  greenSha?: Sha;
+}
+
+/** A certification as the lineage note of the certified commit records it. */
+export type NoteCertification = Pick<Certification, "status" | "counts" | "failing" | "durationMs" | "reusedFrom" | "finishedAt"> & { runner: string };
 
 // ---------------------------------------------------------------------------
 // Decide (reflex arc, immune review)
@@ -420,7 +490,21 @@ export type ColonyEvent =
   | { t: "withdrawn"; at: Millis; intentId: Id; reason: string; by: string; title: string; returned: number; ruleId?: Id }
   | { t: "retracted"; at: Millis; ruleId: Id; reason: string; by: string; withdrawn: number }
   | { t: "directive"; at: Millis; directiveId: Id; agentId: Id; intentId?: Id; message: string; by: string; via?: "push" | "inbox" }
-  | { t: "status"; at: Millis; agentId: Id; intentId?: Id; note: string };
+  | { t: "status"; at: Millis; agentId: Id; intentId?: Id; note: string }
+  // Trunk certification: a run started, or its result (failing names capped at 10).
+  | {
+      t: "certify";
+      at: Millis;
+      trunkSha: Sha;
+      status: CertificationStatus;
+      landingId?: Id;
+      counts?: TestCounts;
+      failing?: FailingTest[];
+      durationMs?: number;
+      greenSha?: Sha;
+      detail?: string;
+      reusedFrom?: Sha;
+    };
 
 /** Per-minute history for sparklines and the violations burn-down. */
 export interface ColonySeries {

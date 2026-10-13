@@ -351,6 +351,92 @@ export class TrunkDO extends DurableObject<Env> {
       .map((r) => JSON.parse(r.data) as Landing);
   }
 
+  /**
+   * Trunk certification's view of trunk: the current commit, the landing that produced it, and the
+   * files a test run may load (.ts, .js, .mjs, .json; dependency and dot directories left out). One
+   * synchronous read, so the listing is exactly that commit's; contents are then read by blob id.
+   */
+  async certifySnapshot(p: { maxFiles?: number } = {}): Promise<{ trunkSha: Sha; landingId: Id | null; files: Array<{ path: Path; size: number; blob: Sha }>; truncated: boolean }> {
+    const st = this.state();
+    const max = Math.max(1, Math.min(20_000, Math.floor(p?.maxFiles ?? 10_000)));
+    const files = this.sql
+      .exec<{ path: string; size: number; blob: string }>(
+        `SELECT path, size, blob FROM ft_files
+           WHERE (path LIKE '%.ts' OR path LIKE '%.js' OR path LIKE '%.mjs' OR path LIKE '%.json')
+             AND path NOT LIKE 'node_modules/%' AND path NOT LIKE '%/node_modules/%' AND path NOT LIKE '.%' AND path NOT LIKE '%/.%'
+           ORDER BY path LIMIT ?`,
+        max + 1,
+      )
+      .toArray();
+    const newest = this.sql.exec<{ id: string; trunk_sha: string }>(`SELECT id, trunk_sha FROM ft_landings ORDER BY seq DESC LIMIT 1`).toArray()[0];
+    let landingId = newest && newest.trunk_sha === st.trunkSha ? newest.id : null;
+    if (newest && landingId === null) landingId = this.sql.exec<{ id: string }>(`SELECT id FROM ft_landings WHERE trunk_sha = ? LIMIT 1`, st.trunkSha).toArray()[0]?.id ?? null;
+    return { trunkSha: st.trunkSha, landingId, files: files.slice(0, max), truncated: files.length > max };
+  }
+
+  /** Texts of blobs by id (UTF-8; null when unreadable), for trunk certification: at most 500 blobs and 8 MB per call. */
+  async readBlobs(blobs: Sha[]): Promise<Record<Sha, string | null>> {
+    const st = this.state();
+    const want = [...new Set((Array.isArray(blobs) ? blobs : []).filter((b) => isSha(b)))].slice(0, 500);
+    const out: Record<Sha, string | null> = {};
+    const decoder = new TextDecoder();
+    let bytes = 0;
+    for (const blob of want) {
+      if (bytes > 8 * 1024 * 1024) {
+        out[blob] = null;
+        continue;
+      }
+      try {
+        const data = await readLocalBlob(this.repo(), blob);
+        bytes += data.length;
+        out[blob] = decoder.decode(data);
+      } catch {
+        const remote = await withRepo(this.trunkBinding(st.trunk), st.trunk.name, (r) => r.readBlob(blob)).catch(() => null);
+        const text = remote ? await remote.text() : null;
+        if (text !== null) bytes += text.length;
+        out[blob] = text;
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Add fields to a landing's lineage note after it landed (trunk certification adds its result).
+   * The note is rewritten here and goes out with the next notes flush, which runs beside the
+   * landing cycles; the landing's own commit and push are untouched. False when the landing has no note.
+   */
+  async annotate(landingId: Id, patch: Record<string, unknown>): Promise<boolean> {
+    this.state();
+    if (!patch || typeof patch !== "object" || Array.isArray(patch)) return false;
+    // A flush in progress may hold this landing's pending row with the old text and delete it once
+    // pushed: wait for it, then rewrite the note and mark it pending in one synchronous step.
+    while (this.notesRun) await this.notesRun.catch(() => undefined);
+    const row = this.sql.exec<{ note: string; commit_sha: string }>(`SELECT note, commit_sha FROM ft_notes WHERE landing_id = ?`, landingId).toArray()[0];
+    if (!row) return false;
+    let note: LineageNote & Record<string, unknown>;
+    try {
+      note = JSON.parse(row.note) as LineageNote & Record<string, unknown>;
+    } catch {
+      return false;
+    }
+    const text = serializeNote({ ...note, ...patch } as LineageNote);
+    if (text === row.note) return true;
+    const now = Date.now();
+    this.ctx.storage.transactionSync(() => {
+      this.sql.exec(`UPDATE ft_notes SET note = ? WHERE landing_id = ?`, text, landingId);
+      // A landing whose note already reached the remote gets a pending row again; one still pending keeps its own.
+      this.sql.exec(
+        `INSERT OR IGNORE INTO ft_journal (landing_id, state, commit_sha, parent_sha, data, created_at, updated_at) VALUES (?, 'pending_note', ?, '', '{}', ?, ?)`,
+        landingId,
+        row.commit_sha,
+        now,
+        now,
+      );
+    });
+    await this.notesSoon();
+    return true;
+  }
+
   /** Mint a new trunk write token when the cached one is within 10 minutes of expiry. */
   async refreshTokenIfNeeded(): Promise<{ expiresAt: number }> {
     const t = await this.token();

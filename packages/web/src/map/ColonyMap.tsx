@@ -1,6 +1,7 @@
 import { useEffect, useRef, type RefObject } from "react";
 import { fmtInt, shortSha } from "../format.ts";
 import type { ColonyStore } from "../store.ts";
+import { certCounts, certTitle } from "../certs.ts";
 import { FIELD_COLOR, KINDS } from "../theme.ts";
 import { usePolled, useThrottledVersion } from "../useStore.ts";
 import { MapRenderer } from "./renderer.ts";
@@ -81,6 +82,7 @@ function TrunkBar({ store, headRef, shaRef }: { store: ColonyStore; headRef: Ref
       <div className="trunk-head" ref={headRef}>
         <span className="trunk-k">head</span>
         <span className="trunk-sha mono" ref={shaRef} />
+        <CertBadge store={store} />
         {store.greenSha ? (
           <>
             <span className="trunk-k trunk-k-green">green</span>
@@ -91,6 +93,56 @@ function TrunkBar({ store, headRef, shaRef }: { store: ColonyStore; headRef: Ref
         ) : null}
       </div>
     </div>
+  );
+}
+
+/** The head commit's trunk certification: a green check or a red cross with the counts (failing names on hover). */
+function CertBadge({ store }: { store: ColonyStore }) {
+  const hc = store.headCert();
+  if (!hc || hc.cert.status === "skipped") return null;
+  const { cert, onHead } = hc;
+  if (cert.status === "running") {
+    return (
+      <span className="trunk-cert is-running" title={certTitle(cert)}>
+        <i className="trunk-cert-spin" />
+        testing
+      </span>
+    );
+  }
+  if (cert.status === "error") {
+    return (
+      <span className="trunk-cert is-muted" title={certTitle(cert)}>
+        tests did not run
+      </span>
+    );
+  }
+  const green = cert.status === "green";
+  const k = cert.counts;
+  const failing = cert.failing ?? [];
+  return (
+    <span className={`trunk-cert ${green ? "is-green" : "is-red"}${onHead ? "" : " is-stale"}`} tabIndex={0} aria-label={certTitle(cert)}>
+      <b className="trunk-cert-mark">{green ? "✓" : "✗"}</b>
+      {certCounts(cert)}
+      {onHead ? null : <span className="trunk-cert-at mono">{shortSha(cert.trunkSha)}</span>}
+      <span className="trunk-cert-pop" role="tooltip">
+        <span className="trunk-cert-pop-head">
+          {green ? `All ${fmtInt(k?.pass ?? 0)} tests pass` : `${fmtInt(k ? k.fail + k.cancelled : failing.length)} of ${fmtInt(k?.tests ?? 0)} tests failing`} on <span className="mono">{shortSha(cert.trunkSha)}</span>
+          {onHead ? "" : " (the newer head is waiting for its run)"}
+        </span>
+        {failing.slice(0, 8).map((f, i) => (
+          <span className="trunk-cert-fail" key={`${f.file}:${f.name}:${i}`}>
+            <b>{f.name}</b>
+            <span className="mono">{f.file}</span>
+            {f.error ? <em>{f.error}</em> : null}
+          </span>
+        ))}
+        {failing.length > 8 ? <span className="trunk-cert-more">and {fmtInt(failing.length - 8)} more</span> : null}
+        <span className="trunk-cert-foot">
+          node:test in a Dynamic Worker{typeof cert.durationMs === "number" ? ` · ${(cert.durationMs / 1000).toFixed(1)} s` : ""}
+          {cert.reusedFrom ? ` · same tested files as ${shortSha(cert.reusedFrom)}` : ""}
+        </span>
+      </span>
+    </span>
   );
 }
 

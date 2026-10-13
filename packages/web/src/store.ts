@@ -1,11 +1,13 @@
 import type {
   AgentKind,
   AgentState,
+  CertificationStatus,
   Colony,
   ColonyEvent,
   ColonySnapshot,
   DecisionKind,
   DecisionLayer,
+  FailingTest,
   FieldReading,
   FunnelStage,
   Id,
@@ -14,6 +16,8 @@ import type {
   MarkKind,
   ProposalStatus,
   Rule,
+  Sha,
+  TestCounts,
 } from "@fire_trident/core";
 import { finite } from "./format.ts";
 import { parseSeries, type Series } from "./series.ts";
@@ -27,6 +31,18 @@ export interface ReplayInfo {
   /** Time of the run's first event. */
   startedAt: number;
   source: "recorded" | "reconstructed";
+}
+
+/** One trunk commit's certification as the UI knows it (snapshot or `certify` events). */
+export interface CertView {
+  trunkSha: Sha;
+  status: CertificationStatus;
+  counts?: TestCounts;
+  failing?: FailingTest[];
+  durationMs?: number;
+  detail?: string;
+  reusedFrom?: Sha;
+  at: number;
 }
 
 /** The violations counter since the latest rule change (a rule added or retracted). */
@@ -179,6 +195,7 @@ const EVENT_TYPES: ReadonlySet<string> = new Set([
   "retracted",
   "directive",
   "status",
+  "certify",
 ]);
 const AGENT_STATES: ReadonlySet<string> = new Set<AgentState>(["idle", "working", "proposing", "waiting", "dead"]);
 const INTENT_STATUSES: ReadonlySet<string> = new Set<IntentStatus>(["open", "claimed", "proposed", "landed", "abandoned", "withdrawn"]);
@@ -285,6 +302,9 @@ export class ColonyStore {
   landingsSeen = 0;
   trunkSha = "";
   greenSha = "";
+  /** Trunk certifications by commit (newest kept), and the commit of the latest one. */
+  readonly certs = new Map<Sha, CertView>();
+  lastCertSha = "";
 
   violations: { total: number; byRule: Record<Id, number> } = { total: 0, byRule: {} };
   /** Violations fixed since the total was last zero (or since load), for servers that send no baseline. */
@@ -344,6 +364,34 @@ export class ColonyStore {
     return () => this.listeners.delete(fn);
   }
 
+  /** Record one commit's certification (the newest 200 commits are kept). */
+  setCert(c: Omit<CertView, "at"> & { at: number }): void {
+    const view: CertView = { trunkSha: c.trunkSha, status: c.status, at: c.at };
+    if (c.counts) view.counts = c.counts;
+    if (Array.isArray(c.failing)) view.failing = c.failing;
+    if (typeof c.durationMs === "number") view.durationMs = c.durationMs;
+    if (c.detail) view.detail = c.detail;
+    if (c.reusedFrom) view.reusedFrom = c.reusedFrom;
+    this.certs.delete(c.trunkSha);
+    this.certs.set(c.trunkSha, view);
+    this.lastCertSha = c.trunkSha;
+    if (this.certs.size > 200) {
+      const oldest = this.certs.keys().next().value;
+      if (oldest !== undefined) this.certs.delete(oldest);
+    }
+  }
+
+  /**
+   * What the trunk bar shows about tests: the head's own certification when there is one, else the
+   * latest one (for an older commit) while the head waits for its run. Null when nothing was certified.
+   */
+  headCert(): { cert: CertView; onHead: boolean } | null {
+    const head = this.trunkSha ? this.certs.get(this.trunkSha) : undefined;
+    if (head) return { cert: head, onHead: true };
+    const last = this.lastCertSha ? this.certs.get(this.lastCertSha) : undefined;
+    return last ? { cert: last, onHead: last.trunkSha === this.trunkSha } : null;
+  }
+
   /** Mark the store changed and notify listeners (they throttle themselves). */
   bump(): void {
     this.version++;
@@ -363,6 +411,10 @@ export class ColonyStore {
     this.colony = s.colony;
     this.trunkSha = s.colony.trunkSha ?? "";
     this.greenSha = s.colony.greenSha ?? "";
+    this.certs.clear();
+    this.lastCertSha = "";
+    const cert = s.colony.certification;
+    if (cert && typeof cert.trunkSha === "string") this.setCert({ ...cert, at: finite(cert.finishedAt ?? cert.startedAt, Date.now()) });
     this.setFiles(Array.isArray(s.files) ? s.files : []);
 
     this.intents.clear();
@@ -580,6 +632,12 @@ export class ColonyStore {
       case "directive":
         this.direction.directives++;
         break; // otherwise shown in the log only
+      case "certify":
+        if (typeof ev.trunkSha !== "string") break;
+        this.setCert({ ...ev, at: finite(ev.at, now) });
+        if (ev.status === "green") this.greenSha = ev.trunkSha;
+        else if (typeof ev.greenSha === "string" && ev.greenSha) this.greenSha = ev.greenSha;
+        break;
     }
     this.ring[this.ringHead] = { seq: ++this.seq, ev, delta };
     this.ringHead = (this.ringHead + 1) % LOG_CAP;

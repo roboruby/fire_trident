@@ -181,8 +181,10 @@ export function startingPoint(snap: ColonySnapshot, timeline: Timeline): { snaps
     const { retractedAt: _at, retractedBy: _by, retractReason: _reason, ...rest } = r;
     return rest;
   });
+  // Certification arrives as `certify` events; the finished run's green commit and result are not the start.
+  const { greenSha: _green, certification: _cert, ...colony } = snap.colony;
   const snapshot: ColonySnapshot = {
-    colony: { ...snap.colony, trunkSha: "" },
+    colony: { ...colony, trunkSha: "" },
     files,
     intents: [],
     rules,

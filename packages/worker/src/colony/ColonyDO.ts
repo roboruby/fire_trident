@@ -20,6 +20,7 @@ import type {
   AgentKind,
   AgentState,
   Candidate,
+  Certification,
   Colony,
   ColonyEvent,
   ColonySnapshot,
@@ -103,6 +104,8 @@ import {
   summaryOf,
 } from "./metrics.ts";
 import type { AgentListEntry, ColonySeries, ColonySummary, RegistryEntry, SnapshotWithSeries } from "./metrics.ts";
+import { Certifier, type CertifyHost, type CertifyTrunk } from "../certify/certifier.ts";
+import type { CertifyPolicy } from "../certify/repair.ts";
 
 /** Result of ColonyDO.take: an assignment, or advice to wait and retry. */
 export type TakeResult = { intent: Intent; lease: WorkspaceLease; rule?: Rule } | { wait: true; retryInMs: number; reason: string };
@@ -465,6 +468,8 @@ export class ColonyDO extends DurableObject<Env> {
   private funnelTimer: ReturnType<typeof setTimeout> | null = null;
   /** The last reconstructed replay, shared by the pages that read it. */
   private reconCache: { key: string; at: number; events: ColonyEvent[] } | null = null;
+  /** Trunk certification: the colony's own tests after landings (certify/certifier.ts). */
+  private readonly certifier: Certifier;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -474,6 +479,7 @@ export class ColonyDO extends DurableObject<Env> {
     migrateDirection(this.sql);
     this.backfillSeries();
     this.hub = new EventHub(() => this.ctx.getWebSockets());
+    this.certifier = new Certifier(this.certifyHost());
     // Load tests only (FT_LAG_PROBE set): log how long this object's thread was busy or paused (lag.ts).
     if (env.FT_LAG_PROBE) {
       // Also on the live feed, so a load test records it beside its own timeline.
@@ -495,6 +501,12 @@ export class ColonyDO extends DurableObject<Env> {
         this.decider().sweep(Date.now() + 24 * 60 * 60_000);
       } catch {
         // No colony yet, or Workers AI unbound: nothing to resume.
+      }
+      try {
+        // A certification asked for before an eviction runs now.
+        this.certifier.resume();
+      } catch (err) {
+        console.warn(`certification not resumed: ${errorText(err)}`);
       }
     });
   }
@@ -578,8 +590,9 @@ export class ColonyDO extends DurableObject<Env> {
         return a;
       });
     const violations = this.violationTotals();
+    const certification = this.certifier.latestCertification();
     return {
-      colony,
+      colony: certification ? { ...colony, certification } : colony,
       files,
       intents,
       agents,
@@ -1638,6 +1651,8 @@ export class ColonyDO extends DurableObject<Env> {
     fx.events.push({ t: "metric", at: now, name: "landings", value: this.metric("landings") });
     this.pruneLandings();
     await this.flushEffects(fx);
+    // Trunk moved: certify the newest trunk soon (asynchronous; nothing here waits for it).
+    this.certifier.landed(l);
   }
 
   /** The human review queue: escalated proposals, highest risk first, then oldest first. */
@@ -1891,6 +1906,89 @@ export class ColonyDO extends DurableObject<Env> {
       this.colonyCache = null;
     }
     this.publish({ t: "landing", at: Date.now(), landingId: l.id, trunkSha: l.trunkSha, proposalIds: [], paths: l.paths });
+    this.certifier.landed(l);
+  }
+
+  // =========================================================================
+  // Trunk certification (certify/certifier.ts)
+  // =========================================================================
+
+  /** Certification switches, policy, whether a run is in flight or asked for, the latest result and greenSha. */
+  async certifyState(): Promise<ReturnType<Certifier["state"]>> {
+    this.requireColony();
+    return this.certifier.state();
+  }
+
+  /** Certification results, newest first (at most 500). */
+  async certifications(limit = 50): Promise<Certification[]> {
+    this.requireColony();
+    return this.certifier.list(limit);
+  }
+
+  /** One commit's certification (a full sha or a unique prefix of 7+ characters), or null. */
+  async certification(sha: string): Promise<Certification | null> {
+    this.requireColony();
+    return this.certifier.get(sha);
+  }
+
+  /** Certify the current trunk now (an operator asked), even when it was certified before. */
+  async certifyNow(): Promise<{ started: boolean; reason?: string }> {
+    this.requireColony();
+    return this.certifier.certifyNow();
+  }
+
+  /** Change this colony's certification policy (partial): on/off, repairs, limits. */
+  async setCertifyPolicy(patch: unknown): Promise<CertifyPolicy> {
+    this.requireColony();
+    const r = this.certifier.setPolicy(patch);
+    if ("error" in r) throw ftError(400, r.error);
+    return r;
+  }
+
+  /** What the certifier may use of this colony. */
+  private certifyHost(): CertifyHost {
+    return {
+      sql: this.sql,
+      enabled: () => this.env.FT_TRUNK_TESTS === "on",
+      loader: () => this.env.LOADER,
+      trunk: () => this.trunkStub() as unknown as CertifyTrunk,
+      publish: (e) => {
+        this.publish(e);
+      },
+      exists: () => this.loadColony() !== null,
+      greenSha: () => this.loadColony()?.colony.greenSha ?? null,
+      setGreen: (sha) => {
+        this.sql.exec("UPDATE colony SET green_sha = ?", sha);
+        this.colonyCache = null;
+      },
+      repairs: () =>
+        this.sql
+          .exec<{ id: string; status: string; created_at: number }>("SELECT id, status, created_at FROM intents WHERE source = 'certify' ORDER BY created_at DESC LIMIT 200")
+          .toArray()
+          .map((r) => ({ id: r.id, status: r.status as IntentStatus, createdAt: r.created_at })),
+      declare: async (input) => (await this.addIntent({ ...input, colonyId: this.requireColony().id })).id,
+      satisfy: async (id, reason) => {
+        await this.withdrawIntent(id, { reason, by: "certify" });
+      },
+      specFor: (paths) => this.specContextFor(paths),
+    };
+  }
+
+  /** The spec context carried by the intent that wrote one of `paths` (else the newest spec intent's), when the colony grew from a spec. */
+  private specContextFor(paths: Path[]): { spec: string; label: string | null } | null {
+    const want = new Set(paths);
+    let fallback: { spec: string; label: string | null } | null = null;
+    const rows = this.sql
+      .exec<{ id: string; footprint: string; why: string }>("SELECT id, footprint, why FROM intents WHERE source != 'certify' AND instr(why, 'Spec context') > 0 ORDER BY created_at DESC LIMIT 500")
+      .toArray();
+    for (const r of rows) {
+      const m = /\n\nSpec context(?: \(([^\n]*)\))?:\n/.exec(r.why);
+      if (!m) continue;
+      const found = { spec: r.why.slice(m.index + m[0].length).trim(), label: m[1] ?? null };
+      if (this.footprintOf(r.id, r.footprint).some((p) => want.has(p))) return found;
+      fallback ??= found;
+    }
+    return fallback;
   }
 
   // =========================================================================
@@ -2334,6 +2432,7 @@ export class ColonyDO extends DurableObject<Env> {
     for (const stmt of SCHEMA) this.sql.exec(stmt);
     for (const stmt of OPS_SCHEMA) this.sql.exec(stmt);
     migrateDirection(this.sql);
+    this.certifier.reset();
     return { cleared: true };
   }
 
@@ -3058,7 +3157,7 @@ export class ColonyDO extends DurableObject<Env> {
       if (!title) throw ftError(400, "intent title is required");
       if (d.assignedTo !== undefined && d.assignedTo !== null && !this.agentRow(d.assignedTo)) throw ftError(404, `unknown agent ${d.assignedTo}`);
       if (d.parentId && !this.intentRow(d.parentId)) throw ftError(404, `unknown parent intent ${d.parentId}`);
-      const source: IntentSource = d.source === "rule" || d.source === "agent" ? d.source : "human";
+      const source: IntentSource = d.source === "rule" || d.source === "agent" || d.source === "certify" ? d.source : "human";
       const priority = typeof d.priority === "number" && Number.isFinite(d.priority) ? Math.max(0, d.priority) : 1;
       return { d, footprint, title, source, priority };
     });

@@ -1,5 +1,6 @@
 import type {
   AgentState,
+  Certification,
   CheckResult,
   ColonyEvent,
   ColonySnapshot,
@@ -9,6 +10,7 @@ import type {
   Landing,
   LineageNote,
   MarkKind,
+  NoteCertification,
   NoteDecision,
   Proposal,
   ProposalStatus,
@@ -123,6 +125,103 @@ export function sparkline(values: readonly number[]): string {
   return finite.map((v) => (max <= 0 || v <= 0 ? BARS[0] : BARS[Math.min(7, Math.max(1, Math.ceil((v / max) * 7)))])).join("");
 }
 
+/** Test counts in one phrase: "60/60 tests", "5 of 67 failing". */
+export function testsPhrase(cert: Pick<Certification, "counts">): string {
+  const k = cert.counts;
+  if (!k) return "";
+  const bad = k.fail + k.cancelled;
+  const ran = k.tests - k.skipped - k.todo;
+  return bad === 0 ? `${num(k.pass)}/${num(ran)} tests` : `${num(bad)} of ${num(k.tests)} failing`;
+}
+
+/** Names of failing tests, "a, b +3". */
+function failingNames(cert: Pick<Certification, "failing">, max = 3): string {
+  const names = (cert.failing ?? []).map((f) => f.name);
+  return names.length ? quoteList(names, max) : "";
+}
+
+function quoteList(names: string[], max: number): string {
+  const head = names.slice(0, max).map((n) => quote(n, 48)).join(", ");
+  return names.length > max ? `${head} +${names.length - max}` : head;
+}
+
+/**
+ * The trunk row of `ft status`: the head commit, whether its own tests passed (trunk
+ * certification), and the newest green commit.
+ */
+export function trunkLine(col: Pick<ColonySnapshot["colony"], "trunkSha" | "greenSha" | "certification">, c: Colors): string {
+  const head = shortSha(col.trunkSha);
+  const green = col.greenSha ? `${c.dim("green")} ${shortSha(col.greenSha)}` : c.dim("never green yet");
+  const cert = col.certification;
+  if (!cert) return `${head}  ${col.greenSha ? green : c.dim("not certified yet")}`;
+  const onHead = cert.trunkSha === col.trunkSha;
+  const which = onHead ? "" : c.dim(` (certified ${shortSha(cert.trunkSha)}; head not yet)`);
+  switch (cert.status) {
+    case "green":
+      return `${head}  ${c.green(`✓ green, ${testsPhrase(cert)}`)}${which}${onHead ? "" : `  ${green}`}`;
+    case "red": {
+      const names = failingNames(cert);
+      return `${head}  ${c.red(`✗ red, ${testsPhrase(cert)}`)}${names ? ` ${names}` : ""}${which}  ${green}`;
+    }
+    case "running":
+      return `${head}  ${c.yellow("testing…")}  ${green}`;
+    case "error":
+      return `${head}  ${c.yellow(`tests could not run: ${cert.detail ?? "unknown error"}`)}${which}  ${green}`;
+    default:
+      return `${head}  ${c.dim(cert.detail ?? "nothing to certify")}${col.greenSha ? `  ${green}` : ""}`;
+  }
+}
+
+/** One line for a certification recorded in a lineage note (ft why). */
+export function noteCertLine(cert: NoteCertification, c: Colors): string {
+  const phrase = testsPhrase(cert);
+  const reused = cert.reusedFrom ? c.dim(` (same tested files as ${shortSha(cert.reusedFrom)})`) : "";
+  const took = typeof cert.durationMs === "number" ? c.dim(` in ${(cert.durationMs / 1000).toFixed(1)} s`) : "";
+  if (cert.status === "green") return `${c.green(`✓ ${phrase} pass`)}${took}${reused}`;
+  const names = failingNames(cert);
+  return `${c.red(`✗ ${phrase}`)}${names ? ` ${names}` : ""}${took}${reused}`;
+}
+
+/** What `ft certify` prints: the state and latest results, or the outcome of --now / --on / --off. */
+export function formatCertify(colony: string, action: "show" | "now" | "on" | "off", res: unknown, c: Colors, now: number): string {
+  const r = (res ?? {}) as {
+    started?: boolean;
+    reason?: string;
+    enabled?: boolean;
+    on?: boolean;
+    deployment?: boolean;
+    runner?: boolean;
+    running?: boolean;
+    pending?: boolean;
+    greenSha?: string | null;
+    policy?: { enabled?: boolean; repair?: boolean; repairsPerHour?: number };
+    results?: Certification[];
+  };
+  if (action === "now") return r.started ? `${c.green("✓")} certifying ${c.bold(colony)}'s trunk now. Watch: ft watch ${colony} --only certify` : `${c.yellow("!")} not started: ${r.reason ?? "unknown reason"}`;
+  if (action === "on" || action === "off") return `${c.green("✓")} trunk certification ${r.enabled ? "on" : "off"} for ${c.bold(colony)}`;
+  const out: string[] = [];
+  const why = r.on ? c.green("on") : c.yellow(`off${r.deployment === false ? " (deployment: FT_TRUNK_TESTS)" : r.runner === false ? " (no Worker Loader binding)" : r.policy?.enabled === false ? " (colony policy)" : ""}`);
+  out.push(`${c.bold(colony)} trunk certification ${why}${r.running ? c.yellow(" · running") : r.pending ? c.dim(" · queued") : ""}`);
+  out.push(`${c.dim("green".padEnd(11))}${r.greenSha ? shortSha(r.greenSha) : c.dim("never green yet")}`);
+  if (r.policy) out.push(`${c.dim("repairs".padEnd(11))}${r.policy.repair === false ? "off" : `on, at most ${r.policy.repairsPerHour ?? 3} an hour`}`);
+  const results = Array.isArray(r.results) ? r.results : [];
+  if (results.length === 0) out.push(c.dim("no results yet"));
+  for (const cert of results) {
+    const when = typeof cert.startedAt === "number" ? c.dim(ago(cert.finishedAt ?? cert.startedAt, now).padStart(8)) : "";
+    let what: string;
+    if (cert.status === "green") what = c.green(`✓ ${testsPhrase(cert)}`);
+    else if (cert.status === "red") what = `${c.red(`✗ ${testsPhrase(cert)}`)} ${failingNames(cert, 2)}`;
+    else what = c.dim(`${cert.status}${cert.detail ? `: ${cert.detail}` : ""}`);
+    const extra = [
+      typeof cert.durationMs === "number" ? `${cert.durationMs} ms` : "",
+      cert.reusedFrom ? `as ${shortSha(cert.reusedFrom)}` : cert.cached ? `${cert.cached} file${cert.cached === 1 ? "" : "s"} reused` : "",
+      cert.repairIntentId ? `repair ${cert.repairIntentId}` : "",
+    ].filter(Boolean);
+    out.push(`  ${shortSha(cert.trunkSha)} ${when}  ${what}${extra.length ? c.dim(`  (${extra.join(", ")})`) : ""}`);
+  }
+  return out.join("\n");
+}
+
 /** Compact human summary of a colony snapshot. */
 export function formatStatus(s: SnapshotLike, c: Colors, now: number): string {
   const col = s.colony;
@@ -136,7 +235,7 @@ export function formatStatus(s: SnapshotLike, c: Colors, now: number): string {
 
   const head = `${c.bold(col.name ?? col.id)} ${c.dim(col.id)}`;
   out.push(col.source ? `${head}  ${c.dim("from")} ${col.source.url}${col.source.branch ? c.dim(` (${col.source.branch})`) : ""}` : head);
-  row("trunk", `${shortSha(col.trunkSha)}  ${col.greenSha ? `green ${shortSha(col.greenSha)}` : c.dim("green not certified yet")}`);
+  row("trunk", trunkLine(col, c));
   const regions = new Set(files.map((f) => regionOf(f.path, col.regionDepth || 1)));
   row("files", `${num(files.length)} in ${num(regions.size)} region${regions.size === 1 ? "" : "s"}`);
   row("intents", intents.length ? `${num(intents.length)}: ${breakdown(countBy(intents, (i) => i.status), INTENT_ORDER, c)}` : c.dim("none"));
@@ -435,6 +534,7 @@ export function formatWhy(
       decisions: p.decisions ?? [],
       intent: p.intent ?? { id: "?", title: "(intent not recorded)", why: "" },
     }));
+    if (note?.certification && (note.certification.status === "green" || note.certification.status === "red")) out.push(`  ${label("tests")}${noteCertLine(note.certification, c)}`);
     const touching = proposals.filter((p) => p.writeSet.some((w) => w.path === target.path));
     const shown = touching.length ? touching : proposals;
     if (proposals.length > shown.length) out.push(`  ${c.dim(`${proposals.length - shown.length} other proposal(s) in this landing touched other files`)}`);
@@ -714,6 +814,16 @@ export function formatEvent(e: ColonyEvent, c: Colors, clock: (at: number) => st
       return `${time} ${tag("directive", "cyan")} ${e.agentId} ← ${e.by}: ${quote(e.message, 80)}${e.intentId ? c.dim(` (${e.intentId})`) : ""}${e.via ? c.dim(` ${e.via}`) : ""}`;
     case "status":
       return `${time} ${tag("status", "blue")} ${e.agentId} ${e.note}`;
+    case "certify": {
+      const sha = c.bold(shortSha(e.trunkSha));
+      if (e.status === "running") return `${time} ${tag("certify", "yellow")} ${sha} testing…`;
+      if (e.status === "green") return `${time} ${tag("certify", "green")} ${sha} ${c.green(`✓ green, ${testsPhrase(e)}`)}${e.reusedFrom ? c.dim(` (as ${shortSha(e.reusedFrom)})`) : ""}`;
+      if (e.status === "red") {
+        const names = failingNames(e);
+        return `${time} ${tag("certify", "red")} ${sha} ${c.red(`✗ red, ${testsPhrase(e)}`)}${names ? ` ${names}` : ""}${e.greenSha ? c.dim(` · green ${shortSha(e.greenSha)}`) : ""}`;
+      }
+      return `${time} ${tag("certify", "dim")} ${sha} ${c.dim(`${e.status}${e.detail ? `: ${e.detail}` : ""}`)}`;
+    }
     default: {
       const unknown = e as { t?: unknown };
       return `${time} ${tag(String(unknown.t ?? "event"), "dim")} ${c.dim(JSON.stringify(e).slice(0, 160))}`;

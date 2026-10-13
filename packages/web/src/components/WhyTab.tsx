@@ -6,6 +6,7 @@ import type { ColonyStore } from "../store.ts";
 import { FIELD_COLOR, KINDS, LAYER_COLOR, intensity, KIND_INDEX } from "../theme.ts";
 import { decisionsFromChecks, type DecisionStep } from "../decisions.ts";
 import { useThrottledVersion } from "../useStore.ts";
+import { certCounts, certTitle } from "../certs.ts";
 
 type NoteProposal = LineageNote["proposals"][number];
 
@@ -175,6 +176,7 @@ function LineageEntry({ entry, path, store, newest }: { entry: WhyEntry; path: s
         )}
         {landing.parentSha ? <span className="mono lin-parent-sha" title={`parent ${landing.parentSha}`}>← {shortSha(landing.parentSha)}</span> : null}
         <span className="lin-when">{timeAgo(landing.at)}</span>
+        <LineageCert store={store} sha={landing.trunkSha} note={note?.certification} />
         <button
           type="button"
           className={`lin-map${onMap ? " is-on" : ""}`}
@@ -194,6 +196,19 @@ function LineageEntry({ entry, path, store, newest }: { entry: WhyEntry; path: s
         </div>
       ) : null}
     </article>
+  );
+}
+
+/** This commit's own tests (trunk certification), live from the store or from its lineage note. */
+function LineageCert({ store, sha, note }: { store: ColonyStore; sha: string; note: LineageNote["certification"] }) {
+  const live = store.certs.get(sha);
+  const cert = live ?? (note ? { ...note, trunkSha: sha, at: note.finishedAt ?? 0 } : undefined);
+  if (!cert || (cert.status !== "green" && cert.status !== "red")) return null;
+  const green = cert.status === "green";
+  return (
+    <span className={`lin-cert ${green ? "is-green" : "is-red"}`} title={certTitle(cert)}>
+      {green ? "✓" : "✗"} {certCounts(cert)}
+    </span>
   );
 }
 

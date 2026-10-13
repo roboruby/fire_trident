@@ -4,10 +4,13 @@ import { clock, fmtFixed, fmtInt, shortId, shortSha } from "../format.ts";
 import type { ColonyStore, LoggedEvent } from "../store.ts";
 import { ACCENT, FIELD_COLOR, LAYER_COLOR } from "../theme.ts";
 import { useThrottledVersion } from "../useStore.ts";
+import { certCounts, certTitle } from "../certs.ts";
 
 /** Changing direction: amendments, withdrawals, retracted rules and human directives. */
 const DIRECTION_COLOR = "#c084fc";
 const STATUS_COLOR = "#9fd8ff";
+const TESTS_GREEN = "#6fd9a6";
+const TESTS_RED = "#ff8d98";
 
 /** Filter chips: a key, a label, a color, and the event types the chip covers. */
 const FILTERS: ReadonlyArray<[key: string, label: string, color: string, types: ReadonlyArray<ColonyEvent["t"]>]> = [
@@ -17,6 +20,7 @@ const FILTERS: ReadonlyArray<[key: string, label: string, color: string, types: 
   ["intent", "Intents", "#7cc4ff", ["intent"]],
   ["direction", "Direction", DIRECTION_COLOR, ["amended", "withdrawn", "retracted", "directive"]],
   ["status", "Status", STATUS_COLOR, ["status"]],
+  ["certify", "Tests", TESTS_GREEN, ["certify"]],
   ["agent", "Agents", "#c9d4e5", ["agent"]],
   ["violations", "Rules", FIELD_COLOR.need, ["violations"]],
   ["sigma", "Sigma", FIELD_COLOR.danger, ["sigma"]],
@@ -27,7 +31,7 @@ const FILTERS: ReadonlyArray<[key: string, label: string, color: string, types: 
 /** The chip that covers each event type. */
 const CHIP_OF: ReadonlyMap<string, string> = new Map(FILTERS.flatMap(([key, , , types]) => types.map((t) => [t, key] as const)));
 
-const DEFAULT_ON: ReadonlySet<string> = new Set(["landing", "decision", "proposal", "intent", "direction", "status", "violations", "sigma"]);
+const DEFAULT_ON: ReadonlySet<string> = new Set(["landing", "decision", "proposal", "intent", "direction", "status", "violations", "sigma", "certify"]);
 
 /** The events worth reading at a glance; routine status steps are hidden unless the viewer asks for everything. */
 function notable(e: ColonyEvent): boolean {
@@ -108,6 +112,13 @@ function describe(le: LoggedEvent, store: ColonyStore): Line {
       return { tag: "directive", color: DIRECTION_COLOR, text: `${e.by} → ${store.agentName(e.agentId)}: “${e.message}”`, mono: e.via, title: e.message };
     case "status":
       return { tag: "status", color: STATUS_COLOR, text: `${store.agentName(e.agentId)}: ${e.note}`, title: e.note };
+    case "certify": {
+      const cert = { trunkSha: e.trunkSha, status: e.status, at: e.at, ...(e.counts ? { counts: e.counts } : {}), ...(e.failing ? { failing: e.failing } : {}), ...(e.detail ? { detail: e.detail } : {}) };
+      if (e.status === "running") return { tag: "tests", color: "#ffb469", text: "running the project's tests", mono: shortSha(e.trunkSha) };
+      if (e.status === "green") return { tag: "tests", color: TESTS_GREEN, text: `✓ ${certCounts(cert)} pass${e.reusedFrom ? " (same tested files)" : ""}`, mono: shortSha(e.trunkSha), title: certTitle(cert) };
+      if (e.status === "red") return { tag: "tests", color: TESTS_RED, text: `✗ ${certCounts(cert)}: ${(e.failing ?? []).map((f) => f.name).slice(0, 3).join(", ")}`, mono: shortSha(e.trunkSha), title: certTitle(cert) };
+      return { tag: "tests", color: "#8b97a8", text: `${e.status}${e.detail ? ` · ${e.detail}` : ""}`, mono: shortSha(e.trunkSha), title: e.detail };
+    }
     default:
       return { tag: String((e as { t?: unknown }).t ?? "event"), color: "#8b97a8", text: "" };
   }

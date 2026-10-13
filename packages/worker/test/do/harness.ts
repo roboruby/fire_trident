@@ -6,7 +6,7 @@
 import { DurableObject } from "cloudflare:workers";
 import { Hono } from "hono";
 import { newId, regionOf } from "@fire_trident/core";
-import type { AgentKind, FileVersion, Id, Landing, LineageNote, Path, Proposal, RepoRef, Sha, WorkspaceLease } from "@fire_trident/core";
+import type { AgentKind, FileVersion, Id, Landing, LineageNote, NoteCertification, Path, Proposal, RepoRef, Sha, WorkspaceLease } from "@fire_trident/core";
 import { createApi } from "../../src/api/app.ts";
 import type { ApiDeps } from "../../src/api/app.ts";
 import type { Env } from "../../src/env.ts";
@@ -35,6 +35,10 @@ interface TrunkState {
   neighbors?: Record<Path, Array<{ path: Path; weight: number }>> | "fail";
   /** neighbors() calls, for asserting caching. */
   neighborCalls?: number;
+  /** Lineage note fields added after landing (annotate), by landing id. */
+  annotations?: Record<Id, { certification?: NoteCertification }>;
+  /** certifySnapshot() calls, for asserting how often certification read trunk. */
+  certifyReads?: number;
 }
 
 const DEFAULT_FILES: Record<Path, string> = {
@@ -226,6 +230,33 @@ export class TrunkDO extends DurableObject<Env> {
 
   async landings(limit = 20): Promise<Landing[]> {
     return (await this.load()).landings.slice(-limit).reverse();
+  }
+
+  /** Trunk certification's view, as the real TrunkDO answers (an external commit's landing id is derived as externalLanding names it). */
+  async certifySnapshot(): Promise<{ trunkSha: Sha; landingId: Id | null; files: Array<{ path: Path; size: number; blob: Sha }>; truncated: boolean }> {
+    const s = await this.load();
+    s.certifyReads = (s.certifyReads ?? 0) + 1;
+    await this.save(s);
+    const files = Object.entries(s.files)
+      .filter(([path]) => /\.(ts|js|mjs|json)$/.test(path))
+      .map(([path, f]) => ({ path, size: f.content.length, blob: f.blob }));
+    const landingId = s.landings.find((l) => l.trunkSha === s.head)?.id ?? `lnd_external_${s.head.slice(0, 8)}`;
+    return { trunkSha: s.head, landingId, files, truncated: false };
+  }
+
+  /** Texts by blob id, as the real TrunkDO answers. */
+  async readBlobs(blobs: Sha[]): Promise<Record<Sha, string | null>> {
+    const s = await this.load();
+    const byBlob = new Map(Object.values(s.files).map((f) => [f.blob, f.content]));
+    return Object.fromEntries(blobs.map((b) => [b, byBlob.get(b) ?? null]));
+  }
+
+  /** Lineage note fields added after landing (recorded for assertions). */
+  async annotate(landingId: Id, patch: Record<string, unknown>): Promise<boolean> {
+    const s = await this.load();
+    s.annotations = { ...(s.annotations ?? {}), [landingId]: { ...(s.annotations?.[landingId] ?? {}), ...(patch as { certification?: NoteCertification }) } };
+    await this.save(s);
+    return true;
   }
 
   /** Erase this object (colony deletion), as the real TrunkDO does. */

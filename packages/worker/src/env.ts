@@ -50,6 +50,10 @@ export interface Env {
   FT_MCP_TOKEN?: string;
   /** Secret (optional): enables Claude agents via AI Gateway / Anthropic. */
   ANTHROPIC_API_KEY?: string;
+  /** Dynamic Workers (Worker Loader): trunk certification runs each colony's own tests in one. */
+  LOADER?: WorkerLoader;
+  /** "on": certify trunk after landings by running the colony's own tests (each colony's policy can turn it off). */
+  FT_TRUNK_TESTS?: string;
 }
 
 export const WORKSPACE_SHARDS = 4;

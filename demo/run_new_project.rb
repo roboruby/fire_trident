@@ -9,13 +9,16 @@
 #      intents' files waits for them to land, reads them, then writes its files with a model
 #   3. follow the colony until every intent has landed (optionally approving escalations as the
 #      human reviewer, each one printed with its reason)
-#   4. clone trunk with plain git (a read token from wrangler), run `node --test`, run the
-#      reference acceptance suite against the colony's code, and check the spec's rules on every file
+#   4. when the server certifies trunk (it runs the colony's own tests after landings), keep
+#      following until trunk is certified green with no repair intent open (--certify-wait)
+#   5. clone trunk with plain git (a read token from wrangler), run `node --test` and compare it with
+#      the certification of the same commit, run the reference acceptance suite against the colony's
+#      code, and check the spec's rules on every file
 #   5. print the numbers: time from `ft new` to the last landing, landings, returns, tokens, cost
 #
 # Usage:
 #   ruby demo/run_new_project.rb [--spec FILE] [--name NAME] [--agents 6] [--model SPEC]
-#                                [--approve] [--timeout 2400] [--stall 600] [--attach]
+#                                [--approve] [--timeout 2400] [--stall 600] [--attach] [--certify-wait 900]
 #                                [--reference DIR] [--out DIR] [--keep-running]
 #
 # --model takes a model id or a mix such as "default=3,bulk" ("default" and "bulk" are the
@@ -48,7 +51,7 @@ CLEF_PER_M = 0.24 # @cf/cloudflare/clef, input tokens only
 # Second opinions run on gemma or gpt-oss-120b (whichever family differs from the author); price them at the higher.
 SECOND_OPINION = [0.35, 0.75].freeze
 
-opts = { spec: "demo/new-project-spec.md", name: nil, agents: 6, model: "default=3,bulk", approve: false, timeout: 2400, stall: 600,
+opts = { spec: "demo/new-project-spec.md", name: nil, agents: 6, model: "default=3,bulk", approve: false, timeout: 2400, stall: 600, certify_wait: 900,
          attach: false, keep: false, out: nil, reference: File.expand_path("shortlinks-reference", __dir__) }
 OptionParser.new do |o|
   o.banner = "Usage: ruby demo/run_new_project.rb [options]"
@@ -63,6 +66,7 @@ OptionParser.new do |o|
   o.on("--reference DIR", "Directory whose test/acceptance.test.ts judges the result (default demo/shortlinks-reference)") { |v| opts[:reference] = File.expand_path(v) }
   o.on("--out DIR", "Where to clone trunk (default: a temporary directory)") { |v| opts[:out] = File.expand_path(v) }
   o.on("--keep-running", "Leave the swarm running at the end") { opts[:keep] = true }
+  o.on("--certify-wait S", Integer, "After every intent landed, wait up to S seconds for trunk to be certified green (default 900; 0 skips)") { |v| opts[:certify_wait] = v }
 end.parse!
 
 def load_env
@@ -172,6 +176,32 @@ last_landed = -1
 last_progress = Time.now
 approved = []
 done_at = nil
+last_cert = nil
+
+# One line for the colony's latest certification, or nil when the server does not certify.
+def certification_line(snap)
+  c = snap.dig("colony", "certification")
+  return nil unless c
+  k = c["counts"] || {}
+  repairs = snap["intents"].select { |i| i["source"] == "certify" }
+  open = repairs.count { |i| %w[open claimed proposed].include?(i["status"]) }
+  counts = k.empty? ? "" : " #{k['pass']}/#{k['tests']} pass, #{k['fail'].to_i + k['cancelled'].to_i} failing"
+  failing = (c["failing"] || []).map { |f| f["name"] }.first(3)
+  format("%s %s%s%s | repair intents: %d declared, %d open%s", c["trunkSha"].to_s[0, 7], c["status"], counts, failing.empty? ? "" : " (#{failing.join('; ')})",
+         repairs.size, open, c["trunkSha"] == snap.dig("colony", "trunkSha") ? "" : " | head #{snap.dig('colony', 'trunkSha').to_s[0, 7]} not certified yet")
+end
+
+# Trunk is certified green at its head and no repair intent is open. True when the server does not certify,
+# and when certification has nothing to run (no node:test files) or cannot run: there is no green to wait for.
+def certified_green?(snap)
+  c = snap.dig("colony", "certification")
+  return true unless c
+  return false if snap["intents"].any? { |i| i["source"] == "certify" && %w[open claimed proposed].include?(i["status"]) }
+  return true if %w[skipped error].include?(c["status"])
+
+  c["status"] == "green" && c["trunkSha"] == snap.dig("colony", "trunkSha")
+end
+
 loop do
   sleep 5
   snap = begin
@@ -181,7 +211,8 @@ loop do
     next
   end
   m = (api(:get, "/colonies/#{colony}/metrics", timeout: 60)[1] || {})["metrics"] || {}
-  by = snap["intents"].group_by { |i| i["status"] }.transform_values(&:size)
+  spec_intents = snap["intents"].reject { |i| i["source"] == "certify" }
+  by = spec_intents.group_by { |i| i["status"] }.transform_values(&:size)
   landed = by["landed"].to_i
   say(format("intents landed %2d/%d  claimed %d  proposed %d  open %d | landings %d, returned %d, review %d, files %d",
              landed, total, by["claimed"].to_i, by["proposed"].to_i, by["open"].to_i, m["landings"].to_i, m["returned"].to_i, m["reviewQueue"].to_i, snap["files"].size))
@@ -202,9 +233,18 @@ loop do
       approved << p["id"]
     end
   end
+  cert_line = certification_line(snap)
+  if cert_line != last_cert
+    say("certification: #{cert_line}") if cert_line
+    last_cert = cert_line
+  end
   if landed >= total
-    done_at = Time.now
-    break
+    done_at ||= Time.now
+    # Trunk certification: the colony runs its own tests after landings and repairs a red trunk. Keep the
+    # swarm until trunk is certified green with no repair intent open (or --certify-wait runs out).
+    break if opts[:certify_wait].zero? || certified_green?(snap)
+    break say("trunk not certified green #{opts[:certify_wait]} s after the last intent landed") if Time.now - done_at > opts[:certify_wait]
+    last_progress = Time.now
   end
   break say("timeout after #{opts[:timeout]} s") if Time.now - t_new > opts[:timeout]
   break say("nothing landed for #{opts[:stall]} s") if Time.now - last_progress > opts[:stall]
@@ -258,7 +298,7 @@ s2_usd = (m["decide.llm.tokensIn"].to_i * SECOND_OPINION[0] + m["decide.llm.toke
 events = File.exist?(watch_log) ? File.readlines(watch_log).filter_map { |l| JSON.parse(l) rescue nil } : []
 returns = events.select { |e| e["t"] == "proposal" && e["status"] == "returned" }
 
-landed = snap["intents"].count { |i| i["status"] == "landed" }
+landed = snap["intents"].count { |i| i["status"] == "landed" && i["source"] != "certify" }
 since = opts[:attach] ? "attaching" : "ft new"
 say(done_at ? "all #{total} intents landed #{wall.round(1)} s after #{since}" : "#{landed}/#{total} intents landed after #{wall.round(1)} s")
 say(format("landings %d, proposals %d, returned %d, rejected %d, escalated %d (approved by the script: %d), abandons %d",
@@ -299,6 +339,18 @@ scene("node --test (the colony's own suite, nothing installed)")
 out, = run(["node", "--test"], chdir: clone)
 counts, ms = tap_summary(out)
 say(format("node --test: %d tests, %d pass, %d fail in %.0f ms", counts["tests"], counts["pass"], counts["fail"], ms))
+head_sha = `git -C #{clone} rev-parse HEAD`.strip
+code, cert = api(:get, "/colonies/#{colony}/certifications/#{head_sha}")
+if code == 200 && cert["counts"]
+  k = cert["counts"]
+  same = k["tests"] == counts["tests"] && k["pass"] == counts["pass"] && k["fail"] + k["cancelled"] == counts["fail"]
+  say(format("certification of %s: %s, %d tests, %d pass, %d fail in %d ms%s: %s node --test", head_sha[0, 7], cert["status"], k["tests"], k["pass"], k["fail"] + k["cancelled"],
+             cert["durationMs"].to_i, cert["reusedFrom"] ? " (reused from #{cert['reusedFrom'][0, 7]})" : "", same ? "matches" : "DIFFERS from"))
+  repairs = snap["intents"].select { |i| i["source"] == "certify" }
+  repairs.each { |i| say("repair intent #{i['id']} #{i['status']}: #{i['title'][0, 110]}") }
+else
+  say("no certification recorded for #{head_sha[0, 7]} (HTTP #{code})")
+end
 out.lines.grep(/^not ok|^# Subtest|✖/).first(30).each { |l| puts "  #{l}" } if counts["fail"].positive? || counts["tests"].zero?
 
 ref = File.join(opts[:reference], "test/acceptance.test.ts")

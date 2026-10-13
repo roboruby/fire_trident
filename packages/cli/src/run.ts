@@ -21,6 +21,7 @@ import {
   formatStatus,
   formatStop,
   formatVaccinate,
+  formatCertify,
   formatWhy,
   formatWithdraw,
   num,
@@ -267,6 +268,12 @@ async function execute(cmd: Command, ctx: Ctx): Promise<number> {
       const res = await send<unknown>(ctx.http, req, 120_000);
       if (ctx.flags.json) printJson(ctx, res);
       else io.stdout(formatVaccinate(cmd.colony, cmd.count, res, c));
+      return 0;
+    }
+    case "certify": {
+      const res = await send<unknown>(ctx.http, req, 60_000);
+      if (ctx.flags.json) printJson(ctx, res);
+      else io.stdout(formatCertify(cmd.colony, cmd.action, res, c, io.now()));
       return 0;
     }
     case "intent-amend": {
