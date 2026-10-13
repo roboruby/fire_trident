@@ -3,11 +3,13 @@
  * files, resolved with the decide stage's rules (decide/mechanical.ts), for import-aware take().
  * A claim on a file that a candidate's files import, or on a file that imports them, repels the
  * candidate: those are the landings that would make its reads stale, and the agents whose reads its
- * own landing would make stale (packages/bench/results/2026-10-13-papers, Q4).
+ * own landing would make stale (packages/bench/results/2026-10-13-papers, Q4). The deletion guard
+ * (FT_DELETION_GUARD, deletionImports) reads it to find the trunk files that import a deleted file.
  *
  * TrunkDO keeps it in its SQLite storage (ft_imp_ tables):
- * - it is built the first time it is read (only when FT_IMPORT_WEIGHT turns the term on), from every
- *   script file of the trunk index within the caps;
+ * - it is built the first time it is read (when FT_IMPORT_WEIGHT turns the term on, or in the first
+ *   cycle that deletes a file while FT_DELETION_GUARD is on), from every script file of the trunk
+ *   index within the caps;
  * - finalizeRows marks each landing's changed paths (markLanded), and the next read re-parses the
  *   files whose blob changed and resolves again the specifiers a path that appeared or disappeared
  *   can change;
@@ -21,9 +23,10 @@
  * importNeighbors is the caller's side: ColonyDO.take turns each path's imports and importers into
  * repulsion neighbors at weight 1 for core neighborRepulsion, the way it uses co-change neighbors.
  */
-import type { Neighbor, Path, Sha } from "@fire_trident/core";
+import type { Neighbor, Path, Proposal, Sha } from "@fire_trident/core";
 import { importsOf } from "@fire_trident/core";
 import { RESOLVE_EXTS, isRelative, resolutionCandidates, resolveModule, specifierTarget } from "../decide/mechanical.ts";
+import type { DeletionImports } from "./plan.ts";
 import { SCRIPT_FILE } from "./revert.ts";
 
 /** Imports and importers returned per path at most, and paths per `links` call at most. */
@@ -169,7 +172,7 @@ export function dependentTargets(path: Path): string[] {
  */
 export function markLanded(sql: SqlStorage, parentSha: Sha, trunkSha: Sha, changes: Iterable<readonly [Path, LandedChange]>): void {
   try {
-    // Until the first read creates the index (never, while FT_IMPORT_WEIGHT is off), there is nothing to mark.
+    // Until the first read creates the index (never, while FT_IMPORT_WEIGHT and FT_DELETION_GUARD are off), there is nothing to mark.
     if (sql.exec("SELECT 1 AS x FROM sqlite_master WHERE type = 'table' AND name = 'ft_imp_meta'").toArray().length === 0) return;
     const at = sql.exec<{ value: string }>("SELECT value FROM ft_imp_meta WHERE key = 'sha'").toArray()[0]?.value;
     if (at === undefined || at !== parentSha) return;
@@ -205,6 +208,87 @@ export function importNeighbors(links: Record<Path, ImportLinks> | null | undefi
   return Object.fromEntries(out);
 }
 
+/** How long the deletion guard waits for one sync of the import index; past it, cycles that delete files go unguarded until it ends. */
+export const DELETION_WAIT_MS = 3_000;
+/** New versions of importers one cycle reads for the deletion guard at most (the rest are not checked). */
+const DELETION_READS = 64;
+
+/**
+ * The deletion guard's input for one cycle (plan.ts planCycle), or undefined when no proposal deletes a file that is
+ * on trunk: other cycles never touch the index (`getIndex` is called only past that point). Otherwise the index is
+ * brought up to date first (built on first use), waiting until its sync has run `waitMs` at most, then looked up for
+ * every deleted path; each importer that a proposal of the cycle rewrites has its new version read for its import
+ * targets. Null when the index is not current by then, or its sync fails: the guard sits the cycle out (logged), and a
+ * sync still running goes on in the background for the next one.
+ */
+export async function deletionImports(
+  getIndex: () => ImportIndex,
+  source: ImportSource,
+  proposals: readonly Proposal[],
+  trunk: (path: Path) => Sha | null,
+  waitMs = DELETION_WAIT_MS,
+): Promise<DeletionImports | null | undefined> {
+  const deleted = new Set<Path>();
+  for (const p of proposals) for (const w of p.writeSet) if ((w.blob ?? null) === null && trunk(w.path) !== null) deleted.add(w.path);
+  if (deleted.size === 0) return undefined;
+  const start = Date.now();
+  const open = (why: string): null => {
+    console.warn(JSON.stringify({ ft: "deletion-guard-open", colonyId: source.label ?? null, why, deleted: deleted.size, ms: Date.now() - start }));
+    return null;
+  };
+  try {
+    const index = getIndex();
+    const head = source.head();
+    // The wait is per sync, not per cycle: a sync already running that long (a large first build, a stuck read) gets
+    // no more, so later cycles do not wait on it again.
+    const wait = waitMs - index.runningMs();
+    const synced = await within(index.sync(source).then(() => true), wait, false);
+    if (!synced) return open(`import index still syncing after ${index.runningMs()} ms`);
+    if (head === null || !index.current(head)) return open("import index not current (a budget ran out or a read failed)");
+    const importers = index.edgesInto(deleted);
+    const known = new Set<Path>();
+    for (const by of importers.values()) for (const path of by.keys()) known.add(path);
+    const reread = new Map<Sha, Path>();
+    for (const p of proposals) {
+      for (const w of p.writeSet) {
+        const blob = w.blob ?? null;
+        if (blob !== null && known.has(w.path) && blob !== trunk(w.path) && !reread.has(blob)) reread.set(blob, w.path);
+      }
+    }
+    // The new versions were pulled into the local store by this cycle; a read that fails or runs past the wait leaves
+    // its importer unchecked rather than hold the cycle.
+    const targets = new Map<Sha, string[]>();
+    const decoder = new TextDecoder();
+    const until = Date.now() + waitMs;
+    for (const [blob, path] of [...reread].slice(0, DELETION_READS)) {
+      try {
+        const data = await within(source.read(blob), until - Date.now(), null);
+        if (data !== null) targets.set(blob, importTargets(path, decoder.decode(data)));
+      } catch {
+        // Left out, as above.
+      }
+    }
+    return { importers, targets };
+  } catch (e) {
+    return open(`import index failed: ${e instanceof Error ? e.message : String(e)}`);
+  }
+}
+
+/** `p`'s value, or `late` when it takes longer than `ms` (at least one timer turn). The timer is cleared either way. */
+async function within<T, U>(p: Promise<T>, ms: number, late: U): Promise<T | U> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      p,
+      new Promise<U>((resolve) => {
+        timer = setTimeout(() => resolve(late), Math.max(0, ms));
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
 /** What a sync round planned for one changed path. */
 type Plan = { path: Path; blob: Sha; size: number } | null;
 
@@ -218,6 +302,7 @@ type Parsed = { blob: Sha; targets: string[] | null } | "error";
  */
 export class ImportIndex {
   private running: Promise<ImportSyncResult> | null = null;
+  private runningSince = 0;
   private readonly caps: ImportCaps;
 
   constructor(
@@ -237,11 +322,17 @@ export class ImportIndex {
    */
   sync(source: ImportSource): Promise<ImportSyncResult> {
     if (!this.running) {
+      this.runningSince = Date.now();
       this.running = this.run(source).finally(() => {
         this.running = null;
       });
     }
     return this.running;
+  }
+
+  /** How long the sync in flight has been running, in ms (0 when none is). */
+  runningMs(): number {
+    return this.running ? Date.now() - this.runningSince : 0;
   }
 
   /**
@@ -269,6 +360,39 @@ export class ImportIndex {
       out.push([path, { imports, importers }]);
     }
     return Object.fromEntries(out);
+  }
+
+  /**
+   * The deletion guard's lookup: for each path, the indexed files with an import whose resolution it takes part in
+   * (its dependentTargets, whether or not the import resolves to it now), each with those imports' targets. The path
+   * itself is left out as an importer, and so are paths nothing imports.
+   */
+  edgesInto(paths: Iterable<Path>): Map<Path, Map<Path, string[]>> {
+    const out = new Map<Path, Map<Path, string[]>>();
+    for (const path of new Set(paths)) {
+      if (typeof path !== "string" || path === "") continue;
+      const rows = this.sql
+        .exec<{ src: string; target: string }>(
+          "SELECT src, target FROM ft_imp_edges WHERE target IN (SELECT value FROM json_each(?)) AND src != ? ORDER BY src, target",
+          JSON.stringify(dependentTargets(path)),
+          path,
+        )
+        .toArray();
+      if (rows.length === 0) continue;
+      const by = new Map<Path, string[]>();
+      for (const r of rows) {
+        const list = by.get(r.src) ?? [];
+        list.push(r.target);
+        by.set(r.src, list);
+      }
+      out.set(path, by);
+    }
+    return out;
+  }
+
+  /** True when the index describes trunk commit `head` with nothing left to read or to resolve again. */
+  current(head: Sha): boolean {
+    return this.meta("sha") === head && this.meta("resolve_from") === null && this.sql.exec("SELECT 1 AS x FROM ft_imp_dirty LIMIT 1").toArray().length === 0;
   }
 
   /** Counts and the commit the index describes. */

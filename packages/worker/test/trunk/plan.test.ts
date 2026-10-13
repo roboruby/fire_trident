@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ExportSurface, ExportedNames, FileVersion, Landing, NameAssumption, Path, Proposal, Sha } from "@fire_trident/core";
-import { SURFACE_FILE_BYTES, exportSurface, overlaps, planCycle, resultsFor, surfaceBlobs, uniqueProposals, type Outcome, type PlanProposal } from "../../src/trunk/plan.ts";
+import { SURFACE_FILE_BYTES, deletionGuardEnabled, exportSurface, overlaps, planCycle, resultsFor, surfaceBlobs, uniqueProposals, type DeletionImports, type Outcome, type PlanProposal } from "../../src/trunk/plan.ts";
 
 const sha = (c: string): Sha => c.repeat(40).slice(0, 40);
 const OLD = sha("0");
@@ -340,5 +340,123 @@ describe("assumption revalidation: what the trunk writer reads", () => {
     expect(exportSurface(new Uint8Array([0xff, 0xfe, 0x00]))).toBeNull();
     expect(exportSurface(enc.encode("export = thing;\n"))).toBeNull();
     expect(exportSurface(new Uint8Array(SURFACE_FILE_BYTES + 1))).toBeNull();
+  });
+});
+
+describe("planCycle: deletion guard (FT_DELETION_GUARD)", () => {
+  const X = "src/lib/x.ts";
+  const trunk: Record<Path, Sha | null> = { [X]: OLD, "src/a.ts": OLD, "src/b.ts": OLD, "src/c.ts": OLD, "src/lib/y.js": OLD, "docs/x.md": OLD };
+  const at = (path: Path): Sha | null => trunk[path] ?? null;
+  /** What the import index answers: for each deleted path, its trunk importers with the targets of their imports. */
+  const guard = (importers: Record<Path, Record<Path, string[]>>, targets: Record<Sha, string[]> = {}): DeletionImports => ({
+    importers: new Map(Object.entries(importers).map(([path, by]) => [path, new Map(Object.entries(by))])),
+    targets: new Map(Object.entries(targets)),
+  });
+  /** On trunk, src/a.ts and src/b.ts import "./lib/x". */
+  const importedByAB = guard({ [X]: { "src/a.ts": ["src/lib/x"], "src/b.ts": ["src/lib/x"] } });
+  const reason = (importers: string): string => `deleting ${X} breaks the imports of ${importers}: change them in the same change, or first`;
+
+  it("returns a deletion whose importers landed in earlier cycles, naming them", () => {
+    const d = prop("d", { [X]: null });
+    const plan = planCycle([[entry(d, trunk)]], at, undefined, importedByAB);
+    expect(plan.accepted).toEqual([[]]);
+    expect(plan.returned[0]).toEqual([{ proposalId: "d", reason: reason("src/a.ts and src/b.ts") }]);
+  });
+
+  it("lands as today when the guard is off (no import input)", () => {
+    const d = prop("d", { [X]: null });
+    expect(planCycle([[entry(d, trunk)]], at).accepted).toEqual([[d]]);
+    expect(planCycle([[entry(d, trunk)]], at, undefined, null).accepted).toEqual([[d]]);
+  });
+
+  it("lands a deletion that deletes its importers in the same change", () => {
+    const d = prop("d", { [X]: null, "src/a.ts": null, "src/b.ts": null });
+    expect(planCycle([[entry(d, trunk)]], at, undefined, importedByAB).accepted).toEqual([[d]]);
+    const partly = prop("p", { [X]: null, "src/a.ts": null });
+    expect(planCycle([[entry(partly, trunk)]], at, undefined, importedByAB).returned[0]).toEqual([{ proposalId: "p", reason: reason("src/b.ts") }]);
+  });
+
+  it("lands a deletion whose importers are rewritten in the same cycle to drop the import, ahead of it or in the same change", () => {
+    const fixA = prop("fa", { "src/a.ts": sha("5") });
+    const fixB = prop("fb", { "src/b.ts": sha("6") });
+    const d = prop("d", { [X]: null });
+    const input = guard({ [X]: { "src/a.ts": ["src/lib/x"], "src/b.ts": ["src/lib/x"] } }, { [sha("5")]: ["src/lib/util"], [sha("6")]: [] });
+    const plan = planCycle([[entry(fixA, trunk)], [entry(fixB, trunk), entry(d, trunk)]], at, undefined, input);
+    expect(plan.accepted).toEqual([[fixA], [fixB, d]]);
+    const same = prop("s", { [X]: null, "src/a.ts": sha("5"), "src/b.ts": sha("6") });
+    expect(planCycle([[entry(same, trunk)]], at, undefined, input).accepted).toEqual([[same]]);
+  });
+
+  it("returns it when the rewrite keeps the import, or comes after it in the cycle", () => {
+    const keeps = prop("k", { "src/a.ts": sha("5") });
+    const d = prop("d", { [X]: null });
+    const input = guard({ [X]: { "src/a.ts": ["src/lib/x"] } }, { [sha("5")]: ["src/lib/x", "src/lib/util"] });
+    const kept = planCycle([[entry(keeps, trunk)], [entry(d, trunk)]], at, undefined, input);
+    expect(kept.accepted).toEqual([[keeps], []]);
+    expect(kept.returned[1]).toEqual([{ proposalId: "d", reason: reason("src/a.ts") }]);
+    // A fix later in the cycle does not count: it is not on trunk yet when the deletion lands.
+    const fix = prop("f", { "src/a.ts": sha("6") });
+    const late = planCycle([[entry(d, trunk)], [entry(fix, trunk)]], at, undefined, guard({ [X]: { "src/a.ts": ["src/lib/x"] } }, { [sha("6")]: [] }));
+    expect(late.accepted).toEqual([[], [fix]]);
+    expect(late.returned[0]).toEqual([{ proposalId: "d", reason: reason("src/a.ts") }]);
+  });
+
+  it("serves one batch in order: a rewrite accepted before the deletion counts, one after it does not", () => {
+    const fix = prop("f", { "src/a.ts": sha("5") });
+    const d = prop("d", { [X]: null });
+    const input = guard({ [X]: { "src/a.ts": ["src/lib/x"] } }, { [sha("5")]: [] });
+    expect(planCycle([[entry(fix, trunk), entry(d, trunk)]], at, undefined, input).accepted).toEqual([[fix, d]]);
+    const after = planCycle([[entry(d, trunk), entry(fix, trunk)]], at, undefined, input);
+    expect(after.accepted).toEqual([[fix]]);
+    expect(after.returned[0]).toEqual([{ proposalId: "d", reason: reason("src/a.ts") }]);
+  });
+
+  it("lands when the import finds another file once the change lands (moved into a directory, or a .js name's TypeScript twin)", () => {
+    const moved = prop("m", { [X]: null, "src/lib/x/index.ts": sha("7") });
+    expect(planCycle([[entry(moved, trunk)]], at, undefined, importedByAB).accepted).toEqual([[moved]]);
+    const twin = prop("t", { "src/lib/y.js": null, "src/lib/y.ts": sha("8") });
+    const input = guard({ "src/lib/y.js": { "src/c.ts": ["src/lib/y.js"] } });
+    expect(planCycle([[entry(twin, trunk)]], at, undefined, input).accepted).toEqual([[twin]]);
+    const gone = prop("g", { "src/lib/y.js": null });
+    expect(planCycle([[entry(gone, trunk)]], at, undefined, input).returned[0]![0]!.reason).toBe(
+      "deleting src/lib/y.js breaks the imports of src/c.ts: change them in the same change, or first",
+    );
+  });
+
+  it("does not blame an import that resolves to another file before the change (a file beside a same-named directory wins)", () => {
+    const both: Record<Path, Sha | null> = { [X]: OLD, "src/lib/x/index.ts": OLD, "src/a.ts": OLD };
+    const d = prop("d", { "src/lib/x/index.ts": null });
+    const input = guard({ "src/lib/x/index.ts": { "src/a.ts": ["src/lib/x"] } });
+    expect(planCycle([[entry(d, both)]], (path) => both[path] ?? null, undefined, input).accepted).toEqual([[d]]);
+  });
+
+  it("names at most ten importers and three files, sorted", () => {
+    const many: Record<Path, string[]> = {};
+    for (let i = 11; i >= 0; i--) many[`src/i${String(i).padStart(2, "0")}.ts`] = ["src/lib/x"];
+    const files: Record<Path, Sha | null> = { [X]: OLD, "src/lib/x2.ts": OLD, "src/lib/x3.ts": OLD, "src/lib/x4.ts": OLD };
+    const d = prop("d", { [X]: null, "src/lib/x2.ts": null, "src/lib/x3.ts": null, "src/lib/x4.ts": null });
+    const input = guard({ [X]: many, "src/lib/x2.ts": { "src/z.ts": ["src/lib/x2"] }, "src/lib/x3.ts": { "src/z.ts": ["src/lib/x3"] }, "src/lib/x4.ts": { "src/z.ts": ["src/lib/x4.ts"] } });
+    const plan = planCycle([[entry(d, files)]], (path) => files[path] ?? (path.startsWith("src/i") || path === "src/z.ts" ? OLD : null), undefined, input);
+    const names = Array.from({ length: 10 }, (_, i) => `src/i${String(i).padStart(2, "0")}.ts`).join(", ");
+    expect(plan.returned[0]).toEqual([
+      { proposalId: "d", reason: `deleting ${X}, src/lib/x2.ts, src/lib/x3.ts and 1 more breaks the imports of ${names} and 3 more: change them in the same change, or first` },
+    ]);
+  });
+
+  it("leaves out an importer whose new version was not read, and gives a stale deletion its stale reason", () => {
+    const fix = prop("f", { "src/a.ts": sha("5") });
+    const d = prop("d", { [X]: null });
+    const unread = guard({ [X]: { "src/a.ts": ["src/lib/x"] } });
+    expect(planCycle([[entry(fix, trunk)], [entry(d, trunk)]], at, undefined, unread).accepted).toEqual([[fix], [d]]);
+    const stale = planCycle([[entry(d, trunk, { [X]: sha("9") })]], at, undefined, importedByAB);
+    expect(stale.returned[0]).toEqual([{ proposalId: "d", reason: `stale: ${X} (expected ${sha("9")}, trunk has ${OLD})` }]);
+  });
+
+  it("is on per colony, read like FT_REVALIDATE", () => {
+    expect(deletionGuardEnabled(undefined, "c1")).toBe(false);
+    expect(deletionGuardEnabled(" off ", "c1")).toBe(false);
+    expect(deletionGuardEnabled("on", "c1")).toBe(true);
+    expect(deletionGuardEnabled("c2, c1", "c1")).toBe(true);
+    expect(deletionGuardEnabled("c2", "c1")).toBe(false);
   });
 });
