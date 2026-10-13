@@ -49,6 +49,13 @@ export interface Env {
    * cycle that deletes files, a change goes back while a trunk file's import of a file it deletes would resolve to nothing.
    */
   FT_DELETION_GUARD?: string;
+  /**
+   * Optional: inline changes from outside, "on", or a comma-separated list of colony ids; absent or "off" is off. A
+   * proposal may then carry the text of the files it writes (`contents` on POST /proposals, `files` on MCP propose)
+   * instead of a commit pushed to its workspace, and the MCP server offers `files` and says so in its instructions.
+   * The colony, the decide stage and the trunk writer handle an inline change whoever sends it (colony/inline.ts).
+   */
+  FT_INLINE?: string;
   /** Optional (load tests only): when set, ColonyDO logs event-loop lag and streams it as colony.lagMs. */
   FT_LAG_PROBE?: string;
   /**

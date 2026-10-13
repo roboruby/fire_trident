@@ -9,8 +9,9 @@ import { DEFAULT_NOT_VERIFIED } from "./logic.ts";
  * Innate checks: the deterministic floor of the Decide prong, run on every proposal before any
  * model looks at it.
  * - Rule re-check: the proposal's changed files (new blobs read from its workspace through the
- *   binding, base blobs from trunk) must leave no violation of the intent's rule in its footprint,
- *   and must not add violations of any other colony rule. The intent's own rule is always checked.
+ *   binding, or an inline change's from its contents; base blobs from trunk) must leave no
+ *   violation of the intent's rule in its footprint, and must not add violations of any other
+ *   colony rule. The intent's own rule is always checked.
  * - Residual: paths written outside the intent's declared footprint (a review signal, not a
  *   failure on its own).
  * - New files: a JS/TS file the change creates must hold code. One that is empty, has only
@@ -109,13 +110,32 @@ export function bindingReader(env: Env): BlobReader {
   };
 }
 
+/**
+ * Read an inline change's new blobs from its contents (Proposal.contents, keyed by blob id) instead of a
+ * workspace, which never holds them. A blob with no text there reads as absent.
+ */
+export function contentsReader(contents: Readonly<Record<Sha, string>>): BlobReader {
+  const encoder = new TextEncoder();
+  return async (_where, blobs) => {
+    const out = new Map<Sha, Uint8Array | null>();
+    for (const b of blobs) {
+      const text = Object.hasOwn(contents, b) ? contents[b] : undefined;
+      out.set(b, typeof text === "string" ? encoder.encode(text) : null);
+    }
+    return out;
+  };
+}
+
 /** Run the innate checks on a proposal (see the module comment). Never throws for repository problems. */
 export async function runInnateChecks(p: Proposal, ctx: InnateContext): Promise<InnateResult> {
   const read = ctx.read ?? bindingReader(ctx.env);
+  // An inline change's new blobs are its contents (kept by the colony), never its workspace.
+  const inline = p.contents && typeof p.contents === "object" ? p.contents : null;
+  const readNew = inline ? contentsReader(inline) : read;
   const failures: string[] = [];
   const checks: CheckResult[] = [];
 
-  // 1. Blobs: new ones from the workspace, base ones from trunk.
+  // 1. Blobs: new ones from the workspace (an inline change's from its contents), base ones from trunk.
   const t0 = Date.now();
   const readSet = new Map(p.readSet.map((f) => [f.path, f.blob]));
   const missing = p.writeSet.map((w) => w.path).filter((path) => !readSet.has(path));
@@ -129,7 +149,7 @@ export async function runInnateChecks(p: Proposal, ctx: InnateContext): Promise<
   const afterIds = p.writeSet.map((w) => w.blob).filter((b): b is Sha => typeof b === "string");
   const beforeIds = p.writeSet.map((w) => readSet.get(w.path) ?? null).filter((b): b is Sha => typeof b === "string");
   const [afterBytes, beforeBytes] = await Promise.all([
-    read({ namespace: p.workspace.namespace, name: p.workspace.name }, afterIds).catch(() => new Map<Sha, Uint8Array | null>()),
+    readNew({ namespace: p.workspace.namespace, name: p.workspace.name }, afterIds).catch(() => new Map<Sha, Uint8Array | null>()),
     read({ namespace: ctx.colony.trunk.namespace, name: ctx.colony.trunk.name }, beforeIds).catch(() => new Map<Sha, Uint8Array | null>()),
   ]);
   const files: InnateFile[] = p.writeSet.map((w) => {
@@ -142,7 +162,7 @@ export async function runInnateChecks(p: Proposal, ctx: InnateContext): Promise<
   const unreadable = files.filter((f) => f.unreadable);
   if (unreadable.length > 0) {
     const what = unreadable.map((f) => `${f.path} (${f.afterBlob?.slice(0, 10)})`).join(", ");
-    failures.push(`new blobs not readable from workspace ${p.workspace.name}: ${what}; push the commit first`);
+    failures.push(inline ? `no text kept for the new blobs of this inline change: ${what}; propose it again` : `new blobs not readable from workspace ${p.workspace.name}: ${what}; push the commit first`);
   }
   checks.push({ name: "innate: blobs", ok: unreadable.length === 0, ms: Date.now() - t0, detail: `${files.length} file(s) read${unreadable.length > 0 ? `, ${unreadable.length} missing` : ""}` });
 

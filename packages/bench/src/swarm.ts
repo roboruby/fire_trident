@@ -7,15 +7,21 @@
  * proposals/s, and landings/min from the colony snapshot.
  *
  *   node packages/bench/src/swarm.ts --url <base> --colony <id> --agents <n> --duration <s>
+ *
+ * With --inline every proposal is an inline change (it carries the text of the files it writes), so it
+ * really lands and the trunk writer reads no workspace: run it against a bench colony with FT_INLINE on.
  */
 import { createHash } from "node:crypto";
 import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
+import { blobId, changesetId } from "@fire_trident/core";
 import type { ColonySnapshot, FileVersion, Intent, WorkspaceLease } from "@fire_trident/core";
 import { Recorder, perSecond, table } from "./stats.ts";
 
 export const SYNTHETIC_NOTE = "SYNTHETIC AGENTS: REST calls only. No git, no model; proposals carry fake blob ids.";
+/** The note of an --inline run: its proposals land for real, from text they carry. */
+export const INLINE_NOTE = "SYNTHETIC AGENTS: REST calls only. No git, no model; every proposal is an inline change carrying the text of the files it writes, so it really lands and the trunk writer reads no workspace.";
 
 /** Benchmark options. */
 export interface Options {
@@ -31,6 +37,8 @@ export interface Options {
   workMs: number;
   /** Add fake read-set entries (exercises stale returns). */
   readSet: boolean;
+  /** Inline changes: each proposal carries its files' text (a short new text per file), so it lands with no workspace read. */
+  inline?: boolean;
   timeoutMs: number;
   json: boolean;
 }
@@ -46,6 +54,8 @@ const HELP = `usage: node packages/bench/src/swarm.ts --url <base> --colony <id>
   --heartbeat <ms>    heartbeat interval while holding work (default 15000)
   --work <ms>         simulated work between take and propose (default 0)
   --read-set          include fake read-set entries (they never match trunk, so proposals come back stale)
+  --inline            inline changes: each proposal carries the text of the files it writes, so it really lands
+                      with no workspace read (a bench colony with FT_INLINE on; it writes the intents' files)
   --timeout <ms>      per-request timeout (default 30000)
   --json              print the report as JSON
 
@@ -72,6 +82,7 @@ export function parseOptions(argv: string[], env: Record<string, string | undefi
       heartbeat: { type: "string" },
       work: { type: "string" },
       "read-set": { type: "boolean" },
+      inline: { type: "boolean" },
       timeout: { type: "string" },
       json: { type: "boolean" },
       help: { type: "boolean", short: "h" },
@@ -93,6 +104,7 @@ export function parseOptions(argv: string[], env: Record<string, string | undefi
     heartbeatMs: num(values.heartbeat, "heartbeat", 15_000, 100, 600_000),
     workMs: num(values.work, "work", 0, 0, 600_000),
     readSet: values["read-set"] ?? false,
+    inline: values.inline ?? false,
     timeoutMs: num(values.timeout, "timeout", 30_000, 100, 600_000),
     json: values.json ?? false,
   };
@@ -122,21 +134,26 @@ export function writePaths(footprint: string[], agentId: string): string[] {
 
 type Assignment = { intent: Intent; lease: WorkspaceLease };
 
-/** The POST /proposals body a synthetic agent sends for an assignment. */
-export function proposalBody(agentId: string, a: Assignment, withReads: boolean, seq: number): Record<string, unknown> {
+/**
+ * The POST /proposals body a synthetic agent sends for an assignment. With `inline`, an inline change: each file's
+ * short text travels with it (keyed by its git blob id) and its head is the changeset id, so it can really land.
+ */
+export function proposalBody(agentId: string, a: Assignment, withReads: boolean, seq: number, inline = false): Record<string, unknown> {
   const paths = writePaths(a.intent.footprint ?? [], agentId);
-  const writeSet: FileVersion[] = paths.map((path) => ({ path, blob: fakeSha("blob", agentId, a.intent.id, path, String(seq)) }));
+  const texts = paths.map((path) => `synthetic bench change by ${agentId} (${seq}) at ${path}\n`);
+  const writeSet: FileVersion[] = paths.map((path, i) => ({ path, blob: inline ? blobId(texts[i]!) : fakeSha("blob", agentId, a.intent.id, path, String(seq)) }));
   const readSet: FileVersion[] = withReads ? paths.map((path) => ({ path, blob: fakeSha("read", a.lease.baseSha, path) })) : [];
   return {
     intentId: a.intent.id,
     agentId,
     workspace: a.lease.repo,
     baseSha: a.lease.baseSha,
-    headSha: fakeSha("head", agentId, a.intent.id, String(seq)),
+    headSha: inline ? changesetId(a.lease.baseSha, writeSet) : fakeSha("head", agentId, a.intent.id, String(seq)),
     writeSet,
     readSet,
+    ...(inline ? { contents: Object.fromEntries(writeSet.map((w, i) => [w.blob, texts[i]])) } : {}),
     declared: { footprint: a.intent.footprint, summary: `synthetic bench change by ${agentId}` },
-    evidence: { checks: [], notVerified: SYNTHETIC_NOTE },
+    evidence: { checks: [], notVerified: inline ? INLINE_NOTE : SYNTHETIC_NOTE },
   };
 }
 
@@ -229,7 +246,8 @@ export async function runBench(opts: Options, doFetch: typeof fetch = fetch, log
   const startedAt = performance.now();
   const deadline = startedAt + opts.durationS * 1000;
   const startedWall = Date.now();
-  log(`${SYNTHETIC_NOTE}\nrunning ${opts.agents} agents for ${opts.durationS}s against ${opts.url} (colony ${opts.colony})`);
+  const note = opts.inline ? INLINE_NOTE : SYNTHETIC_NOTE;
+  log(`${note}\nrunning ${opts.agents} agents for ${opts.durationS}s against ${opts.url} (colony ${opts.colony})`);
 
   const agent = async (i: number): Promise<void> => {
     await sleep(opts.agents > 1 ? (i * opts.rampS * 1000) / opts.agents : 0);
@@ -258,7 +276,7 @@ export async function runBench(opts: Options, doFetch: typeof fetch = fetch, log
       }
       counts.assigned++;
       if (opts.workMs > 0) await sleep(Math.min(opts.workMs, deadline - performance.now()));
-      const p = await api.call<{ id: string }>("propose", "POST", "/proposals", proposalBody(reg.id, t, opts.readSet, ++seq));
+      const p = await api.call<{ id: string }>("propose", "POST", "/proposals", proposalBody(reg.id, t, opts.readSet, ++seq, opts.inline === true));
       if (p) counts.proposals++;
       else await sleep(500);
     }
@@ -283,7 +301,7 @@ export async function runBench(opts: Options, doFetch: typeof fetch = fetch, log
   const landedProposalsPerMin = pBefore !== null && pAfter !== null ? ((pAfter - pBefore) / elapsedS) * 60 : null;
 
   return {
-    note: SYNTHETIC_NOTE,
+    note,
     url: opts.url,
     colony: opts.colony,
     agents: opts.agents,

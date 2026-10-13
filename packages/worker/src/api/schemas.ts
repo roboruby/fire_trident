@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { INLINE_LIMITS } from "@fire_trident/core";
 
 /** A git object id (SHA-1, or SHA-256 for repos that use it), lowercase hex. */
 const Sha = z.string().regex(/^[0-9a-f]{40}([0-9a-f]{24})?$/, "expected a lowercase hex commit id");
@@ -65,6 +66,14 @@ export const ProposalBody = z.object({
   declared: z.object({ footprint: z.array(PathString).max(1_000).default([]), summary: z.string().max(20_000).default("") }).default({ footprint: [], summary: "" }),
   /** The intent revision the change was built on (from the assignment); see Proposal.intentRevision. */
   intentRevision: z.number().int().min(1).max(1_000_000).optional(),
+  /**
+   * An inline change (colony/inline.ts; on where FT_INLINE allows it): the text of every file the write set writes,
+   * keyed by its git blob id, and headSha is the changeset id of baseSha and the write set. The colony checks it all.
+   */
+  contents: z
+    .record(Sha, z.string().max(INLINE_LIMITS.fileBytes))
+    .refine((c) => Object.keys(c).length <= INLINE_LIMITS.files, { message: `an inline change writes at most ${INLINE_LIMITS.files} files` })
+    .optional(),
   evidence: z
     .object({
       checks: z.array(z.object({ name: z.string().max(200), ok: z.boolean(), ms: z.number().finite().min(0), detail: z.string().max(20_000).optional() })).max(200).optional(),
