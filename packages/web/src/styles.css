@@ -3864,6 +3864,83 @@ html[data-emphasize="trunk"] .trunk {
   background: #ffb469;
 }
 
+.need-stuck .need-n {
+  background: #d6a2ff;
+  color: #1a0b26;
+}
+
+.need-stuck.is-open {
+  border-color: rgba(214, 162, 255, 0.55);
+}
+
+.need-caret {
+  margin-left: -2px;
+  font-size: 10px;
+  color: var(--text-3);
+}
+
+/* Stuck work under the strip: how long, what is stuck, and a button to where a person deals with it. */
+.stuck-list {
+  flex: 1 1 100%;
+  display: grid;
+  gap: 5px;
+  max-height: min(40vh, 260px);
+  margin: 2px 0 0;
+  padding: 7px 4px 2px 0;
+  overflow-y: auto;
+  border-top: 1px solid var(--line-2);
+  list-style: none;
+}
+
+.stuck {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--text-2);
+}
+
+.stuck-age {
+  font-size: 11px;
+  color: #d6a2ff;
+  text-align: right;
+}
+
+.stuck-red .stuck-age {
+  color: #ff8d98;
+}
+
+.stuck-text {
+  overflow-wrap: anywhere;
+}
+
+.stuck-do {
+  height: 22px;
+  padding: 0 9px;
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  background: #121925;
+  color: var(--text);
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  appearance: none;
+}
+
+.stuck-do:hover {
+  border-color: #3a475e;
+  background: #18212f;
+}
+
+.stuck-more {
+  padding-left: 42px;
+  font-size: 11px;
+  color: var(--text-3);
+}
+
 /* The first-visit guide: a card over the bottom of the map, never over the panels. */
 .guide {
   position: absolute;
@@ -4573,6 +4650,15 @@ html[data-emphasize="trunk"] .trunk {
     top: 62px;
     left: 8px;
     max-width: calc(100% - 16px);
+  }
+
+  .app:not(.is-director) .stuck {
+    grid-template-columns: 34px minmax(0, 1fr);
+  }
+
+  .app:not(.is-director) .stuck-do {
+    grid-column: 2;
+    justify-self: start;
   }
 
   .app:not(.is-director) .guide {

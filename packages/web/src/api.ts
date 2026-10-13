@@ -135,12 +135,16 @@ export class HttpBackend implements Backend {
     this.stopped = false;
     store.setConn("connecting");
     void this.cycle();
-    // The per-minute history (burn-down sparkline) moves on its own clock: refresh it every 30 s.
+    // The per-minute history (burn-down sparkline) moves on its own clock: refresh it every 30 s. So does
+    // stuck work: the report replaces the items the stream added, so ones that cleared go away.
     window.clearInterval(this.seriesTimer);
     this.seriesTimer = window.setInterval(() => {
       if (this.stopped || !this.store?.loaded || document.hidden) return;
-      this.getJson<{ series?: unknown }>("/metrics")
-        .then((m) => this.store?.applySeries(m?.series))
+      this.getJson<{ series?: unknown; stuck?: unknown }>("/metrics")
+        .then((m) => {
+          this.store?.applySeries(m?.series);
+          this.store?.applyStuck(m?.stuck);
+        })
         .catch(() => undefined);
     }, 30_000);
   }
