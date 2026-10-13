@@ -17,7 +17,7 @@ export interface Backend {
   stop(): void;
   why(path: string): Promise<WhyEntry[]>;
   review(): Promise<Proposal[]>;
-  decide(proposalId: string, decision: ReviewDecision, reason: string): Promise<void>;
+  decide(proposalId: string, decision: ReviewDecision, reason: string, by?: string): Promise<void>;
   /** Freeze the colony's clock (the simulator and replays; a live colony keeps running). */
   setPaused?(paused: boolean): void;
 }
@@ -33,23 +33,48 @@ export class HttpError extends Error {
 }
 
 const TOKEN_KEY = "ft.token";
+/** Where the token and the reviewer name live when the browser blocks storage (this page only). */
+const memory = { token: "", reviewer: "" };
 
 /** Bearer token for mutating routes, if the viewer pasted one (kept in this browser only). */
 export function readToken(): string {
   try {
-    return localStorage.getItem(TOKEN_KEY) ?? "";
+    return localStorage.getItem(TOKEN_KEY) ?? memory.token;
   } catch {
-    return "";
+    return memory.token;
   }
 }
 
 /** Remember (or forget, with "") the bearer token. */
 export function saveToken(token: string): void {
+  memory.token = token;
   try {
     if (token) localStorage.setItem(TOKEN_KEY, token);
     else localStorage.removeItem(TOKEN_KEY);
   } catch {
     // Storage blocked: the token lives for this page only.
+  }
+}
+
+const REVIEWER_KEY = "ft.reviewer";
+
+/** The name a reviewer gave, recorded with each decision they make (kept in this browser only). */
+export function readReviewer(): string {
+  try {
+    return localStorage.getItem(REVIEWER_KEY) ?? memory.reviewer;
+  } catch {
+    return memory.reviewer;
+  }
+}
+
+/** Remember (or forget, with "") the reviewer's name. */
+export function saveReviewer(name: string): void {
+  memory.reviewer = name;
+  try {
+    if (name) localStorage.setItem(REVIEWER_KEY, name);
+    else localStorage.removeItem(REVIEWER_KEY);
+  } catch {
+    // Storage blocked: the name lives for this page only.
   }
 }
 
@@ -241,14 +266,14 @@ export class HttpBackend implements Backend {
     return Array.isArray(data) ? (data as Proposal[]) : [];
   }
 
-  async decide(proposalId: string, decision: ReviewDecision, reason: string): Promise<void> {
+  async decide(proposalId: string, decision: ReviewDecision, reason: string, by?: string): Promise<void> {
     const headers: Record<string, string> = { "content-type": "application/json", accept: "application/json" };
     const token = readToken();
     if (token) headers.authorization = `Bearer ${token}`;
     const res = await fetch(this.url(`/review/${encodeURIComponent(proposalId)}`), {
       method: "POST",
       headers,
-      body: JSON.stringify({ decision, reason }),
+      body: JSON.stringify({ decision, reason, ...(by ? { by } : {}) }),
     });
     if (!res.ok) throw new HttpError(res.status, `${res.status} ${res.statusText}`.trim());
   }

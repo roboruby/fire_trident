@@ -1,6 +1,6 @@
 import type { DecisionLayer, Proposal } from "@fire_trident/core";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { HttpError, readToken, saveToken, type Backend, type ReviewDecision } from "../api.ts";
+import { HttpError, readReviewer, readToken, saveReviewer, saveToken, type Backend, type ReviewDecision } from "../api.ts";
 import { fmtInt, fmtMs, fmtPct, shortId, timeAgo } from "../format.ts";
 import type { ColonyStore, DecisionView } from "../store.ts";
 import { LAYER_COLOR } from "../theme.ts";
@@ -95,8 +95,10 @@ export function ReviewTab({ store, backend, director = false }: { store: ColonyS
   const [busy, setBusy] = useState<string | null>(null);
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [toast, setToast] = useState<string | null>(null);
-  const [needToken, setNeedToken] = useState(false);
+  // A decision the server refused for want of a token: asked for on that card, retried once the token is saved.
+  const [pending, setPending] = useState<{ id: string; decision: ReviewDecision; refused: boolean } | null>(null);
   const [token, setToken] = useState(readToken);
+  const [reviewer, setReviewer] = useState(readReviewer);
   const decided = useRef(new Set<string>());
 
   const load = useCallback(async () => {
@@ -132,16 +134,17 @@ export function ReviewTab({ store, backend, director = false }: { store: ColonyS
     if (decision !== "approve" && !reason) return;
     setBusy(p.id);
     try {
-      await backend.decide(p.id, decision, reason);
+      await backend.decide(p.id, decision, reason, readReviewer() || undefined);
       decided.current.add(p.id);
       setItems((cur) => (cur ? cur.filter((x) => x.id !== p.id) : cur));
       setToast(doneText(decision, store.agentName(p.agentId)));
       setError(null);
+      setPending(null);
       store.setHighlight([]);
     } catch (err) {
       if (err instanceof HttpError && (err.status === 401 || err.status === 403)) {
-        setNeedToken(true);
-        setError("This colony needs an admin token to record review decisions.");
+        setPending({ id: p.id, decision, refused: readToken() !== "" });
+        setError(null);
       } else {
         setError(err instanceof Error ? err.message : "The decision didn't go through.");
       }
@@ -176,22 +179,6 @@ export function ReviewTab({ store, backend, director = false }: { store: ColonyS
       </div>
       {toast ? <div className="toast">{toast}</div> : null}
       {error ? <div className="alert">{error}</div> : null}
-      {needToken && !director ? (
-        <form
-          className="token"
-          onSubmit={(e) => {
-            e.preventDefault();
-            saveToken(token.trim());
-            setNeedToken(false);
-            setError(null);
-          }}
-        >
-          <input type="password" placeholder="Admin token" value={token} onChange={(e) => setToken(e.target.value)} autoComplete="off" />
-          <button type="submit" className="btn">
-            Save
-          </button>
-        </form>
-      ) : null}
       <div className="cards">
         {(items ?? []).map((p) => {
           const intent = store.intents.get(p.intentId);
@@ -281,6 +268,33 @@ export function ReviewTab({ store, backend, director = false }: { store: ColonyS
                   Reject
                 </button>
               </div>
+              {pending?.id === p.id && !director ? (
+                <form
+                  className="token token-inline"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    saveToken(token.trim());
+                    saveReviewer(reviewer.trim());
+                    const again = pending;
+                    setPending(null);
+                    void decide(p, again.decision);
+                  }}
+                >
+                  <div className="token-note">
+                    {pending.refused ? "The server refused that token. Paste this colony's admin token." : "Recording a decision needs this colony's admin token."}
+                  </div>
+                  <input type="password" placeholder="Admin token" value={token} onChange={(e) => setToken(e.target.value)} autoComplete="off" autoFocus />
+                  <input type="text" placeholder="Your name, recorded with the decision" value={reviewer} onChange={(e) => setReviewer(e.target.value)} autoComplete="name" />
+                  <div className="token-actions">
+                    <button type="submit" className="btn btn-approve" disabled={!token.trim()}>
+                      {pending.decision === "approve" ? "Approve" : pending.decision === "return" ? "Return" : "Reject"} with this token
+                    </button>
+                    <button type="button" className="btn" onClick={() => setPending(null)}>
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              ) : null}
             </article>
           );
         })}

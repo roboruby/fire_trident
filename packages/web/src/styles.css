@@ -1290,6 +1290,25 @@ input {
   margin-bottom: 12px;
 }
 
+.token-inline {
+  flex-direction: column;
+  margin: 10px 0 0;
+  padding: 10px;
+  border: 1px solid rgba(243, 128, 32, 0.35);
+  border-radius: 8px;
+  background: rgba(243, 128, 32, 0.06);
+}
+
+.token-note {
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.token-actions {
+  display: flex;
+  gap: 8px;
+}
+
 .btn {
   display: inline-flex;
   align-items: center;
