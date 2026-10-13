@@ -25,7 +25,7 @@ import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { parseArgs, promisify } from "node:util";
 import { blobId, changesetId } from "@fire_trident/core";
-import type { ColonyEvent, ColonySnapshot, FileVersion, Intent, Proposal, WorkspaceLease } from "@fire_trident/core";
+import type { ColonyEvent, ColonySnapshot, FileVersion, Intent, Proposal, TrunkPublish, WorkspaceLease } from "@fire_trident/core";
 import { liveConfig, redact, type LiveConfig } from "./env.ts";
 import { Recorder, summarize, type Summary } from "./stats.ts";
 import { fakeSha } from "./swarm.ts";
@@ -58,6 +58,26 @@ export interface LiveOptions {
   stopAgents?: boolean;
   /** Inline changes: each proposal carries its new file's text, so the trunk writer reads no workspace (FT_INLINE on for the colony). */
   inline?: boolean;
+  /** Refuse to run unless the colony's trunk publishing is this (FT_ASYNC_PUBLISH lists the colony: "async"; otherwise "sync"). */
+  expectPublish?: PublishMode;
+}
+
+/** How a colony's trunk writer publishes: asynchronously (FT_ASYNC_PUBLISH on for it) or in every landing cycle. */
+export type PublishMode = "async" | "sync";
+
+/** Trunk publishing in one run: the mode, the publish queue as the run ended, and how long it took to drain after it. */
+export interface PublishReport {
+  mode: PublishMode;
+  atEnd: TrunkPublish | null;
+  drained: TrunkPublish | null;
+  /** From the end of the run until nothing waited to be published (null: it did not drain within the wait, or sync). */
+  drainMs: number | null;
+}
+
+/** The colony's trunk publishing as its status shows it (`colony.publish`, present only when publishing is asynchronous). */
+export function publishOf(snapshot: unknown): TrunkPublish | null {
+  const p = (snapshot as { colony?: { publish?: unknown } } | null)?.colony?.publish;
+  return p && typeof p === "object" && typeof (p as TrunkPublish).publishedSha === "string" ? (p as TrunkPublish) : null;
 }
 
 type Assignment = { intent: Intent; lease: WorkspaceLease };
@@ -471,6 +491,9 @@ export interface LiveReport {
   stopped?: { ok: boolean; ms: number; retired?: number; failed?: number; error?: string };
   /** Trunk writer cycles seen on the live feed (`trunk.*` metrics, one group per cycle); absent before group commit. */
   trunkCycles?: TrunkCycles;
+  /** Trunk publishing: the mode, and with asynchronous publishing the publish pushes seen on the feed (`trunk.publish.*`). */
+  publish?: PublishReport;
+  publishes?: TrunkCycles;
   errors: string[];
 }
 
@@ -481,13 +504,19 @@ export interface TrunkCycles {
   metrics: Record<string, Summary>;
 }
 
-/** Group the feed's `trunk.*` metrics by cycle (they share `at`) and summarize the cycles received in [fromMs, toMs]. */
-export function trunkCycles(metrics: LiveFeed["metrics"], fromMs: number, toMs: number): TrunkCycles | undefined {
+/** Metrics of the publish loop's pushes (asynchronous publishing): one group per push, apart from the cycles. */
+const PUBLISH_PREFIX = "trunk.publish.";
+
+/**
+ * Group the feed's `trunk.*` metrics by cycle (they share `at`) and summarize the cycles received in [fromMs, toMs].
+ * With `prefix` "trunk.publish." the groups are the publish loop's pushes instead (left out of the cycles).
+ */
+export function trunkCycles(metrics: LiveFeed["metrics"], fromMs: number, toMs: number, prefix = "trunk."): TrunkCycles | undefined {
   const cycles = new Map<number, { recvMs: number; v: Record<string, number> }>();
   for (const m of metrics) {
-    if (!m.name.startsWith("trunk.")) continue;
+    if (!m.name.startsWith(prefix) || (prefix !== PUBLISH_PREFIX && m.name.startsWith(PUBLISH_PREFIX))) continue;
     const c = cycles.get(m.at) ?? { recvMs: m.recvMs, v: {} };
-    c.v[m.name.slice(6)] = m.value;
+    c.v[m.name.slice(prefix.length)] = m.value;
     cycles.set(m.at, c);
   }
   const rows = [...cycles.values()].filter((c) => c.recvMs >= fromMs && c.recvMs <= toMs).map((c) => c.v);
@@ -520,6 +549,12 @@ export async function runLive(cfg: LiveConfig, opts: LiveOptions, state: LiveSta
   const tag = `${opts.label}-${Date.now().toString(36)}`;
   await ensureIntents(client, opts.intents, opts.regions, tag, log);
   const before = await client.call<{ metrics?: Record<string, number> }>("metrics", "GET", "/metrics");
+  // Trunk publishing: asynchronous when the colony's status carries `publish` (FT_ASYNC_PUBLISH lists the colony).
+  const status = await client.call<ColonySnapshot>("status", "GET", "");
+  const mode: PublishMode = publishOf(status) ? "async" : "sync";
+  if (opts.expectPublish && (status === null || opts.expectPublish !== mode)) {
+    throw new Error(`colony ${opts.colony} publishes ${status === null ? "(status unreadable)" : mode}, not ${opts.expectPublish}: check FT_ASYNC_PUBLISH on the deployment`);
+  }
   const feed = new LiveFeed();
   await feed.connect(cfg, opts.colony);
   log(`feed ${feed.open ? "connected" : "NOT connected"}; ${opts.agents} agents for ${opts.durationS}s (ramp ${opts.rampS}s, work ${opts.workMs} ms)`);
@@ -609,6 +644,20 @@ export async function runLive(cfg: LiveConfig, opts: LiveOptions, state: LiveSta
   const elapsedS = (performance.now() - t0) / 1000;
   await sleep(1_500); // let the feed catch the last events
   const after = await client.call<{ metrics?: Record<string, number> }>("metrics", "GET", "/metrics");
+  // With asynchronous publishing a landing counts once recorded: wait (at most a minute) until every one is published.
+  const publish: PublishReport = { mode, atEnd: null, drained: null, drainMs: null };
+  if (mode === "async") {
+    const t1 = performance.now();
+    publish.atEnd = publishOf(await client.call<ColonySnapshot>("status", "GET", ""));
+    let p = publish.atEnd;
+    while (p !== null && p.unpublished > 0 && performance.now() - t1 < 60_000) {
+      await sleep(2_000);
+      p = publishOf(await client.call<ColonySnapshot>("status", "GET", "")) ?? p;
+    }
+    publish.drained = p;
+    publish.drainMs = p !== null && p.unpublished === 0 ? Math.round(performance.now() - t1) : null;
+    log(`publishing: ${publish.atEnd?.unpublished ?? "?"} landing(s) waiting at the end, ${publish.drainMs === null ? "NOT drained" : `drained in ${publish.drainMs} ms`}`);
+  }
   feed.close();
   // Retire the run's agents: their claims go at once, so the next run is never held back by this one.
   let stopped: LiveReport["stopped"];
@@ -687,6 +736,11 @@ export async function runLive(cfg: LiveConfig, opts: LiveOptions, state: LiveSta
       const tc = trunkCycles(feed.metrics, t0 + fromS * 1000, t0 + toS * 1000);
       return tc ? { trunkCycles: tc } : {};
     })(),
+    publish,
+    ...(() => {
+      const pushes = trunkCycles(feed.metrics, t0 + fromS * 1000, t0 + toS * 1000, PUBLISH_PREFIX);
+      return pushes ? { publishes: pushes } : {};
+    })(),
     errors: rec.errorSamples,
   };
 }
@@ -714,6 +768,7 @@ async function main(): Promise<void> {
       out: { type: "string" },
       label: { type: "string" },
       state: { type: "string" },
+      "expect-publish": { type: "string" },
       "setup-only": { type: "boolean" },
       "keep-agents": { type: "boolean" },
       inline: { type: "boolean" },
@@ -723,6 +778,8 @@ async function main(): Promise<void> {
   const colony = (values.colony ?? "").trim();
   if (!colony) throw new Error("--colony is required");
   const agents = Math.floor(num(values.agents, "agents", 10, 1, 5_000));
+  const expectPublish = values["expect-publish"];
+  if (expectPublish !== undefined && expectPublish !== "async" && expectPublish !== "sync") throw new Error("--expect-publish must be async or sync");
   const opts: LiveOptions = {
     colony,
     agents,
@@ -737,6 +794,7 @@ async function main(): Promise<void> {
     ...(values.out ? { out: values.out } : {}),
     stopAgents: values["keep-agents"] !== true,
     ...(values.inline ? { inline: true } : {}),
+    ...(expectPublish ? { expectPublish } : {}),
   };
   const cfg = liveConfig();
   const log = (s: string) => console.error(`[${new Date().toISOString().slice(11, 19)}] ${s}`);
@@ -754,7 +812,8 @@ async function main(): Promise<void> {
   log(
     `N=${s.agents}: landed/min ${s.window.landedPerMin.toFixed(1)} (commits/min ${s.window.commitsPerMin.toFixed(1)}), take p50 ${s.takeAssigned.p50?.toFixed(0)} ms p99 ${s.takeAssigned.p99?.toFixed(0)} ms, ` +
       `ttl p50 ${s.timeToLandMs.p50?.toFixed(0)} ms p90 ${s.timeToLandMs.p90?.toFixed(0)} ms p99 ${s.timeToLandMs.p99?.toFixed(0)} ms, batch p50 ${s.batchSize.p50}, returned ${s.counts.returned}, ` +
-      `errors ${s.ops.reduce((n, o) => n + o.errors, 0)}, outcomes feed ${s.outcomes.feed} poll ${s.outcomes.poll}${s.stoppedEarly ? `, STOPPED EARLY: ${s.stoppedEarly}` : ""}`,
+      `errors ${s.ops.reduce((n, o) => n + o.errors, 0)}, outcomes feed ${s.outcomes.feed} poll ${s.outcomes.poll}${s.stoppedEarly ? `, STOPPED EARLY: ${s.stoppedEarly}` : ""}` +
+      `, publish ${s.publish?.mode ?? "?"}${s.publish?.mode === "async" ? ` (push p50 ${s.publishes?.metrics.ms?.p50?.toFixed(0) ?? "?"} ms, lag p90 ${s.trunkCycles?.metrics.publishLagMs?.p90?.toFixed(0) ?? "?"} ms, drained ${s.publish.drainMs ?? "NO"})` : ""}`,
   );
 }
 

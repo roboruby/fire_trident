@@ -6,7 +6,7 @@
 import { DurableObject } from "cloudflare:workers";
 import { Hono } from "hono";
 import { newId, regionOf } from "@fire_trident/core";
-import type { AgentKind, FileVersion, Id, Landing, LineageNote, NoteCertification, Path, Proposal, RepoRef, Sha, WorkspaceLease } from "@fire_trident/core";
+import type { AgentKind, FileVersion, Id, Landing, LineageNote, NoteCertification, Path, Proposal, RepoRef, Sha, TrunkPublish, WorkspaceLease } from "@fire_trident/core";
 import { createApi } from "../../src/api/app.ts";
 import type { ApiDeps } from "../../src/api/app.ts";
 import type { Env } from "../../src/env.ts";
@@ -54,6 +54,9 @@ interface TrunkState {
   contexts?: string[];
   /** Lineage notes by landing id, as JSON text like ft_notes: each landing's proposals (intent, write set), and each revert's note. */
   notes?: Record<Id, string>;
+  /** Asynchronous publishing: the published head publishState() names (the head when unset), or "fail" to make it throw; and its calls. */
+  published?: Sha | "fail";
+  publishStateCalls?: number;
 }
 
 /** A point where a held land() call waits until releaseLand() (see holdNextLand). */
@@ -489,6 +492,25 @@ export class TrunkDO extends DurableObject<Env> {
   /** Undo one proposal of a landing, as the real TrunkDO does. */
   async revertProposal(ref: string, p: { by: string; reason: string; proposal: Id }): Promise<RevertResult> {
     return this.revert(ref, p);
+  }
+
+  /** Test helper: the published head publishState() names (null: the head, as with nothing waiting), or "fail". */
+  async setPublished(sha: Sha | "fail" | null): Promise<void> {
+    const s = await this.load();
+    if (sha === null) delete s.published;
+    else s.published = sha;
+    await this.save(s);
+  }
+
+  /** Asynchronous publishing's state, as the real TrunkDO answers it (the published head is the head unless a test set one). */
+  async publishState(): Promise<TrunkPublish> {
+    const s = await this.load();
+    s.publishStateCalls = (s.publishStateCalls ?? 0) + 1;
+    await this.save(s);
+    if (s.published === "fail") throw new Error("simulated publish state failure");
+    const publishedSha = s.published ?? s.head;
+    const waiting = s.landings.length - 1 - s.landings.findIndex((l) => l.trunkSha === publishedSha);
+    return { on: true, publishedSha, trunkSha: s.head, unpublished: publishedSha === s.head ? 0 : Math.max(1, waiting), lagMs: 0, running: false, failures: 0 };
   }
 
   /** The certified branch moves (recorded for assertions). */

@@ -36,10 +36,37 @@ export interface Colony {
   trunkSha: Sha;
   /** The latest trunk certification (served with the snapshot; absent before the first one). */
   certification?: Certification;
+  /** Trunk publishing when it is asynchronous (served with the snapshot when FT_ASYNC_PUBLISH is on for the colony). */
+  publish?: TrunkPublish;
   source?: { url: string; branch: string };
   createdAt: Millis;
   /** Directory depth that defines a region (1 = top-level directories). */
   regionDepth: number;
+}
+
+/**
+ * Asynchronous trunk publishing (FT_ASYNC_PUBLISH): a landing counts once the trunk writer records it,
+ * and a publish loop pushes the recorded commits to the trunk repository in order. `trunkSha` runs ahead
+ * of `publishedSha` by the commits waiting to be pushed.
+ */
+export interface TrunkPublish {
+  /** Whether publishing is asynchronous for this colony. */
+  on: boolean;
+  /** The newest commit on the trunk repository's main: leases start from it, `certified` and the lineage notes follow it. */
+  publishedSha: Sha;
+  /** The newest recorded trunk commit, unpublished ones included (lanes validate against it). */
+  trunkSha: Sha;
+  /** Landings recorded but not published yet (the publish queue). */
+  unpublished: number;
+  /** How long the oldest of them has waited, in ms (0 when none). */
+  lagMs: number;
+  /** A publish push is in flight. */
+  running: boolean;
+  /** Publish attempts that failed in a row, and the latest failure. */
+  failures: number;
+  lastError?: string;
+  /** When a publish last succeeded. */
+  publishedAt?: Millis;
 }
 
 // ---------------------------------------------------------------------------

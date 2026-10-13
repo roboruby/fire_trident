@@ -63,6 +63,13 @@ export interface Env {
    * binary content, is still committed and pushed to the agent's workspace.
    */
   FT_VIRTUAL_CHECKOUT?: string;
+  /**
+   * Optional: asynchronous trunk publishing, "on", or a comma-separated list of colony ids; absent or "off" is off.
+   * A landing counts once the trunk writer records it; a publish loop beside the landing cycles pushes the recorded
+   * commits to the trunk repository in order (trunk/publish.ts). Leases, `certified` and the lineage notes follow the
+   * published head; lanes validate against the recorded one.
+   */
+  FT_ASYNC_PUBLISH?: string;
   /** Optional (load tests only): when set, ColonyDO logs event-loop lag and streams it as colony.lagMs. */
   FT_LAG_PROBE?: string;
   /**
