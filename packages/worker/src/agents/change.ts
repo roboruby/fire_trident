@@ -1,5 +1,5 @@
-import { checkFile, footprintCovers } from "@fire_trident/core";
-import type { Id, Intent, Path, Rule, Violation } from "@fire_trident/core";
+import { blobId, changesetId, checkFile, footprintCovers, inlineProblem } from "@fire_trident/core";
+import type { FileVersion, Id, Intent, Path, Rule, Sha, Violation } from "@fire_trident/core";
 
 /** Commit subject length cap (characters). */
 const SUBJECT_MAX = 72;
@@ -68,6 +68,28 @@ export function commitMessage(intent: Pick<Intent, "id" | "title">, agentId: Id)
 export function agentIdentity(agentId: Id): { name: string; email: string } {
   const local = oneLine(agentId).replace(/[^A-Za-z0-9._+-]/g, "-") || "agent";
   return { name: "FireTrident agent", email: `${local}@agents.firetrident.dev` };
+}
+
+/** A change in its inline form: the write set, its changeset id (the proposal's headSha) and the text of each new blob. */
+export type InlineChange = { ok: true; writeSet: FileVersion[]; headSha: Sha; contents: Record<Sha, string> } | { ok: false; reason: string };
+
+/**
+ * The inline form of the files a change writes on `baseSha` (core/changeset.ts): each file's git blob id, the
+ * changeset id the proposal carries as its head, and the contents keyed by blob id. Not ok, with the reason, when
+ * the content check or INLINE_LIMITS refuse it (binary content, too many or too large files): such a change is
+ * committed and pushed to the workspace instead.
+ */
+export function inlineChange(baseSha: Sha, changes: ReadonlyArray<{ path: Path; content: string }>): InlineChange {
+  const writeSet: FileVersion[] = [];
+  const contents: Record<Sha, string> = {};
+  for (const c of changes) {
+    const blob = blobId(c.content);
+    writeSet.push({ path: c.path, blob });
+    contents[blob] = c.content;
+  }
+  const problem = inlineProblem(writeSet, contents);
+  if (problem !== null) return { ok: false, reason: problem };
+  return { ok: true, writeSet, headSha: changesetId(baseSha, writeSet), contents };
 }
 
 /** Normalize a repository path (forward slashes, no leading "./" or "/"). Returns "" for unsafe paths. */

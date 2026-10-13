@@ -54,6 +54,22 @@ export class TreeIndex {
   list(dir: Path): string[] {
     return [...(this.children.get(dir) ?? [])].sort();
   }
+
+  /**
+   * Run `ask`, a question about this tree, and return its answer. This index holds every path, so one run is
+   * enough; a tree that loads directories on demand (agents/virtual.ts) loads what `ask` touched and asks again.
+   */
+  async settle<T>(ask: () => T): Promise<T> {
+    return ask();
+  }
+
+  /**
+   * File paths in path order, for a prompt's project tree. This index holds every path and returns them all; a
+   * tree that loads on demand (agents/virtual.ts) stops after `limit` and says whether more exist.
+   */
+  async paths(_limit: number): Promise<{ paths: Path[]; complete: boolean }> {
+    return { paths: [...this.files].sort(), complete: true };
+  }
 }
 
 /** Directory part of a repository path ("" for a top-level file). */

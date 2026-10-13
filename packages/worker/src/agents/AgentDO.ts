@@ -1,5 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 import type { AgentInfo, AgentKind, Directive, Id, Intent } from "@fire_trident/core";
+import { trunkRepoName } from "../artifacts/shards.ts";
 import type { Env } from "../env.ts";
 import { WorkspaceGit } from "./gitfs.ts";
 import { SqlJournal } from "./journal.ts";
@@ -9,6 +10,7 @@ import type { AgentConfig, HistoryEntry, Job, JobStep, LoopDeps, StepLogEntry } 
 import { OutcomeBox, regionNames, type ClaimRefresher, type PushedOutcome } from "./outcomes.ts";
 import { colonyStub, errorMessage, trunkBlobsStub } from "./rpc.ts";
 import type { AgentStartParams } from "./rpc.ts";
+import { SHARED_OBJECTS, VirtualReads, trunkObjects, virtualCheckoutEnabled } from "./virtual.ts";
 
 /** Re-arm time set at the start of every tick, so a killed tick resumes within a minute. */
 const WATCHDOG_MS = 60_000;
@@ -39,7 +41,8 @@ export interface AgentStatus extends AgentInfo {
  * An in-platform agent. It loops take -> fetch -> read -> produce -> commit -> push
  * -> propose -> await, driven by Durable Object alarms, with every step journaled
  * in its SQLite database (see loop.ts). Git runs inside the object on a
- * `@cloudflare/computer` Workspace; edits come from the rule's deterministic
+ * `@cloudflare/computer` Workspace, or, with FT_VIRTUAL_CHECKOUT, not at all: trunk is
+ * read object by object through the binding and changes go inline (virtual.ts); edits come from the rule's deterministic
  * replacement (synthetic agents) or a model (Workers AI, or Anthropic for
  * `claude-*` ids when ANTHROPIC_API_KEY is set). The agent emits no events; the
  * colony does.
@@ -67,11 +70,18 @@ export class AgentDO extends DurableObject<Env> {
   private wake = false;
   /** Region depth per colony (claims are refreshed in their regions directly). */
   private readonly depths = new Map<Id, number>();
+  /** The trunk repo handle of the running tick (virtual checkouts), released when the tick ends. */
+  private trunkRepo: { release(): void } | null = null;
 
   private deps(colonyId: Id): LoopDeps {
     if (!this.git) this.git = new WorkspaceGit(this.ctx.storage);
     // One per tick: direct() aborts it when a directive makes the step in flight moot.
     this.stepAbort = new AbortController();
+    // Virtual checkouts read trunk by object id through the binding: the handle opens on a job's first read. Every
+    // tick gets the reader, so a job taken with it keeps reading through it even after FT_VIRTUAL_CHECKOUT turns off.
+    this.trunkRepo?.release();
+    const objects = trunkObjects(this.env.ARTIFACTS, trunkRepoName(colonyId));
+    this.trunkRepo = objects;
     return {
       signal: this.stepAbort.signal,
       colony: colonyStub(this.env, colonyId),
@@ -84,6 +94,7 @@ export class AgentDO extends DurableObject<Env> {
       metric: (record) => console.log(JSON.stringify({ ft: "agent-job", ...record })),
       outcome: (proposalId) => this.outcomes.get(proposalId),
       refreshClaims: (job) => this.refreshClaims(colonyId, job),
+      virtual: { on: virtualCheckoutEnabled(this.env.FT_VIRTUAL_CHECKOUT, colonyId), reads: new VirtualReads(objects, SHARED_OBJECTS) },
     };
   }
 
@@ -276,6 +287,8 @@ export class AgentDO extends DurableObject<Env> {
       else await this.ctx.storage.deleteAlarm();
     } finally {
       this.ticking = false;
+      this.trunkRepo?.release();
+      this.trunkRepo = null;
     }
   }
 
