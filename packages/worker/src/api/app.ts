@@ -79,6 +79,26 @@ export const requireAdmin: MiddlewareHandler<ApiEnv> = async (c, next) => {
   await next();
 };
 
+/** Whether a request carries the admin bearer token (for reads that show more to the operator). */
+export async function isAdminRequest(c: Context<ApiEnv>): Promise<boolean> {
+  const expected = c.env.FT_ADMIN_TOKEN;
+  if (!expected) return false;
+  const m = /^Bearer\s+(\S+)\s*$/i.exec(c.req.header("Authorization") ?? "");
+  return !!m && (await tokensEqual(m[1] ?? "", expected));
+}
+
+/** An Artifacts remote's host names the account: public readers get `artifacts://<namespace>/<repo>.git` instead. */
+const ARTIFACTS_REMOTE = /https:\/\/[0-9a-f]{32}\.artifacts\.cloudflare\.net\/git\//g;
+
+/** Public JSON reads show Artifacts remotes without the account id; callers with the admin token see them as they are. */
+export const hideRemotes: MiddlewareHandler<ApiEnv> = async (c, next) => {
+  await next();
+  if (c.req.method !== "GET" || !(c.res.headers.get("content-type") ?? "").includes("application/json")) return;
+  if (await isAdminRequest(c)) return;
+  const text = await c.res.text();
+  c.res = new Response(text.replace(ARTIFACTS_REMOTE, "artifacts://"), c.res);
+};
+
 /** Destructive routes always need the admin token: they refuse outright when FT_ADMIN_TOKEN is not configured. */
 export const requireAdminStrict: MiddlewareHandler<ApiEnv> = async (c, next) => {
   if (!c.env.FT_ADMIN_TOKEN) return json({ error: "forbidden: this route needs FT_ADMIN_TOKEN configured on the server" }, 403);
@@ -178,6 +198,7 @@ async function requireColony(env: Env, colonyId: Id): Promise<void> {
  */
 export function createApi(deps: ApiDeps): Hono<ApiEnv> {
   const app = new Hono<ApiEnv>();
+  app.use("*", hideRemotes);
 
   app.onError((err, c) => {
     // Deploys reach Durable Objects gradually: an object still on the previous class lacks new methods for a while.
