@@ -87,7 +87,7 @@ function TrunkBar({ store, headRef, shaRef }: { store: ColonyStore; headRef: Ref
         <CertBadge store={store} />
         {store.greenSha ? (
           <>
-            <span className="trunk-k trunk-k-green" title="The certified branch: the newest trunk commit whose own tests all passed">
+            <span className="trunk-k trunk-k-green" title="The certified branch: the newest trunk commit on which every test file that could run passed and no test that passed before was lost">
               certified
             </span>
             <span className="trunk-green mono" title={`certified: ${store.greenSha}`}>

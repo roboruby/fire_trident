@@ -91,7 +91,7 @@ export function IntentsTab({ store, onPick, focus = null }: { store: ColonyStore
             >
               <div className="intent-title">
                 {it.revision > 1 ? (
-                  <span className="rev-badge" title={`Amended ${it.revision - 1} time${it.revision === 2 ? "" : "s"}: work on older revisions never lands`}>
+                  <span className="rev-badge" title={`Amended ${it.revision - 1} time${it.revision === 2 ? "" : "s"}: uncommitted changes built on older revisions are stopped; one already committed is reported with its landing`}>
                     r{it.revision}
                   </span>
                 ) : null}

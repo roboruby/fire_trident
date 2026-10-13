@@ -65,7 +65,7 @@
       "id": "direction",
       "kicker": "Steer",
       "caption": "People change course mid-flight.",
-      "sub": "{direction}. Needs move, agents re-orient, and work built for the old direction never lands.",
+      "sub": "{direction}. Needs move, agents re-orient, and uncommitted work for the old direction is stopped.",
       "tab": "events",
       "requires": "direction",
       "focus": [

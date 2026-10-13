@@ -110,4 +110,11 @@ describe("ft certify", () => {
     expect(formatCertify("web", "now", { started: false, reason: "certification is off for this colony (policy)" }, plain, 0)).toBe("! not started: certification is off for this colony (policy)");
     expect(formatCertify("web", "off", { enabled: false }, plain, 0)).toBe("✓ trunk certification off for web");
   });
+
+  it("says in its help what the certified branch holds and to deploy from it", async () => {
+    const { helpText } = await import("../src/args.ts");
+    const help = helpText("certify").replace(/\s+/g, " ");
+    expect(help).toContain("A green run moves the trunk's certified branch to that commit: every test file it could run passed and no test that passed before was lost.");
+    expect(help).toContain("main holds every landing, tested or not; deploy, release and pin from certified (git clone -b certified <url>).");
+  });
 });

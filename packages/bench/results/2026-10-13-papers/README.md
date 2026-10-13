@@ -30,7 +30,7 @@ Every number in this folder is **SIMULATED**: the coordination simulator in `pac
 - **Seeds and statistics.** Seeds 1 to 10 for every configuration, at 100, 1,000 and 10,000 agents. Tables show the mean over seeds ± the 95% Student t half-width. A change between two configurations is the difference of their means with a Welch 95% interval.
 - **Two trunk writers.**
   - *Per-lane commits* (model `firetrident`): each lane batch is its own commit, and one writer serves them one at a time. The README's 42%, 31%, 26%, "no loss of throughput" and "285 vs 318" all come from this model. Review 2610.04779 calls it "per-proposal lanes".
-  - *Group commit* (model `firetrident-group`): the writer folds every waiting batch into one commit. Production now works this way (`TrunkDO` and `planCycle` in `packages/worker/src/trunk/plan.ts`).
+  - *Group commit* (model `firetrident-group`): the writer folds every waiting batch into one commit. Production works this way with one difference: it writes one chained commit per batch and pushes the tip once with compare-and-swap (`TrunkDO` and `planCycle` in `packages/worker/src/trunk/plan.ts`).
 - **Reproduction check.** 81 rows here repeat a configuration of `results/2026-10-12-inhibition/sim-steady.json` (same variant, agents and seed, default retry cost). All 81 are identical to the published rows: landings, rework, conflicts, write-write, claim-to-land p50 and submissions. The new options are off by default, and the return classifier does not change a run.
 
 ### New simulator code (analysis only; none of it is built in the platform)

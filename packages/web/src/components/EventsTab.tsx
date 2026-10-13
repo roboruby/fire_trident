@@ -130,7 +130,7 @@ function describe(le: LoggedEvent, store: ColonyStore): Line {
       return {
         tag: "amended",
         color: DIRECTION_COLOR,
-        text: `r${e.revision} · ${(e.changed ?? []).join(", ")} changed · ${e.title}${e.returned ? ` · ${e.returned} sent back` : ""}`,
+        text: `r${e.revision} · ${(e.changed ?? []).join(", ")} changed · ${e.title}${e.returned ? ` · ${e.returned} stopped` : ""}`,
         mono: e.by,
         title: `${e.by}: ${e.reason}`,
       };
