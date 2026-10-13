@@ -1,13 +1,15 @@
 import type { DecisionLayer, Proposal } from "@fire_trident/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { HttpError, readReviewer, readToken, saveReviewer, saveToken, type Backend, type ReviewDecision } from "../api.ts";
-import { fmtInt, fmtMs, fmtPct, shortId, timeAgo } from "../format.ts";
+import { HttpError, readReviewer, readToken, type Backend, type ReviewDecision } from "../api.ts";
+import { fmtInt, fmtMs, fmtPct, plural, shortId, timeAgo } from "../format.ts";
 import { reviewOf } from "../review.ts";
 import type { ColonyStore, DecisionView } from "../store.ts";
 import { LAYER_COLOR } from "../theme.ts";
 import { decisionsFromChecks } from "../decisions.ts";
 import { useThrottledVersion } from "../useStore.ts";
+import { EscalationCard } from "./EscalationCard.tsx";
 import { ReviewChange } from "./ReviewChange.tsx";
+import { TokenForm } from "./TokenForm.tsx";
 import { VaccineMeter } from "./VaccineMeter.tsx";
 
 const NONE: readonly string[] = [];
@@ -92,9 +94,10 @@ function DecisionPath({ path }: { path: DecisionView[] }) {
 }
 
 /**
- * Proposals escalated to a human, code first: the change itself (danger lines and files outside the
- * footprint, then the full diff), then the decision path, checks and model verdicts, and
- * approve/return/reject.
+ * What needs a person: agents' reports that an intent cannot be done as written (amend, withdraw or
+ * dismiss), then proposals escalated to a human, code first: the change itself (danger lines and
+ * files outside the footprint, then the full diff), then the decision path, checks and model
+ * verdicts, and approve/return/reject.
  */
 export function ReviewTab({ store, backend, director = false }: { store: ColonyStore; backend: Backend; director?: boolean }) {
   useThrottledVersion(store, 500);
@@ -107,9 +110,10 @@ export function ReviewTab({ store, backend, director = false }: { store: ColonyS
   const [toast, setToast] = useState<string | null>(null);
   // A decision the server refused for want of a token: asked for on that card, retried once the token is saved.
   const [pending, setPending] = useState<{ id: string; decision: ReviewDecision; refused: boolean } | null>(null);
-  const [token, setToken] = useState(readToken);
-  const [reviewer, setReviewer] = useState(readReviewer);
   const decided = useRef(new Set<string>());
+  const replay = backend.mode === "replay";
+  const reports = store.openEscalations();
+  const answered = store.recentlyResolved();
 
   const load = useCallback(async () => {
     try {
@@ -168,12 +172,18 @@ export function ReviewTab({ store, backend, director = false }: { store: ColonyS
   const handled = total ? (f.proof + f.reflex + f.llm) / total : 1;
   const vaccine = store.vaccination();
 
+  const queued = replay ? store.reviewQueue() : (items?.length ?? 0);
+  const head =
+    items === null && !replay
+      ? "Loading the review queue…"
+      : queued + reports.length === 0
+        ? "Nothing needs a human"
+        : `${[queued ? plural(queued, "change") : "", reports.length ? plural(reports.length, "agent report") : ""].filter(Boolean).join(" and ")} ${queued + reports.length === 1 ? "needs" : "need"} a human`;
   return (
     <div className="review">
       <div className="review-head">
-        <div className="review-count">
-          {items === null ? "Loading the review queue…" : items.length ? `${items.length} ${items.length === 1 ? "proposal needs" : "proposals need"} a human` : "Nothing needs a human"}
-        </div>
+        <div className="review-count">{head}</div>
+        {replay ? <div className="review-sub">A replay is read-only: it shows what waited for a person at this point in the run. Open the live colony to review.</div> : null}
         <div className="review-sub">
           {total
             ? store.settledFunnel
@@ -189,6 +199,17 @@ export function ReviewTab({ store, backend, director = false }: { store: ColonyS
       </div>
       {toast ? <div className="toast">{toast}</div> : null}
       {error ? <div className="alert">{error}</div> : null}
+      {reports.length || answered.length ? (
+        <section className="cards report-cards" aria-label="Agents' reports">
+          <div className="k">Agents' reports</div>
+          {reports.map((e) => (
+            <EscalationCard key={e.intentId} esc={e} store={store} backend={backend} readOnly={replay} director={director} />
+          ))}
+          {answered.map((e) => (
+            <EscalationCard key={`${e.intentId}:${e.resolved?.at ?? 0}`} esc={e} store={store} backend={backend} readOnly director={director} />
+          ))}
+        </section>
+      ) : null}
       <div className="cards">
         {(items ?? []).map((p) => {
           const intent = store.intents.get(p.intentId);
@@ -201,6 +222,7 @@ export function ReviewTab({ store, backend, director = false }: { store: ColonyS
           const path = decisionPath(p, store);
           const antibodies = matchedAntibodies(p);
           const view = views.get(p.id) ?? null;
+          const winner = typeof p.supersededBy === "string" && p.supersededBy ? p.supersededBy : store.superseded.get(p.id);
           return (
             <article key={p.id} className="card" onMouseEnter={() => store.setHighlight(paths)} onMouseLeave={() => store.setHighlight([])}>
               <header className="card-head">
@@ -208,9 +230,17 @@ export function ReviewTab({ store, backend, director = false }: { store: ColonyS
                 <span className="mono card-id" title={p.id}>
                   {shortId(p.id)}
                 </span>
+                {winner ? (
+                  <span className="pill pill-superseded" title={`Another attempt at this intent landed instead: ${winner}`}>
+                    superseded by {shortId(winner)}
+                  </span>
+                ) : null}
                 <span className="card-when">{timeAgo(p.createdAt)}</span>
               </header>
-              <h3 className="card-title">{intent?.title ?? p.declared?.summary ?? p.intentId}</h3>
+              <h3 className="card-title">
+                {intent?.title ?? p.declared?.summary ?? p.intentId}
+                {intent?.contest && intent.contest >= 2 ? <span className="ibadge ibadge-contest card-badge">contest ×{intent.contest}</span> : null}
+              </h3>
               <div className="card-meta">
                 by <span className="mono">{store.agentName(p.agentId)}</span> · wrote {fmtInt(p.writeSet?.length ?? 0)} · read {fmtInt(p.readSet?.length ?? 0)}
               </div>
@@ -294,39 +324,27 @@ export function ReviewTab({ store, backend, director = false }: { store: ColonyS
                 </button>
               </div>
               {pending?.id === p.id && !director ? (
-                <form
-                  className="token token-inline"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    saveToken(token.trim());
-                    saveReviewer(reviewer.trim());
+                <TokenForm
+                  refused={pending.refused}
+                  action={pending.decision === "approve" ? "Approve" : pending.decision === "return" ? "Return" : "Reject"}
+                  onRetry={() => {
                     const again = pending;
                     setPending(null);
                     void decide(p, again.decision);
                   }}
-                >
-                  <div className="token-note">
-                    {pending.refused ? "The server refused that token. Paste this colony's admin token." : "Recording a decision needs this colony's admin token."}
-                  </div>
-                  <input type="password" placeholder="Admin token" value={token} onChange={(e) => setToken(e.target.value)} autoComplete="off" autoFocus />
-                  <input type="text" placeholder="Your name, recorded with the decision" value={reviewer} onChange={(e) => setReviewer(e.target.value)} autoComplete="name" />
-                  <div className="token-actions">
-                    <button type="submit" className="btn btn-approve" disabled={!token.trim()}>
-                      {pending.decision === "approve" ? "Approve" : pending.decision === "return" ? "Return" : "Reject"} with this token
-                    </button>
-                    <button type="button" className="btn" onClick={() => setPending(null)}>
-                      Cancel
-                    </button>
-                  </div>
-                </form>
+                  onCancel={() => setPending(null)}
+                />
               ) : null}
             </article>
           );
         })}
-        {items && !items.length && !error ? (
+        {items && !items.length && !reports.length && !error && queued === 0 ? (
           <div className="empty-big">
             <div className="empty-title">All clear</div>
-            <div>A proposal lands here when it changes files it did not declare, or when the models disagree. Rejecting one teaches the colony an antibody.</div>
+            <div>
+              A proposal lands here when it changes files it did not declare, touches what decides on agents, or when the models disagree. Rejecting one teaches the colony an antibody. An agent that finds an intent cannot be done as written reports it here
+              too.
+            </div>
           </div>
         ) : null}
       </div>

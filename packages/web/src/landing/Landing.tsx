@@ -3,6 +3,7 @@ import { loadColonies, type ColonyCard } from "../colonies.ts";
 import { TridentMark } from "../components/TopBar.tsx";
 import { fmtInt, timeAgo } from "../format.ts";
 import { colonyHref } from "../route.ts";
+import { Exceptions } from "./Exceptions.tsx";
 import { HeroColony } from "./HeroColony.tsx";
 import { LiveColonies, rankColonies, statusOf } from "./LiveColonies.tsx";
 import { Prongs } from "./Prongs.tsx";
@@ -149,6 +150,8 @@ export function Landing() {
         </div>
         <Prongs />
       </section>
+
+      <Exceptions />
 
       <section className="l-section" id="run">
         <div className="l-section-head">

@@ -7,10 +7,12 @@ import type {
   ColonySnapshot,
   DecisionKind,
   DecisionLayer,
+  EscalationKind,
   FailingTest,
   FieldReading,
   FunnelStage,
   Id,
+  IntentEscalation,
   IntentSource,
   IntentStatus,
   MarkKind,
@@ -101,6 +103,8 @@ export interface AgentView {
   /** What the agent says it is doing now (its relayed status note), and when. */
   note?: string;
   noteAt?: number;
+  /** Why it is waiting, when the colony said so on its `agent` event (cleared when it stops waiting). */
+  waitReason?: string;
 }
 
 export interface IntentView {
@@ -118,6 +122,8 @@ export interface IntentView {
   /** 1 until the intent is amended. */
   revision: number;
   withdrawnReason?: string;
+  /** Contest mode: how many agents may hold it at once (2 to 4); absent for one holder. */
+  contest?: number;
 }
 
 export interface ProposalView {
@@ -127,6 +133,46 @@ export interface ProposalView {
   status: ProposalStatus;
   reason?: string;
   updatedAt: number;
+  /** Contest mode: the proposal that won its intent instead of this one. */
+  supersededBy?: Id;
+}
+
+/** An agent's report that an intent cannot be done as written, and a person's answer once there is one. */
+export interface EscalationView {
+  intentId: Id;
+  title: string;
+  kind: EscalationKind;
+  /** The agent's own words: untrusted text, always rendered as text. */
+  report: string;
+  /** The agent that reported it. */
+  agentId: Id;
+  at: number;
+  resolved?: NonNullable<IntentEscalation["resolved"]>;
+}
+
+/** An intent whose changes keep coming back: how many returns this page saw, and the latest reason. */
+export interface ReturnedIntent {
+  intent: IntentView;
+  returns: number;
+  reason?: string;
+}
+
+/**
+ * Landing notices the colony sent for one landing (directive events of kind "landing"). The log
+ * shows one line per group: who was told, and what changed.
+ */
+export interface NoticeGroup {
+  key: string;
+  /** Agents told, in order, without repeats. */
+  agents: Id[];
+  /** The files the notices name, when the events carry them. */
+  paths: string[];
+  /** The first notice's message. */
+  message: string;
+  by: string;
+  /** Times of the first and the latest notice. */
+  first: number;
+  last: number;
 }
 
 export interface LandingView {
@@ -149,6 +195,8 @@ export interface LoggedEvent {
   delta?: number;
   /** From the snapshot (it happened before this page opened), not the live stream. */
   history?: boolean;
+  /** Landing notices: the group of notices sent for the same landing (the log shows one line per group). */
+  group?: NoticeGroup;
 }
 
 export interface MarkFx {
@@ -202,10 +250,23 @@ const EVENT_TYPES: ReadonlySet<string> = new Set([
   "retracted",
   "reverted",
   "directive",
+  "escalation",
+  "contest",
+  "revalidated",
   "status",
   "certify",
 ]);
 const AGENT_STATES: ReadonlySet<string> = new Set<AgentState>(["idle", "working", "proposing", "waiting", "dead"]);
+const ESCALATION_KINDS: ReadonlySet<string> = new Set<EscalationKind>(["broken-test", "contradictory-spec", "impossible", "other"]);
+const ESCALATION_DECISIONS: ReadonlySet<string> = new Set(["amend", "withdraw", "dismiss"]);
+/** Returns that change direction (a withdrawal, a revision, a contest another attempt won) are not the work going wrong. */
+const REDIRECT = /^(withdrawn|intent revised|superseded)\b/i;
+/** An intent returned this many times is worth a person's look. */
+export const REPEATED_RETURNS = 3;
+/** Landing notices more than this far apart never share a line, even for the same landing. */
+const NOTICE_WINDOW_MS = 15_000;
+/** Resolved reports kept for the review tab and lineage (open ones are always kept). */
+const RESOLVED_KEEP = 200;
 const INTENT_STATUSES: ReadonlySet<string> = new Set<IntentStatus>(["open", "claimed", "proposed", "landed", "abandoned", "withdrawn"]);
 const LAYERS: ReadonlySet<string> = new Set<DecisionLayer>(["reflex", "llm", "human"]);
 const IN_FLIGHT: ReadonlySet<ProposalStatus> = new Set<ProposalStatus>(["pending", "checking", "ready", "escalated"]);
@@ -234,6 +295,59 @@ function tally<K extends string>(rec: Record<K, number>, key: string, d: number,
   if (!known.has(key)) return;
   const k = key as K;
   rec[k] = Math.max(0, (rec[k] ?? 0) + d);
+}
+
+/**
+ * An agent's escalation as the UI keeps it, from an intent's `escalation` (snapshot) or an `escalation`
+ * event; null when the shape is not one. `title` falls back to the intent id.
+ */
+export function escalationOf(
+  intentId: Id,
+  raw: { kind?: unknown; report?: unknown; by?: unknown; agentId?: unknown; at?: unknown; resolved?: unknown; title?: unknown } | null | undefined,
+  title: string,
+  now: number,
+): EscalationView | null {
+  if (!raw || typeof raw !== "object" || typeof intentId !== "string" || !intentId) return null;
+  const kind = typeof raw.kind === "string" && ESCALATION_KINDS.has(raw.kind) ? (raw.kind as EscalationKind) : "other";
+  const agentId = typeof raw.agentId === "string" ? raw.agentId : typeof raw.by === "string" ? raw.by : "";
+  const view: EscalationView = {
+    intentId,
+    title: typeof raw.title === "string" && raw.title ? raw.title : title || intentId,
+    kind,
+    report: typeof raw.report === "string" ? raw.report : "",
+    agentId,
+    at: finite(raw.at, now),
+  };
+  const r = raw.resolved as { by?: unknown; at?: unknown; decision?: unknown; note?: unknown } | null | undefined;
+  if (r && typeof r === "object" && typeof r.decision === "string" && ESCALATION_DECISIONS.has(r.decision)) {
+    view.resolved = {
+      by: typeof r.by === "string" && r.by ? r.by : "a person",
+      at: finite(r.at, now),
+      decision: r.decision as "amend" | "withdraw" | "dismiss",
+      note: typeof r.note === "string" ? r.note : "",
+    };
+  }
+  return view;
+}
+
+/** The landing a notice names, when its event carries one (`landingId`, or a `landing` with its id). */
+function noticeLanding(ev: Extract<ColonyEvent, { t: "directive" }>): string | null {
+  const x = ev as { landingId?: unknown; landing?: { landingId?: unknown } | null };
+  if (typeof x.landingId === "string" && x.landingId) return x.landingId;
+  const l = x.landing;
+  return l && typeof l === "object" && typeof l.landingId === "string" && l.landingId ? l.landingId : null;
+}
+
+/** The files a notice names, when its event carries them (`paths`, or a `landing` with its paths). */
+function noticePaths(ev: Extract<ColonyEvent, { t: "directive" }>): string[] {
+  const x = ev as { paths?: unknown; landing?: { paths?: unknown } | null };
+  const raw = Array.isArray(x.paths) ? x.paths : x.landing && typeof x.landing === "object" && Array.isArray(x.landing.paths) ? x.landing.paths : [];
+  const out: string[] = [];
+  for (const p of raw) {
+    const path = typeof p === "string" ? p : p && typeof p === "object" && typeof (p as { path?: unknown }).path === "string" ? (p as { path: string }).path : "";
+    if (path && !out.includes(path)) out.push(path);
+  }
+  return out;
 }
 
 /** Wilson score interval (95%) for `k` successes in `n` trials. */
@@ -331,6 +445,15 @@ export class ColonyStore {
   readonly lastDecisionAt: Record<FunnelStage, number> = { proof: 0, reflex: 0, llm: 0, human: 0 };
   /** Changes of direction: amendments, withdrawals, retracted rules, directives. */
   readonly direction: DirectionCounts = { amended: 0, withdrawn: 0, retracted: 0, reverted: 0, directives: 0 };
+  /** Agents' reports that an intent cannot be done as written, by intent (open ones, and resolved ones kept a while). */
+  readonly escalations = new Map<Id, EscalationView>();
+  /** Contest mode: the proposal that won instead of each superseded one (a loser's own events may come before or after). */
+  readonly superseded = new Map<Id, Id>();
+  /** Returns (stale or conflicting) this page saw per intent, with the latest reason; direction changes excluded. */
+  readonly returns = new Map<Id, { n: number; reason?: string; at: number }>();
+  /** Landing notices sent (directive events of kind "landing"), and their groups by landing. */
+  landingNotices = 0;
+  private readonly noticeGroups = new Map<string, NoticeGroup>();
   /** Every agent's kind, including agents that have stopped (outside agents' landings are told apart by it). */
   readonly agentKinds = new Map<Id, AgentKind>();
   /** Changes outside agents (over MCP) landed, oldest first. */
@@ -427,9 +550,11 @@ export class ColonyStore {
 
     this.intents.clear();
     for (const k of Object.keys(this.intentsByStatus) as IntentStatus[]) this.intentsByStatus[k] = 0;
+    // The snapshot holds every active intent, so it is the authority on which reports are still open.
+    this.escalations.clear();
     for (const i of s.intents ?? []) {
       if (!i || typeof i.id !== "string") continue;
-      this.intents.set(i.id, {
+      const view: IntentView = {
         id: i.id,
         title: i.title ?? i.id,
         why: i.why,
@@ -443,10 +568,16 @@ export class ColonyStore {
         ruleId: i.ruleId,
         revision: Math.max(1, finite(i.revision, 1)),
         withdrawnReason: i.withdrawnReason,
-      });
+      };
+      const contest = finite(i.contest, 1);
+      if (contest >= 2) view.contest = Math.min(4, Math.floor(contest));
+      this.intents.set(i.id, view);
       tally(this.intentsByStatus, i.status, 1, INTENT_STATUSES);
+      const esc = escalationOf(i.id, i.escalation, view.title, now);
+      if (esc) this.escalations.set(i.id, esc);
     }
     this.intentsVersion++;
+    this.reviewVersion++;
 
     this.rules.clear();
     for (const r of s.rules ?? []) if (r && r.id) this.rules.set(r.id, r);
@@ -576,6 +707,7 @@ export class ColonyStore {
 
   private applyOne(ev: ColonyEvent, now: number): void {
     let delta: number | undefined;
+    let group: NoticeGroup | undefined;
     switch (ev.t) {
       case "agent":
         this.onAgent(ev, now);
@@ -644,8 +776,18 @@ export class ColonyStore {
         break;
       }
       case "directive":
-        this.direction.directives++;
+        // A landing notice is the colony telling an agent what changed under it, not a change of direction.
+        if (ev.kind === "landing") group = this.onNotice(ev, now);
+        else this.direction.directives++;
         break; // otherwise shown in the log only
+      case "escalation":
+        this.onEscalation(ev, now);
+        break;
+      case "contest":
+        this.onContest(ev);
+        break;
+      case "revalidated":
+        break; // shown in the log; the lineage note keeps the detail
       case "certify":
         if (typeof ev.trunkSha !== "string") break;
         this.setCert({ ...ev, at: finite(ev.at, now) });
@@ -653,9 +795,87 @@ export class ColonyStore {
         else if (typeof ev.greenSha === "string" && ev.greenSha) this.greenSha = ev.greenSha;
         break;
     }
-    this.ring[this.ringHead] = { seq: ++this.seq, ev, delta };
+    this.ring[this.ringHead] = group ? { seq: ++this.seq, ev, delta, group } : { seq: ++this.seq, ev, delta };
     this.ringHead = (this.ringHead + 1) % LOG_CAP;
     this.typeCounts.set(ev.t, (this.typeCounts.get(ev.t) ?? 0) + 1);
+  }
+
+  /**
+   * A landing notice joins the group of its landing: the landing the event names, else the notices
+   * sent after the same landing by the same sender, within NOTICE_WINDOW_MS of the first.
+   */
+  private onNotice(ev: Extract<ColonyEvent, { t: "directive" }>, now: number): NoticeGroup {
+    this.landingNotices++;
+    const at = finite(ev.at, now);
+    const by = typeof ev.by === "string" ? ev.by : "";
+    const landing = noticeLanding(ev);
+    const base = landing ? `landing:${landing}` : `after:${this.landingsSeen}:${by}`;
+    let g = this.noticeGroups.get(base);
+    if (g && !landing && Math.abs(at - g.first) > NOTICE_WINDOW_MS) g = undefined;
+    if (!g) {
+      g = { key: landing ? base : `${base}:${this.seq + 1}`, agents: [], paths: [], message: typeof ev.message === "string" ? ev.message : "", by, first: at, last: at };
+      this.noticeGroups.delete(base);
+      this.noticeGroups.set(base, g);
+      if (this.noticeGroups.size > 300) {
+        const oldest = this.noticeGroups.keys().next().value;
+        if (oldest !== undefined) this.noticeGroups.delete(oldest);
+      }
+    }
+    if (typeof ev.agentId === "string" && ev.agentId && !g.agents.includes(ev.agentId)) g.agents.push(ev.agentId);
+    for (const p of noticePaths(ev)) if (!g.paths.includes(p)) g.paths.push(p);
+    g.last = Math.max(g.last, at);
+    return g;
+  }
+
+  /** An agent reported an intent cannot be done as written, or a person answered such a report. */
+  private onEscalation(ev: Extract<ColonyEvent, { t: "escalation" }>, now: number): void {
+    if (typeof ev.intentId !== "string" || !ev.intentId) return;
+    const prev = this.escalations.get(ev.intentId);
+    const intent = this.intents.get(ev.intentId);
+    const next = escalationOf(ev.intentId, ev, intent?.title ?? prev?.title ?? ev.intentId, now);
+    if (!next) return;
+    // An answer that arrives without the report's own fields keeps what the report said.
+    if (prev && next.resolved) {
+      if (!next.report) next.report = prev.report;
+      if (!next.agentId) next.agentId = prev.agentId;
+      if (typeof ev.kind !== "string") next.kind = prev.kind;
+    }
+    this.escalations.delete(ev.intentId);
+    this.escalations.set(ev.intentId, next);
+    if (this.escalations.size > RESOLVED_KEEP + 50) {
+      let drop = this.escalations.size - RESOLVED_KEEP;
+      for (const [id, e] of this.escalations) {
+        if (drop <= 0) break;
+        if (!e.resolved) continue;
+        this.escalations.delete(id);
+        drop--;
+      }
+    }
+    this.intentsVersion++;
+    this.reviewVersion++;
+  }
+
+  /** An intent's contest was decided: the winner landed, and the other attempts were superseded. */
+  private onContest(ev: Extract<ColonyEvent, { t: "contest" }>): void {
+    if (typeof ev.intentId !== "string" || typeof ev.winner !== "string") return;
+    const losers = Array.isArray(ev.losers) ? ev.losers.filter((x): x is Id => typeof x === "string" && x !== "") : [];
+    for (const id of losers) {
+      this.superseded.set(id, ev.winner);
+      const p = this.proposals.get(id);
+      if (p) p.supersededBy = ev.winner;
+    }
+    // An intent declared after the page opened learns it was a contest here.
+    const intent = this.intents.get(ev.intentId);
+    if (intent && !intent.contest && losers.length) intent.contest = Math.min(4, losers.length + 1);
+    if (this.superseded.size > 2000) {
+      let drop = this.superseded.size - 1500;
+      for (const k of this.superseded.keys()) {
+        if (drop-- <= 0) break;
+        this.superseded.delete(k);
+      }
+    }
+    this.intentsVersion++;
+    this.reviewVersion++;
   }
 
   private onDecision(ev: Extract<ColonyEvent, { t: "decision" }>, now: number): void {
@@ -707,6 +927,17 @@ export class ColonyStore {
     }
     a.kind = ev.kind;
     a.seen = now;
+    // Name and model, when the event carries them (an agent that joined after the snapshot has neither otherwise).
+    const extra = ev as { name?: unknown; model?: unknown; reason?: unknown };
+    if (typeof extra.name === "string" && extra.name) {
+      a.name = extra.name;
+      this.agentNames.set(a.id, extra.name);
+    }
+    if (typeof extra.model === "string" && extra.model) a.model = extra.model;
+    // Why it waits, when the colony says (a newer server may send the take's reason with the state).
+    const reason = extra.reason;
+    if (ev.state === "waiting" && typeof reason === "string" && reason) a.waitReason = reason;
+    else if (ev.state !== "waiting") a.waitReason = undefined;
     if (ev.state === "idle") {
       a.intentId = undefined;
       a.paths = [];
@@ -761,6 +992,9 @@ export class ColonyStore {
       if (Array.isArray(ev.footprint) && ev.footprint.length) it.footprint = ev.footprint;
       it.updatedAt = now;
     }
+    // Contest mode, when the event says (the snapshot always does).
+    const contest = finite((ev as { contest?: unknown }).contest, 0);
+    if (contest >= 2) it.contest = Math.min(4, Math.floor(contest));
     if (ev.status === "open") it.assignedTo = undefined;
     this.intentsVersion++;
   }
@@ -791,6 +1025,8 @@ export class ColonyStore {
     const was = p?.status;
     if (!p) {
       p = { id: ev.proposalId, intentId: ev.intentId, agentId: ev.agentId, status: ev.status, reason: ev.reason, updatedAt: now };
+      const winner = this.superseded.get(ev.proposalId);
+      if (winner) p.supersededBy = winner;
       this.proposals.set(p.id, p);
       if (IN_FLIGHT.has(ev.status)) this.inFlight++;
       if (ev.status === "escalated") this.escalated++;
@@ -798,6 +1034,16 @@ export class ColonyStore {
       this.setProposalStatus(p, ev.status);
       if (ev.reason) p.reason = ev.reason;
       p.updatedAt = now;
+    }
+    if (ev.status === "returned" && was !== "returned" && typeof ev.intentId === "string" && !REDIRECT.test(ev.reason ?? "") && !p.supersededBy) {
+      const r = this.returns.get(ev.intentId);
+      this.returns.delete(ev.intentId);
+      this.returns.set(ev.intentId, { n: (r?.n ?? 0) + 1, at: finite(ev.at, now), ...(ev.reason ? { reason: ev.reason } : r?.reason ? { reason: r.reason } : {}) });
+      if (this.returns.size > 5000) {
+        const oldest = this.returns.keys().next().value;
+        if (oldest !== undefined) this.returns.delete(oldest);
+      }
+      if ((r?.n ?? 0) + 1 >= REPEATED_RETURNS) this.intentsVersion++;
     }
     const intent = this.intents.get(ev.intentId);
     if (intent && ev.agentId) intent.assignedTo = ev.agentId;
@@ -945,6 +1191,11 @@ export class ColonyStore {
     this.landingFx = [];
     this.markFx = [];
     this.outside = [];
+    this.escalations.clear();
+    this.superseded.clear();
+    this.returns.clear();
+    this.noticeGroups.clear();
+    this.landingNotices = 0;
     for (const k of STAGES) this.lastDecisionAt[k] = 0;
     this.fxGen++;
   }
@@ -1020,6 +1271,43 @@ export class ColonyStore {
   /** Proposals waiting for a human (server metric wins when present). */
   reviewQueue(): number {
     return Math.max(0, this.metric("reviewQueue") ?? this.escalated);
+  }
+
+  /**
+   * Agents' reports waiting for a person, oldest first. A report on an intent that has since landed
+   * or been withdrawn is settled whatever its record says.
+   */
+  openEscalations(): EscalationView[] {
+    const out: EscalationView[] = [];
+    for (const e of this.escalations.values()) {
+      if (e.resolved) continue;
+      const status = this.intents.get(e.intentId)?.status;
+      if (status === "landed" || status === "withdrawn") continue;
+      out.push(e);
+    }
+    return out.sort((a, b) => a.at - b.at);
+  }
+
+  /** Reports a person answered within the last `ms` of the colony's clock, newest first. */
+  recentlyResolved(ms = 120_000, now = this.now()): EscalationView[] {
+    const out: EscalationView[] = [];
+    for (const e of this.escalations.values()) if (e.resolved && now - e.resolved.at <= ms) out.push(e);
+    return out.sort((a, b) => (b.resolved?.at ?? 0) - (a.resolved?.at ?? 0));
+  }
+
+  /**
+   * Intents still in play whose changes came back at least `min` times while this page watched,
+   * most returns first (withdrawals, revisions and lost contests do not count).
+   */
+  repeatedReturns(min = REPEATED_RETURNS): ReturnedIntent[] {
+    const out: ReturnedIntent[] = [];
+    for (const [id, r] of this.returns) {
+      if (r.n < min) continue;
+      const intent = this.intents.get(id);
+      if (!intent || intent.status === "landed" || intent.status === "withdrawn" || intent.status === "abandoned") continue;
+      out.push({ intent, returns: r.n, ...(r.reason ? { reason: r.reason } : {}) });
+    }
+    return out.sort((a, b) => b.returns - a.returns || b.intent.updatedAt - a.intent.updatedAt);
   }
 
   /**
@@ -1123,13 +1411,13 @@ export class ColonyStore {
     return { recall, seeded, caught, escalated, returned, low, high, antibodies, hits };
   }
 
-  /** Newest-first events matching `keep`, at most `limit`. */
-  recentEvents(keep: (e: ColonyEvent) => boolean, limit: number): LoggedEvent[] {
+  /** Newest-first events matching `keep` (which also sees the logged entry), at most `limit`. */
+  recentEvents(keep: (e: ColonyEvent, logged: LoggedEvent) => boolean, limit: number): LoggedEvent[] {
     const out: LoggedEvent[] = [];
     for (let i = 1; i <= LOG_CAP && out.length < limit; i++) {
       const e = this.ring[(this.ringHead - i + LOG_CAP) % LOG_CAP];
       if (!e) break;
-      if (keep(e.ev)) out.push(e);
+      if (keep(e.ev, e)) out.push(e);
     }
     return out;
   }

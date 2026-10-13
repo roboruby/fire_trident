@@ -15,10 +15,12 @@ interface Props {
   director?: boolean;
   /** A compact frame (the landing page hero): no hint text. */
   compact?: boolean;
+  /** Opens the first-visit guide again (a "How to read this" button in the legend). */
+  onGuide?: () => void;
 }
 
 /** The hero view: the colony as a living treemap, with the trunk rail across the top. */
-export function ColonyMap({ store, onPick, onRenderer, director = false, compact = false }: Props) {
+export function ColonyMap({ store, onPick, onRenderer, director = false, compact = false, onGuide }: Props) {
   const wrap = useRef<HTMLDivElement>(null);
   const base = useRef<HTMLCanvasElement>(null);
   const field = useRef<HTMLCanvasElement>(null);
@@ -64,7 +66,7 @@ export function ColonyMap({ store, onPick, onRenderer, director = false, compact
       <div className="map-vignette" />
       <TrunkBar store={store} headRef={head} shaRef={sha} />
       <canvas className="map-layer map-fx" ref={fx} />
-      {director ? null : <Legend store={store} hint={!compact} compact={compact} />}
+      {director ? null : <Legend store={store} hint={!compact} compact={compact} onGuide={onGuide} />}
       <div className="map-tip" ref={tip} role="tooltip" />
     </section>
   );
@@ -85,8 +87,10 @@ function TrunkBar({ store, headRef, shaRef }: { store: ColonyStore; headRef: Ref
         <CertBadge store={store} />
         {store.greenSha ? (
           <>
-            <span className="trunk-k trunk-k-green">green</span>
-            <span className="trunk-green mono" title={store.greenSha}>
+            <span className="trunk-k trunk-k-green" title="The certified branch: the newest trunk commit whose own tests all passed">
+              certified
+            </span>
+            <span className="trunk-green mono" title={`certified: ${store.greenSha}`}>
               {shortSha(store.greenSha)}
             </span>
           </>
@@ -148,11 +152,11 @@ function CertBadge({ store }: { store: ColonyStore }) {
 }
 
 /** Field legend: how many files carry each kind of mark right now (decay included), and the agents on the map. */
-export function Legend({ store, hint = true, compact = false }: { store: ColonyStore; hint?: boolean; compact?: boolean }) {
+export function Legend({ store, hint = true, compact = false, onGuide }: { store: ColonyStore; hint?: boolean; compact?: boolean; onGuide?: (() => void) | undefined }) {
   // The renderer recounts the field as it decays, with or without new events; poll its counts.
   usePolled(() => `${store.fieldCounts.join(",")}|${store.dotCount}|${store.agentsWorking()}`, 400);
   return (
-    <div className="legend">
+    <div className={`legend${onGuide ? " has-guide" : ""}`}>
       {KINDS.map((kind, k) => (
         <span className={`legend-item${(store.fieldCounts[k] ?? 0) > 0 ? "" : " is-zero"}`} key={kind} title={`Files with a ${kind} mark right now`}>
           <i className={`legend-swatch legend-${kind}`} style={{ background: FIELD_COLOR[kind] }} />
@@ -160,7 +164,7 @@ export function Legend({ store, hint = true, compact = false }: { store: ColonyS
           <span className="legend-count">{fmtInt(store.fieldCounts[k] ?? 0)}</span>
         </span>
       ))}
-      <span className="legend-item" title="Agents on the map (working now)">
+      <span className="legend-item legend-agents" title="Agents on the map (working now)">
         <i className="legend-dot" />
         <span className="legend-name">agents</span>
         <span className="legend-count">
@@ -169,12 +173,17 @@ export function Legend({ store, hint = true, compact = false }: { store: ColonyS
         </span>
       </span>
       {compact ? null : (
-        <span className="legend-item">
+        <span className="legend-item legend-landing">
           <i className="legend-spark" />
           <span className="legend-name">landing</span>
         </span>
       )}
-      {hint ? <span className="legend-hint">Hover a file for its field · click for its lineage</span> : null}
+      {hint ? <span className="legend-hint">Hover a file or an agent · click a file for its lineage</span> : null}
+      {onGuide ? (
+        <button type="button" className="legend-guide" onClick={onGuide} title="Open the guide to this screen again">
+          How to read this
+        </button>
+      ) : null}
     </div>
   );
 }

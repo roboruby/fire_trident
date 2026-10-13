@@ -1,4 +1,4 @@
-import { FIELD_COLOR, LAYER_COLOR } from "../theme.ts";
+import { FIELD_COLOR, LAYER_COLOR, STAGE_COLOR } from "../theme.ts";
 
 const TILE = "#131b28";
 const EDGE = "rgba(150,170,200,0.16)";
@@ -72,29 +72,30 @@ function SenseDiagram() {
   );
 }
 
-/** Decide: decisions flow right until a layer is sure; most stop at the reflex layer. */
+/** Decide: proposals flow right until a stage is sure; most stop at the proof or the reflex models. */
 function DecideDiagram() {
   const gates = [
-    { x: 112, label: "Reflex", cost: "milliseconds", color: LAYER_COLOR.reflex },
-    { x: 196, label: "LLM", cost: "seconds", color: LAYER_COLOR.llm },
+    { x: 92, label: "Proof", cost: "no model", color: STAGE_COLOR.proof },
+    { x: 154, label: "Reflex", cost: "ms", color: LAYER_COLOR.reflex },
+    { x: 216, label: "LLM", cost: "seconds", color: LAYER_COLOR.llm },
     { x: 280, label: "Human", cost: "minutes", color: LAYER_COLOR.human },
   ];
   const dots = [
     { y: 50, end: 0, begin: 0 },
-    { y: 62, end: 0, begin: 0.45 },
-    { y: 74, end: 1, begin: 0.9 },
+    { y: 62, end: 1, begin: 0.45 },
+    { y: 74, end: 2, begin: 0.9 },
     { y: 86, end: 0, begin: 1.35 },
-    { y: 98, end: 0, begin: 1.8 },
-    { y: 70, end: 2, begin: 2.25 },
+    { y: 98, end: 1, begin: 1.8 },
+    { y: 70, end: 3, begin: 2.25 },
     { y: 58, end: 0, begin: 2.7 },
-    { y: 90, end: 0, begin: 3.15 },
+    { y: 90, end: 1, begin: 3.15 },
   ];
   return (
-    <svg viewBox="0 0 320 150" role="img" aria-label="Decisions pass through reflex models, then an LLM, then a person; each stops at the first layer that is confident.">
+    <svg viewBox="0 0 320 150" role="img" aria-label="Proposals pass a deterministic proof, then reflex models, then an LLM, then a person; each stops at the first stage that is sure.">
       <line x1="16" y1="74" x2="296" y2="74" stroke="#e6eefc" strokeOpacity="0.08" strokeWidth="56" />
       {gates.map((g, i) => (
         <g key={g.label}>
-          <rect x={g.x - 9} y={34 + i * 9} width="18" height={80 - i * 18} rx="5" fill={g.color} fillOpacity="0.14" stroke={g.color} strokeOpacity="0.85" />
+          <rect x={g.x - 9} y={34 + i * 7} width="18" height={80 - i * 14} rx="5" fill={g.color} fillOpacity="0.14" stroke={g.color} strokeOpacity="0.85" />
           <text x={g.x} y="132" textAnchor="middle" className="pd-label" fill={g.color}>
             {g.label}
           </text>
@@ -105,9 +106,9 @@ function DecideDiagram() {
       ))}
       {dots.map((d, i) => {
         const gate = gates[d.end] ?? gates[0]!;
-        const yEnd = d.end === 0 ? d.y : 74 + (d.y - 74) * (d.end === 1 ? 0.5 : 0.2);
+        const yEnd = d.end === 0 ? d.y : 74 + (d.y - 74) * (d.end === 1 ? 0.6 : d.end === 2 ? 0.4 : 0.2);
         const path = `M14 ${d.y} L${gate.x - 4} ${yEnd}`;
-        const dur = 1.6 + d.end * 1.1;
+        const dur = 1.4 + d.end * 0.8;
         return (
           <circle key={i} r="3.2" fill={gate.color} opacity="0">
             <animateMotion dur={`${dur}s`} begin={`${d.begin}s`} repeatCount="indefinite" path={path} />
@@ -211,15 +212,15 @@ const PRONGS: readonly Prong[] = [
     n: "02",
     name: "Decide",
     head: "Only uncertainty climbs.",
-    body: "Every call (does this collide, can it land, is it safe) goes to the cheapest layer that is confident: Clef decision models in milliseconds, then an LLM, then a person. People see only what the models were unsure about, and a rejection becomes an antibody that screens later changes.",
-    how: "Calibrated probabilities at each layer; a seeded-change vaccine measures review recall.",
+    body: "Every proposal goes to the cheapest stage that is sure: a deterministic proof first, then Clef decision models in milliseconds, then a model from another family, then a person. No model can overrule a deterministic fact. A person sees the change itself, and a rejection becomes an antibody that screens later changes.",
+    how: "A model's approval counts only when it saw the whole change; seeded bad changes check that review stops them before they land.",
     Diagram: DecideDiagram,
   },
   {
     n: "03",
     name: "Land",
     head: "Parallel lanes instead of a merge queue.",
-    body: "Each region of the code has its own lane. Every cycle a lane takes the largest set of proposals that do not conflict and whose reads are still current, and lands them as one commit. A stale proposal goes back to its agent with the exact files that changed. Then the project's own tests run on trunk: the certified branch moves only when they pass, and a failing trunk becomes a repair.",
+    body: "Each region of the code has its own lane. Every cycle a lane takes the largest set of proposals that do not conflict and whose reads are still current, and lands them as one commit. A stale proposal goes back to its agent with the exact files that changed. Then the project's own tests run on trunk: the certified branch moves only when they pass, and a failing trunk becomes a repair that counts only when its tests pass.",
     how: "Read sets are checked against trunk blob ids; trunk moves by compare-and-swap; tests run in a Dynamic Worker with no network.",
     Diagram: LandDiagram,
   },

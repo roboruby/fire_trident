@@ -1,10 +1,12 @@
 import type { CheckResult, Colony, Direction, FileVersion, LineageNote, NoteDecision, Rule } from "@fire_trident/core";
 import { useEffect, useState } from "react";
+import { agentsOn, waitingWhy } from "../agents.ts";
 import type { Backend, WhyEntry } from "../api.ts";
 import { basename, dirname, fmtFixed, fmtInt, fmtMs, plural, shortId, shortSha, timeAgo } from "../format.ts";
 import type { ColonyStore } from "../store.ts";
 import { FIELD_COLOR, KINDS, LAYER_COLOR, intensity, KIND_INDEX } from "../theme.ts";
 import { decisionsFromChecks, type DecisionStep } from "../decisions.ts";
+import { alternativesOf, revalidatedOf, type Alternative, type Revalidation } from "../lineage.ts";
 import { useThrottledVersion } from "../useStore.ts";
 import { certCounts, certTitle } from "../certs.ts";
 
@@ -91,6 +93,7 @@ export function WhyTab({ store, backend, director = false }: { store: ColonyStor
 
   const values = store.fieldValues(path);
   const current = state?.path === path ? state : null;
+  const here = agentsOn(store, path, 3);
   return (
     <div className="why">
       <div className="why-head">
@@ -109,6 +112,24 @@ export function WhyTab({ store, backend, director = false }: { store: ColonyStor
             </div>
           ))}
         </div>
+        {here.total ? (
+          <div className="why-agents">
+            <div className="k">On this file now</div>
+            {here.list.map((a) => {
+              const waits = waitingWhy(store, a);
+              return (
+                <div className="why-agent" key={a.id}>
+                  <span className="mono why-agent-name">{a.name}</span>
+                  <span className={`tip-state tip-state-${a.state}`}>{a.state}</span>
+                  {a.model ? <span className="mono why-agent-model">{a.model}</span> : null}
+                  {a.note ? <span className="why-agent-note">“{a.note}”</span> : null}
+                  {waits ? <span className="why-agent-why">{waits}</span> : null}
+                </div>
+              );
+            })}
+            {here.total > here.list.length ? <div className="why-agent-more">and {fmtInt(here.total - here.list.length)} more</div> : null}
+          </div>
+        ) : null}
         {director ? null : (
           <div className="why-actions">
             <button type="button" className="link" onClick={() => store.select(null)}>
@@ -347,6 +368,53 @@ function DirectionStep({ d }: { d: Direction }) {
   );
 }
 
+/** Contest mode: the other attempts at the same intent, and why each lost to this one. */
+function ContestStep({ alternatives, store }: { alternatives: Alternative[]; store: ColonyStore }) {
+  return (
+    <div className="lin-step">
+      <span className="node node-contest" />
+      <div className="lin-body">
+        <div className="lin-k">Contest</div>
+        <div className="lin-dir">
+          Chosen over {plural(alternatives.length, "other attempt")} at the same intent
+        </div>
+        {alternatives.map((a, i) => (
+          <div className="lin-dir-row" key={`${a.proposalId}:${i}`}>
+            <span className="lin-chip lin-chip-contest" title={a.proposalId}>
+              {a.proposalId ? shortId(a.proposalId) : "attempt"}
+            </span>
+            <b>{a.agentId ? store.agentName(a.agentId) : "an agent"}</b>
+            {a.model ? <span className="mono lin-dir-when lin-alt-model">{a.model}</span> : null}
+            {a.reason ? <span className="lin-dir-why">{a.reason}</span> : null}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Assumption revalidation: files that changed after this change read them, and the imported names that still held. */
+function RevalidatedStep({ items }: { items: Revalidation[] }) {
+  return (
+    <div className="lin-step">
+      <span className="node node-revalidated" />
+      <div className="lin-body">
+        <div className="lin-k">Revalidated</div>
+        <div className="lin-dir">Landed although {items.length === 1 ? "a file it read" : "files it read"} changed: what it imports still holds</div>
+        {items.map((r) => (
+          <div className="lin-dir-row" key={r.path}>
+            <span className="mono">{r.path}</span>{" "}
+            <span className="mono lin-dir-when">
+              {r.read ? shortSha(r.read) : "absent"} → {r.landedOn ? shortSha(r.landedOn) : "deleted"}
+            </span>
+            <span className="lin-dir-why">{r.names.length ? `Still exported: ${r.names.join(", ")}` : "It imports nothing from this file."}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /** The deterministic proof's verdict when it decided alone (from the evidence's gate check), else null. */
 function deterministicStep(checks: readonly CheckResult[]): { action: string; detail?: string } | null {
   const gate = checks.find((c) => c.name === "gate");
@@ -365,6 +433,8 @@ function ProposalChain({ p, path, store }: { p: NoteProposal; path: string; stor
   const proof = deterministicStep(checks);
   const direction = p.evidence?.direction;
   const residual = p.evidence?.residual ?? [];
+  const alternatives = alternativesOf(p);
+  const revalidated = revalidatedOf(p);
   const agentName = store.agentName(p.agentId);
   const title = p.intent?.title ?? "Untitled intent";
   const rule = ruleId ? store.rules.get(ruleId) : undefined;
@@ -403,6 +473,7 @@ function ProposalChain({ p, path, store }: { p: NoteProposal; path: string; stor
           {p.model ? <div className="mono lin-model">{p.model}</div> : null}
         </div>
       </div>
+      {alternatives.length ? <ContestStep alternatives={alternatives} store={store} /> : null}
       <div className="lin-step">
         <span className="node node-decision" />
         <div className="lin-body">
@@ -488,6 +559,7 @@ function ProposalChain({ p, path, store }: { p: NoteProposal; path: string; stor
           ) : null}
         </div>
       </div>
+      {revalidated.length ? <RevalidatedStep items={revalidated} /> : null}
       <div className="lin-step lin-last">
         <span className="node node-sets" />
         <div className="lin-body">

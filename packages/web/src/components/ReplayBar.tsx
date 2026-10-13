@@ -38,7 +38,10 @@ export function ReplayBar({ backend, colonyId }: { backend: ReplayBackend; colon
     const onKey = (e: KeyboardEvent) => {
       const t = e.target;
       if (t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement || e.metaKey || e.ctrlKey || e.altKey) return;
-      if (e.key === " " || e.code === "Space") backend.toggle();
+      const space = e.key === " " || e.code === "Space";
+      // Space on a focused button or row presses that control, not the replay.
+      if (space && t instanceof HTMLElement && t !== document.body && t.closest("button, a, summary, select, [tabindex]")) return;
+      if (space) backend.toggle();
       else if (e.key === "ArrowRight") backend.seek(backend.state.at + 5_000 * backend.state.speed);
       else if (e.key === "ArrowLeft") backend.seek(backend.state.at - 5_000 * backend.state.speed);
       else return;

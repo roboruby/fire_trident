@@ -1,5 +1,6 @@
 import type { AgentKind, AgentState } from "@fire_trident/core";
-import { basename, dirname, escapeHtml, fmtBytes, regionOf, shortSha } from "../format.ts";
+import { agentsOn, waitingWhy } from "../agents.ts";
+import { basename, dirname, escapeHtml, fmtBytes, regionOf, shortSha, timeAgo } from "../format.ts";
 import type { AgentView, ColonyStore, LandingView } from "../store.ts";
 import { ACCENT, FIELD_COLOR, FIELD_COLOR_BY_INDEX, KIND_INDEX, KINDS, decayed, intensity } from "../theme.ts";
 import { layoutTreemap, type Rect, type TreemapLayout } from "../treemap.ts";
@@ -155,6 +156,8 @@ export class MapRenderer {
   /** CSS scale of the stage (director mode letterboxes a fixed 1920×1080 stage). */
   private stageScale = 1;
   private headX = 600;
+  /** Left end of the trunk rail: after the TRUNK label, or near the edge when a narrow layout hides it. */
+  private railX0 = RAIL_X0;
   private filesVersion = -1;
   private raf = 0;
   private lastTs = 0;
@@ -210,6 +213,8 @@ export class MapRenderer {
   private my = -1;
   private mouseDirty = false;
   private hover = -1;
+  /** The agent dot under the pointer, if any (its card leads the tooltip). */
+  private hoverDot: string | null = null;
   private lastTip = 0;
   private tipHtml = "";
   private tipShown = false;
@@ -304,6 +309,8 @@ export class MapRenderer {
   };
 
   private onClick = (e: MouseEvent): void => {
+    // A control over the map (the legend's guide button) is not a click on the map.
+    if (e.target instanceof Element && e.target.closest("button, a, input, textarea")) return;
     this.toStage(e);
     this.hitTest();
     if (this.my < TRUNK_H) return;
@@ -329,7 +336,11 @@ export class MapRenderer {
     this.el.glow.width = Math.max(1, Math.round(W * GLOW_SCALE));
     this.el.glow.height = Math.max(1, Math.round(H * GLOW_SCALE));
     const head = this.el.head.getBoundingClientRect();
-    this.headX = Math.max(RAIL_X0 + 80, (head.left - rect.left) / (this.stageScale || 1) - 18);
+    const k = this.stageScale || 1;
+    const label = this.el.head.parentElement?.querySelector(".trunk-label");
+    const lr = label instanceof HTMLElement && label.offsetParent !== null ? label.getBoundingClientRect() : null;
+    this.railX0 = lr ? Math.min(RAIL_X0, (lr.right - rect.left) / k + 24) : 12;
+    this.headX = Math.max(this.railX0 + 40, (head.left - rect.left) / k - 18);
     this.relayout();
   }
 
@@ -1388,6 +1399,15 @@ export class MapRenderer {
     draw(1, "#7fe6ff", 1, many ? 0 : 0.2);
     c.globalAlpha = 1;
     c.globalCompositeOperation = "source-over";
+    // The agent the tooltip describes gets a ring.
+    const hd = this.opts.tooltips && this.hoverDot ? this.dots.get(this.hoverDot) : undefined;
+    if (hd && !hd.dying) {
+      c.strokeStyle = ACCENT;
+      c.lineWidth = 1.5;
+      c.beginPath();
+      c.arc(hd.x * s + tx, hd.y * s + ty, 5.5 * grow, 0, Math.PI * 2);
+      c.stroke();
+    }
   }
 
   /** A faint ring where an agent appears. */
@@ -1415,7 +1435,7 @@ export class MapRenderer {
 
   private drawRail(c: CanvasRenderingContext2D, ts: number): void {
     const y = TRUNK_H / 2;
-    const x0 = RAIL_X0;
+    const x0 = this.railX0;
     const x1 = this.headX;
     if (x1 <= x0 + 20) return;
     const grad = c.createLinearGradient(x0, 0, x1, 0);
@@ -1559,17 +1579,57 @@ export class MapRenderer {
       this.el.wrap.style.cursor = found >= 0 && this.opts.tooltips ? "pointer" : "";
       this.lastTip = 0;
     }
+    const dot = found >= 0 ? this.nearestDot() : null;
+    if (dot !== this.hoverDot) {
+      this.hoverDot = dot;
+      this.lastTip = 0;
+    }
+  }
+
+  /** The agent dot within a few pixels of the pointer, if any (dots wander, so this is asked again as the tooltip refreshes). */
+  private nearestDot(): string | null {
+    if (!this.opts.tooltips || this.mx < 0 || this.my < TRUNK_H) return null;
+    const { s, tx, ty } = this.cam;
+    const reach = this.dots.size > 2500 ? 4 : 6;
+    let best: string | null = null;
+    let bestD = reach * reach;
+    for (const d of this.dots.values()) {
+      if (d.dying) continue;
+      const dx = d.x * s + tx - this.mx;
+      const dy = d.y * s + ty - this.my;
+      const q = dx * dx + dy * dy;
+      if (q < bestD) {
+        bestD = q;
+        best = d.id;
+      }
+    }
+    return best;
   }
 
   private placeTip(): void {
     if (this.hover < 0) return;
     const TW = 280;
-    const TH = 196;
+    // The card grows with the agents it lists: place it by its real height.
+    const TH = Math.max(120, this.el.tip.offsetHeight || 196);
     let x = this.mx + 18;
     let y = this.my + 18;
-    if (x + TW > this.W - 8) x = this.mx - TW - 14;
-    if (y + TH > this.H - 8) y = Math.max(8, this.my - TH - 14);
+    if (x + TW > this.W - 8) x = Math.max(8, this.mx - TW - 14);
+    if (y + TH > this.H - 8) y = Math.max(8, Math.min(this.my - TH - 14, this.H - TH - 8));
     this.el.tip.style.transform = `translate3d(${Math.round(x)}px, ${Math.round(y)}px, 0)`;
+  }
+
+  /** One agent in the tooltip: name, state and model, its own note on what it is doing, and what it waits for. */
+  private agentHtml(a: AgentView, pointed: boolean, now: number): string {
+    const why = waitingWhy(this.store, a);
+    const kind = a.kind === "external" ? `<span class="tip-kind">MCP</span>` : "";
+    return (
+      `<div class="tip-agent${pointed ? " is-pointed" : ""}">` +
+      `<div class="tip-agent-head"><b class="tip-agent-name">${escapeHtml(a.name)}</b><span class="tip-state tip-state-${a.state}">${a.state}</span>${kind}</div>` +
+      (a.model ? `<div class="tip-agent-model">${escapeHtml(a.model)}</div>` : "") +
+      (a.note ? `<div class="tip-agent-note">“${escapeHtml(a.note)}”${a.noteAt ? ` <span class="tip-agent-when">${escapeHtml(timeAgo(a.noteAt, now))}</span>` : ""}</div>` : "") +
+      (why ? `<div class="tip-agent-why">${escapeHtml(why)}</div>` : "") +
+      `</div>`
+    );
   }
 
   private renderTip(now: number, ts: number): void {
@@ -1585,22 +1645,33 @@ export class MapRenderer {
     }
     const path = this.L.paths[i] ?? "";
     const vals = this.store.fieldValues(path, now);
-    let agents = 0;
-    for (const d of this.dots.values()) if (d.tile === i && d.state !== "idle" && d.state !== "waiting" && !d.dying) agents++;
+    // Who is here: the dot under the pointer first, then the agents holding this file.
+    this.hoverDot = this.nearestDot();
+    const pointed = this.hoverDot ? this.store.agents.get(this.hoverDot) : undefined;
+    const holders = agentsOn(this.store, path, 3);
+    const shown: AgentView[] = pointed ? [pointed] : [];
+    for (const a of holders.list) if (shown.length < 3 && a !== pointed) shown.push(a);
+    const more = holders.total - holders.list.filter((a) => shown.includes(a)).length;
     const rows = KINDS.map((kind) => {
       const v = vals[kind];
       const pct = Math.round(intensity(v, KIND_INDEX[kind]) * 100);
       return `<div class="tip-row${v > 0.005 ? "" : " zero"}"><i style="background:${FIELD_COLOR[kind]}"></i><span class="tip-k">${kind}</span><span class="tip-bar"><b style="width:${pct}%;background:${FIELD_COLOR[kind]}"></b></span><span class="tip-v">${v.toFixed(2)}</span></div>`;
     }).join("");
     const size = this.L.sizes[i] ?? 0;
+    const on = holders.total ? ` · ${holders.total} ${holders.total === 1 ? "agent" : "agents"} on it` : "";
+    const agents = shown.length
+      ? `<div class="tip-agents">${shown.map((a) => this.agentHtml(a, a === pointed, now)).join("")}${more > 0 ? `<div class="tip-agents-more">and ${more} more on this file</div>` : ""}</div>`
+      : "";
     const html =
       `<div class="tip-path"><span class="tip-dir">${escapeHtml(dirname(path))}</span>${escapeHtml(basename(path))}</div>` +
-      `<div class="tip-meta">${escapeHtml(regionOf(path, this.store.colony?.regionDepth ?? 1))} · ${fmtBytes(size)} · ${agents} ${agents === 1 ? "agent" : "agents"} working here</div>` +
+      `<div class="tip-meta">${escapeHtml(regionOf(path, this.store.colony?.regionDepth ?? 1))} · ${fmtBytes(size)}${on}</div>` +
+      agents +
       `<div class="tip-rows">${rows}</div>` +
       `<div class="tip-hint">Click for lineage</div>`;
     if (html !== this.tipHtml) {
       tip.innerHTML = html;
       this.tipHtml = html;
+      if (this.tipShown) this.placeTip();
     }
     if (!this.tipShown) {
       this.placeTip();

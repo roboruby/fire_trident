@@ -9,6 +9,16 @@ export interface WhyEntry {
 
 export type ReviewDecision = "approve" | "reject" | "return";
 
+/** A person's answer to an agent's report on an intent: amend the intent, withdraw it, or dismiss the report. */
+export type EscalationDecision = "amend" | "withdraw" | "dismiss";
+
+/** The intent fields an answer of "amend" changes (only the ones given). */
+export interface IntentAmend {
+  title?: string;
+  why?: string;
+  footprint?: string[];
+}
+
 /** Where the UI gets its colony from: the Worker API or the built-in simulator. */
 export interface Backend {
   readonly mode: "live" | "mock" | "replay";
@@ -18,6 +28,8 @@ export interface Backend {
   why(path: string): Promise<WhyEntry[]>;
   review(): Promise<Proposal[]>;
   decide(proposalId: string, decision: ReviewDecision, reason: string, by?: string): Promise<void>;
+  /** Answer an agent's report that an intent cannot be done as written. */
+  resolveEscalation(intentId: string, decision: EscalationDecision, note: string, by?: string, amend?: IntentAmend): Promise<void>;
   /** Freeze the colony's clock (the simulator and replays; a live colony keeps running). */
   setPaused?(paused: boolean): void;
 }
@@ -267,16 +279,33 @@ export class HttpBackend implements Backend {
   }
 
   async decide(proposalId: string, decision: ReviewDecision, reason: string, by?: string): Promise<void> {
+    await this.post(`/review/${encodeURIComponent(proposalId)}`, { decision, reason, ...(by ? { by } : {}) });
+  }
+
+  async resolveEscalation(intentId: string, decision: EscalationDecision, note: string, by?: string, amend?: IntentAmend): Promise<void> {
+    await this.post(`/intents/${encodeURIComponent(intentId)}/escalation`, { decision, note, ...(by ? { by } : {}), ...(decision === "amend" && amend ? { amend } : {}) });
+  }
+
+  /** POST JSON to a mutating route with the bearer token this browser keeps (if any). */
+  private async post(suffix: string, body: unknown): Promise<void> {
     const headers: Record<string, string> = { "content-type": "application/json", accept: "application/json" };
     const token = readToken();
     if (token) headers.authorization = `Bearer ${token}`;
-    const res = await fetch(this.url(`/review/${encodeURIComponent(proposalId)}`), {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ decision, reason, ...(by ? { by } : {}) }),
-    });
-    if (!res.ok) throw new HttpError(res.status, `${res.status} ${res.statusText}`.trim());
+    const res = await fetch(this.url(suffix), { method: "POST", headers, body: JSON.stringify(body) });
+    if (!res.ok) throw new HttpError(res.status, await failure(res));
   }
+}
+
+/** A failed response as a message: the server's own `error` text when it sent one, else the status line. */
+async function failure(res: Response): Promise<string> {
+  const status = `${res.status} ${res.statusText}`.trim();
+  try {
+    const body = (await res.json()) as { error?: unknown } | null;
+    if (body && typeof body.error === "string" && body.error.trim()) return `${status}: ${body.error.trim().slice(0, 300)}`;
+  } catch {
+    // Not JSON: the status line says enough.
+  }
+  return status;
 }
 
 function describeError(err: unknown, colonyId: string): string {

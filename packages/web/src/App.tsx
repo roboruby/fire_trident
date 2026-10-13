@@ -1,17 +1,24 @@
-import { useCallback, useEffect, useLayoutEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { HttpBackend, saveToken, type Backend } from "./api.ts";
+import { Guide } from "./components/Guide.tsx";
+import { NeedsYou } from "./components/NeedsYou.tsx";
 import { PerfReadout } from "./components/PerfReadout.tsx";
 import { ReplayBar } from "./components/ReplayBar.tsx";
-import { SidePanel, TABS, type Tab } from "./components/SidePanel.tsx";
+import { SidePanel, TABS, type PanelFocus, type Tab } from "./components/SidePanel.tsx";
 import { TopBar, TridentMark } from "./components/TopBar.tsx";
 import { Director } from "./director/Director.tsx";
+import { guideAtStart, guideSeen, rememberGuide, type GuideTarget } from "./guide.ts";
 import { ColonyMap } from "./map/ColonyMap.tsx";
 import type { MapRenderer } from "./map/renderer.ts";
 import { MockBackend, mockOptionsFrom } from "./mock.ts";
+import type { Need } from "./needs.ts";
 import { ReplayBackend } from "./replay.ts";
 import { colonyHref, type Route } from "./route.ts";
 import { ColonyStore } from "./store.ts";
 import { useThrottledVersion } from "./useStore.ts";
+
+/** Under 900 px the panel stacks under the map: a pick or a strip click scrolls down to it. */
+const NARROW = "(max-width: 900px)";
 
 type ColonyRoute = Extract<Route, { kind: "colony" }>;
 
@@ -125,6 +132,13 @@ export function App({ route }: { route: ColonyRoute }) {
   const [renderer, setRenderer] = useState<MapRenderer | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
   const director = route.director;
+  const [guideOpen, setGuideOpen] = useState(() => guideAtStart(location.search, director, guideSeen()));
+  const [guideTarget, setGuideTarget] = useState<GuideTarget | null>(null);
+  const [focus, setFocus] = useState<PanelFocus | null>(null);
+  const side = useRef<HTMLElement>(null);
+  const revealPanel = useCallback(() => {
+    if (window.matchMedia?.(NARROW).matches) side.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, []);
 
   useEffect(() => {
     backend.start(store);
@@ -147,9 +161,27 @@ export function App({ route }: { route: ColonyRoute }) {
   const pick = useCallback(
     (path: string | null) => {
       store.select(path);
-      if (path) setTab("why");
+      if (!path) return;
+      setTab("why");
+      if (!director) revealPanel();
     },
-    [store],
+    [store, director, revealPanel],
+  );
+
+  // Choosing a tab by hand forgets where the needs-you strip last pointed.
+  const chooseTab = useCallback((t: Tab) => {
+    setFocus(null);
+    setTab(t);
+  }, []);
+
+  // The needs-you strip opens the tab that shows what it counts.
+  const go = useCallback(
+    (need: Need) => {
+      setTab(need.tab);
+      setFocus({ tab: need.tab, ...(need.tab === "events" && need.focus ? { chip: need.focus } : {}), ...(need.tab === "intents" && need.focus ? { segment: need.focus } : {}), at: Date.now() });
+      revealPanel();
+    },
+    [revealPanel],
   );
 
   useEffect(() => {
@@ -159,16 +191,20 @@ export function App({ route }: { route: ColonyRoute }) {
       if (e.key === "Escape") {
         store.select(null);
         store.setHighlight([]);
+        setGuideOpen((open) => {
+          if (open) rememberGuide();
+          return false;
+        });
         return;
       }
       if (director) return;
       const idx = ["1", "2", "3", "4"].indexOf(e.key);
       const next = TABS[idx];
-      if (next) setTab(next);
+      if (next) chooseTab(next);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [store, director]);
+  }, [store, director, chooseTab]);
 
   useThrottledVersion(store, 2000);
   const name = store.colony?.name;
@@ -178,17 +214,20 @@ export function App({ route }: { route: ColonyRoute }) {
   }, [name, replaying]);
 
   const mockHref = `/c/${encodeURIComponent(route.colonyId)}?mock=1`;
+  const showGuide = guideOpen && !director && store.loaded;
   return (
     <Stage on={director}>
-      <div className={`app${director ? " is-director" : ""}`}>
+      <div className={`app${director ? " is-director" : ""}`} data-guide={showGuide && guideTarget ? guideTarget : undefined}>
         <TopBar store={store} director={director} mock={route.mock} />
         <main className="main">
           <div className="map-col">
-            <ColonyMap store={store} onPick={pick} onRenderer={setRenderer} director={director} />
+            <ColonyMap store={store} onPick={pick} onRenderer={setRenderer} director={director} onGuide={director ? undefined : () => setGuideOpen(true)} />
+            {director ? null : <NeedsYou store={store} onGo={go} />}
             {backend instanceof ReplayBackend && !director ? <ReplayBar backend={backend} colonyId={route.colonyId} /> : null}
+            {showGuide ? <Guide onTarget={setGuideTarget} onClose={() => setGuideOpen(false)} lifted={backend instanceof ReplayBackend} /> : null}
             <StatusOverlay store={store} mockHref={mockHref} replay={!!route.replay} />
           </div>
-          <SidePanel store={store} backend={backend} tab={tab} onTab={setTab} onPick={pick} director={director} open={!director || panelOpen} />
+          <SidePanel store={store} backend={backend} tab={tab} onTab={chooseTab} onPick={pick} director={director} open={!director || panelOpen} focus={focus} panelRef={side} />
           {director ? <Director store={store} backend={backend} renderer={renderer} onTab={setTab} onPanel={setPanelOpen} panelOpen={panelOpen} /> : null}
         </main>
         {route.debug ? <PerfReadout store={store} renderer={renderer} /> : null}
