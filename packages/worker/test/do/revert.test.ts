@@ -40,11 +40,15 @@ describe("revert", () => {
     expect(events.find((e) => e.t === "reverted")).toMatchObject({ of: landingId, landingId: res.body.landing.id, by: "matt", reason: "breaks the helper", redo: res.body.redo, paths: ["src/lib/util.ts"] });
     expect(events.some((e) => e.t === "landing" && e.landingId === res.body.landing.id)).toBe(true);
 
-    // A revert can itself be undone, by the commit it made; --no-redo declares nothing.
+    // A revert can itself be undone, by the commit it made; --no-redo declares nothing, and the
+    // intent the first revert declared again is withdrawn, since its change is back.
     const again = await api<Reverted>("POST", `/colonies/${c.id}/landings/${res.body.landing.trunkSha.slice(0, 10)}/revert`, { reason: "it was fine", redo: false });
     expect(again.status).toBe(200);
     expect(again.body.redo).toEqual([]);
     expect((await trunk(c.id).state()).files["src/lib/util.ts"]!.content).not.toBe(original);
+    const gone = (await api<{ intent: Intent }>("GET", `/colonies/${c.id}/intents/${res.body.redo[0]}`)).body.intent;
+    expect(gone).toMatchObject({ status: "withdrawn" });
+    expect(gone.withdrawnReason).toBe(`${res.body.landing.id} was itself reverted by unknown: it was fine`);
   });
 
   it("refuses when work landed on top, naming the path and the landing, and changes nothing", async () => {

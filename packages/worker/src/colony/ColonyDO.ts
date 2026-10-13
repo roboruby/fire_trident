@@ -240,6 +240,8 @@ const OPS_SCHEMA = [
   "CREATE TABLE IF NOT EXISTS outcome_watch (proposal_id TEXT PRIMARY KEY, agent_id TEXT NOT NULL, at INTEGER NOT NULL)",
   // The event record for replays: what the colony published, in order (capped at RECORD_KEEP, see recordEvents).
   "CREATE TABLE IF NOT EXISTS events (seq INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, t TEXT NOT NULL, data TEXT NOT NULL)",
+  // Reverts (`ft revert`): the intents each declared again and the rule violations it restored, so undoing a revert takes them back.
+  "CREATE TABLE IF NOT EXISTS reverts (landing_id TEXT PRIMARY KEY, of TEXT NOT NULL, redo TEXT NOT NULL, restored TEXT NOT NULL, at INTEGER NOT NULL)",
 ];
 /** Registry tables, created only in the registry instance. */
 const REGISTRY_SCHEMA = [
@@ -875,8 +877,27 @@ export class ColonyDO extends DurableObject<Env> {
     }
     const redo = drafts.length > 0 ? (await this.createIntents(drafts)).map((i) => i.id) : [];
     for (const r of restored) this.sql.exec("UPDATE rules SET open_violations = open_violations + ? WHERE id = ?", r.violations, r.ruleId);
+    this.sql.exec("INSERT OR REPLACE INTO reverts (landing_id, of, redo, restored, at) VALUES (?, ?, ?, ?, ?)", res.landing.id, res.reverted.id, JSON.stringify(redo), JSON.stringify(restored), now);
     this.publish({ t: "reverted", at: now, landingId: res.landing.id, of: res.reverted.id, trunkSha: res.landing.trunkSha, paths: res.landing.paths, reason, by, redo });
-    if (restored.length > 0) this.publish(this.violationsEvent(now));
+
+    // Undoing a revert puts its change back: the intents it declared again are not needed any more
+    // (none can have landed, or this revert would have been refused), and its violations are fixed again.
+    const prior = this.sql.exec<{ redo: string; restored: string }>("SELECT redo, restored FROM reverts WHERE landing_id = ?", res.reverted.id).toArray()[0];
+    if (prior) {
+      const rows = (JSON.parse(prior.redo) as Id[])
+        .map((id) => this.intentRow(id))
+        .filter((r): r is IntentRow => r !== undefined && (r.status === "open" || r.status === "claimed" || r.status === "proposed"));
+      for (const r of JSON.parse(prior.restored) as Array<{ ruleId: Id; violations: number }>) {
+        this.sql.exec("UPDATE rules SET open_violations = MAX(0, open_violations - ?) WHERE id = ?", r.violations, r.ruleId);
+      }
+      const fx = this.effects(colony.regionDepth);
+      const out = this.withdrawRows(rows, `${res.reverted.id} was itself reverted by ${by}: ${reason}`, by, now, fx);
+      fx.events.push(this.violationsEvent(now));
+      await this.flushEffects(fx);
+      await this.deliver(out.notices);
+    } else if (restored.length > 0) {
+      this.publish(this.violationsEvent(now));
+    }
     return { landing: res.landing, reverted: res.reverted, redo };
   }
 
