@@ -46,7 +46,9 @@ import { BoundedMap, applyTreeChangesDeferred, writePending, type PendingObject 
 import { commitContent, objectId } from "./objects.ts";
 import { pushPack } from "./push.ts";
 import { CoChangeStore, mineHistory, type CoChangeStats, type Neighbor } from "./cochange.ts";
-import { IMPORT_LINKS_MAX, ImportIndex, deletionImports, markLanded, type ImportLinks } from "./imports.ts";
+import { DerivedSet, trunkLog, type DerivedStatus, type TrunkLanding } from "./derived.ts";
+import { HISTORY_LIMIT, PATH_HISTORY, pathHistory, pathHistoryDerived, type PathHistoryEntry } from "./history.ts";
+import { IMPORTS_INDEX, IMPORT_LINKS_MAX, ImportIndex, deletionImports, importsDerived, type ImportLinks } from "./imports.ts";
 import { deletionGuardEnabled, exportSurface, planCycle, resultsFor, surfaceBlobs, uniqueProposals, type DeletionImports, type LandResult, type Outcome, type PlanProposal, type Returned } from "./plan.ts";
 import { runRevert, sqlRevertTrunk, type RevertResult, type RevertTrunk } from "./revert.ts";
 import { durableFs } from "../artifacts/workspace.ts";
@@ -88,6 +90,8 @@ const MAIN_REF = "refs/heads/main";
 /** Moves only to trunk commits whose own tests passed (trunk certification). */
 const CERTIFIED_REF = "refs/heads/certified";
 const WHY_LIMIT = 50;
+/** How long a path history read spends catching the index up at most (ms); the rest waits for the next read. */
+const PATH_HISTORY_MS = 250;
 
 /**
  * Optional lineage context for `land`: intent and agent details for the commit message and
@@ -200,6 +204,8 @@ export class TrunkDO extends DurableObject<Env> {
   private mining: Promise<void> | null = null;
   /** Import index (trunk/imports.ts), created on its first read. */
   private importStore: ImportIndex | null = null;
+  /** The derived indexes of the landing log and their cursors (trunk/derived.ts), created with the object. */
+  private derivedStore: DerivedSet<TrunkLanding> | null = null;
   /** Assumption revalidation: the names each version of a file exports, by blob id (immutable, so cached across cycles). */
   private readonly surfaces = new BoundedMap<Sha, ExportSurface | null>(SURFACE_CACHE);
 
@@ -221,6 +227,8 @@ export class TrunkDO extends DurableObject<Env> {
     );
     // The direction fence (direction()): each intent's latest change of direction, read by every landing cycle.
     this.sql.exec(DIRECTION_TABLE);
+    // Derived indexes (trunk/derived.ts): their tables are created here, outside any landing transaction.
+    this.derivedSet();
   }
 
   // -------------------------------------------------------------------------
@@ -687,6 +695,8 @@ export class TrunkDO extends DurableObject<Env> {
   async importLinks(paths: Path[], max = IMPORT_LINKS_MAX): Promise<Record<Path, ImportLinks>> {
     const st = this.state();
     const index = this.importIndex();
+    // Its cursor first (a version change forgets the index; a landing the hook left behind is marked now).
+    this.derivedSet().catchUp(IMPORTS_INDEX);
     try {
       await index.sync({ head: () => this.meta("trunk_sha"), read: (blob) => this.blobBytes(blob), label: st.colonyId });
     } catch (e) {
@@ -694,6 +704,27 @@ export class TrunkDO extends DurableObject<Env> {
       console.error(`import index sync failed: ${errorText(e)}`);
     }
     return index.links(Array.isArray(paths) ? paths : [], max);
+  }
+
+  /**
+   * The landings that changed `path`, newest first (at most `limit`, default 20, at most 200), each
+   * with the proposal that wrote it, its intent and agent, and the intent's title, without reading
+   * lineage notes: path history (trunk/history.ts), a lazy derived index that first catches up from
+   * its cursor, for at most PATH_HISTORY_MS. `behind` counts the landings it has not reached yet
+   * (the newest ones: ask again).
+   */
+  async pathHistory(path: Path, limit = HISTORY_LIMIT): Promise<{ entries: PathHistoryEntry[]; behind: number }> {
+    this.state();
+    const budget = { landings: 10_000, ms: PATH_HISTORY_MS };
+    let caught = this.derivedSet().catchUp(PATH_HISTORY, budget);
+    // A new version was just forgotten: build it now.
+    if (caught.rebuilt) caught = this.derivedSet().catchUp(PATH_HISTORY, budget);
+    return { entries: typeof path === "string" && path !== "" ? pathHistory(this.sql, path, limit) : [], behind: caught.behind };
+  }
+
+  /** Each derived index of the landing log (trunk/derived.ts): its mode, version and cursor, and how many landings it has not applied yet. */
+  async derivedStats(): Promise<DerivedStatus[]> {
+    return this.derivedSet().status();
   }
 
   /** Retries a failed notes push. */
@@ -1540,7 +1571,6 @@ export class TrunkDO extends DurableObject<Env> {
       if (c.blob === null) this.sql.exec(`DELETE FROM ft_files WHERE path = ?`, path);
       else this.sql.exec(`INSERT OR REPLACE INTO ft_files (path, blob, size, mode) VALUES (?, ?, ?, ?)`, path, c.blob, c.size, c.mode);
     }
-    markLanded(this.sql, landing.parentSha, landing.trunkSha, changes);
     const seq = this.sql
       .exec<{ seq: number }>(
         `INSERT INTO ft_landings (id, trunk_sha, parent_sha, at, data) VALUES (?, ?, ?, ?, ?) RETURNING seq`,
@@ -1563,6 +1593,8 @@ export class TrunkDO extends DurableObject<Env> {
     }
     this.sql.exec(`INSERT OR REPLACE INTO ft_notes (landing_id, commit_sha, note) VALUES (?, ?, ?)`, landing.id, landing.trunkSha, note);
     for (const pid of landing.proposalIds) this.sql.exec(`INSERT OR REPLACE INTO ft_landed (proposal_id, landing_id) VALUES (?, ?)`, pid, landing.id);
+    // Derived indexes (trunk/derived.ts): the eager ones apply this landing now, the lazy ones when read. Never throws.
+    this.derivedSet().landed({ seq, landing: { landing, note, changes } });
     this.setMeta("trunk_sha", landing.trunkSha);
     this.sql.exec(`UPDATE ft_journal SET state = 'pending_note', updated_at = ? WHERE landing_id = ?`, Date.now(), landing.id);
   }
@@ -1746,7 +1778,7 @@ export class TrunkDO extends DurableObject<Env> {
   // -------------------------------------------------------------------------
 
   private cochange(): CoChangeStore {
-    if (!this.cochangeStore) this.cochangeStore = new CoChangeStore(this.sql, (fn) => this.ctx.storage.transactionSync(fn));
+    if (!this.cochangeStore) this.cochangeStore = new CoChangeStore(this.sql, (fn) => this.ctx.storage.transactionSync(fn), this.derivedSet());
     return this.cochangeStore;
   }
 
@@ -1790,6 +1822,27 @@ export class TrunkDO extends DurableObject<Env> {
   }
 
   // -------------------------------------------------------------------------
+  // Derived indexes
+  // -------------------------------------------------------------------------
+
+  /**
+   * The derived indexes of the landing log (trunk/derived.ts), with their cursors: the import index
+   * (eager: the landing hook in finalizeRows marks each landing), the co-change map and path history
+   * (lazy: caught up when read).
+   */
+  private derivedSet(): DerivedSet<TrunkLanding> {
+    if (!this.derivedStore) {
+      const set = new DerivedSet(this.sql, (fn) => this.ctx.storage.transactionSync(fn), trunkLog(this.sql), [importsDerived(this.sql), pathHistoryDerived(this.sql)], {
+        label: () => this.meta("colony_id"),
+      });
+      this.derivedStore = set;
+      // The co-change store adds its own definition to the set.
+      this.cochange();
+    }
+    return this.derivedStore;
+  }
+
+  // -------------------------------------------------------------------------
   // Import index
   // -------------------------------------------------------------------------
 
@@ -1806,7 +1859,12 @@ export class TrunkDO extends DurableObject<Env> {
   private async deletionGuardInput(proposals: Proposal[]): Promise<DeletionImports | null | undefined> {
     try {
       const source = { head: () => this.meta("trunk_sha"), read: (blob: Sha) => this.blobBytes(blob), label: this.state().colonyId };
-      return await deletionImports(() => this.importIndex(), source, proposals, (path) => this.indexBlob(path));
+      const index = (): ImportIndex => {
+        // Its cursor first (a version change forgets the index; a landing the hook left behind is marked now).
+        this.derivedSet().catchUp(IMPORTS_INDEX);
+        return this.importIndex();
+      };
+      return await deletionImports(index, source, proposals, (path) => this.indexBlob(path));
     } catch (e) {
       // The guard never fails a cycle.
       console.error(`deletion guard skipped: ${errorText(e)}`);
@@ -2016,7 +2074,8 @@ export class TrunkDO extends DurableObject<Env> {
   private reset(): void {
     this.ctx.storage.transactionSync(() => {
       for (const t of ["ft_files", "ft_landings", "ft_landing_paths", "ft_notes", "ft_landed", "ft_journal", "ft_meta"]) this.sql.exec(`DELETE FROM ${t}`);
-      this.cochange().reset();
+      // Every derived index (the co-change map, the import index, path history) and its cursor.
+      this.derivedSet().reset();
       this.setMeta("dir", `/trunk-${Date.now().toString(36)}`);
     });
     this.gitRepo = null;

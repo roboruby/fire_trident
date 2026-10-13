@@ -108,6 +108,7 @@ import type { Direction, Directive, DirectiveKind, InboxDirective, IntentField, 
 import type { EscalationKind, IntentEscalation, LandingNotice } from "@fire_trident/core";
 import { WHY_FOOTPRINT, WHY_LANDINGS, WHY_PER_PATH, WHY_RANGE_ROWS, coveringFootprints, footprintIndex, indexRange, pickLanded, shortTitle, shortWhy } from "../agents/landed.ts";
 import type { FootprintIndex, LandedRow, LandedWhy } from "../agents/landed.ts";
+import { DerivedSet, recordedLanding, type LandingLog } from "../trunk/derived.ts";
 import { NeighborCache, claimLookup, type Neighbor } from "../trunk/cochange.ts";
 import { importNeighbors, type ImportLinks } from "../trunk/imports.ts";
 import type { RevertResult } from "../trunk/revert.ts";
@@ -332,9 +333,14 @@ const RECON_TTL_MS = 10 * 60_000;
 /** Rows a reconstruction reads per table at most. */
 const RECON_ROWS = 20_000;
 
-/** Paths of one landing indexed for why-context at most, and landed proposals that fill the index of a colony from before it. */
+/**
+ * Paths of one landing indexed for why-context at most, and landings one take applies at most while the index catches up
+ * (enough to rebuild it from the whole landing log the colony keeps, LANDINGS_KEEP trimmed every 64 landings, in one take).
+ */
 const LANDED_INDEX_PATHS = 1_000;
-const LANDED_BACKFILL = 200;
+const LANDED_BACKFILL = LANDINGS_KEEP + 64;
+/** The landing path index's name among the colony's derived indexes (trunk/derived.ts). */
+const LANDED_INDEX = "landing-paths";
 /** An intent's latest proposals a take looks through for the last one that came back (lastReturn). */
 const RETURN_LOOKBACK = 10;
 /** Agents told about one landing at most; landing notices are kept this long, pruned every so many notices. */
@@ -348,6 +354,8 @@ const HELD_INDEX_MS = 1_000;
 type Notice = { directive: Directive; kind: string; intent?: Intent };
 /** One row of the landing path index (why-context). */
 type LandedIndexRow = { path: string; at: number; landing_id: string; intent_id: string | null };
+/** One landing of the colony's log for the landing path index: when it landed, and its index rows when the landing hook has them. */
+type ColonyLanding = { landing: Landing; at: number; rows?: LandedRow[] };
 /** An agent a landing concerns: the intent its notice is about, and the landed paths that intent covers. */
 type NoticeRecipient = { agentId: Id; kind: string; intentId: Id; paths: Path[] };
 /** An intent an agent holds, as the landing notices' footprint index keeps it (`current`: the agent's current intent). */
@@ -4256,7 +4264,7 @@ export class ColonyDO extends DurableObject<Env> {
   // the code is the way it is at take, landing notices while they work
   // =========================================================================
 
-  /** Set once this object made sure its landing path index covers landings from before the index. */
+  /** Set once this object found its landing path index caught up with the landing log; cleared when a landing finds it behind. */
   private landedIndexReady = false;
   /** Landing notices written since old ones were last pruned. */
   private noticesSincePrune = 0;
@@ -4334,23 +4342,82 @@ export class ColonyDO extends DurableObject<Env> {
   }
 
   /**
-   * A colony that landed work before the path index existed gets it filled once, from its latest
-   * landed changes (LANDED_BACKFILL proposals), so its takes show why-context at once. Once per object.
+   * Bring the path index up to date before a take reads it: once per object, and again after a landing
+   * found it behind. An index with no rows while the colony has landings (a colony that landed work
+   * before the index existed) is rebuilt from the landing log, so its takes show why-context at once.
+   * One call applies at most LANDED_BACKFILL landings; the next take goes on from there.
    */
   private backfillLandedIndex(): void {
     if (this.landedIndexReady) return;
-    this.landedIndexReady = true;
-    if (this.sql.exec("SELECT 1 AS x FROM landing_paths LIMIT 1").toArray().length > 0) return;
-    const rows = this.sql
-      .exec<{ path: string | null; at: number | null; landing_id: string | null; intent_id: string }>(
-        `SELECT json_extract(w.value, '$.path') AS path, COALESCE(l.at, p.updated_at) AS at, json_extract(p.data, '$.landingId') AS landing_id, p.intent_id AS intent_id
-           FROM (SELECT intent_id, data, updated_at FROM proposals WHERE status = 'landed' ORDER BY created_at DESC LIMIT ?) p
-           JOIN json_each(p.data, '$.writeSet') w
-           LEFT JOIN landings l ON l.id = json_extract(p.data, '$.landingId')`,
-        LANDED_BACKFILL,
-      )
-      .toArray();
-    this.indexLanded(rows.flatMap((r) => (r.path && r.landing_id && typeof r.at === "number" ? [{ path: r.path, at: r.at, landingId: r.landing_id, intentId: r.intent_id }] : [])));
+    const index = this.landedIndex();
+    if (this.sql.exec("SELECT 1 AS x FROM landing_paths LIMIT 1").toArray().length === 0 && this.sql.exec("SELECT 1 AS x FROM landings LIMIT 1").toArray().length > 0) {
+      index.rebuild(LANDED_INDEX);
+    }
+    let r = index.catchUp(LANDED_INDEX, { landings: LANDED_BACKFILL });
+    // A new version was just forgotten: build it now.
+    if (r.rebuilt) r = index.catchUp(LANDED_INDEX, { landings: LANDED_BACKFILL });
+    // A log that cannot be read is not retried on every take: the next landing that finds the index behind asks again.
+    this.landedIndexReady = r.behind === 0 || r.error !== undefined;
+  }
+
+  /**
+   * The landing path index as a derived index (trunk/derived.ts) of the colony's landing log: eager,
+   * so each landing is applied as it arrives (landed); a version change, or an empty index while
+   * landings remain, rebuilds it from the log (the newest LANDINGS_KEEP landings). Idempotent per
+   * landing (rows keyed by path, time and landing). A new set per call: it keeps no state of its own,
+   * and making it creates its cursor table again after destroy() erased the storage.
+   */
+  private landedIndex(): DerivedSet<ColonyLanding> {
+    return new DerivedSet<ColonyLanding>(
+      this.sql,
+      (fn) => this.ctx.storage.transactionSync(fn),
+      this.landingLog(),
+      [
+        {
+          name: LANDED_INDEX,
+          version: 1,
+          mode: "eager",
+          apply: (e) => this.indexLanded(e.landing.rows ?? this.landedRows(e.landing.landing, e.landing.at)),
+          reset: () => {
+            this.sql.exec("DELETE FROM landing_paths");
+            return 0;
+          },
+          // An index kept before cursors existed was filled as landings arrived.
+          adopt: (base) => base,
+        },
+      ],
+      { label: () => this.loadColony()?.colony.id ?? null },
+    );
+  }
+
+  /** The colony's landing log for its derived indexes: the landings table in arrival order (rowid). */
+  private landingLog(): LandingLog<ColonyLanding> {
+    const n = (query: string, ...bindings: unknown[]): number => this.sql.exec<{ n: number }>(query, ...bindings).one().n;
+    return {
+      after: (seq, limit) =>
+        this.sql
+          .exec<{ seq: number; id: string; at: number; trunk_sha: string; data: string }>("SELECT rowid AS seq, id, at, trunk_sha, data FROM landings WHERE rowid > ? ORDER BY rowid LIMIT ?", seq, Math.max(1, limit))
+          .toArray()
+          .map((r) => {
+            const landing = recordedLanding({ id: r.id, data: r.data, at: r.at, trunk_sha: r.trunk_sha });
+            return { seq: r.seq, landing: { landing, at: landing.at } };
+          }),
+      head: () => n("SELECT COALESCE(MAX(rowid), 0) AS n FROM landings"),
+      before: (seq) => n("SELECT COALESCE(MAX(rowid), 0) AS n FROM landings WHERE rowid < ?", seq),
+      count: (after) => n("SELECT COUNT(*) AS n FROM landings WHERE rowid > ?", after),
+    };
+  }
+
+  /**
+   * One landing's rows of the path index: each path it changed (its own list, else what its proposals
+   * wrote) with the intent of the proposal that wrote it, or the landing's only intent.
+   */
+  private landedRows(l: Landing, at: number, writers = this.landingWriters(l), paths?: Path[]): LandedRow[] {
+    const byPath = new Map(writers.map((w) => [w.path, w.intentId]));
+    // A commit whose proposals this colony does not know: its one intent, if it names one.
+    const single = (l.intentIds ?? []).length === 1 ? (l.intentIds[0] ?? null) : null;
+    const list = paths ?? normalizePaths(Array.isArray(l.paths) && l.paths.length > 0 ? l.paths : writers.map((w) => w.path));
+    return list.map((path) => ({ path, at, landingId: l.id, intentId: byPath.get(path) ?? single }));
   }
 
   /**
@@ -4365,7 +4432,11 @@ export class ColonyDO extends DurableObject<Env> {
       // A commit whose proposals this colony does not know: its one intent, if it names one.
       const single = (l.intentIds ?? []).length === 1 ? (l.intentIds[0] ?? null) : null;
       const at = typeof l.at === "number" && Number.isFinite(l.at) ? l.at : now;
-      this.indexLanded(paths.map((path) => ({ path, at, landingId: l.id, intentId: byPath.get(path) ?? single })));
+      // The path index applies the landing now (its derived hook); left behind, the next take catches it up in order.
+      const rows = this.landedRows(l, at, writers, paths);
+      const seq = this.sql.exec<{ seq: number }>("SELECT rowid AS seq FROM landings WHERE id = ?", l.id).toArray()[0]?.seq;
+      if (seq === undefined) this.indexLanded(rows);
+      else if (this.landedIndex().landed({ seq, landing: { landing: l, at, rows } }).length > 0) this.landedIndexReady = false;
       const recipients = this.noticeRecipients(paths, new Set(writers.map((w) => w.agentId)), now);
       if (recipients.length > 0) {
         this.ctx.waitUntil(this.sendLandingNotices(l, recipients, byPath, single).catch((err) => console.warn(`landing notices for ${l.id} not sent: ${errorText(err)}`)));

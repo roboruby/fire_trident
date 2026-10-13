@@ -6,8 +6,9 @@
  *   each commit on the first-parent chain (about 200 commits are kept on import), by tree diffs,
  *   with each author's follow-up commits as STDP predecessors;
  * - after that, it learns every landing, one proposal at a time, from the lineage notes TrunkDO
- *   already records (a follow-up intent's change links back to its parent intent's change). The
- *   catch-up runs on demand from a watermark, so the landing path never waits for it;
+ *   already records (a follow-up intent's change links back to its parent intent's change). It is a
+ *   lazy derived index (trunk/derived.ts): the catch-up runs on demand from its cursor, so the
+ *   landing path never waits for it;
  * - `neighbors(paths, k)` answers, for each file, the files whose claims should repel work on it.
  *
  * NeighborCache is the caller's side (ColonyDO.take): a short-lived cache with one RPC per miss
@@ -19,6 +20,7 @@ import { pathsOverlap } from "@fire_trident/core";
 import { changeFiles, followUps, learnChange, rankNeighbors } from "@fire_trident/core";
 import type { CoChangeReader, CoChangeUpdate, CoEdge, CoFile, FileEdges, Neighbor, Predecessor } from "@fire_trident/core";
 import { withArtifactsRetry } from "../artifacts/git.ts";
+import { DerivedSet, trunkLog, type Derived, type TrunkLanding } from "./derived.ts";
 
 export type { Neighbor } from "@fire_trident/core";
 
@@ -30,8 +32,11 @@ export const MINE_BUDGET_MS = 20_000;
 const MINE_CONCURRENCY = 8;
 /** Tree reads per mining run at most. */
 const MINE_MAX_READS = 6_000;
-/** Proposals learned per catch-up step (a step finishes the landing it is in). */
+/** Proposals learned per catch-up step (a step finishes the landing it is in), and landings read per step at most. */
 const CATCH_UP_PROPOSALS = 400;
+const CATCH_UP_LANDINGS = 500;
+/** The co-change map's name among the trunk's derived indexes (trunk/derived.ts). */
+export const COCHANGE_INDEX = "cochange";
 /** Neighbors per path at most, and the weakest coupling `neighbors` returns. */
 export const NEIGHBORS_MAX = 16;
 export const NEIGHBOR_MIN_WEIGHT = 0.1;
@@ -223,13 +228,45 @@ export function noteChanges(note: string): Array<{ intentId: Id | null; parentId
   return out;
 }
 
-/** The co-change map in TrunkDO's SQLite storage. Stateless apart from its tables. */
+/**
+ * The co-change map in TrunkDO's SQLite storage. Stateless apart from its tables and its cursor. It
+ * joins `derived` (TrunkDO's derived indexes) when given one, or keeps a set of its own over the
+ * trunk writer's landing log.
+ */
 export class CoChangeStore implements CoChangeReader {
+  private readonly derived: DerivedSet<TrunkLanding>;
+
   constructor(
     private readonly sql: SqlStorage,
     private readonly transaction: (fn: () => void) => void,
+    derived?: DerivedSet<TrunkLanding>,
   ) {
     for (const stmt of COCHANGE_SCHEMA) sql.exec(stmt);
+    this.derived = derived ?? new DerivedSet(sql, transaction, trunkLog(sql));
+    this.derived.define(this.definition());
+  }
+
+  /**
+   * The co-change map as a derived index (trunk/derived.ts). Lazy: it learns the landings recorded
+   * since its cursor when it is read (catchUp), never in the landing path. A landing is learned once:
+   * its seq becomes the map's own watermark (landing_seq) in the transaction that learns it, and a
+   * landing at or before the watermark teaches nothing again (a map kept before cursors existed also
+   * resumes there). A version change forgets the map, mined history included, so TrunkDO mines it
+   * again before the landings are learned again (neighbors() waits for mining).
+   */
+  private definition(): Derived<TrunkLanding> {
+    return {
+      name: COCHANGE_INDEX,
+      version: 1,
+      mode: "lazy",
+      apply: (e) => this.learnLanding(e.seq, e.landing.note),
+      reset: () => {
+        for (const t of ["ft_cc_files", "ft_cc_edges", "ft_cc_intents", "ft_cc_meta"]) this.sql.exec(`DELETE FROM ${t}`);
+        return 0;
+      },
+      adopt: () => this.watermark(),
+      settle: () => this.prune(),
+    };
   }
 
   /** A file's learning state. */
@@ -269,36 +306,32 @@ export class CoChangeStore implements CoChangeReader {
   }
 
   /**
-   * Learn the landings recorded since the watermark, oldest first: each proposal's write set is
+   * Learn the landings recorded since the cursor, oldest first: each proposal's write set is
    * one change; a proposal whose intent has a landed parent intent follows that change (STDP).
    * Stops after about CATCH_UP_PROPOSALS proposals (finishing its landing). Returns proposals learned.
    */
   catchUp(): number {
-    const after = Number(this.meta("landing_seq") ?? "0");
-    const rows = this.sql
-      .exec<{ seq: number; note: string | null }>(
-        "SELECT l.seq AS seq, n.note AS note FROM ft_landings l LEFT JOIN ft_notes n ON n.landing_id = l.id WHERE l.seq > ? ORDER BY l.seq LIMIT 500",
-        Number.isFinite(after) ? after : 0,
-      )
-      .toArray();
-    if (rows.length === 0) return 0;
+    return this.derived.catchUp(COCHANGE_INDEX, { landings: CATCH_UP_LANDINGS, work: CATCH_UP_PROPOSALS, slice: CATCH_UP_LANDINGS }).work;
+  }
+
+  /** Learn one landing's proposals (the derived apply); nothing for a landing at or before the watermark. Returns proposals learned. */
+  private learnLanding(seq: number, note: string | null): number {
+    if (seq <= this.watermark()) return 0;
     let learned = 0;
-    this.transaction(() => {
-      let last = after;
-      for (const row of rows) {
-        for (const ch of row.note ? noteChanges(row.note) : []) {
-          const parent = ch.parentId ? this.intentPaths(ch.parentId) : null;
-          if (this.learn(ch.paths, parent ? [{ paths: parent, lag: 1 }] : [])) learned++;
-          if (ch.intentId) this.sql.exec("INSERT OR REPLACE INTO ft_cc_intents (intent_id, paths, seq) VALUES (?, ?, ?)", ch.intentId, JSON.stringify(changeFiles(ch.paths) ?? []), row.seq);
-        }
-        last = row.seq;
-        if (learned >= CATCH_UP_PROPOSALS) break;
-      }
-      this.setMeta("landing_seq", String(last));
-      this.setMeta("proposals_learned", String(Number(this.meta("proposals_learned") ?? "0") + learned));
-      this.prune();
-    });
+    for (const ch of note ? noteChanges(note) : []) {
+      const parent = ch.parentId ? this.intentPaths(ch.parentId) : null;
+      if (this.learn(ch.paths, parent ? [{ paths: parent, lag: 1 }] : [])) learned++;
+      if (ch.intentId) this.sql.exec("INSERT OR REPLACE INTO ft_cc_intents (intent_id, paths, seq) VALUES (?, ?, ?)", ch.intentId, JSON.stringify(changeFiles(ch.paths) ?? []), seq);
+    }
+    this.setMeta("landing_seq", String(seq));
+    if (learned > 0) this.setMeta("proposals_learned", String(Number(this.meta("proposals_learned") ?? "0") + learned));
     return learned;
+  }
+
+  /** The last landing learned (landing_seq). */
+  private watermark(): number {
+    const n = Number(this.meta("landing_seq") ?? "0");
+    return Number.isFinite(n) ? n : 0;
   }
 
   /** For each path (at most NEIGHBOR_PATHS_MAX), its top `k` neighbors (at most NEIGHBORS_MAX) with weight >= minWeight. Paths with none are left out. */
@@ -360,9 +393,9 @@ export class CoChangeStore implements CoChangeReader {
     };
   }
 
-  /** Forget everything (a new trunk). */
+  /** Forget everything (a new trunk): the map, its mining state and its cursor. */
   reset(): void {
-    for (const t of ["ft_cc_files", "ft_cc_edges", "ft_cc_intents", "ft_cc_meta"]) this.sql.exec(`DELETE FROM ${t}`);
+    this.derived.rebuild(COCHANGE_INDEX);
   }
 
   private write(u: CoChangeUpdate): void {
