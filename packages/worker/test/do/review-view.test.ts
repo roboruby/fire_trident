@@ -59,6 +59,8 @@ describe("review queue: the change kept for the reviewer", () => {
   it("still sends the queue when the table has another shape", async () => {
     const { colonyId, a, b } = await escalatedPair();
     await runInDurableObject(colony(colonyId), (_instance: unknown, state: DurableObjectState) => {
+      // The decide store creates the real table; replace it with a foreign shape.
+      state.storage.sql.exec("DROP TABLE IF EXISTS decide_review");
       state.storage.sql.exec("CREATE TABLE decide_review (proposal_id TEXT PRIMARY KEY, payload TEXT)");
       state.storage.sql.exec("INSERT INTO decide_review (proposal_id, payload) VALUES (?, ?)", a.id, JSON.stringify(VIEW));
     });

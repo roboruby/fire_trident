@@ -7,7 +7,7 @@ import type { StoredAntibody } from "../../src/decide/store.ts";
 /** A stored antibody as DecideStore.antibodies lists it. */
 function stored(id: string, paths: string[], state: DetectorState = "active", extra: Record<string, unknown> = {}): StoredAntibody {
   const antibody = { id, colonyId: "col", origin: "human-reject", matcher: { paths }, question: `Does this change repeat what ${id} caught?`, threshold: 0.7, createdAt: 0, hits: 0, falsePositives: 0, ...extra };
-  return { antibody: antibody as Antibody, state, path: null, landingId: null };
+  return { antibody: antibody as Antibody, state, path: null, landingId: null, recurrences: 0, lastRecurrence: null };
 }
 
 function rule(id: string, spec: Record<string, unknown>, description: string, extra: Partial<Rule> = {}): Rule {
