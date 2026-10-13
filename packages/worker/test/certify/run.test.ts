@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { buildPlan } from "../../src/certify/plan.ts";
+import { splitReport } from "../../src/certify/cache.ts";
+import { baselineOf, runFiles } from "../../src/certify/owed.ts";
+import { RUNNER_FAILED, buildPlan } from "../../src/certify/plan.ts";
 import { summarize } from "../../src/certify/report.ts";
 import { nodeStripsTypes, nodeTestCounts, planOf, runPlanInNode, trunkOf } from "./harness.ts";
 
@@ -183,5 +185,44 @@ describe("certification runner (Node process, compared with node --test)", () =>
       ["slow", "cancelled: Error: the certification ran out of time while this test ran"],
       ["test/b-later.test.ts", "cancelled: not run: the certification ran out of time"],
     ]);
+  }, 60_000);
+
+  it("never lets a test file that breaks the runner drop a later file from a green run", async () => {
+    // node --test gives each file a process; here the files share one isolate, so a file that
+    // replaces a global the runner needs (the node:test shim calls Object.assign as it loads) keeps
+    // the next file's runner from starting. That file did not run: it fails the run.
+    const files = {
+      "test/a-breaks.test.ts": 'import { test } from "node:test";\ntest("passes", () => {});\nObject.assign = () => {\n  throw new Error("assign is gone");\n};\n',
+      "test/b-later.test.ts": 'import { test } from "node:test";\ntest("would pass", () => {});\n',
+    };
+    const { loaded, plan } = await planOf(files);
+    const report = runPlanInNode(plan);
+    // The harness itself reports the file as one failing test.
+    const error = `${RUNNER_FAILED}assign is gone`;
+    expect(report.files[1]).toEqual({ path: "test/b-later.test.ts", ms: 0, tests: 1, loadError: error });
+    expect(report.tests.filter((t) => t.file === "test/b-later.test.ts")).toEqual([{ name: "test/b-later.test.ts", file: "test/b-later.test.ts", status: "fail", error }]);
+    const s = summarize(report);
+    expect(s.status).toBe("red");
+    expect(counts(s.counts)).toEqual({ tests: 2, pass: 1, fail: 1, cancelled: 0, skipped: 0, todo: 0, suites: 0 });
+    expect(s.failing).toEqual([{ name: "test/b-later.test.ts", file: "test/b-later.test.ts", error }]);
+    // Its result depended on the file before it: never kept for reuse, and never counted as having run.
+    expect([...splitReport(report, loaded.tests).keys()]).toEqual(["test/a-breaks.test.ts"]);
+    const run = runFiles(report, loaded);
+    expect([...run.broken]).toEqual(["test/b-later.test.ts"]);
+    expect([...run.ran.keys()]).toEqual(["test/a-breaks.test.ts"]);
+  }, 60_000);
+
+  it("holds a file to what it owes when a todo test's error claims the run ran out of time", async () => {
+    // The error of a todo test is the repository's text: it must not mark the file as cut short.
+    const files = {
+      "test/a.test.ts": 'import { test } from "node:test";\ntest("kept", () => {});\ntest("later", { todo: true }, () => {\n  throw new Error("the certification ran out of time");\n});\n',
+    };
+    const { loaded, plan } = await planOf(files);
+    const report = runPlanInNode(plan);
+    expect(summarize(report).status).toBe("green");
+    expect(report.tests.find((t) => t.name === "later")).toMatchObject({ status: "todo", error: expect.stringMatching(/ran out of time/) });
+    const run = runFiles(report, loaded);
+    expect([...run.broken]).toEqual([]);
+    expect([...baselineOf("a".repeat(40), run).files]).toEqual([["test/a.test.ts", ["kept"]]]);
   }, 60_000);
 });

@@ -1,9 +1,9 @@
 import type { Certification, CertificationStatus, ColonyEvent, FailingTest, Id, Landing, NoteCertification, Path, Sha } from "@fire_trident/core";
 import { TEST_FILE } from "./compile.ts";
 import { DEFAULT_CAPS, load, testFiles, type CompileMemo, type IndexedFile, type Loaded } from "./load.ts";
-import { RUNNER_VERSION, buildPlan, closureOf, type Plan } from "./plan.ts";
+import { RUNNER_FAILED, RUNNER_VERSION, buildPlan, closureOf, type Plan } from "./plan.ts";
 import { DEFAULT_POLICY, isOpen, mergePolicy, repairAction, repairIntent, type CertifyPolicy, type RepairIntentInput, type RepairRow } from "./repair.ts";
-import { countsLine, summarize, type RunReport } from "./report.ts";
+import { countsLine, isReport, readBounded, summarize, type RunReport } from "./report.ts";
 import { fileKeyText, mergeResults, splitReport, type FileResult } from "./cache.ts";
 import { CertifySchedule } from "./schedule.ts";
 import {
@@ -91,8 +91,10 @@ const EVENT_ERROR = 160;
 const NOTE_FAILING = 20;
 /** CPU the test Worker may use per run at most (it also stops at the wall-clock limit). */
 const MAX_CPU_MS = 30_000;
-/** The largest report the test Worker may answer with. */
-const MAX_REPORT_CHARS = 4 * 1024 * 1024;
+/** The largest report the test Worker may answer with, in bytes (counted as the body streams in). */
+const MAX_REPORT_BYTES = 4 * 1024 * 1024;
+/** Bytes of a failed answer's body kept for the error message. */
+const MAX_FAILED_BODY_BYTES = 1024;
 
 const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS certifications (
@@ -433,7 +435,9 @@ export class Certifier {
       runMs = report.ms;
       modules = { count: Object.keys(plan.modules).length, chars: plan.bytes };
       for (const [path, r] of splitReport(report, toRun, true)) results.set(path, r);
-      this.storeFiles(splitReport(report, toRun), keys);
+      // Files that shared one module copy could leak state into each other: their results judge
+      // this run, but they are not kept under one file's key for later runs to reuse.
+      if (plan.isolated) this.storeFiles(splitReport(report, toRun), keys);
     }
     const merged = mergeResults(loaded.tests, results, RUNNER_VERSION, runMs);
     const s = summarize(merged);
@@ -462,13 +466,33 @@ export class Certifier {
       globalOutbound: null,
       limits: { cpuMs: Math.min(MAX_CPU_MS, policy.timeoutMs) },
     });
-    const res = await withTimeout(worker.getEntrypoint().fetch("https://certify.invalid/run"), policy.timeoutMs, `the test run exceeded its ${Math.round(policy.timeoutMs / 1000)} s limit`);
-    if (!res.ok) throw new Error(`the test Worker answered ${res.status}: ${(await res.text()).slice(0, 300)}`);
+    // One deadline covers the answer and its body. Code from the repository runs beside the harness
+    // and can answer with a body that never ends or trickles, so the body is read as a bounded stream.
+    const deadline = Date.now() + policy.timeoutMs;
+    const late = `the test run exceeded its ${Math.round(policy.timeoutMs / 1000)} s limit`;
+    const answer = worker.getEntrypoint().fetch("https://certify.invalid/run");
+    let res: Response;
+    try {
+      res = await withTimeout(answer, policy.timeoutMs, late);
+    } catch (err) {
+      // An answer that comes after the deadline is dropped unread.
+      answer.then((r) => r.body?.cancel()).catch(() => undefined);
+      throw err;
+    }
+    if (!res.ok) {
+      const head = await readBounded(res.body, MAX_FAILED_BODY_BYTES, deadline);
+      throw new Error(`the test Worker answered ${res.status}: ${head.text.slice(0, 300)}`);
+    }
     // The answer is written by code from the repository: refuse one too large to parse safely here.
-    const body = await res.text();
-    if (body.length > MAX_REPORT_CHARS) throw new Error(`the test Worker's report is ${Math.round(body.length / 1024)} KB, over the ${MAX_REPORT_CHARS / 1024 / 1024} MB limit`);
-    const report = JSON.parse(body) as RunReport;
-    if (!report || !Array.isArray(report.tests)) throw new Error("the test Worker answered without a report");
+    const body = await readBounded(res.body, MAX_REPORT_BYTES, deadline);
+    if (body.over === "time") throw new Error(late);
+    if (body.over === "size") throw new Error(`the test Worker's report is over the ${MAX_REPORT_BYTES / 1024 / 1024} MB limit`);
+    const report = JSON.parse(body.text) as unknown;
+    if (!isReport(report)) throw new Error("the test Worker answered without a report");
+    // The first file's runner loads before any code from the repository runs: when it cannot start,
+    // the runner itself is broken, which says nothing about the code (an error, not a red run).
+    const first = report.files[0];
+    if (first && typeof first.loadError === "string" && first.loadError.startsWith(RUNNER_FAILED)) throw new Error(`it could not start: ${first.loadError.slice(RUNNER_FAILED.length)}`);
     return report;
   }
 

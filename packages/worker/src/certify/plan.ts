@@ -17,7 +17,9 @@ export const HARNESS_DIR = "__ft_certify__";
 export const MAIN_MODULE = `${HARNESS_DIR}/main.js`;
 export const SHIM_MODULE = `${HARNESS_DIR}/node-test.js`;
 /** Bumped whenever the shim or harness changes how results come out (part of the input digest). */
-export const RUNNER_VERSION = "ft-node-test/1";
+export const RUNNER_VERSION = "ft-node-test/2";
+/** How the harness starts the load error of a file whose runner could not start (its node:test shim failed to load). */
+export const RUNNER_FAILED = "runner failed: ";
 
 /** A module of the map: JavaScript or data. */
 export type PlanModule = { js: string } | { json: unknown };
@@ -44,6 +46,8 @@ export interface Plan {
   files: Array<{ path: Path; prefix: string }>;
   /** Characters of JavaScript in the map (the shim and harness included). */
   bytes: number;
+  /** Each test file had its own module copy; false when they shared one (a file's results then depend on the others). */
+  isolated: boolean;
 }
 
 /** The modules a test file reaches through relative imports (itself first), resolved exactly. */
@@ -100,7 +104,7 @@ export function buildPlan(p: PlanInput): Plan {
   modules[MAIN_MODULE] = { js: harnessSource(files, p.config) };
   let bytes = 0;
   for (const m of Object.values(modules)) bytes += "js" in m ? m.js.length : JSON.stringify(m.json ?? null).length;
-  return { mainModule: MAIN_MODULE, modules, files, bytes };
+  return { mainModule: MAIN_MODULE, modules, files, bytes, isolated: isolate };
 }
 
 /** The harness module: runs each file's tests in order and answers one JSON report. */
@@ -109,7 +113,7 @@ export function harnessSource(files: Array<{ path: Path; prefix: string }>, conf
     (f) =>
       `  { path: ${JSON.stringify(f.path)}, shim: () => import(${JSON.stringify(`../${f.prefix}${SHIM_MODULE}`)}), main: () => import(${JSON.stringify(`../${f.prefix}${f.path}`)}) },`,
   );
-  return `// Trunk certification harness (FireTrident): one Dynamic Worker runs every test file.\nconst FILES = [\n${rows.join("\n")}\n];\nconst CONFIG = ${JSON.stringify(config)};\n${HARNESS_BODY}`;
+  return `// Trunk certification harness (FireTrident): one Dynamic Worker runs every test file.\nconst FILES = [\n${rows.join("\n")}\n];\nconst CONFIG = ${JSON.stringify(config)};\nconst RUNNER = ${JSON.stringify(RUNNER_VERSION)};\nconst RUNNER_FAILED = ${JSON.stringify(RUNNER_FAILED)};\n${HARNESS_BODY}`;
 }
 
 const HARNESS_BODY = String.raw`
@@ -131,7 +135,7 @@ try {
 export async function runAll() {
   const started = Date.now();
   const deadline = started + CONFIG.budgetMs;
-  const out = { runner: "ft-node-test/1", files: [], tests: [], suites: [], diagnostics: [], unhandled, ms: 0 };
+  const out = { runner: RUNNER, files: [], tests: [], suites: [], diagnostics: [], unhandled, ms: 0 };
   let exhausted = false;
   for (const f of FILES) {
     const t0 = Date.now();
@@ -144,7 +148,11 @@ export async function runAll() {
     try {
       shim = await f.shim();
     } catch (e) {
-      out.files.push({ path: f.path, ms: 0, tests: 0, loadError: "runner failed: " + String(e && e.message ? e.message : e) });
+      // The runner could not start for this file (a test file that ran before it may have replaced a
+      // global the runner uses). The file did not run: it fails the run instead of dropping out of it.
+      const error = RUNNER_FAILED + String(e && e.message ? e.message : e).slice(0, 400);
+      out.files.push({ path: f.path, ms: 0, tests: 1, loadError: error });
+      out.tests.push({ name: f.path, file: f.path, status: "fail", error });
       continue;
     }
     shim.__ft.begin({ file: f.path, deadline, timeoutMs: CONFIG.testTimeoutMs });

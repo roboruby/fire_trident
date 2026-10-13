@@ -109,6 +109,17 @@ describe("what a run lost", () => {
     expect(findLost({ baseline: b, repairs: [], run, listing: everything })).toEqual([]);
   });
 
+  it("does not take a todo test's error for the run's time running out: the file still owes its tests", () => {
+    // A file cut short is red already only when the test that says so fails the run; a todo test's error is the repository's text.
+    const b = baseline({ "test/a.test.ts": ["kept", "later"] });
+    const run = runFiles(report({ "test/a.test.ts": [["later", "todo", "Error: the certification ran out of time"]] }), none);
+    expect([...run.broken]).toEqual([]);
+    expect(findLost({ baseline: b, repairs: [], run, listing: everything })).toEqual([
+      { file: "test/a.test.ts", name: "kept", scope: "test", why: "not defined any more", since: GREEN },
+      { file: "test/a.test.ts", name: "later", scope: "test", why: "todo now", since: GREEN },
+    ]);
+  });
+
   it("checks a file whose names were not kept by how many of its tests pass", () => {
     const run = runFiles(report({ "test/big.test.ts": [["a", "pass"], ["b", "todo"]] }), none);
     expect(findLost({ baseline: baseline({ "test/big.test.ts": 2 }), repairs: [], run, listing: everything })).toEqual([

@@ -21,12 +21,16 @@ export function fileKeyText(path: Path, closure: readonly Path[], blobs: Readonl
   return [runner, `test-timeout ${testTimeoutMs}`, `file ${path}`, ...[...closure].sort().map((p) => `${p} ${blobs.get(p) ?? "?"}`)].join("\n");
 }
 
-/** A test's outcome depended on the run, not on the code (the run's budget, an unfinished file): never reuse it. */
-export const RUN_DEPENDENT = /ran out of time|not finished when the file ended|did not finish loading/;
+/**
+ * A test's outcome depended on the run, not on the code (the run's budget, an unfinished file, a
+ * runner that could not start for the file because of what ran before it): never reuse it.
+ */
+export const RUN_DEPENDENT = /ran out of time|not finished when the file ended|did not finish loading|runner failed/;
 
 /**
  * Split a run's report into per-file results. Files whose results depended on the run itself (the
- * run's time budget) are left out, so they run again next time, unless `all` (this run's verdict).
+ * run's time budget, the files that ran before them) are left out, so they run again next time,
+ * unless `all` (this run's verdict).
  */
 export function splitReport(report: RunReport, files: readonly Path[], all = false): Map<Path, FileResult> {
   const out = new Map<Path, FileResult>();
@@ -35,7 +39,8 @@ export function splitReport(report: RunReport, files: readonly Path[], all = fal
     if (!meta) continue;
     const tests = report.tests.filter((t) => t.file === path);
     const suites = report.suites.filter((s) => s.file === path);
-    if (!all && (tests.some((t) => RUN_DEPENDENT.test(t.error ?? "")) || RUN_DEPENDENT.test(meta.loadError ?? ""))) continue;
+    const dependent = tests.some((t) => RUN_DEPENDENT.test(t.error ?? "")) || suites.some((s) => RUN_DEPENDENT.test(s.error ?? "")) || RUN_DEPENDENT.test(meta.loadError ?? "");
+    if (!all && dependent) continue;
     out.set(path, { path, loadError: meta.loadError ?? null, tests, suites });
   }
   return out;
