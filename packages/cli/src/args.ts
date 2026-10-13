@@ -335,11 +335,12 @@ function build(word: string, v: Record<string, unknown>, p: string[]): Command {
       return cmd;
     }
     case "revert": {
-      const usage = "ft revert <colony> <landing|commit> --reason <text> [--by <name>] [--no-redo]";
+      // `ref` is a landing id, a trunk commit, or a proposal id (prp_...): then only that proposal of its landing is undone.
+      const usage = "ft revert <colony> <landing|commit|proposal> --reason <text> [--by <name>] [--no-redo]";
       noExtras(p, 2, usage);
       const colony = colonyArg(p[0], usage);
       const ref = p[1]?.trim() ?? "";
-      if (!ref) fail(`missing <landing|commit>. Usage: ${usage}`);
+      if (!ref) fail(`missing <landing|commit|proposal>. Usage: ${usage}`);
       const cmd: Command = { name: "revert", colony, ref, reason: required(v.reason, "reason"), redo: v["no-redo"] !== true };
       const by = str(v.by)?.trim();
       if (by) cmd.by = by;
@@ -628,7 +629,7 @@ Commands
   why <colony> <path[:line]>       Show the lineage behind a file or line
   review <colony> [--diff]         List proposals escalated to a human, code first
   review <colony> <id> <decision>  Approve, reject, or return a proposal
-  revert <colony> <landing>        Undo a landed change unless work landed on top of it
+  revert <colony> <landing|prp>    Undo a landing or one proposal of it unless work landed on top
   watch <colony>                   Stream live colony events
   delete <colony> --yes            Delete a colony: agents, repos, and history
 
@@ -852,17 +853,21 @@ session repos, clear its objects' storage, and drop it from the registry.
 Safe to repeat; a repeat finishes anything a failed delete left behind.
 `,
   revert: `
-ft revert <colony> <landing|commit> --reason <text> [--by <name>] [--no-redo]
+ft revert <colony> <landing|commit|proposal> --reason <text> [--by <name>] [--no-redo]
 
-Undo one landed change as a new commit on trunk. Every file it wrote must still
-hold what it landed: if later work changed one, nothing happens and the answer
-names the file and the latest landing that changed it. The landing is a landing id or a
-trunk commit (7+ characters). The intents it completed are declared again, their
-why starting with your reason, unless --no-redo; a rule's violations count again
-until they land. The revert is recorded in the events and in the commit's note.
+Undo one landed change as a new commit on trunk: a whole landing (a landing id
+or a trunk commit of 7+ characters), or one proposal of it (its prp_ id). For a
+proposal, only the files it wrote go back and only its intent is declared
+again; the other proposals of its landing stay as they landed. Every file undone
+must still hold what it landed: if later work changed one, nothing happens and
+the answer names the file and the latest landing that changed it. The intents
+it completed are declared again, their why starting with your reason, unless
+--no-redo; a rule's violations count again until they land. The revert is
+recorded in the events and in the commit's note.
 
-Example
+Examples
   ft revert hono lnd_mv5x0aa1 --reason "breaks the router's 405 handling"
+  ft revert hono prp_mv5x0ab7 --reason "only this change broke the router"
 `,
   certify: `
 ft certify <colony> [--now | --on | --off]

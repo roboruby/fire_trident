@@ -10,7 +10,7 @@ import type { AgentKind, FileVersion, Id, Landing, LineageNote, NoteCertificatio
 import { createApi } from "../../src/api/app.ts";
 import type { ApiDeps } from "../../src/api/app.ts";
 import type { Env } from "../../src/env.ts";
-import { SCRIPT_FILE, importedDeletions, importedText, movedText, planRevert, relativeSpecifiers, type RevertResult } from "../../src/trunk/revert.ts";
+import { runRevert, type RevertResult, type RevertTrunk } from "../../src/trunk/revert.ts";
 
 export { ColonyDO } from "../../src/colony/ColonyDO.ts";
 export { RegionDO } from "../../src/region/RegionDO.ts";
@@ -50,6 +50,8 @@ interface TrunkState {
   contents?: Record<Sha, string>;
   /** The lineage context each land() call received, as JSON (the latest 20), for asserting what lanes pass on. */
   contexts?: string[];
+  /** Lineage notes by landing id, as JSON text like ft_notes: each landing's proposals (intent, write set), and each revert's note. */
+  notes?: Record<Id, string>;
 }
 
 const DEFAULT_FILES: Record<Path, string> = {
@@ -254,6 +256,7 @@ export class TrunkDO extends DurableObject<Env> {
       at: Date.now(),
     };
     s.landings.push(landing);
+    s.notes = { ...(s.notes ?? {}), [landing.id]: JSON.stringify({ proposals: landed.map((p) => ({ id: p.id, intent: { id: p.intentId }, writeSet: p.writeSet })) }) };
     await this.save(s);
     // The real TrunkDO reports landings too; the ColonyDO must treat the second report as a no-op.
     if (s.reportLandings) await this.env.COLONY.get(this.env.COLONY.idFromName(s.colonyId)).onLanding(landing);
@@ -300,45 +303,53 @@ export class TrunkDO extends DurableObject<Env> {
     return true;
   }
 
-/** Undo a landing as the real TrunkDO does: a new commit, refused when a path it wrote has changed since. */
-async revert(ref: string, p: { by: string; reason: string }): Promise<RevertResult> {
-  const s = await this.load();
-  const at = s.landings.findIndex((l) => l.id === ref || (ref.length >= 7 && l.trunkSha.startsWith(ref)));
-  const target = s.landings[at];
-  if (!target) return { ok: false, status: 404, error: `no landing ${ref} on this trunk` };
-  const before = s.commits[target.parentSha] ?? {};
-  const after = s.commits[target.trunkSha] ?? {};
-  const later = s.landings.slice(at + 1);
-  const plan = planRevert(
-    target.paths.map((path) => ({ path, before: before[path] ?? null, after: after[path] ?? null })),
-    (path) => s.files[path]?.blob ?? null,
-    (path) => [...later].reverse().find((l) => l.paths.includes(path))?.id ?? null,
-  );
-  if (!plan.ok) return { ok: false, status: 409, error: `work landed on top of ${target.id}: ${movedText(plan.moved)}`, moved: plan.moved };
-  // A file the landing created goes with the revert: refused while other trunk files import it.
-  const deleted = plan.restore.filter((r) => r.blob === null).map((r) => r.path);
-  if (deleted.length > 0) {
-    const writes = new Set(plan.restore.map((r) => r.path));
-    const files = Object.entries(s.files)
-      .filter(([path]) => !writes.has(path) && SCRIPT_FILE.test(path))
-      .map(([path, f]) => ({ path, specifiers: relativeSpecifiers(f.content) }));
-    const imported = importedDeletions(deleted, files, (path) => path in s.files);
-    const lastBy = (path: Path): Id | null => [...later].reverse().find((l) => l.paths.includes(path))?.id ?? null;
-    if (imported.length > 0) return { ok: false, status: 409, error: `work landed on top of ${target.id}: ${importedText(imported, lastBy)}`, imported };
+  /** Undo a landing as the real TrunkDO does (trunk/revert.ts runRevert, over this stand-in's state). */
+  async revert(ref: string, p: { by: string; reason: string; proposal?: Id }): Promise<RevertResult> {
+    const s = await this.load();
+    const at = (id: Id) => s.landings.findIndex((l) => l.id === id);
+    const trunk: RevertTrunk = {
+      landing: (r) => s.landings.find((l) => l.id === r || (r.length >= 7 && l.trunkSha.startsWith(r))) ?? null,
+      landed: (id) => {
+        const l = s.landings[at(id)];
+        if (!l) return [];
+        const before = s.commits[l.parentSha] ?? {};
+        const after = s.commits[l.trunkSha] ?? {};
+        return [...l.paths].sort().map((path) => ({ path, before: before[path] ?? null, after: after[path] ?? null }));
+      },
+      note: (id) => (s.notes?.[id] === undefined ? null : (JSON.parse(s.notes[id]) as unknown)),
+      landingOf: (pid) => s.landings.find((l) => l.proposalIds.includes(pid))?.id ?? null,
+      later: (id, path) => [...s.landings.slice(at(id) + 1)].reverse().find((l) => l.paths.includes(path))?.id ?? null,
+      blob: (path) => s.files[path]?.blob ?? null,
+      files: () => Object.entries(s.files).map(([path, f]) => ({ path, blob: f.blob, size: f.content.length })),
+      read: async (blob) => (s.contents?.[blob] === undefined ? null : new TextEncoder().encode(s.contents[blob])),
+      serial: (fn) => fn(),
+      commitNow: async (commit) => {
+        for (const f of commit.files) {
+          const now = s.files[f.path]?.blob ?? null;
+          if (now !== f.expect) return { stale: `${f.path} ${now === null ? "deleted" : "changed"} since` };
+        }
+        for (const f of commit.files) {
+          if (f.content === null || f.blob === null) delete s.files[f.path];
+          else s.files[f.path] = { blob: f.blob, content: f.content };
+        }
+        const parent = s.head;
+        const sha = this.commit(s);
+        const paths = commit.files.map((f) => f.path).sort();
+        const landing: Landing = { id: newId("lnd_"), colonyId: s.colonyId, trunkSha: sha, parentSha: parent, proposalIds: [], intentIds: [], paths, regions: [...new Set(paths.map((x) => regionOf(x, 1)))], at: Date.now() };
+        s.landings.push(landing);
+        s.notes = { ...(s.notes ?? {}), [landing.id]: JSON.stringify(commit.note) };
+        await this.save(s);
+        return { landing };
+      },
+      notesSoon: async () => undefined,
+    };
+    return runRevert(trunk, ref, p);
   }
-  for (const r of plan.restore) {
-    if (r.blob === null) delete s.files[r.path];
-    else s.files[r.path] = { blob: r.blob, content: s.contents?.[r.blob] ?? "" };
+
+  /** Undo one proposal of a landing, as the real TrunkDO does. */
+  async revertProposal(ref: string, p: { by: string; reason: string; proposal: Id }): Promise<RevertResult> {
+    return this.revert(ref, p);
   }
-  const parent = s.head;
-  const sha = this.commit(s);
-  const paths = plan.restore.map((r) => r.path);
-  const landing: Landing = { id: newId("lnd_"), colonyId: s.colonyId, trunkSha: sha, parentSha: parent, proposalIds: [], intentIds: [], paths, regions: [...new Set(paths.map((x) => regionOf(x, 1)))], at: Date.now() };
-  s.landings.push(landing);
-  await this.save(s);
-  void p;
-  return { ok: true, landing, reverted: target };
-}
 
   /** The certified branch moves (recorded for assertions). */
   async markCertified(sha: Sha): Promise<boolean> {

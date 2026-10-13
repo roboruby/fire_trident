@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { userInfo } from "node:os";
 import type { Command, GlobalFlags } from "./args.ts";
 import { helpText, parseCommand } from "./args.ts";
-import { ApiError, VERSION, asArray, liveUrl, pickColony, planRequest, resolveBaseUrl, send } from "./api.ts";
+import { ApiError, VERSION, asArray, colonyPath, isProposalRef, liveUrl, pickColony, planRequest, resolveBaseUrl, revertRequest, send } from "./api.ts";
 import type { ApiRequest, HttpConfig } from "./api.ts";
 import { configPath, parseEnvFile, withConfig } from "./config.ts";
 import {
@@ -19,6 +19,7 @@ import {
   formatEvent,
   formatIntentShow,
   formatRetract,
+  formatRevert,
   formatReview,
   formatStatus,
   formatStop,
@@ -38,6 +39,7 @@ import type {
   EscalationResult,
   IntentShowResult,
   RetractResult,
+  RevertResult,
   SnapshotLike,
   StopResult,
   WithdrawResult,
@@ -169,6 +171,7 @@ async function tryGet<T>(ctx: Ctx, req: ApiRequest): Promise<T | undefined> {
 async function execute(cmd: Command, ctx: Ctx): Promise<number> {
   if (cmd.name === "watch") return watch(cmd, ctx);
   if (cmd.name === "new") return newColony(cmd, ctx);
+  if (cmd.name === "revert") return revert(cmd, ctx);
   const req = planRequest(cmd, ctx.by);
   if (!req) throw new Error(`nothing to do for ${cmd.name}`);
   if (ctx.flags.dryRun) return dryRun(ctx, [req]);
@@ -240,17 +243,6 @@ async function execute(cmd: Command, ctx: Ctx): Promise<number> {
         io.stdout(`${verb} ${c.bold(cmd.proposalId)}${cmd.decision === "approve" ? "" : `: ${cmd.reason}`}`);
         if (cmd.decision === "reject") io.stdout(c.dim("  The rejection is recorded; it can mint an antibody for similar changes."));
         if (cmd.decision === "return") io.stdout(c.dim("  Sent back to its agent with your reason."));
-      }
-      return 0;
-    }
-    case "revert": {
-      const res = await send<{ landing?: { id?: string; trunkSha?: string }; reverted?: { id?: string; trunkSha?: string }; redo?: string[] }>(ctx.http, req);
-      if (ctx.flags.json) printJson(ctx, res ?? { ok: true });
-      else {
-        const short = (sha?: string) => (sha ? ` (${sha.slice(0, 7)})` : "");
-        io.stdout(`${c.yellow("Reverted")} ${c.bold(res?.reverted?.id ?? cmd.ref)}${short(res?.reverted?.trunkSha)} as ${c.bold(res?.landing?.id ?? "?")}${short(res?.landing?.trunkSha)}: ${cmd.reason}`);
-        const redo = res?.redo ?? [];
-        if (redo.length > 0) io.stdout(c.dim(`  ${redo.length} intent${redo.length === 1 ? "" : "s"} declared again: ${redo.join(", ")}`));
       }
       return 0;
     }
@@ -391,6 +383,36 @@ async function importColony(cmd: Extract<Command, { name: "import" }>, req: ApiR
   io.stdout(formatStatus(snap, c, io.now()));
   io.stdout(c.dim(`\n  Next: ft rule add ${colony.id} --pattern <regex> --hint <text> --description <text>`));
   io.stdout(c.dim(`        ft watch ${colony.id}`));
+  return 0;
+}
+
+/**
+ * `ft revert`: one call for a landing or a trunk commit. For a proposal (prp_...), its landing is read
+ * first (GET /proposals/:pid) and only that proposal of it is undone.
+ */
+async function revert(cmd: Extract<Command, { name: "revert" }>, ctx: Ctx): Promise<number> {
+  const { io, c } = ctx;
+  const proposal = isProposalRef(cmd.ref);
+  const lookup: ApiRequest = { method: "GET", path: colonyPath(cmd.colony, `/proposals/${encodeURIComponent(cmd.ref)}`) };
+  if (ctx.flags.dryRun) {
+    // The landing is known once the proposal is read; the dry run names it.
+    const later = revertRequest(cmd, ctx.by, "<landing>");
+    return dryRun(ctx, proposal ? [lookup, { ...later, path: later.path.replace("%3Clanding%3E", "<landing>") }] : [revertRequest(cmd, ctx.by)]);
+  }
+  let landing = cmd.ref;
+  if (proposal) {
+    const p = await send<Partial<Proposal> | null>(ctx.http, lookup);
+    if (p?.status !== "landed" || !p.landingId) throw new Error(`${cmd.ref} has not landed${p?.status ? ` (it is ${p.status})` : ""}, so there is nothing to revert`);
+    landing = p.landingId;
+  }
+  const res = await send<RevertResult | null>(ctx.http, revertRequest(cmd, ctx.by, landing));
+  if (ctx.flags.json) printJson(ctx, res ?? { ok: true });
+  else io.stdout(formatRevert(cmd.ref, cmd.reason, res ?? {}, c));
+  // A server that predates reverting one proposal ignores it and undoes the whole landing: say so.
+  if (proposal && res?.proposal !== cmd.ref) {
+    io.stderr(`ft: the server undid all of ${landing}, not only ${cmd.ref}: it predates reverting one proposal. To put ${landing} back: ft revert ${cmd.colony} ${res?.landing?.id ?? "<the revert's landing>"} --reason "<why>"`);
+    return 1;
+  }
   return 0;
 }
 

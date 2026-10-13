@@ -47,7 +47,7 @@ import { pushPack } from "./push.ts";
 import { CoChangeStore, mineHistory, type CoChangeStats, type Neighbor } from "./cochange.ts";
 import { IMPORT_LINKS_MAX, ImportIndex, markLanded, type ImportLinks } from "./imports.ts";
 import { exportSurface, planCycle, resultsFor, surfaceBlobs, uniqueProposals, type LandResult, type Outcome, type PlanProposal, type Returned } from "./plan.ts";
-import { IMPORT_SCAN, SCRIPT_FILE, importedDeletions, importedText, movedText, planRevert, relativeSpecifiers, type RevertResult } from "./revert.ts";
+import { runRevert, sqlRevertTrunk, type RevertResult, type RevertTrunk } from "./revert.ts";
 import { durableFs } from "../artifacts/workspace.ts";
 import { TRUNK_NAMESPACE, bindingFor } from "../artifacts/shards.ts";
 import { noteAlternatives, type ContestAlternative } from "../decide/contest.ts";
@@ -343,107 +343,41 @@ export class TrunkDO extends DurableObject<Env> {
    * slip in between). A file the landing created would be deleted, so the revert is also refused
    * while other trunk files import it, naming them (also checked again inside the commit, reading
    * only the files that changed in between). `ref` is a landing id or a trunk commit (40 hex, or a
-   * unique prefix of 7+).
+   * unique prefix of 7+). The steps are trunk/revert.ts: runRevert.
    */
   async revert(ref: string, p: { by: string; reason: string }): Promise<RevertResult> {
     this.state();
-    const target = this.landingByRef(String(ref ?? "").trim());
-    if (!target) return { ok: false, status: 404, error: `no landing ${ref} on this trunk` };
-    const seq = this.sql.exec<{ seq: number }>(`SELECT seq FROM ft_landings WHERE id = ?`, target.id).toArray()[0]?.seq ?? 0;
-    const rows = this.sql
-      .exec<{ path: string; before_blob: string | null; after_blob: string | null }>(`SELECT path, before_blob, after_blob FROM ft_landing_paths WHERE landing_id = ? ORDER BY path`, target.id)
-      .toArray();
-    if (rows.length === 0) return { ok: false, status: 422, error: `landing ${target.id} recorded no file changes` };
-    const later = (path: Path): Id | null =>
-      this.sql.exec<{ landing_id: string }>(`SELECT landing_id FROM ft_landing_paths WHERE path = ? AND seq > ? ORDER BY seq DESC LIMIT 1`, path, seq).toArray()[0]?.landing_id ?? null;
-    const plan = planRevert(
-      rows.map((r) => ({ path: r.path, before: r.before_blob, after: r.after_blob })),
-      (path) => this.indexBlob(path),
-      later,
-    );
-    if (!plan.ok) return { ok: false, status: 409, error: `work landed on top of ${target.id}: ${movedText(plan.moved)}`, moved: plan.moved };
-    if (plan.restore.length === 0) return { ok: false, status: 422, error: `landing ${target.id} changed nothing to undo` };
+    return runRevert(this.revertTrunk(), ref, { by: p.by, reason: p.reason });
+  }
 
-    // The files this revert deletes (the landing created them) must not be imported by any other
-    // trunk file. Each script file is read once; a second pass rereads only files whose blob moved.
-    const deleted = plan.restore.filter((r) => r.blob === null).map((r) => r.path);
-    const writes = new Set(plan.restore.map((r) => r.path));
-    const scanned = new Map<Path, { blob: Sha; specifiers: string[] }>();
-    const text = new TextDecoder();
-    const importers = async (): Promise<RevertResult | null> => {
-      const index = this.sql.exec<{ path: string; blob: string; size: number }>(`SELECT path, blob, size FROM ft_files`).toArray();
-      const tree = new Set(index.map((f) => f.path));
-      const files: Array<{ path: Path; specifiers: string[] }> = [];
-      let bytes = 0;
-      for (const f of index) {
-        if (writes.has(f.path) || !SCRIPT_FILE.test(f.path)) continue;
-        const known = scanned.get(f.path);
-        if (known && known.blob === f.blob) {
-          files.push({ path: f.path, specifiers: known.specifiers });
-          continue;
-        }
-        bytes += f.size;
-        if (scanned.size >= IMPORT_SCAN.files || bytes > IMPORT_SCAN.bytes) {
-          return { ok: false, status: 422, error: `too many files to check which ones import ${deleted.slice(0, 3).join(", ")}; revert ${target.id} by hand` };
-        }
-        const data = await this.blobBytes(f.blob);
-        if (data === null) return { ok: false, status: 422, error: `cannot read ${f.path} to check whether it imports ${deleted.slice(0, 3).join(", ")}` };
-        const specifiers = relativeSpecifiers(text.decode(data));
-        scanned.set(f.path, { blob: f.blob, specifiers });
-        files.push({ path: f.path, specifiers });
-      }
-      const imported = importedDeletions(deleted, files, (path) => tree.has(path));
-      return imported.length === 0 ? null : { ok: false, status: 409, error: `work landed on top of ${target.id}: ${importedText(imported, later)}`, imported };
-    };
-    if (deleted.length > 0) {
-      const refused = await importers();
-      if (refused) return refused;
-    }
+  /**
+   * Undo one proposal of a landing (`ft revert <colony> <prp_...>`): `revert` limited to the paths
+   * that proposal wrote (the landing's recorded paths its lineage note names), with every guard on
+   * them; the landing's other proposals stay. 404 when the proposal did not land in that landing. A
+   * method of its own, so a trunk writer still on the previous class refuses the call (deploys reach
+   * objects gradually) instead of undoing the whole landing.
+   */
+  async revertProposal(ref: string, p: { by: string; reason: string; proposal: Id }): Promise<RevertResult> {
+    this.state();
+    return runRevert(this.revertTrunk(), ref, { by: p.by, reason: p.reason, proposal: String(p.proposal ?? "") });
+  }
 
-    const files: Array<{ path: Path; content: string | null; expect: Sha | null }> = [];
-    const strict = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
-    for (const r of plan.restore) {
-      if (r.blob === null) {
-        files.push({ path: r.path, content: null, expect: r.expect });
-        continue;
-      }
-      const bytes = await this.blobBytes(r.blob);
-      if (bytes === null) return { ok: false, status: 422, error: `cannot read ${r.path} as it was before ${target.id}` };
-      let content: string;
-      try {
-        content = strict.decode(bytes);
-      } catch {
-        return { ok: false, status: 422, error: `${r.path} is not UTF-8 text; revert it by hand` };
-      }
-      files.push({ path: r.path, content, expect: r.expect });
-    }
-    const why = p.reason.replace(/\s+/g, " ").trim().slice(0, 500);
-    const message = `Revert ${target.id} (${target.trunkSha.slice(0, 7)})\n\n${p.by} reverted ${target.trunkSha}: ${why}\n\nFT-Revert-Of: ${target.id}`;
-    const note = {
-      schema: "firetrident.lineage/v1",
-      landingId: "",
-      colonyId: "",
-      proposals: [],
-      revert: { of: target.id, commit: target.trunkSha, by: p.by, reason: why, at: Date.now() },
-    } as unknown as LineageNote & Record<string, unknown>;
-    try {
-      if (deleted.length > 0) {
-        // The import check runs again in the same serial step as the commit, so no landing that
-        // imports a deleted file can slip in between (this is what systemCommit does, plus the check).
-        const out = await this.serial(async (): Promise<RevertResult> => {
-          const refused = await importers();
-          if (refused) return refused;
-          return { ok: true, landing: await this.systemCommitNow({ files, message, note }), reverted: target };
-        });
-        if (out.ok) await this.notesSoon();
-        return out;
-      }
-      const landing = await this.systemCommit({ files, message, note });
-      return { ok: true, landing, reverted: target };
-    } catch (e) {
-      if (e instanceof StaleSystemCommit) return { ok: false, status: 409, error: `work landed on top of ${target.id}: ${e.message}` };
-      throw e;
-    }
+  /** Trunk as a revert reads and writes it (trunk/revert.ts): these tables, local blobs, the serial chain, system commits. */
+  private revertTrunk(): RevertTrunk {
+    return sqlRevertTrunk(this.sql, {
+      landing: (ref) => this.landingByRef(ref),
+      read: (blob) => this.blobBytes(blob),
+      serial: (fn) => this.serial(fn),
+      commitNow: async (commit) => {
+        try {
+          return { landing: await this.systemCommitNow(commit) };
+        } catch (e) {
+          if (e instanceof StaleSystemCommit) return { stale: e.message };
+          throw e;
+        }
+      },
+      notesSoon: () => this.notesSoon(),
+    });
   }
 
   /**

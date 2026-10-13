@@ -59,8 +59,8 @@ describe("parsing changes of direction", () => {
     expect(ok(["revert", "web", "lnd_1", "--reason", "breaks 405 handling"])).toEqual({ name: "revert", colony: "web", ref: "lnd_1", reason: "breaks 405 handling", redo: true });
     expect(ok(["revert", "web", "97b1036", "--reason", "r", "--no-redo", "--by", "matt"])).toEqual({ name: "revert", colony: "web", ref: "97b1036", reason: "r", redo: false, by: "matt" });
     expect(err(["revert", "web", "lnd_1"])).toMatch(/--reason/);
-    expect(err(["revert", "web", "--reason", "r"])).toMatch(/missing <landing\|commit>/);
-    expect(helpText("revert")).toContain("ft revert <colony> <landing|commit>");
+    expect(err(["revert", "web", "--reason", "r"])).toMatch(/missing <landing\|commit\|proposal>/);
+    expect(helpText("revert")).toContain("ft revert <colony> <landing|commit|proposal>");
     expect(planRequest({ name: "revert", colony: "web", ref: "lnd_1", reason: "r", redo: true }, "me")).toEqual({
       method: "POST",
       path: "/api/colonies/web/landings/lnd_1/revert",

@@ -28,6 +28,8 @@ import type { Command } from "./args.ts";
  *   POST   /api/colonies/:id/agents/:aid/directive  { message, intentId?, by } -> Directive + { delivery }
  *   GET    /api/colonies/:id/escalations            -> { colonyId, total, intents: Intent[] } (reports waiting for a person)
  *   POST   /api/colonies/:id/intents/:iid/escalation { decision: amend|withdraw|dismiss, note, by, amend?: { title?, why?, footprint? } } -> { intent }
+ *   POST   /api/colonies/:id/landings/:ref/revert   { reason, by, redo, proposal? } -> { landing, reverted, redo, proposal? }
+ *   GET    /api/colonies/:id/proposals/:pid         -> Proposal (with landingId once it landed)
  *
  * Every request carries `Authorization: Bearer $FT_TOKEN` when the token is set.
  */
@@ -173,7 +175,8 @@ export function planRequest(cmd: Command, by: string): ApiRequest | null {
       return { method: "PATCH", path: colonyPath(cmd.colony, `/intents/${encodeURIComponent(cmd.intentId)}`), body };
     }
     case "revert":
-      return { method: "POST", path: colonyPath(cmd.colony, `/landings/${encodeURIComponent(cmd.ref)}/revert`), body: { reason: cmd.reason, by: cmd.by ?? by, redo: cmd.redo } };
+      // Reverting one proposal is two calls: its landing is read first (see revertRequest).
+      return isProposalRef(cmd.ref) ? null : revertRequest(cmd, by);
     case "intent-withdraw":
       return { method: "POST", path: colonyPath(cmd.colony, `/intents/${encodeURIComponent(cmd.intentId)}/withdraw`), body: { reason: cmd.reason, by: cmd.by ?? by } };
     case "intent-show":
@@ -202,6 +205,21 @@ export function planRequest(cmd: Command, by: string): ApiRequest | null {
     default:
       return null;
   }
+}
+
+/** True when `ft revert` names one proposal (prp_...) rather than a landing or a trunk commit. */
+export function isProposalRef(ref: string): boolean {
+  return ref.startsWith("prp_");
+}
+
+/**
+ * The revert call of `ft revert`. For a proposal, `landing` is the landing it landed in (read first
+ * with GET /proposals/:pid) and the body names the proposal, so only the files it wrote go back.
+ */
+export function revertRequest(cmd: Extract<Command, { name: "revert" }>, by: string, landing: string = cmd.ref): ApiRequest {
+  const body: Record<string, unknown> = { reason: cmd.reason, by: cmd.by ?? by, redo: cmd.redo };
+  if (isProposalRef(cmd.ref)) body.proposal = cmd.ref;
+  return { method: "POST", path: colonyPath(cmd.colony, `/landings/${encodeURIComponent(landing)}/revert`), body };
 }
 
 function errorDetail(data: unknown): string {

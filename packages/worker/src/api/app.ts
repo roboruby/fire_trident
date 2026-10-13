@@ -507,7 +507,10 @@ export function createApi(deps: ApiDeps): Hono<ApiEnv> {
   app.post("/colonies/:id/landings/:ref/revert", requireAdmin, async (c) => {
     const colonyId = colonyParam(c);
     const b = await body(c, RevertBody);
-    return json(await colonyStub(c.env, colonyId).revertLanding(c.req.param("ref"), { reason: b.reason, redo: b.redo, ...(b.by ? { by: b.by } : {}) }));
+    const p = { reason: b.reason, redo: b.redo, ...(b.by ? { by: b.by } : {}) };
+    // One proposal has its own method: a colony object still on the previous class refuses it (503) rather than undo the whole landing.
+    const stub = colonyStub(c.env, colonyId);
+    return json(await (b.proposal ? stub.revertProposal(c.req.param("ref"), { ...p, proposal: b.proposal }) : stub.revertLanding(c.req.param("ref"), p)));
   });
 
   app.post("/colonies/:id/swarm", requireAdmin, async (c) => {
