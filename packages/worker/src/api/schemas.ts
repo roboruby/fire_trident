@@ -32,6 +32,8 @@ export const IntentBody = z.object({
   ruleId: z.string().min(1).max(100).optional(),
   assignedTo: z.string().min(1).max(100).optional(),
   createdBy: z.string().trim().min(1).max(200).optional(),
+  /** Contest mode: 2 to 4 agents each build the intent and the colony lands one change (1: one holder, as usual). */
+  contest: z.number().int().min(1).max(4).optional(),
 });
 
 /** POST /api/colonies/:id/rules */

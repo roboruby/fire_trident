@@ -252,6 +252,10 @@ describe("new", () => {
     expect(ok(["new", "--spec", "demo/new-project-spec.md", "--name", "links"]).command).toEqual({ name: "new", specPath: "demo/new-project-spec.md", colonyName: "links" });
     expect(err(["new"])).toMatch(/missing --spec/);
   });
+
+  it("documents contest intents in its help", () => {
+    expect(helpText("new")).toMatch(/intents\[\]\.contest {2}2 to 4: that many agents build the intent at once/);
+  });
 });
 
 describe("helpers", () => {

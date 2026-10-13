@@ -50,6 +50,7 @@ import { exportSurface, planCycle, resultsFor, surfaceBlobs, uniqueProposals, ty
 import { IMPORT_SCAN, SCRIPT_FILE, importedDeletions, importedText, movedText, planRevert, relativeSpecifiers, type RevertResult } from "./revert.ts";
 import { durableFs } from "../artifacts/workspace.ts";
 import { TRUNK_NAMESPACE, bindingFor } from "../artifacts/shards.ts";
+import { noteAlternatives, type ContestAlternative } from "../decide/contest.ts";
 
 export type { LandResult, Returned } from "./plan.ts";
 
@@ -93,6 +94,8 @@ export interface LandContext {
   intents?: Record<Id, { title: string; why?: string; ruleId?: Id; parentId?: Id }>;
   agents?: Record<Id, { kind: AgentKind; model?: string }>;
   decisions?: Record<Id, Array<Pick<Decision, "kind" | "layer" | "p" | "action">>>;
+  /** Contest mode: the other attempts at a winner's intent and why each lost (keyed by the winner's proposal id). */
+  alternatives?: Record<Id, ContestAlternative[]>;
 }
 
 type IntentInfo = { title: string; why: string; ruleId?: Id; parentId?: Id };
@@ -1930,6 +1933,7 @@ function buildNote(
         decisions: ctx.decisions?.[p.id] ?? [],
         evidence: p.evidence ?? { checks: [] },
         ...(revalidated.has(p.id) ? { revalidated: revalidated.get(p.id) } : {}),
+        ...noteAlternatives(ctx.alternatives, p.id),
       };
     }),
   };
@@ -1973,11 +1977,12 @@ function staleDetail(stale: OccResult["stale"]): string {
 
 /** The lineage context of every batch in a cycle, merged. */
 function mergeContexts(list: LandContext[]): Required<LandContext> {
-  const out: Required<LandContext> = { intents: {}, agents: {}, decisions: {} };
+  const out: Required<LandContext> = { intents: {}, agents: {}, decisions: {}, alternatives: {} };
   for (const c of list) {
     Object.assign(out.intents, c?.intents ?? {});
     Object.assign(out.agents, c?.agents ?? {});
     Object.assign(out.decisions, c?.decisions ?? {});
+    Object.assign(out.alternatives, c?.alternatives ?? {});
   }
   return out;
 }
