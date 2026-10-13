@@ -164,3 +164,54 @@ describe("idempotent results per proposal id", () => {
     });
   });
 });
+
+describe("planCycle: assumptions (the files a change's imports resolve to)", () => {
+  const trunk: Record<Path, Sha | null> = { "src/a.ts": OLD, "src/b.ts": OLD, "src/util.ts": OLD };
+  const at = (path: Path): Sha | null => trunk[path] ?? null;
+  const relying = (id: string, writes: Record<Path, Sha | null>, assumptions: Path[]): Proposal => ({ ...prop(id, writes), assumptions });
+
+  it("returns a change whose assumption is no longer on trunk", () => {
+    const b = relying("b", { "src/b.ts": sha("2") }, ["src/gone.ts"]);
+    const plan = planCycle([[entry(b, trunk)]], at);
+    expect(plan.accepted).toEqual([[]]);
+    expect(plan.returned[0]).toEqual([{ proposalId: "b", reason: "stale: its imports resolve to src/gone.ts, which is no longer on trunk" }]);
+  });
+
+  it("returns a later batch's change whose assumption an earlier batch deletes, naming it", () => {
+    const d = prop("d", { "src/util.ts": null });
+    const b = relying("b", { "src/b.ts": sha("2") }, ["src/util.ts"]);
+    const plan = planCycle([[entry(d, trunk)], [entry(b, trunk)]], at);
+    expect(plan.accepted).toEqual([[d], []]);
+    expect(plan.returned[1]).toEqual([{ proposalId: "b", reason: "stale: its imports resolve to src/util.ts, which d deletes, landing ahead in this cycle" }]);
+  });
+
+  it("returns a later batch's deletion of a file an accepted change's imports resolve to", () => {
+    const b = relying("b", { "src/b.ts": sha("2") }, ["src/util.ts"]);
+    const d = prop("d", { "src/util.ts": null });
+    const plan = planCycle([[entry(b, trunk)], [entry(d, trunk)]], at);
+    expect(plan.accepted).toEqual([[b], []]);
+    expect(plan.returned[1]).toEqual([
+      { proposalId: "d", reason: "conflicts with b, landing ahead in this cycle: this change deletes src/util.ts, which b's imports resolve to" },
+    ]);
+  });
+
+  it("never puts a deletion and an import of the same file in one commit, whichever comes first", () => {
+    const d = prop("d", { "src/util.ts": null });
+    const b = relying("b", { "src/b.ts": sha("2") }, ["src/util.ts"]);
+    const first = planCycle([[entry(d, trunk), entry(b, trunk)]], at);
+    expect(first.accepted).toEqual([[d]]);
+    expect(first.returned[0]).toEqual([{ proposalId: "b", reason: "conflicts with d in this landing: it deletes src/util.ts, which this change's imports resolve to" }]);
+    const second = planCycle([[entry(b, trunk), entry(d, trunk)]], at);
+    expect(second.accepted).toEqual([[b]]);
+    expect(second.returned[0]).toEqual([{ proposalId: "d", reason: "conflicts with b in this landing: this change deletes src/util.ts, which b's imports resolve to" }]);
+  });
+
+  it("only existence counts: an edited assumption still lands, and two changes may rely on one file", () => {
+    const e = prop("e", { "src/util.ts": sha("3") });
+    const b = relying("b", { "src/b.ts": sha("2") }, ["src/util.ts"]);
+    const c = relying("c", { "src/a.ts": sha("4") }, ["src/util.ts"]);
+    const plan = planCycle([[entry(e, trunk)], [entry(b, trunk), entry(c, trunk)]], at);
+    expect(plan.accepted).toEqual([[e], [b, c]]);
+    expect(plan.returned).toEqual([[], []]);
+  });
+});

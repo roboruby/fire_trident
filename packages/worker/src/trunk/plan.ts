@@ -73,12 +73,17 @@ function short(blob: Sha | null): string {
  *   exact delta and the proposal landing ahead of it. Writing a path that an earlier batch only
  *   read is fine: that batch lands first, on the trunk it read.
  * - A file/directory clash with an earlier batch's write (one path a prefix of the other) goes back.
+ * - Assumptions (the files a proposal's imports resolve to) must still exist: a proposal whose assumption
+ *   is gone from the virtual trunk goes back, and so does one that would delete a assumption of a
+ *   proposal accepted earlier in the cycle. Only existence counts; an edited assumption is fine.
  *
  * Proposal ids must be unique across the cycle (the caller dedupes); a repeated id is skipped.
  */
 export function planCycle(batches: PlanProposal[][], trunk: (path: Path) => Sha | null): PlanResult {
   const ahead = new Map<Path, { blob: Sha | null; by: Id }>();
   const aheadPaths: Path[] = [];
+  /** Assumptions of the proposals accepted in earlier batches, with the proposal relying on each. */
+  const reliedAhead = new Map<Path, Id>();
   const virtual = (path: Path): Sha | null => {
     const w = ahead.get(path);
     return w !== undefined ? w.blob : trunk(path);
@@ -91,14 +96,30 @@ export function planCycle(batches: PlanProposal[][], trunk: (path: Path) => Sha 
     const back: Returned[] = [];
     const writes = new Set<Path>();
     const reads = new Set<Path>();
+    /** Paths this batch's accepted proposals delete, and the assumptions they rely on. */
+    const deleted = new Map<Path, Id>();
+    const relied = new Map<Path, Id>();
     for (const { p, base } of batch) {
       if (seen.has(p.id)) continue;
       seen.add(p.id);
       const w = p.writeSet.map((f) => f.path);
       const r = p.readSet.map((f) => f.path);
+      const assumptions = p.assumptions ?? [];
       const clash = w.find((path) => reads.has(path) || [...writes].some((x) => overlaps(x, path))) ?? r.find((path) => writes.has(path));
       if (clash !== undefined) {
         back.push({ proposalId: p.id, reason: `conflicts with another proposal in this landing on ${clash}` });
+        continue;
+      }
+      const gone = assumptions.find((path) => deleted.has(path));
+      if (gone !== undefined) {
+        back.push({ proposalId: p.id, reason: `conflicts with ${deleted.get(gone)} in this landing: it deletes ${gone}, which this change's imports resolve to` });
+        continue;
+      }
+      const kill = p.writeSet.find((f) => (f.blob ?? null) === null && (relied.has(f.path) || reliedAhead.has(f.path)));
+      if (kill !== undefined) {
+        const here = relied.get(kill.path);
+        const by = here ?? reliedAhead.get(kill.path)!;
+        back.push({ proposalId: p.id, reason: `conflicts with ${by}${here ? " in this landing" : ", landing ahead in this cycle"}: this change deletes ${kill.path}, which ${by}'s imports resolve to` });
         continue;
       }
       const occ = validateProposal(p, virtual, base);
@@ -112,6 +133,12 @@ export function planCycle(batches: PlanProposal[][], trunk: (path: Path) => Sha 
         back.push({ proposalId: p.id, reason: `stale: ${detail}` });
         continue;
       }
+      const missing = assumptions.find((path) => virtual(path) === null);
+      if (missing !== undefined) {
+        const by = ahead.get(missing)?.by;
+        back.push({ proposalId: p.id, reason: `stale: its imports resolve to ${missing}, which ${by ? `${by} deletes, landing ahead in this cycle` : "is no longer on trunk"}` });
+        continue;
+      }
       const shape = [...w, ...r].find((path) => aheadPaths.some((x) => x !== path && overlaps(x, path)));
       if (shape !== undefined) {
         const x = aheadPaths.find((y) => y !== shape && overlaps(y, shape))!;
@@ -122,14 +149,17 @@ export function planCycle(batches: PlanProposal[][], trunk: (path: Path) => Sha 
       ok.push(p);
       for (const path of w) writes.add(path);
       for (const path of r) reads.add(path);
+      for (const f of p.writeSet) if ((f.blob ?? null) === null) deleted.set(f.path, p.id);
+      for (const path of assumptions) if (!relied.has(path)) relied.set(path, p.id);
     }
-    // The batch's writes become the base of every later batch.
+    // The batch's writes become the base of every later batch, and its assumptions bind them.
     for (const p of ok) {
       for (const f of p.writeSet) {
         if (!ahead.has(f.path)) aheadPaths.push(f.path);
         ahead.set(f.path, { blob: f.blob ?? null, by: p.id });
       }
     }
+    for (const [path, id] of relied) if (!reliedAhead.has(path)) reliedAhead.set(path, id);
     accepted.push(ok);
     returned.push(back);
   }

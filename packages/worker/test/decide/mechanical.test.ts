@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Rule } from "@fire_trident/core";
-import { candidatePaths, changedSpecifiers, mechanicalCheck, onlySpecifiersChanged, resolveModule, specifierTarget } from "../../src/decide/mechanical.ts";
+import { candidatePaths, changedSpecifiers, mechanicalCheck, onlySpecifiersChanged, proofAssumptions, resolveModule, specifierTarget, type SpecifierChange } from "../../src/decide/mechanical.ts";
 
 /** Hono-like tree: src/router.ts beside the src/router/ directory, a directory with an index file. */
 const TREE = new Set([
@@ -131,5 +131,19 @@ describe("mechanicalCheck", () => {
     });
     expect(r.verdict).toBe("inconclusive");
     expect(r.facts.join(" ")).toContain("new import './b.ts': src/b.ts exists");
+  });
+});
+
+describe("proofAssumptions", () => {
+  it("lists the resolved relative targets outside the change's own writes, once each, sorted", () => {
+    const changes: SpecifierChange[] = [
+      { path: "src/b.ts", line: 2, before: null, after: "./util.ts", was: null, now: "src/util.ts", relative: true },
+      { path: "src/a.ts", line: 1, before: "./util", after: "./util.ts", was: "src/util.ts", now: "src/util.ts", relative: true },
+      { path: "src/a.ts", line: 3, before: "./x", after: "./x.ts", was: "src/x.ts", now: "src/x.ts", relative: true },
+      { path: "src/b.ts", line: 3, before: null, after: "./new.ts", was: null, now: "src/new.ts", relative: true },
+      { path: "src/b.ts", line: 4, before: null, after: "./missing.ts", was: null, now: null, relative: true },
+      { path: "src/b.ts", line: 5, before: "fs", after: "node:fs", was: null, now: null, relative: false },
+    ];
+    expect(proofAssumptions(changes, new Set(["src/new.ts"]))).toEqual(["src/util.ts", "src/x.ts"]);
   });
 });

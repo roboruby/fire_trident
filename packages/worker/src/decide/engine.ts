@@ -24,7 +24,7 @@ import { addedFromHunks, fileDiff, type FileDiff } from "./diff.ts";
 import { gate, type GateVerdict, type ReflexSignals, type SecondOpinion } from "./gate.ts";
 import { applyAllowances, dangerLabels, scanDanger, triageDanger, type DangerAllowance } from "./danger.ts";
 import { CallLimiter } from "./limiter.ts";
-import { candidatePaths, mechanicalCheck, type MechanicalResult } from "./mechanical.ts";
+import { candidatePaths, mechanicalCheck, proofAssumptions, type MechanicalResult } from "./mechanical.ts";
 import { pickSecondOpinion, secondOpinionCandidates, type DecidePolicy } from "./policy.ts";
 import { pushQuarantine } from "./quarantine.ts";
 import {
@@ -261,6 +261,9 @@ export class DecideEngine {
     // With policy.deterministic off the facts are still recorded (observed only), but nothing uses them.
     const observed = await this.mechanical(p, innate, rule);
     const mech = policy.deterministic ? observed : null;
+    // The files those facts found: the trunk writer re-checks that they still exist when the change lands.
+    const assumptions = proofAssumptions(observed.result.changes, new Set(p.writeSet.map((w) => w.path)));
+    const relied = assumptions.length > 0 ? { assumptions } : {};
     const clefStates = this.store.clefStates();
     const base = {
       innate: { ok: innate.ok, failures: innate.failures },
@@ -390,10 +393,11 @@ export class DecideEngine {
       return;
     }
     if (final.action === "land") {
-      await this.host.updateProposals([{ id: p.id, patch: { status: "ready", evidence } }]);
+      await this.host.updateProposals([{ id: p.id, patch: { status: "ready", evidence, ...relied } }]);
     } else if (final.action === "escalate") {
       this.store.revokeAutonomy(region, `escalated ${p.id}`, now);
-      await this.host.updateProposals([{ id: p.id, patch: { status: "escalated", reason: `escalated by ${final.layer}: ${reason}`, evidence } }]);
+      // A person's approval later lands the same proposal, so it keeps the assumptions too.
+      await this.host.updateProposals([{ id: p.id, patch: { status: "escalated", reason: `escalated by ${final.layer}: ${reason}`, evidence, ...relied } }]);
     } else {
       await this.host.updateProposals([{ id: p.id, patch: { status: "returned", reason: `${final.layer}: ${reason}`, evidence } }]);
     }

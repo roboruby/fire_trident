@@ -153,6 +153,19 @@ export function onlySpecifiersChanged(before: string, after: string, changes: Re
   return true;
 }
 
+/** The most assumptions one proposal records (each is one existence check at landing). */
+export const MAX_ASSUMPTIONS = 200;
+
+/**
+ * The trunk files a change's resolved relative imports point at, outside its own writes: what the
+ * deterministic facts ("x exists") rely on, re-checked when the change lands.
+ */
+export function proofAssumptions(changes: readonly SpecifierChange[], ownWrites: ReadonlySet<Path>): Path[] {
+  const out = new Set<Path>();
+  for (const c of changes) if (c.relative && c.now !== null && !ownWrites.has(c.now)) out.add(c.now);
+  return [...out].sort().slice(0, MAX_ASSUMPTIONS);
+}
+
 /** Everything the mechanical check reads. */
 export interface MechanicalInput {
   files: ReadonlyArray<{ path: Path; before: string | null; after: string | null; unreadable?: boolean; binary?: boolean }>;

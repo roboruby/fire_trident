@@ -303,6 +303,13 @@ export interface Proposal {
   writeSet: FileVersion[];
   /** Files read, with the blob ids seen at read time (optimistic concurrency). */
   readSet: FileVersion[];
+  /**
+   * Files the decision relied on existing: the trunk files this change's new or rewritten relative
+   * imports resolve to (its own writes excluded). Only their existence matters: the trunk writer
+   * returns the change if one is gone when it lands, and returns a change that would delete one that
+   * another change landing in the same cycle relies on.
+   */
+  assumptions?: Path[];
   declared: { footprint: Path[]; summary: string };
   evidence: Evidence;
   status: ProposalStatus;
