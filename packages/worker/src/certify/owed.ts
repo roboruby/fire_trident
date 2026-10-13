@@ -110,8 +110,11 @@ export function runFiles(report: RunReport | null, loaded: Pick<Loaded, "unsuppo
   };
   for (const t of Array.isArray(report.tests) ? report.tests : []) {
     const f = of(t.file);
-    f.tests.push({ name: testName(t.name), status: String(t.status) });
-    if (RUN_DEPENDENT.test(t.error ?? "")) f.cut = true;
+    const status = String(t.status);
+    f.tests.push({ name: testName(t.name), status });
+    // Only a test that fails the run marks its file as cut short (the file is then red already): a
+    // todo test's error is the repository's text, and must not let a green run skip what the file owes.
+    if (fails(status) && RUN_DEPENDENT.test(t.error ?? "")) f.cut = true;
   }
   for (const s of Array.isArray(report.suites) ? report.suites : []) of(s.file).suites.push({ name: testName(s.name), status: String(s.status) });
   for (const meta of Array.isArray(report.files) ? report.files : []) {

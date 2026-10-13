@@ -40,6 +40,28 @@ describe("per-file results", () => {
     expect([...splitReport(report, ["test/c.test.ts"], true).keys()]).toEqual(["test/c.test.ts"]);
   });
 
+  it("never keeps a file whose runner could not start, or whose suite hook ran out of the run's time", () => {
+    const run: RunReport = {
+      runner: "r",
+      ms: 5,
+      files: [
+        { path: "test/b.test.ts", ms: 0, tests: 1, loadError: "runner failed: assign is gone" },
+        { path: "test/d.test.ts", ms: 1, tests: 1, loadError: null },
+        { path: "test/e.test.ts", ms: 1, tests: 1, loadError: null },
+      ],
+      tests: [
+        { name: "test/b.test.ts", file: "test/b.test.ts", status: "fail", error: "runner failed: assign is gone" },
+        { name: "s > t", file: "test/d.test.ts", status: "cancelled", error: "test did not finish before its parent and was cancelled" },
+        { name: "e", file: "test/e.test.ts", status: "pass" },
+      ],
+      suites: [{ name: "s", file: "test/d.test.ts", status: "fail", error: "Error: the certification ran out of time while this hook ran" }],
+    };
+    const paths = ["test/b.test.ts", "test/d.test.ts", "test/e.test.ts"];
+    expect([...splitReport(run, paths).keys()]).toEqual(["test/e.test.ts"]);
+    // This run's verdict still counts them.
+    expect([...splitReport(run, paths, true).keys()]).toEqual(paths);
+  });
+
   it("merges cached and fresh results back into one report, in file order", () => {
     const all = splitReport(report, ["test/a.test.ts", "test/b.test.ts", "test/c.test.ts"], true);
     const merged = mergeResults(["test/c.test.ts", "test/a.test.ts", "test/missing.test.ts"], all, "r", 9);
