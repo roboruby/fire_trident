@@ -628,6 +628,12 @@ ft creates an empty colony, adds each rule, then declares each intent.
                      declared after them, they become its parent, and its agent
                      waits for them to land and reads them before writing
   intents[].model    "default", "bulk" or a model id its files are written with
+  intents[].contest  2 to 4: that many agents build the intent at once and the
+                     colony lands one change: a mechanical proof first, then fewer
+                     files outside the footprint, then no danger signals, then a
+                     model comparing two changes at a time (asked in both orders),
+                     then the smaller diff, then the earlier one. The others go
+                     back superseded and are kept in the winner's lineage note
 
 Example
   ft new --spec demo/new-project-spec.md

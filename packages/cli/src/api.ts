@@ -8,7 +8,7 @@ import type { Command } from "./args.ts";
  *   POST /api/colonies                  { name, source?: { url, branch? }, pool?, regionDepth? }  -> Colony | { colony: Colony }
  *   GET  /api/colonies/:id              ColonySnapshot (an optional `rules: Rule[]` enriches output)
  *   POST /api/colonies/:id/rules        { colonyId, kind, spec, description, approvedBy }  -> { rule, violations, intents }
- *   POST /api/colonies/:id/intents      { colonyId, title, why, source, footprint, acceptance?, priority, createdBy }  -> Intent
+ *   POST /api/colonies/:id/intents      { colonyId, title, why, source, footprint, acceptance?, priority, createdBy, contest? }  -> Intent
  *   POST /api/colonies/:id/swarm        { agents, model?, kind? }
  *   GET  /api/colonies/:id/why          ?path=&line=  -> Array<{ landing, note }>
  *   GET  /api/colonies/:id/review       Proposal[] (escalated)

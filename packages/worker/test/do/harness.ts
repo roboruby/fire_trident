@@ -44,6 +44,8 @@ interface TrunkState {
   certified?: Sha[];
   /** Every blob's content as of each commit, so a revert can restore it. */
   contents?: Record<Sha, string>;
+  /** The lineage context each land() call received, as JSON (the latest 20), for asserting what lanes pass on. */
+  contexts?: string[];
 }
 
 const DEFAULT_FILES: Record<Path, string> = {
@@ -188,8 +190,9 @@ export class TrunkDO extends DurableObject<Env> {
     return paths.map((path) => ({ path, blob: snap[path] ?? null }));
   }
 
-  async land(batch: Proposal[]): Promise<{ landing?: Landing; returned: Array<{ proposalId: Id; reason: string }> }> {
+  async land(batch: Proposal[], ctx?: unknown): Promise<{ landing?: Landing; returned: Array<{ proposalId: Id; reason: string }> }> {
     const s = await this.load();
+    s.contexts = [...(s.contexts ?? []), JSON.stringify(ctx ?? null)].slice(-20);
     if (s.failLands > 0) {
       s.failLands--;
       await this.save(s);

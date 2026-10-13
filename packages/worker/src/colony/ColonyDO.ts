@@ -113,6 +113,13 @@ import type { AgentListEntry, ColonySeries, ColonySummary, RegistryEntry, Snapsh
 import { Certifier, type CertifyHost, type CertifyTrunk } from "../certify/certifier.ts";
 import type { CertifyPolicy } from "../certify/repair.ts";
 import { reviewPreview, type ReviewPreview } from "../agents/preview.ts";
+import { CONTEST_LOOK_MS, CONTEST_MIN, CONTEST_RETRY_MS, CONTEST_WAIT_MS, cleanAlternatives, contestEvidence, contestSeats, judgeModels, loadDiffs, migrateContest, pairJudge, selectWinner, supersededReason } from "../decide/contest.ts";
+import type { ContestAlternative, ContestCandidate, ContestOutcome, ContestRound, PairJudge } from "../decide/contest.ts";
+import { whyAuthor } from "../decide/danger.ts";
+import type { FileDiff } from "../decide/diff.ts";
+import { CallLimiter } from "../decide/limiter.ts";
+import type { AiRunner } from "../decide/reflex.ts";
+import type { CheckResult } from "@fire_trident/core";
 
 /**
  * Result of ColonyDO.take: an assignment, or advice to wait and retry. `review`: what review will
@@ -322,6 +329,8 @@ type IntentRow = {
   /** Direction columns (direction.ts migrates older tables). */
   revision?: number;
   withdrawn_reason?: string | null;
+  /** Contest mode: seats (decide/contest.ts migrates older tables). */
+  contest?: number | null;
 };
 
 type RuleRow = {
@@ -495,6 +504,7 @@ export class ColonyDO extends DurableObject<Env> {
     for (const stmt of SCHEMA) this.sql.exec(stmt);
     for (const stmt of OPS_SCHEMA) this.sql.exec(stmt);
     migrateDirection(this.sql);
+    migrateContest(this.sql);
     this.backfillSeries();
     this.hub = new EventHub(() => this.ctx.getWebSockets());
     this.certifier = new Certifier(this.certifyHost());
@@ -789,6 +799,8 @@ export class ColonyDO extends DurableObject<Env> {
         this.sql.exec("INSERT INTO intent_acks (intent_id, agent_id, revision, at) VALUES (?, ?, ?, ?) ON CONFLICT(intent_id, agent_id) DO NOTHING", id, holder, revision - 1, now);
         notices.push({ directive: this.insertDirective({ agentId: holder, kind: "revision", intentId: id, message: reason, by, at: now, revision, changed: diff.changed }), kind: agent.kind });
       }
+      // Contest mode: every other contestant is told as well.
+      notices.push(...this.contestRevised(id, holder, revision, diff.changed, reason, by, now));
     }
     const fresh = this.intentRow(id);
     const intent = fresh ? this.toIntent(fresh, colony.id) : { ...current, ...diff.next, revision };
@@ -1036,6 +1048,8 @@ export class ColonyDO extends DurableObject<Env> {
     const notices: Notice[] = [];
     for (const row of rows) {
       fx.events.push({ t: "withdrawn", at: now, intentId: row.id, reason, by, title: row.title, returned: perIntent.get(row.id) ?? 0, ...(ruleId ? { ruleId } : {}) });
+      // Contest mode: every other contestant stops too.
+      notices.push(...this.contestWithdrawn(row, reason, by, now, fx));
       if (!row.assigned_to) continue;
       const agent = this.agentRow(row.assigned_to);
       if (!agent) continue;
@@ -1260,12 +1274,14 @@ export class ColonyDO extends DurableObject<Env> {
    * changes for withdrawn or revised intents; each agent's kind and model; and the decide-arc
    * decisions recorded for each proposal (keyed by proposal id, the latest MAX_NOTE_DECISIONS each).
    * Lanes pass it on to TrunkDO.land, so the trunk writer never pulls a snapshot and the lineage note
-   * carries the decisions.
+   * carries the decisions. A contest's winner also carries the other attempts at its intent
+   * (`alternatives`, keyed by the winner's proposal id).
    */
   async landContext(intentIds: Id[], agentIds: Id[], proposalIds: Id[] = []): Promise<{
     intents: Record<Id, { title: string; why: string; ruleId?: Id; parentId?: Id } & DirectionInfo>;
     agents: Record<Id, { kind: AgentKind; model?: string }>;
     decisions: Record<Id, NoteDecision[]>;
+    alternatives?: Record<Id, ContestAlternative[]>;
   }> {
     const colonyId = this.requireColony().id;
     const intents: Record<Id, { title: string; why: string; ruleId?: Id; parentId?: Id } & DirectionInfo> = {};
@@ -1304,7 +1320,8 @@ export class ColonyDO extends DurableObject<Env> {
               .toArray(),
           )
         : {};
-    return { intents, agents, decisions };
+    const alternatives = this.contestAlternatives(wanted);
+    return { intents, agents, decisions, ...(alternatives ? { alternatives } : {}) };
   }
 
   /**
@@ -1356,9 +1373,12 @@ export class ColonyDO extends DurableObject<Env> {
         return this.leaseAndClaim(agentId, agent.kind as AgentKind, intent);
       }
     }
+    // Contest mode: a contestant whose change is not in yet gets its own seat back.
+    const seated = await this.contestSeatAgain(agent, colony.id, now);
+    if (seated) return seated;
 
-    // Only the columns self-assignment needs; the winner is loaded in full.
-    const rows = this.openCandidates(now);
+    // Only the columns self-assignment needs; the winner is loaded in full. Contest intents with a free seat join them.
+    const rows = this.contestRows(agentId, this.openCandidates(now));
     if (rows.length === 0) return this.waitFor(agentId, IDLE_RETRY_MS, "no open intents", now);
     const depth = colony.regionDepth;
     const intents = rows.map(
@@ -1413,6 +1433,8 @@ export class ColonyDO extends DurableObject<Env> {
       if (neighbors.size > 0) rep += cochangeWeight * neighborRepulsion(intent.footprint, neighborsOf, claimOn);
       return { intent, region: primary, repulsion: rep, directClaim: direct, admissionOpen: open };
     });
+    // Contest mode: contestants' own claims on a contest intent's files neither repel nor inhibit a taker.
+    this.contestAdjust(agentId, candidates, perIntent, views);
 
     const thresholds = parseJson<Record<string, number>>(agent.thresholds, {});
     const inhibitAt = this.inhibitAt();
@@ -1420,7 +1442,10 @@ export class ColonyDO extends DurableObject<Env> {
     for (let attempt = 0; attempt < PICK_ATTEMPTS && pool.length > 0; attempt++) {
       const pick = chooseIntent(pool, thresholds, Date.now(), this.rand, undefined, inhibitAt);
       if (!pick) break;
-      if (this.reserve(pick.intent.id, agentId)) {
+      // Contest mode: a contest intent seats several agents, each with a lease of its own.
+      if (this.contestSeatsOf(pick.intent.id) >= CONTEST_MIN) {
+        if (this.reserveSeat(pick.intent.id, agentId)) return this.leaseSeat(agentId, agent.kind as AgentKind, pick.intent.id);
+      } else if (this.reserve(pick.intent.id, agentId)) {
         const full = this.intentRow(pick.intent.id);
         return this.leaseAndClaim(agentId, agent.kind as AgentKind, full ? this.toIntent(full, colony.id) : pick.intent);
       }
@@ -1466,6 +1491,8 @@ export class ColonyDO extends DurableObject<Env> {
     const held = this.sql
       .exec<{ id: string; footprint: string }>("SELECT id, footprint FROM intents WHERE assigned_to = ? AND status IN ('claimed', 'proposed')", agentId)
       .toArray();
+    // Contest mode: a seat on a contest intent another agent holds keeps its claims fresh too.
+    held.push(...this.contestHeld(agentId, held));
     if (held.length === 0) return;
     this.lastRefresh.set(agentId, now);
     const byRegion = new Map<string, { intentIds: Set<Id>; deposit: Array<{ path: Path; intentId: Id }> }>();
@@ -1508,6 +1535,8 @@ export class ColonyDO extends DurableObject<Env> {
       fx.batch.clear(fp, { agentId, intentId: row.id, kind: "claim" }).deposit("failure", fp, FAILURE_STRENGTH, now, { agentId, intentId: row.id });
       fx.events.push({ t: "intent", at: now, intentId: row.id, status: "open", title: row.title, footprint: fp });
     }
+    // Contest mode: a seat on an intent another contestant holds is given back the same way.
+    this.contestGiveBack(agent, held, now, fx);
     this.sql.exec("UPDATE agents SET state = 'idle', intent_id = NULL, workspace = NULL WHERE id = ?", agentId);
     fx.events.push({ t: "agent", at: now, agentId, kind: agent.kind as AgentKind, state: "idle" });
     fx.release.add(agentId);
@@ -2082,6 +2111,712 @@ export class ColonyDO extends DurableObject<Env> {
   }
 
   // =========================================================================
+  // Contest mode (decide/contest.ts): up to `contest` agents hold one intent,
+  // each builds its own change, one lands and the others are kept as the
+  // winner's alternatives
+  // =========================================================================
+
+  /** Contest intents (id → seats) not known to be finished: loaded once, finished ones dropped when seen. */
+  private contestCache: Map<Id, number> | null = null;
+  /** Contests to look at once the effects being flushed are applied (a change was held for each). */
+  private readonly contestDirty = new Set<Id>();
+  /** Contests being decided now (the judge's model calls take a while). */
+  private readonly contestBusy = new Set<Id>();
+  /** Contests whose last decision failed, and when (tried again after CONTEST_RETRY_MS). */
+  private readonly contestFailed = new Map<Id, number>();
+  private contestTimer: ReturnType<typeof setTimeout> | null = null;
+  private contestRunning: Promise<void> | null = null;
+  private contestAgain = false;
+  /** The judge's call limiter when the decide engine's own is out of reach. */
+  private judgeLimiter: CallLimiter | null = null;
+
+  /** Forget the in-memory contest state (colony erased). */
+  private contestReset(): void {
+    this.contestCache = null;
+    this.contestDirty.clear();
+    this.contestBusy.clear();
+    this.contestFailed.clear();
+    if (this.contestTimer !== null) clearTimeout(this.contestTimer);
+    this.contestTimer = null;
+    this.contestAgain = false;
+  }
+
+  /** Contest intents not known to be finished, id → seats. */
+  private contestIntents(): Map<Id, number> {
+    if (this.contestCache) return this.contestCache;
+    const map = new Map<Id, number>();
+    for (const r of this.sql.exec<{ id: string; contest: number }>("SELECT id, contest FROM intents WHERE contest >= ? AND status IN ('open', 'claimed', 'proposed')", CONTEST_MIN)) {
+      map.set(r.id, r.contest);
+    }
+    this.contestCache = map;
+    return map;
+  }
+
+  /** Seats of a contest intent; 0 for an ordinary one. */
+  private contestSeatsOf(intentId: Id): number {
+    return this.contestIntents().get(intentId) ?? 0;
+  }
+
+  /** A new intent is a contest: its seats, and the seat of the agent it was declared for. */
+  private contestRecord(intent: Intent, seats: number, now: number): void {
+    this.sql.exec("UPDATE intents SET contest = ? WHERE id = ?", seats, intent.id);
+    intent.contest = seats;
+    this.contestIntents().set(intent.id, seats);
+    if (intent.assignedTo) this.seat(intent.id, intent.assignedTo, now);
+  }
+
+  /** Give an agent a seat (again). */
+  private seat(intentId: Id, agentId: Id, now: number): void {
+    this.sql.exec(
+      "INSERT INTO contest_seats (intent_id, agent_id, state, at) VALUES (?, ?, 'seated', ?) ON CONFLICT(intent_id, agent_id) DO UPDATE SET state = 'seated', at = excluded.at",
+      intentId,
+      agentId,
+      now,
+    );
+  }
+
+  /** An agent's seat state ('seated' or 'out'), or null. */
+  private seatOf(intentId: Id, agentId: Id): string | null {
+    return this.sql.exec<{ state: string }>("SELECT state FROM contest_seats WHERE intent_id = ? AND agent_id = ?", intentId, agentId).toArray()[0]?.state ?? null;
+  }
+
+  /** Live contestants, oldest seat first: seated, not dead, and still on this intent. */
+  private contestLive(intentId: Id): Id[] {
+    return this.sql
+      .exec<{ id: string }>(
+        "SELECT s.agent_id AS id FROM contest_seats s JOIN agents a ON a.id = s.agent_id WHERE s.intent_id = ? AND s.state = 'seated' AND a.state != 'dead' AND a.intent_id = s.intent_id ORDER BY s.at",
+        intentId,
+      )
+      .toArray()
+      .map((r) => r.id);
+  }
+
+  /** The latest round of a contest, or null. */
+  private contestRound(intentId: Id): ContestRound | null {
+    return this.sql.exec<ContestRound>("SELECT * FROM contests WHERE intent_id = ?", intentId).toArray()[0] ?? null;
+  }
+
+  /**
+   * Whether a decided round still stands: its winner is in its lane, or landed and its intent with it.
+   * A winner that came back (stale, conflicting, refused) ends the round, and the intent seats a new one.
+   */
+  private contestStands(round: ContestRound, intent: Pick<IntentRow, "status"> | undefined): boolean {
+    if (round.state !== "decided" || !round.winner) return false;
+    const status = this.proposalRow(round.winner)?.status;
+    return status === "ready" || (status === "landed" && intent?.status === "landed");
+  }
+
+  /** Seats may be taken while no round's clock runs and no decision stands. */
+  private contestSeatsOpen(intentId: Id, intent: Pick<IntentRow, "status"> | undefined): boolean {
+    const round = this.contestRound(intentId);
+    return !round || (round.state === "decided" && !this.contestStands(round, intent));
+  }
+
+  /** Is this status one an agent can still work on? */
+  private static live(status: string | undefined): boolean {
+    return status === "open" || status === "claimed" || status === "proposed";
+  }
+
+  /**
+   * Take, for a contestant asking again: while its own change is not in yet, it gets its seat back
+   * (its lease, or a new one). Null when the agent holds no seat on the intent it is on.
+   */
+  private async contestSeatAgain(agent: AgentRow, colonyId: Id, now: number): Promise<TakeResult | null> {
+    const id = agent.intent_id;
+    if (!id || this.contestSeatsOf(id) < CONTEST_MIN || this.seatOf(id, agent.id) !== "seated") return null;
+    const row = this.intentRow(id);
+    if (!row || !ColonyDO.live(row.status)) return null;
+    // With a change in (in review, held, in a lane) it may take other work, as after any proposal.
+    if (this.sql.exec("SELECT 1 FROM proposals WHERE agent_id = ? AND intent_id = ? AND status IN ('pending', 'checking', 'ready', 'escalated') LIMIT 1", agent.id, id).toArray().length > 0) return null;
+    const lease = parseJson<WorkspaceLease | null>(agent.workspace, null);
+    if (lease && lease.tokenExpiresAt > now + LEASE_MIN_LIFE_MS) return this.assignment({ ...this.toIntent(row, colonyId), status: "claimed", assignedTo: agent.id }, lease);
+    return this.leaseSeat(agent.id, agent.kind as AgentKind, id);
+  }
+
+  /**
+   * The rows a take scores: the open intents, plus contest intents another agent holds that still
+   * have a free seat for this agent (none once a round's clock runs or while a decision stands).
+   */
+  private contestRows(
+    agentId: Id,
+    rows: Array<{ id: string; footprint: string; priority: number; created_at: number }>,
+  ): Array<{ id: string; footprint: string; priority: number; created_at: number }> {
+    const contests = this.contestIntents();
+    if (contests.size === 0) return rows;
+    const listed = new Set(rows.map((r) => r.id));
+    const extra: typeof rows = [];
+    const found = this.sql
+      .exec<{ id: string; footprint: string; priority: number; created_at: number; status: string }>(
+        "SELECT id, footprint, priority, created_at, status FROM intents WHERE id IN (SELECT value FROM json_each(?))",
+        JSON.stringify([...contests.keys()].slice(0, CANDIDATE_CAP)),
+      )
+      .toArray();
+    for (const r of found) {
+      if (!ColonyDO.live(r.status)) {
+        contests.delete(r.id); // finished: nobody joins it any more
+        continue;
+      }
+      if (r.status === "open" || listed.has(r.id) || !this.contestSeatsOpen(r.id, r)) continue;
+      const live = this.contestLive(r.id);
+      if (live.includes(agentId) || live.length >= (contests.get(r.id) ?? 0)) continue;
+      extra.push({ id: r.id, footprint: r.footprint, priority: r.priority, created_at: r.created_at });
+    }
+    return extra.length > 0 ? [...rows, ...extra] : rows;
+  }
+
+  /**
+   * Contest candidates other agents already hold: their contestants' own claims on its files neither
+   * repel nor inhibit the taker (each contestant holds at most one claim per file), and admission lets
+   * it join work its regions already admitted. Claims of anyone else count as usual.
+   */
+  private contestAdjust(agentId: Id, candidates: Candidate[], perIntent: Array<Map<string, Path[]>>, views: Map<string, FieldView>): void {
+    if (this.contestIntents().size === 0) return;
+    candidates.forEach((c, i) => {
+      if (this.contestSeatsOf(c.intent.id) < CONTEST_MIN) return;
+      const others = this.contestLive(c.intent.id).filter((a) => a !== agentId);
+      if (others.length === 0) return;
+      const recent = new Set(others.map((a) => this.recentClaims.get(a)).filter((x): x is RecentClaim => x !== undefined));
+      let rep = c.repulsion;
+      let direct = c.directClaim ?? 0;
+      for (const [region, paths] of perIntent[i] ?? new Map<string, Path[]>()) {
+        const view = views.get(region);
+        if (!view) continue;
+        // Contestants' claims newer than the reading are in `unseen`; the rest are in the reading.
+        const unseen = view.unseen.filter((u) => recent.has(u));
+        const inReading = others.length - unseen.length;
+        if (view.repulsive && inReading > 0) {
+          for (const p of new Set(paths)) {
+            const removed = Math.min(Object.hasOwn(view.byPath, p) ? (view.byPath[p]?.claim ?? 0) : 0, inReading * CLAIM_STRENGTH);
+            rep -= removed;
+            direct -= removed;
+          }
+        }
+        for (const u of unseen) {
+          rep -= CLAIM_STRENGTH * overlapCount(u.paths, paths);
+          for (const p of paths) if (u.paths.has(p)) direct -= CLAIM_STRENGTH;
+        }
+      }
+      c.repulsion = Math.max(0, rep);
+      c.directClaim = Math.max(0, direct);
+      c.admissionOpen = true;
+    });
+  }
+
+  /**
+   * Seat an agent on a contest intent (false when it is full, its clock runs, a decision stands, or the
+   * agent holds a seat already). The first seat claims the intent as a take would.
+   */
+  private reserveSeat(intentId: Id, agentId: Id): boolean {
+    const seats = this.contestSeatsOf(intentId);
+    const row = this.intentRow(intentId);
+    if (!row || !ColonyDO.live(row.status) || seats < CONTEST_MIN || !this.contestSeatsOpen(intentId, row)) return false;
+    const live = this.contestLive(intentId);
+    if (live.includes(agentId) || live.length >= seats) return false;
+    const now = Date.now();
+    if (row.status === "open") {
+      const won = this.sql.exec("UPDATE intents SET status = 'claimed', assigned_to = ?, updated_at = ? WHERE id = ? AND status = 'open' RETURNING id", agentId, now, intentId).toArray();
+      if (won.length === 0) return false;
+      if (this.candidateRows) this.candidateRows.rows = this.candidateRows.rows.filter((r) => r.id !== intentId);
+    }
+    this.seat(intentId, agentId, now);
+    this.sql.exec("UPDATE agents SET intent_id = ?, workspace = NULL WHERE id = ?", intentId, agentId);
+    return true;
+  }
+
+  /**
+   * Lease a workspace for a seated contestant and claim the intent's files: the first contestant goes
+   * through admission like any taker, the others join work its regions already admitted. Undone (the
+   * seat given up, the intent reopened if nobody else holds it) when a region refuses, the pool is
+   * empty, or the seat was lost meanwhile.
+   */
+  private async leaseSeat(agentId: Id, kind: AgentKind, intentId: Id): Promise<TakeResult> {
+    const colony = this.requireColony();
+    const row = this.intentRow(intentId);
+    if (!row) return { wait: true, retryInMs: jitter(LEASE_RETRY_MS, this.rand), reason: `unknown intent ${intentId}` };
+    const intent = this.toIntent(row, colony.id);
+    const first = this.contestLive(intentId).every((a) => a === agentId);
+    const recent = { paths: new Set(intent.footprint), regions: new Set(groupByRegion(intent.footprint, colony.regionDepth).keys()), doneAt: null as number | null };
+    this.recentClaims.set(agentId, recent);
+    const closed = first ? await this.admitClaims(agentId, intent) : await this.seatClaims(agentId, intent);
+    const claimedAt = Date.now();
+    recent.doneAt = claimedAt;
+    let lease: WorkspaceLease | null = null;
+    let failure = closed.length > 0 ? `admission closed in ${closed.join(", ")}` : "pool empty";
+    if (closed.length === 0) {
+      try {
+        lease = await this.poolStub().lease(agentId, this.requireColony().trunkSha);
+      } catch (err) {
+        failure = `lease failed: ${errorText(err)}`;
+        console.error(`PoolDO.lease failed for ${agentId}: ${failure}`);
+      }
+    }
+    const now = Date.now();
+    const fresh = this.intentRow(intentId);
+    const held = !!fresh && ColonyDO.live(fresh.status) && this.seatOf(intentId, agentId) === "seated" && this.agentRow(agentId)?.intent_id === intentId;
+    if (!lease || !held) {
+      if (this.recentClaims.get(agentId) === recent) this.recentClaims.delete(agentId);
+      const fx = this.effects(colony.regionDepth);
+      this.sql.exec("UPDATE contest_seats SET state = 'out', at = ? WHERE intent_id = ? AND agent_id = ?", now, intentId, agentId);
+      if (fresh && fresh.status === "claimed" && fresh.assigned_to === agentId) {
+        // The intent stays with another contestant, or reopens when nobody else holds it.
+        const other = this.contestLive(intentId).find((a) => a !== agentId);
+        if (other) this.sql.exec("UPDATE intents SET assigned_to = ?, updated_at = ? WHERE id = ?", other, now, intentId);
+        else {
+          this.sql.exec("UPDATE intents SET status = 'open', assigned_to = NULL, updated_at = ? WHERE id = ?", now, intentId);
+          fx.events.push({ t: "intent", at: now, intentId, status: "open", title: intent.title, footprint: intent.footprint });
+        }
+      }
+      fx.batch.clear(intent.footprint, { agentId, intentId, kind: "claim" });
+      this.sql.exec("UPDATE agents SET intent_id = NULL, workspace = NULL WHERE id = ? AND intent_id = ?", agentId, intentId);
+      this.setAgentState(agentId, "waiting", now);
+      if (lease) fx.release.add(agentId);
+      await this.flushEffects(fx);
+      return { wait: true, retryInMs: jitter(closed.length > 0 ? CLOSED_RETRY_MS : LEASE_RETRY_MS, this.rand), reason: lease ? "the contest seat was lost while leasing" : failure };
+    }
+    this.sql.exec("UPDATE agents SET state = 'working', intent_id = ?, workspace = ?, last_seen = ? WHERE id = ?", intentId, JSON.stringify(lease), now, agentId);
+    this.lastRefresh.set(agentId, claimedAt);
+    this.waits.done(agentId);
+    const events: ColonyEvent[] = [{ t: "agent", at: now, agentId, kind, state: "working", intentId, paths: intent.footprint }];
+    if (first) events.unshift({ t: "intent", at: now, intentId, status: "claimed", title: intent.title, footprint: intent.footprint });
+    this.publish(events);
+    this.bump("takes", 1, now);
+    return this.assignment({ ...intent, status: "claimed", assignedTo: agentId }, lease);
+  }
+
+  /** Claims for a contestant joining work its regions already admitted: deposited without the admission check. Returns the regions that could not be reached. */
+  private async seatClaims(agentId: Id, intent: Intent): Promise<string[]> {
+    const closed: string[] = [];
+    const at = Date.now();
+    await Promise.all(
+      [...groupByRegion(intent.footprint, this.requireColony().regionDepth)].map(async ([region, paths]) => {
+        try {
+          await (await this.region(region)).apply({ deposit: paths.map((path) => ({ kind: "claim" as const, path, strength: CLAIM_STRENGTH, at, agentId, intentId: intent.id })) });
+        } catch (err) {
+          console.error(`contest claim failed in region ${region} for ${agentId}: ${errorText(err)}`);
+          closed.push(region);
+        }
+      }),
+    );
+    return closed;
+  }
+
+  /** Contest intents an agent holds a live seat on but not the intent row: heartbeats refresh those claims too. */
+  private contestHeld(agentId: Id, held: ReadonlyArray<{ id: string }>): Array<{ id: string; footprint: string }> {
+    if (this.contestIntents().size === 0) return [];
+    const have = new Set(held.map((h) => h.id));
+    return this.sql
+      .exec<{ id: string; footprint: string }>(
+        `SELECT i.id AS id, i.footprint AS footprint FROM contest_seats s JOIN intents i ON i.id = s.intent_id JOIN agents a ON a.id = s.agent_id
+          WHERE s.agent_id = ? AND s.state = 'seated' AND a.intent_id = s.intent_id AND i.status IN ('open', 'claimed', 'proposed')`,
+        agentId,
+      )
+      .toArray()
+      .filter((r) => !have.has(r.id));
+  }
+
+  /**
+   * May an agent propose for a contest intent someone else holds? Yes while it holds a seat. One the
+   * colony stood down after a decision gets a 409 that says so; anyone else is refused as usual.
+   */
+  private contestProposable(row: IntentRow, agentId: Id): boolean {
+    if (this.contestSeatsOf(row.id) < CONTEST_MIN) return false;
+    const seat = this.seatOf(row.id, agentId);
+    if (seat === "seated") return true;
+    const round = seat === "out" ? this.contestRound(row.id) : null;
+    if (round && this.contestStands(round, row)) {
+      throw ftError(409, `intent ${row.id}: its contest was decided (${round.winner} won); stop work on it and take other work`);
+    }
+    return false;
+  }
+
+  /**
+   * A contest intent was withdrawn: its live contestants other than the intent row's holder (whom
+   * withdrawRows tells) stop as the holder does: idle, lease released, told why. Their claims went with
+   * the intent's.
+   */
+  private contestWithdrawn(row: IntentRow, reason: string, by: string, now: number, fx: Effects): Notice[] {
+    if (this.contestSeatsOf(row.id) < CONTEST_MIN) return [];
+    const out: Notice[] = [];
+    for (const agentId of this.contestLive(row.id)) {
+      const agent = agentId === row.assigned_to ? undefined : this.agentRow(agentId);
+      if (!agent) continue;
+      this.sql.exec("UPDATE agents SET state = 'idle', intent_id = NULL, workspace = NULL WHERE id = ?", agent.id);
+      if (agent.state !== "idle") fx.events.push({ t: "agent", at: now, agentId: agent.id, kind: agent.kind as AgentKind, state: "idle" });
+      fx.release.add(agent.id);
+      out.push({ directive: this.insertDirective({ agentId: agent.id, kind: "withdrawal", intentId: row.id, message: reason, by, at: now }), kind: agent.kind });
+    }
+    this.sql.exec("UPDATE contest_seats SET state = 'out', at = ? WHERE intent_id = ? AND state = 'seated'", now, row.id);
+    return out;
+  }
+
+  /**
+   * A contest intent was amended substantively: its live contestants other than the holder (whom
+   * amendIntent tells) get the revision notice too, and are held to the revision they saw until they
+   * read it (see stampDirection).
+   */
+  private contestRevised(intentId: Id, holder: Id | null, revision: number, changed: IntentField[], reason: string, by: string, now: number): Notice[] {
+    if (this.contestSeatsOf(intentId) < CONTEST_MIN) return [];
+    const out: Notice[] = [];
+    for (const agentId of this.contestLive(intentId)) {
+      const agent = agentId === holder ? undefined : this.agentRow(agentId);
+      if (!agent) continue;
+      this.sql.exec("INSERT INTO intent_acks (intent_id, agent_id, revision, at) VALUES (?, ?, ?, ?) ON CONFLICT(intent_id, agent_id) DO NOTHING", intentId, agentId, revision - 1, now);
+      out.push({ directive: this.insertDirective({ agentId, kind: "revision", intentId, message: reason, by, at: now, revision, changed }), kind: agent.kind });
+    }
+    return out;
+  }
+
+  /** A contestant gives back a seat on an intent another contestant holds: its claims go, a failure mark stays, the seat frees up. */
+  private contestGiveBack(agent: AgentRow, handled: ReadonlyArray<{ id: string }>, now: number, fx: Effects): void {
+    const id = agent.intent_id;
+    if (!id || handled.some((h) => h.id === id) || this.contestSeatsOf(id) < CONTEST_MIN || this.seatOf(id, agent.id) !== "seated") return;
+    const row = this.intentRow(id);
+    if (!row) return;
+    const fp = this.footprintOf(row.id, row.footprint);
+    fx.batch.clear(fp, { agentId: agent.id, intentId: id, kind: "claim" }).deposit("failure", fp, FAILURE_STRENGTH, now, { agentId: agent.id, intentId: id });
+    this.sql.exec("UPDATE contest_seats SET state = 'out', at = ? WHERE intent_id = ? AND agent_id = ?", now, id, agent.id);
+  }
+
+  /**
+   * The lane hand-off for contest intents: a ready change waits for its contest instead of going to its
+   * lane (the first one starts the contest's clock), and the contest is looked at once the effects are
+   * flushed. False for ordinary intents and for a contest's winner.
+   */
+  private contestHold(p: Proposal, now: number): boolean {
+    if (this.contestSeatsOf(p.intentId) < CONTEST_MIN) return false;
+    const round = this.contestRound(p.intentId);
+    if (round?.state === "decided" && round.winner === p.id) return false;
+    if (!round || (round.state === "decided" && !this.contestStands(round, this.intentRow(p.intentId)))) {
+      this.sql.exec(
+        "INSERT OR REPLACE INTO contests (intent_id, state, opened_at, deadline, winner, reason, alternatives, decided_at) VALUES (?, 'open', ?, ?, NULL, NULL, NULL, NULL)",
+        p.intentId,
+        now,
+        now + CONTEST_WAIT_MS,
+      );
+    }
+    this.sql.exec("INSERT OR REPLACE INTO contest_entries (proposal_id, intent_id, agent_id, at) VALUES (?, ?, ?, ?)", p.id, p.intentId, p.agentId, now);
+    this.contestDirty.add(p.intentId);
+    return true;
+  }
+
+  /**
+   * After effects are flushed: contests a change was just held for are looked at now, open ones a
+   * second later (a contestant may have given back, died or been sent back, and then the others need
+   * not wait for it).
+   */
+  private contestWake(): void {
+    if (this.contestDirty.size > 0) {
+      this.contestSweep();
+      return;
+    }
+    if (this.contestTimer !== null || this.contestIntents().size === 0) return;
+    if (this.sql.exec("SELECT 1 FROM contests WHERE state = 'open' LIMIT 1").toArray().length === 0) return;
+    this.contestTimer = setTimeout(() => {
+      this.contestTimer = null;
+      this.contestSweep();
+    }, CONTEST_LOOK_MS);
+  }
+
+  /** Look at every contest marked and every open one; a call during a sweep runs another after it. */
+  private contestSweep(): void {
+    if (this.contestRunning) {
+      this.contestAgain = true;
+      return;
+    }
+    const run = (async () => {
+      do {
+        this.contestAgain = false;
+        const ids = new Set<Id>(this.contestDirty);
+        this.contestDirty.clear();
+        for (const r of this.sql.exec<{ intent_id: string }>("SELECT intent_id FROM contests WHERE state = 'open'")) ids.add(r.intent_id);
+        for (const id of ids) {
+          try {
+            await this.contestCheck(id, Date.now());
+          } catch (err) {
+            console.warn(`contest ${id} not checked: ${errorText(err)}`);
+          }
+        }
+      } while (this.contestAgain || this.contestDirty.size > 0);
+    })().finally(() => {
+      this.contestRunning = null;
+    });
+    this.contestRunning = run;
+    this.ctx.waitUntil(run);
+  }
+
+  /**
+   * Move one contest on. Held changes that are no longer ready (recalled, sent back by a withdrawal or
+   * an amendment) drop out. A decided round sends late changes back; an open one is decided once every
+   * live contestant has a ready change or its deadline passed (a contestant that gave back or died does
+   * not count), else it waits for the deadline (the alarm).
+   */
+  private async contestCheck(intentId: Id, now: number): Promise<void> {
+    if (this.contestBusy.has(intentId)) return;
+    // A decision that failed is tried again a minute later (the alarm), not on every look.
+    const failed = this.contestFailed.get(intentId);
+    if (failed !== undefined && now - failed < CONTEST_RETRY_MS) {
+      await this.armContestAlarm(failed + CONTEST_RETRY_MS);
+      return;
+    }
+    let round = this.contestRound(intentId);
+    if (!round) return;
+    const row = this.intentRow(intentId);
+    const ready: Proposal[] = [];
+    for (const e of this.sql.exec<{ proposal_id: string }>("SELECT proposal_id FROM contest_entries WHERE intent_id = ? ORDER BY at", intentId).toArray()) {
+      const p = this.getProposalSync(e.proposal_id);
+      if (p?.status === "ready") ready.push(p);
+      else this.sql.exec("DELETE FROM contest_entries WHERE proposal_id = ?", e.proposal_id);
+    }
+    if (round.state === "decided") {
+      if (ready.length === 0) return;
+      if (this.contestStands(round, row)) return this.contestLate(intentId, round, ready, now);
+      // The winner came back meanwhile: these changes start the next round.
+      this.sql.exec("UPDATE contests SET state = 'open', opened_at = ?, deadline = ?, winner = NULL, reason = NULL, alternatives = NULL, decided_at = NULL WHERE intent_id = ?", now, now + CONTEST_WAIT_MS, intentId);
+      round = this.contestRound(intentId);
+      if (!round) return;
+    }
+    if (!row || !ColonyDO.live(row.status) || ready.length === 0) {
+      // Nothing to decide: the clock starts again with the next ready change.
+      this.sql.exec("DELETE FROM contests WHERE intent_id = ? AND state = 'open'", intentId);
+      return;
+    }
+    const proposed = new Set(ready.map((p) => p.agentId));
+    const waiting = this.contestLive(intentId).filter((a) => !proposed.has(a));
+    if (waiting.length > 0 && now < round.deadline) {
+      await this.armContestAlarm(round.deadline);
+      return;
+    }
+    this.contestBusy.add(intentId);
+    // Should this object be evicted while the judge works, the alarm looks again.
+    await this.armContestAlarm(now + CONTEST_RETRY_MS);
+    const run = this.contestResolve(intentId, ready)
+      .then(() => {
+        this.contestFailed.delete(intentId);
+        // Changes that became ready while it was being decided are looked at now.
+        this.contestDirty.add(intentId);
+      })
+      .catch((err) => {
+        this.contestFailed.set(intentId, Date.now());
+        console.error(`contest ${intentId} not decided, tried again in a minute: ${errorText(err)}`);
+      })
+      .finally(() => {
+        this.contestBusy.delete(intentId);
+        this.contestWake();
+      });
+    this.ctx.waitUntil(run);
+  }
+
+  /** Decide a contest among its ready changes: deterministic evidence first, then the pairwise judge. */
+  private async contestResolve(intentId: Id, ready: Proposal[]): Promise<void> {
+    const intent = this.reviewIntent(intentId);
+    if (!intent) return;
+    const t0 = Date.now();
+    const byId = new Map(ready.map((p) => [p.id, p]));
+    const candidates: ContestCandidate[] = ready.map((p) => {
+      const model = this.agentRow(p.agentId)?.model ?? undefined;
+      return { proposalId: p.id, agentId: p.agentId, ...(model ? { model } : {}), createdAt: p.createdAt, ...contestEvidence(p, intent.footprint), size: null, diffs: null };
+    });
+    const outcome = await selectWinner(candidates, {
+      judge: this.contestJudge(intent, candidates.map((c) => c.model)),
+      diffs: (c) => {
+        const p = byId.get(c.proposalId);
+        return p ? this.contestDiffs(p) : Promise.resolve(null);
+      },
+    });
+    await this.contestApply(intentId, outcome, Date.now() - t0);
+  }
+
+  /**
+   * The pairwise judge (null without a Workers AI binding): second-opinion models outside the authors'
+   * families, on the decide engine's call limiter.
+   */
+  private contestJudge(intent: Intent, authors: Array<string | undefined>): PairJudge | null {
+    const ai = (this.env as unknown as { AI?: AiRunner }).AI;
+    if (!ai) return null;
+    const policy = this.decider().store.policy();
+    const limiter = this.contestLimiter();
+    limiter.configure(policy.llmConcurrency, policy.llmPerMinute);
+    return pairJudge({
+      ai,
+      models: judgeModels(authors, policy.secondOpinionModels),
+      limiter,
+      intent: { title: intent.title, why: intent.why, whyBy: whyAuthor(intent.source), ...(intent.acceptance ? { acceptance: intent.acceptance } : {}) },
+      onCall: () => this.bump("contest.judge.calls", 1, Date.now()),
+    });
+  }
+
+  /**
+   * The decide engine's call limiter, so judge calls share its per-model rate, concurrency and
+   * throttling cooldowns with the second opinion; a limiter of its own if that one is out of reach.
+   */
+  private contestLimiter(): CallLimiter {
+    const shared = (this.decider() as unknown as { limiter?: unknown }).limiter;
+    if (shared instanceof CallLimiter) return shared;
+    return (this.judgeLimiter ??= new CallLimiter(8, 120));
+  }
+
+  /** A contestant's change file by file, for the tie-break and the judge (tests replace it). */
+  protected contestDiffs(p: Proposal): Promise<FileDiff[] | null> {
+    const trunk = this.trunkStub() as unknown as TrunkRpc;
+    return loadDiffs(p, { env: this.env, trunk: this.requireColony().trunk, baseBlobs: (sha, paths) => trunk.baseBlobs(sha, paths) });
+  }
+
+  /**
+   * Carry out a contest decision: the winner goes to its lane with a `contest` check in its evidence,
+   * every other change for the intent goes back superseded by it, contestants still working stand
+   * down, and the round keeps the alternatives for the winner's lineage note. Nothing happens when the
+   * winner or the intent moved meanwhile (the next look decides again).
+   */
+  private async contestApply(intentId: Id, outcome: ContestOutcome, ms: number): Promise<void> {
+    const colony = this.requireColony();
+    const now = Date.now();
+    const row = this.intentRow(intentId);
+    const won = this.getProposalSync(outcome.winner.proposalId);
+    if (!row || !ColonyDO.live(row.status) || won?.status !== "ready") return;
+    const fx = this.effects(colony.regionDepth);
+    const n = outcome.losers.length;
+    const check: CheckResult = { name: "contest", ok: true, ms, detail: oneLine(`won the contest for ${intentId} against ${n} other change${n === 1 ? "" : "s"}: ${outcome.reason}`, 1_000) };
+    const winner: Proposal = { ...won, evidence: { ...won.evidence, checks: [...(won.evidence?.checks ?? []), check] } };
+    this.writeProposal(winner, now);
+    const prow = this.proposalRow(winner.id);
+    fx.enqueue.push({ proposal: winner, region: prow?.region ?? ".", priority: prow?.priority ?? row.priority });
+    if (row.status !== "proposed" || row.assigned_to !== winner.agentId) {
+      this.sql.exec("UPDATE intents SET status = 'proposed', assigned_to = ?, updated_at = ? WHERE id = ?", winner.agentId, now, intentId);
+      if (row.status !== "proposed") fx.events.push({ t: "intent", at: now, intentId, status: "proposed", title: row.title, footprint: this.footprintOf(row.id, row.footprint) });
+    }
+    const lostWhy = new Map(outcome.losers.map((l) => [l.candidate.proposalId, l.why]));
+    const alternatives: ContestAlternative[] = [];
+    const losers: Id[] = [];
+    for (const prev of this.inFlightFor([intentId])) {
+      if (prev.id === winner.id) continue;
+      const why = lostWhy.get(prev.id) ?? (prev.status === "ready" ? "ready after the contest was decided" : `still ${prev.status} when the contest was decided`);
+      const next: Proposal = { ...prev, status: "returned", supersededBy: winner.id, reason: supersededReason(intentId, winner.id, why) };
+      this.writeProposal(next, now);
+      this.settleSuperseded(prev, next, row, winner.agentId, now, fx);
+      const model = this.agentRow(prev.agentId)?.model;
+      alternatives.push({ proposalId: prev.id, agentId: prev.agentId, ...(model ? { model } : {}), reason: why });
+      losers.push(prev.id);
+    }
+    const notices: Notice[] = [];
+    for (const agentId of this.contestLive(intentId)) {
+      const agent = agentId === winner.agentId ? undefined : this.agentRow(agentId);
+      if (agent) notices.push(this.contestStop(agent, row, winner.id, now, fx));
+    }
+    this.sql.exec("UPDATE contest_seats SET state = 'out', at = ? WHERE intent_id = ? AND agent_id != ? AND state = 'seated'", now, intentId, winner.agentId);
+    this.sql.exec("DELETE FROM contest_entries WHERE intent_id = ?", intentId);
+    this.sql.exec(
+      "UPDATE contests SET state = 'decided', winner = ?, reason = ?, alternatives = ?, decided_at = ? WHERE intent_id = ?",
+      winner.id,
+      outcome.reason,
+      JSON.stringify(alternatives),
+      now,
+      intentId,
+    );
+    fx.events.push({ t: "contest", at: now, intentId, title: row.title, winner: winner.id, losers, reason: outcome.reason });
+    this.bump("contests", 1, now);
+    console.log(`contest ${intentId}: ${winner.id} won over ${losers.length} (${outcome.reason})`);
+    await this.flushEffects(fx);
+    await this.deliver(notices);
+  }
+
+  /** Changes that became ready after their contest was decided go back, superseded by its winner. */
+  private async contestLate(intentId: Id, round: ContestRound, ready: Proposal[], now: number): Promise<void> {
+    const row = this.intentRow(intentId);
+    if (!row || !round.winner) return;
+    const winnerAgent = this.getProposalSync(round.winner)?.agentId ?? null;
+    const fx = this.effects(this.requireColony().regionDepth);
+    for (const prev of ready) {
+      if (prev.id === round.winner) continue;
+      const next: Proposal = { ...prev, status: "returned", supersededBy: round.winner, reason: supersededReason(intentId, round.winner, "ready after the contest was decided") };
+      this.writeProposal(next, now);
+      this.settleSuperseded(prev, next, row, winnerAgent, now, fx);
+    }
+    this.sql.exec("DELETE FROM contest_entries WHERE intent_id = ?", intentId);
+    await this.flushEffects(fx);
+  }
+
+  /**
+   * A contest change superseded by its winner goes back to its agent (pushed when watched); the agent
+   * stands down with its lease and claims released. No failure mark: it did not fail. The winner's own
+   * agent keeps its claims.
+   */
+  private settleSuperseded(prev: Proposal, next: Proposal, row: IntentRow, winnerAgent: Id | null, now: number, fx: Effects): void {
+    fx.events.push({ t: "proposal", at: now, proposalId: next.id, intentId: next.intentId, agentId: next.agentId, status: next.status, ...(next.reason ? { reason: next.reason } : {}) });
+    (fx.outcomes ??= []).push(next);
+    if (prev.status === "ready") {
+      // Held changes sit in no lane; one queued anyway leaves it.
+      const region = this.proposalRow(prev.id)?.region ?? ".";
+      fx.dequeue.set(region, [...(fx.dequeue.get(region) ?? []), prev.id]);
+    }
+    this.bump("contest.superseded", 1, now);
+    if (next.agentId === winnerAgent) return;
+    fx.batch.clear(this.footprintOf(row.id, row.footprint), { agentId: next.agentId, intentId: row.id, kind: "claim" });
+    const agent = this.agentRow(next.agentId);
+    if (agent && agent.intent_id === row.id) {
+      this.sql.exec("UPDATE agents SET state = 'idle', intent_id = NULL, workspace = NULL WHERE id = ?", agent.id);
+      if (agent.state !== "idle") fx.events.push({ t: "agent", at: now, agentId: agent.id, kind: agent.kind as AgentKind, state: "idle" });
+      fx.release.add(agent.id);
+    }
+  }
+
+  /**
+   * A contestant still working when its contest was decided stands down: told so (a withdrawal of the
+   * intent for this agent, pushed or in its inbox), its lease and claims released.
+   */
+  private contestStop(agent: AgentRow, row: IntentRow, winnerId: Id, now: number, fx: Effects): Notice {
+    this.sql.exec("UPDATE agents SET state = 'idle', intent_id = NULL, workspace = NULL WHERE id = ?", agent.id);
+    if (agent.state !== "idle") fx.events.push({ t: "agent", at: now, agentId: agent.id, kind: agent.kind as AgentKind, state: "idle" });
+    fx.release.add(agent.id);
+    fx.batch.clear(this.footprintOf(row.id, row.footprint), { agentId: agent.id, intentId: row.id, kind: "claim" });
+    const message = `the contest for this intent was decided before your change was ready (${winnerId} won); stop work on it and take other work`;
+    const d = this.insertDirective({ agentId: agent.id, kind: "withdrawal", intentId: row.id, message, by: "colony", at: now });
+    fx.events.push({ t: "directive", at: now, directiveId: d.id, agentId: agent.id, intentId: row.id, message, by: "colony", kind: "withdrawal" });
+    return { directive: d, kind: agent.kind };
+  }
+
+  /**
+   * The alarm's look at open contests: each is decided when it can be (its deadline passed, or a
+   * decision cut short by an eviction), else the alarm stays on its deadline. Never throws.
+   */
+  private async contestAlarm(now: number): Promise<void> {
+    try {
+      if (!this.loadColony()) return;
+      for (const r of this.sql.exec<{ intent_id: string }>("SELECT intent_id FROM contests WHERE state = 'open'").toArray()) await this.contestCheck(r.intent_id, now);
+      // A decision still being made is looked at again, in case it is cut short.
+      if (this.contestBusy.size > 0) await this.armContestAlarm(now + CONTEST_RETRY_MS);
+    } catch (err) {
+      console.warn(`contest alarm failed: ${errorText(err)}`);
+    }
+  }
+
+  /** Make sure the alarm fires by `at` (it is shared with the metrics tick: an earlier one stays). */
+  private async armContestAlarm(at: number): Promise<void> {
+    try {
+      const current = await this.ctx.storage.getAlarm();
+      if (current === null || current > at) await this.ctx.storage.setAlarm(at);
+    } catch (err) {
+      console.warn(`contest alarm not armed: ${errorText(err)}`);
+    }
+  }
+
+  /** The alternatives each contest winner among these proposals carries into its lineage note, or null. */
+  private contestAlternatives(proposalIds: Id[]): Record<Id, ContestAlternative[]> | null {
+    if (proposalIds.length === 0) return null;
+    const rows = this.sql
+      .exec<{ winner: string; alternatives: string | null }>(
+        "SELECT winner, alternatives FROM contests WHERE state = 'decided' AND winner IN (SELECT value FROM json_each(?))",
+        JSON.stringify(proposalIds),
+      )
+      .toArray();
+    const out: Record<Id, ContestAlternative[]> = {};
+    for (const r of rows) {
+      const list = cleanAlternatives(parseJson<unknown>(r.alternatives, []));
+      if (list.length > 0) out[r.winner] = list;
+    }
+    return Object.keys(out).length > 0 ? out : null;
+  }
+
+  // =========================================================================
   // Trunk certification (certify/certifier.ts)
   // =========================================================================
 
@@ -2601,9 +3336,11 @@ export class ColonyDO extends DurableObject<Env> {
     this.lastReap = 0;
     this.registryReady = false;
     this.noteEmitted.clear();
+    this.contestReset();
     for (const stmt of SCHEMA) this.sql.exec(stmt);
     for (const stmt of OPS_SCHEMA) this.sql.exec(stmt);
     migrateDirection(this.sql);
+    migrateContest(this.sql);
     this.certifier.reset();
     return { cleared: true };
   }
@@ -2648,6 +3385,8 @@ export class ColonyDO extends DurableObject<Env> {
 
   /** Metrics tick: while UI sockets are connected, re-send live metrics that changed (all every 30 s) and reap silent agents. */
   async alarm(): Promise<void> {
+    // Contest mode: contests whose deadline passed are decided (the alarm is shared with this tick).
+    await this.contestAlarm(Date.now());
     if (this.ctx.getWebSockets().length === 0 || !this.loadColony()) return;
     const now = Date.now();
     this.maybeReap(now);
@@ -2663,7 +3402,9 @@ export class ColonyDO extends DurableObject<Env> {
   private async armMetricsTick(): Promise<void> {
     this.lastFullMetricsAt = 0;
     try {
-      if ((await this.ctx.storage.getAlarm()) === null) await this.ctx.storage.setAlarm(Date.now() + METRICS_TICK_MS);
+      // A contest deadline may hold the alarm further out: the tick comes first.
+      const at = await this.ctx.storage.getAlarm();
+      if (at === null || at > Date.now() + METRICS_TICK_MS) await this.ctx.storage.setAlarm(Date.now() + METRICS_TICK_MS);
     } catch (err) {
       console.warn(`metrics tick not armed: ${errorText(err)}`);
     }
@@ -3169,7 +3910,8 @@ export class ColonyDO extends DurableObject<Env> {
           this.sql.exec("UPDATE agents SET state = 'proposing', intent_id = ? WHERE id = ?", p.intentId, agent.id);
           fx.events.push({ t: "agent", at: now, agentId: agent.id, kind: agent.kind as AgentKind, state: "proposing", intentId: p.intentId });
         }
-        if (p.status === "ready") fx.enqueue.push({ proposal: p, region, priority });
+        // Contest mode: a ready change for a contest intent waits for its contest instead of its lane.
+        if (p.status === "ready" && !this.contestHold(p, now)) fx.enqueue.push({ proposal: p, region, priority });
         if (p.status === "escalated") this.bump("escalated", 1, now);
         break;
       }
@@ -3397,6 +4139,8 @@ export class ColonyDO extends DurableObject<Env> {
       const outcomes = fx.outcomes;
       this.ctx.waitUntil(this.deliverOutcomes(outcomes).catch((err) => console.error(`outcome delivery failed: ${errorText(err)}`)));
     }
+    // Contest mode: held changes, and contestants that gave back, died or came back, move their contests on.
+    this.contestWake();
   }
 
   /** Put a ready proposal in its region's lane; if the lane is unreachable, return it to its agent. */
@@ -3497,13 +4241,15 @@ export class ColonyDO extends DurableObject<Env> {
       if (d.parentId && !this.intentRow(d.parentId)) throw ftError(404, `unknown parent intent ${d.parentId}`);
       const source: IntentSource = d.source === "rule" || d.source === "agent" || d.source === "certify" ? d.source : "human";
       const priority = typeof d.priority === "number" && Number.isFinite(d.priority) ? Math.max(0, d.priority) : 1;
-      return { d, footprint, title, source, priority };
+      const seats = contestSeats(d.contest);
+      if (seats === null) throw ftError(400, "contest must be 2 to 4 agents (1 or absent: one holder)");
+      return { d, footprint, title, source, priority, seats };
     });
     const batch = new FieldBatch(colony.regionDepth);
     const events: ColonyEvent[] = [];
     const out: Intent[] = [];
     const declared: Array<{ doneAt: number | null }> = [];
-    for (const { d, footprint, title, source, priority } of prepared) {
+    for (const { d, footprint, title, source, priority, seats } of prepared) {
       const assignedTo = d.assignedTo ?? undefined;
       const intent: Intent = {
         id: newId("int_"),
@@ -3541,6 +4287,7 @@ export class ColonyDO extends DurableObject<Env> {
         now,
       );
       this.footprintCache.set(intent.id, footprint);
+      if (seats >= CONTEST_MIN) this.contestRecord(intent, seats, now);
       batch.deposit("need", footprint, priority, now, { intentId: intent.id });
       if (assignedTo) {
         batch.deposit("claim", footprint, CLAIM_STRENGTH, now, { agentId: assignedTo, intentId: intent.id });
@@ -3568,7 +4315,8 @@ export class ColonyDO extends DurableObject<Env> {
   private assertProposable(row: IntentRow, agentId: Id): void {
     if (row.status === "withdrawn") throw ftError(409, withdrawnError(row.id, row.withdrawn_reason ?? null));
     if (row.status === "landed" || row.status === "abandoned") throw ftError(409, `intent ${row.id} is already ${row.status}`);
-    if (row.assigned_to && row.assigned_to !== agentId && (row.status === "claimed" || row.status === "proposed")) {
+    // Contest mode: every contestant holding a seat may propose.
+    if (row.assigned_to && row.assigned_to !== agentId && (row.status === "claimed" || row.status === "proposed") && !this.contestProposable(row, agentId)) {
       throw ftError(409, `intent ${row.id} is held by another agent`);
     }
   }
@@ -3672,6 +4420,7 @@ export class ColonyDO extends DurableObject<Env> {
     // Revision 1 is implied (absent) so a never-amended intent keeps its original shape.
     if (typeof r.revision === "number" && r.revision > 1) intent.revision = r.revision;
     if (r.withdrawn_reason) intent.withdrawnReason = r.withdrawn_reason;
+    if (typeof r.contest === "number" && r.contest >= CONTEST_MIN) intent.contest = r.contest;
     return intent;
   }
 

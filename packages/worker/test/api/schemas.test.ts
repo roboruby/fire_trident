@@ -24,6 +24,13 @@ describe("request bodies", () => {
     });
   });
 
+  it("accepts a contest of 2 to 4 agents on an intent (1 is one holder)", () => {
+    const base = { title: "t", footprint: ["a.ts"] };
+    for (const contest of [1, 2, 3, 4]) expect(IntentBody.parse({ ...base, contest }).contest).toBe(contest);
+    expect(IntentBody.parse(base)).not.toHaveProperty("contest");
+    for (const contest of [0, 5, 2.5, "3"]) expect(IntentBody.safeParse({ ...base, contest }).success).toBe(false);
+  });
+
   it("needs a swarm size under either name", () => {
     expect(SwarmBody.parse({ agents: 5 })).toEqual({ agents: 5 });
     expect(SwarmBody.parse({ count: 2, kind: "synthetic" })).toEqual({ count: 2, kind: "synthetic" });

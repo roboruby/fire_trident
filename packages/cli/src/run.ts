@@ -414,7 +414,8 @@ async function newColony(cmd: Extract<Command, { name: "new" }>, ctx: Ctx): Prom
     intents.push(res ?? {});
     if (!ctx.flags.json) {
       const follows = parent?.title ? c.dim(` ← builds on "${parent.title}"`) : "";
-      io.stdout(`  ${c.green("✓")} intent ${res?.id ?? ""} ${c.dim(`p${body.priority}`)} ${body.title}${follows}`);
+      const contest = body.contest && body.contest > 1 ? c.dim(` · contest of ${body.contest}`) : "";
+      io.stdout(`  ${c.green("✓")} intent ${res?.id ?? ""} ${c.dim(`p${body.priority}`)} ${body.title}${contest}${follows}`);
     }
   }
   if (ctx.flags.json) {

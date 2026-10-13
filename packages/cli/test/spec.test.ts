@@ -275,3 +275,23 @@ describe("intent models", () => {
     expect(demo.intents.filter((i) => i.model === "default").map((i) => i.title.split(" ")[0])).toEqual(["Router", "Route:", "Worker", "Acceptance"]);
   });
 });
+
+describe("contest intents", () => {
+  it("validates contest, declares it with the intent, and leaves it out for one agent", () => {
+    const spec = validateSpec({
+      ...minimal,
+      intents: [
+        { title: "A", why: "w", footprint: ["a.ts"], contest: 3 },
+        { title: "B", why: "w", footprint: ["b.ts"], contest: 1 },
+        { title: "C", why: "w", footprint: ["c.ts"] },
+      ],
+    });
+    expect(spec.intents.map((i) => i.contest)).toEqual([3, undefined, undefined]);
+    const bodies = planNew(spec, "c", "me").intents.map((r) => r.body as Record<string, unknown>);
+    expect(bodies.map((b) => b.contest)).toEqual([3, undefined, undefined]);
+    expect(bodies[1]).not.toHaveProperty("contest");
+    for (const bad of [0, 5, 2.5, "3"]) {
+      expect(() => validateSpec({ ...minimal, intents: [{ title: "A", why: "w", footprint: ["a.ts"], contest: bad }] })).toThrow(/intents\[0\]\.contest must be 2 to 4 agents/);
+    }
+  });
+});

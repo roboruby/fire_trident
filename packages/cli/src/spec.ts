@@ -27,6 +27,11 @@ export interface SpecIntent {
    * server's models) or a model id. Integration-heavy intents ask for "default"; the rest suit bulk agents.
    */
   model?: string;
+  /**
+   * Contest mode: 2 to 4 agents each build this intent at once and the colony lands one change, the
+   * best by evidence and then by a pairwise comparison. 1 or absent: one agent, as usual.
+   */
+  contest?: number;
 }
 
 /** The machine-readable part of a project spec (`spec/v1`). */
@@ -168,11 +173,13 @@ export function validateSpec(raw: unknown): ProjectSpec {
     if (x.priority !== undefined && (typeof x.priority !== "number" || !Number.isFinite(x.priority))) bad(`${at}.priority must be a number`);
     if (x.uses !== undefined && (!isStringArray(x.uses) || x.uses.some((u) => !specPath(u)))) bad(`${at}.uses must be an array of paths`);
     if (x.model !== undefined && (typeof x.model !== "string" || !/^\S+$/.test(x.model))) bad(`${at}.model must be a model id, "default" or "bulk"`);
+    if (x.contest !== undefined && (typeof x.contest !== "number" || !Number.isInteger(x.contest) || x.contest < 1 || x.contest > 4)) bad(`${at}.contest must be 2 to 4 agents (1: one agent)`);
     const intent: SpecIntent = { title: text(x.title, `${at}.title`), why: text(x.why, `${at}.why`), footprint: x.footprint };
     if (x.acceptance !== undefined) intent.acceptance = x.acceptance as string[];
     if (typeof x.priority === "number") intent.priority = x.priority;
     if (x.uses !== undefined) intent.uses = [...new Set((x.uses as string[]).map(specPath))];
     if (typeof x.model === "string") intent.model = x.model;
+    if (typeof x.contest === "number" && x.contest > 1) intent.contest = x.contest;
     spec.intents.push(intent);
   });
   dependencyPlan(spec.intents);
@@ -405,6 +412,7 @@ export function planNew(
         createdBy: by,
       };
       if (i.acceptance) body.acceptance = i.acceptance;
+      if (i.contest) body.contest = i.contest;
       const planned: PlannedIntent = { method: "POST", path: colonyPath(colony, "/intents"), body };
       const parent = deps.parent[idx];
       if (parent !== undefined) planned.parentIndex = position.get(parent)!;

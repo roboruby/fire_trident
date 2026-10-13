@@ -349,6 +349,7 @@ export function createApi(deps: ApiDeps): Hono<ApiEnv> {
       ...(b.parentId ? { parentId: b.parentId } : {}),
       ...(b.ruleId ? { ruleId: b.ruleId } : {}),
       ...(b.assignedTo ? { assignedTo: b.assignedTo } : {}),
+      ...(b.contest !== undefined ? { contest: b.contest } : {}),
     });
     return json(intent, 201);
   });
