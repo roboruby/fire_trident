@@ -37,6 +37,13 @@ export interface Env {
   FT_COCHANGE_WEIGHT?: string;
   /** Optional: lateral inhibition threshold as a fraction of a fresh claim, or "off". */
   FT_LATERAL_INHIBITION?: string;
+  /** Optional: import-aware repulsion weight in take() (imports and importers of claimed files); absent or 0 is off. */
+  FT_IMPORT_WEIGHT?: string;
+  /**
+   * Optional: assumption revalidation, "on", or a comma-separated list of colony ids; absent or "off" is off. A change
+   * stale only on files it read lands when the names it imports from them are still exported.
+   */
+  FT_REVALIDATE?: string;
   /** Optional (load tests only): when set, ColonyDO logs event-loop lag and streams it as colony.lagMs. */
   FT_LAG_PROBE?: string;
   /**
