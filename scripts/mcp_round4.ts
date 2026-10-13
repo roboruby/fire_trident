@@ -85,6 +85,11 @@ async function proposeInline(intentId: string, files: Array<{ path: string; cont
   return id;
 }
 
+/** Take an intent that did not land out of the field, so the next take gets the next intent. */
+async function retire(intentId: string, why: string): Promise<void> {
+  await rest("POST", `/colonies/${COLONY}/intents/${intentId}/withdraw`, { reason: why, by: "round4-check" });
+}
+
 /** Wait for a proposal to settle (landed, returned, rejected or escalated). */
 async function settle(pid: string, seconds = 240, stopAtEscalated = true): Promise<any> {
   const end = Date.now() + seconds * 1000;
@@ -152,7 +157,8 @@ const p2 = p1 ? await proposeInline(i2, [{ path: "src/sum.ts", content: SUM_DOC 
 const s2 = p2 ? await settle(p2) : null;
 const decided = JSON.stringify(s2?.decision ?? s2?.decisions ?? s2?.evidence ?? {});
 check(`the comment-only change landed (${s2?.status ?? "no answer"})`, s2?.status === "landed");
-check(`it landed on the comment-only proof, no model (${short(decided, 200)})`, /comment/i.test(decided) && !/"layer":"llm"|second opinion/i.test(decided));
+check(`it landed on the comment-only proof, no model (${short(decided, 200)})`, s2?.status === "landed" && /comment/i.test(decided) && !/llm:/i.test(decided));
+if (s2?.status !== "landed") await retire(i2, "round 4 check: the comment-only change did not land");
 
 // 3. A protected path waits for a person, naming the glob.
 const pp = await rest("POST", `/colonies/${COLONY}/decide/policy`, { protectedPaths: ["src/secret/**"] });
@@ -162,6 +168,7 @@ const p3 = await proposeInline(i3, [{ path: "src/secret/key.ts", content: "expor
 const s3 = p3 ? await settle(p3) : null;
 check(`the protected change waits for a person, naming the glob (${s3?.status}: ${short(s3?.reason, 140)})`, s3?.status === "escalated" && /src\/secret\/\*\*/.test(String(s3?.reason ?? "")));
 if (s3?.status === "escalated") await rest("POST", `/colonies/${COLONY}/review/${s3.id}`, { decision: "reject", reason: "round 4 check: protected path test", by: "round4-check" });
+await retire(i3, "round 4 check: protected path test done");
 
 // 4. A breaking change lands with review off; certification names it.
 const off = await rest("POST", `/colonies/${COLONY}/decide/policy`, { enabled: false });
