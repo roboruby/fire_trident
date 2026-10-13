@@ -194,8 +194,8 @@ if (s1?.status !== "landed") {
 
 // 5. Delete src/b.ts while src/a.ts imports it: the guard sends it back.
 const i2 = await rest("POST", `/colonies/${COLONY}/intents`, {
-  title: "Remove src/b.ts and inline its value into src/a.ts",
-  why: "src/b.ts holds a single constant; src/a.ts should export const a = 2 on its own.",
+  title: "Remove src/b.ts",
+  why: "src/b.ts is no longer needed; delete it. src/a.ts may change if it has to.",
   footprint: ["src/b.ts", "src/a.ts"],
   priority: 5,
   createdBy: "round3-check",
