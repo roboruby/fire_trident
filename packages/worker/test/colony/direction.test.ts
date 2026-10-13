@@ -10,7 +10,9 @@ import {
   intentChanges,
   isInboxDirective,
   isRedirect,
+  landedStaleText,
   migrateDirection,
+  missedRevisions,
   noteDecision,
   noteDecisions,
   revisedReturn,
@@ -211,5 +213,31 @@ describe("migrateDirection", () => {
     migrateDirection(sql); // a second wake: every ALTER throws, nothing breaks
     expect(columns.size).toBe(DIRECTION_COLUMNS.length);
     expect(statements.filter((s) => s.startsWith("CREATE TABLE IF NOT EXISTS directives"))).toHaveLength(2);
+  });
+});
+
+describe("missedRevisions (a change that landed after an amendment)", () => {
+  const revisions = [
+    { revision: 2, substantive: false, at: 1_000 },
+    { revision: 3, substantive: true, at: 2_000 },
+    { revision: 4, substantive: true, at: 3_000 },
+  ];
+
+  it("lists the substantive amendments after the revision the change was built on", () => {
+    expect(missedRevisions({ intentRevision: 1, createdAt: 0 }, 4, revisions).map((r) => r.revision)).toEqual([3, 4]);
+    expect(missedRevisions({ intentRevision: 3, createdAt: 0 }, 4, revisions).map((r) => r.revision)).toEqual([4]);
+    expect(missedRevisions({ intentRevision: 4, createdAt: 0 }, 4, revisions)).toEqual([]);
+    // Only the priority moved since r1: the change still fits.
+    expect(missedRevisions({ intentRevision: 1, createdAt: 0 }, 2, revisions.slice(0, 1))).toEqual([]);
+  });
+
+  it("falls back to the proposal's time, and ignores revisions past the current one", () => {
+    expect(missedRevisions({ createdAt: 2_500 }, 4, revisions).map((r) => r.revision)).toEqual([4]);
+    expect(missedRevisions({ intentRevision: 1, createdAt: 0 }, 3, revisions).map((r) => r.revision)).toEqual([3]);
+  });
+
+  it("says what is left to do", () => {
+    expect(landedStaleText(1, 2)).toBe("landed a change built on r1; r2 still to do");
+    expect(landedStaleText(null, 3)).toBe("landed a change built on an older revision; r3 still to do");
   });
 });

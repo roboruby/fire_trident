@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { ColonyEvent, Intent, Landing } from "@fire_trident/core";
-import { addAgent, addIntent, api, colony, newColony, proposal, proposeEdit, take, tick, trunk } from "./helpers.ts";
+import type { ColonyEvent, Intent, Landing, Proposal } from "@fire_trident/core";
+import { addAgent, addIntent, api, colony, fakeSha, newColony, proposal, proposeEdit, take, tick, trunk } from "./helpers.ts";
 
 type Reverted = { landing: Landing; reverted: Landing; redo: string[] };
 
@@ -12,6 +12,29 @@ async function landOn(colonyId: string, agentId: string, path: string): Promise<
   const landed = await proposal(colonyId, p.id);
   expect(landed.status).toBe("landed");
   return { intent, landingId: landed.landingId! };
+}
+
+/** Land one file with this exact content through the lane; returns its landing id. */
+async function landText(colonyId: string, agentId: string, path: string, content: string): Promise<string> {
+  await addIntent(colonyId, [path]);
+  const a = await take(colonyId, agentId);
+  const blob = fakeSha();
+  await trunk(colonyId).setContents({ [blob]: content });
+  const res = await api<Proposal>("POST", `/colonies/${colonyId}/proposals`, {
+    intentId: a.intent.id,
+    agentId,
+    workspace: a.lease.repo,
+    baseSha: a.lease.baseSha,
+    headSha: fakeSha(),
+    writeSet: [{ path, blob }],
+    readSet: await trunk(colonyId).baseBlobs(a.lease.baseSha, [path]),
+    declared: { footprint: [path], summary: "edit" },
+  });
+  expect(res.status).toBe(201);
+  expect(await tick(colonyId, "src")).toBe(true);
+  const landed = await proposal(colonyId, res.body.id);
+  expect(landed.status).toBe("landed");
+  return landed.landingId!;
 }
 
 describe("revert", () => {
@@ -63,6 +86,27 @@ describe("revert", () => {
     expect((await trunk(c.id).state()).head).toBe(head);
     const events = (await api<{ events: ColonyEvent[] }>("GET", `/colonies/${c.id}/events?limit=5000`)).body.events;
     expect(events.some((e) => e.t === "reverted")).toBe(false);
+  });
+
+  it("refuses to delete a file that later work imports, naming the importer, until that work is undone", async () => {
+    const c = await newColony();
+    const a = await addAgent(c.id, "a");
+    const created = await landText(c.id, a.id, "src/lib/fresh.ts", "export const fresh = 1;\n");
+    const importer = await landText(c.id, a.id, "src/app/main.ts", 'import { fresh } from "../lib/fresh.ts";\nconsole.log(fresh);\n');
+    const head = (await trunk(c.id).state()).head;
+
+    const refused = await api<{ error: string }>("POST", `/colonies/${c.id}/landings/${created}/revert`, { reason: "not needed", by: "matt" });
+    expect(refused.status).toBe(409);
+    expect(refused.body.error).toBe(`work landed on top of ${created}: src/lib/fresh.ts is imported by src/app/main.ts (last changed by ${importer})`);
+    expect((await trunk(c.id).state()).head).toBe(head);
+    expect((await trunk(c.id).state()).files["src/lib/fresh.ts"]).toBeDefined();
+
+    // Undo the importer first; then the file can go.
+    expect((await api("POST", `/colonies/${c.id}/landings/${importer}/revert`, { reason: "back out", by: "matt", redo: false })).status).toBe(200);
+    const done = await api<Reverted>("POST", `/colonies/${c.id}/landings/${created}/revert`, { reason: "not needed", by: "matt", redo: false });
+    expect(done.status).toBe(200);
+    expect(done.body.landing.paths).toEqual(["src/lib/fresh.ts"]);
+    expect((await trunk(c.id).state()).files["src/lib/fresh.ts"]).toBeUndefined();
   });
 
   it("needs a reason, a known landing and the operator token", async () => {

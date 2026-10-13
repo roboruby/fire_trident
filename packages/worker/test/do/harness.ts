@@ -10,7 +10,7 @@ import type { AgentKind, FileVersion, Id, Landing, LineageNote, NoteCertificatio
 import { createApi } from "../../src/api/app.ts";
 import type { ApiDeps } from "../../src/api/app.ts";
 import type { Env } from "../../src/env.ts";
-import { movedText, planRevert, type RevertResult } from "../../src/trunk/revert.ts";
+import { SCRIPT_FILE, importedDeletions, importedText, movedText, planRevert, relativeSpecifiers, type RevertResult } from "../../src/trunk/revert.ts";
 
 export { ColonyDO } from "../../src/colony/ColonyDO.ts";
 export { RegionDO } from "../../src/region/RegionDO.ts";
@@ -101,6 +101,13 @@ export class TrunkDO extends DurableObject<Env> {
     const sha = this.commit(s);
     await this.save(s);
     return { sha, blobs };
+  }
+
+  /** Test helper: the text land() writes for these blob ids (others land as a "// blob <id>" line). */
+  async setContents(contents: Record<Sha, string>): Promise<void> {
+    const s = await this.load();
+    s.contents = { ...(s.contents ?? {}), ...contents };
+    await this.save(s);
   }
 
   /** Test helper: make the next n land() calls throw. */
@@ -201,7 +208,7 @@ export class TrunkDO extends DurableObject<Env> {
     for (const p of landed) {
       for (const w of p.writeSet) {
         if (w.blob === null) delete s.files[w.path];
-        else s.files[w.path] = { blob: w.blob, content: `// blob ${w.blob}\n` };
+        else s.files[w.path] = { blob: w.blob, content: s.contents?.[w.blob] ?? `// blob ${w.blob}\n` };
       }
     }
     const parent = s.head;
@@ -280,6 +287,17 @@ async revert(ref: string, p: { by: string; reason: string }): Promise<RevertResu
     (path) => [...later].reverse().find((l) => l.paths.includes(path))?.id ?? null,
   );
   if (!plan.ok) return { ok: false, status: 409, error: `work landed on top of ${target.id}: ${movedText(plan.moved)}`, moved: plan.moved };
+  // A file the landing created goes with the revert: refused while other trunk files import it.
+  const deleted = plan.restore.filter((r) => r.blob === null).map((r) => r.path);
+  if (deleted.length > 0) {
+    const writes = new Set(plan.restore.map((r) => r.path));
+    const files = Object.entries(s.files)
+      .filter(([path]) => !writes.has(path) && SCRIPT_FILE.test(path))
+      .map(([path, f]) => ({ path, specifiers: relativeSpecifiers(f.content) }));
+    const imported = importedDeletions(deleted, files, (path) => path in s.files);
+    const lastBy = (path: Path): Id | null => [...later].reverse().find((l) => l.paths.includes(path))?.id ?? null;
+    if (imported.length > 0) return { ok: false, status: 409, error: `work landed on top of ${target.id}: ${importedText(imported, lastBy)}`, imported };
+  }
   for (const r of plan.restore) {
     if (r.blob === null) delete s.files[r.path];
     else s.files[r.path] = { blob: r.blob, content: s.contents?.[r.blob] ?? "" };

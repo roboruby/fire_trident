@@ -224,6 +224,34 @@ export function staleDirection(p: Pick<Proposal, "intentRevision" | "createdAt">
   return revisedReturn(typeof p.intentRevision === "number" ? p.intentRevision : null, current, unionChanged(later), last.reason);
 }
 
+/**
+ * The substantive amendments a change missed: revisions after the one it was built on (after it was
+ * proposed, when it recorded none) up to the intent's current one, oldest first. Empty when the change
+ * still fits its intent (none, or only priority moved).
+ */
+export function missedRevisions<R extends Pick<IntentRevision, "revision" | "substantive" | "at">>(p: Pick<Proposal, "intentRevision" | "createdAt">, current: number, revisions: readonly R[]): R[] {
+  return revisions.filter((r) => r.substantive && r.revision <= current && (typeof p.intentRevision === "number" ? r.revision > p.intentRevision : r.at > p.createdAt));
+}
+
+/** A landed change that missed a substantive amendment of its intent, and what is left to do. */
+export interface MissedRevision {
+  intentId: Id;
+  /** The agent whose change landed. */
+  agentId: Id;
+  /** The revision it was built on (null: not recorded). */
+  built: number | null;
+  current: number;
+  /** The fields the missed amendments changed. */
+  changed: IntentField[];
+  /** "landed a change built on r1; r2 still to do" */
+  text: string;
+}
+
+/** What is left when a change built on an older revision landed anyway: "landed a change built on r1; r2 still to do". */
+export function landedStaleText(built: number | null, current: number): string {
+  return `landed a change built on ${built === null ? "an older revision" : `r${built}`}; r${current} still to do`;
+}
+
 /** Split a lane batch: changes whose direction still holds, and the ones that go back with the reason. */
 export function splitByDirection<P extends Pick<Proposal, "id" | "intentId" | "intentRevision" | "createdAt">>(
   batch: P[],

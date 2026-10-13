@@ -374,3 +374,102 @@ describe("the lane's pre-land check and the lineage context", () => {
     expect(after.intents[i.id]).toMatchObject({ revision: 2, revisions: [{ revision: 2, changed: ["why"], reason: "sharper", at: expect.any(Number) }] });
   });
 });
+
+describe("a change of direction that loses the race to the trunk writer", () => {
+  /** An intent with one agent's change built on r1, sitting in its lane (the trunk writer is about to land it). */
+  async function inFlight() {
+    const c = await newColony();
+    const i = await addIntent(c.id, ["src/lib/util.ts"]);
+    const a = await addAgent(c.id, "a");
+    const got = await take(c.id, a.id);
+    const p1 = await proposeEdit(c.id, got, a.id);
+    expect(p1).toMatchObject({ status: "ready", intentRevision: 1 });
+    return { c, i, a, p1 };
+  }
+
+  it("lands the change built on r1 but keeps the intent open at r2, and says so", async () => {
+    const { c, i, a, p1 } = await inFlight();
+    const amend = await api("PATCH", `/colonies/${c.id}/intents/${i.id}`, { why: "test, the other way", reason: "do it the other way", by: "matt" });
+    expect(amend.body.returned).toBe(1);
+    // The trunk writer had already taken p1: it lands and reports the landing after the amendment.
+    await trunk(c.id).land([p1]);
+    expect((await trunk(c.id).state()).landings).toHaveLength(1);
+
+    const landed = await proposal(c.id, p1.id);
+    expect(landed).toMatchObject({ status: "landed", reason: "landed a change built on r1; r2 still to do" });
+    expect(landed.landingId).toEqual(expect.any(String));
+    const detail = (await api("GET", `/colonies/${c.id}/intents/${i.id}`)).body;
+    expect(detail.intent).toMatchObject({ status: "open", revision: 2, why: "test, the other way" });
+    expect(detail.intent.assignedTo).toBeUndefined();
+    expect(detail.directives[0]).toMatchObject({ kind: "revision", agentId: a.id, revision: 2, changed: ["why"], by: "colony", message: "landed a change built on r1; r2 still to do" });
+    const events = (await api<{ events: Array<Record<string, unknown>> }>("GET", `/colonies/${c.id}/events?limit=5000`)).body.events;
+    expect(events).toContainEqual(expect.objectContaining({ t: "directive", intentId: i.id, agentId: a.id, by: "colony", message: "landed a change built on r1; r2 still to do" }));
+    expect(events).toContainEqual(expect.objectContaining({ t: "proposal", proposalId: p1.id, status: "landed", reason: "landed a change built on r1; r2 still to do" }));
+    expect(events.some((e) => e.t === "intent" && e.intentId === i.id && e.status === "landed")).toBe(false);
+    // Its need stays for the next taker; the agent whose change landed is done with it.
+    expect((await reading(c.id, "src")).byPath["src/lib/util.ts"]?.need).toBeCloseTo(1, 3);
+    expect(await agentRow(c.id, a.id)).toMatchObject({ state: "idle" });
+
+    // The next taker gets r2 (once the colony's shared field reading no longer shows a's claim), and r2 lands and closes the intent.
+    const b = await addAgent(c.id, "b");
+    const taken = await eventually(
+      () => api<Assignment | { wait: true }>("POST", `/colonies/${c.id}/agents/${b.id}/take`),
+      (res) => !("wait" in res.body),
+    );
+    const again = taken.body as Assignment;
+    expect(again.intent).toMatchObject({ id: i.id, revision: 2 });
+    const r2 = await proposeAt(c.id, again, b.id, 2);
+    expect(r2.status).toBe(201);
+    await tick(c.id, "src");
+    expect(await proposal(c.id, r2.body.id)).toMatchObject({ status: "landed" });
+    expect((await api("GET", `/colonies/${c.id}/intents/${i.id}`)).body.intent).toMatchObject({ status: "landed", revision: 2 });
+  });
+
+  it("leaves the intent with a holder already working on r2", async () => {
+    const { c, i, a, p1 } = await inFlight();
+    await api("PATCH", `/colonies/${c.id}/intents/${i.id}`, { footprint: ["src/lib/util.ts", "src/app/main.ts"], reason: "main too", by: "matt" });
+    // The first agent stops; another takes the intent at r2 before p1's landing is reported.
+    expect((await api("POST", `/colonies/${c.id}/agents/${a.id}/stop`, { reason: "gone" })).status).toBe(200);
+    const b = await addAgent(c.id, "b");
+    const got = await take(c.id, b.id);
+    expect(got.intent).toMatchObject({ id: i.id, revision: 2 });
+    await trunk(c.id).land([p1]);
+    expect(await proposal(c.id, p1.id)).toMatchObject({ status: "landed", reason: "landed a change built on r1; r2 still to do" });
+    expect((await api("GET", `/colonies/${c.id}/intents/${i.id}`)).body.intent).toMatchObject({ status: "claimed", assignedTo: b.id, revision: 2 });
+    expect(await agentRow(c.id, b.id)).toMatchObject({ state: "working", intentId: i.id });
+    // b builds r2 on trunk as it is now (with p1 in it); it lands and closes the intent.
+    const head = (await trunk(c.id).state()).head;
+    const r2 = await api<Proposal>("POST", `/colonies/${c.id}/proposals`, {
+      intentId: i.id,
+      agentId: b.id,
+      workspace: got.lease.repo,
+      baseSha: head,
+      headSha: fakeSha(),
+      writeSet: got.intent.footprint.map((path) => ({ path, blob: fakeSha() })),
+      readSet: await trunk(c.id).baseBlobs(head, got.intent.footprint),
+      declared: { footprint: got.intent.footprint, summary: "r2" },
+      intentRevision: 2,
+    });
+    expect(r2.status).toBe(201);
+    await tick(c.id, "src");
+    expect(await proposal(c.id, r2.body.id)).toMatchObject({ status: "landed" });
+    expect((await api("GET", `/colonies/${c.id}/intents/${i.id}`)).body.intent).toMatchObject({ status: "landed" });
+  });
+
+  it("closes the intent as before when only the priority moved", async () => {
+    const { c, i, p1 } = await inFlight();
+    await api("PATCH", `/colonies/${c.id}/intents/${i.id}`, { priority: 3, reason: "urgent" });
+    await trunk(c.id).land([p1]);
+    expect(await proposal(c.id, p1.id)).toMatchObject({ status: "landed" });
+    expect((await proposal(c.id, p1.id)).reason).toBeUndefined();
+    expect((await api("GET", `/colonies/${c.id}/intents/${i.id}`)).body.intent).toMatchObject({ status: "landed", revision: 2 });
+  });
+
+  it("keeps the documented outcome of a withdrawal that loses the race: the change lands and the intent shows landed", async () => {
+    const { c, i, p1 } = await inFlight();
+    expect((await api("POST", `/colonies/${c.id}/intents/${i.id}/withdraw`, { reason: "not needed", by: "matt" })).body.returned).toBe(1);
+    await trunk(c.id).land([p1]);
+    expect(await proposal(c.id, p1.id)).toMatchObject({ status: "landed" });
+    expect((await api("GET", `/colonies/${c.id}/intents/${i.id}`)).body.intent).toMatchObject({ status: "landed" });
+  });
+});
