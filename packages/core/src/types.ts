@@ -378,6 +378,11 @@ export interface Proposal {
    * landing if the intent was revised meanwhile.
    */
   intentRevision?: number;
+  /**
+   * An inline change (core/changeset.ts): the text of every file it writes, keyed by git blob id, so the
+   * trunk writer builds it without reading the agent's workspace. Its headSha is then its changesetId.
+   */
+  contents?: Record<Sha, string>;
 }
 
 /** One trunk commit produced by a lane cycle. */
