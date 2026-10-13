@@ -4,9 +4,10 @@ import type { LandedWhy } from "../../src/agents/landed.ts";
 import type { ReviewPreview } from "../../src/agents/preview.ts";
 import type { ProposeInput, TakeResult } from "../../src/agents/rpc.ts";
 import { EXTERNAL_NOT_VERIFIED, FireTridentTools, HEARTBEAT_EVERY_MS, MAX_WAIT_S } from "../../src/mcp/tools.ts";
-import type { McpColonyRpc, RepoReader, Session, ToolContext } from "../../src/mcp/tools.ts";
+import type { McpColonyRpc, RepoReader, ResumeCheck, Session, ToolContext } from "../../src/mcp/tools.ts";
 import type { TreeEntryLike } from "../../src/mcp/gitread.ts";
-import { SERVER_INSTRUCTIONS } from "../../src/mcp/instructions.ts";
+import { RESUME_KEY_NOTE, SERVER_INSTRUCTIONS } from "../../src/mcp/instructions.ts";
+import { resumeDigest, resumeKeyMatches } from "../../src/mcp/resume.ts";
 
 const sha = (c: string): string => c.repeat(40).slice(0, 40);
 const BASE = sha("b");
@@ -112,10 +113,24 @@ class FakeColony implements Partial<McpColonyRpc> {
   async getAgent(id: Id): Promise<AgentInfo | null> {
     return this.agents.find((a) => a.id === id) ?? null;
   }
-  async registerAgent(a: { kind: AgentInfo["kind"]; name: string; model?: string }): Promise<AgentInfo> {
+  /** Resume-key digests by agent id, as ColonyDO keeps them (agents registered without a key have none). */
+  digests = new Map<Id, string>();
+  /** Every registration as the colony received it. */
+  registrations: Array<{ kind: AgentInfo["kind"]; name: string; model?: string; resumeKey?: string }> = [];
+  async registerAgent(a: { kind: AgentInfo["kind"]; name: string; model?: string; resumeKey?: string }): Promise<AgentInfo> {
+    this.registrations.push(a);
     const info: AgentInfo = { id: `agt_${this.agents.length + 1}`, colonyId: "col", kind: a.kind, name: a.name, thresholds: {}, state: "idle", lastSeen: 0 };
     this.agents.push(info);
+    if (a.resumeKey) this.digests.set(info.id, await resumeDigest(a.resumeKey));
     return info;
+  }
+  /** ColonyDO.resumeAgent over the fake's agents and digests. */
+  async resumeAgent(id: Id, key: string): Promise<ResumeCheck> {
+    const agent = this.agents.find((a) => a.id === id && a.kind === "external");
+    if (!agent) return { refused: "unknown" };
+    const digest = this.digests.get(id);
+    if (!digest) return { refused: "no-key" };
+    return (await resumeKeyMatches(key, digest)) ? { agent } : { refused: "wrong-key" };
   }
   /** When set, the first heartbeat waits for it (a slow heartbeat racing other tool calls). */
   firstHeartbeatGate: Promise<void> | null = null;
@@ -180,8 +195,9 @@ function directiveEntry(d: Pick<Directive, "id" | "kind" | "message"> & Partial<
   return { kind: "directive", id: d.id, intentId: d.intentId ?? "", agentId: "agt_1", status: "directive", reason: d.message, createdAt: 5, headSha: "", directive };
 }
 
-function setup() {
-  const colony = new FakeColony();
+/** One MCP session on a fresh colony, or another session on `shared` (two clients of the same colony). */
+function setup(shared?: FakeColony) {
+  const colony = shared ?? new FakeColony();
   const { trunk, ws } = repos();
   let session: Session = { reads: {}, proposals: [] };
   const readings: Array<{ region: string; opts: unknown }> = [];
@@ -220,8 +236,69 @@ describe("MCP tools", () => {
     expect(await tools.join({ colony: "col", name: "laptop" })).toMatchObject({ agentId: "agt_1", resumed: false, colony: { id: "col", regionDepth: 1 } });
     expect(colony.agents[0]).toMatchObject({ kind: "external", name: "laptop" });
     expect(await tools.join({ colony: " COL " })).toMatchObject({ agentId: "agt_1", resumed: true });
+    // Its own agent by id needs no key in the session that registered it.
+    expect(await tools.join({ colony: "col", agentId: "agt_1" })).toMatchObject({ agentId: "agt_1", resumed: true });
     expect(colony.agents).toHaveLength(1);
     await expect(tools.join({ colony: "col", agentId: "agt_404" })).rejects.toThrow(/no external agent/);
+  });
+
+  it("a new agent gets a resume key once; the colony keeps only its digest and the session keeps nothing", async () => {
+    const { tools, colony, session } = setup();
+    const first = (await tools.join({ colony: "col", name: "laptop" })) as Record<string, unknown>;
+    const key = first.resumeKey as string;
+    expect(key).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(first.resumeKeyNote).toBe(RESUME_KEY_NOTE);
+    expect(RESUME_KEY_NOTE).toMatch(/from another session, call join with agentId and resumeKey/);
+    expect(colony.registrations[0]).toMatchObject({ kind: "external", name: "laptop", resumeKey: key });
+    expect(colony.digests.get("agt_1")).toBe(await resumeDigest(key));
+    expect(JSON.stringify(session())).not.toContain(key);
+    // Joining again in the same session resumes the agent and shows no key.
+    const again = (await tools.join({ colony: "col" })) as Record<string, unknown>;
+    expect(again).toMatchObject({ agentId: "agt_1", resumed: true });
+    expect(again.resumeKey).toBeUndefined();
+    expect(again.resumeKeyNote).toBeUndefined();
+    // Nothing else hands it back.
+    expect(JSON.stringify(await tools.take())).not.toContain(key);
+    expect(JSON.stringify(await tools.checkout())).not.toContain(key);
+  });
+
+  it("another session resumes an agent by id only with the key it registered with", async () => {
+    const one = setup();
+    const { resumeKey } = (await one.tools.join({ colony: "col", name: "laptop" })) as { resumeKey: string };
+    const other = setup(one.colony);
+    await expect(other.tools.join({ colony: "col", agentId: "agt_1" })).rejects.toThrow(/^\[ft:403\] forbidden: resuming agent agt_1 from another session needs the resumeKey/);
+    await expect(other.tools.join({ colony: "col", agentId: "agt_1", resumeKey: "   " })).rejects.toThrow(/\[ft:403\].*needs the resumeKey/);
+    const wrong = `${resumeKey.slice(0, -1)}${resumeKey.endsWith("A") ? "B" : "A"}`;
+    await expect(other.tools.join({ colony: "col", agentId: "agt_1", resumeKey: wrong })).rejects.toThrow(/^\[ft:403\] forbidden: wrong resumeKey for agent agt_1$/);
+    await expect(other.tools.join({ colony: "col", agentId: "agt_9", resumeKey })).rejects.toThrow(/^\[ft:404\] no external agent agt_9/);
+    // Refused joins leave the other session unjoined and register nobody.
+    await expect(other.tools.take()).rejects.toThrow(/call join first/);
+    expect(one.colony.agents).toHaveLength(1);
+    const back = (await other.tools.join({ colony: "col", agentId: " agt_1 ", resumeKey: ` ${resumeKey} ` })) as Record<string, unknown>;
+    expect(back).toMatchObject({ agentId: "agt_1", resumed: true });
+    expect(back.resumeKey).toBeUndefined();
+    expect(other.session()).toMatchObject({ colonyId: "col", agentId: "agt_1" });
+    expect(one.colony.heartbeats).toContain("agt_1");
+  });
+
+  it("an agent registered without a key cannot be resumed from another session, and joins again as a new agent", async () => {
+    const { tools, colony } = setup();
+    // As agents registered before resume keys existed (or through the REST API) are stored: no digest.
+    colony.agents.push({ id: "agt_old", colonyId: "col", kind: "external", name: "old", thresholds: {}, state: "idle", lastSeen: 0 });
+    colony.agents.push({ id: "agt_bot", colonyId: "col", kind: "internal", name: "bot", thresholds: {}, state: "idle", lastSeen: 0 });
+    await expect(tools.join({ colony: "col", agentId: "agt_old", resumeKey: "k".repeat(43) })).rejects.toThrow(/^\[ft:403\] forbidden: agent agt_old has no resume key/);
+    await expect(tools.join({ colony: "col", agentId: "agt_old" })).rejects.toThrow(/\[ft:403\]/);
+    // An in-platform agent is never an MCP identity.
+    await expect(tools.join({ colony: "col", agentId: "agt_bot" })).rejects.toThrow(/^\[ft:404\] no external agent agt_bot/);
+    await expect(tools.join({ colony: "col", agentId: "agt_bot", resumeKey: "k".repeat(43) })).rejects.toThrow(/\[ft:404\]/);
+    const fresh = (await tools.join({ colony: "col", name: "old" })) as Record<string, unknown>;
+    expect(fresh).toMatchObject({ agentId: "agt_3", resumed: false });
+    expect(typeof fresh.resumeKey).toBe("string");
+  });
+
+  it("tells every client to keep the resume key and that an id alone resumes nothing", () => {
+    expect(SERVER_INSTRUCTIONS).toContain("a resumeKey: keep it private");
+    expect(SERVER_INSTRUCTIONS).toContain("call join with agentId and resumeKey; agent ids are public, so the id alone resumes nothing");
   });
 
   it("join refuses ids that cannot name a colony", async () => {

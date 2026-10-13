@@ -1,6 +1,6 @@
 import type { Id, Intent, Path, Rule } from "@fire_trident/core";
 import { ruleApplies } from "@fire_trident/core";
-import { antibodyAllows, antibodyMatches } from "../decide/antibodies.ts";
+import { antibodyAllows, antibodyMatches, securityAntibody } from "../decide/antibodies.ts";
 import type { StoredAntibody } from "../decide/store.ts";
 import { oneLine } from "./change.ts";
 
@@ -54,16 +54,18 @@ function ruleLine(r: Rule): string {
 
 /**
  * The preview for an intent. Antibodies: not off and not tolerating ones (review never asks
- * either), whose path globs match a footprint entry; active before advisory, then newest first,
- * each question once, at most PREVIEW_ANTIBODIES. Matching uses paths only: an antibody's
- * added-line pattern cannot be tested before the change exists, so review may ask fewer. Rules:
- * the live ones other than the intent's own whose scope covers a footprint entry, at most
- * PREVIEW_RULES. Undefined when there is nothing to show.
+ * either), and not security ones (decide/antibodies.ts securityAntibody: their agent is told the
+ * class, never the question that would show how to slip past it), whose path globs match a
+ * footprint entry; active before advisory, then newest first, each question once, at most
+ * PREVIEW_ANTIBODIES. Matching uses paths only: an antibody's added-line pattern cannot be tested
+ * before the change exists, so review may ask fewer. Rules: the live ones other than the intent's
+ * own whose scope covers a footprint entry, at most PREVIEW_RULES. Undefined when there is nothing
+ * to show.
  */
 export function reviewPreview(intent: Pick<Intent, "footprint" | "ruleId">, antibodies: readonly StoredAntibody[], rules: readonly Rule[]): ReviewPreview | undefined {
   const footprint = (intent.footprint ?? []).filter((p): p is Path => typeof p === "string" && p !== "").slice(0, PREVIEW_PATHS);
   const covering = antibodies.filter((s) => {
-    if (s.state === "off" || antibodyAllows(s.antibody).length > 0) return false;
+    if (s.state === "off" || antibodyAllows(s.antibody).length > 0 || (s.antibody && securityAntibody(s.antibody))) return false;
     const globs = globsOf(s);
     return globs !== null && antibodyMatches({ matcher: { paths: globs } }, footprint, []);
   });

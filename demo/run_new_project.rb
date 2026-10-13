@@ -141,6 +141,24 @@ def run(cmd, chdir:, env: {})
   [redact(out), st.success?]
 end
 
+# The node binary itself, resolved with this shell's environment: a version manager's shim needs
+# variables that the colony's code is not given.
+NODE = begin
+  path, st = Open3.capture2("node", "-p", "process.execPath")
+  st.success? && File.executable?(path.strip) ? path.strip : "node"
+rescue StandardError
+  "node"
+end
+
+# Run the colony's code (agents wrote it) with PATH and an empty temporary HOME and nothing else: this
+# shell's environment holds FT_TOKEN, the admin token, and whatever other secrets the operator keeps there.
+def run_untrusted(cmd, chdir:)
+  Dir.mktmpdir("ft-home-") do |home|
+    out, st = Open3.capture2e({ "PATH" => ENV.fetch("PATH", "/usr/bin:/bin"), "HOME" => home }, *cmd, chdir: chdir, unsetenv_others: true)
+    [redact(out), st.success?]
+  end
+end
+
 spec_text = File.read(File.expand_path(opts[:spec], ROOT))
 spec = JSON.parse(spec_text[/^```json firetrident\n(.*?)\n```$/m, 1])
 colony = (opts[:name] || spec["name"]).downcase.gsub(/[^a-z0-9-]+/, "-").gsub(/\A-+|-+\z/, "")
@@ -355,8 +373,8 @@ def tap_summary(out)
   [counts, ms]
 end
 
-scene("node --test (the colony's own suite, nothing installed)")
-out, = run(["node", "--test"], chdir: clone)
+scene("node --test (the colony's own suite, nothing installed, none of this shell's environment)")
+out, = run_untrusted([NODE, "--test"], chdir: clone)
 counts, ms = tap_summary(out)
 say(format("node --test: %d tests, %d pass, %d fail in %.0f ms", counts["tests"], counts["pass"], counts["fail"], ms))
 head_sha = `git -C #{clone} rev-parse HEAD`.strip
@@ -377,7 +395,7 @@ ref = File.join(opts[:reference], "test/acceptance.test.ts")
 if File.exist?(ref)
   scene("Reference acceptance suite A1-A7 against the colony's code")
   FileUtils.cp(ref, File.join(clone, "test/reference-acceptance.test.ts"))
-  out, = run(["node", "--test", "test/reference-acceptance.test.ts"], chdir: clone)
+  out, = run_untrusted([NODE, "--test", "test/reference-acceptance.test.ts"], chdir: clone)
   counts, ms = tap_summary(out)
   say(format("reference acceptance: %d/%d pass in %.0f ms", counts["pass"], counts["tests"], ms))
   out.lines.grep(/^not ok|✖|AssertionError|expected|actual/).first(40).each { |l| puts "  #{l}" } if counts["fail"].positive?

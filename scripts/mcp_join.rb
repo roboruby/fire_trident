@@ -79,6 +79,8 @@ T0 = Time.now
 
 def redact(text)
   out = text.to_s.gsub(/art_v\d+_[A-Za-z0-9._~+\/=-]+/, "<redacted>")
+  # The resume key join returns once (JSON in a tool result, escaped again inside a transcript line).
+  out = out.gsub(/(resumeKey\\*"\s*:\s*\\*")[A-Za-z0-9_-]+/) { "#{Regexp.last_match(1)}<redacted>" }
   SECRETS.each { |s| out = out.gsub(s, "<redacted>") }
   out
 end
@@ -267,6 +269,8 @@ begin
             nil
           end
           marks[tool] ||= Time.now - t_claude
+          # Wherever the agent repeats its resume key later, the log shows <redacted>.
+          SECRETS << data["resumeKey"] if tool == "join" && data.is_a?(Hash) && data["resumeKey"].is_a?(String) && data["resumeKey"].length >= 8
           if tool == "propose" && data
             proposal_id = data.dig("proposal", "id")
             changed_path = data.dig("writeSet", 0, "path")

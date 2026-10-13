@@ -47,6 +47,7 @@ import {
   type ReflexInput,
 } from "./reflex.ts";
 import { buildReviewView } from "./review.ts";
+import { maskNote } from "../trunk/mask.ts";
 import { damageSignals, isTestPath } from "./signals.ts";
 import { DecideStore, type DetectorStats, type StoredAntibody } from "./store.ts";
 import { VACCINE_CLASSES, VACCINE_LABELS, VACCINE_OUTCOMES, makeVaccine, recallReport, recallSummary, type SourceFile, type VaccineChange, type VaccineClass } from "./vaccine.ts";
@@ -669,7 +670,8 @@ export class DecideEngine {
     const path = antibodyPath(ab.id);
     const agent = this.host.agent(p.agentId);
     const decisions = this.host.decisionsFor(p.id).map((d) => ({ kind: d.kind, layer: d.layer, p: d.p, action: d.action }));
-    const note: LineageNote & Record<string, unknown> = {
+    // Notes are public: the free text in this one (the intent, the evidence, the reason) is masked where it looks like a secret.
+    const note: LineageNote & Record<string, unknown> = maskNote({
       schema: "firetrident.lineage/v1",
       landingId: "",
       colonyId: colony.id,
@@ -687,7 +689,7 @@ export class DecideEngine {
         },
       ],
       system: { kind: "antibody", antibody: ab.id, path, rejected: p.id, reason, by, question, threshold },
-    };
+    });
     const oneLine = (s: string): string => s.replace(/\s+/g, " ").trim();
     const subject = oneLine(`Antibody ${ab.id}: ${question}`).slice(0, 72);
     const message = `${subject}\n\nLearned from rejected proposal ${p.id} (${oneLine(by)}): ${oneLine(reason).slice(0, 500)}\n\nFT-Antibody: ${ab.id}\nFT-Rejected-Proposal: ${p.id}\nFT-Intent: ${p.intentId}`;

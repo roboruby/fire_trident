@@ -40,6 +40,7 @@ import {
   type PushOutcome,
 } from "../artifacts/git.ts";
 import { mapLine } from "./blame.ts";
+import { maskNote } from "./mask.ts";
 import { addNotes } from "./notes.ts";
 import { BoundedMap, applyTreeChangesDeferred, writePending, type PendingObject } from "./surgery.ts";
 import { commitContent, objectId } from "./objects.ts";
@@ -1958,7 +1959,8 @@ export class TrunkDO extends DurableObject<Env> {
 
 /**
  * The lineage note for a landing. A proposal that landed over files it read that changed records each
- * of them under `revalidated`: the blob it read, the blob it landed on, and the names that held.
+ * of them under `revalidated`: the blob it read, the blob it landed on, and the names that held. Notes
+ * are public, so the free text agents and people wrote is masked where it looks like a secret (mask.ts).
  */
 function buildNote(
   landing: Landing,
@@ -1967,7 +1969,7 @@ function buildNote(
   ctx: LandContext,
   revalidated: Map<Id, Revalidated[]> = new Map(),
 ): LineageNote {
-  return {
+  return maskNote({
     schema: "firetrident.lineage/v1",
     landingId: landing.id,
     colonyId: landing.colonyId,
@@ -1988,7 +1990,7 @@ function buildNote(
         ...noteAlternatives(ctx.alternatives, p.id),
       };
     }),
-  };
+  });
 }
 
 /** Why a proposal is malformed, or null. */
