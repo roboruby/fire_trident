@@ -1,23 +1,29 @@
 import type { ColonyEvent } from "@fire_trident/core";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { clock, fmtFixed, fmtInt, shortId, shortSha } from "../format.ts";
-import type { ColonyStore, LoggedEvent } from "../store.ts";
+import type { ColonyStore, LoggedEvent, NoticeGroup } from "../store.ts";
+import { escalationOf } from "../store.ts";
 import { ACCENT, FIELD_COLOR, LAYER_COLOR } from "../theme.ts";
 import { useThrottledVersion } from "../useStore.ts";
 import { certCounts, certTitle } from "../certs.ts";
+import { contestText, escalationText, firstLine, noticeText, revalidatedText } from "../eventText.ts";
 
 /** Changing direction: amendments, withdrawals, retracted rules, reverted landings and human directives. */
 const DIRECTION_COLOR = "#c084fc";
 const STATUS_COLOR = "#9fd8ff";
 const TESTS_GREEN = "#6fd9a6";
 const TESTS_RED = "#ff8d98";
+/** Landing notices: the colony telling agents what changed under them. */
+const NOTICE_COLOR = "#8fe8bd";
+const CONTEST_COLOR = "#7aa8ff";
 
 /** Filter chips: a key, a label, a color, and the event types the chip covers. */
 const FILTERS: ReadonlyArray<[key: string, label: string, color: string, types: ReadonlyArray<ColonyEvent["t"]>]> = [
-  ["landing", "Landings", FIELD_COLOR.trail, ["landing"]],
+  ["landing", "Landings", FIELD_COLOR.trail, ["landing", "revalidated"]],
   ["decision", "Decisions", LAYER_COLOR.reflex, ["decision"]],
-  ["proposal", "Proposals", LAYER_COLOR.llm, ["proposal"]],
+  ["proposal", "Proposals", LAYER_COLOR.llm, ["proposal", "contest"]],
   ["intent", "Intents", "#7cc4ff", ["intent"]],
+  ["escalation", "Reports", ACCENT, ["escalation"]],
   ["direction", "Direction", DIRECTION_COLOR, ["amended", "withdrawn", "retracted", "reverted", "directive"]],
   ["status", "Status", STATUS_COLOR, ["status"]],
   ["certify", "Tests", TESTS_GREEN, ["certify"]],
@@ -31,7 +37,7 @@ const FILTERS: ReadonlyArray<[key: string, label: string, color: string, types: 
 /** The chip that covers each event type. */
 const CHIP_OF: ReadonlyMap<string, string> = new Map(FILTERS.flatMap(([key, , , types]) => types.map((t) => [t, key] as const)));
 
-const DEFAULT_ON: ReadonlySet<string> = new Set(["landing", "decision", "proposal", "intent", "direction", "status", "violations", "sigma", "certify"]);
+const DEFAULT_ON: ReadonlySet<string> = new Set(["landing", "decision", "proposal", "intent", "escalation", "direction", "status", "violations", "sigma", "certify"]);
 
 /** The events worth reading at a glance; routine status steps are hidden unless the viewer asks for everything. */
 function notable(e: ColonyEvent): boolean {
@@ -63,6 +69,14 @@ const PROPOSAL_COLOR: Record<string, string> = {
   landed: FIELD_COLOR.trail,
 };
 
+/** One line for the landing notices sent for one landing: how many agents were told, and what changed. */
+function noticeLine(group: NoticeGroup | undefined, e: Extract<ColonyEvent, { t: "directive" }>, store: ColonyStore): Line {
+  const g = group ?? { agents: typeof e.agentId === "string" ? [e.agentId] : [], paths: [], message: typeof e.message === "string" ? e.message : "" };
+  const names = g.agents.slice(0, 6).map((id) => store.agentName(id));
+  const more = g.agents.length > 6 ? ` and ${fmtInt(g.agents.length - 6)} more` : "";
+  return { tag: "notice", color: NOTICE_COLOR, text: noticeText(g), mono: e.by, title: `${g.message}\nTold: ${names.join(", ")}${more}` };
+}
+
 /** One readable line per event. */
 function describe(le: LoggedEvent, store: ColonyStore): Line {
   const e = le.ev;
@@ -75,9 +89,25 @@ function describe(le: LoggedEvent, store: ColonyStore): Line {
       return { tag: "intent", color: "#7cc4ff", text: `${e.status} · ${e.title}`, title: e.title };
     case "proposal": {
       const title = store.intents.get(e.intentId)?.title;
+      const winner = store.superseded.get(e.proposalId);
+      if (winner && e.status !== "landed") {
+        // Contest mode: another attempt at the same intent landed instead.
+        return { tag: "proposal", color: CONTEST_COLOR, text: `${e.status} · superseded by ${shortId(winner)}${title ? ` · ${title}` : ""}`, mono: shortId(e.proposalId), title: e.reason ?? `Superseded by ${winner}` };
+      }
       const text = e.reason ? `${e.status} · ${e.reason}` : `${e.status}${title ? ` · ${title}` : ""}`;
       return { tag: "proposal", color: PROPOSAL_COLOR[e.status] ?? LAYER_COLOR.llm, text, mono: shortId(e.proposalId), title: e.reason ?? title };
     }
+    case "escalation": {
+      const view = escalationOf(e.intentId, e, store.intents.get(e.intentId)?.title ?? e.intentId, e.at);
+      if (!view) return { tag: "report", color: ACCENT, text: e.intentId };
+      const agent = typeof e.agentId === "string" && e.agentId ? store.agentName(e.agentId) : "An agent";
+      if (view.resolved) return { tag: "answered", color: DIRECTION_COLOR, text: escalationText(view, agent), title: view.resolved.note ? `${escalationText(view, agent)}\n“${view.resolved.note}”` : undefined };
+      return { tag: "report", color: ACCENT, text: escalationText(view, agent), title: view.report ? `${escalationText(view, agent)}\n“${firstLine(view.report, 600)}”` : undefined };
+    }
+    case "contest":
+      return { tag: "contest", color: CONTEST_COLOR, text: contestText(e), mono: typeof e.winner === "string" ? shortId(e.winner) : undefined, title: e.reason ? `${contestText(e)}\n${e.reason}` : undefined };
+    case "revalidated":
+      return { tag: "assumptions", color: FIELD_COLOR.trail, text: revalidatedText(e), mono: typeof e.proposalId === "string" ? shortId(e.proposalId) : undefined, title: `${revalidatedText(e)}${store.intents.get(e.intentId) ? `\n${store.intents.get(e.intentId)?.title}` : ""}` };
     case "landing":
       return {
         tag: "landing",
@@ -114,6 +144,7 @@ function describe(le: LoggedEvent, store: ColonyStore): Line {
       return { tag: "reverted", color: FIELD_COLOR.failure, text: `${shortId(e.of)} undone · ${files}${redo} · ${e.reason}`, mono: e.by, title: `${e.by}: ${e.reason}` };
     }
     case "directive":
+      if (e.kind === "landing") return noticeLine(le.group, e, store);
       return { tag: "directive", color: DIRECTION_COLOR, text: `${e.by} → ${store.agentName(e.agentId)}: “${e.message}”`, mono: e.via, title: e.message };
     case "status":
       return { tag: "status", color: STATUS_COLOR, text: `${store.agentName(e.agentId)}: ${e.note}`, title: e.note };
@@ -129,19 +160,43 @@ function describe(le: LoggedEvent, store: ColonyStore): Line {
   }
 }
 
-/** The live event log: newest first, color-coded, filterable; pauses while the pointer is over it. */
-export function EventsTab({ store, director = false }: { store: ColonyStore; director?: boolean }) {
+/**
+ * The live event log: newest first, color-coded, filterable; pauses while the pointer is over it.
+ * Landing notices sent for one landing show as one line. `focus` (from the needs-you strip) narrows
+ * the log to one chip; the viewer can widen it again.
+ */
+export function EventsTab({ store, director = false, focus = null }: { store: ColonyStore; director?: boolean; focus?: { chip: string; at: number } | null }) {
   useThrottledVersion(store, 250);
-  const [on, setOn] = useState<ReadonlySet<string>>(DEFAULT_ON);
+  const focusAt = focus?.at ?? 0;
+  const focusChip = focus && FILTERS.some(([key]) => key === focus.chip) ? focus.chip : "";
+  const [on, setOn] = useState<ReadonlySet<string>>(() => (focusChip ? new Set([focusChip]) : DEFAULT_ON));
   const [frozen, setFrozen] = useState<LoggedEvent[] | null>(null);
   const [everything, setEverything] = useState(false);
-  const live = store.recentEvents((e) => on.has(CHIP_OF.get(e.t) ?? e.t) && (everything || notable(e)), 100);
+  useEffect(() => {
+    if (!focusAt || !focusChip) return;
+    setOn(new Set([focusChip]));
+    setFrozen(null);
+  }, [focusAt, focusChip]);
+  const shown = new Set<NoticeGroup>();
+  const live = store.recentEvents((e, le) => {
+    if (!on.has(CHIP_OF.get(e.t) ?? e.t) || !(everything || notable(e))) return false;
+    // One line per landing's notices: the newest one stands for the group.
+    if (le.group) {
+      if (shown.has(le.group)) return false;
+      shown.add(le.group);
+    }
+    return true;
+  }, 100);
   const rows = frozen ?? live;
   const toggle = (t: string) => {
     const next = new Set(on);
     if (next.has(t)) next.delete(t);
     else next.add(t);
     setOn(next);
+    setFrozen(null);
+  };
+  const resetFilters = () => {
+    setOn(DEFAULT_ON);
     setFrozen(null);
   };
   return (
@@ -160,9 +215,16 @@ export function EventsTab({ store, director = false }: { store: ColonyStore; dir
       {director ? null : (
       <div className="events-status">
         <span>{frozen ? "Paused while you read" : everything ? "Live · every event" : "Live · notable events"}</span>
-        <button type="button" className="link" onClick={() => setEverything(!everything)}>
-          {everything ? "Notable only" : "Show every event"}
-        </button>
+        <span className="events-links">
+          {on.size !== DEFAULT_ON.size || [...on].some((k) => !DEFAULT_ON.has(k)) ? (
+            <button type="button" className="link" onClick={() => resetFilters()}>
+              Default filters
+            </button>
+          ) : null}
+          <button type="button" className="link" onClick={() => setEverything(!everything)}>
+            {everything ? "Notable only" : "Show every event"}
+          </button>
+        </span>
       </div>
       )}
       <ol className="events-list" onMouseEnter={() => setFrozen(live)} onMouseLeave={() => setFrozen(null)}>

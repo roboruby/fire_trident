@@ -977,3 +977,118 @@ a.lc:hover .lc-open {
     min-height: 0;
   }
 }
+
+/* when a person is needed */
+
+.ex-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.ex-side {
+  display: grid;
+  gap: 16px;
+}
+
+.ex-card {
+  margin: 0;
+  padding: 18px 20px 20px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #090d14;
+}
+
+.ex-k {
+  font-size: 12px;
+  font-weight: 750;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.ex-head {
+  margin: 8px 0 0;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -0.015em;
+}
+
+.ex-body {
+  margin: 10px 0 0;
+  font-size: 14.5px;
+  line-height: 1.6;
+  color: var(--text-2);
+}
+
+.ex-body .mono {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.ex-demo {
+  margin-top: 16px;
+}
+
+.ex-frame {
+  animation: none;
+}
+
+.ex-frame .card-title {
+  font-size: 14.5px;
+}
+
+.ex-cap {
+  margin-top: 10px;
+  font-size: 12.5px;
+  color: var(--text-3);
+}
+
+.ex-prompt {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-2);
+  border-left: 2px solid #ff7aa8;
+  border-radius: 0 8px 8px 0;
+  background: #070a10;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+
+.ex-prompt p {
+  margin: 4px 0 0;
+}
+
+.ex-prompt .mono {
+  font-size: 12px;
+  color: var(--text);
+}
+
+.ex-prompt-k {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #ff9fc0;
+}
+
+.ex-diagram {
+  margin-top: 12px;
+}
+
+.ex-diagram svg {
+  display: block;
+  width: 100%;
+  max-width: 420px;
+  height: auto;
+  overflow: visible;
+}
+
+@media (max-width: 1080px) {
+  .ex-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

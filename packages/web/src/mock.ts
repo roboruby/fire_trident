@@ -8,6 +8,7 @@ import type {
   Decision,
   DecisionKind,
   DecisionLayer,
+  EscalationKind,
   FieldReading,
   FileVersion,
   Id,
@@ -19,7 +20,7 @@ import type {
   Proposal,
   Rule,
 } from "@fire_trident/core";
-import type { Backend, ReviewDecision, WhyEntry } from "./api.ts";
+import type { Backend, EscalationDecision, IntentAmend, ReviewDecision, WhyEntry } from "./api.ts";
 import { basename, regionOf } from "./format.ts";
 import type { ColonyStore } from "./store.ts";
 import { TAU_MS } from "./theme.ts";
@@ -360,6 +361,22 @@ const FAIL_DETAILS: readonly string[] = [
 
 const REVIEWERS: readonly string[] = ["dana (reviewer)", "sam (on call)", "priya (owner)"];
 
+/** What a simulated agent reports when it finds an intent cannot be done as written ({file} is the intent's first file). */
+const REPORTS: ReadonlyArray<[kind: EscalationKind, report: string]> = [
+  ["broken-test", "test/{base}.test.ts expects the old rounding (0.335 rounds to 0.33), but the rule asks for utils/money, which rounds half up. The test fails either way; it needs a person to say which behavior is right."],
+  ["contradictory-spec", "The intent says to keep the v1 cart response shape for mobile, and the rule forbids importing cart/v1 from {file}. I can't satisfy both from this file."],
+  ["impossible", "{file} has no caller left after the v2 migration. There is nothing to change here; deleting the file is outside the footprint."],
+  ["other", "The footprint names {file}, but the logic moved to core/http.ts two landings ago. Should the intent follow it?"],
+];
+
+/** How a simulated reviewer answers a report nobody answered. */
+const ANSWERS: ReadonlyArray<[decision: "amend" | "withdraw" | "dismiss", note: string]> = [
+  ["dismiss", "The test is right: keep half-even rounding and fix the call site instead."],
+  ["dismiss", "Both hold: keep the shape with a v2 adapter in this file."],
+  ["amend", "Point the intent at the file the logic moved to."],
+  ["withdraw", "Not needed after the migration."],
+];
+
 // ---------------------------------------------------------------------------
 // Simulation state
 // ---------------------------------------------------------------------------
@@ -374,6 +391,8 @@ interface SimIntent {
   openIdx: number;
   openedT: number;
   decisions: DecisionLite[];
+  /** Contest mode: the agents building it at once. */
+  holders: Set<SimAgent>;
 }
 
 interface SimAgent {
@@ -399,6 +418,8 @@ interface SimProposal {
   decisions: DecisionLite[];
   fail: string | null;
   residual: string | null;
+  /** Assumption revalidation: files that changed after it read them, and the names that still held. */
+  revalidated?: Array<{ path: string; read: string | null; landedOn: string | null; names: string[] }>;
 }
 
 interface Lane {
@@ -460,6 +481,7 @@ export class ColonySim {
   private cleanSince = 0;
   private waveNo = 0;
   private nextVaccineT = 4000;
+  private nextReportT = 30_000;
   private readonly vaccine = { seeded: 38, caught: 37, antibodies: 4, hits: 11 };
 
   constructor(
@@ -550,7 +572,9 @@ export class ColonySim {
 
   private intentEvent(si: SimIntent): void {
     const i = si.intent;
-    this.emit({ t: "intent", at: this.now, intentId: i.id, status: i.status, title: i.title, footprint: i.footprint });
+    const ev: ColonyEvent = { t: "intent", at: this.now, intentId: i.id, status: i.status, title: i.title, footprint: i.footprint };
+    // Contest intents say so on their events too (the UI also reads it from the snapshot and the contest event).
+    this.emit(i.contest ? ({ ...ev, contest: i.contest } as ColonyEvent) : ev);
   }
 
   private violationsEvent(): void {
@@ -583,7 +607,7 @@ export class ColonySim {
       createdAt: this.now,
       createdBy: source === "rule" ? "morphology" : source === "human" ? "maya@copperleaf" : "colony",
     };
-    const si: SimIntent = { intent, violations, needs, region: regionOf(footprint[0] ?? ""), openIdx: -1, openedT: this.t, decisions: [] };
+    const si: SimIntent = { intent, violations, needs, region: regionOf(footprint[0] ?? ""), openIdx: -1, openedT: this.t, decisions: [], holders: new Set() };
     this.intents.set(intent.id, si);
     this.pushOpen(si);
     return si;
@@ -688,6 +712,8 @@ export class ColonySim {
       0,
       footprint.map((p): [string, number] => [p, 1]),
     );
+    // Contest mode: half of the features are built by two (now and then three) agents at once.
+    if (this.r() < 0.5) si.intent.contest = this.r() < 0.8 ? 2 : 3;
     this.addNeeds(si, true);
     this.intentEvent(si);
   }
@@ -703,7 +729,8 @@ export class ColonySim {
     const model = kind === "internal" ? (this.r() < 0.6 ? "workers-ai/code-large" : "workers-ai/code-flash") : kind === "external" ? "external/mcp-client" : "bench/scripted";
     const a: SimAgent = { id, kind, model, state: "idle", intent: null, proposal: null, next: this.t + this.range(200, 1600), n };
     this.agents.push(a);
-    this.agentEvent(a, "idle");
+    // An agent's first event names its model, so agents that join after the page opened show one on the map.
+    this.emit({ t: "agent", at: this.now, agentId: a.id, kind: a.kind, state: "idle", model } as ColonyEvent);
   }
 
   private repulsion(footprint: readonly string[]): number {
@@ -759,7 +786,9 @@ export class ColonySim {
   }
 
   private claim(a: SimAgent, si: SimIntent): void {
-    this.removeOpen(si);
+    // A contest intent stays open until it has as many holders as its contest allows.
+    si.holders.add(a);
+    if (!si.intent.contest || si.holders.size >= si.intent.contest) this.removeOpen(si);
     si.intent.status = "claimed";
     si.intent.assignedTo = a.id;
     a.intent = si;
@@ -771,6 +800,8 @@ export class ColonySim {
       this.mark(p, "claim", c);
     }
     this.regionClaims.set(si.region, (this.regionClaims.get(si.region) ?? 0) + 1);
+    // What the agent says it is doing now (some agents relay a note as they start).
+    if (this.r() < 0.35) this.emit({ t: "status", at: this.now, agentId: a.id, intentId: si.intent.id, note: `reading ${si.intent.footprint.slice(0, 2).join(", ")} for "${si.intent.title}"` });
     // The first wave lands quickly so the opening shot has motion; later work takes longer.
     const work = this.t < 25_000 ? this.range(4500, 15_000) : this.range(14_000, 40_000);
     a.next = this.t + work * (si.intent.source === "human" ? 1.6 : 1);
@@ -828,6 +859,7 @@ export class ColonySim {
     si.intent.status = "proposed";
     this.proposalEvent(sp);
     this.agentEvent(a, "proposing");
+    if (this.r() < 0.2) this.emit({ t: "status", at: this.now, agentId: a.id, intentId: si.intent.id, note: `proposing ${writeSet.length} ${writeSet.length === 1 ? "file" : "files"} for "${si.intent.title}"` });
   }
 
   private advance(sp: SimProposal): void {
@@ -935,6 +967,17 @@ export class ColonySim {
         this.returnStale(sp, stale.path);
         continue;
       }
+      const staleRead = stale || sp.revalidated ? undefined : sp.p.readSet.find((r) => !sp.p.writeSet.some((w) => w.path === r.path) && (this.landedAt.get(r.path) ?? -1) > sp.baseT);
+      if (staleRead) {
+        if (this.r() < 0.45) {
+          this.returnStale(sp, staleRead.path);
+          continue;
+        }
+        // Assumption revalidation: only a file it read changed, and every name it imports from that file is still exported.
+        const names = this.namesOf(staleRead.path);
+        sp.revalidated = [{ path: staleRead.path, read: staleRead.blob, landedOn: this.hex(40), names }];
+        this.emit({ t: "revalidated", at: this.now, proposalId: sp.p.id, intentId: sp.intent.intent.id, paths: [staleRead.path], names });
+      }
       if (sp.p.writeSet.some((w) => used.has(w.path))) {
         keep.push(sp);
         continue;
@@ -963,21 +1006,33 @@ export class ColonySim {
       at: this.now,
     };
     this.emit({ t: "landing", at: this.now, landingId: landing.id, trunkSha: landing.trunkSha, proposalIds: landing.proposalIds, paths });
+    // Contest mode: the other holders' attempts lose to the one landing now.
+    const rivals = new Map<SimProposal, SimAgent[]>();
+    for (const sp of batch) if (sp.intent.intent.contest) rivals.set(sp, [...sp.intent.holders].filter((h) => h !== sp.agent));
+    const alternatives = (sp: SimProposal) =>
+      (rivals.get(sp) ?? [])
+        .filter((h) => h.proposal)
+        .map((h) => ({ proposalId: h.proposal?.p.id ?? "", agentId: h.id, model: h.model, reason: h.proposal?.stage === "ready" ? "Still waiting in its lane when this attempt landed." : "Still being checked when this attempt landed." }));
     const note: LineageNote = {
       schema: "firetrident.lineage/v1",
       landingId: landing.id,
       colonyId: this.colonyId,
-      proposals: batch.map((sp) => ({
-        id: sp.p.id,
-        agentId: sp.agent.id,
-        agentKind: sp.agent.kind,
-        model: sp.agent.model,
-        intent: { id: sp.intent.intent.id, title: sp.intent.intent.title, why: sp.intent.intent.why, ruleId: sp.intent.intent.ruleId, parentId: sp.intent.intent.parentId },
-        writeSet: sp.p.writeSet,
-        readSet: sp.p.readSet,
-        decisions: sp.decisions,
-        evidence: sp.p.evidence,
-      })),
+      proposals: batch.map((sp) => {
+        const alt = alternatives(sp);
+        return {
+          id: sp.p.id,
+          agentId: sp.agent.id,
+          agentKind: sp.agent.kind,
+          model: sp.agent.model,
+          intent: { id: sp.intent.intent.id, title: sp.intent.intent.title, why: sp.intent.intent.why, ruleId: sp.intent.intent.ruleId, parentId: sp.intent.intent.parentId },
+          writeSet: sp.p.writeSet,
+          readSet: sp.p.readSet,
+          decisions: sp.decisions,
+          evidence: sp.p.evidence,
+          ...(alt.length ? { alternatives: alt } : {}),
+          ...(sp.revalidated?.length ? { revalidated: sp.revalidated } : {}),
+        };
+      }),
     };
     this.history.push({ landing, note });
     if (this.history.length > 900) this.history.splice(0, 300);
@@ -1003,6 +1058,9 @@ export class ColonySim {
       a.proposal = null;
       this.agentEvent(a, "idle");
       a.next = this.t + this.range(400, 2400);
+      const lost = this.settleContest(sp, rivals.get(sp) ?? [], alternatives(sp));
+      si.holders.clear();
+      if (lost) this.emit({ t: "contest", at: this.now, intentId: si.intent.id, title: si.intent.title, winner: sp.p.id, losers: lost, reason: "It passed its checks and reached its lane first." });
       if (this.r() < 0.05) this.followUp(si);
     }
     for (const path of paths) {
@@ -1011,6 +1069,53 @@ export class ColonySim {
       if (this.failures.delete(path)) this.mark(path, "failure", 0);
     }
     if (fixed) this.violationsEvent();
+    this.notify(landing, batch);
+  }
+
+  /** The other holders of a contest intent stop: proposals in flight go back as superseded. Returns their ids, or null when none had proposed. */
+  private settleContest(winner: SimProposal, rivals: readonly SimAgent[], alternatives: ReadonlyArray<{ proposalId: string }>): Id[] | null {
+    for (const h of rivals) {
+      if (h.intent !== winner.intent) continue;
+      const own = h.proposal;
+      if (own) {
+        const lane = this.lanes.get(own.region);
+        const at = lane ? lane.queue.indexOf(own) : -1;
+        if (lane && at >= 0) lane.queue.splice(at, 1);
+        this.finish(own, "returned", `superseded by ${winner.p.id}: another attempt at this intent landed first`);
+      }
+      this.releaseClaims(winner.intent);
+      h.intent = null;
+      h.proposal = null;
+      this.agentEvent(h, "idle");
+      h.next = this.t + this.range(600, 2000);
+    }
+    const ids = alternatives.map((x) => x.proposalId).filter(Boolean);
+    return ids.length ? ids : null;
+  }
+
+  /**
+   * Landing notices: agents working in the regions a landing touched hear which files changed under
+   * them (directive events of kind "landing"), a few agents for some landings.
+   */
+  private notify(landing: Landing, batch: readonly SimProposal[]): void {
+    if (this.r() > 0.25) return;
+    const landed = new Set(batch.map((sp) => sp.agent));
+    const regions = new Set(landing.regions);
+    const told = this.agents.filter((a) => a.intent && !landed.has(a) && (a.state === "working" || a.state === "proposing") && regions.has(a.intent.region)).slice(0, this.int(1, 4));
+    const title = batch[0]?.intent.intent.title ?? "a landing";
+    for (const a of told) {
+      const path = landing.paths.find((p) => regionOf(p) === a.intent?.region) ?? landing.paths[0] ?? "";
+      this.emit({ t: "directive", at: this.now, directiveId: this.id("dir"), agentId: a.id, intentId: a.intent?.intent.id, message: `${path} changed on trunk (${landing.trunkSha.slice(0, 7)}): ${title}`, by: "colony", via: "push", kind: "landing" });
+    }
+  }
+
+  /** Names a change might import from a file, made from its file name (`cart.ts` gives Cart, createCart, ...). */
+  private namesOf(path: string): string[] {
+    const base = basename(path)
+      .replace(/\.[a-z]+$/i, "")
+      .replace(/[^a-zA-Z0-9]+(.)/g, (_m, c: string) => c.toUpperCase());
+    const cap = base.charAt(0).toUpperCase() + base.slice(1);
+    return [cap, `create${cap}`, `${base}Schema`].slice(0, this.int(1, 3));
   }
 
   private followUp(parent: SimIntent): void {
@@ -1128,14 +1233,101 @@ export class ColonySim {
     this.emit({ t: "metric", at: this.now, name: "antibodies", value: this.vaccine.antibodies });
     const si = sp.intent;
     this.releaseClaims(si);
+    si.holders.delete(a);
     si.intent.status = "open";
     si.intent.assignedTo = undefined;
-    this.pushOpen(si);
+    if (si.openIdx < 0) this.pushOpen(si);
     this.intentEvent(si);
     a.intent = null;
     a.proposal = null;
     this.agentEvent(a, "idle");
     a.next = this.t + this.range(800, 2400);
+  }
+
+  // -- agents' reports (escalations) -----------------------------------------
+
+  /** A working agent finds its intent cannot be done as written: it reports it, lets go, and no one takes it until a person answers. */
+  private report(): void {
+    this.nextReportT = this.t + this.range(45_000, 80_000);
+    const working = this.agents.filter((a) => a.state === "working" && a.intent && !a.proposal && !a.intent.intent.contest && !a.intent.intent.escalation);
+    const a = working.length ? this.pick(working) : null;
+    const si = a?.intent;
+    if (!a || !si) return;
+    const [kind, template] = this.pick(REPORTS);
+    const file = si.intent.footprint[0] ?? "";
+    const report = template.replaceAll("{file}", file).replaceAll("{base}", basename(file).replace(/\.[a-z]+$/i, ""));
+    si.intent.escalation = { kind, report, by: a.id, at: this.now };
+    this.releaseClaims(si);
+    si.holders.delete(a);
+    si.intent.status = "open";
+    si.intent.assignedTo = undefined;
+    this.intentEvent(si);
+    this.emit({ t: "escalation", at: this.now, intentId: si.intent.id, agentId: a.id, kind, report, title: si.intent.title });
+    this.emit({ t: "status", at: this.now, agentId: a.id, intentId: si.intent.id, note: `reported ${si.intent.title}: ${kind}` });
+    a.intent = null;
+    this.agentEvent(a, "idle");
+    a.next = this.t + this.range(1500, 4000);
+    // Nobody answered for a while: a simulated reviewer does.
+    this.schedule(this.t + this.range(70_000, 110_000), () => {
+      if (!si.intent.escalation || si.intent.escalation.resolved) return;
+      const [decision, note] = this.pick(ANSWERS);
+      const target = decision === "amend" ? this.amendTarget(si) : undefined;
+      this.resolveEscalation(si.intent.id, target || decision !== "amend" ? decision : "dismiss", note, this.pick(REVIEWERS), target ? { footprint: [target] } : undefined);
+    });
+  }
+
+  /** A file in the same region an amended intent could point at instead. */
+  private amendTarget(si: SimIntent): string | undefined {
+    const list = (this.byRegion.get(si.region) ?? []).filter((p) => !si.intent.footprint.includes(p));
+    return list.length ? this.pick(list) : undefined;
+  }
+
+  /** A person's answer to an agent's report: amend the intent, withdraw it, or dismiss the report. */
+  resolveEscalation(intentId: Id, decision: "amend" | "withdraw" | "dismiss", note: string, by: string, amend?: { title?: string; why?: string; footprint?: string[] }): void {
+    const si = this.intents.get(intentId);
+    const esc = si?.intent.escalation;
+    if (!si || !esc || esc.resolved) throw new Error("This report was already answered.");
+    if (!note.trim()) throw new Error("A note is required.");
+    this.now = Date.now();
+    esc.resolved = { by, at: this.now, decision, note };
+    this.emit({ t: "escalation", at: this.now, intentId, agentId: esc.by, kind: esc.kind, report: esc.report, title: si.intent.title, resolved: esc.resolved });
+    if (decision === "withdraw") {
+      si.intent.status = "withdrawn";
+      si.intent.withdrawnReason = note;
+      this.releaseNeeds(si);
+      this.emit({ t: "withdrawn", at: this.now, intentId, reason: note, by, title: si.intent.title, returned: 0 });
+      // The simulator counts a withdrawn rule intent's violations as waived, so the colony still converges.
+      if (si.violations > 0 && si.intent.ruleId) {
+        this.violations = Math.max(0, this.violations - si.violations);
+        this.byRule[si.intent.ruleId] = Math.max(0, (this.byRule[si.intent.ruleId] ?? 0) - si.violations);
+        si.violations = 0;
+        this.violationsEvent();
+      }
+      return;
+    }
+    if (decision === "amend" && amend) {
+      const changed: Array<"title" | "why" | "footprint"> = [];
+      if (amend.title && amend.title !== si.intent.title) {
+        si.intent.title = amend.title;
+        changed.push("title");
+      }
+      if (amend.why && amend.why !== si.intent.why) {
+        si.intent.why = amend.why;
+        changed.push("why");
+      }
+      if (amend.footprint?.length) {
+        si.intent.footprint = amend.footprint.filter((p) => this.fileSet.has(p));
+        if (!si.intent.footprint.length) si.intent.footprint = [...amend.footprint];
+        si.region = regionOf(si.intent.footprint[0] ?? "");
+        changed.push("footprint");
+      }
+      if (changed.length) {
+        si.intent.revision = (si.intent.revision ?? 1) + 1;
+        this.emit({ t: "amended", at: this.now, intentId, revision: si.intent.revision, changed, reason: note, by, title: si.intent.title, returned: 0 });
+      }
+    }
+    if (si.openIdx < 0) this.pushOpen(si);
+    this.intentEvent(si);
   }
 
   /** Proposals waiting for a human, oldest first. */
@@ -1387,6 +1579,7 @@ export class ColonySim {
     for (const lane of this.lanes.values()) if (lane.queue.length && t >= lane.next) this.tickLane(lane);
     if (t >= this.nextSigmaT) this.updateSigma();
     if (t >= this.nextVaccineT) this.vaccinate();
+    if (t >= this.nextReportT) this.report();
     if (t >= this.nextFeatureT) {
       this.addFeature();
       this.nextFeatureT = t + this.range(22_000, 40_000);
@@ -1469,5 +1662,10 @@ export class MockBackend implements Backend {
   async decide(proposalId: string, decision: ReviewDecision, reason: string): Promise<void> {
     await sleep(220);
     this.sim.humanDecision(proposalId, decision, reason);
+  }
+
+  async resolveEscalation(intentId: string, decision: EscalationDecision, note: string, by?: string, amend?: IntentAmend): Promise<void> {
+    await sleep(220);
+    this.sim.resolveEscalation(intentId, decision, note, by || "you", amend);
   }
 }

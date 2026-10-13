@@ -1,5 +1,5 @@
 import type { AgentKind, ColonyEvent, ColonySnapshot, EventsPage, Id, IntentStatus, Proposal, RecordedEvent, Rule } from "@fire_trident/core";
-import { HttpError, type Backend, type ReviewDecision, type WhyEntry } from "./api.ts";
+import { HttpError, type Backend, type EscalationDecision, type ReviewDecision, type WhyEntry } from "./api.ts";
 import { finite } from "./format.ts";
 import { isColonyEvent, type ColonyStore } from "./store.ts";
 import { TAU_MS } from "./theme.ts";
@@ -518,5 +518,9 @@ export class ReplayBackend implements Backend {
 
   async decide(_proposalId: string, _decision: ReviewDecision, _reason: string): Promise<void> {
     throw new Error("A replay is read-only: open the live colony to review.");
+  }
+
+  async resolveEscalation(_intentId: string, _decision: EscalationDecision, _note: string): Promise<void> {
+    throw new Error("A replay is read-only: open the live colony to answer a report.");
   }
 }
