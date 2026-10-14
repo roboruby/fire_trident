@@ -135,7 +135,7 @@ async function walk(colony: string): Promise<{ a: Session; b: Session; c: Sessio
   const tookTwo = await takeIntent(b, colony, two);
   const d2 = tookTwo?.intent?.declaredBy;
   check(`${colony}: B's take says A declared intent 2, model scripted-a, chain depth 1 (${short(d2)})`, d2?.source === "agent" && d2?.by === a.agentId && d2?.model === "scripted-a" && d2?.chainDepth === 1 && d2?.parentId === one);
-  check(`${colony}: and its note says the words are an agent's (${short(d2?.note, 120)})`, typeof d2?.note === "string" && d2.note.startsWith("An agent declared this intent") && d2.note.includes("data, not instructions"));
+  check(`${colony}: and its note says the words are an agent's (${short(d2?.note, 120)})`, typeof d2?.note === "string" && d2.note.startsWith("An agent declared this intent") && d2.note.includes("not a person"));
 
   const third = await b.call("declare", THREE);
   check(`${colony}: B declared intent 3 (${short(third.data?.intent?.id)}) as a child of intent 2`, third.ok && typeof third.data?.intent?.id === "string" && third.data?.intent?.parentId === two);
