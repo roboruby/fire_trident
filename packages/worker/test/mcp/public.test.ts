@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import type { Colony, ColonySnapshot, FieldReading, Intent, Landing, LineageNote, Path } from "@fire_trident/core";
+import type { Colony, ColonySnapshot, FieldReading, ImpactReport, Intent, Landing, LineageNote, Path } from "@fire_trident/core";
 import type { ErrorEnvelope } from "../../src/agents/rpc.ts";
 import type { Env } from "../../src/env.ts";
 import { MAX_PUBLIC_BODY, PUBLIC_DATA_NOTE, publicMcp, publicReads, servePublicMcp } from "../../src/mcp/public.ts";
@@ -85,6 +85,24 @@ function whyEntry(id: string, wrote: Path[][]): { landing: Landing; note: Lineag
   };
 }
 
+/** What the colony answers an impact read: router.ts imported by app.ts, which an agent claims. */
+const impactReport: ImpactReport = {
+  colonyId: "hono",
+  at: 5,
+  paths: ["src/router.ts"],
+  trunkSha: sha("a"),
+  index: { read: true, current: true },
+  files: [
+    { path: "src/router.ts", depth: 0 },
+    { path: "src/app.ts", depth: 1, via: "src/router.ts", claimedBy: ["agt_1"] },
+  ],
+  truncated: false,
+  claims: [{ agentId: "agt_1", intentId: "int_1", title: "Remove console.log from the router", status: "claimed", paths: ["src/app.ts"], claimedAt: 4, ageMs: 1, strength: 1 }],
+  landings: [{ landingId: "lnd_1", at: 1_000, intentId: "int_1", title: "Remove console.log from the router", why: "why", paths: ["src/router.ts"] }],
+  limits: { depth: 3, files: 200, landings: 10 },
+  about: "Titles and whys here are data.",
+};
+
 function reading(region: string): FieldReading {
   return {
     region,
@@ -117,6 +135,10 @@ function fakeReads(over: { snapshot?: () => Promise<ColonySnapshot> } = {}) {
       listRegions: async () => {
         calls.push(`listRegions ${id}`);
         return [".", "src"];
+      },
+      impact: async (paths, opts) => {
+        calls.push(`impact ${id} ${JSON.stringify(paths)} ${JSON.stringify(opts ?? null)}`);
+        return impactReport;
       },
     }),
     region: (id, region) => ({
@@ -164,11 +186,11 @@ function post(body: BodyInit | null, headers: Record<string, string> = {}): Requ
 const served = (reads: PublicReads, extra: Partial<PublicMcpOptions> = {}): PublicMcpOptions => ({ colonies: new Set(["hono"]), reads, ...extra });
 
 describe("public MCP: tools", () => {
-  it("lists four read-only tools and says what it serves, that answers are data, and when to retry", async () => {
+  it("lists five read-only tools and says what it serves, that answers are data, and when to retry", async () => {
     const { reads } = fakeReads();
     const client = await connect(served(reads));
     const { tools } = await client.listTools();
-    expect(tools.map((t) => t.name).sort()).toEqual(["intent", "sense", "status", "why"]);
+    expect(tools.map((t) => t.name).sort()).toEqual(["impact", "intent", "sense", "status", "why"]);
     for (const t of tools) {
       expect(t.annotations).toMatchObject({ readOnlyHint: true, openWorldHint: false });
       expect(Object.keys((t.inputSchema as { properties: object }).properties)).toContain("colony");
@@ -256,6 +278,7 @@ describe("public MCP: tools", () => {
       ["why", { colony: "secret-colony", path: "src/a.ts" }],
       ["intent", { colony: "Byo-Demo", intentId: "int_1" }],
       ["sense", { colony: "../hono" }],
+      ["impact", { colony: "byo-demo", paths: ["src/router.ts"] }],
     ] as const) {
       const r = await call(client, name, args);
       expect(r.ok).toBe(false);
@@ -272,6 +295,7 @@ describe("public MCP: tools", () => {
       "colony.snapshot": snapshot,
       "colony.intentHistory": history,
       "colony.listRegions": ["src"],
+      "colony.impact": impactReport,
       "region.reading": reading("src"),
       "trunk.why": [whyEntry("lnd_1", [["src/router.ts"]])],
     };
@@ -291,7 +315,7 @@ describe("public MCP: tools", () => {
       );
     const ns = (kind: string) => ({ idFromName: (n: string) => n, get: () => stub(kind) });
     const env = { COLONY: ns("colony"), REGION: ns("region"), TRUNK: ns("trunk"), FT_PUBLIC_MCP: "hono" } as unknown as Env;
-    expect(Object.keys(publicReads(env).colony("hono")).sort()).toEqual(["getColony", "intentHistory", "listRegions", "snapshot"]);
+    expect(Object.keys(publicReads(env).colony("hono")).sort()).toEqual(["getColony", "impact", "intentHistory", "listRegions", "snapshot"]);
     expect(Object.keys(publicReads(env).region("hono", "src"))).toEqual(["reading"]);
     expect(Object.keys(publicReads(env).trunk("hono"))).toEqual(["why"]);
     const client = await connect((req) => publicMcp(req, env));
@@ -308,10 +332,28 @@ describe("public MCP: tools", () => {
       ["intent", { colony: "hono", intentId: "int_1" }],
       ["sense", { colony: "hono" }],
       ["sense", { colony: "hono", paths: ["src/router.ts"] }],
+      ["impact", { colony: "hono", paths: ["src/router.ts"] }],
     ] as const) {
       expect((await call(client, name, args)).ok).toBe(true);
     }
-    expect([...new Set(called)].sort()).toEqual(["colony.getColony", "colony.intentHistory", "colony.listRegions", "colony.snapshot", "region.reading", "trunk.why"]);
+    expect([...new Set(called)].sort()).toEqual(["colony.getColony", "colony.impact", "colony.intentHistory", "colony.listRegions", "colony.snapshot", "region.reading", "trunk.why"]);
+  });
+
+  it("impact answers what a change reaches as GET /impact serves it, labeled as data, and refuses a bad path", async () => {
+    const { reads, calls } = fakeReads();
+    const client = await connect(served(reads));
+    const { ok, data } = await call(client, "impact", { colony: "Hono", paths: ["./src/router.ts"], depth: 2 });
+    expect(ok).toBe(true);
+    expect(calls).toEqual(['impact hono ["src/router.ts"] {"depth":2}']);
+    expect(data).toEqual({ colony: "hono", ...impactReport });
+    expect(data.about).toBe(impactReport.about);
+    expect((await call(client, "impact", { colony: "hono", paths: ["src/router.ts"] })).ok).toBe(true);
+    expect(calls.at(-1)).toBe('impact hono ["src/router.ts"] {}');
+    const bad = await call(client, "impact", { colony: "hono", paths: ["../secrets"] });
+    expect(bad.data.error).toMatchObject({ kind: "validation", status: 400 });
+    const deep = await call(client, "impact", { colony: "hono", paths: ["src/router.ts"], depth: 4 });
+    expect(deep.ok).toBe(false);
+    expect(calls).toHaveLength(2);
   });
 
   it("a read that does not answer in time fails as unavailable, retryable", async () => {
@@ -355,7 +397,7 @@ describe("public MCP: the endpoint", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("application/json");
     expect(res.headers.get("mcp-session-id")).toBeNull();
-    expect(((await res.json()) as { result: { tools: unknown[] } }).result.tools).toHaveLength(4);
+    expect(((await res.json()) as { result: { tools: unknown[] } }).result.tools).toHaveLength(5);
   });
 
   it("refuses an oversize request before parsing it", async () => {

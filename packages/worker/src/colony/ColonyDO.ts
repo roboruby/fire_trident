@@ -155,6 +155,10 @@ import { MegafileAlarm, megafileEnabled, type MegafileHost } from "./megafile.ts
 import type { MegafileHold, MegafileReport } from "@fire_trident/core";
 import { RESOLVER_AGENT, Resolver, migrateResolver, type ResolverTrunk } from "./resolver.ts";
 import type { NoteResolves } from "@fire_trident/core";
+import { impactReport } from "./impact.ts";
+import type { ImporterWalk } from "../trunk/impact.ts";
+import type { ImpactReport } from "@fire_trident/core";
+import { modelHintFor, stepupEnabled, type ModelHint } from "./stepup.ts";
 
 /**
  * Result of ColonyDO.take: an assignment, or advice to wait and retry. `review`: what review will
@@ -162,9 +166,11 @@ import type { NoteResolves } from "@fire_trident/core";
  * landings that changed the intent's files, with their intents' whys (agents/landed.ts);
  * `lastReturn`: why the intent's latest change came back, for the agent to address first
  * (agents/prompt.ts); `guide`: where FT_FIELD_GUIDE covers the colony, the newest lessons agents
- * recorded, each with its provenance (colony/guide.ts). Each is absent when there is nothing to say.
+ * recorded, each with its provenance (colony/guide.ts); `model`: where FT_MODEL_STEPUP covers the
+ * colony and the intent's changes came back twice since it last changed course, the stronger model
+ * class for this attempt and why (colony/stepup.ts). Each is absent when there is nothing to say.
  */
-export type TakeResult = { intent: Intent; lease: WorkspaceLease; rule?: Rule; review?: ReviewPreview; context?: LandedWhy[]; lastReturn?: LastReturn; guide?: GuideTake } | { wait: true; retryInMs: number; reason: string };
+export type TakeResult = { intent: Intent; lease: WorkspaceLease; rule?: Rule; review?: ReviewPreview; context?: LandedWhy[]; lastReturn?: LastReturn; guide?: GuideTake; model?: ModelHint } | { wait: true; retryInMs: number; reason: string };
 
 /** Review views built per review-queue read for proposals escalated before views were kept. */
 const REVIEW_BACKFILLS = 3;
@@ -4478,7 +4484,23 @@ export class ColonyDO extends DurableObject<Env> {
     const lastReturn = this.lastReturn(intent.id);
     // Field guide (FT_FIELD_GUIDE): the newest lessons, each with its provenance (colony/guide.ts); absent where the guide is off.
     const guide = this.guide()?.take();
-    return { intent, lease, ...(rule ? { rule: this.toRule(rule, intent.colonyId) } : {}), ...(review ? { review } : {}), ...(context ? { context } : {}), ...(lastReturn ? { lastReturn } : {}), ...(guide ? { guide } : {}) };
+    // Model step-up (FT_MODEL_STEPUP, colony/stepup.ts): the stronger model class after two returns; absent where it is off.
+    const model = this.modelStepup(intent);
+    return { intent, lease, ...(rule ? { rule: this.toRule(rule, intent.colonyId) } : {}), ...(review ? { review } : {}), ...(context ? { context } : {}), ...(lastReturn ? { lastReturn } : {}), ...(guide ? { guide } : {}), ...(model ? { model } : {}) };
+  }
+
+  /**
+   * The model hint of a take (colony/stepup.ts) where FT_MODEL_STEPUP covers the colony: the stronger model class once
+   * the intent's changes came back twice since it last changed course, else undefined. Best effort: a take never fails over it.
+   */
+  private modelStepup(intent: Intent): ModelHint | undefined {
+    if (!stepupEnabled(this.env.FT_MODEL_STEPUP, intent.colonyId)) return undefined;
+    try {
+      return modelHintFor(this.sql, intent.id);
+    } catch (err) {
+      console.warn(`model step-up for intent ${intent.id} failed: ${errorText(err)}`);
+      return undefined;
+    }
   }
 
   /**
@@ -4550,6 +4572,32 @@ export class ColonyDO extends DurableObject<Env> {
       console.warn(`why-context for intent ${intent.id} failed: ${errorText(err)}`);
       return undefined;
     }
+  }
+
+  /**
+   * What a change to these paths reaches, and who works on it now (colony/impact.ts): the trunk files that import them,
+   * up to three levels (TrunkDO.importerWalk), the live claims on those files from the regions' fields, and the latest
+   * landings on them with their intents' whys from the why-context index. Read-only; GET /impact and the MCP tools serve it.
+   */
+  async impact(paths: Path[], opts: { depth?: number } = {}): Promise<ImpactReport> {
+    const colony = this.requireColony();
+    try {
+      // The why-context index caught up first, as a take does.
+      this.backfillLandedIndex();
+    } catch (err) {
+      console.warn(`impact: why-context index not caught up: ${errorText(err)}`);
+    }
+    return impactReport(
+      {
+        colony,
+        sql: this.sql,
+        importers: (p, o) => this.trunkStub().importerWalk(p, o) as unknown as Promise<ImporterWalk>,
+        // Only regions the colony knows are read, so the stub is made without configuring one.
+        reading: (region, p) => this.env.REGION.get(this.env.REGION.idFromName(regionKey(colony.id, region))).reading({ paths: p, kinds: ["claim"], claimTimes: true }),
+        now: () => Date.now(),
+      },
+      { paths, depth: opts?.depth },
+    );
   }
 
   /** Titles and whys of these intents. */

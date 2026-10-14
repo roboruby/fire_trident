@@ -130,12 +130,12 @@ export interface ReturnsRow {
 }
 
 /**
- * An intent whose changes came back RETURNS_MIN times or more since it last changed course: the newest
- * returns and rejections before a landing or a substantive amendment, leaving out returns that only
- * changed direction (withdrawn, revised, recalled) and lost contests. Amending or withdrawing it may
- * help more than another attempt.
+ * The changes of an intent that came back since it last changed course, newest first: the returns and
+ * rejections before a landing or a substantive amendment, leaving out returns that only changed
+ * direction (withdrawn, revised, recalled) and lost contests. The returns check counts them, and so
+ * does the model step-up (colony/stepup.ts).
  */
-export function returnsItem(r: ReturnsRow): StuckItem | null {
+export function returnsSinceCourse(r: Pick<ReturnsRow, "revisedAt" | "proposals">): ReturnedProposal[] {
   const counted: ReturnedProposal[] = [];
   for (const p of r.proposals) {
     if (p.status === "landed") break;
@@ -144,6 +144,15 @@ export function returnsItem(r: ReturnsRow): StuckItem | null {
     if (p.supersededBy || isRedirect(p.reason ?? undefined)) continue;
     counted.push(p);
   }
+  return counted;
+}
+
+/**
+ * An intent whose changes came back RETURNS_MIN times or more since it last changed course
+ * (returnsSinceCourse). Amending or withdrawing it may help more than another attempt.
+ */
+export function returnsItem(r: ReturnsRow): StuckItem | null {
+  const counted = returnsSinceCourse(r);
   if (counted.length < RETURNS_MIN) return null;
   const reasons = counted
     .slice(0, REASONS)

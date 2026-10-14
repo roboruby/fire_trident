@@ -53,6 +53,7 @@ import { CoChangeStore, mineHistory, type CoChangeStats, type Neighbor } from ".
 import { DerivedSet, trunkLog, type DerivedStatus, type TrunkLanding } from "./derived.ts";
 import { HISTORY_LIMIT, PATH_HISTORY, pathHistory, pathHistoryDerived, type PathHistoryEntry } from "./history.ts";
 import { IMPORTS_INDEX, IMPORT_LINKS_MAX, ImportIndex, deletionImports, importsDerived, type ImportLinks } from "./imports.ts";
+import { importerWalk, type ImporterWalk, type ImporterWalkOptions, type TrunkFiles } from "./impact.ts";
 import {
   deletionGuardEnabled,
   exportSurface,
@@ -856,6 +857,24 @@ export class TrunkDO extends DurableObject<Env> {
       console.error(`import index sync failed: ${errorText(e)}`);
     }
     return index.links(Array.isArray(paths) ? paths : [], max);
+  }
+
+  /**
+   * What a change to these paths reaches through imports (trunk/impact.ts): the trunk files that import them, up to three
+   * levels and IMPACT_FILES files, nearest first, each with the file it imports on the way. Directories and globs name
+   * the trunk files they cover. The import index is brought up to date first (built on first use) for IMPACT_SYNC_MS at
+   * most; past that the answer comes from the index as it stands and says so. A read only (the colony's impact report).
+   */
+  async importerWalk(paths: Path[], opts: ImporterWalkOptions = {}): Promise<ImporterWalk> {
+    const st = this.state();
+    // Its cursor first (a version change forgets the index; a landing the hook left behind is marked now).
+    this.derivedSet().catchUp(IMPORTS_INDEX);
+    const source = { head: () => this.meta("trunk_sha"), read: (blob: Sha) => this.blobBytes(blob), label: st.colonyId };
+    const files: TrunkFiles = {
+      has: (path) => this.indexBlob(path) !== null,
+      range: (from, to, limit) => this.sql.exec<{ path: string }>(`SELECT path FROM ft_files WHERE path >= ? AND path < ? ORDER BY path LIMIT ?`, from, to, limit).toArray().map((r) => r.path),
+    };
+    return importerWalk(this.importIndex(), source, files, Array.isArray(paths) ? paths : [], opts ?? {});
   }
 
   /**

@@ -53,6 +53,8 @@ export interface ReadingOptions {
    * `paths` still narrows it when given.
    */
   kinds?: MarkKind[];
+  /** Give each agent of the agents list `at`: when it last made or renewed a claim here (impact reads, colony/impact.ts). */
+  claimTimes?: boolean;
 }
 
 /** Lane and field counters for dashboards and tests. */
@@ -329,6 +331,8 @@ export class RegionDO extends DurableObject<Env> {
     if (opts.agents !== false) {
       for (const [agentId, h] of holders) {
         agents.push(h.intentId !== undefined ? { agentId, intentId: h.intentId, paths: [...h.paths] } : { agentId, paths: [...h.paths] });
+        // Impact reads ask how fresh each holder's claims are (the newest claim it made or renewed here).
+        if (opts.claimTimes === true) agents[agents.length - 1]!.at = h.at;
       }
     }
     return {

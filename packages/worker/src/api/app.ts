@@ -31,6 +31,7 @@ import { inlineEnabled } from "../colony/inline.ts";
 import { certifyRoutes } from "./certify.ts";
 import { guideRoutes } from "./guide.ts";
 import { megafileRoutes } from "./megafile.ts";
+import { impactRoutes } from "./impact.ts";
 
 /** Hono environment of the API. */
 export type ApiEnv = { Bindings: Env };
@@ -206,6 +207,7 @@ async function requireColony(env: Env, colonyId: Id): Promise<void> {
  *   GET    /colonies/:id/certifications     trunk certification results and state (api/certify.ts; also POST certify, certify/policy)
  *   GET    /colonies/:id/guide              the field guide's active lessons (api/guide.ts; candidates with the admin token; POST guide/:lessonId approves or rejects)
  *   GET    /colonies/:id/megafile           files held for their split (api/megafile.ts; POST holds or releases one)
+ *   GET    /colonies/:id/impact             ?path=&depth=: what a change reaches through imports, and who works on it now (api/impact.ts)
  * POST routes require the admin bearer token when FT_ADMIN_TOKEN is set; DELETE always does.
  */
 export function createApi(deps: ApiDeps): Hono<ApiEnv> {
@@ -554,6 +556,7 @@ export function createApi(deps: ApiDeps): Hono<ApiEnv> {
   certifyRoutes(app, requireAdmin); // Trunk certification: results, certify now, policy (api/certify.ts)
   guideRoutes(app, requireAdmin, isAdminRequest); // Field guide: lessons agents left, and a person's approval or rejection (api/guide.ts)
   megafileRoutes(app, requireAdmin); // Megafile alarm: held files, a person's hold or release (api/megafile.ts)
+  impactRoutes(app); // Impact: what a change to a file reaches through imports, and who works on those files now (api/impact.ts)
 
   // Unknown API paths answer JSON here instead of falling through to the static UI.
   app.all("*", (c) => json({ error: `no route for ${c.req.method} ${c.req.path}` }, 404));

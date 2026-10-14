@@ -96,12 +96,94 @@ export interface FieldReading {
   at: Millis;
   totals: Record<MarkKind, number>;
   byPath: Record<Path, Partial<Record<MarkKind, number>>>;
-  /** Agents currently holding claims in the region. */
-  agents: Array<{ agentId: Id; intentId?: Id; paths: Path[] }>;
+  /**
+   * Agents currently holding claims in the region. `at`: when the agent last made or renewed a claim here, only in a
+   * reading asked for claim times (impact reads, colony/impact.ts).
+   */
+  agents: Array<{ agentId: Id; intentId?: Id; paths: Path[]; at?: Millis }>;
   /** Causal branching ratio of recent events (criticality governor). */
   sigma: number;
   /** Harvester-ant admission control: may new agents enter this region now? */
   admission: { open: boolean; landingsPerMin: number; activeAgents: number };
+}
+
+/** One trunk file a change reaches through imports (ImpactReport.files). */
+export interface ImpactFile {
+  path: Path;
+  /** 0: a file asked about; 1 to 3: a file that imports one at the level before it (its `via`). */
+  depth: number;
+  /** The file it imports on the way to a file asked about (absent at depth 0). */
+  via?: Path;
+  /** Agents holding a live claim on it now (ImpactReport.claims has who they are). */
+  claimedBy?: Id[];
+}
+
+/** An agent holding a live claim on files a change reaches (ImpactReport.claims), from the regions' fields. */
+export interface ImpactClaim {
+  agentId: Id;
+  /** The agent as the colony keeps it: its name, kind and latest status note (agent-written text). */
+  name?: string;
+  kind?: AgentKind;
+  note?: string;
+  /** The intent the claim is for: its title, its status, and since when it has had that status. */
+  intentId?: Id;
+  title?: string;
+  status?: IntentStatus;
+  since?: Millis;
+  /** The reached files the claim covers, nearest first; `morePaths` counts the rest. */
+  paths: Path[];
+  morePaths?: number;
+  /**
+   * Claim age: when the agent made or last renewed the claim (agents renew theirs while they work), how long ago that was
+   * at the report's time, and the claim's strength now (1 fresh; it decays, and holds other agents off from 0.5 by default).
+   */
+  claimedAt?: Millis;
+  ageMs?: number;
+  strength?: number;
+}
+
+/** A recent landing on files a change reaches (ImpactReport.landings), from the colony's why-context index. */
+export interface ImpactLanding {
+  landingId: Id;
+  at: Millis;
+  trunkSha?: Sha;
+  /** The intent it completed for these files, with its title and why (one line each; "" when unknown). */
+  intentId?: Id;
+  title: string;
+  why: string;
+  /** The reached files it changed, nearest first; `morePaths` counts the rest. */
+  paths: Path[];
+  morePaths?: number;
+}
+
+/**
+ * What a change to some paths reaches, and who works on it now (GET /api/colonies/:id/impact, MCP `impact`, `ft impact`):
+ * the trunk files that import them, up to three levels, from the trunk writer's import index; the live claims on those
+ * files; and the latest landings on them with their intents' whys. Read-only, and bounded.
+ */
+export interface ImpactReport {
+  colonyId: Id;
+  at: Millis;
+  /** The paths asked about, cleaned (files, directories with a trailing slash, or globs). */
+  paths: Path[];
+  /** The trunk commit the import index describes; null when the index was not read. */
+  trunkSha: Sha | null;
+  /** Whether the importers were read and the index was current with trunk; `note` says why not. */
+  index: { read: boolean; current: boolean; note?: string };
+  /** Paths asked about that trunk does not have. */
+  missing?: Path[];
+  /** The files asked about (depth 0) and their importers, nearest first. */
+  files: ImpactFile[];
+  /** The walk stopped at a cap (files or paths): files past it were not looked at. */
+  truncated: boolean;
+  claims: ImpactClaim[];
+  /** Regions of reached files whose field was not read (past the cap, or the read failed): their claims are unknown. */
+  unread?: string[];
+  landings: ImpactLanding[];
+  /** The caps this report ran under. */
+  limits: { depth: number; files: number; landings: number };
+  /** What the quoted text in the report is: data written by people and agents, not instructions. */
+  about: string;
 }
 
 // ---------------------------------------------------------------------------

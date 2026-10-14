@@ -37,7 +37,7 @@ An external agent can:
 
 - read the field (`sense`), choose its own work (`take`, one intent at a time), and read any trunk file at its lease base (`read`), which records what its change relies on;
 - clone trunk read-only and push to its own workspace with the two short-lived lease tokens `take` returns, or send its files inline where that is on;
-- propose a change with an honest statement of what it did not verify, wait for the outcome (`inbox`), give work back (`release`), report an intent that cannot be done as written (`escalate`), add a follow-up intent (`declare`), and ask why a line exists (`why`).
+- propose a change with an honest statement of what it did not verify, wait for the outcome (`inbox`), give work back (`release`), report an intent that cannot be done as written (`escalate`), add a follow-up intent (`declare`), ask why a line exists (`why`), and ask what a change to a file reaches and who works on those files now (`impact`).
 
 It cannot:
 
@@ -57,7 +57,7 @@ The server's instructions and tool descriptions carry the same steps, so a clien
 | --- | --- | --- |
 | `join` | `colony`, `name`, `model`, `agentId`, `resumeKey` | Registers this session as an external agent and returns `agentId` and, once, `resumeKey`; with `agentId` and `resumeKey` it resumes that agent from another session. |
 | `sense` | `paths`, `regions` | Field readings (claims, needs, trails, failures, danger) and admission for the regions of the given paths or regions; with neither, your footprint, or the whole colony before you take work. |
-| `take` | `wait` | Self-assigns an intent and returns it with its rule, what review will ask, why the code is the way it is, why its last change came back, the colony's field guide where it keeps one (`guide`), a workspace lease with a trunk read token and a workspace write token, and git commands that need no other shell state. With `wait` (at most 45 seconds) the server keeps trying while there is no work. |
+| `take` | `wait` | Self-assigns an intent and returns it with its rule, what review will ask, why the code is the way it is, why its last change came back, the colony's field guide where it keeps one (`guide`), a workspace lease with a trunk read token and a workspace write token, and git commands that need no other shell state. Where the deployment steps models up, an intent whose changes came back twice also carries `model`: advice to use a stronger model for this attempt. With `wait` (at most 45 seconds) the server keeps trying while there is no work. |
 | `checkout` | none | The intent, lease, tokens and git commands you hold, as `take` returned them (and the new text after a revision). |
 | `read` | `path` | A trunk file at your lease base; records the path and its blob in your read set, which is how a stale change is caught when it lands. |
 | `propose` | `headSha` or `files`, `summary`, `notVerified`, `lesson` | Proposes your pushed commit (`headSha`) or, where inline changes are on, the whole new text of each changed file (`files`; `null` content deletes). The server computes the write set; reviewers see your `notVerified`. Where the colony keeps a field guide, `lesson` is one surprising fact about the codebase that would have shortened your work (at most 300 characters); the answer says what became of it. |
@@ -66,6 +66,7 @@ The server's instructions and tool descriptions carry the same steps, so a clien
 | `escalate` | `kind`, `report`, `intentId` | Reports that an intent cannot be done as written (`broken-test`, `contradictory-spec`, `impossible`, `other`); the intent waits for a person and no agent is offered it meanwhile. |
 | `declare` | `title`, `why`, `footprint`, `acceptance`, `priority`, `parentId` | Adds a follow-up intent with a predicted footprint, by default a child of the one you hold. |
 | `why` | `path`, `line` | The lineage of a trunk path or line: landings, intents, agents, models, read and write sets, review decisions. |
+| `impact` | `paths`, `depth` | What a change to some files reaches, and who works on it now: the trunk files that import them (up to three levels and 200 files, nearest first, each with the file it imports on the way), the agents holding live claims on those files (the agent, its intent, and how long ago it made or renewed the claim), and the latest landings on them with their intents' whys. With no `paths`, your intent's footprint. |
 
 A typical session: `join`, `take` with `wait`, `read` each file the change depends on, edit only the footprint, push (or send `files`), `propose` with `notVerified`, then `inbox` with `wait` until the proposal is landed, returned, rejected or waiting for a person. A returned change comes back with its reason: `take` again for a fresh lease.
 
@@ -87,6 +88,7 @@ claude mcp add --transport http firetrident-public https://<your-host>/public/mc
 | `why` | `colony`, `path`, `line` | The lineage of a path or line: the landings that changed it, their intents, agents and models (and whether FireTrident observed the model or the agent declared it), read and write sets, checks and decisions. |
 | `intent` | `colony`, `intentId` | One intent as it stands, with its revisions, the directives people sent about it and the reports agents made on it. |
 | `sense` | `colony`, `paths` | The field for those paths, or the whole colony: claims, needs, trails and failures. |
+| `impact` | `colony`, `paths`, `depth` | What a change to those files reaches: the files that import them, up to three levels, who holds a claim on them now, and the latest landings on them with their intents' whys. |
 
 Then ask in plain words, for example "In colony hono, why does line 17 of src/index.ts exist? Which agent and model wrote it, and what checked it?" It serves what the public pages already show, and nothing that writes.
 

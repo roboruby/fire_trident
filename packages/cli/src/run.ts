@@ -52,6 +52,7 @@ import type {
 import { formatGuide, formatLessonDecision, type GuideViewLike } from "./guide.ts";
 import { extractSpec, planNew } from "./spec.ts";
 import { formatMegafile } from "./megafile.ts";
+import { formatImpact } from "./impact.ts";
 import type { IntentBody, SpecPolicy } from "./spec.ts";
 import type { GuideLesson, Intent, Landing, LineageNote, Proposal, Rule } from "@fire_trident/core";
 
@@ -239,6 +240,13 @@ async function execute(cmd: Command, ctx: Ctx): Promise<number> {
       if (snap?.intents) why.intents = snap.intents;
       if (snap?.rules) why.rules = snap.rules;
       io.stdout(formatWhy(target, entries, why, c, io.now()));
+      return 0;
+    }
+    case "impact": {
+      // The trunk writer may build its import index on the first read: allow for it.
+      const res = await send<unknown>(ctx.http, req, 60_000);
+      if (ctx.flags.json) printJson(ctx, res);
+      else io.stdout(formatImpact(cmd.colony, res, c, io.now()));
       return 0;
     }
     case "verify": {

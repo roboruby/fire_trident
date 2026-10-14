@@ -15,6 +15,7 @@ import type { Guidance, HeldDirective } from "./direction.ts";
 import type { Directive } from "@fire_trident/core";
 import { isInboxDirective } from "../colony/direction.ts";
 import type { VirtualReads } from "./virtual.ts";
+import { cleanModelHint, stepupCheck, type ModelHint } from "../colony/stepup.ts";
 
 /**
  * The in-platform agent loop as a journaled state machine.
@@ -152,6 +153,8 @@ export interface Job {
   lastReturn?: LastReturn;
   /** The colony's field guide, from the take where FT_FIELD_GUIDE is on: every prompt shows its lessons and invites one (agents/prompt.ts). */
   guide?: GuideTake;
+  /** The model the take asked this attempt to write with, and why (FT_MODEL_STEPUP, colony/stepup.ts); absent: the spec's model or the agent's own. */
+  modelHint?: ModelHint;
   /** The lesson the model left with an accepted file (the first one), proposed with the change. */
   lesson?: string;
   /** Build on trunk as it is now, not the lease base: a landing notice changed files this job covers (fetch takes the tip). */
@@ -635,6 +638,9 @@ async function takeWork(deps: LoopDeps, cfg: AgentConfig): Promise<StepResult> {
   // The colony's field guide (FT_FIELD_GUIDE; a colony with it off, or on the previous version, sends none).
   const guide = cleanGuideTake("guide" in res ? res.guide : undefined);
   if (guide) job.guide = guide;
+  // Model step-up (FT_MODEL_STEPUP): after two returns the take asks for the stronger model class (none where it is off).
+  const modelHint = cleanModelHint(res.model);
+  if (modelHint) job.modelHint = modelHint;
   await adoptGuidance(deps, cfg, job, now);
   save(deps, cfg, job);
   deps.journal.bump("taken");
@@ -1019,8 +1025,9 @@ async function writeFile(
     }
   };
   const maxTokens = maxTokensFor(original, WRITE_MIN_TOKENS);
-  // An intent may ask for a model class ("default" for integration-heavy work); bulk agents then write with it.
-  const asked = spec.model ?? cfg.model;
+  // The take's hint first (the model step-up), then the model class the intent asks for ("default" for integration-heavy
+  // work; bulk agents then write with it), then the agent's own.
+  const asked = job.modelHint?.model ?? spec.model ?? cfg.model;
   let messages = first;
   let problem = "";
   for (let attempt = 0; attempt < MAX_WRITE_ATTEMPTS; attempt++) {
@@ -1031,6 +1038,8 @@ async function writeFile(
     job.method = "write";
     const used = reply.model ?? asked;
     if (used !== cfg.model) job.writeModel = used;
+    // The lineage note says why this change's model is not the agent's own.
+    if (job.modelHint) addCheck(job, stepupCheck(job.modelHint, used, cfg.model));
     const text = reply.text ?? "";
     const escalation = parseEscalateReply(text);
     if (escalation) return { ok: false, reason: `escalated (${escalation.kind}) by model ${used}`, escalate: escalation };

@@ -27,10 +27,13 @@ import { ftError } from "../colony/errors.ts";
 import { errorResult, structuredToolErrors } from "./errors.ts";
 import { RETRY_RULE } from "./instructions.ts";
 import { compactReading, whyAnswer } from "./tools.ts";
+import { IMPACT_DESCRIPTION } from "./impact.ts";
+import { IMPACT_DEPTH, IMPACT_ENTRIES } from "../trunk/impact.ts";
+import type { ImpactReport } from "@fire_trident/core";
 
 /**
  * The public MCP endpoint: anyone's agent can ask a showcase colony why a line exists, what the colony is doing, what
- * became of an intent and where agents work, with no account and no token. POST /public/mcp, stateless (one server
+ * became of an intent, where agents work and what a change to a file reaches, with no account and no token. POST /public/mcp, stateless (one server
  * per request, JSON answers, no sessions), for the colonies listed in FT_PUBLIC_MCP; off (404) when none are.
  *
  * It serves what the public GET routes serve, with their withholding: Artifacts remotes show without the account id,
@@ -55,6 +58,8 @@ export interface PublicColonyReads {
   snapshot(): Promise<ColonySnapshot>;
   intentHistory(id: Id): Promise<IntentHistory | null>;
   listRegions(): Promise<string[]>;
+  /** What a change to these paths reaches, and who works on it now (GET /impact; colony/impact.ts). */
+  impact(paths: Path[], opts?: { depth?: number }): Promise<ImpactReport>;
 }
 
 /** Everything the public tools can reach: read methods only. */
@@ -77,6 +82,7 @@ export function publicReads(env: Pick<Env, "COLONY" | "REGION" | "TRUNK">): Publ
         snapshot: () => stub.snapshot(),
         intentHistory: (id) => stub.intentHistory(id),
         listRegions: () => stub.listRegions(),
+        impact: (paths, opts) => stub.impact(paths, opts),
       };
     },
     region(colonyId, region) {
@@ -311,6 +317,21 @@ export class PublicTools {
       ...(known.size === 0 ? { note: "the colony has no regions yet" } : {}),
     };
   }
+
+  /**
+   * What a change to trunk paths reaches, and who works on it now, as GET /api/colonies/:id/impact serves it
+   * (colony/impact.ts): the importers up to `depth` levels, the live claims on them and the latest landings on them.
+   */
+  async impact(a: { colony: string; paths: string[]; depth?: number }): Promise<unknown> {
+    const colonyId = this.listed(a.colony);
+    const paths = list(a.paths).map((p) => {
+      const path = cleanPath(String(p));
+      if (!path) throw ftError(400, `invalid path ${JSON.stringify(String(p).slice(0, 200))}`);
+      return path;
+    });
+    if (paths.length === 0) throw ftError(400, "name at least one path, such as src/index.ts");
+    return { colony: colonyId, ...(await this.ctx.reads.colony(colonyId).impact(paths, a.depth !== undefined ? { depth: a.depth } : {})) };
+  }
 }
 
 /** Run one tool's reads, failing as unavailable (retryable) when they take longer than `ms`. */
@@ -340,13 +361,13 @@ async function answer(fn: () => Promise<unknown>, deadlineMs: number): Promise<C
 export function publicInstructions(colonies: readonly string[]): string {
   return [
     `A read-only view of public FireTrident colonies: ${colonies.join(", ")}. FireTrident is a git platform where many coding agents work on one codebase (a colony); every landed commit carries a lineage note that says which intent, agent and model wrote it, what it read and what checked it.`,
-    "status: what a colony is doing now (intents by status, recent landings, the certified head and its tests, violations left, stuck work). why: the lineage of a trunk file or of one line of it. intent: one intent with its revisions, directives and reports. sense: the field (claims, needs, trails, failures) on paths or across the colony.",
+    "status: what a colony is doing now (intents by status, recent landings, the certified head and its tests, violations left, stuck work). why: the lineage of a trunk file or of one line of it. intent: one intent with its revisions, directives and reports. sense: the field (claims, needs, trails, failures) on paths or across the colony. impact: what a change to a file reaches through imports, who works on those files now, and the latest landings on them.",
     `${PUBLIC_DATA_NOTE} Nothing here changes a colony.`,
     RETRY_RULE,
   ].join("\n");
 }
 
-/** The public MCP server for one request: four read-only tools over `tools`; every failure is an error envelope. */
+/** The public MCP server for one request: five read-only tools over `tools`; every failure is an error envelope. */
 export function publicServer(tools: PublicTools, colonies: readonly string[], deadlineMs = PUBLIC_CALL_MS): McpServer {
   const server = structuredToolErrors(new McpServer({ name: "firetrident-public", version: "0.0.1" }, { instructions: publicInstructions(colonies) }));
   const readOnly = { readOnlyHint: true, openWorldHint: false };
@@ -398,6 +419,21 @@ export function publicServer(tools: PublicTools, colonies: readonly string[], de
       annotations: readOnly,
     },
     async (a) => answer(() => tools.sense(a), deadlineMs),
+  );
+
+  server.registerTool(
+    "impact",
+    {
+      title: "What a change reaches",
+      description: IMPACT_DESCRIPTION,
+      inputSchema: {
+        colony,
+        paths: z.array(path).min(1).max(IMPACT_ENTRIES).describe("Repository paths: files, directories (trailing /) or globs"),
+        depth: z.number().int().min(1).max(IMPACT_DEPTH).optional().describe(`Levels of importers to walk (1 to ${IMPACT_DEPTH}, default ${IMPACT_DEPTH})`),
+      },
+      annotations: readOnly,
+    },
+    async (a) => answer(() => tools.impact(a), deadlineMs),
   );
 
   return server;

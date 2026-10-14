@@ -11,6 +11,7 @@ import type { Command } from "./args.ts";
  *   POST /api/colonies/:id/intents      { colonyId, title, why, source, footprint, acceptance?, priority, createdBy, contest? }  -> Intent
  *   POST /api/colonies/:id/swarm        { agents, model?, kind? }
  *   GET  /api/colonies/:id/why          ?path=&line=  -> Array<{ landing, note }>
+ *   GET  /api/colonies/:id/impact       ?path=&path=&depth=  -> ImpactReport (importers, claims on them, landings)
  *   GET  /api/colonies/:id/review       Proposal[] (escalated)
  *   POST /api/colonies/:id/review/:pid  { decision: "approve" | "reject" | "return", reason, by }
  *   GET  /api/colonies/:id/live         WebSocket of ColonyEvent JSON (one event or an array per message)
@@ -136,6 +137,12 @@ export function planRequest(cmd: Command, by: string): ApiRequest | null {
       const q = new URLSearchParams({ path: cmd.path });
       if (cmd.line !== undefined) q.set("line", String(cmd.line));
       return { method: "GET", path: `${colonyPath(cmd.colony, "/why")}?${q}` };
+    }
+    case "impact": {
+      const q = new URLSearchParams();
+      for (const p of cmd.paths) q.append("path", p);
+      if (cmd.depth !== undefined) q.set("depth", String(cmd.depth));
+      return { method: "GET", path: `${colonyPath(cmd.colony, "/impact")}?${q}` };
     }
     case "verify":
       return { method: "GET", path: `${colonyPath(cmd.colony, "/notes/verify")}${cmd.limit !== undefined ? `?limit=${cmd.limit}` : ""}` };

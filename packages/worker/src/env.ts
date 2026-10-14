@@ -60,6 +60,13 @@ export interface Env {
   /** Optional: the model the conflict resolver calls; FT_DEFAULT_MODEL when absent ("default" and "bulk" name the server's models). */
   FT_RESOLVER_MODEL?: string;
   /**
+   * Optional: model step-up, "on", or a comma-separated list of colony ids; absent or "off" is off. When an intent's
+   * changes have come back twice since it last changed course (a landing or a substantive amendment), its next take asks
+   * for the stronger model class ("default", FT_DEFAULT_MODEL) and says why (colony/stepup.ts): in-platform agents write
+   * that attempt's files with it, and outside agents get it as advice. A third return still reaches the needs-you strip.
+   */
+  FT_MODEL_STEPUP?: string;
+  /**
    * Optional: the deletion guard, "on", or a comma-separated list of colony ids; absent or "off" is off. In a trunk
    * cycle that deletes files, a change goes back while a trunk file's import of a file it deletes would resolve to nothing.
    */
