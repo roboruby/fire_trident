@@ -265,6 +265,18 @@ describe("decide: the goal-conflict check (FT_GOAL_CONFLICT)", () => {
     expect(c.queries).toEqual([]);
   });
 
+  it("does not check an intent a rule declared or the colony's own, and says why", async () => {
+    const c = new Colonyish("on");
+    c.declare("int_rust");
+    c.owners = rustLanding("int_rust");
+    const ruled = await c.decide(c.declare("int_rule", "rule"), RUST, GO);
+    expect(ruled.status).not.toBe("escalated");
+    expect(check(ruled)?.detail).toBe("not checked: an intent a rule declared brings code into line with that rule");
+    const split = await c.decide(c.declare("int_split", "system"), RUST, GO);
+    expect(check(split)?.detail).toBe("not checked: the colony's own intent (a megafile split) moves lines other intents wrote");
+    expect(c.queries).toEqual([]);
+  });
+
   it("returns a change that fails its checks first, telling its agent what it would undo", async () => {
     const c = new Colonyish("on");
     c.declare("int_rust");

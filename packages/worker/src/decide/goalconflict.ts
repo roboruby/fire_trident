@@ -10,7 +10,7 @@
  * never holds a change on its own failure: an error, or a trunk writer that does not answer in time, lets the change
  * go on (logged), and its evidence says it was not checked.
  */
-import type { CheckResult, Id, Intent, IntentFacts, Proposal } from "@fire_trident/core";
+import type { CheckResult, Id, Intent, IntentFacts, IntentSource, Proposal } from "@fire_trident/core";
 import {
   GOAL_CONFLICT_LANDINGS,
   GOAL_CONFLICT_MAX_FILES,
@@ -31,6 +31,12 @@ import type { RemovedLinesAnswer, RemovedLinesFile, RemovedLinesQuery } from "./
 const TRUNK_WAIT_MS = 8_000;
 /** Paths a check's detail names at most. */
 const NAMED_PATHS = 5;
+/** Why the check passes over an exempt intent, by its source (core goalConflictExempt). */
+const EXEMPT_WHY: Partial<Record<IntentSource, string>> = {
+  certify: "a repair of trunk certification may change any line",
+  rule: "an intent a rule declared brings code into line with that rule",
+  system: "the colony's own intent (a megafile split) moves lines other intents wrote",
+};
 
 /** The trunk writer's trace of removed lines (TrunkDO.removedLineOwners). */
 export type RemovedLineOwners = (q: RemovedLinesQuery) => Promise<RemovedLinesAnswer>;
@@ -134,7 +140,8 @@ export async function checkGoalConflict(
   });
   const cannotTrace = "not checked: the trunk writer cannot trace lines yet";
   try {
-    if (goalConflictExempt(host.intent(p.intentId)?.source)) return result("not checked: a repair of trunk certification may change any line");
+    const source = host.intent(p.intentId)?.source;
+    if (source && goalConflictExempt(source)) return result(`not checked: ${EXEMPT_WHY[source] ?? "its intent is exempt"}`);
     const { files: traced, left } = traceFiles(files);
     const unchecked = left.length > 0 ? `; over the check's limits, not checked: ${named(left)}` : "";
     if (traced.length === 0) return result(`no line of an existing text file removed${unchecked}`);
