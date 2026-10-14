@@ -31,6 +31,7 @@ import {
   mergeKey,
   nextTickAt,
   proposalPaths,
+  stalePaths,
   staleReason,
   validDeposit,
   writePathsByBase,
@@ -110,7 +111,7 @@ const MAX_CAUSE_ATTEMPTS = 3;
 const CAUSE_BATCH = 200;
 
 /** What a lane tick tells the ColonyDO. */
-type LaneReport = { kind: "landing"; landing: Landing } | { kind: "updates"; updates: Array<{ id: Id; patch: Partial<Proposal> }> };
+type LaneReport = { kind: "landing"; landing: Landing } | { kind: "updates"; updates: Array<{ id: Id; patch: Partial<Proposal>; stale?: OccResult["stale"] }> };
 
 const UPSERT_MARK =
   "INSERT INTO marks (mkey, kind, path, strength, at, agent_id, intent_id, pattern) VALUES (?, ?, ?, ?, ?, ?, ?, ?) " +
@@ -984,13 +985,15 @@ export class RegionDO extends DurableObject<Env> {
     // 5. Bookkeeping: lane removals, returns, causal events.
     const now = Date.now();
     const remove = new Set<Id>(settled.landed);
-    const updates: Array<{ id: Id; patch: Partial<Proposal> }> = [];
+    const updates: Array<{ id: Id; patch: Partial<Proposal>; stale?: OccResult["stale"] }> = [];
     const seen = [...batch, ...stale.map((s) => s.p)];
     for (const landing of settled.landings) this.recordLanding(landing, seen, now);
     for (const r of settled.returned) {
       remove.add(r.id);
-      // A text merge conflict travels with its return (FT_RESOLVER: the colony's conflict resolver reads it).
-      updates.push({ id: r.id, patch: { status: "returned", reason: r.reason, ...(r.conflicts ? { mergeConflicts: r.conflicts } : {}) } });
+      // A text merge conflict travels with its return (FT_RESOLVER: the colony's conflict resolver reads it), and so do
+      // the paths it was found stale on: the colony names the landings that moved them (colony/movedby.ts).
+      const moved = stalePaths(r.stale ?? candidates.get(r.id) ?? null);
+      updates.push({ id: r.id, patch: { status: "returned", reason: r.reason, ...(r.conflicts ? { mergeConflicts: r.conflicts } : {}) }, ...(moved ? { stale: moved } : {}) });
       // A revalidation or text merge candidate the trunk writer sent back is still a stale return: its cause is a landing.
       // One it sent back at its direction check is not: a person changed course, so sigma never sees it.
       if (r.p && !isRedirect(r.reason)) this.recordReturn(r.p, r.stale ?? candidates.get(r.id) ?? null, now);

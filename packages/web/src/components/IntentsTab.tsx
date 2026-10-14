@@ -4,6 +4,7 @@ import { KIND_LABEL } from "../eventText.ts";
 import { fmtInt, timeAgo } from "../format.ts";
 import { REPEATED_RETURNS, type ColonyStore, type IntentView } from "../store.ts";
 import { useThrottledVersion } from "../useStore.ts";
+import { MovedBadge } from "./MovedBy.tsx";
 
 type Segment = "open" | "claimed" | "landed" | "withdrawn" | "returned";
 const SEGMENTS: readonly Segment[] = ["open", "claimed", "landed", "withdrawn", "returned"];
@@ -71,6 +72,8 @@ export function IntentsTab({ store, onPick, focus = null }: { store: ColonyStore
           const report = store.escalations.get(it.id);
           const open = report && !report.resolved ? report : null;
           const returns = store.returns.get(it.id)?.n ?? 0;
+          // What beat its latest change, while the intent is still to do (the colony's movedBy).
+          const moved = it.status !== "landed" && it.status !== "withdrawn" ? (store.returns.get(it.id)?.movedBy ?? null) : null;
           return (
             <li
               key={it.id}
@@ -114,6 +117,7 @@ export function IntentsTab({ store, onPick, focus = null }: { store: ColonyStore
                     returned {fmtInt(returns)}×
                   </span>
                 ) : null}
+                {moved ? <MovedBadge moved={moved} agentName={(id) => store.agentName(id)} /> : null}
                 <span className="mono intent-path">{it.status === "withdrawn" && it.withdrawnReason ? it.withdrawnReason : (it.footprint[0] ?? "—")}</span>
                 {it.status !== "withdrawn" && it.footprint.length > 1 ? <span className="intent-more">+{it.footprint.length - 1}</span> : null}
                 <span className="intent-when">

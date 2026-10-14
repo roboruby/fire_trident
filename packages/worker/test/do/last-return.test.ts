@@ -65,7 +65,9 @@ describe("take: why the intent's latest change came back", () => {
     const again = await take(c.id, b.id);
     expect(again.intent.id).toBe(i.id);
     const last = lastReturnOf(again)!;
-    expect(last).toEqual({ proposalId: p.id, status: "returned", at: expect.any(Number), reason: back.reason, paths: ["src/lib/util.ts"] });
+    // With the landing that moved the file (colony/movedby.ts): this one changed trunk outside any intent.
+    const moved = [{ landingId: expect.stringMatching(/^lnd_external_/), paths: ["src/lib/util.ts"], trunkSha: expect.stringMatching(/^[0-9a-f]{40}$/), at: expect.any(Number) }];
+    expect(last).toEqual({ proposalId: p.id, status: "returned", at: expect.any(Number), reason: back.reason, paths: ["src/lib/util.ts"], movedBy: moved });
     expect(last.reason).toMatch(/^stale: 1 path changed on trunk since read: src\/lib\/util\.ts/);
     expect(last.at).toBeGreaterThanOrEqual(back.createdAt);
     // A repeated take hands the same back.

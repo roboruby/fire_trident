@@ -155,6 +155,7 @@ import { MegafileAlarm, megafileEnabled, type MegafileHost } from "./megafile.ts
 import type { MegafileHold, MegafileReport } from "@fire_trident/core";
 import { RESOLVER_AGENT, Resolver, migrateResolver, type ResolverTrunk } from "./resolver.ts";
 import type { NoteResolves } from "@fire_trident/core";
+import { REVIEW_MOVED, cleanMovedBy, movedCollision, movedReturn, type StalePath } from "./movedby.ts";
 
 /**
  * Result of ColonyDO.take: an assignment, or advice to wait and retry. `review`: what review will
@@ -2180,12 +2181,15 @@ export class ColonyDO extends DurableObject<Env> {
     await this.updateProposals([{ id, patch }]);
   }
 
-  /** Patch many proposals in one call (a lane tick's returns). */
-  async updateProposals(items: Array<{ id: Id; patch: Partial<Proposal> }>): Promise<void> {
+  /**
+   * Patch many proposals in one call (a lane tick's returns). A return may carry `stale`, the paths it was found stale
+   * on, which name the landings that moved them (movedBy).
+   */
+  async updateProposals(items: Array<{ id: Id; patch: Partial<Proposal>; stale?: StalePath[] }>): Promise<void> {
     const colony = this.requireColony();
     const now = Date.now();
     const fx = this.effects(colony.regionDepth);
-    for (const { id, patch } of items) {
+    for (const { id, patch, stale } of items) {
       const row = this.proposalRow(id);
       if (!row) continue;
       const prev = JSON.parse(row.data) as Proposal;
@@ -2203,10 +2207,28 @@ export class ColonyDO extends DurableObject<Env> {
         evidence: patch.evidence ? { ...prev.evidence, ...patch.evidence } : prev.evidence,
       };
       if (!next.evidence.notVerified) next.evidence = { ...next.evidence, notVerified: DEFAULT_NOT_VERIFIED };
+      // What beat it (colony/movedby.ts): a change back because trunk moved its files names the landings that moved them.
+      if (next.status === "returned" && prev.status !== "returned") this.attributeReturn(next, stale);
       this.writeProposal(next, now);
       this.transition(next, prev.status, now, fx);
     }
     await this.flushEffects(fx);
+  }
+
+  /**
+   * A change going back because trunk moved files it read or wrote: `movedBy` names the landings that moved them, from
+   * the per-path landing index, and its reason ends by naming them, with what to do. Best effort: a return never fails
+   * over it.
+   */
+  private attributeReturn(p: Proposal, stale: StalePath[] | undefined): void {
+    if (!movedCollision(p)) return;
+    try {
+      this.backfillLandedIndex();
+      const moved = movedReturn(this.sql, p, Array.isArray(stale) ? stale : null);
+      if (moved) Object.assign(p, moved);
+    } catch (err) {
+      console.warn(`movedBy for ${p.id} skipped: ${errorText(err)}`);
+    }
   }
 
   /**
@@ -2305,6 +2327,11 @@ export class ColonyDO extends DurableObject<Env> {
       if (review) Object.assign(p, { review });
       // Escalated before views were kept: build one in the background, for the next read.
       else if (backfills++ < REVIEW_BACKFILLS) this.ctx.waitUntil(engine.backfillReview(p.id).catch((err) => console.warn(`review view of ${p.id} not built: ${errorText(err)}`)));
+    }
+    // What beat the intent's last change (colony/movedby.ts): the landings this one was redone on, for its reviewer.
+    for (const p of queue.slice(0, REVIEW_MOVED)) {
+      const last = this.lastReturn(p.intentId);
+      if (last?.movedBy) Object.assign(p, { lastReturn: last });
     }
     return queue;
   }
@@ -4445,8 +4472,8 @@ export class ColonyDO extends DurableObject<Env> {
         this.returnsIndexedFor = colony.createdAt;
       }
       const rows = this.sql
-        .exec<{ id: string; status: string; updated_at: number; reason: string | null; superseded_by: string | null }>(
-          `SELECT id, status, updated_at, json_extract(data, '$.reason') AS reason, json_extract(data, '$.supersededBy') AS superseded_by
+        .exec<{ id: string; status: string; updated_at: number; reason: string | null; superseded_by: string | null; moved_by: string | null }>(
+          `SELECT id, status, updated_at, json_extract(data, '$.reason') AS reason, json_extract(data, '$.supersededBy') AS superseded_by, json_extract(data, '$.movedBy') AS moved_by
              FROM proposals WHERE intent_id = ? AND status IN ('returned', 'rejected', 'landed') ORDER BY created_at DESC LIMIT ?`,
           intentId,
           RETURN_LOOKBACK,
@@ -4462,6 +4489,9 @@ export class ColonyDO extends DurableObject<Env> {
           .flatMap((w) => (typeof w.path === "string" && w.path !== "" ? [w.path] : []));
         const out: LastReturn = { proposalId: r.id, status: r.status === "rejected" ? "rejected" : "returned", at: r.updated_at, reason: returnReason(r.reason), paths: paths.slice(0, RETURN_PATHS) };
         if (paths.length > RETURN_PATHS) out.morePaths = paths.length - RETURN_PATHS;
+        // What beat it: the landings that moved its files (colony/movedby.ts).
+        const moved = cleanMovedBy(parseJson<unknown>(r.moved_by, undefined));
+        if (moved) out.movedBy = moved;
         return out;
       }
       return undefined;
@@ -5105,6 +5135,8 @@ export class ColonyDO extends DurableObject<Env> {
     const agent = this.agentRow(p.agentId);
     const proposalEvent: ColonyEvent = { t: "proposal", at: now, proposalId: p.id, intentId: p.intentId, agentId: p.agentId, status: p.status };
     if (p.reason) proposalEvent.reason = p.reason;
+    // What beat a returned change (colony/movedby.ts): the web's intent and review cards show it.
+    if (p.status === "returned" && Array.isArray(p.movedBy) && p.movedBy.length > 0) proposalEvent.movedBy = p.movedBy;
     fx.events.push(proposalEvent);
     if (prev === "ready" && p.status !== "landed") {
       const list = fx.dequeue.get(region) ?? [];

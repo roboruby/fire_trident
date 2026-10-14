@@ -166,6 +166,58 @@ describe("mergeText: as git's default merge decides", () => {
   });
 });
 
+describe("mergeText: the insertion rule (FT_MERGE_INSERTIONS)", () => {
+  const on = { insertions: true };
+  const base = "export const a = 1;\nexport const b = 2;\n";
+
+  it("lands both insertions at one place, trunk's lines first, and says so", () => {
+    const ours = `${base}export const c = 3;\n`;
+    const theirs = `${base}export const d = 4;\n`;
+    expect(mergeText(base, ours, theirs)).toEqual({ clean: false, conflicts: 1, lines: [3] });
+    expect(mergeText(base, ours, theirs, undefined, on)).toEqual({ clean: true, text: `${base}export const c = 3;\nexport const d = 4;\n`, rule: "insertions" });
+    // In the middle of the file, and at its top.
+    expect(mergeText("a();\nb();\n", "a();\nx();\nb();\n", "a();\ny();\nb();\n", undefined, on)).toEqual({ clean: true, text: "a();\nx();\ny();\nb();\n", rule: "insertions" });
+    expect(mergeText("b();\n", "x();\nb();\n", "y();\nb();\n", undefined, on)).toEqual({ clean: true, text: "x();\ny();\nb();\n", rule: "insertions" });
+    // An empty file both sides started.
+    expect(mergeText("", "x();\n", "y();\n", undefined, on)).toEqual({ clean: true, text: "x();\ny();\n", rule: "insertions" });
+  });
+
+  it("drops a line the change inserts that trunk already inserted there, and keeps multi-line blocks whole", () => {
+    const ours = `import { z } from "./z.ts";\n${base}`;
+    const theirs = `import { z } from "./z.ts";\nimport { y } from "./y.ts";\n${base}`;
+    expect(mergeText(base, ours, theirs, undefined, on)).toEqual({ clean: true, text: `import { z } from "./z.ts";\nimport { y } from "./y.ts";\n${base}`, rule: "insertions" });
+    const fa = "\nexport function fa() {\n  return null;\n}\n";
+    const fb = "\nexport function fb() {\n  return null;\n}\n";
+    expect(mergeText(base, base + fa, base + fb, undefined, on)).toEqual({ clean: true, text: base + fa + fb, rule: "insertions" });
+  });
+
+  it("leaves the file in conflict, naming every conflicting hunk, when one of them edits or deletes base lines", () => {
+    // An insertion at the end on both sides, and line 1 changed on both sides.
+    const ours = `export const a = 10;\nexport const b = 2;\nexport const c = 3;\n`;
+    const theirs = `export const a = 11;\nexport const b = 2;\nexport const d = 4;\n`;
+    expect(mergeText(base, ours, theirs, undefined, on)).toEqual({ clean: false, conflicts: 2, lines: [1, 3] });
+    // An insertion right after a line the other side changed.
+    expect(mergeText(base, "export const a = 10;\nexport const b = 2;\n", "export const a = 1;\nexport const x = 0;\nexport const b = 2;\n", undefined, on)).toEqual({ clean: false, conflicts: 1, lines: [1] });
+    // A deletion on one side where the other inserts.
+    expect(mergeText(base, "export const b = 2;\n", "export const x = 0;\nexport const a = 1;\nexport const b = 2;\n", undefined, on)).toEqual({ clean: false, conflicts: 1, lines: [1] });
+  });
+
+  it("leaves a conflict when the union would join two lines into one, and merges clean edits as before", () => {
+    // Trunk's insertion ends the file without a newline.
+    expect(mergeText(base, `${base}export const c = 3;`, `${base}export const d = 4;\n`, undefined, on)).toEqual({ clean: false, conflicts: 1, lines: [3] });
+    // Nothing conflicts: no rule is named.
+    expect(mergeText("a\nb\nc\n", "A\nb\nc\n", "a\nb\nC\n", undefined, on)).toEqual(clean("A\nb\nC\n"));
+  });
+
+  it("merges the disjoint random cases exactly as without the rule (it only ever resolves conflicts)", () => {
+    const r = generator(11);
+    for (let n = 0; n < 500; n++) {
+      const c = disjointCase(r);
+      expect(mergeText(c.base, c.ours, c.theirs, undefined, on)).toEqual(clean(c.expected));
+    }
+  });
+});
+
 /**
  * A base of segments of unique lines, and two sides that each edit some segments (replace them, or add lines before
  * or after them), never a segment beside one the other side edits; some segments both sides edit the same way. The

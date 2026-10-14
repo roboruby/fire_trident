@@ -22,7 +22,9 @@ import type {
   TestCounts,
 } from "@fire_trident/core";
 import type { StuckAction, StuckItem, StuckKind, StuckRepairState } from "@fire_trident/core";
+import type { MovedBy } from "@fire_trident/core";
 import { finite } from "./format.ts";
+import { movedByOf } from "./moved.ts";
 import { parseSeries, type Series } from "./series.ts";
 import { KIND_INDEX, KINDS, decayed } from "./theme.ts";
 
@@ -138,6 +140,8 @@ export interface ProposalView {
   updatedAt: number;
   /** Contest mode: the proposal that won its intent instead of this one. */
   supersededBy?: Id;
+  /** Back because trunk moved its files: the landings that moved them (what beat it). */
+  movedBy?: MovedBy[];
 }
 
 /** An agent's report that an intent cannot be done as written, and a person's answer once there is one. */
@@ -498,8 +502,11 @@ export class ColonyStore {
   readonly escalations = new Map<Id, EscalationView>();
   /** Contest mode: the proposal that won instead of each superseded one (a loser's own events may come before or after). */
   readonly superseded = new Map<Id, Id>();
-  /** Returns (stale or conflicting) this page saw per intent, with the latest reason; direction changes excluded. */
-  readonly returns = new Map<Id, { n: number; reason?: string; at: number }>();
+  /**
+   * Returns (stale or conflicting) this page saw per intent, with the latest reason and, when trunk moved the change's
+   * files, the landings that did (the latest return's only); direction changes excluded.
+   */
+  readonly returns = new Map<Id, { n: number; reason?: string; at: number; movedBy?: MovedBy[] }>();
   /**
    * Stuck work by key: the server's report (snapshot, then every metrics refresh) plus `stuck` events
    * since. An item stays until the next report; needs.ts shows only those this page has not seen move.
@@ -1131,15 +1138,18 @@ export class ColonyStore {
       if (ev.reason) p.reason = ev.reason;
       p.updatedAt = now;
     }
+    // What beat a returned change: the landings that moved its files (older servers send none).
+    const movedBy = movedByOf(ev);
+    if (movedBy) p.movedBy = movedBy;
     if (ev.status === "returned" && was !== "returned" && typeof ev.intentId === "string" && !REDIRECT.test(ev.reason ?? "") && !p.supersededBy) {
       const r = this.returns.get(ev.intentId);
       this.returns.delete(ev.intentId);
-      this.returns.set(ev.intentId, { n: (r?.n ?? 0) + 1, at: finite(ev.at, now), ...(ev.reason ? { reason: ev.reason } : r?.reason ? { reason: r.reason } : {}) });
+      this.returns.set(ev.intentId, { n: (r?.n ?? 0) + 1, at: finite(ev.at, now), ...(ev.reason ? { reason: ev.reason } : r?.reason ? { reason: r.reason } : {}), ...(movedBy ? { movedBy } : {}) });
       if (this.returns.size > 5000) {
         const oldest = this.returns.keys().next().value;
         if (oldest !== undefined) this.returns.delete(oldest);
       }
-      if ((r?.n ?? 0) + 1 >= REPEATED_RETURNS) this.intentsVersion++;
+      if ((r?.n ?? 0) + 1 >= REPEATED_RETURNS || movedBy || r?.movedBy) this.intentsVersion++;
     }
     const intent = this.intents.get(ev.intentId);
     if (intent && ev.agentId) intent.assignedTo = ev.agentId;

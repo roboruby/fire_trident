@@ -69,6 +69,7 @@ import {
   type Returned,
   type TextMergeInput,
 } from "./plan.ts";
+import { mergeInsertionsEnabled } from "./plan.ts";
 import { runRevert, sqlRevertTrunk, type RevertResult, type RevertTrunk } from "./revert.ts";
 import { durableFs } from "../artifacts/workspace.ts";
 import { TRUNK_NAMESPACE, bindingFor } from "../artifacts/shards.ts";
@@ -188,6 +189,8 @@ export interface CycleStat {
   revalidated?: number;
   /** Proposals that landed with files they wrote on an older version merged line by line with the newer one (text merge). */
   merged?: number;
+  /** Of those, the ones with a file merged by the insertion rule (FT_MERGE_INSERTIONS: both sides only inserted lines at one place). */
+  insertions?: number;
   /** Oldest request's time in the queue before the cycle started. */
   waitMs: number;
   /**
@@ -1066,6 +1069,8 @@ export class TrunkDO extends DurableObject<Env> {
         : []),
       // Text merge: changes that landed with files merged line by line (only cycles that merged one).
       ...(stat.merged ? [metric("merged", stat.merged)] : []),
+      // The insertion rule (FT_MERGE_INSERTIONS): those merged by it (only cycles where it merged one).
+      ...(stat.insertions ? [metric("mergedInsertions", stat.insertions)] : []),
     ];
     const stub = ns.get(ns.idFromName(colonyId)) as unknown as { emit(e: unknown[]): Promise<unknown> };
     await stub.emit(events);
@@ -1334,6 +1339,8 @@ export class TrunkDO extends DurableObject<Env> {
       if (deletions !== undefined) lap("deletions");
       const merge = merging ? await this.mergeTexts(input.flat(), mergeLoad) : undefined;
       if (merge) lap("merges");
+      // Text merge's insertion rule (FT_MERGE_INSERTIONS): insertions by both sides at one place land as their union.
+      if (merge && mergeInsertionsEnabled((this.env as unknown as { FT_MERGE_INSERTIONS?: string } | undefined)?.FT_MERGE_INSERTIONS, st.colonyId)) merge.insertions = true;
       const trunkBlob = (path: Path): Sha | null => this.indexBlob(path);
       const exported = surfaces ? (_path: Path, blob: Sha) => surfaces.get(blob) ?? null : undefined;
       let plan = planCycle(input, trunkBlob, exported, deletions, merge);
@@ -1382,6 +1389,8 @@ export class TrunkDO extends DurableObject<Env> {
           void this.emitRevalidated(plan.accepted.flat(), plan.revalidated).catch(() => undefined);
         }
         if (plan.merged.size > 0) stat.merged = plan.merged.size;
+        const byInsertions = [...plan.merged.values()].filter((files) => files.some((f) => f.rule === "insertions")).length;
+        if (byInsertions > 0) stat.insertions = byInsertions;
         back();
         lap("finalize");
         break;
@@ -1489,7 +1498,7 @@ export class TrunkDO extends DurableObject<Env> {
       lap("commit");
       const paths = [...changes.keys()].sort();
       // Text merge: the blob that landed for each merged file (its proposal wrote another).
-      const mergedHere = proposals.flatMap((p) => (merges.merged.get(p.id) ?? []).map((f) => ({ proposalId: p.id, path: f.path, blob: f.result })));
+      const mergedHere = proposals.flatMap((p) => (merges.merged.get(p.id) ?? []).map((f) => ({ proposalId: p.id, path: f.path, blob: f.result, ...(f.rule ? { rule: f.rule } : {}) })));
       const landing: Landing = {
         id,
         colonyId: st.colonyId,
