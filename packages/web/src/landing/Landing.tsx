@@ -5,6 +5,7 @@ import { BuildTag } from "../components/BuildTag.tsx";
 import { TridentMark } from "../components/TopBar.tsx";
 import { fmtInt, timeAgo } from "../format.ts";
 import { colonyHref } from "../route.ts";
+import { Compared } from "./Compared.tsx";
 import { Exceptions } from "./Exceptions.tsx";
 import { HeroColony } from "./HeroColony.tsx";
 import { LiveColonies, rankColonies, statusOf } from "./LiveColonies.tsx";
@@ -141,6 +142,8 @@ export function Landing() {
       </section>
 
       <Results />
+
+      <Compared />
 
       <Questions />
 
