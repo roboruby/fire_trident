@@ -1,0 +1,41 @@
+Tour of first-red (its own tour; recorded record, 205 events, rule none)
+
+1/7 Green (@green, 1.9 s into the record)
+  Trunk certified green on 79e2ee9: 1/1 tests pass in 55 ms, the project's own tests run by trunk certification after the landing.
+
+2/7 Held (@held, 49.3 s into the record)
+  6 changes landed in 6 commits over 32.7 s while certification was held, and no test ran on any of them; the fourth, “Speed up subtraction”, changed src/math.js.
+
+3/7 Red (@red, 50.8 s into the record)
+  Certification ran again on the head c29ef0e, 48.9 s after the green result, and went red: 1 test failing, “subtracts” (AssertionError (strictEqual): actual 8, expected 2 (at test/math.test.js:6)).
+
+4/7 First red commit (@search, 51.1 s into the record)
+  The search ran the failing test alone at earlier commits, 3 test runs in 202 ms over the 6 landings since green, and named the fourth landing: commit a545159, landing lnd_mv8n1pycuvefx2, intent “Speed up subtraction”, proposal prp_mv8n1myq27ndl7, which changed src/math.js.
+
+5/7 Repair (@repair, 54.0 s into the record)
+  scripted-repair took the repair intent the red result declared, “Make the failing tests pass: subtracts”, whose why names the commit: “First failing commit: the failing tests first failed at commit a545159 (landing lnd_mv8n1pycuvefx2): they did not fail on the commit before it and fail on it, run alone (found in 3 test runs)”.
+
+6/7 Repaired (@repair-landed, 54.4 s into the record)
+  The repair landed 3.5 s after the red result, in src/math.js, settled by its innate checks, with review off.
+
+7/7 Green again (@green-again, 54.4 s into the record)
+  Trunk certified green again on 294d7d5, 3.6 s after the red result: 1/1 tests pass, and the result rides with the commit in its lineage note.
+
+Against the API:
+  ok   test runs the search used: tour 3, api 3
+  ok   search time (ms): tour 202, api 202
+  ok   landings since green: tour 6, api 6
+  ok   the landing that broke the tests: tour lnd_mv8n1pycuvefx2, api lnd_mv8n1pycuvefx2
+  ok   failing tests on the red commit: tour 1, api 1
+  ok   tests passing when green again: tour 1, api 1
+  ok   red to green: tour 3.6 s, api 3.6 s (-26 ms apart)
+  ok   violations at the end: tour 0, api 0
+  ok   funnel proof at the end: tour 0, api 0
+  ok   funnel reflex at the end: tour 0, api 0
+  ok   funnel llm at the end: tour 0, api 0
+  ok   funnel human at the end: tour 0, api 0
+  ok   landings at the end: tour 8, api 8
+  ok   intents landed at the end: tour 8, api 8
+
+All 14 numbers agree.
+exit 0

@@ -1,0 +1,34 @@
+Tour of order-backend (its own tour; recorded record, 112 events, rule none)
+
+1/5 Seed (@seed, 5.0 s into the record)
+  python-seed landed src/backend.ts for “Start the order backend” (“A small order backend, in Python to begin with.”), settled by its innate checks, with review off: the order backend began in one language.
+
+2/5 The first lands (@first-port, 20.5 s into the record)
+  rust-port's change landed first, 0.0 s after the goals: the Rust version of src/backend.ts, settled by a second model's approval, with nothing recent of another intent to undo.
+
+3/5 Held for a person (@held-1, 24.5 s into the record)
+  go-port's change came 3.9 s later and waits for a person: it “would undo 5 lines in src/backend.ts that landing lnd_mv87vkxzl28lcb wrote 5 seconds ago for intent "Move the order backend to Rust"”, says the deterministic goal-conflict check, and a person decides which goal stands.
+
+4/5 Held too (@held-2, 29.1 s into the record)
+  typescript-port's change waits too, naming the same landing: it “would undo 5 lines in src/backend.ts that landing lnd_mv87vkxzl28lcb wrote 9 seconds ago for intent "Move the order backend to Rust"”. Neither agent could quietly undo the Rust version, and no model decided this.
+
+5/5 The queue (@end, 19 min 55 s into the record)
+  The review queue still holds both changes: a person decides which goal stands, in the Review tab or from the command line, and until then trunk keeps the Rust version.
+
+Against the API:
+  ok   changes waiting for a person: tour 2, api 2
+  ok   the landing go-port's change would undo: tour lnd_mv87vkxzl28lcb, api lnd_mv87vkxzl28lcb
+  ok   lines go-port's change would undo: tour 5, api 5
+  ok   the landing typescript-port's change would undo: tour lnd_mv87vkxzl28lcb, api lnd_mv87vkxzl28lcb
+  ok   lines typescript-port's change would undo: tour 5, api 5
+  ok   review queue at the end: tour 2, api 2
+  ok   violations at the end: tour 0, api 0
+  ok   funnel proof at the end: tour 0, api 0
+  ok   funnel reflex at the end: tour 0, api 0
+  ok   funnel llm at the end: tour 1, api 1
+  ok   funnel human at the end: tour 2, api 2
+  ok   landings at the end: tour 2, api 2
+  ok   intents landed at the end: tour 2, api 2
+
+All 13 numbers agree.
+exit 0
