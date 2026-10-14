@@ -5,7 +5,8 @@ import type { AgentKind, Evidence, NoteProvenance, ObservedModel, ProvenanceAuth
  * lineage note from the colony's record of the agent (its kind, its model, whether it holds an MCP resume key), never
  * from what the proposal says about itself:
  * - an in-platform agent (`internal`) is FireTrident's own agent object, which makes every model call itself, so its
- *   model is `observed`, with the calls and tokens its loop counted (the `agent model usage` check of agents/loop.ts);
+ *   model is `observed`, with the calls and tokens its loop counted (the `agent model usage` check of agents/loop.ts),
+ *   and named after the model those calls went to: an intent may ask for a model that is not the agent's own;
  * - an external agent's model is the name it gave when it joined, or failing that the one its proposal names: `declared`,
  *   however it is worded; the same holds for a bench agent (`synthetic`), which FireTrident does not run.
  * Pure: no I/O.
@@ -39,7 +40,9 @@ export function noteProvenance(agent: ProvenanceAgent | undefined, evidence: Evi
   const name = modelName(agent.model);
   if (agent.kind === "internal") {
     const observed = observedModels(evidence);
-    const model = name || observed.length > 0 ? { evidence: "observed" as const, ...(name ? { name } : {}), ...(observed.length > 0 ? { observed } : {}) } : undefined;
+    // The model the calls went to names the change; the agent's own model only when no call was counted.
+    const used = mostCalls(observed) ?? name;
+    const model = used || observed.length > 0 ? { evidence: "observed" as const, ...(used ? { name: used } : {}), ...(observed.length > 0 ? { observed } : {}) } : undefined;
     return { author: "platform", auth: "platform", ...(model ? { model } : {}) };
   }
   if (agent.kind !== "external" && agent.kind !== "synthetic") return undefined;
@@ -50,6 +53,13 @@ export function noteProvenance(agent: ProvenanceAgent | undefined, evidence: Evi
     ...(auth ? { auth } : {}),
     ...(declared ? { model: { evidence: "declared" as const, name: declared } } : {}),
   };
+}
+
+/** The model with the most calls (the first of equals), or undefined when none was counted. */
+function mostCalls(observed: readonly ObservedModel[]): string | undefined {
+  let best: ObservedModel | undefined;
+  for (const o of observed) if (!best || (o.calls ?? 0) > (best.calls ?? 0)) best = o;
+  return best?.model;
 }
 
 /**

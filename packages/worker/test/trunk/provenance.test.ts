@@ -20,7 +20,15 @@ describe("noteProvenance: how a landed change's author and model are known", () 
   it("names the model an intent asked for when it is not the agent's own, and adds up repeated checks per model", () => {
     const other = "@cf/openai/gpt-oss-120b";
     const evidence: Evidence = { checks: [usage(`${other}: 2 call(s), 10 input / 5 output tokens`), usage(`${other}: 1 call(s), 1 input / 1 output tokens`)] };
-    expect(noteProvenance({ kind: "internal", model: GEMMA }, evidence)?.model).toEqual({ evidence: "observed", name: GEMMA, observed: [{ model: other, calls: 3, inputTokens: 11, outputTokens: 6 }] });
+    expect(noteProvenance({ kind: "internal", model: GEMMA }, evidence)?.model).toEqual({ evidence: "observed", name: other, observed: [{ model: other, calls: 3, inputTokens: 11, outputTokens: 6 }] });
+  });
+
+  it("names the model with the most calls when the agent used several, the first of equals", () => {
+    const other = "@cf/openai/gpt-oss-120b";
+    const fallback: Evidence = { checks: [usage(`${GEMMA}: 1 call(s), 10 input / 5 output tokens`), usage(`${other}: 3 call(s), 30 input / 9 output tokens`)] };
+    expect(noteProvenance({ kind: "internal", model: GEMMA }, fallback)?.model?.name).toBe(other);
+    const even: Evidence = { checks: [usage(`${other}: 2 call(s), 1 input / 1 output tokens`), usage(`${GEMMA}: 2 call(s), 1 input / 1 output tokens`)] };
+    expect(noteProvenance({ kind: "internal", model: GEMMA }, even)?.model?.name).toBe(other);
   });
 
   it("keeps an in-platform agent observed without usage (a deterministic edit, or none reported), and claims no model it does not know", () => {
