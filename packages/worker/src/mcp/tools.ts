@@ -15,6 +15,7 @@ import { guideBrief } from "./guide.ts";
 import type { ImpactReport } from "@fire_trident/core";
 import { cleanModelHint, stepupAdvice, type ModelHint } from "../colony/stepup.ts";
 import { movedView } from "../colony/movedby.ts";
+import { isTwinAnswer, type DeclareAnswer } from "../colony/twins.ts";
 
 /** What one MCP session remembers (stored in the session's Durable Object). */
 export interface Session {
@@ -80,6 +81,8 @@ export type McpColonyRpc = Omit<ColonyRpc, "registerAgent"> & {
   resumeAgent(agentId: Id, resumeKey: string): Promise<ResumeCheck>;
   /** What a change to these paths reaches, and who works on it now (colony/impact.ts). */
   impact?(paths: Path[], opts?: { depth?: number }): Promise<ImpactReport>;
+  /** Declare through the agent's door: where FT_TWINS covers the colony, a twin answers instead (colony/twins.ts). */
+  declareIntent?(i: Omit<Intent, "id" | "status" | "createdAt">, opts?: { force?: boolean }): Promise<DeclareAnswer>;
 };
 
 /** TrunkDO methods the MCP tools use: lineage, and the blobs at a lease base (inline changes are built against it). */
@@ -599,9 +602,10 @@ export class FireTridentTools {
    * Declare a new intent (source "agent"); by default it is a child of the held intent. A repeat in this session within
    * DECLARE_REPLAY_MS with the same content (declareFingerprint) returns the intent the first one declared, marked
    * `replayed`, instead of a duplicate: a client that timed out, or a model retrying to be sure, paints one need.
-   * Repeats in flight together wait for the first.
+   * Repeats in flight together wait for the first. Where FT_TWINS covers the colony, a declare that matches an intent
+   * the colony has answers with that intent, `duplicateOf`, `similar` and a note instead, unless `force` (colony/twins.ts).
    */
-  async declare(a: { title: string; why: string; footprint: string[]; acceptance?: string[]; priority?: number; parentId?: string }): Promise<unknown> {
+  async declare(a: { title: string; why: string; footprint: string[]; acceptance?: string[]; priority?: number; parentId?: string; force?: boolean }): Promise<unknown> {
     const s = await this.joined();
     const footprint = a.footprint.map((p) => p.trim()).filter((p) => p !== "" && !p.split("/").includes(".."));
     if (footprint.length === 0) fail(400, "footprint needs at least one path");
@@ -618,7 +622,7 @@ export class FireTridentTools {
     const parent = a.parentId?.trim() || s.intent?.id;
     if (parent) input.parentId = parent;
     const fingerprint = await declareFingerprint(input);
-    const run = (this.declaring.get(fingerprint) ?? Promise.resolve()).catch(() => undefined).then(() => this.declareOnce(s, input, fingerprint));
+    const run = (this.declaring.get(fingerprint) ?? Promise.resolve()).catch(() => undefined).then(() => this.declareOnce(s, input, fingerprint, a.force === true));
     this.declaring.set(fingerprint, run);
     try {
       return await run;
@@ -631,7 +635,7 @@ export class FireTridentTools {
   private readonly declaring = new Map<string, Promise<unknown>>();
 
   /** One declare: the intent this session declared with the same content lately (replayed), or a new one, remembered. */
-  private async declareOnce(s: Session & { colonyId: Id; agentId: Id }, input: Omit<Intent, "id" | "status" | "createdAt">, fingerprint: string): Promise<unknown> {
+  private async declareOnce(s: Session & { colonyId: Id; agentId: Id }, input: Omit<Intent, "id" | "status" | "createdAt">, fingerprint: string, force = false): Promise<unknown> {
     const colony = this.ctx.colony(s.colonyId);
     const now = this.ctx.now();
     const latest = await this.ctx.load();
@@ -649,7 +653,11 @@ export class FireTridentTools {
       }
       return { intent, replayed: true, declaredAt: new Date(earlier.at).toISOString(), note: REPLAY_NOTE };
     }
-    const intent = declaredView(await colony.addIntent(input));
+    // Twin intents (FT_TWINS, colony/twins.ts): a twin creates nothing, so the session has nothing to replay. Called as a
+    // method (a detached stub function would name a remote property).
+    const answer = colony.declareIntent ? await colony.declareIntent(input, force ? { force: true } : {}) : { intent: await colony.addIntent(input) };
+    if (isTwinAnswer(answer)) return { intent: declaredView(answer.intent), duplicateOf: answer.duplicateOf, similar: answer.similar, note: answer.note };
+    const intent = declaredView(answer.intent);
     await this.update((x) => {
       if (x.colonyId !== s.colonyId || x.agentId !== s.agentId) return; // the session joined as another agent meanwhile
       x.declared = [...recentDeclares(x.declared, now), { fingerprint, at: now, intentId: intent.id, status: intent.status }].slice(-MAX_DECLARED);

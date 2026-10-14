@@ -105,10 +105,13 @@ function publicRows(text: string): Array<{ tool: string; args: string[] }> {
   return out;
 }
 
-/** Every tool with the union of its arguments across deployments: inline changes add `files` to propose, a field guide `lesson`. */
+/**
+ * Every tool with the union of its arguments across deployments: inline changes add `files` to propose, a field guide
+ * `lesson`, twin intents `force` to declare.
+ */
 async function serverTools(): Promise<Map<string, Set<string>>> {
   const all = new Map<string, Set<string>>();
-  const envs: Array<Record<string, string>> = [{}, { FT_INLINE: "on" }, { FT_FIELD_GUIDE: "on" }];
+  const envs: Array<Record<string, string>> = [{}, { FT_INLINE: "on" }, { FT_FIELD_GUIDE: "on" }, { FT_TWINS: "on" }];
   for (const env of envs) {
     for (const [name, args] of await listed(env)) all.set(name, new Set([...(all.get(name) ?? []), ...args]));
   }

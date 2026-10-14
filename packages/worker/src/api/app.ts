@@ -28,6 +28,7 @@ import {
 } from "./schemas.ts";
 import { decideApi } from "./vaccinate.ts";
 import { inlineEnabled } from "../colony/inline.ts";
+import { isTwinAnswer } from "../colony/twins.ts";
 import { certifyRoutes } from "./certify.ts";
 import { guideRoutes } from "./guide.ts";
 import { megafileRoutes } from "./megafile.ts";
@@ -355,7 +356,9 @@ export function createApi(deps: ApiDeps): Hono<ApiEnv> {
   app.post("/colonies/:id/intents", requireAdmin, async (c) => {
     const colonyId = colonyParam(c);
     const b = await body(c, IntentBody);
-    const intent = await colonyStub(c.env, colonyId).addIntent({
+    // Twin intents (FT_TWINS, colony/twins.ts): a declaration that matches an intent the colony has answers 200 with that
+    // intent, duplicateOf, similar and a note instead of creating one; force: true declares it anyway.
+    const res = await colonyStub(c.env, colonyId).declareIntent({
       colonyId,
       title: b.title,
       why: b.why,
@@ -368,8 +371,9 @@ export function createApi(deps: ApiDeps): Hono<ApiEnv> {
       ...(b.ruleId ? { ruleId: b.ruleId } : {}),
       ...(b.assignedTo ? { assignedTo: b.assignedTo } : {}),
       ...(b.contest !== undefined ? { contest: b.contest } : {}),
-    });
-    return json(intent, 201);
+    }, b.force === true ? { force: true } : {});
+    if (isTwinAnswer(res)) return json({ ...res.intent, duplicateOf: res.duplicateOf, similar: res.similar, note: res.note }, 200);
+    return json(res.intent, 201);
   });
 
   app.post("/colonies/:id/rules", requireAdmin, async (c) => {

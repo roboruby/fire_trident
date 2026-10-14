@@ -61,6 +61,8 @@ describe("the demo spec", () => {
       body: { colonyId: "col_1", source: "human", priority: 5, createdBy: "matt", footprint: ["package.json", "tsconfig.json", "wrangler.jsonc", "README.md", ".gitignore"] },
     });
     expect((plan.intents[0]?.body as { why: string }).why).toContain('\n\nScope: this intent writes package.json, tsconfig.json, wrangler.jsonc, README.md, .gitignore. It is one of 13 intents that build "shortlinks:');
+    // A spec's intents are one plan: the twin check (FT_TWINS) never holds one back as a twin of another.
+    expect(plan.intents.map((r) => (r.body as { force?: boolean }).force)).toEqual(plan.intents.map(() => true));
   });
 });
 

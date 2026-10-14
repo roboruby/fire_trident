@@ -10,6 +10,7 @@ import { withArtifactsRetry } from "../artifacts/git.ts";
 import { ESCALATION_KINDS, MAX_REPORT_CHARS } from "../colony/direction.ts";
 import { inlineEnabled, inlineOffered } from "../colony/inline.ts";
 import { guideOffered } from "../colony/guide.ts";
+import { FORCE_ARGUMENT, TWIN_DESCRIPTION, twinsOffered } from "../colony/twins.ts";
 import { budgetTools, callBudget } from "./budget.ts";
 import { structuredToolErrors, toolError } from "./errors.ts";
 import { LESSON_ARGUMENT } from "./guide.ts";
@@ -169,12 +170,16 @@ export class FireTridentMcp extends McpAgent<Env, Record<string, never>, Record<
       async () => run(() => this.tools().checkout()),
     );
 
+    // Twin intents (FT_TWINS, colony/twins.ts): where the deployment catches them for some colony, declare says what a
+    // twin answers and takes force.
+    const twins = twinsOffered(this.env.FT_TWINS);
     this.server.registerTool(
       "declare",
       {
         title: "Declare an intent",
         description:
-          "Declare a new intent with a predicted footprint before writing code. By default it becomes a child of the intent you hold. Repeating a declare with the same title, why, footprint, acceptance, priority and parent within ten minutes in this session returns the intent it declared (replayed: true) instead of a duplicate.",
+          "Declare a new intent with a predicted footprint before writing code. By default it becomes a child of the intent you hold. Repeating a declare with the same title, why, footprint, acceptance, priority and parent within ten minutes in this session returns the intent it declared (replayed: true) instead of a duplicate." +
+          (twins ? ` ${TWIN_DESCRIPTION}` : ""),
         inputSchema: {
           title: z.string().min(1).max(500),
           why: z.string().max(20_000),
@@ -182,6 +187,7 @@ export class FireTridentMcp extends McpAgent<Env, Record<string, never>, Record<
           acceptance: z.array(z.string().max(2_000)).max(50).optional(),
           priority: z.number().min(0).max(1_000).optional(),
           parentId: z.string().max(100).optional(),
+          ...(twins ? { force: z.boolean().optional().describe(FORCE_ARGUMENT) } : {}),
         },
         annotations: { idempotentHint: true, openWorldHint: false },
       },
