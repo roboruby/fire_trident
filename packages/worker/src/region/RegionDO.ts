@@ -989,7 +989,8 @@ export class RegionDO extends DurableObject<Env> {
     for (const landing of settled.landings) this.recordLanding(landing, seen, now);
     for (const r of settled.returned) {
       remove.add(r.id);
-      updates.push({ id: r.id, patch: { status: "returned", reason: r.reason } });
+      // A text merge conflict travels with its return (FT_RESOLVER: the colony's conflict resolver reads it).
+      updates.push({ id: r.id, patch: { status: "returned", reason: r.reason, ...(r.conflicts ? { mergeConflicts: r.conflicts } : {}) } });
       // A revalidation or text merge candidate the trunk writer sent back is still a stale return: its cause is a landing.
       // One it sent back at its direction check is not: a person changed course, so sigma never sees it.
       if (r.p && !isRedirect(r.reason)) this.recordReturn(r.p, r.stale ?? candidates.get(r.id) ?? null, now);

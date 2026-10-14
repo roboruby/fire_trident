@@ -11,7 +11,7 @@
  * what serving the batches one commit at a time would decide, without a push per batch.
  */
 import { mergeProblem, mergeText, revalidate, revalidationEnabled, textMergeCandidate, validateProposal } from "@fire_trident/core";
-import type { ExportSurface, ExportedNames, FileVersion, Id, Landing, OccResult, Path, Proposal, Revalidated, Sha, TextMerged } from "@fire_trident/core";
+import type { ExportSurface, ExportedNames, FileVersion, Id, Landing, MergeConflict, OccResult, Path, Proposal, Revalidated, Sha, TextMerged } from "@fire_trident/core";
 import { exportedNames, resolveModule } from "../decide/mechanical.ts";
 import { importTargets } from "./imports.ts";
 
@@ -19,6 +19,8 @@ import { importTargets } from "./imports.ts";
 export interface Returned {
   proposalId: Id;
   reason: string;
+  /** Text merge: the files whose line merge conflicted, when that is why it went back (the conflict resolver reads them). */
+  conflicts?: MergeConflict[];
 }
 
 /**
@@ -37,7 +39,7 @@ export interface LandResult {
 /** One proposal's fate in a cycle. */
 export type Outcome =
   | { kind: "landed"; landing: Landing }
-  | { kind: "returned"; reason: string }
+  | { kind: "returned"; reason: string; conflicts?: MergeConflict[] }
   | { kind: "deferred"; reason: string };
 
 /** A proposal ready for planning: shape-checked, not landed before, its new blobs local. */
@@ -140,7 +142,8 @@ function short(blob: Sha | null): string {
  *   replaced by the results, every other rule still applying, and later batches see the results (they
  *   may merge against them in turn). A conflict, a text the trunk writer did not load, or a file that is
  *   never merged (binary, over 512 KB, a lockfile) leaves it to the rules above, and a conflict is named
- *   in the reason. Without `merge`, stale means back as before.
+ *   in the reason and carried in the return's `conflicts` (for the conflict resolver). Without `merge`,
+ *   stale means back as before.
  *
  * Proposal ids must be unique across the cycle (the caller dedupes); a repeated id is skipped.
  */
@@ -246,8 +249,9 @@ export function planCycle(
             })
             .join(", ");
           const broken = rv?.ok === false && rv.broken ? `; ${rv.broken.path} no longer exports ${rv.broken.names.join(", ")}, which this change imports` : "";
-          const conflicts = tried && !tried.ok && tried.conflicts.length > 0 ? `; ${conflictText(tried.conflicts)}` : "";
-          back.push({ proposalId: p.id, reason: `stale: ${detail}${broken}${conflicts}` });
+          const conflicted = tried && !tried.ok && tried.conflicts.length > 0 ? tried.conflicts : null;
+          const conflicts = conflicted ? `; ${conflictText(conflicted)}` : "";
+          back.push({ proposalId: p.id, reason: `stale: ${detail}${broken}${conflicts}`, ...(conflicted ? { conflicts: conflicted } : {}) });
           continue;
         }
       }
@@ -296,14 +300,14 @@ export function planCycle(
 }
 
 /** The merge of one stale proposal's files (mergeWrites): the files and their merged texts by blob id, or the conflicts that stopped it. */
-type MergeTry = { ok: true; files: TextMerged[]; texts: Map<Sha, string> } | { ok: false; conflicts: Array<{ path: Path; lines: number[] }> };
+type MergeTry = { ok: true; files: TextMerged[]; texts: Map<Sha, string> } | { ok: false; conflicts: MergeConflict[] };
 
 /**
  * Text merge for one stale proposal (see planCycle), or null when it is not a candidate (textMergeCandidate). Every
  * stale file must be one whose base the virtual trunk moved past, with its three versions loaded (`textOf`) and
  * mergeable (core mergeProblem), or nothing is merged and no conflict is named; then each file is merged (core
  * mergeText): its base, the virtual trunk's version (ours) and the proposal's (theirs). `conflicts` lists the files
- * whose merge conflicted, with where each conflicting hunk starts in the base.
+ * whose merge conflicted, with their three blobs and where each conflicting hunk starts in the base.
  */
 function mergeWrites(
   p: Proposal,
@@ -329,12 +333,12 @@ function mergeWrites(
   }
   const files: TextMerged[] = [];
   const texts = new Map<Sha, string>();
-  const conflicts: Array<{ path: Path; lines: number[] }> = [];
+  const conflicts: MergeConflict[] = [];
   let limited = false;
   for (const f of todo) {
     const r = mergeText(...f.texts);
     if (!r.clean) {
-      if (r.conflicts > 0) conflicts.push({ path: f.path, lines: r.lines });
+      if (r.conflicts > 0) conflicts.push({ path: f.path, base: f.base, trunk: f.trunk, theirs: f.theirs, lines: r.lines });
       else limited = true;
       continue;
     }
@@ -549,7 +553,7 @@ export function resultsFor(requests: Proposal[][], outcome: Map<Id, Outcome>, ow
         if (mine && o.landing.id === mine.id) res.landing = mine;
         else prior.set(o.landing.id, o.landing);
       } else if (o.kind === "returned") {
-        res.returned.push({ proposalId: id, reason: o.reason });
+        res.returned.push({ proposalId: id, reason: o.reason, ...(o.conflicts ? { conflicts: o.conflicts } : {}) });
       } else {
         (res.deferred ??= []).push({ proposalId: id, reason: o.reason });
       }

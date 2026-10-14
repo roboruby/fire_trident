@@ -189,8 +189,10 @@ export interface IntentRevision {
 /**
  * Directives change an agent's course. `guidance` is free text from a human; `revision` and
  * `withdrawal` are the colony telling the agent that the intent it holds was amended or called off.
+ * `resolution`: the conflict resolver (FT_RESOLVER) telling the agent whose change came back with
+ * overlapping hunks that the platform is merging it, and then how that ended (inbox only, never pushed).
  */
-export type DirectiveKind = "guidance" | "revision" | "withdrawal" | "landing";
+export type DirectiveKind = "guidance" | "revision" | "withdrawal" | "landing" | "resolution";
 
 /**
  * A landing notice: files an agent read or holds changed on trunk while it worked. Facts it can check
@@ -379,6 +381,19 @@ export interface UndoneLines {
   lines: number;
 }
 
+/**
+ * Text merge (FT_TEXT_MERGE): one file whose line merge conflicted when its change went back: the change's base blob,
+ * the blob it would have landed on (`trunk`: trunk's, or that of a change landing ahead of it in the same cycle), the
+ * blob the change wrote (`theirs`), and where each conflicting hunk starts in its base (1-based lines).
+ */
+export interface MergeConflict {
+  path: Path;
+  base: Sha;
+  trunk: Sha;
+  theirs: Sha;
+  lines: number[];
+}
+
 export interface Proposal {
   id: Id;
   colonyId: Id;
@@ -418,6 +433,11 @@ export interface Proposal {
   landingId?: Id;
   /** Why it was returned/rejected, including the exact stale paths. */
   reason?: string;
+  /**
+   * Text merge: the files whose line merge conflicted, when that is why it went back (set by the trunk writer only while
+   * the conflict resolver, FT_RESOLVER, covers the colony; colony/resolver.ts reads them).
+   */
+  mergeConflicts?: MergeConflict[];
   /**
    * The intent revision the change was built on. An agent passes the revision it worked from; the
    * colony refuses a proposal built on an older substantive revision, and the lane returns one before
@@ -525,6 +545,17 @@ export interface NoteProvenance {
   };
 }
 
+/**
+ * A change the platform's conflict resolver wrote (FT_RESOLVER): the proposal that came back with overlapping hunks, the
+ * landings that changed those files after its base (the other side), and the files it merged. From the colony's record of
+ * the resolution, never from the proposal.
+ */
+export interface NoteResolves {
+  proposalId: Id;
+  landingIds: Id[];
+  paths: Path[];
+}
+
 /** The JSON stored under refs/notes/firetrident for each landed commit. */
 export interface LineageNote {
   schema: "firetrident.lineage/v1";
@@ -555,6 +586,8 @@ export interface LineageNote {
     merged?: Array<{ path: Path; base: Sha; trunk: Sha; theirs: Sha; result: Sha }>;
     /** Goal conflict: lines recent landings wrote for other intents that this change undid, which a person approved. */
     undoes?: UndoneLines[];
+    /** Conflict resolver: the returned change this one resolves, the landings it merged with, and the files (see NoteResolves). */
+    resolves?: NoteResolves;
   }>;
   /** The project's own tests on this commit, when trunk certification ran on it (added after landing). */
   certification?: NoteCertification;

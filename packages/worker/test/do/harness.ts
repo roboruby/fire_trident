@@ -5,8 +5,8 @@
  */
 import { DurableObject } from "cloudflare:workers";
 import { Hono } from "hono";
-import { newId, regionOf } from "@fire_trident/core";
-import type { AgentKind, FileVersion, Id, Landing, LineageNote, NoteCertification, Path, Proposal, RepoRef, Sha, TrunkPublish, WorkspaceLease } from "@fire_trident/core";
+import { blobId, newId, regionOf } from "@fire_trident/core";
+import type { AgentKind, FileVersion, Id, Landing, LineageNote, MergeConflict, NoteCertification, Path, Proposal, RepoRef, Sha, TrunkPublish, WorkspaceLease } from "@fire_trident/core";
 import { createApi } from "../../src/api/app.ts";
 import type { ApiDeps } from "../../src/api/app.ts";
 import type { Env } from "../../src/env.ts";
@@ -31,6 +31,8 @@ interface TrunkState {
   landings: Landing[];
   failLands: number;
   returnNext: Id[];
+  /** The text merge conflicts a return of returnNext carries, by proposal id (as the real writer's do with FT_RESOLVER). */
+  returnConflicts?: Record<Id, MergeConflict[]>;
   reportLandings: boolean;
   /** land() calls that land the batch and then throw anyway (the caller never learns). */
   loseAnswers?: number;
@@ -68,7 +70,7 @@ interface LandGate {
   opened: Promise<void>;
 }
 
-type Returned = { proposalId: Id; reason: string };
+type Returned = { proposalId: Id; reason: string; conflicts?: MergeConflict[] };
 
 const DEFAULT_FILES: Record<Path, string> = {
   "README.md": "# demo\n",
@@ -116,8 +118,11 @@ export class TrunkDO extends DurableObject<Env> {
     return { trunkSha: s.head, files: Object.keys(s.files).length };
   }
 
-  /** Test helper: replace or add files (content null deletes) in one external commit. */
-  async commitExternal(changes: Record<Path, string | null>): Promise<{ sha: Sha; blobs: Record<Path, Sha | null> }> {
+  /**
+   * Test helper: replace or add files (content null deletes) in one external commit. `realBlobs`: name each file by its
+   * git blob id (blobId of its text), for code that checks a text against its blob (the conflict resolver).
+   */
+  async commitExternal(changes: Record<Path, string | null>, opts: { realBlobs?: boolean } = {}): Promise<{ sha: Sha; blobs: Record<Path, Sha | null> }> {
     const s = await this.load();
     const blobs: Record<Path, Sha | null> = {};
     for (const [path, content] of Object.entries(changes)) {
@@ -125,7 +130,7 @@ export class TrunkDO extends DurableObject<Env> {
         delete s.files[path];
         blobs[path] = null;
       } else {
-        const blob = fakeSha();
+        const blob = opts.realBlobs ? blobId(content) : fakeSha();
         s.files[path] = { blob, content };
         blobs[path] = blob;
       }
@@ -149,10 +154,11 @@ export class TrunkDO extends DurableObject<Env> {
     await this.save(s);
   }
 
-  /** Test helper: land() returns these proposals as conflicts instead of landing them. */
-  async returnOnLand(ids: Id[]): Promise<void> {
+  /** Test helper: land() returns these proposals as conflicts instead of landing them (`conflicts`: what each return carries). */
+  async returnOnLand(ids: Id[], conflicts?: Record<Id, MergeConflict[]>): Promise<void> {
     const s = await this.load();
     s.returnNext = ids;
+    s.returnConflicts = conflicts;
     await this.save(s);
   }
 
@@ -374,7 +380,7 @@ export class TrunkDO extends DurableObject<Env> {
       for (const p of batch) {
         const back = redirected.get(p.id);
         if (back) returned.push({ proposalId: p.id, reason: back });
-        else if (s.returnNext.includes(p.id)) returned.push({ proposalId: p.id, reason: "conflict at land time: src/lib/util.ts" });
+        else if (s.returnNext.includes(p.id)) returned.push({ proposalId: p.id, reason: "conflict at land time: src/lib/util.ts", ...(s.returnConflicts?.[p.id] ? { conflicts: s.returnConflicts[p.id] } : {}) });
         else landed.push(p);
       }
       if (landed.length === 0) {
@@ -431,11 +437,11 @@ export class TrunkDO extends DurableObject<Env> {
     return { trunkSha: s.head, landingId, files, truncated: false };
   }
 
-  /** Texts by blob id, as the real TrunkDO answers. */
+  /** Texts by blob id, as the real TrunkDO answers (trunk's files, then any version trunk held before). */
   async readBlobs(blobs: Sha[]): Promise<Record<Sha, string | null>> {
     const s = await this.load();
     const byBlob = new Map(Object.values(s.files).map((f) => [f.blob, f.content]));
-    return Object.fromEntries(blobs.map((b) => [b, byBlob.get(b) ?? null]));
+    return Object.fromEntries(blobs.map((b) => [b, byBlob.get(b) ?? s.contents?.[b] ?? null]));
   }
 
   /** Lineage note fields added after landing (recorded for assertions). */
