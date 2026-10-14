@@ -31,6 +31,23 @@ export interface Session {
   proposals: Array<{ id: Id; intentId: Id; headSha: Sha; at: number }>;
   /** Last heartbeat sent to the colony for this agent. */
   lastBeat?: number;
+  /**
+   * This session's declares of the last DECLARE_REPLAY_MS, newest last: a repeat with the same content returns the
+   * intent it declared instead of a duplicate (sessions saved before it have none).
+   */
+  declared?: DeclaredIntent[];
+}
+
+/**
+ * A declare a session remembers: the fingerprint of its content (declareFingerprint), the intent it declared and its
+ * status then, and when. Only these: a replay rebuilds the rest from the repeat, whose content is the same, so fifty
+ * entries stay a few kilobytes whatever the footprints.
+ */
+export interface DeclaredIntent {
+  fingerprint: string;
+  at: number;
+  intentId: Id;
+  status: Intent["status"];
 }
 
 /** Read access to one Artifacts repo through the binding. */
@@ -102,6 +119,16 @@ const COLONY_ID = /^[a-z0-9](?:[a-z0-9-]{0,46}[a-z0-9])?$/;
 const FINAL: ReadonlySet<ProposalStatus> = new Set<ProposalStatus>(["landed", "returned", "rejected"]);
 /** The gap statement used when the agent does not state one. */
 export const EXTERNAL_NOT_VERIFIED = "Not verified: external agent over MCP; no check it ran is visible to the platform.";
+/**
+ * How long a repeat of a declare in the same session returns the intent it declared instead of a new one. The
+ * session lives in its own Durable Object (FireTridentMcp), so this holds across retries and reconnects of the session.
+ */
+export const DECLARE_REPLAY_MS = 10 * 60_000;
+/** Declares a session remembers for replay (the newest). */
+const MAX_DECLARED = 50;
+/** What a replayed declare says next to the intent. */
+const REPLAY_NOTE =
+  "You declared an intent with the same title, why, footprint, acceptance, priority and parent in this session less than ten minutes ago: this is that intent, not a new one. Change one of them to declare another.";
 
 function fail(status: number, message: string): never {
   throw new Error(`[ft:${status}] ${message}`);
@@ -136,7 +163,7 @@ function waitSeconds(w: number | undefined): number {
 }
 
 /** A field reading trimmed for an agent's context window. */
-function compactReading(r: FieldReading): Record<string, unknown> {
+export function compactReading(r: FieldReading): Record<string, unknown> {
   const totals = Object.fromEntries(Object.entries(r.totals).map(([k, v]) => [k, round(v)]));
   const paths = Object.entries(r.byPath)
     .map(([path, v]) => ({ path, v, weight: (v.claim ?? 0) + (v.danger ?? 0) + (v.need ?? 0) + (v.failure ?? 0) }))
@@ -211,6 +238,45 @@ function whyEntry(e: { landing: Landing; note: LineageNote }, path: Path): { lan
   const wrote = all.filter((p) => Array.isArray(p?.writeSet) && p.writeSet.some((w) => w?.path === path));
   const shown = wrote.length > 0 ? wrote : all;
   return { landing: e.landing, note: { ...e.note, proposals: shown }, otherProposals: all.length - shown.length };
+}
+
+/** Landings one why answer shows at most. */
+const WHY_LANDINGS = 10;
+
+/**
+ * A why answer as both MCP servers give it (the authenticated `why` and the public one): the trunk's landings for the
+ * path in its order, at most ten, each cut to the path by whyEntry.
+ */
+export function whyAnswer(
+  path: Path,
+  line: number | undefined,
+  entries: ReadonlyArray<{ landing: Landing; note: LineageNote }>,
+): { path: Path; line: number | null; entries: Array<{ landing: Landing; note: LineageNote; otherProposals: number }> } {
+  return { path, line: line ?? null, entries: (Array.isArray(entries) ? entries : []).slice(0, WHY_LANDINGS).map((e) => whyEntry(e, path)) };
+}
+
+/** The part of an intent a declare answers with. */
+function declaredView(i: Pick<Intent, "id" | "title" | "status" | "footprint" | "parentId">): { id: Id; title: string; status: Intent["status"]; footprint: Path[]; parentId: Id | null } {
+  return { id: i.id, title: i.title, status: i.status, footprint: i.footprint, parentId: i.parentId ?? null };
+}
+
+/**
+ * SHA-256 (hex) of a declare's content in canonical form: title, why, footprint (sorted), acceptance, priority and
+ * parent. Two declares with the same fingerprint ask for the same intent.
+ */
+export async function declareFingerprint(i: Pick<Intent, "title" | "why" | "footprint" | "priority" | "acceptance" | "parentId">): Promise<string> {
+  const canonical = JSON.stringify([i.title, i.why, [...i.footprint].sort(), i.acceptance ?? [], i.priority, i.parentId ?? null]);
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonical)));
+  return [...digest].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/** A session's declares still inside the replay window, oldest first; malformed entries (older or foreign data) are dropped. */
+function recentDeclares(list: unknown, now: number): DeclaredIntent[] {
+  if (!Array.isArray(list)) return [];
+  return list.filter(
+    (d): d is DeclaredIntent =>
+      !!d && typeof d === "object" && typeof d.fingerprint === "string" && typeof d.at === "number" && now - d.at < DECLARE_REPLAY_MS && typeof d.intentId === "string" && d.intentId !== "",
+  );
 }
 
 /** What an agent should do next, given its proposal's status. */
@@ -490,7 +556,12 @@ export class FireTridentTools {
     return this.leaseView(await this.leased());
   }
 
-  /** Declare a new intent (source "agent"); by default it is a child of the held intent. */
+  /**
+   * Declare a new intent (source "agent"); by default it is a child of the held intent. A repeat in this session within
+   * DECLARE_REPLAY_MS with the same content (declareFingerprint) returns the intent the first one declared, marked
+   * `replayed`, instead of a duplicate: a client that timed out, or a model retrying to be sure, paints one need.
+   * Repeats in flight together wait for the first.
+   */
   async declare(a: { title: string; why: string; footprint: string[]; acceptance?: string[]; priority?: number; parentId?: string }): Promise<unknown> {
     const s = await this.joined();
     const footprint = a.footprint.map((p) => p.trim()).filter((p) => p !== "" && !p.split("/").includes(".."));
@@ -507,8 +578,44 @@ export class FireTridentTools {
     if (a.acceptance && a.acceptance.length > 0) input.acceptance = a.acceptance;
     const parent = a.parentId?.trim() || s.intent?.id;
     if (parent) input.parentId = parent;
-    const intent = await this.ctx.colony(s.colonyId).addIntent(input);
-    return { intent: { id: intent.id, title: intent.title, status: intent.status, footprint: intent.footprint, parentId: intent.parentId ?? null } };
+    const fingerprint = await declareFingerprint(input);
+    const run = (this.declaring.get(fingerprint) ?? Promise.resolve()).catch(() => undefined).then(() => this.declareOnce(s, input, fingerprint));
+    this.declaring.set(fingerprint, run);
+    try {
+      return await run;
+    } finally {
+      if (this.declaring.get(fingerprint) === run) this.declaring.delete(fingerprint);
+    }
+  }
+
+  /** Declares in flight by fingerprint: a repeat waits for the one ahead of it, then finds it in the session. */
+  private readonly declaring = new Map<string, Promise<unknown>>();
+
+  /** One declare: the intent this session declared with the same content lately (replayed), or a new one, remembered. */
+  private async declareOnce(s: Session & { colonyId: Id; agentId: Id }, input: Omit<Intent, "id" | "status" | "createdAt">, fingerprint: string): Promise<unknown> {
+    const colony = this.ctx.colony(s.colonyId);
+    const now = this.ctx.now();
+    const latest = await this.ctx.load();
+    const earlier =
+      latest.colonyId === s.colonyId && latest.agentId === s.agentId ? recentDeclares(latest.declared, now).findLast((d) => d.fingerprint === fingerprint) : undefined;
+    if (earlier) {
+      // The same content, so the same title, footprint and parent; the status as declared, unless the colony says more.
+      let intent = declaredView({ id: earlier.intentId, title: input.title, status: earlier.status, footprint: input.footprint, ...(input.parentId ? { parentId: input.parentId } : {}) });
+      try {
+        // Its status now (taken, landed, ...); called as a method (a detached stub function would name a remote property).
+        const current = colony.getIntent ? await colony.getIntent(earlier.intentId) : null;
+        if (current) intent = declaredView(current);
+      } catch {
+        // Best effort: the intent as declared stands.
+      }
+      return { intent, replayed: true, declaredAt: new Date(earlier.at).toISOString(), note: REPLAY_NOTE };
+    }
+    const intent = declaredView(await colony.addIntent(input));
+    await this.update((x) => {
+      if (x.colonyId !== s.colonyId || x.agentId !== s.agentId) return; // the session joined as another agent meanwhile
+      x.declared = [...recentDeclares(x.declared, now), { fingerprint, at: now, intentId: intent.id, status: intent.status }].slice(-MAX_DECLARED);
+    });
+    return { intent };
   }
 
   /** A trunk file at the lease base; records (path, blob) in this session's read set. */
@@ -771,6 +878,6 @@ export class FireTridentTools {
     const path = cleanPath(a.path);
     if (!path) fail(400, `invalid path ${a.path}`);
     const entries = await this.ctx.trunk(s.colonyId).why(path, a.line);
-    return { path, line: a.line ?? null, entries: entries.slice(0, 10).map((e) => whyEntry(e, path)) };
+    return whyAnswer(path, a.line, entries);
   }
 }

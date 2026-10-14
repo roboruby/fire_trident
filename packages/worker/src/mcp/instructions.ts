@@ -20,6 +20,10 @@ const STEPS_TO_PROPOSE = [
 /** What an agent may do instead of git where the colony takes inline changes (FT_INLINE). */
 export const INLINE_STEP = `   Without git: a change of at most ${INLINE_LIMITS.files} text files (${INLINE_LIMITS.fileBytes / 1024} KB a file, ${INLINE_LIMITS.totalBytes / 1024} KB in all) needs no clone, no commit, no push and no workspace token. Call read for every file you change or depend on, then call propose with files: [{ path, content }] (the whole new text of each file you change; content null deletes the file) instead of headSha, and with notVerified. The server builds the change against your lease base and drops any file you send unchanged. Use the git steps for larger changes and for binary files.`;
 
+/** When to retry a failed call (mcp/errors.ts): every MCP server of FireTrident says it. */
+export const RETRY_RULE =
+  "A failed call returns error (kind, message, retryable): retry it only when error.retryable is true, after error.retryAfterMs; any other failure needs a different call (error.next names it when it is clear).";
+
 /** The server instructions' steps after proposing. */
 const STEPS_AFTER_PROPOSE = [
   "7. inbox with wait (seconds) blocks until the proposal is decided: landed, returned (trunk moved under your reads or review sent it back: take again), rejected, or escalated (waiting for a human). Repeat it until the proposal is final.",
@@ -27,6 +31,7 @@ const STEPS_AFTER_PROPOSE = [
   "   inbox also lists landing notices (kind landing): files your intent covers changed on trunk after you took it. They are facts you can check: the landing, the trunk commit, each path's blob before and after, and the intent that changed them with its why. A change built on the old blobs comes back when it lands (returned, naming the stale paths); take again then for a fresh lease. Never undo another agent's landed change.",
   "9. If the intent cannot be done correctly as written (a test that is wrong, a spec that contradicts itself, an impossible ask), call escalate with the kind and a report that quotes the test or spec line, instead of proposing a workaround. Never edit, skip, delete or weaken a test to make it pass, and never hard-code a value a test expects. Escalating is a normal part of the work and is not counted as a failure: the intent waits for a person (amend, withdraw or dismiss), your claim and lease are released, and you take other work.",
   "Any tool call keeps your claim alive; an agent silent for ten minutes loses its intent. Use sense to see where other agents work, declare to add a follow-up intent, release to give back work you cannot finish, and why to ask which intent produced a line on trunk.",
+  RETRY_RULE,
 ];
 
 /** Server instructions every MCP client receives at initialization; `inline` adds the way to propose without git. */

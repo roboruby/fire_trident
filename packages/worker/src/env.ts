@@ -83,6 +83,12 @@ export interface Env {
    * /git/<colony>.git (comma-separated colony ids). Empty or unset turns the proxy off.
    */
   FT_PUBLIC_GIT?: string;
+  /**
+   * Optional: colonies anyone's agent may ask about over a read-only, stateless MCP endpoint at /public/mcp, with no
+   * token (comma-separated colony ids, parsed like FT_PUBLIC_GIT; there is no "on"): tools status, why, intent and
+   * sense, over read stubs only (mcp/public.ts). Empty or unset turns the endpoint off (404).
+   */
+  FT_PUBLIC_MCP?: string;
   /** Local development only: "1" lets writes and MCP through when their tokens are not configured. Never set it on a deployment. */
   FT_OPEN_WRITES?: string;
   /** Secret (optional): token MCP clients must present at /mcp and /sse. */
