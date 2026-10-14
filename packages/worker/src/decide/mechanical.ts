@@ -507,7 +507,7 @@ export function nameAssumptions(
  * alias that might never slips through. "#x", "@x" or "~x" with no slash is an alias that may point
  * anywhere: it matches every target. Node built-ins never match.
  */
-function mayName(specifier: string, target: Path): boolean {
+export function mayName(specifier: string, target: Path): boolean {
   if (specifier.startsWith("node:")) return false;
   const bare = specifier.replace(/\.(?:d\.)?[cm]?[jt]sx?$/i, "").replace(/\/+$/, "");
   if (/^[#@~][^/]*$/.test(bare)) return true;
@@ -619,10 +619,10 @@ function listEntries(t: Token[], open: number, close: number): Array<{ name: str
   return flush() ? out : null;
 }
 
-type TokenKind = "id" | "num" | "str" | "tpl" | "re" | "punc" | "bad";
+export type TokenKind = "id" | "num" | "str" | "tpl" | "re" | "punc" | "bad";
 
 /** A lexer token; "str" is a quoted string or a template without substitutions (value unescaped). */
-interface Token {
+export interface Token {
   kind: TokenKind;
   value: string;
   line: number;
@@ -678,7 +678,7 @@ function unescape(raw: string): string {
  * text and regex literals as opaque, and tracks lines (\n, \r\n, \r). Never throws; unterminated strings
  * and templates become "bad" tokens.
  */
-function tokenize(src: string): Token[] {
+export function tokenize(src: string): Token[] {
   const out: Token[] = [];
   const braces: boolean[] = []; // per open "{": true when it opened a template substitution
   const n = src.length;

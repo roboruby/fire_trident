@@ -72,6 +72,9 @@ import {
   type TextMergeInput,
 } from "./plan.ts";
 import { mergeInsertionsEnabled } from "./plan.ts";
+import { ExportMemo, exportGuardEnabled } from "./exportguard.ts";
+import { exportImports } from "./imports.ts";
+import type { ExportImports } from "./plan.ts";
 import { runRevert, sqlRevertTrunk, type RevertResult, type RevertTrunk } from "./revert.ts";
 import { durableFs } from "../artifacts/workspace.ts";
 import { TRUNK_NAMESPACE, bindingFor } from "../artifacts/shards.ts";
@@ -195,6 +198,11 @@ export interface CycleStat {
   merged?: number;
   /** Of those, the ones with a file merged by the insertion rule (FT_MERGE_INSERTIONS: both sides only inserted lines at one place). */
   insertions?: number;
+  /**
+   * The export guard (FT_EXPORT_GUARD), in cycles that change trunk script files: checks of changed files it left undone
+   * (exports or importers it could not read for sure, or its input not ready in time). Its reads are timed as `ms.exports`.
+   */
+  exportsUncovered?: number;
   /** Oldest request's time in the queue before the cycle started. */
   waitMs: number;
   /**
@@ -263,6 +271,8 @@ export class TrunkDO extends DurableObject<Env> {
   private derivedStore: DerivedSet<TrunkLanding> | null = null;
   /** Assumption revalidation: the names each version of a file exports, by blob id (immutable, so cached across cycles). */
   private readonly surfaces = new BoundedMap<Sha, ExportSurface | null>(SURFACE_CACHE);
+  /** Export guard (FT_EXPORT_GUARD): the exports of versions it read, by blob id, and its pause after a stalled read. */
+  private readonly exportMemo = new ExportMemo();
   /**
    * Asynchronous publishing (FT_ASYNC_PUBLISH, trunk/publish.ts): the publish attempt in flight (single-flight), the loop
    * that drives attempts beside the cycles and whether it should go round again, whether everything recorded before this
@@ -1143,6 +1153,8 @@ export class TrunkDO extends DurableObject<Env> {
       ...(stat.merged ? [metric("merged", stat.merged)] : []),
       // The insertion rule (FT_MERGE_INSERTIONS): those merged by it (only cycles where it merged one).
       ...(stat.insertions ? [metric("mergedInsertions", stat.insertions)] : []),
+      // The export guard (FT_EXPORT_GUARD): checks of changed script files it left undone (only cycles that left one).
+      ...(stat.exportsUncovered ? [metric("exportsUncovered", stat.exportsUncovered)] : []),
     ];
     const stub = ns.get(ns.idFromName(colonyId)) as unknown as { emit(e: unknown[]): Promise<unknown> };
     await stub.emit(events);
@@ -1306,6 +1318,9 @@ export class TrunkDO extends DurableObject<Env> {
     // Deletion guard (FT_DELETION_GUARD): a change goes back while a trunk file's import of a file it deletes would
     // resolve to nothing. Only cycles that delete a trunk file read the import index.
     const guarding = deletionGuardEnabled((this.env as unknown as { FT_DELETION_GUARD?: string } | undefined)?.FT_DELETION_GUARD, st.colonyId);
+    // Export guard (FT_EXPORT_GUARD): a change goes back while a script file imports a name it stops exporting. Only cycles
+    // that change trunk script files read their versions, and only the ones that remove a name read the import index.
+    const exportGuarding = exportGuardEnabled((this.env as unknown as { FT_EXPORT_GUARD?: string } | undefined)?.FT_EXPORT_GUARD, st.colonyId);
     // Text merge (FT_TEXT_MERGE): a change stale only on files it writes lands when each of them merges cleanly, line by
     // line, with the version it would land on (core/textmerge.ts). Off: stale means back.
     const merging = textMergeEnabled((this.env as unknown as { FT_TEXT_MERGE?: string } | undefined)?.FT_TEXT_MERGE, st.colonyId);
@@ -1417,24 +1432,27 @@ export class TrunkDO extends DurableObject<Env> {
       if (surfaces) lap("assumptions");
       const deletions = guarding ? await this.deletionGuardInput(live.map((e) => e.p)) : undefined;
       if (deletions !== undefined) lap("deletions");
+      const exportInput = exportGuarding ? await this.exportGuardInput(live.map((e) => e.p)) : undefined;
+      if (exportInput !== undefined) lap("exports");
       const merge = merging ? await this.mergeTexts(input.flat(), mergeLoad) : undefined;
       if (merge) lap("merges");
       // Text merge's insertion rule (FT_MERGE_INSERTIONS): insertions by both sides at one place land as their union.
       if (merge && mergeInsertionsEnabled((this.env as unknown as { FT_MERGE_INSERTIONS?: string } | undefined)?.FT_MERGE_INSERTIONS, st.colonyId)) merge.insertions = true;
       const trunkBlob = (path: Path): Sha | null => this.indexBlob(path);
       const exported = surfaces ? (_path: Path, blob: Sha) => surfaces.get(blob) ?? null : undefined;
-      let plan = planCycle(input, trunkBlob, exported, deletions, merge);
+      let plan = planCycle(input, trunkBlob, exported, deletions, merge, exportInput);
       // Merged files go to the local store before a commit names them. One that cannot be stored there: the cycle plans
       // again without merging, and the changes it would have merged go back as stale.
       let mergedSizes = plan.mergedTexts.size > 0 ? await this.storeMerged(plan.mergedTexts) : new Map<Sha, number>();
       if (mergedSizes === null) {
-        plan = planCycle(input, trunkBlob, exported, deletions);
+        plan = planCycle(input, trunkBlob, exported, deletions, undefined, exportInput);
         mergedSizes = new Map();
       }
       const back = (): void => {
         for (const r of plan.returned.flat()) outcome.set(r.proposalId, { kind: "returned", reason: r.reason, ...(resolving && r.conflicts ? { conflicts: r.conflicts } : {}) });
       };
       lap("plan");
+      if (exportInput !== undefined) stat.exportsUncovered = plan.exportsUncovered ?? 0;
       const chain = await this.buildChain(reqs, plan.accepted, sizes, stat, plan.revalidated, { merged: plan.merged, sizes: mergedSizes });
       lap("build");
       if (chain === null) {
@@ -2594,6 +2612,25 @@ export class TrunkDO extends DurableObject<Env> {
     } catch (e) {
       // The guard never fails a cycle.
       console.error(`deletion guard skipped: ${errorText(e)}`);
+      return null;
+    }
+  }
+
+  /**
+   * The export guard's input for one cycle's proposals (imports.ts exportImports): undefined when none changes a trunk
+   * script file; null when the guard sits the cycle out (the import index not current in time, or blob reads stalled).
+   */
+  private async exportGuardInput(proposals: Proposal[]): Promise<ExportImports | null | undefined> {
+    try {
+      const source = { head: () => this.meta("trunk_sha"), read: (blob: Sha) => this.blobBytes(blob), label: this.state().colonyId };
+      const index = (): ImportIndex => {
+        this.derivedSet().catchUp(IMPORTS_INDEX);
+        return this.importIndex();
+      };
+      return await exportImports(index, source, proposals, (path) => this.indexBlob(path), this.exportMemo);
+    } catch (e) {
+      // The guard never fails a cycle.
+      console.error(`export guard skipped: ${errorText(e)}`);
       return null;
     }
   }

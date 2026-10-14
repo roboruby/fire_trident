@@ -88,6 +88,15 @@ export interface Env {
    */
   FT_DELETION_GUARD?: string;
   /**
+   * Optional: the export guard, "on", or a comma-separated list of colony ids; absent or "off" is off. In a trunk cycle
+   * that changes script files, a change goes back while a script file imports a name it stops exporting (an importer
+   * on trunk, or a file a change ahead of it in the cycle writes), unless the same change or one accepted ahead of it
+   * rewrites that importer without the import; of a change that stops exporting a name and one that imports it anew in
+   * the same cycle, the second goes back naming the first (trunk/plan.ts brokenExports). It fails open: what it cannot
+   * read for sure is skipped and counted as `trunk.exportsUncovered`.
+   */
+  FT_EXPORT_GUARD?: string;
+  /**
    * Optional: the goal-conflict check, "on", or a comma-separated list of colony ids; absent or "off" is off. In the
    * decide stage, a change that would undo lines a recent landing wrote for another intent (neither an ancestor nor a
    * descendant of its own; at least 3 lines and half of that landing's lines in the file) waits for a person instead of

@@ -4,7 +4,8 @@
  * A claim on a file that a candidate's files import, or on a file that imports them, repels the
  * candidate: those are the landings that would make its reads stale, and the agents whose reads its
  * own landing would make stale (packages/bench/results/2026-10-13-papers, Q4). The deletion guard
- * (FT_DELETION_GUARD, deletionImports) reads it to find the trunk files that import a deleted file.
+ * (FT_DELETION_GUARD, deletionImports) reads it to find the trunk files that import a deleted file, and the
+ * export guard (FT_EXPORT_GUARD, exportImports) the trunk files that import a file a change stops exporting a name at.
  *
  * TrunkDO keeps it in its SQLite storage (ft_imp_ tables):
  * - it is built the first time it is read (when FT_IMPORT_WEIGHT turns the term on, or in the first
@@ -27,8 +28,10 @@
 import type { Neighbor, Path, Proposal, Sha } from "@fire_trident/core";
 import { importsOf } from "@fire_trident/core";
 import { RESOLVE_EXTS, isRelative, resolutionCandidates, resolveModule, specifierTarget } from "../decide/mechanical.ts";
+import { importBindings, type ImportBinding } from "../decide/mechanical.ts";
 import type { Derived, TrunkLanding } from "./derived.ts";
-import type { DeletionImports } from "./plan.ts";
+import { ExportMemo, STALL_PAUSE_MS, guardExports, guardText, guardsScript, removedNames, type GuardExports } from "./exportguard.ts";
+import type { DeletionImports, ExportImports } from "./plan.ts";
 import { SCRIPT_FILE } from "./revert.ts";
 
 /** Imports and importers returned per path at most, and paths per `links` call at most. */
@@ -175,7 +178,7 @@ export function dependentTargets(path: Path): string[] {
  */
 export function markLanded(sql: SqlStorage, parentSha: Sha, trunkSha: Sha, changes: Iterable<readonly [Path, LandedChange]>): void {
   try {
-    // Until the first read creates the index (never, while FT_IMPORT_WEIGHT and FT_DELETION_GUARD are off), there is nothing to mark.
+    // Until the first read creates the index (never, while FT_IMPORT_WEIGHT, FT_DELETION_GUARD and FT_EXPORT_GUARD are off), there is nothing to mark.
     if (sql.exec("SELECT 1 AS x FROM sqlite_master WHERE type = 'table' AND name = 'ft_imp_meta'").toArray().length === 0) return;
     const at = sql.exec<{ value: string }>("SELECT value FROM ft_imp_meta WHERE key = 'sha'").toArray()[0]?.value;
     if (at === undefined || at !== parentSha) return;
@@ -305,6 +308,134 @@ export async function deletionImports(
     return { importers, targets };
   } catch (e) {
     return open(`import index failed: ${e instanceof Error ? e.message : String(e)}`);
+  }
+}
+
+/** Blobs one cycle reads for the export guard at most, and bytes; versions past them are not checked. */
+const EXPORT_READS = 400;
+const EXPORT_BYTES = 8 * 1024 * 1024;
+/** Trunk importers of one changed file the export guard reads at most; a file with more is not checked. */
+const EXPORT_IMPORTERS = 256;
+/** What a blob read that ran past the export guard's wait answers. */
+const STALLED = Symbol("stalled");
+
+/**
+ * The export guard's input for one cycle (plan.ts brokenExports), or undefined when no proposal changes a script file
+ * that is on trunk: other cycles read nothing. First the exports of every version the cycle may hold at each changed
+ * file (trunk's and each new one), cached by blob id in `memo`. Only when a version stops exporting a name another
+ * version there exports is the import index brought up to date (the deletion guard's wait, `waitMs`) and looked up for
+ * the trunk script files whose imports resolve to that file; then their versions on trunk and every script version the
+ * cycle writes are read for their import bindings. Reads stop at EXPORT_READS blobs, EXPORT_BYTES and `waitMs`: what is
+ * past them is not read, and the plan skips its checks. Null when the index is not current by then, its sync fails, or
+ * a blob read stalls (the guard then sits cycles out for STALL_PAUSE_MS): the guard sits the cycle out (logged).
+ */
+export async function exportImports(
+  getIndex: () => ImportIndex,
+  source: ImportSource,
+  proposals: readonly Proposal[],
+  trunk: (path: Path) => Sha | null,
+  memo: ExportMemo = new ExportMemo(),
+  waitMs = DELETION_WAIT_MS,
+): Promise<ExportImports | null | undefined> {
+  const versions = new Map<Path, Set<Sha>>();
+  for (const p of proposals) {
+    for (const w of p.writeSet) {
+      const blob = w.blob ?? null;
+      const was = trunk(w.path);
+      if (blob === null || was === null || blob === was || !guardsScript(w.path)) continue;
+      versions.set(w.path, (versions.get(w.path) ?? new Set<Sha>([was])).add(blob));
+    }
+  }
+  if (versions.size === 0) return undefined;
+  const start = Date.now();
+  const open = (why: string): null => {
+    console.warn(JSON.stringify({ ft: "export-guard-open", colonyId: source.label ?? null, why, files: versions.size, ms: Date.now() - start }));
+    return null;
+  };
+  if (start < memo.stalledUntil) return open("blob reads stalled in an earlier cycle");
+  try {
+    const until = start + waitMs;
+    let reads = 0;
+    let bytes = 0;
+    // A blob's text (null: unreadable, not UTF-8 or too large; undefined: past the budget); a stalled read ends the input.
+    const textOf = async (blob: Sha): Promise<string | null | undefined | typeof STALLED> => {
+      if (reads >= EXPORT_READS || bytes > EXPORT_BYTES) return undefined;
+      reads++;
+      const data = await within(
+        source.read(blob).catch(() => null),
+        until - Date.now(),
+        STALLED,
+      );
+      if (data === STALLED) return STALLED;
+      if (data === null) return null;
+      bytes += data.length;
+      return guardText(data);
+    };
+    const stalled = (): null => {
+      memo.stalledUntil = Date.now() + STALL_PAUSE_MS;
+      return open(`a blob read took longer than ${waitMs} ms`);
+    };
+
+    const exports = new Map<Sha, GuardExports | null>();
+    for (const set of versions.values()) {
+      for (const blob of set) {
+        const hit = memo.get(blob);
+        if (hit !== undefined) {
+          exports.set(blob, hit);
+          continue;
+        }
+        const text = await textOf(blob);
+        if (text === STALLED) return stalled();
+        if (text === undefined) continue;
+        const surface = text === null ? null : guardExports(text);
+        exports.set(blob, surface);
+        // A read that failed may work next cycle; what was read is final for its blob id.
+        if (text !== null) memo.set(blob, surface);
+      }
+    }
+    // The files a new version of the cycle stops exporting a name at (compared with every other version there).
+    const losing: Path[] = [];
+    for (const [path, set] of versions) {
+      const known = (blob: Sha): GuardExports | null => exports.get(blob) ?? null;
+      const was = trunk(path);
+      const removes = (after: Sha): boolean => {
+        const now = known(after);
+        return now !== null && [...set].some((b) => b !== after && known(b) !== null && removedNames(known(b)!, now).length > 0);
+      };
+      if ([...set].some((b) => b !== was && removes(b))) losing.push(path);
+    }
+    if (losing.length === 0) return { exports, importers: new Map(), bindings: new Map() };
+
+    const index = getIndex();
+    const head = source.head();
+    const synced = await within(index.sync(source).then(() => true), Math.min(waitMs - index.runningMs(), until - Date.now()), false);
+    if (!synced) return open(`import index still syncing after ${index.runningMs()} ms`);
+    if (head === null || !index.current(head)) return open("import index not current (a budget ran out or a read failed)");
+    const importers = new Map<Path, Path[]>();
+    for (const path of losing) {
+      const list = index.importersOf([path], [], EXPORT_IMPORTERS + 1).map((r) => r.path);
+      // A file with more importers than are read is not checked (the plan counts it as uncovered).
+      if (list.length <= EXPORT_IMPORTERS) importers.set(path, list);
+    }
+    // The imports of those importers as trunk has them, and of every script version the cycle writes.
+    const wanted = new Set<Sha>();
+    for (const list of importers.values()) {
+      for (const path of list) {
+        const blob = trunk(path);
+        if (blob !== null) wanted.add(blob);
+      }
+    }
+    for (const p of proposals) for (const w of p.writeSet) if (w.blob && guardsScript(w.path)) wanted.add(w.blob);
+    const bindings = new Map<Sha, ImportBinding[]>();
+    for (const blob of wanted) {
+      const text = await textOf(blob);
+      if (text === STALLED) return stalled();
+      if (text === undefined) break;
+      if (text !== null) bindings.set(blob, importBindings(text));
+    }
+    return { exports, importers, bindings };
+  } catch (e) {
+    return open(`export guard input failed: ${e instanceof Error ? e.message : String(e)}`);
   }
 }
 

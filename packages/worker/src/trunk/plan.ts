@@ -13,6 +13,8 @@
 import { mergeProblem, mergeText, revalidate, revalidationEnabled, textMergeCandidate, validateProposal } from "@fire_trident/core";
 import type { ExportSurface, ExportedNames, FileVersion, Id, Landing, MergeConflict, OccResult, Path, Proposal, Revalidated, Sha, TextMerged } from "@fire_trident/core";
 import { exportedNames, resolveModule } from "../decide/mechanical.ts";
+import { importBindings, isRelative, mayName, specifierTarget, type ImportBinding } from "../decide/mechanical.ts";
+import { guardExports, guardsScript, removedNames, type GuardExports } from "./exportguard.ts";
 import { importTargets } from "./imports.ts";
 
 /** A proposal sent back from `land`, with the exact reason. */
@@ -62,6 +64,8 @@ export interface PlanResult {
   revalidated: Map<Id, Revalidated[]>;
   merged: Map<Id, TextMerged[]>;
   mergedTexts: Map<Sha, string>;
+  /** The export guard (with `exportGuard`): checks of changed script files it left undone (see brokenExports). */
+  exportsUncovered?: number;
 }
 
 /**
@@ -106,6 +110,20 @@ export function mergeInsertionsEnabled(setting: string | undefined, colonyId: Id
 export interface DeletionImports {
   importers: ReadonlyMap<Path, ReadonlyMap<Path, readonly string[]>>;
   targets: ReadonlyMap<Sha, readonly string[]>;
+}
+
+/**
+ * The export guard's input (FT_EXPORT_GUARD), read from the cycle's blobs and trunk's import index (imports.ts
+ * exportImports). `exports`: what each version of a changed script file exports (trunk's, and each new one the cycle
+ * writes there), null when that cannot be known for sure; a version missing here was not read. `importers`: for each
+ * changed file a version of the cycle stops exporting a name at, the trunk script files whose imports resolve to it; a
+ * file missing here was not looked up. `bindings`: the imports of those importers' trunk versions and of every script
+ * version the cycle writes, by blob, each with the names it takes; a version missing here was not read.
+ */
+export interface ExportImports {
+  exports: ReadonlyMap<Sha, GuardExports | null>;
+  importers: ReadonlyMap<Path, readonly Path[]>;
+  bindings: ReadonlyMap<Sha, readonly ImportBinding[]>;
 }
 
 /**
@@ -159,6 +177,11 @@ function short(blob: Sha | null): string {
  *   in the reason and carried in the return's `conflicts` (for the conflict resolver). With `merge.insertions`
  *   (FT_MERGE_INSERTIONS), a file whose only conflicts are insertions by both sides at one place merges as their
  *   union, recorded with `rule: "insertions"`. Without `merge`, stale means back as before.
+ * - Export guard (with `exportGuard`, see brokenExports): a proposal that stops exporting a name from a script file goes
+ *   back while a script file imports that name from it once the proposal lands, unless the proposal itself or one
+ *   accepted earlier in the cycle rewrites that importer without the import; and of a proposal that stops exporting a
+ *   name and one that imports it anew in the same cycle, the second goes back, naming the first. Checked after the
+ *   deletion guard. Null: on, but its input could not be read; every changed script file counts as unchecked.
  *
  * Proposal ids must be unique across the cycle (the caller dedupes); a repeated id is skipped.
  */
@@ -168,6 +191,7 @@ export function planCycle(
   exported?: ExportedNames,
   deletions?: DeletionImports | null,
   merge?: TextMergeInput | null,
+  exportGuard?: ExportImports | null,
 ): PlanResult {
   const ahead = new Map<Path, { blob: Sha | null; by: Id }>();
   const aheadPaths: Path[] = [];
@@ -204,6 +228,7 @@ export function planCycle(
     if (!imported.has(blob)) imported.set(blob, importTargets(made.path, made.text));
     return imported.get(blob);
   };
+  const exportRun = exportGuard === undefined ? null : exportRunFor(exportGuard, produced);
   for (const batch of batches) {
     const ok: Proposal[] = [];
     const back: Returned[] = [];
@@ -288,6 +313,11 @@ export function planCycle(
         back.push({ proposalId: p.id, reason: broken });
         continue;
       }
+      const unexported = exportRun ? brokenExports(p, before, trunk, exportRun, accepted.length) : null;
+      if (unexported !== null) {
+        back.push({ proposalId: p.id, reason: unexported });
+        continue;
+      }
       ok.push(p);
       if (kept) revalidated.set(p.id, kept);
       if (files) {
@@ -311,7 +341,7 @@ export function planCycle(
     accepted.push(ok);
     returned.push(back);
   }
-  return { accepted, returned, revalidated, merged, mergedTexts };
+  return { accepted, returned, revalidated, merged, mergedTexts, ...(exportRun ? { exportsUncovered: exportRun.uncovered } : {}) };
 }
 
 /** The merge of one stale proposal's files (mergeWrites): the files and their merged texts by blob id, or the conflicts that stopped it. */
@@ -439,6 +469,209 @@ function brokenImports(
   const files = [...broken.keys()].sort();
   const importers = [...new Set([...broken.values()].flatMap((s) => [...s]))].sort();
   return `deleting ${listText(files, GUARD_FILES_NAMED)} breaks the imports of ${listText(importers, GUARD_IMPORTERS_NAMED)}: change them in the same change, or first`;
+}
+
+/** Names an export guard reason names at most, per file. */
+const GUARD_NAMES_NAMED = 5;
+
+/** What the export guard keeps through one cycle (see brokenExports). */
+interface ExportRun {
+  /** Null: the guard is on but its input could not be read. */
+  input: ExportImports | null;
+  /** A version's exports and imports: as the trunk writer read them, or from the text of a version a merge of the cycle made. */
+  exportsOf(blob: Sha): GuardExports | null | undefined;
+  bindingsOf(blob: Sha): readonly ImportBinding[] | undefined;
+  /** Names the proposals accepted so far stopped exporting, per file, each with the first to stop and its batch. */
+  removed: Map<Path, Map<string, { by: Id; batch: number }>>;
+  /** Script files the proposals accepted so far write (not delete), each with the last to write it and its batch. */
+  written: Map<Path, { by: Id; batch: number }>;
+  /** Checks of changed script files left undone. */
+  uncovered: number;
+}
+
+/** A fresh ExportRun over the guard's input and the versions the cycle's merges make (read from their texts once each). */
+function exportRunFor(input: ExportImports | null, produced: ReadonlyMap<Sha, { path: Path; text: string }>): ExportRun {
+  const made = new Map<Sha, { exports: GuardExports | null; bindings: ImportBinding[] }>();
+  const fromMerge = (blob: Sha): { exports: GuardExports | null; bindings: ImportBinding[] } | undefined => {
+    const version = produced.get(blob);
+    if (!version) return undefined;
+    let read = made.get(blob);
+    if (!read) {
+      read = { exports: guardExports(version.text), bindings: importBindings(version.text) };
+      made.set(blob, read);
+    }
+    return read;
+  };
+  return {
+    input,
+    exportsOf: (blob) => (input?.exports.has(blob) ? input.exports.get(blob) : fromMerge(blob)?.exports),
+    bindingsOf: (blob) => input?.bindings.get(blob) ?? fromMerge(blob)?.bindings,
+    removed: new Map(),
+    written: new Map(),
+    uncovered: 0,
+  };
+}
+
+/**
+ * The export guard for one proposal: why it goes back, or null. `before` is trunk as it will be just before `p` lands
+ * (trunk, the proposals accepted earlier in the cycle, and the ones accepted earlier in its batch); imports resolve as
+ * the deletion guard resolves them, against trunk as it will be once `p` lands. `batch` is `p`'s batch in the cycle.
+ * - A script file `p` writes imports a name that a proposal accepted earlier in the cycle stopped exporting from the
+ *   file the import resolves to: `p` goes back naming that proposal (of the two, only the first lands in the cycle).
+ * - `p` stops exporting a name from a script file (the version before it exports it; `p`'s version neither exports it
+ *   nor may still export it where the export reader cannot see for sure, GuardExports.loose) while a script file
+ *   imports it from there once `p` lands: a trunk importer, in the version `p`, the cycle or trunk gives it, or a file a
+ *   proposal accepted earlier in the cycle writes. `p` goes back naming the importers, or naming that proposal when it
+ *   added the import. An importer rewritten without the import by `p`, or by a proposal ahead of it, no longer counts;
+ *   a rewrite later in the cycle does not help, since `p` lands before it.
+ * What cannot be checked is skipped and counted in `run.uncovered`, once per file and proposal: a version whose exports
+ * were not read or cannot be known (exportedNames null, `export *`, CommonJS), a file whose importers were not looked up,
+ * an importer version not read, and an import of the file that takes no checkable names (a namespace import, `export *`,
+ * dynamic import, require) or that a path alias might resolve to it. Without input (`run.input` null) every changed
+ * script file is skipped. When it lets `p` through, it records what `p` stops exporting and writes for the proposals
+ * after it.
+ */
+function brokenExports(p: Proposal, before: (path: Path) => Sha | null, trunk: (path: Path) => Sha | null, run: ExportRun, batch: number): string | null {
+  const own = new Map<Path, Sha | null>();
+  for (const f of p.writeSet) own.set(f.path, f.blob ?? null);
+  const versionOf = (path: Path): Sha | null => {
+    const w = own.get(path);
+    return w !== undefined ? w : before(path);
+  };
+  const exists = (path: Path): boolean => versionOf(path) !== null;
+  const changed: Array<{ path: Path; was: Sha; now: Sha }> = [];
+  for (const [path, now] of own) {
+    const was = before(path);
+    if (now !== null && was !== null && now !== was && guardsScript(path)) changed.push({ path, was, now });
+  }
+  if (run.input === null) {
+    run.uncovered += changed.length;
+    return null;
+  }
+  const where = (ahead: { by: Id; batch: number }): string => `${ahead.by}${ahead.batch === batch ? " in this landing" : ", landing ahead in this cycle"}`;
+
+  // A name stopped by a proposal ahead, imported by p.
+  if (run.removed.size > 0) {
+    for (const [path, blob] of own) {
+      if (blob === null || !guardsScript(path)) continue;
+      const binds = run.bindingsOf(blob);
+      if (binds === undefined) {
+        run.uncovered++;
+        continue;
+      }
+      for (const b of binds) {
+        if (b.names === null || !isRelative(b.specifier)) continue;
+        const file = resolveModule(specifierTarget(path, b.specifier), exists);
+        const gone = file === null || own.has(file) ? undefined : run.removed.get(file);
+        const hit = gone ? b.names.filter((n) => gone.has(n)) : [];
+        if (hit.length === 0) continue;
+        const ahead = gone!.get(hit[0]!)!;
+        return `conflicts with ${where(ahead)}: it removes ${exportText(hit)} from ${file}, which ${path} imports in this change: read ${file} again once that change lands, and import what it exports then`;
+      }
+    }
+  }
+
+  // Names p stops exporting, and the files importing them once p lands.
+  const removes = new Map<Path, string[]>();
+  for (const c of changed) {
+    const was = run.exportsOf(c.was);
+    const now = run.exportsOf(c.now);
+    if (!was || !now) {
+      run.uncovered++;
+      continue;
+    }
+    const gone = removedNames(was, now);
+    if (gone.length > 0) removes.set(c.path, gone);
+  }
+  const broken = new Map<Path, Map<Path, Set<string>>>();
+  let added: { ahead: { by: Id; batch: number }; path: Path; file: Path; names: string[] } | null = null;
+  for (const [file, gone] of removes) {
+    const importers = run.input.importers.get(file);
+    if (importers === undefined) {
+      run.uncovered++;
+      continue;
+    }
+    const onTrunk = new Set(importers);
+    const candidates = new Set<Path>(importers);
+    for (const path of run.written.keys()) candidates.add(path);
+    for (const [path, blob] of own) if (blob !== null) candidates.add(path);
+    let partial = false;
+    for (const path of candidates) {
+      const version = versionOf(path);
+      // Deleted, not a script, or a file the cycle leaves as trunk has it that does not import the file there.
+      if (path === file || version === null || !guardsScript(path) || (!onTrunk.has(path) && version === trunk(path))) continue;
+      const binds = run.bindingsOf(version);
+      if (binds === undefined) {
+        partial = true;
+        continue;
+      }
+      for (const b of binds) {
+        if (!isRelative(b.specifier)) {
+          if (mayName(b.specifier, file) && (b.names === null || b.names.some((n) => gone.includes(n)))) partial = true;
+          continue;
+        }
+        if (resolveModule(specifierTarget(path, b.specifier), exists) !== file) continue;
+        if (b.names === null) {
+          partial = true;
+          continue;
+        }
+        const hit = b.names.filter((n) => gone.includes(n));
+        if (hit.length === 0) continue;
+        const ahead = own.has(path) ? undefined : run.written.get(path);
+        if (ahead && !onTrunk.has(path)) {
+          added ??= { ahead, path, file, names: hit };
+          continue;
+        }
+        const by = broken.get(file) ?? new Map<Path, Set<string>>();
+        const names = by.get(path) ?? new Set<string>();
+        for (const n of hit) names.add(n);
+        by.set(path, names);
+        broken.set(file, by);
+      }
+    }
+    if (partial) run.uncovered++;
+  }
+  if (added) {
+    return `conflicts with ${where(added.ahead)}: its ${added.path} imports ${listText(added.names, GUARD_NAMES_NAMED)} from ${added.file}, which this change stops exporting: keep the export, or change ${added.path} in this change once that change lands`;
+  }
+  if (broken.size > 0) return removalReason(broken);
+
+  // p lands: what it stops exporting and what it writes bind the proposals after it.
+  for (const [path, blob] of own) {
+    const stopped = run.removed.get(path);
+    if (blob === null) {
+      run.removed.delete(path);
+      run.written.delete(path);
+      continue;
+    }
+    if (stopped) {
+      // A name p's version exports again, or may, is no longer removed; with its exports unknown, nothing is.
+      const now = run.exportsOf(blob);
+      if (!now) run.removed.delete(path);
+      else for (const n of [...stopped.keys()]) if (now.names.has(n) || now.loose.has(n)) stopped.delete(n);
+    }
+    if (guardsScript(path)) run.written.set(path, { by: p.id, batch });
+  }
+  for (const [file, gone] of removes) {
+    const stopped = run.removed.get(file) ?? new Map<string, { by: Id; batch: number }>();
+    for (const n of gone) if (!stopped.has(n)) stopped.set(n, { by: p.id, batch });
+    run.removed.set(file, stopped);
+  }
+  return null;
+}
+
+/** "export foo" or "exports foo and bar" (at most GUARD_NAMES_NAMED names). */
+function exportText(names: readonly string[]): string {
+  return `${names.length === 1 ? "export" : "exports"} ${listText(names, GUARD_NAMES_NAMED)}`;
+}
+
+/** The export guard's reason for a removal that breaks imports: per removed file its names, then the importers. */
+function removalReason(broken: Map<Path, Map<Path, Set<string>>>): string {
+  const files = [...broken.keys()].sort();
+  const parts = files.map((file) => `${exportText([...new Set([...broken.get(file)!.values()].flatMap((s) => [...s]))].sort())} from ${file}`);
+  const importers = [...new Set([...broken.values()].flatMap((by) => [...by.keys()]))].sort();
+  const one = importers.length === 1;
+  return `removing ${listText(parts, GUARD_FILES_NAMED)} breaks the ${one ? "import" : "imports"} in ${listText(importers, GUARD_IMPORTERS_NAMED)}: change ${one ? importers[0] : "them"} in the same change, or first`;
 }
 
 /** "a", "a and b", "a, b and c"; past `max` items, the first `max` and "N more". */
