@@ -23,6 +23,7 @@ export const COLONY_FLAGS: readonly string[] = [
   "FT_FIELD_GUIDE",
   "FT_GOAL_CONFLICT",
   "FT_INLINE",
+  "FT_INTENT_CHAIN_GATE",
   "FT_MEGAFILE",
   "FT_MERGE_INSERTIONS",
   "FT_MODEL_STEPUP",

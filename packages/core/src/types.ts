@@ -232,8 +232,12 @@ export interface Intent {
   escalation?: IntentEscalation;
 }
 
-/** What an agent can report instead of working around it. */
-export type EscalationKind = "broken-test" | "contradictory-spec" | "impossible" | "other";
+/**
+ * What an agent can report instead of working around it. "chain" is never an agent's report: it is the colony's own
+ * hold on an agent-declared intent whose ancestry holds as many agent-declared intents as the decide policy's
+ * intentChainDepth (FT_INTENT_CHAIN_GATE, worker colony/chain.ts), kept as an open report so a person's answer releases it.
+ */
+export type EscalationKind = "broken-test" | "contradictory-spec" | "impossible" | "other" | "chain";
 
 /** An agent's report that an intent cannot be done as written, and a person's answer. */
 export interface IntentEscalation {

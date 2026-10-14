@@ -135,6 +135,17 @@ export interface Env {
    */
   FT_TWINS?: string;
   /**
+   * Optional: the intent chain gate, "on", or a comma-separated list of colony ids; absent or "off" is off. An
+   * agent-declared intent (MCP declare, Agent2Agent, POST /intents with source agent) whose ancestry, parent by parent,
+   * holds as many agent-declared intents as the decide policy's intentChainDepth (2: the third agent-declared intent in
+   * a row) is held for a person before any agent can take it: an open report of kind "chain" on the intent says who
+   * declared it and from what, GET /escalations and the Review tab show it, take offers it to no agent, and a person's
+   * dismiss releases it or withdraw ends it (colony/chain.ts). The same gate holds the intents one agent declares past
+   * the policy's intentFanout (5) in an hour, however shallow, since each reaches another agent. Who declared an intent
+   * (TakeResult.declaredBy: its source, the declarer and its model, the chain depth) is shown at every take, flag or no flag.
+   */
+  FT_INTENT_CHAIN_GATE?: string;
+  /**
    * Optional: the megafile alarm, "on", or a comma-separated list of colony ids; absent or "off" is off. A script file
    * that grew fast while many agents wrote it, or that changes keep colliding on, turns hot (core/hotness.ts): the
    * colony declares an intent to split it and holds the file (no other change may write it, no other intent covering

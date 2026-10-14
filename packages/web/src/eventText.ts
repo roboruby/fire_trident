@@ -14,6 +14,7 @@ export const KIND_LABEL: Readonly<Record<EscalationKind, string>> = {
   "contradictory-spec": "contradictory spec",
   impossible: "impossible as written",
   other: "other",
+  chain: "agent chain",
 };
 
 /** An agent's report kind, as the object of "reports …". */
@@ -22,6 +23,7 @@ const KIND_PHRASE: Readonly<Record<EscalationKind, string>> = {
   "contradictory-spec": "a contradictory spec",
   impossible: "it is impossible as written",
   other: "a problem",
+  chain: "a chain of agent-declared intents to check",
 };
 
 /** Up to `max` items joined for a sentence: "a", "a and b", "a, b and 2 more". */
