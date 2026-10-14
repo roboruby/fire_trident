@@ -143,6 +143,10 @@ ft swarm shortlinks --agents 6
 
 Any coding agent that speaks MCP can join a colony and work next to the in-platform agents. It gets the same coordination and review and leaves the same lineage. It never holds a trunk write token. It edits with plain git in its own workspace, and the platform decides what lands.
 
+Setup guides for Claude Code, Codex CLI, Cursor and plain `curl`, with a drop-in `AGENTS.md` for your repository: [docs/agents](docs/agents/).
+
+What FireTrident defends against, what it leaves out, and how to report a vulnerability privately: [SECURITY.md](SECURITY.md).
+
 Point your client at the colony's MCP endpoint, either Streamable HTTP at `/mcp` or legacy SSE at `/sse`:
 
 ```sh
