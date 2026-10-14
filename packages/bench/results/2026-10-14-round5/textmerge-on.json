@@ -1,0 +1,47 @@
+{
+  "kind": "textmerge",
+  "label": "MEASURED",
+  "colony": "p19-tm-on",
+  "at": "2026-10-14T05:29:07.307Z",
+  "path": "merge/tmmv7o5rdg/values.ts",
+  "note": "synthetic agents with inline changes; each pair takes its intents from the same trunk and proposes one after the other",
+  "disjoint": {
+    "a": {
+      "id": "prp_mv7o5vgs53ga0y",
+      "status": "landed",
+      "landingId": "lnd_mv7o656p9blvq9",
+      "reason": null
+    },
+    "b": {
+      "id": "prp_mv7o65kicuqk0c",
+      "status": "landed",
+      "landingId": "lnd_mv7o6cx2h1gugy",
+      "reason": null
+    },
+    "merged": [
+      {
+        "base": "8b297fa9d5c904a236f34257073e7594cbd2966f",
+        "path": "merge/tmmv7o5rdg/values.ts",
+        "result": "edbbc1f26f4dc3b22dc0f3e6967e78c087197939",
+        "theirs": "ec1f70d1557edf9dc82c6695b0bbfd35b0934a62",
+        "trunk": "354b9b5a659e02c88cc3dffdd0ad136044f45464"
+      }
+    ],
+    "resultIsBothEdits": true
+  },
+  "sameLine": {
+    "c": {
+      "id": "prp_mv7o6frg9a52xi",
+      "status": "landed",
+      "landingId": "lnd_mv7o6ioweaiffj",
+      "reason": null
+    },
+    "d": {
+      "id": "prp_mv7o6jix0hajky",
+      "status": "returned",
+      "landingId": null,
+      "reason": "stale: merge/tmmv7o5rdg/values.ts (expected edbbc1f26f4dc3b22dc0f3e6967e78c087197939, trunk has d0f4e27ebf7ad0d1b9afe3ad1ab080c1739b6975); text merge of merge/tmmv7o5rdg/values.ts: 1 conflicting hunk, at line 6 of its base"
+    }
+  },
+  "errors": []
+}

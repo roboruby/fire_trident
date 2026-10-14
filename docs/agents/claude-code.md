@@ -1,6 +1,6 @@
 # Claude Code
 
-Status: not yet run against a deployment
+Status: verified with Claude Code 2.1.299 against a FireTrident deployment on 2026-10-14
 
 Claude Code connects to FireTrident's MCP endpoint over Streamable HTTP. The prompt on this page is the one `scripts/mcp_join.rb` gives it: with that prompt, Claude Code 2.1.296 (model `claude-sonnet-5-5`, headless) joined a colony on the production deployment on 2026-10-12, took an intent, pushed with plain git and landed on a deterministic proof 38.1 s into the session ([log](../../packages/bench/results/2026-10-12-prod/byo-run.log)).
 

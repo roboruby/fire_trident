@@ -3,6 +3,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { PRIVATE_KEY_BEGIN } from "../../src/decide/danger.ts";
 import { FireTridentMcp } from "../../src/mcp/FireTridentMcp.ts";
+import { PublicTools, publicServer } from "../../src/mcp/public.ts";
 
 /**
  * The guides in docs/agents tell people and agents which MCP tools to call and with which arguments.
@@ -66,6 +67,42 @@ async function listed(env: Record<string, string>): Promise<Map<string, Set<stri
   } finally {
     await client.close();
   }
+}
+
+/** The public read-only server's tools (`/public/mcp`), as an MCP client lists them; no read is made to list them. */
+async function publicServerTools(): Promise<Map<string, Set<string>>> {
+  const server = publicServer(new PublicTools({ colonies: new Set(["demo"]), reads: {} as never }), ["demo"]);
+  const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
+  await server.connect(serverSide);
+  const client = new Client({ name: "agent-docs-test", version: "0.0.0" });
+  await client.connect(clientSide);
+  try {
+    const { tools } = await client.listTools();
+    return new Map(tools.map((t) => [t.name, new Set(Object.keys(t.inputSchema.properties ?? {}))]));
+  } finally {
+    await client.close();
+  }
+}
+
+/** The rows of every table headed "Public tool" on a page: the tool and its argument names. */
+function publicRows(text: string): Array<{ tool: string; args: string[] }> {
+  const out: Array<{ tool: string; args: string[] }> = [];
+  let inTable = false;
+  for (const line of text.split("\n")) {
+    const cells = line.trim().startsWith("|") ? line.trim().replace(/^\||\|$/g, "").split("|").map((c) => c.trim()) : null;
+    if (!cells) {
+      inTable = false;
+      continue;
+    }
+    if (cells[0] === "Public tool") {
+      inTable = true;
+      continue;
+    }
+    if (!inTable || /^-+$/.test(cells[0] ?? "")) continue;
+    const tool = /^`([a-z_]+)`$/.exec(cells[0] ?? "")?.[1] ?? cells[0] ?? "";
+    out.push({ tool, args: [...(cells[1] ?? "").matchAll(/`([A-Za-z_]+)`/g)].map((m) => m[1] ?? "") });
+  }
+  return out;
 }
 
 /** Every tool with the union of its arguments across deployments: inline changes add `files` to propose. */
@@ -310,6 +347,16 @@ describe("docs/agents", () => {
     const guides = PAGES.filter((p) => !NOT_GUIDES.has(p.name));
     expect(guides.length).toBeGreaterThan(0);
     for (const g of guides) expect(lineAfterTitle(g.text), g.name).toMatch(STATUS);
+  });
+
+  it("names only the public server's tools and arguments in Public tool tables, and lists them all in the index", async () => {
+    const tools = await publicServerTools();
+    const rows = PAGES.flatMap((p) => publicRows(p.text).map((r) => ({ page: p.name, ...r })));
+    const problems = rows.flatMap((r) => (!tools.has(r.tool) ? [`${r.page}: ${r.tool} is not a public tool`] : r.args.filter((a) => !tools.get(r.tool)!.has(a)).map((a) => `${r.page}: ${r.tool} takes no ${a}`)));
+    expect(problems).toEqual([]);
+    const index = PAGES.find((p) => p.name === INDEX);
+    const listed = new Set(index ? publicRows(index.text).map((r) => r.tool) : []);
+    expect([...tools.keys()].filter((t) => !listed.has(t))).toEqual([]);
   });
 
   it("holds nothing that looks like a credential", () => {

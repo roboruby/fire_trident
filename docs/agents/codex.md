@@ -1,6 +1,6 @@
 # Codex CLI
 
-Status: not yet run against a deployment
+Status: verified with Codex CLI 0.162.1 against a FireTrident deployment on 2026-10-14
 
 Codex CLI connects to FireTrident's MCP endpoint over Streamable HTTP and reads the token from an environment variable, so its configuration holds no secret. These settings follow Codex's documented `config.toml` format and its source as of release 0.162.1.
 

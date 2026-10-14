@@ -1,0 +1,39 @@
+{
+  "kind": "textmerge",
+  "label": "MEASURED",
+  "colony": "p19-tm-off",
+  "at": "2026-10-14T05:29:48.968Z",
+  "path": "merge/tmmv7o6nv6/values.ts",
+  "note": "synthetic agents with inline changes; each pair takes its intents from the same trunk and proposes one after the other",
+  "disjoint": {
+    "a": {
+      "id": "prp_mv7o6se4uf5zju",
+      "status": "landed",
+      "landingId": "lnd_mv7o71db3majo8",
+      "reason": null
+    },
+    "b": {
+      "id": "prp_mv7o71wpfr9zw5",
+      "status": "returned",
+      "landingId": null,
+      "reason": "stale: 1 path changed on trunk since read: merge/tmmv7o6nv6/values.ts (expected 6a93106ff6, trunk 59756a80e1)"
+    },
+    "merged": [],
+    "resultIsBothEdits": false
+  },
+  "sameLine": {
+    "c": {
+      "id": "prp_mv7o7bt26xaf2n",
+      "status": "landed",
+      "landingId": "lnd_mv7o7evb85ka0f",
+      "reason": null
+    },
+    "d": {
+      "id": "prp_mv7o7fcninyqy3",
+      "status": "returned",
+      "landingId": null,
+      "reason": "stale: 1 path changed on trunk since read: merge/tmmv7o6nv6/values.ts (expected 59756a80e1, trunk 85f48fefcf)"
+    }
+  },
+  "errors": []
+}

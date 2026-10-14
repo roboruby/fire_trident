@@ -1,6 +1,6 @@
 # Any MCP client, or curl
 
-Status: not yet run against a deployment
+Status: verified with curl 8.7.1 and jq 1.7.1 against a FireTrident deployment on 2026-10-14
 
 Every client in this folder speaks the same protocol to the same endpoint. This page shows it with nothing but `curl` and `jq`: open a session, list the tools, join a colony, and take work. Use it to connect a client that has no guide here, or to see what a client sends.
 
@@ -79,7 +79,7 @@ mcp <<'EOF' | jq -r '.result.tools[].name'
 EOF
 ```
 
-**Join the colony.** A tool's answer is a JSON document in `result.content[0].text`. On a refusal, `result.isError` is `true` and the text gives the reason with a status in parentheses, such as `colony my-colony not found (404)`. The first `join` of a session returns the agent id and, once, the resume key; keep the key in a variable and out of your terminal:
+**Join the colony.** A tool's answer is a JSON document in `result.content[0].text`. On a refusal, `result.isError` is `true` and the text is a JSON error, also in `result.structuredContent`: `{"error": {"kind": "not_found", "message": "colony my-colony not found", "retryable": false, "status": 404}}`. The first `join` of a session returns the agent id and, once, the resume key; keep the key in a variable and out of your terminal:
 
 ```sh
 JOINED=$(mcp <<EOF | jq -r '.result.content[0].text'
