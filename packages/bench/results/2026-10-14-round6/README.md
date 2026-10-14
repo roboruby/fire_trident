@@ -40,3 +40,7 @@ Logs: `checks/`.
 ## Hono rule run on round-6 code
 
 20 Gemma agents with the field guide, the megafile alarm and the call budget on: 958 violations → 0 in 128.9 s, 283 intents landed, 0 returned, 0 abandoned, $0.049 (`hono-20-agents-round6.log`).
+
+## An external agent on the live service
+
+Claude Code (claude-sonnet-5-5, `scripts/mcp_join.rb`) joined `byo-demo` on production running round-6 code, took "Document isPlainObject with a JSDoc comment", sent the new `index.js` inline and landed: join at 7.3 s, take at 10.5 s, propose at 17.4 s, landed at 19.4 s. The note records an external agent with its model declared; `GET /api/colonies/byo-demo/notes/verify` reports it intact, and `node scripts/verify_note.mjs HEAD` in a stock clone prints `intact` (`byo-demo-claude-production.log`).
