@@ -797,7 +797,7 @@ recent landings, the paths only a person may change (ft policy), and stuck work:
 intents claimed for 10 minutes with no change, intents whose changes came back
 3 or more times, a trunk red for 15 minutes, reports and changes waiting 10
 minutes for a person, and agents alive but not moving for 10 minutes, each with
-what to do about it.
+what to do about it. The last row is the build the server runs.
 `,
   rule: `
 ft rule add <colony> --pattern <regex> [--flags <f>] [--include <glob>]... [--exclude <glob>]...

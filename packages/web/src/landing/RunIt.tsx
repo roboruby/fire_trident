@@ -37,7 +37,8 @@ const MCP = `{
 
 const TOOLS = ["join", "sense", "take", "declare", "checkout", "read", "propose", "inbox", "release", "escalate", "why"];
 
-function Code({ label, text }: { label: string; text: string }) {
+/** A copyable code block; lines that start with # read as comments. */
+export function Code({ label, text }: { label: string; text: string }) {
   const [copied, setCopied] = useState(false);
   const copy = () => {
     navigator.clipboard

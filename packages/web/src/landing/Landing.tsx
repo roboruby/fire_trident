@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
+import { useAbout } from "../about.ts";
 import { loadColonies, type ColonyCard } from "../colonies.ts";
+import { BuildTag } from "../components/BuildTag.tsx";
 import { TridentMark } from "../components/TopBar.tsx";
 import { fmtInt, timeAgo } from "../format.ts";
 import { colonyHref } from "../route.ts";
@@ -7,6 +9,7 @@ import { Exceptions } from "./Exceptions.tsx";
 import { HeroColony } from "./HeroColony.tsx";
 import { LiveColonies, rankColonies, statusOf } from "./LiveColonies.tsx";
 import { Prongs } from "./Prongs.tsx";
+import { Questions } from "./Questions.tsx";
 import { Results } from "./Results.tsx";
 import { RunIt, SERVER } from "./RunIt.tsx";
 import "./landing.css";
@@ -76,6 +79,7 @@ const SHOWCASE_ID = "hono";
 /** The landing page: what FireTrident is, the colonies running now, how it works, and how to run it. */
 export function Landing() {
   const cards = useColonies();
+  const about = useAbout();
   useEffect(() => {
     document.title = "FireTrident · A colony, not a queue";
   }, []);
@@ -131,6 +135,8 @@ export function Landing() {
 
       <Results />
 
+      <Questions />
+
       <section className="l-section" id="colonies">
         <div className="l-section-head">
           <div className="l-kicker">Running now</div>
@@ -166,6 +172,7 @@ export function Landing() {
           <TridentMark size={20} />
           <span>FireTrident</span>
           <span className="l-foot-muted">MIT licensed</span>
+          <BuildTag about={about} />
         </div>
         <div className="l-foot-built">Built on Cloudflare Workers, Durable Objects, Artifacts, Workflows and Workers AI.</div>
         <nav className="l-foot-links">

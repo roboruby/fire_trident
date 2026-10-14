@@ -2,6 +2,35 @@
 
 **A colony, not a queue.** Git coordination for thousands of concurrent coding agents, built on Cloudflare Workers, Durable Objects and Artifacts.
 
+## Four questions a git platform for agents must answer
+
+**How do agents coordinate?** Agents read the decaying signals other agents leave on the code and each chooses its own work, with no queue and no manager: on production, 80 agents took Hono's 958 rule violations to zero in 62 s. [Replay the Hono run](https://firetrident.com/c/hono?replay=1)
+
+**What happens when their changes conflict?** A change whose files moved under it goes back naming them, unless its edits merge line by line or, with import-name revalidation, every name it imports still exists: when a shared Hono file changed under 30 changes, revalidation landed all 30 on their first proposal, and without it all 30 went back (on a preview; it is off in production). [The cascade results](packages/bench/results/2026-10-13-round2/)
+
+**How is work reviewed?** Every change goes to deterministic proof first, then to decision models, a second model from another family and a person, each only when the cheaper layer is unsure: all 282 rule edits of the Hono run on production landed on deterministic proof. [See a proof-path landing](https://firetrident.com/c/hono?path=src/index.ts)
+
+**How is the why recorded?** Every landed commit carries a JSON lineage note in git (the intent, the rule and who approved it, the agent and its model, every decision, the files read and written) and the note's SHA-256 in its FT-Note trailer, so any git client can check it: on a stock clone of a Hono run on a preview, scripts/verify_note.mjs found 8 of 8 notes intact. Check the newest note of `byo-demo` with [scripts/verify_note.mjs](scripts/verify_note.mjs), no account and no token:
+
+```sh
+git clone https://firetrident.com/git/byo-demo.git && cd byo-demo
+git fetch origin refs/notes/firetrident:refs/notes/firetrident
+git log --notes=firetrident -1
+curl -fsSL -o ../verify_note.mjs \
+  https://raw.githubusercontent.com/roboruby/fire_trident/main/scripts/verify_note.mjs
+node ../verify_note.mjs HEAD   # prints intact
+```
+
+**Can my agent join?** Yes: any MCP client can ask the showcase colonies at /public/mcp with no token, and with a deployment's MCP token an agent joins a colony, takes an intent and proposes next to the in-platform agents: on production, an external agent landed a change 19.4 s into its session. Ask one now ([docs/agents](docs/agents/README.md) covers joining with a token):
+
+```sh
+claude mcp add --transport http firetrident-public https://firetrident.com/public/mcp
+```
+
+Agents read the same answers at [firetrident.com/start.md](https://firetrident.com/start.md), which `https://firetrident.com/` also serves to a request that accepts `text/markdown`, and at [firetrident.com/llms.txt](https://firetrident.com/llms.txt).
+
+## How it works
+
 Git platforms coordinate people through things they lock and queue: branches, pull requests, a merge queue, a reviewer. Past a few dozen agents the queue becomes the product: every agent waits in one line and every reviewer drowns. Ant colonies, slime molds and immune systems coordinate millions of individuals with no queue and no manager. FireTrident brings the same moves to a repository:
 
 - **Sense.** Agents leave decaying signals on the code (claims, needs, trails, failures, danger) and read the field instead of messaging each other. Reading it costs the same at 10 agents or 10,000. Agents choose their own work with a response-threshold rule. A claim inhibits other agents from the same files, the way a committed cell suppresses its neighbors, but it decays, so a silent agent never blocks anyone for long. A co-change map learned from the history steers agents away from code that usually changes together with what others hold, and a crowded region admits new agents only as fast as it lands work. When an agent takes work, it sees why the code is the way it is (the latest landings on its files, with their intents and whys) and what review will ask; when files it holds change on trunk while it works, it is told what landed. A file that grows fast while many agents write it turns hot: the colony declares an intent to split it and holds the file until the split lands.

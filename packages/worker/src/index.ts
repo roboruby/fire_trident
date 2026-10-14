@@ -5,6 +5,8 @@ import { gitProxy } from "./api/git-proxy.ts";
 import { FireTridentMcp } from "./mcp/FireTridentMcp.ts";
 import { mcpRefusal } from "./mcp/gate.ts";
 import { publicMcp } from "./mcp/public.ts";
+import { aboutResponse } from "./front/about.ts";
+import { frontDoor } from "./front/door.ts";
 
 export { ColonyDO } from "./colony/ColonyDO.ts";
 export { RegionDO } from "./region/RegionDO.ts";
@@ -16,6 +18,8 @@ export { IngestWorkflow } from "./workflows/IngestWorkflow.ts";
 export { VerifyWorkflow } from "./workflows/VerifyWorkflow.ts";
 
 const app = new Hono<{ Bindings: Env }>();
+// Which build is serving (commit, Worker version, deploy time) and which flags are on, by name only (front/about.ts).
+app.get("/api/about", (c) => aboutResponse(c.env));
 app.route("/api", api);
 app.get("/healthz", (c) => c.json({ ok: true, service: "firetrident" }));
 // MCP for external agents: Streamable HTTP at /mcp, legacy SSE at /sse (one Durable Object per session, binding MCP).
@@ -38,6 +42,9 @@ app.all("/sse/*", mcpGate(mcpSse));
 app.all("/git/*", (c) => gitProxy(c.req.raw, c.env));
 // Read-only, stateless MCP with no token for the colonies in FT_PUBLIC_MCP (status, why, intent, sense); 404 when none are listed.
 app.all("/public/mcp", (c) => publicMcp(c.req.raw, c.env));
+// The front door ("/" is in run_worker_first): the landing page for browsers, start.md for a request that prefers
+// text/markdown, both with a Link header to start.md (front/door.ts).
+app.get("/", (c) => frontDoor(c.req.raw, c.env));
 // Static UI falls through to ASSETS.
 app.all("*", (c) => c.env.ASSETS.fetch(c.req.raw));
 

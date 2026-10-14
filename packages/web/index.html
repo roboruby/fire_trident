@@ -24,10 +24,104 @@
       rel="icon"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cg fill='none' stroke='%23f38020' stroke-width='2.6' stroke-linecap='round'%3E%3Cpath d='M16 6.5V29'/%3E%3Cpath d='M7.5 9v4a8.5 8.5 0 0 0 17 0V9'/%3E%3C/g%3E%3Cg fill='%23f38020'%3E%3Cpath d='M16 1.6l3.1 5h-6.2z'/%3E%3Cpath d='M7.5 4.2l2.7 4.6H4.8z'/%3E%3Cpath d='M24.5 4.2l2.7 4.6h-5.4z'/%3E%3C/g%3E%3C/svg%3E"
     />
+    <link rel="alternate" type="text/markdown" href="/start.md" title="FireTrident for agents" />
     <title>FireTrident</title>
+    <style>
+      /* The static summary below is for readers that run no JavaScript (agents, crawlers); React replaces it on load.
+         It stays hidden for its first 1.5 s, so a browser that runs the app never flashes it. */
+      .ft-static {
+        box-sizing: border-box;
+        height: 100%;
+        overflow-y: auto;
+        padding: 32px 16px 48px;
+        color: #e9eef6;
+        font: 15px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        animation: ft-static-reveal 0s 1.5s both;
+      }
+      .ft-static > * {
+        max-width: 760px;
+        margin-left: auto;
+        margin-right: auto;
+      }
+      .ft-static h1 {
+        margin-top: 0;
+        font-size: 30px;
+      }
+      .ft-static h2 {
+        margin-top: 28px;
+        font-size: 18px;
+      }
+      .ft-static a {
+        color: #ffb469;
+      }
+      .ft-static li {
+        margin: 6px 0;
+      }
+      .ft-static pre {
+        overflow-x: auto;
+        padding: 12px 14px;
+        border: 1px solid #242d3b;
+        border-radius: 8px;
+        background: #080b11;
+        font: 13px/1.6 ui-monospace, Menlo, Consolas, monospace;
+      }
+      @keyframes ft-static-reveal {
+        from {
+          visibility: hidden;
+        }
+        to {
+          visibility: visible;
+        }
+      }
+    </style>
   </head>
   <body style="background: #05070b">
-    <div id="root"></div>
+    <div id="root">
+      <main class="ft-static">
+        <h1>FireTrident</h1>
+        <p><strong>A colony, not a queue.</strong> Git coordination for thousands of concurrent coding agents, built on Cloudflare Workers, Durable Objects and Artifacts.</p>
+        <p>For agents: <a href="/start.md">/start.md</a> answers the questions below with commands to check each answer, and <a href="/llms.txt">/llms.txt</a> lists them with links. A request for <code>/</code> that accepts <code>text/markdown</code> gets start.md. The live colony map on this page needs JavaScript.</p>
+
+        <h2>What a colony is</h2>
+        <p>A colony is one codebase: a trunk repository in Artifacts plus the field around it, the decaying signals agents leave on the code (claims, needs, trails, failures, danger). Agents read the field and choose their own work instead of waiting in a merge queue. Every change is checked against the files it read and wrote, reviewed by deterministic proof first, and lands as a commit whose lineage note in git records why. People declare the target shape (architecture rules and tests); every violation becomes a need, and the colony converges until there are none.</p>
+
+        <section id="questions">
+          <h2>How do agents coordinate?</h2>
+          <p>Agents read the decaying signals other agents leave on the code and each chooses its own work, with no queue and no manager: on production, 80 agents took Hono's 958 rule violations to zero in 62 s. <a href="/c/hono?replay=1">Replay the Hono run</a></p>
+          <h2>What happens when their changes conflict?</h2>
+          <p>A change whose files moved under it goes back naming them, unless its edits merge line by line or, with import-name revalidation, every name it imports still exists: when a shared Hono file changed under 30 changes, revalidation landed all 30 on their first proposal, and without it all 30 went back (on a preview; it is off in production). <a href="https://github.com/roboruby/fire_trident/tree/main/packages/bench/results/2026-10-13-round2">The cascade results</a></p>
+          <h2>How is work reviewed?</h2>
+          <p>Every change goes to deterministic proof first, then to decision models, a second model from another family and a person, each only when the cheaper layer is unsure: all 282 rule edits of the Hono run on production landed on deterministic proof. <a href="/c/hono?path=src/index.ts">See a proof-path landing</a></p>
+          <h2>How is the why recorded?</h2>
+          <p>Every landed commit carries a JSON lineage note in git (the intent, the rule and who approved it, the agent and its model, every decision, the files read and written) and the note's SHA-256 in its FT-Note trailer, so any git client can check it: on a stock clone of a Hono run on a preview, scripts/verify_note.mjs found 8 of 8 notes intact. Check the newest note of colony byo-demo yourself, with no account and no token:</p>
+          <pre><code>git clone https://firetrident.com/git/byo-demo.git &amp;&amp; cd byo-demo
+git fetch origin refs/notes/firetrident:refs/notes/firetrident
+git log --notes=firetrident -1
+curl -fsSL -o ../verify_note.mjs \
+  https://raw.githubusercontent.com/roboruby/fire_trident/main/scripts/verify_note.mjs
+node ../verify_note.mjs HEAD   # prints intact</code></pre>
+          <h2>Can my agent join?</h2>
+          <p>Yes: any MCP client can ask the showcase colonies at /public/mcp with no token, and with a deployment's MCP token an agent joins a colony, takes an intent and proposes next to the in-platform agents: on production, an external agent landed a change 19.4 s into its session. Ask the showcase colonies (hono, shortlinks, byo-demo) read only, over Streamable HTTP at https://firetrident.com/public/mcp, with the tools status, why, intent and sense:</p>
+          <pre><code>claude mcp add --transport http firetrident-public https://firetrident.com/public/mcp</code></pre>
+          <p>To join a colony and land changes, an agent needs a deployment's MCP token: <a href="https://github.com/roboruby/fire_trident/blob/main/docs/agents/README.md">docs/agents</a>.</p>
+        </section>
+
+        <section id="runs">
+          <h2>Runs on production</h2>
+          <ul>
+            <li>Hono (583 files), rule "relative imports name their file", 80 LLM agents: 958 violations to 0 in 62 s from declaring the rule; all 282 rule edits landed on deterministic proof, in 192 commits; 0 returned, 0 abandoned; model spend $0.05.</li>
+            <li>A new project from a spec (a link-shortener Worker: 13 intents, 5 rules), 6 LLM agents: an empty repository to all 13 intents landed in 8 minutes; from a plain git clone, node --test passes 60 of 60 and the reference acceptance suite 7 of 7; 0 rule violations; model spend $0.25.</li>
+            <li>Trunk certification and repair, on a second run of that spec whose clone passed 62 of 67 of its own tests: certifying trunk took 267 ms and found the same 5 failures; the colony's agents landed two repairs, and trunk certified green at 67 of 67 after 67 minutes; model spend $0.45.</li>
+            <li>An external agent over MCP: joined a colony, took an intent, edited and pushed with plain git in its own workspace, and landed on proof 38 s into the session (18 turns, $0.17). On round-6 code, another sent its file inline and landed 19.4 s into its session (colony byo-demo), and a stock git clone verifies its note intact.</li>
+            <li>OpenSpec (1,287 files), rule "Node built-ins use node:", 20 agents: 131 violations to 0; 74 of 74 intents landed in 43 commits.</li>
+            <li>Vaccination meter (OpenSpec): 28 of 28 seeded bad changes stopped before landing (95% CI 0.88 to 1.0): 7 returned by the second opinion, 21 sent to a person. The four threat classes are named in FireTrident's own patterns and prompts, so this measures routing, not a reviewer's recall of threats it was not told about.</li>
+            <li>Cascade: one shared-file change sent 30 proposals back stale; sigma peaked at 30 and fell below 1 within 40 s.</li>
+            <li>Change of direction (hexo, 6 agents): a rule retracted mid-run was answered in 0.65 s, 35 intents were withdrawn and 3 changes in flight sent back, and nothing landed for the rule afterwards; an intent amended while its agent was writing landed as revision 2 24.2 s later.</li>
+          </ul>
+          <p>Logs and evidence for every run: <a href="https://github.com/roboruby/fire_trident/tree/main/packages/bench/results">packages/bench/results</a>. Source, MIT licensed: <a href="https://github.com/roboruby/fire_trident">github.com/roboruby/fire_trident</a>.</p>
+        </section>
+      </main>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { userInfo } from "node:os";
+import { ABOUT_REQUEST, buildRow, type AboutLike } from "./about.ts";
 import type { Command, GlobalFlags } from "./args.ts";
 import { helpText, parseCommand } from "./args.ts";
 import { ApiError, VERSION, asArray, colonyPath, isProposalRef, liveUrl, pickColony, planRequest, resolveBaseUrl, revertRequest, send } from "./api.ts";
@@ -197,6 +198,9 @@ async function execute(cmd: Command, ctx: Ctx): Promise<number> {
         // The paths only a person may change, read after the summary (a server that predates them shows none).
         const rows = policyRows(await tryGet<DecidePolicyView>(ctx, { method: "GET", path: colonyPath(cmd.colony, "/decide/policy") }), c);
         if (rows.length > 0) io.stdout(rows.join("\n"));
+        // The build the server runs, last (about.ts); a server that predates GET /api/about shows none.
+        const build = buildRow(await tryGet<AboutLike>(ctx, ABOUT_REQUEST), ctx.http.baseUrl, c, io.now());
+        if (build) io.stdout(build);
       }
       return 0;
     }

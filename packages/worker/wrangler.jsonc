@@ -14,7 +14,7 @@
     "directory": "../web/dist",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api", "/api/*", "/mcp", "/mcp/*", "/public/mcp", "/sse", "/sse/*", "/healthz", "/git/*"]
+    "run_worker_first": ["/", "/api", "/api/*", "/mcp", "/mcp/*", "/public/mcp", "/sse", "/sse/*", "/healthz", "/git/*"]
   },
   "durable_objects": {
     "bindings": [
@@ -38,6 +38,7 @@
     { "binding": "SESSIONS", "namespace": "ft-sessions" }
   ],
   "ai": { "binding": "AI" },
+  "version_metadata": { "binding": "CF_VERSION_METADATA" },
   "worker_loaders": [{ "binding": "LOADER" }],
   "workflows": [
     { "name": "ft-ingest", "binding": "INGEST", "class_name": "IngestWorkflow" },
@@ -48,6 +49,7 @@
   "previews": {
     "vars": { "FT_PUBLIC_URL": "https://firetrident.com", "FT_DEFAULT_MODEL": "@cf/moonshotai/kimi-k2.7-code", "FT_BULK_MODEL": "@cf/google/gemma-4-26b-a4b-it", "FT_REFLEX_MODEL": "@cf/cloudflare/clef", "FT_COCHANGE_WEIGHT": "5", "FT_PUBLIC_GIT": "hono,shortlinks,byo-demo", "FT_TRUNK_TESTS": "on" },
     "ai": { "binding": "AI" },
+    "version_metadata": { "binding": "CF_VERSION_METADATA" },
     "worker_loaders": [{ "binding": "LOADER" }],
     "artifacts": [
       { "binding": "ARTIFACTS", "namespace": "ft-trunk" },

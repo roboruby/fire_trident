@@ -1092,3 +1092,85 @@ a.lc:hover .lc-open {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* the questions: one sentence, one measured number and one link each (Questions.tsx) */
+
+.qa {
+  border-top: 1px solid var(--line);
+}
+
+.qa-row {
+  display: grid;
+  grid-template-columns: minmax(0, 0.42fr) minmax(0, 1fr);
+  gap: 10px 40px;
+  padding: 24px 0;
+  border-bottom: 1px solid var(--line);
+  scroll-margin-top: 24px;
+}
+
+.qa-q {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 680;
+  line-height: 1.3;
+  text-wrap: balance;
+}
+
+.qa-fig {
+  margin-top: 8px;
+  font-size: clamp(28px, 2.6vw, 38px);
+  font-weight: 760;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent-2);
+}
+
+.qa-a {
+  min-width: 0;
+}
+
+.qa-a p {
+  margin: 0;
+  font-size: 15.5px;
+  line-height: 1.6;
+  color: var(--text-2);
+  text-wrap: pretty;
+}
+
+.qa-a .code {
+  margin-top: 14px;
+}
+
+.landing .qa-link {
+  display: inline-block;
+  margin-top: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent-2);
+  text-decoration: none;
+}
+
+.landing .qa-link:hover {
+  color: var(--text);
+}
+
+.l-section-lede a {
+  color: var(--accent-2);
+}
+
+.l-foot .build-tag {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-3);
+}
+
+.l-foot a.build-tag:hover {
+  color: var(--text);
+}
+
+@media (max-width: 720px) {
+  .qa-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

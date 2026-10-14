@@ -160,7 +160,7 @@ describe("ft policy against a server", () => {
   it("adds the protected paths to ft status, and nothing when the server has none to show", async () => {
     const t = io(server());
     expect(await main(["status", "web"], t)).toBe(0);
-    expect(t.calls.map((k) => k.path)).toEqual(["/api/colonies/web", "/api/colonies/web/decide/policy"]);
+    expect(t.calls.map((k) => k.path)).toEqual(["/api/colonies/web", "/api/colonies/web/decide/policy", "/api/about"]);
     expect(t.out.at(-1)).toBe("protected  src/auth/** (a person decides every change to them)");
     const bare = io((call) => (call.path.endsWith("/decide/policy") ? { status: 404, body: { error: "no route" } } : server()(call)));
     expect(await main(["status", "web"], bare)).toBe(0);
