@@ -166,6 +166,12 @@ describe("findGoalConflict", () => {
     expect(findGoalConflict({ intentId: "int_go", intent: t, now: NOW, owners: [owner({ intentId: "fix" })] })).toBeNull();
   });
 
+  it("leaves the colony's own intents alone, on either side (a megafile split moves other intents' lines)", () => {
+    const t = intents({ split: { source: "system" }, int_go: {}, int_rust: {} });
+    expect(findGoalConflict({ intentId: "split", intent: t, now: NOW, owners: [owner()] })).toBeNull();
+    expect(findGoalConflict({ intentId: "int_go", intent: t, now: NOW, owners: [owner({ intentId: "split" })] })).toBeNull();
+  });
+  
   it("leaves intents a rule declared alone, on either side", () => {
     const t = intents({ conform: { source: "rule" }, int_go: {}, int_rust: {} });
     expect(findGoalConflict({ intentId: "conform", intent: t, now: NOW, owners: [owner()] })).toBeNull();

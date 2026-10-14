@@ -13,8 +13,8 @@ import type { Id, IntentSource, Millis, Path, UndoneLines } from "./types.ts";
  * that are still in the version at P's base; L is recent (within GOAL_CONFLICT_WINDOW_MS and among the colony's newest
  * GOAL_CONFLICT_LANDINGS landings); L wrote them for a different intent that is neither an ancestor nor a descendant
  * of P's intent (the parent chain); and P removes at least max(GOAL_CONFLICT_MIN_LINES, half of L's lines in that
- * version). Repair intents of trunk certification and intents that enforce a rule people declared, on either side, and
- * FireTrident's own commits (reverts, antibodies) never conflict.
+ * version). Repair intents of trunk certification, intents that enforce a rule people declared and the colony's own
+ * intents (megafile splits), on either side, and FireTrident's own commits (reverts, antibodies) never conflict.
  *
  * Lines are compared with their whitespace collapsed (re-indenting a line does not undo it), and blank lines do not
  * count. Who wrote each line is traced back through the landings that changed the file, newest first (LineTrace): the
@@ -52,11 +52,12 @@ export function goalConflictEnabled(setting: string | undefined, colonyId: Id): 
 }
 
 /**
- * Whether an intent from this source is never checked and never protected: trunk certification's repairs, and the
- * intents a rule declares (they bring code into line with a rule people wrote, which is no competing goal).
+ * Whether an intent from this source is never checked and never protected: trunk certification's repairs, the intents
+ * a rule declares (they bring code into line with a rule people wrote, which is no competing goal), and the colony's own
+ * (a megafile split moves lines other intents wrote, which is its purpose).
  */
 export function goalConflictExempt(source: IntentSource | undefined): boolean {
-  return source === "certify" || source === "rule";
+  return source === "certify" || source === "rule" || source === "system";
 }
 
 /**
