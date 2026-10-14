@@ -17,7 +17,7 @@ import { env } from "./helpers.ts";
  */
 
 /** What one push to the fake trunk repository does. */
-export type PushMode = "ok" | "fail" | "lost" | "refuse" | "hang" | "hang-after" | "held";
+export type PushMode = "ok" | "fail" | "lost" | "unclear" | "refuse" | "hang" | "hang-after" | "held";
 
 /** The fake trunk repository: main moves only by compare-and-swap; `certified` the same. */
 export class FakeRemote {
@@ -57,6 +57,8 @@ export class FakeRemote {
     this.moves.push({ from: expected, to: target, objects: oids.length });
     this.main = target;
     if (mode === "lost") throw new Error("network: connection reset after the update");
+    // Landed, but the reply says nothing about the ref (a reply cut at a packet boundary, as a refusal before outcomeOf).
+    if (mode === "unclear") return { ok: false, stale: false, detail: "no status for refs/heads/main" };
     if (mode === "hang-after") {
       this.hung++;
       return new Promise<PushOutcome>(() => undefined);
@@ -85,6 +87,8 @@ export class FakeRemote {
 interface Internals {
   pullBlobs(p: Proposal): Promise<Map<Path, number>>;
   pushChain(chain: { parent: Sha; tip: Sha }): Promise<{ ok: true } | { ok: false; detail: string }>;
+  directPush(chain: { parent: Sha; tip: Sha; objects?: string[] }): Promise<PushOutcome>;
+  regularPush(chain: { parent: Sha; tip: Sha }): Promise<PushOutcome>;
   publishPush(expected: Sha, target: Sha, oids: string[]): Promise<PushOutcome>;
   remoteHead(): Promise<Sha | null>;
   pushTrunkRef(ref: string, expectedOld: string | null): Promise<PushOutcome>;
@@ -107,6 +111,8 @@ let seq = 0;
 export interface PublisherOptions {
   publish?: string;
   bound?: PublishBound;
+  /** "real": the writer's own pushChain runs, its direct and regular pushes going to the FakeRemote (publishing off). */
+  chain?: "stub" | "real";
 }
 
 /** A trunk writer over a fresh object's storage whose trunk holds `files`, publishing to a FakeRemote. */
@@ -163,14 +169,26 @@ export class Publisher {
       for (const w of p.writeSet) if (w.blob !== null) sizes.set(w.path, (await readLocalBlob(g, w.blob)).length);
       return sizes;
     };
-    // Publishing off: the cycle pushes its chain with compare-and-swap on its parent.
-    x.pushChain = async (chain) => {
-      this.chainPushes.push({ parent: chain.parent, tip: chain.tip });
-      if (this.remote.main !== chain.parent) return { ok: false, detail: `stale: main is ${this.remote.main}` };
-      this.remote.moves.push({ from: chain.parent, to: chain.tip, objects: 0 });
-      this.remote.main = chain.tip;
-      return { ok: true };
-    };
+    if (this.opts.chain === "real") {
+      // Publishing off, the writer's own pushChain: both of its pushes go to the fake remote, as planned there.
+      x.directPush = (chain) => {
+        this.chainPushes.push({ parent: chain.parent, tip: chain.tip });
+        return this.remote.push(chain.parent, chain.tip, chain.objects ?? []);
+      };
+      x.regularPush = (chain) => {
+        this.chainPushes.push({ parent: chain.parent, tip: chain.tip });
+        return this.remote.push(chain.parent, chain.tip, []);
+      };
+    } else {
+      // Publishing off: the cycle pushes its chain with compare-and-swap on its parent.
+      x.pushChain = async (chain) => {
+        this.chainPushes.push({ parent: chain.parent, tip: chain.tip });
+        if (this.remote.main !== chain.parent) return { ok: false, detail: `stale: main is ${this.remote.main}` };
+        this.remote.moves.push({ from: chain.parent, to: chain.tip, objects: 0 });
+        this.remote.main = chain.tip;
+        return { ok: true };
+      };
+    }
     x.publishPush = (expected, target, oids) => this.remote.push(expected, target, oids);
     x.remoteHead = () => this.remote.head();
     // The `certified` branch: compare-and-swap on the fake remote, from the local ref markCertified set.

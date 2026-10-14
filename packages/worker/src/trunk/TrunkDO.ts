@@ -1365,14 +1365,13 @@ export class TrunkDO extends DurableObject<Env> {
         throw new UnknownPush(`trunk push outcome unknown, journal kept for recovery: ${errorText(e)}`);
       }
     };
-    const regular = (): Promise<PushOutcome> =>
-      this.authed((token) => pushRef(g, { url: st.trunk.remote, token, localRef: STAGING_REF, remoteRef: MAIN_REF, expectedOld: chain.parent }));
+    const regular = (): Promise<PushOutcome> => this.regularPush(chain);
     let outcome: PushOutcome;
     try {
       if (chain.objects && chain.objects.length > 0) {
         // Direct push of exactly the chain's new objects (push.ts); the regular push settles anything unexpected.
         try {
-          outcome = await this.authed((token) => pushPack(g, { url: st.trunk.remote, token, ref: MAIN_REF, oldOid: chain.parent, newOid: chain.tip, oids: chain.objects! }));
+          outcome = await this.directPush(chain);
           if (!outcome.ok && !outcome.stale) {
             console.error(`direct trunk push refused (${outcome.detail}); using the regular push`);
             outcome = await regular();
@@ -1397,9 +1396,36 @@ export class TrunkDO extends DurableObject<Env> {
       throw new Error(`trunk push failed: ${errorText(e)}`);
     }
     if (outcome.ok) return { ok: true };
+    // A stale answer whose remote value is this chain's tip: an earlier attempt of this push landed it (a direct push whose
+    // reply was lost or unclear, retried with the regular push). The chain is on main; keep its journal.
+    if (outcome.stale && (await this.landedAnyway(outcome.remoteOid, chain.tip))) return { ok: true };
     drop();
     if (outcome.stale) return { ok: false, detail: outcome.detail };
     throw new Error(`trunk push rejected: ${outcome.detail}`);
+  }
+
+  /** Whether main is at `tip` after a stale answer: the answer's remote value, or the binding's when it gave none. */
+  private async landedAnyway(remoteOid: Sha | null, tip: Sha): Promise<boolean> {
+    if (remoteOid !== null) return remoteOid === tip;
+    try {
+      return (await this.remoteHead()) === tip;
+    } catch {
+      return false;
+    }
+  }
+
+  /** The direct push of exactly the chain's new objects (push.ts), with compare-and-swap on the chain's parent. */
+  private directPush(chain: { parent: Sha; tip: Sha; objects?: string[] }): Promise<PushOutcome> {
+    const st = this.state();
+    const g = this.repo();
+    return this.authed((token) => pushPack(g, { url: st.trunk.remote, token, ref: MAIN_REF, oldOid: chain.parent, newOid: chain.tip, oids: chain.objects ?? [] }));
+  }
+
+  /** The regular push of the staging ref to main (isomorphic-git), with compare-and-swap on the chain's parent. */
+  private regularPush(chain: { parent: Sha; tip: Sha }): Promise<PushOutcome> {
+    const st = this.state();
+    const g = this.repo();
+    return this.authed((token) => pushRef(g, { url: st.trunk.remote, token, localRef: STAGING_REF, remoteRef: MAIN_REF, expectedOld: chain.parent }));
   }
 
   /** Landing of each of these proposal ids that has landed. */

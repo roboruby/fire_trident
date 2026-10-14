@@ -122,10 +122,24 @@ export async function pushPack(repo: GitRepo, p: { url: string; token: string; r
   });
   const bytes = new Uint8Array(await res.arrayBuffer());
   if (!res.ok) throw httpError(res.status, td.decode(bytes.subarray(0, 200)).replace(/\s+/g, " "));
-  const result = parseReceivePackResult(bytes, true);
+  return outcomeOf(parseReceivePackResult(bytes, true), p.ref);
+}
+
+/**
+ * A reply whose outcome cannot be read: the pack was unpacked but the report has no status for the ref (a reply cut at
+ * a packet boundary, for one). The update may have applied, so the caller must look at the remote ref.
+ */
+export class UnclearPushReply extends Error {}
+
+/**
+ * What a receive-pack report says about `ref`: ok, stale (the remote ref was not the expected old value), or a definitive
+ * refusal (the pack was not unpacked, or the ref was refused for another reason). Throws UnclearPushReply when the pack
+ * was unpacked but the report says nothing about the ref.
+ */
+export function outcomeOf(result: ReceivePackResult, ref: string): PushOutcome {
   if (result.unpack !== "ok") return { ok: false, stale: false, detail: `unpack ${result.unpack}` };
-  const r = result.refs[p.ref];
-  if (!r) return { ok: false, stale: false, detail: `no status for ${p.ref}${result.messages.length ? ` (${result.messages.join("; ")})` : ""}` };
+  const r = result.refs[ref];
+  if (!r) throw new UnclearPushReply(`receive-pack reply has no status for ${ref}${result.messages.length ? ` (${result.messages.join("; ")})` : ""}`);
   if (r.ok) return { ok: true };
   return /stale|non-fast-forward|fetch first|lock/i.test(r.error) ? { ok: false, stale: true, remoteOid: null, detail: r.error } : { ok: false, stale: false, detail: r.error };
 }

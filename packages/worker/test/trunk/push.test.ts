@@ -3,7 +3,7 @@ import git from "isomorphic-git";
 import type { TreeEntry } from "isomorphic-git";
 import { buildTree, ensureRepo, memoryFs, writeCommitObject, writeLocalBlob, type GitRepo } from "../../src/artifacts/git.ts";
 import { applyTreeChangesCached } from "../../src/trunk/surgery.ts";
-import { parseReceivePackResult, pktLine, readPktLines, receivePackRequest } from "../../src/trunk/push.ts";
+import { UnclearPushReply, outcomeOf, parseReceivePackResult, pktLine, readPktLines, receivePackRequest } from "../../src/trunk/push.ts";
 
 const te = new TextEncoder();
 const td = new TextDecoder();
@@ -56,6 +56,16 @@ describe("receive-pack protocol", () => {
     const plain = new Uint8Array([...pktLine("unpack index-pack failed\n"), ...pktLine("ng refs/heads/main unpacker error\n"), ...te.encode("0000")]);
     expect(parseReceivePackResult(plain, false)).toMatchObject({ unpack: "index-pack failed", refs: { "refs/heads/main": { ok: false, error: "unpacker error" } } });
     expect(() => parseReceivePackResult(sideband(["hello"]), true)).toThrow(/unexpected receive-pack report/);
+  });
+
+  it("reads a report as ok, stale or refused, and a report without the ref's status as an unclear outcome", () => {
+    const main = "refs/heads/main";
+    expect(outcomeOf({ unpack: "ok", refs: { [main]: { ok: true, error: "" } }, messages: [] }, main)).toEqual({ ok: true });
+    expect(outcomeOf({ unpack: "ok", refs: { [main]: { ok: false, error: "stale ref" } }, messages: [] }, main)).toMatchObject({ ok: false, stale: true });
+    expect(outcomeOf({ unpack: "index-pack failed", refs: {}, messages: [] }, main)).toEqual({ ok: false, stale: false, detail: "unpack index-pack failed" });
+    expect(outcomeOf({ unpack: "ok", refs: { [main]: { ok: false, error: "hook declined" } }, messages: [] }, main)).toEqual({ ok: false, stale: false, detail: "hook declined" });
+    // The pack was unpacked but nothing says whether main moved: the caller must look at the remote.
+    expect(() => outcomeOf({ unpack: "ok", refs: {}, messages: [] }, main)).toThrow(UnclearPushReply);
   });
 
   it("packs exactly a chain's new objects into a complete, valid pack", async () => {
