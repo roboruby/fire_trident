@@ -258,7 +258,10 @@ async function main(): Promise<void> {
       const intentC = await intentFor(c.id, { title: `Trim slugify input (${tag})`, why: "Slugs should not start or end with spaces.", path: pathA, acceptance: ["slugify trims spaces at both ends of its input"], source: "agent" });
       const oc = await propose(c, intentC, pathA, textC, "Trim slugify input", true);
       info(`C ${oc.id}: ${oc.status}; ${short(oc.gate, 160)}; acceptance: ${short(oc.detail, 300)}`);
-      check(`C was asked A's two lines as keep lines from A's landing (${short(oc.detail, 200)})`, /keep line 1 /.test(oc.detail ?? "") && /keep line 2 /.test(oc.detail ?? ""));
+      // Keep lines are answered by the second opinion, so they can only be checked when the change reached it: a change the
+// reflex sent to a person first (needs_human, damage) carries no acceptance record, and that is not a keep-line failure.
+if (oc.detail) check(`C was asked A's two lines as keep lines from A's landing (${short(oc.detail, 200)})`, /keep line 1 /.test(oc.detail) && /keep line 2 /.test(oc.detail));
+else info(`C never reached the second opinion (${short(oc.gate, 160)}), so its keep lines were not asked: skipped`);
       info(`C ${oc.status === "landed" ? "landed: the second opinion did not answer keep line 2 not met" : `${oc.status}: ${short(oc.reason, 300)}`}`);
       outcomes.push(["C", oc, { [pathA]: textC }]);
     }

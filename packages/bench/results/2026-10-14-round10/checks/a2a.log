@@ -1,0 +1,38 @@
+PASS  GET /api/about lists FT_A2A (["FT_A2A","FT_AGENT_CALL_BUDGET","FT_BISECT","FT_CULPRITS","FT_DELETION_GUARD","FT_FIELD_GUIDE","FT_GOAL_CONFLICT","FT_INLINE","FT_MEGAFILE","FT_MERGE_INSERTION)
+PASS  created p24-a2a (201)
+PASS  p24-a2a: review off for this check
+PASS  the card is public and names the colony (200, FireTrident colony p24-a2a)
+PASS  it names the JSON-RPC URL https://p24-firetrident.mattsolt.workers.dev/api/colonies/p24-a2a/a2a for A2A 1.0 and 0.3
+PASS  it offers one skill, declare-intent (["declare-intent"])
+PASS  it says writes need a bearer <redacted> ({"adminToken":{"httpAuthSecurityScheme":{"scheme":"Bearer","description":"The deployment's admin token. SendMessage and CancelTask need it; GetTask, ListTasks a)
+PASS  it offers no streaming and no push notifications
+PASS  SendMessage with no token is refused: HTTP 401, code -32000 (SendMessage writes to the colony, and writes need the deployment's admin token: send it as)
+PASS  SendMessage with a wrong token is refused: HTTP 401, code -32000 (SendMessage writes to the colony, and writes need the deployment's admin token: send it as)
+PASS  p24-a2a: nothing was declared
+PASS  SendMessage with the token declared int_mv8mojbwa6a0zm, submitted (200, TASK_STATE_SUBMITTED)
+PASS  its intent is "Add docs/a2a-check.md" with footprint docs/a2a-check.md
+PASS  GetTask with no token reads it back submitted (Intent int_mv8mojbwa6a0zm is open in colony p24-a2a: no agent has taken it yet. Follow it with GetTa)
+PASS  p24-a2a: a scripted agent joined over MCP (agt_mv8moliqgq33us)
+PASS  p24-a2a: it took int_mv8mojbwa6a0zm
+PASS  p24-a2a: it proposed the change inline (prp_mv8mom63wp7h1y)
+PASS  p24-a2a: the change landed (landed, lnd_mv8momahpu6xsz)
+PASS  GetTask reports completed with landing lnd_mv8momahpu6xsz and commit 93cf125cd9dbb642dd35065e9554e3e8335c198a
+PASS  its status says so and names ft why p24-a2a docs/a2a-check.md (Intent int_mv8mojbwa6a0zm landed in trunk commit 93cf125cd9dbb642dd35065e9554e3e8335c198a (landing lnd_mv8momahpu6xsz). )
+PASS  the colony's landing record names the same commit (93cf125cd9dbb642dd35065e9554e3e8335c198a)
+PASS  the artifact's why link answers (https://p24-firetrident.mattsolt.workers.dev/api/colonies/p24-a2a/why?path=docs%2Fa2a-check.md: 200)
+PASS  ListTasks with no token lists it completed (totalSize 1)
+PASS  filtered by TASK_STATE_COMPLETED with includeArtifacts it carries the commit
+PASS  tasks/get answers in 0.3's shapes (task, completed)
+PASS  a second SendMessage declared int_mv8mopzgf0tpc1, submitted
+PASS  CancelTask with no token is refused: HTTP 401, code -32000
+PASS  CancelTask with the token reports it canceled (Intent int_mv8mopzgf0tpc1 was withdrawn by CancelTask (the plan changed): its needs are gone and no agent will)
+PASS  the intent is withdrawn with the reason "canceled over A2A: the plan changed"
+PASS  GetTask reads it canceled afterwards
+PASS  the completed task cannot be canceled (code -32002)
+PASS  an unknown method answers -32601
+PASS  bad params answer -32602
+PASS  a body that is not JSON answers -32700
+PASS  a matching message answers the landed intent's task int_mv8mojbwa6a0zm and says so (Nothing new was declared: this message matches intent int_mv8mojbwa6a0zm "Add docs/a2a-che)
+PASS  p24-a2a: it declared nothing
+ALL CHECKS PASSED
+exit 0

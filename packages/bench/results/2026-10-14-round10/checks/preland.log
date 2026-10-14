@@ -1,0 +1,36 @@
+tests before landing check plmv8mo1ug on https://p24-firetrident.mattsolt.workers.dev (on: p24-pl-on, off: p24-pl-off)
+PASS  deployment: FT_PRELAND, FT_TRUNK_TESTS and FT_INLINE are on for some colony (["FT_A2A","FT_AGENT_CALL_BUDGET","FT_BISECT","FT_CULPRITS","FT_DELETION_GUARD","FT_FIELD_GUIDE","FT_GOAL_CONFLICT","FT_INLINE","FT_MEGAFILE","FT_MERGE_INSERTIONS","FT_MODEL_STEPUP","FT_PRELAND","FT_PUBLIC_GIT","FT_PUBLIC_MCP","FT_QUOTED_ACCEPTANCE","FT_RESOLVER","FT_TEXT_MERGE","FT_TRUNK_TESTS","FT_)
+PASS  p24-pl-on: created (201)
+PASS  p24-pl-on: review off, so the decide stage has only the tests to run
+PASS  p24-pl-on: certification on (200)
+PASS  p24-pl-on: prelandPaths set to ["preland/plmv8mo1ug/src"] (got ["preland/plmv8mo1ug/src"])
+PASS  p24-pl-on: "Add the math module and its test" landed (landed, lnd_mv8modqbeb52m3)
+PASS  p24-pl-on: certification is green on 2dc7784 (green, {"tests":1,"pass":1,"fail":0,"cancelled":0,"skipped":0,"todo":0,"suites":0})
+      p24-pl-on: "Speed up subtraction" returned after 955 ms: Tests before landing: the test "subtracts" in preland/plmv8mo1ug/test/math.test.js passed on trunk and fails with this change: AssertionError (strictEqual): actual 8, expected 2 (at preland/plmv8mo1ug/test/math.test.js:6). Fix the change so it passes again (the test is the specification), then propose again.
+      p24-pl-on: run: {"status":"failed","trunkSha":"2dc7784901e4eb90f7714813ebee78a7c0bdcd52","files":["preland/plmv8mo1ug/test/math.test.js"],"tests":1,"passed":0,"failed":1,"broke":[{"file":"preland/plmv8mo1ug/test/math.test.js","name":"subtracts","error":"AssertionError (strictEqual): actual 8, expected 2 (at preland/plmv8mo1ug/test/math.test.js:6)"}],"ms":63}
+PASS  p24-pl-on: the breaking change came back before landing (returned)
+PASS  p24-pl-on: its reason names the test and its error
+PASS  p24-pl-on: its evidence carries the run: failed, on its base 2dc7784, 1 test file, 0 of 1 passed, "subtracts" broke
+PASS  p24-pl-on: and the check "tests before landing" (ok: false, 63 ms)
+PASS  p24-pl-on: nothing landed: trunk is still 2dc7784
+PASS  p24-pl-on: "Document subtraction" landed (landed, lnd_mv8mop9zgp5ud4)
+      p24-pl-on: run: {"status":"passed","trunkSha":"2dc7784901e4eb90f7714813ebee78a7c0bdcd52","files":["preland/plmv8mo1ug/test/math.test.js"],"tests":1,"passed":1,"failed":0,"ms":56}
+PASS  p24-pl-on: the fixed change's evidence carries the run: passed, 1 test file, 1 of 1 test, on its base 2dc7784
+PASS  p24-pl-on: and the check "tests before landing" says so (1 test file that reach the change ran on its base with it: 1 of 1 test passed)
+PASS  p24-pl-on: its lineage note carries the run ({"failed":0,"files":["preland/plmv8mo1ug/test/math.test.js"],"ms":56,"passed":1,"status":"passed","tests":1,"trunkSha":"2dc7784901e4eb90f7714813ebee78a7c0bdcd52"})
+PASS  p24-pl-on: certification is green on the new head 1b7c483 (green)
+PASS  p24-pl-on: "Describe the project" landed (landed, lnd_mv8mowzln8ji19)
+PASS  p24-pl-on: a change outside prelandPaths landed with no run (none)
+PASS  p24-pl-on: counted once failed and once passed (preland.failed, preland.passed)
+PASS  p24-pl-off: created (201)
+PASS  p24-pl-off: review off, so the decide stage has only the tests to run
+PASS  p24-pl-off: certification on (200)
+PASS  p24-pl-off: no prelandPaths (every change, were the flag on)
+PASS  p24-pl-off: "Add the math module and its test" landed (landed, lnd_mv8mpaqohizqp6)
+PASS  p24-pl-off: certification is green on 6b7affd (green, {"tests":1,"pass":1,"fail":0,"cancelled":0,"skipped":0,"todo":0,"suites":0})
+PASS  p24-pl-off: "Speed up subtraction" landed (landed, lnd_mv8mpma8pqw02x)
+PASS  p24-pl-off: the breaking change landed with no run in its evidence (none)
+PASS  p24-pl-off: certification is red on the head 07d98a4 after landing (red, subtracts), green still 6b7affd
+      In a browser: https://p24-firetrident.mattsolt.workers.dev/c/p24-pl-on, Why tab on preland/plmv8mo1ug/src/math.js: the Evidence step of "Document subtraction" lists "tests before landing" with its sentence; ft why p24-pl-on preland/plmv8mo1ug/src/math.js prints the "tested" line.
+ALL CHECKS PASSED
+exit 0
