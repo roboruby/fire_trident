@@ -1,11 +1,13 @@
-import type { Path } from "@fire_trident/core";
+import type { Id, Path } from "@fire_trident/core";
 import type { HeldDirective } from "./direction.ts";
-import type { AgentConfig, HistoryEntry, Job, Journal, StepLogEntry } from "./loop.ts";
+import type { AgentConfig, AgentIntentUsage, HistoryEntry, Job, Journal, StepLogEntry } from "./loop.ts";
 
 /** Steps kept in the step log. */
 const LOG_KEEP = 500;
 /** Finished jobs kept in the history. */
 const HISTORY_KEEP = 200;
+/** Intents whose model calls are kept, by model (spend per intent); the colony keeps what it read of older ones. */
+const INTENTS_KEEP = 2_000;
 
 /** The subset of the Durable Object SQL API the journal uses. */
 export interface SqlLike {
@@ -17,6 +19,8 @@ export interface JournalView {
   counters(): Record<string, number>;
   history(limit?: number): HistoryEntry[];
   steps(limit?: number): StepLogEntry[];
+  /** Model calls by intent and model (spend per intent, FT_INTENT_SPEND), most recently called first. */
+  intentUsage(limit?: number): AgentIntentUsage[];
 }
 
 /**
@@ -35,6 +39,10 @@ export class SqlJournal implements Journal, JournalView {
       "CREATE TABLE IF NOT EXISTS ft_agent_steps (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, intent_id TEXT, step TEXT NOT NULL, ok INTEGER NOT NULL, ms INTEGER NOT NULL, detail TEXT)",
     );
     sql.exec("CREATE TABLE IF NOT EXISTS ft_agent_history (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, outcome TEXT NOT NULL, data TEXT NOT NULL)");
+    // Spend per intent (FT_INTENT_SPEND): one row per intent and model, added to on each call.
+    sql.exec(
+      "CREATE TABLE IF NOT EXISTS ft_agent_intents (intent_id TEXT NOT NULL, model TEXT NOT NULL, calls INTEGER NOT NULL, tokens_in INTEGER NOT NULL, tokens_out INTEGER NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (intent_id, model))",
+    );
   }
 
   private get<T>(key: string): T | null {
@@ -114,6 +122,33 @@ export class SqlJournal implements Journal, JournalView {
     return this.get<Record<string, number>>("counters") ?? {};
   }
 
+  /** One statement per call, no read; now and then the rows of the oldest intents past INTENTS_KEEP go. */
+  bumpIntent(intentId: Id, model: string, usage: { input: number; output: number }, at: number): void {
+    const n = (v: number): number => (Number.isFinite(v) && v > 0 ? Math.floor(v) : 0);
+    this.sql.exec(
+      "INSERT INTO ft_agent_intents (intent_id, model, calls, tokens_in, tokens_out, at) VALUES (?, ?, 1, ?, ?, ?) ON CONFLICT(intent_id, model) DO UPDATE SET calls = calls + 1, tokens_in = tokens_in + excluded.tokens_in, tokens_out = tokens_out + excluded.tokens_out, at = excluded.at",
+      intentId,
+      model,
+      n(usage.input),
+      n(usage.output),
+      Math.max(0, Math.round(at)),
+    );
+    if (++this.intentWrites % 100 === 0) {
+      this.sql.exec("DELETE FROM ft_agent_intents WHERE at < (SELECT at FROM ft_agent_intents ORDER BY at DESC LIMIT 1 OFFSET ?)", INTENTS_KEEP - 1);
+    }
+  }
+  private intentWrites = 0;
+
+  intentUsage(limit = INTENTS_KEEP): AgentIntentUsage[] {
+    return this.sql
+      .exec<{ intent_id: string; model: string; calls: number; tokens_in: number; tokens_out: number; at: number }>(
+        "SELECT intent_id, model, calls, tokens_in, tokens_out, at FROM ft_agent_intents ORDER BY at DESC, intent_id, model LIMIT ?",
+        limit,
+      )
+      .toArray()
+      .map((r) => ({ intentId: r.intent_id, model: r.model, calls: r.calls, input: r.tokens_in, output: r.tokens_out, at: r.at }));
+  }
+
   history(limit = 10): HistoryEntry[] {
     return this.sql
       .exec<{ data: string }>("SELECT data FROM ft_agent_history ORDER BY id DESC LIMIT ?", limit)
@@ -149,6 +184,7 @@ export class MemoryJournal implements Journal, JournalView {
   private readonly log_: StepLogEntry[] = [];
   private readonly history_: HistoryEntry[] = [];
   private readonly counters_: Record<string, number> = {};
+  private readonly intents_ = new Map<string, AgentIntentUsage>();
 
   config(): AgentConfig | null {
     return this.cfg ? structuredClone(this.cfg) : null;
@@ -186,6 +222,21 @@ export class MemoryJournal implements Journal, JournalView {
   }
   counters(): Record<string, number> {
     return { ...this.counters_ };
+  }
+  bumpIntent(intentId: Id, model: string, usage: { input: number; output: number }, at: number): void {
+    const k = `${intentId}\n${model}`;
+    const u = this.intents_.get(k) ?? { intentId, model, calls: 0, input: 0, output: 0, at: 0 };
+    u.calls += 1;
+    u.input += Math.max(0, Math.floor(usage.input || 0));
+    u.output += Math.max(0, Math.floor(usage.output || 0));
+    u.at = at;
+    this.intents_.set(k, u);
+  }
+  intentUsage(limit = INTENTS_KEEP): AgentIntentUsage[] {
+    return [...this.intents_.values()]
+      .sort((a, b) => b.at - a.at || (a.intentId < b.intentId ? -1 : a.intentId > b.intentId ? 1 : 0))
+      .slice(0, limit)
+      .map((u) => structuredClone(u));
   }
   history(limit = 10): HistoryEntry[] {
     return this.history_.slice(-limit).reverse();

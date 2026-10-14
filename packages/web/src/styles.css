@@ -1483,6 +1483,13 @@ a.build-tag:hover {
   white-space: nowrap;
 }
 
+/* What the intent's model calls cost (spend per intent); the title gives it by layer with the calls. */
+.intent-spend {
+  flex: none;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
 .intent-more {
   color: var(--text-4);
 }

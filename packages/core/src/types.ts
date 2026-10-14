@@ -1239,6 +1239,37 @@ export interface ColonySpend {
   agentsUnread?: number;
 }
 
+/**
+ * What one intent's model calls cost (GET /api/colonies/:id/intents/:intentId/spend, core/pricing.ts intentSpend): the
+ * agents' calls on its takes and review's calls on its changes (the reflex, the second opinion, the contest judge),
+ * counted per intent and model as they happen where FT_INTENT_SPEND covers the colony, and priced like ColonySpend.
+ * Calls made before the colony counted per intent are not here: the colony's total has them, this does not.
+ */
+export interface IntentSpend {
+  intentId: Id;
+  /** USD of every priced call. */
+  usd: number;
+  byLayer: Record<SpendLayer, number>;
+  /** Model calls counted, by layer (a call whose usage was not reported still counts here). */
+  calls: Record<SpendLayer, number>;
+  /** Every token counted, priced or not. */
+  tokens: { input: number; output: number };
+  byModel: Record<string, ModelSpend>;
+  /** Tokens of models with no listed price, by model. */
+  unpriced: Record<string, { input: number; output: number }>;
+  /** The day of the list prices (YYYY-MM-DD). */
+  priceDate: string;
+}
+
+/** An intent's spend beside a listing (ColonySnapshot.intentSpend): its total, each layer that called with its calls, and its tokens. */
+export interface IntentSpendBrief {
+  usd: number;
+  byLayer: Partial<Record<SpendLayer, { usd: number; calls: number }>>;
+  tokens: { input: number; output: number };
+  /** True when some of its tokens had no list price (they count in no dollar sum). */
+  unpriced?: boolean;
+}
+
 /** Snapshot the UI loads before applying live events. */
 export interface ColonySnapshot {
   colony: Colony;
@@ -1265,6 +1296,11 @@ export interface ColonySnapshot {
   megafiles?: MegafileReport;
   /** What the colony's model calls cost so far (served by GET /api/colonies/:id and /metrics; absent in mocks). */
   spend?: ColonySpend;
+  /**
+   * What each intent's model calls cost, by intent id, for the intents the colony counted per intent (FT_INTENT_SPEND;
+   * served by GET /api/colonies/:id and /metrics, the 2,000 most recently active at most; absent when none was counted).
+   */
+  intentSpend?: Record<Id, IntentSpendBrief>;
 }
 
 // ---------------------------------------------------------------------------

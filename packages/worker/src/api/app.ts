@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import type { Context, MiddlewareHandler } from "hono";
-import { regionKey } from "@fire_trident/core";
+import { regionKey, spentOnIntent } from "@fire_trident/core";
 import type { FieldReading, Id, RepoRef, Sha } from "@fire_trident/core";
 import type { z } from "zod";
 import type { Env } from "../env.ts";
@@ -184,7 +184,8 @@ async function requireColony(env: Env, colonyId: Id): Promise<void> {
  *   GET    /colonies/:id/metrics            metrics, funnel, violations, per-minute series
  *   GET    /colonies/:id/events             the event record for replays (?after=&limit=, paged; ?source=)
  *   POST   /colonies/:id/intents            declare an intent
- *   GET    /colonies/:id/intents/:iid       one intent with its revision history and directives
+ *   GET    /colonies/:id/intents/:iid       one intent with its revision history and directives (and its model spend, FT_INTENT_SPEND)
+ *   GET    /colonies/:id/intents/:iid/spend what the intent's model calls cost: agents and review, by model (FT_INTENT_SPEND)
  *   PATCH  /colonies/:id/intents/:iid       amend an intent (revision + 1; stale work goes back)
  *   POST   /colonies/:id/intents/:iid/withdraw  withdraw an intent (needs evaporate, holder stops)
  *   POST   /colonies/:id/intents/:iid/escalation  answer an agent's report: amend | withdraw | dismiss
@@ -389,7 +390,16 @@ export function createApi(deps: ApiDeps): Hono<ApiEnv> {
   // Changing direction: amend or withdraw an intent, retract a rule, direct an agent, relay status.
 
   app.get("/colonies/:id/intents/:iid", async (c) => {
-    const res = await colonyStub(c.env, colonyParam(c)).intentHistory(c.req.param("iid"));
+    const colony = colonyStub(c.env, colonyParam(c));
+    // The intent's model spend beside its history (colony/intentspend.ts); an object still on older code has none to give.
+    const [res, spend] = await Promise.all([colony.intentHistory(c.req.param("iid")), colony.intentSpend(c.req.param("iid")).catch(() => null)]);
+    if (!res) throw ftError(404, `unknown intent ${c.req.param("iid")}`);
+    return json(spend && spentOnIntent(spend) ? { ...(res as object), spend } : res);
+  });
+
+  // Spend per intent (colony/intentspend.ts): what one intent's model calls cost, public like the other reads.
+  app.get("/colonies/:id/intents/:iid/spend", async (c) => {
+    const res = await colonyStub(c.env, colonyParam(c)).intentSpend(c.req.param("iid"));
     if (!res) throw ftError(404, `unknown intent ${c.req.param("iid")}`);
     return json(res);
   });

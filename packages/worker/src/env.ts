@@ -93,6 +93,15 @@ export interface Env {
    */
   FT_MODEL_STEPUP?: string;
   /**
+   * Optional: spend per intent, "on", or a comma-separated list of colony ids; absent or "off" is off. Every model call
+   * is also counted for the intent it serves, as it happens (colony/intentspend.ts): in-platform agents count each call
+   * under their job's intent in their journals, which the colony's spend book reads with their totals, and the decide
+   * stage's reflex, second opinion and contest judge count theirs by proposal. GET /api/colonies/:id/intents/:iid/spend
+   * prices one intent's calls; the snapshot and /metrics carry `intentSpend` for the Intents tab. Reads work without the
+   * flag and show nothing for an intent nothing was counted for.
+   */
+  FT_INTENT_SPEND?: string;
+  /**
    * Optional: the deletion guard, "on", or a comma-separated list of colony ids; absent or "off" is off. In a trunk
    * cycle that deletes files, a change goes back while a trunk file's import of a file it deletes would resolve to nothing.
    */

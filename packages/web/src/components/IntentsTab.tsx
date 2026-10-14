@@ -1,4 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { intentSpendDetail, intentSpendLine } from "@fire_trident/core";
 import { KIND_LABEL } from "../eventText.ts";
 import { fmtInt, shortId, timeAgo } from "../format.ts";
 import {
@@ -263,6 +264,9 @@ function IntentRow({ item, store, book, now, lit, setLitEl, onPick, onFollow }: 
   const fresh = item.state === "open";
   // What beat its latest change, while the intent is still to do (the colony's movedBy).
   const moved = it.status !== "landed" && it.status !== "withdrawn" ? (store.returns.get(it.id)?.movedBy ?? null) : null;
+  // What its model calls cost, where the colony counts per intent (FT_INTENT_SPEND); nothing when nothing was counted.
+  const spent = store.intentSpend.get(it.id) ?? null;
+  const spentLine = intentSpendLine(spent);
   return (
     <li
       ref={lit ? setLitEl : undefined}
@@ -309,6 +313,11 @@ function IntentRow({ item, store, book, now, lit, setLitEl, onPick, onFollow }: 
         {moved ? <MovedBadge moved={moved} agentName={(id) => store.agentName(id)} /> : null}
         <span className="mono intent-path">{it.status === "withdrawn" && it.withdrawnReason ? it.withdrawnReason : (it.footprint[0] ?? "—")}</span>
         {it.status !== "withdrawn" && it.footprint.length > 1 ? <span className="intent-more">+{it.footprint.length - 1}</span> : null}
+        {spentLine ? (
+          <span className="intent-spend" title={intentSpendDetail(spent, store.spend?.priceDate)}>
+            {spentLine}
+          </span>
+        ) : null}
         <span className="intent-when">
           {it.assignedTo && !fresh ? `${store.agentName(it.assignedTo)} · ` : ""}
           {timeAgo(fresh ? it.createdAt : it.updatedAt, now)}

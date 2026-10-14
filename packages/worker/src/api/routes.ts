@@ -14,7 +14,8 @@ import { createApi } from "./app.ts";
  *   GET    /api/colonies/:id/metrics          metrics, funnel, violations, series
  *   GET    /api/colonies/:id/events           the event record for replays (?after=<seq>&limit=<n>)
  *   POST   /api/colonies/:id/intents          declare an intent
- *   GET    /api/colonies/:id/intents/:iid     one intent with its revisions and directives
+ *   GET    /api/colonies/:id/intents/:iid     one intent with its revisions and directives (and its model spend)
+ *   GET    /api/colonies/:id/intents/:iid/spend  what the intent's model calls cost (FT_INTENT_SPEND)
  *   PATCH  /api/colonies/:id/intents/:iid     amend an intent (revision + 1)
  *   POST   /api/colonies/:id/intents/:iid/withdraw  withdraw an intent
  *   POST   /api/colonies/:id/rules            add a morphology rule (creates needs)

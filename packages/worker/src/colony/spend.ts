@@ -6,6 +6,7 @@ import type { ModelClient } from "../agents/loop.ts";
 import { extractUsage } from "../agents/prompt.ts";
 import type { AiRunner } from "../decide/reflex.ts";
 import type { SqlRunner } from "./inline.ts";
+import { agentIntentUsage, migrateIntentSpend, storeAgentIntents } from "./intentspend.ts";
 
 /**
  * Model spend, live, per colony (GET /api/colonies/:id/metrics and the colony's status carry it as `spend`). Every model
@@ -52,7 +53,7 @@ export const SETTLE_MS = 5 * 60_000;
 const MAX_MODEL = 200;
 
 /** A model id as a counter name keeps it: one line, at most MAX_MODEL characters ("unknown" when empty). */
-function modelKey(model: unknown): string {
+export function modelKey(model: unknown): string {
   const m = typeof model === "string" ? model.replace(/\s+/g, " ").trim().slice(0, MAX_MODEL) : "";
   return m === "" ? "unknown" : m;
 }
@@ -248,6 +249,8 @@ export function migrateSpend(sql: SqlRunner): void {
   sql.exec(
     "CREATE TABLE IF NOT EXISTS spend_agent_models (agent_id TEXT NOT NULL, model TEXT NOT NULL, calls INTEGER NOT NULL, tokens_in INTEGER NOT NULL, tokens_out INTEGER NOT NULL, PRIMARY KEY (agent_id, model))",
   );
+  // Spend per intent (colony/intentspend.ts): the agents' rows by intent, and the colony's own.
+  migrateIntentSpend(sql);
 }
 
 /** The agents' usage as last read from their journals, and the colony's spend from it and the colony's own counters. */
@@ -308,6 +311,8 @@ export class SpendBook {
       now,
       settled ? 1 : 0,
     );
+    // Per intent too (colony/intentspend.ts): the journal's rows by intent and model, each replacing its last read.
+    storeAgentIntents(sql, a.id, agentIntentUsage(s), (m) => modelKey(this.host.resolveModel(m)), now);
   }
 
   /** Read these journals, READ_CONCURRENCY at a time, as of `now` (when the refresh began); an agent that does not answer keeps its last read. */
@@ -350,6 +355,13 @@ export class SpendBook {
     return run;
   }
 
+  /** Read the journals that are due and wait for them at most REPORT_WAIT_MS (what they read later is in the next report). */
+  async refreshed(now: number): Promise<void> {
+    migrateSpend(this.host.sql);
+    const run = this.refresh(now);
+    if (run) await within(run, REPORT_WAIT_MS);
+  }
+
   /** The agents' usage by model, as last read. */
   agentUsage(): AgentModelUsage[] {
     migrateSpend(this.host.sql);
@@ -365,9 +377,7 @@ export class SpendBook {
    * then the agents' usage and the colony's own counters are priced (core/pricing.ts).
    */
   async report(now: number, input: SpendInput): Promise<ColonySpend> {
-    migrateSpend(this.host.sql);
-    const run = this.refresh(now);
-    if (run) await within(run, REPORT_WAIT_MS);
+    await this.refreshed(now);
     const agents: LayerUsage[] = this.agentUsage().map((u) => ({ layer: "agents", model: u.model, input: u.input, output: u.output }));
     const usage = [...agents, ...counterUsage(input.metrics, input.review)];
     const landed = count(input.metrics["intentsLanded"] ?? input.metrics["landedIntents"]);
