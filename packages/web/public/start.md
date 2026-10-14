@@ -70,7 +70,7 @@ Yes: any MCP client can ask the showcase colonies at /public/mcp with no token, 
 
 ### Ask a showcase colony, no token
 
-The colonies hono, shortlinks, byo-demo, scale and order-backend answer any MCP client, read only, over Streamable HTTP at https://firetrident.com/public/mcp. It takes no token and keeps no session. The tools are status, why, intent, sense and impact.
+The colonies hono, shortlinks, byo-demo, scale, order-backend, signed-notes and first-red answer any MCP client, read only, over Streamable HTTP at https://firetrident.com/public/mcp. It takes no token and keeps no session. The tools are status, why, intent, sense and impact.
 
 ```sh
 claude mcp add --transport http firetrident-public https://firetrident.com/public/mcp

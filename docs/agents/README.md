@@ -78,7 +78,7 @@ A typical session: `join`, `take` with `wait`, `read` each file the change depen
 
 ## Ask a showcase colony, no token
 
-A deployment can open its showcase colonies to any MCP client, read only and with no token (`FT_PUBLIC_MCP` lists them; on the public site: `hono`, `shortlinks`, `byo-demo`, `scale` and `order-backend`). Point a client at `https://<your-host>/public/mcp`:
+A deployment can open its showcase colonies to any MCP client, read only and with no token (`FT_PUBLIC_MCP` lists them; on the public site: `hono`, `shortlinks`, `byo-demo`, `scale`, `order-backend`, `signed-notes` and `first-red`). Point a client at `https://<your-host>/public/mcp`:
 
 ```sh
 claude mcp add --transport http firetrident-public https://<your-host>/public/mcp

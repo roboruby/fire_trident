@@ -1,0 +1,41 @@
+first red demo on https://p24-firetrident.mattsolt.workers.dev: colony first-red-p24
+      A node:test project lands and certifies green; six changes land while certification is held, the fourth breaking sub(); certification goes red; the first red search names the landing; a scripted agent takes the repair intent; certification goes green.
+PASS  first-red-p24: created (201)
+PASS  first-red-p24: review off for this demo
+PASS  first-red-p24: certification on with repairs (200)
+PASS  first-red-p24: "Add the math module and its test" landed (landed, lnd_mv8my105bkjh0b)
+PASS  first-red-p24: certification is green on 3bf8043 (green, {"tests":1,"pass":1,"fail":0,"cancelled":0,"skipped":0,"todo":0,"suites":0})
+PASS  first-red-p24: certification held
+PASS  first-red-p24: "Add note 1" landed (landed, lnd_mv8mycs1qjo64e)
+PASS  first-red-p24: "Add note 2" landed (landed, lnd_mv8mykhbncjgkp)
+PASS  first-red-p24: "Add note 3" landed (landed, lnd_mv8myq9uhah178)
+PASS  first-red-p24: "Speed up subtraction" landed (landed, lnd_mv8myuwtadt706)
+PASS  first-red-p24: "Add note 4" landed (landed, lnd_mv8myyr6vzf7dp)
+PASS  first-red-p24: "Add note 5" landed (landed, lnd_mv8mz22ea6366b)
+PASS  first-red-p24: certification on again
+PASS  first-red-p24: certification is red on the head 771f81c (red, subtracts), green still 3bf8043
+      firstRed: {"status":"found","trunkSha":"4017ad798963aff79c392839b85fd1aa2fe3f742","landingId":"lnd_mv8myuwtadt706","intents":[{"id":"int_mv8myrut0a3ijx","title":"Speed up subtraction"}],"proposals":[{"id":"prp_mv8mys80bm0ix1","paths":["src/math.js"],"intentId":"int_mv8myrut0a3ijx","title":"Speed up subtraction"}],"files":["test/math.test.js"],"probes":3,"ms":216,"landings":6,"greenSha":"3bf8043acbdfed2b2312
+PASS  first-red-p24: the red result gained firstRed, found (found)
+PASS  first-red-p24: it names the landing that holds the breaking change (lnd_mv8myuwtadt706, expected lnd_mv8myuwtadt706)
+PASS  first-red-p24: and its commit (4017ad7, expected 4017ad7)
+PASS  first-red-p24: and the breaking proposal with the file it changed ([{"id":"prp_mv8mys80bm0ix1","paths":["src/math.js"],"intentId":"int_mv8myrut0a3ijx","title":"Speed up subtraction"}])
+PASS  first-red-p24: and its intent with its title ([{"id":"int_mv8myrut0a3ijx","title":"Speed up subtraction"}])
+PASS  first-red-p24: in at most 4 test runs over the 6 landings since green (3 runs, 216 ms, 6 landings)
+PASS  first-red-p24: a bisect event was recorded after the red result (red #164, bisect #172)
+PASS  first-red-p24: the repair intent int_mv8mz3thz3nihr names the commit and the proposal in its why
+
+      Red on 771f81c: test/math.test.js > subtracts fails (AssertionError (strictEqual): actual 8, expected 2 (at test/math.test.js:6)).
+      The search ran only the failing test, alone, on earlier commits: 3 test runs in 216 ms over the 6 landings since green 3bf8043.
+      It names commit 4017ad7 (landing lnd_mv8myuwtadt706): the intent "Speed up subtraction", whose proposal prp_mv8mys80bm0ix1 changed src/math.js.
+
+PASS  first-red-p24: the red result declared a repair intent (int_mv8mz3thz3nihr)
+PASS  first-red-p24: "Make sub() subtract again" landed (landed, lnd_mv8mz73w4utlyb)
+PASS  first-red-p24: scripted-repair took "Make the failing tests pass: subtracts" (int_mv8mz3thz3nihr), whose why names the first failing commit: First failing commit: the failing tests first failed at commit 4017ad7 (landing lnd_mv8myuwtadt706): they did not fail on the commit before it and fail on it, run alone (found in 3 test runs). The cha
+PASS  first-red-p24: certification is green again on the head 1453f02 (green, {"tests":1,"pass":1,"fail":0,"cancelled":0,"skipped":0,"todo":0,"suites":0})
+      Trunk was red for 4.9 s, from the red result to the green one.
+
+Colony: https://p24-firetrident.mattsolt.workers.dev/c/first-red-p24
+Replay: https://p24-firetrident.mattsolt.workers.dev/c/first-red-p24?replay=1&t=4&speed=2 (from the first of the six landings)
+Card:   https://p24-firetrident.mattsolt.workers.dev/?results=first-red-p24:firstred (the landing page's showcase entry for this colony can carry replay: "t=4&speed=2")
+DEMO DONE: certification is green again
+exit 0
