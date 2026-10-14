@@ -17,7 +17,11 @@ const deps: ApiDeps = {
 /** An env whose COLONY answers propose by echoing what it received. */
 function env(vars: Partial<Env>): { env: Env; received: unknown[] } {
   const received: unknown[] = [];
-  const stub = { propose: async (p: Record<string, unknown>) => (received.push(p), { ...p, id: "prp_1", status: "ready", createdAt: 0, evidence: { checks: [] } }) };
+  const stub = {
+    // The route first asks whether the agent is an in-platform one (those propose through the platform); none here is.
+    getAgent: async () => null,
+    propose: async (p: Record<string, unknown>) => (received.push(p), { ...p, id: "prp_1", status: "ready", createdAt: 0, evidence: { checks: [] } }),
+  };
   const COLONY = { idFromName: (n: string) => n, get: () => stub };
   return { env: { FT_ADMIN_TOKEN: "s3cret", COLONY, ...vars } as unknown as Env, received };
 }
