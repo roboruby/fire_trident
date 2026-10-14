@@ -1251,6 +1251,16 @@ a.lc:hover .lc-open {
   background: rgba(167, 139, 250, 0.24);
 }
 
+.landing .rs-tour {
+  border-color: rgba(243, 128, 32, 0.5);
+  background: rgba(243, 128, 32, 0.12);
+  color: #ffd9b8;
+}
+
+.landing .rs-tour:hover {
+  background: rgba(243, 128, 32, 0.22);
+}
+
 .rs-open:hover {
   border-color: #3a475e;
   background: #141c29;

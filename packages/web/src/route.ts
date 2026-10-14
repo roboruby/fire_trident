@@ -16,8 +16,10 @@ export type Route =
        * after waiting ?delay=<seconds>. Null for the live view.
        */
       replay: { source: "auto" | "recorded" | "reconstructed"; speed: number; offsetS: number; delayS: number } | null;
-      /** ?tour=1: a two-minute tour of the finished run (tour/tour.json), on its replay; never with ?mock or ?director. */
+      /** ?tour=1: a two-minute tour of the finished run (tour/tours.ts), on its replay; never with ?mock or ?director. */
       tour: boolean;
+      /** ?tour=<id>: another colony's tour script to play on this one (a preview run of the same demo); null for the colony's own. */
+      tourScript: string | null;
     };
 
 function flag(params: URLSearchParams, key: string): boolean {
@@ -42,6 +44,9 @@ export function parseRoute(pathname: string, search: string): Route {
   const source: "auto" | "recorded" | "reconstructed" = replayRaw === "recorded" || replayRaw === "reconstructed" ? replayRaw : "auto";
   // A tour plays the finished run's record, so it implies a replay.
   const tour = !mock && !director && flag(params, "tour");
+  // ?tour=1 (or true, on, yes) is the colony's own tour; any other value names another colony's tour script.
+  const tourRaw = params.get("tour") ?? "";
+  const tourScript = tour && !/^(1|true|on|yes)$/i.test(tourRaw) ? tourRaw : null;
   const replay = !mock && (flag(params, "replay") || tour) ? { source, speed: num("speed", 1), offsetS: num("t", 0), delayS: num("delay", 0) } : null;
   const m = pathname.match(/^\/c\/([^/]+)/);
   if (m?.[1]) {
@@ -51,13 +56,14 @@ export function parseRoute(pathname: string, search: string): Route {
     } catch {
       // keep the raw segment
     }
-    return { kind: "colony", colonyId, mock, director, debug, replay, tour };
+    return { kind: "colony", colonyId, mock, director, debug, replay, tour, tourScript };
   }
-  if (mock || director) return { kind: "colony", colonyId: "demo", mock: true, director, debug, replay: null, tour: false };
+  if (mock || director) return { kind: "colony", colonyId: "demo", mock: true, director, debug, replay: null, tour: false, tourScript: null };
   return { kind: "landing" };
 }
 
-/** Link to a colony page (live, the simulator, a replay of its finished run, or the tour of that replay). */
-export function colonyHref(colonyId: string, opts: { mock?: boolean; replay?: boolean; tour?: boolean } = {}): string {
-  return `/c/${encodeURIComponent(colonyId)}${opts.mock ? "?mock=1" : opts.tour ? "?tour=1" : opts.replay ? "?replay=1" : ""}`;
+/** Link to a colony page (live, the simulator, a replay of its finished run, or the tour of that replay: `tour: true` for its own, a name for another colony's script). */
+export function colonyHref(colonyId: string, opts: { mock?: boolean; replay?: boolean; tour?: boolean | string } = {}): string {
+  const tour = typeof opts.tour === "string" && opts.tour ? `?tour=${encodeURIComponent(opts.tour)}` : opts.tour ? "?tour=1" : "";
+  return `/c/${encodeURIComponent(colonyId)}${opts.mock ? "?mock=1" : tour || (opts.replay ? "?replay=1" : "")}`;
 }

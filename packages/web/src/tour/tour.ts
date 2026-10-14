@@ -8,7 +8,8 @@ import type { ColonyStore } from "../store.ts";
  * The tour of a finished run (?tour=1): about seven steps, each standing on a moment found in the colony's own events
  * (replay.ts findMoment) and told in one sentence filled from the record at that moment. Pure, with no DOM: the Tour
  * component and scripts/tour_check.ts share it, so the numbers a step quotes can be checked against the colony's
- * metrics endpoint.
+ * metrics endpoint. A colony can have a tour of its own (tours.ts): the same steps, placed by its own moment finder and
+ * filled by its own values, with the same player and the same check.
  */
 
 /** One step of the tour script (tour.json; its $comment is the field reference). */
@@ -71,11 +72,11 @@ const DEFAULT_DURATION_S = 10;
 const REASON_CHARS = 160;
 
 /** Text per moment from a string (any moment) or an object keyed by moment name; null when it is neither. */
-function perMoment(x: unknown): Record<string, string> | null {
+function perMoment(x: unknown, moments: ReadonlySet<string>): Record<string, string> | null {
   if (typeof x === "string") return { "*": x };
   if (!x || typeof x !== "object" || Array.isArray(x)) return null;
   const out: Record<string, string> = {};
-  for (const [k, v] of Object.entries(x as Record<string, unknown>)) if (typeof v === "string" && (k === "*" || MOMENTS.has(k))) out[k] = v;
+  for (const [k, v] of Object.entries(x as Record<string, unknown>)) if (typeof v === "string" && (k === "*" || moments.has(k))) out[k] = v;
   return Object.keys(out).length ? out : null;
 }
 
@@ -86,22 +87,25 @@ export function textFor(map: Record<string, string> | undefined, moment: string)
   return map?.[moment] ?? map?.["*"];
 }
 
-/** The steps of a tour script, keeping only well-formed ones (a known moment and a caption). */
-export function loadTourSteps(data: unknown): TourStep[] {
+/**
+ * The steps of a tour script, keeping only well-formed ones (a known moment and a caption). `moments` names the moments
+ * the script may stand on: findMoment's by default, a colony tour's own otherwise.
+ */
+export function loadTourSteps(data: unknown, moments: ReadonlySet<string> = MOMENTS): TourStep[] {
   const list = (data as { steps?: unknown })?.steps;
   if (!Array.isArray(list)) return [];
   const out: TourStep[] = [];
   list.forEach((raw, i) => {
     if (!raw || typeof raw !== "object") return;
     const s = raw as Record<string, unknown>;
-    const at = strings(s.at).filter((m) => MOMENTS.has(m));
-    const caption = perMoment(s.caption);
+    const at = strings(s.at).filter((m) => moments.has(m));
+    const caption = perMoment(s.caption, moments);
     if (!at.length || !caption) return;
-    const emphasize = perMoment(s.emphasize);
+    const emphasize = perMoment(s.emphasize, moments);
     const step: TourStep = {
       id: typeof s.id === "string" ? s.id : `step-${i + 1}`,
       at,
-      kicker: perMoment(s.kicker) ?? {},
+      kicker: perMoment(s.kicker, moments) ?? {},
       caption,
       offset: typeof s.offset === "number" && Number.isFinite(s.offset) ? s.offset : 0,
       duration: typeof s.duration === "number" && s.duration > 0 ? s.duration : DEFAULT_DURATION_S,
@@ -123,14 +127,14 @@ export function loadTourSteps(data: unknown): TourStep[] {
  * order. Steps whose moments the record lacks are left out. A step's offset moves where the replay stops, never past
  * the next step's moment, so the tour only ever plays forward. The rule's time is its own declaration when the colony
  * lists it (what the metrics endpoint measures convergence from), else when its violations appeared; every moment but
- * @rule is looked for from then on.
+ * @rule is looked for from then on. A colony tour passes its own `find` for its moments (asked for each name once).
  */
 export function planTour(
   steps: readonly TourStep[],
   timeline: Timeline,
-  opts: { rules?: readonly Rule[]; known?: ReadonlySet<string>; source?: "recorded" | "reconstructed" } = {},
+  opts: { rules?: readonly Rule[]; known?: ReadonlySet<string>; source?: "recorded" | "reconstructed"; find?: (name: string) => Moment | null } = {},
 ): TourPlan {
-  const rise = findMoment(timeline, "@rule");
+  const rise = opts.find ? opts.find("@rule") : findMoment(timeline, "@rule");
   let ruleAt: number | null = null;
   let rules = 0;
   if (rise) {
@@ -143,7 +147,7 @@ export function planTour(
   const found = new Map<string, Moment | null>();
   const momentOf = (name: string): Moment | null => {
     if (name === "@rule") return rise;
-    if (!found.has(name)) found.set(name, findMoment(timeline, name, { ...(since !== undefined ? { since } : {}), ...(opts.known ? { known: opts.known } : {}) }));
+    if (!found.has(name)) found.set(name, opts.find ? opts.find(name) : findMoment(timeline, name, { ...(since !== undefined ? { since } : {}), ...(opts.known ? { known: opts.known } : {}) }));
     return found.get(name) ?? null;
   };
   const placed: Array<TourStop & { order: number }> = [];
@@ -213,7 +217,7 @@ function landedBetween(timeline: Timeline, from: number, to: number): { landings
 }
 
 /** What settled a landing's changes: the deciding layers' decisions on its proposals, else the proof or the innate checks. */
-function settledBy(moment: Moment, store: ColonyStore): string {
+export function settledBy(moment: Moment, store: ColonyStore): string {
   let layer = "";
   for (const id of moment.proposalIds) {
     for (const d of store.decisions.get(id) ?? []) {
@@ -335,6 +339,32 @@ export function fillTour(text: string, values: Readonly<Record<string, string>>)
 export function travelSpeed(gapMs: number, maxWallMs = 6_000): number | null {
   for (const speed of [1, 2, 4, 8, 16]) if (gapMs / speed <= maxWallMs) return speed;
   return null;
+}
+
+/** What a colony tour read from the public API besides the record (tours.ts loadTourData), by name; a read that failed is null. */
+export type TourData = Readonly<Record<string, unknown>>;
+
+/**
+ * A colony's own tour (tours.ts): its steps, the public reads they need, and how they are placed on the record, filled
+ * from the store at each stop and checked against the API. The generic run tour (tour.json, Hono's) is one of these;
+ * first-red and order-backend have their own. The player (Tour.tsx) and scripts/tour_check.ts work from this alone.
+ */
+export interface ColonyTour {
+  /** The colony it tells (also the script's name: ?tour=<id> plays it on another colony with the same shape). */
+  id: string;
+  /** What it tells, in a line (the results card's link title). */
+  about: string;
+  steps: TourStep[];
+  /** Public GETs under /api/colonies/<colony> the tour reads besides the snapshot, the agents and the record, by the name `data` holds them under. */
+  reads: Readonly<Record<string, string>>;
+  /** Place the steps on the record (the store stands at its start). */
+  plan(timeline: Timeline, store: ColonyStore, data: TourData, source: "recorded" | "reconstructed"): TourPlan;
+  /** Every value a caption can name, from the store standing at the stop's moment. */
+  values(stop: TourStop, store: ColonyStore, plan: TourPlan, data: TourData): Record<string, string>;
+  /** The numbers (and ids) a stop quotes, unformatted, from the store standing at its moment. */
+  numbers(stop: TourStop, store: ColonyStore, plan: TourPlan, data: TourData): Record<string, number | string>;
+  /** Compare what the stops quoted (`quoted[i]` for `plan.stops[i]`) with the API; `end` is the store after the whole record. */
+  check(plan: TourPlan, quoted: ReadonlyArray<Record<string, number | string>>, end: ColonyStore, data: TourData, metrics: MetricsReport): TourCheck[];
 }
 
 /** What the colony's metrics endpoint answers (GET /api/colonies/:id/metrics), as far as the check reads it. */

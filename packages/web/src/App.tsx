@@ -243,7 +243,7 @@ export function App({ route }: { route: ColonyRoute }) {
             {backend instanceof ReplayBackend && !director && !touring ? <ReplayBar backend={backend} colonyId={route.colonyId} /> : null}
             {backend instanceof ReplayBackend && touring ? (
               <Suspense fallback={null}>
-                <Tour store={store} backend={backend} renderer={renderer} onTab={setTab} onClose={leaveTour} />
+                <Tour store={store} backend={backend} renderer={renderer} onTab={setTab} onClose={leaveTour} script={route.tourScript} />
               </Suspense>
             ) : null}
             {showGuide ? <Guide onTarget={setGuideTarget} onClose={() => setGuideOpen(false)} lifted={backend instanceof ReplayBackend} /> : null}

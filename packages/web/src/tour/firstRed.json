@@ -1,0 +1,74 @@
+{
+  "$comment": "The tour of the first-red colony (/c/first-red?tour=1), on its replay; the same keys and fields as tour.json. Its moments (tour/firstRed.ts, found in the record's certify, landing and bisect events): @green (the first green certification result), @held (the last landing between the green result and the red one; the step is about the landing that broke the tests), @red (the red result), @search (the bisect event: the first red search ended), @repair (an agent took the repair intent the red result declared, else its declaration), @repair-landed (the landing that carried the repair intent), @green-again (the first green result after the red one), @start, @end. Captions are filled once, at the moment: {greenSha} {greenTests} {greenMs} {heldLandings} {heldCommits} {heldSpan} {brokeOrdinal} {brokeIntent} {brokeFile} {brokeSha} {brokeLanding} {brokeProposal} {redSha} {redAfterGreen} {redMs} {failing} {failingNames} {failingError} {runs} {searchMs} {sinceGreen} {repairTitle} {repairAgent} {repairWhyLine} {repairFile} {repairSettledBy} {afterRed} {greenAgainSha} {greenAgainTests} {greenAfterRed} {colony}.",
+  "steps": [
+    {
+      "id": "green",
+      "kicker": "Green",
+      "at": "@green",
+      "caption": "Trunk certified green on {greenSha}: {greenTests} in {greenMs}, the project's own tests run by trunk certification after the landing.",
+      "duration": 9,
+      "tab": "events",
+      "emphasize": "trunk"
+    },
+    {
+      "id": "held",
+      "kicker": "Held",
+      "at": "@held",
+      "caption": "{heldLandings} landed in {heldCommits} over {heldSpan} while certification was held, and no test ran on any of them; the {brokeOrdinal}, {brokeIntent}, changed {brokeFile}.",
+      "duration": 10,
+      "tab": "events",
+      "highlight": "@moment",
+      "focus": "@moment"
+    },
+    {
+      "id": "red",
+      "kicker": "Red",
+      "at": "@red",
+      "caption": "Certification ran again on the head {redSha}, {redAfterGreen} after the green result, and went red: {failing} failing, {failingNames}{failingError}.",
+      "duration": 10,
+      "tab": "events",
+      "highlight": "@moment",
+      "emphasize": "trunk"
+    },
+    {
+      "id": "search",
+      "kicker": "First red commit",
+      "at": "@search",
+      "caption": "The search ran the failing test alone at earlier commits, {runs} in {searchMs} over the {sinceGreen} since green, and named the {brokeOrdinal} landing: commit {brokeSha}, landing {brokeLanding}, intent {brokeIntent}, proposal {brokeProposal}, which changed {brokeFile}.",
+      "duration": 14,
+      "tab": "why",
+      "select": ["@moment"],
+      "highlight": "@moment",
+      "focus": "@selected",
+      "emphasize": "trunk"
+    },
+    {
+      "id": "repair",
+      "kicker": "Repair",
+      "at": "@repair",
+      "caption": "{repairAgent} took the repair intent the red result declared, “{repairTitle}”{repairWhyLine}.",
+      "duration": 12,
+      "tab": "intents",
+      "highlight": "@moment"
+    },
+    {
+      "id": "repair-landed",
+      "kicker": "Repaired",
+      "at": "@repair-landed",
+      "caption": "The repair landed {afterRed} after the red result, in {repairFile}, settled by {repairSettledBy}.",
+      "duration": 9,
+      "tab": "events",
+      "highlight": "@moment",
+      "focus": "@moment"
+    },
+    {
+      "id": "green-again",
+      "kicker": "Green again",
+      "at": "@green-again",
+      "caption": "Trunk certified green again on {greenAgainSha}, {greenAfterRed} after the red result: {greenAgainTests}, and the result rides with the commit in its lineage note.",
+      "duration": 12,
+      "tab": "events",
+      "emphasize": "trunk"
+    }
+  ]
+}

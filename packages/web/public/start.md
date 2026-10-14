@@ -16,6 +16,8 @@ Agents read the decaying signals other agents leave on the code and each chooses
 
 Replay the Hono run: https://firetrident.com/c/hono?replay=1
 
+Tour of that run, seven steps with each sentence filled from its record: https://firetrident.com/c/hono?tour=1
+
 The same machinery at scale: on production, 2,000 synthetic agents (no model calls, review off, each change adds one new file) landed 6,606 changes in one repository in 145 s, 2,730 a minute.
 
 Replay it: https://firetrident.com/c/scale?replay=1&t=32&speed=4
@@ -30,11 +32,17 @@ When goals conflict, one agent cannot quietly undo another: on production, three
 
 See them: https://firetrident.com/c/order-backend (or `curl -s https://firetrident.com/api/colonies/order-backend/review`)
 
+Tour of that colony, six steps with each sentence filled from its record (the seed, the three goals, the first landing, the two changes held and the reason each was held, the queue that still holds them): https://firetrident.com/c/order-backend?tour=1
+
 ## How is work reviewed?
 
 Every change goes to deterministic proof first, then to decision models, a second model from another family and a person, each only when the cheaper layer is unsure: all 282 rule edits of the Hono run on production landed on deterministic proof.
 
 See a proof-path landing: https://firetrident.com/c/hono?path=src/index.ts (the same lineage as JSON: https://firetrident.com/api/colonies/hono/why?path=src/index.ts)
+
+After landing, trunk certification runs the project's own tests. On production, the first-red colony certified green, six changes landed while certification was held and the fourth broke `sub()`; the red result's search found that landing in 3 test runs (202 ms) and named its commit, proposal and intent; a scripted repair landed and trunk certified green again.
+
+Tour of that colony, seven steps with each sentence filled from its record: https://firetrident.com/c/first-red?tour=1 (its certification results as JSON: https://firetrident.com/api/colonies/first-red/certifications)
 
 ## How is the why recorded?
 
