@@ -12,6 +12,8 @@ import { RESUME_KEY_NOTE, contextBrief, escalateReceipt, gitInstructions, leaseN
 import { newResumeKey } from "./resume.ts";
 import { cleanGuideTake, type GuideTake, type LessonReceipt } from "@fire_trident/core";
 import { guideBrief } from "./guide.ts";
+import type { ImpactReport } from "@fire_trident/core";
+import { cleanModelHint, stepupAdvice, type ModelHint } from "../colony/stepup.ts";
 
 /** What one MCP session remembers (stored in the session's Durable Object). */
 export interface Session {
@@ -30,6 +32,8 @@ export interface Session {
   lastReturn?: LastReturn;
   /** The colony's field guide as take returned it (FT_FIELD_GUIDE): lessons with their provenance, data to check. */
   guide?: GuideTake;
+  /** The take's model hint (FT_MODEL_STEPUP): after two returns, advice to use a stronger model for this attempt. */
+  model?: ModelHint;
   /** Read set of the current intent: path -> blob seen at the lease base (null = absent). */
   reads: Record<Path, Sha | null>;
   proposals: Array<{ id: Id; intentId: Id; headSha: Sha; at: number }>;
@@ -73,6 +77,8 @@ export type McpColonyRpc = Omit<ColonyRpc, "registerAgent"> & {
   listRegions(): Promise<string[]>;
   registerAgent(a: { kind: AgentKind; name: string; model?: string; resumeKey?: string }): Promise<AgentInfo>;
   resumeAgent(agentId: Id, resumeKey: string): Promise<ResumeCheck>;
+  /** What a change to these paths reaches, and who works on it now (colony/impact.ts). */
+  impact?(paths: Path[], opts?: { depth?: number }): Promise<ImpactReport>;
 };
 
 /** TrunkDO methods the MCP tools use: lineage, and the blobs at a lease base (inline changes are built against it). */
@@ -212,7 +218,7 @@ function directiveView(d: Directive): Record<string, unknown> {
   };
 }
 
-/** Forget the held intent: its lease, rule, review questions, why-context, last return, field guide and read set. */
+/** Forget the held intent: its lease, rule, review questions, why-context, last return, field guide, model hint and read set. */
 function dropHeld(s: Session): void {
   delete s.intent;
   delete s.lease;
@@ -221,6 +227,7 @@ function dropHeld(s: Session): void {
   delete s.context;
   delete s.lastReturn;
   delete s.guide;
+  delete s.model;
   s.reads = {};
 }
 
@@ -499,6 +506,8 @@ export class FireTridentTools {
     const lastReturn = lastReturnView(s.lastReturn);
     // The colony's field guide (FT_FIELD_GUIDE): lessons other agents recorded, labeled as data to check.
     const guide = guideBrief(s.guide);
+    // Model step-up (FT_MODEL_STEPUP): advice only, since the platform does not run an outside agent's model.
+    const model = s.model ? stepupAdvice(s.model) : null;
     return {
       intent: {
         id: intent.id,
@@ -515,6 +524,7 @@ export class FireTridentTools {
       ...(context ? { context } : {}),
       ...(lastReturn ? { lastReturn } : {}),
       ...(guide ? { guide } : {}),
+      ...(model ? { model } : {}),
       lease: {
         baseSha: lease.baseSha,
         trunk: { remote: lease.trunk.remote, sha: lease.trunk.sha },
@@ -552,6 +562,8 @@ export class FireTridentTools {
     const lastReturn = cleanLastReturn("lastReturn" in got ? got.lastReturn : undefined);
     // The colony's field guide (FT_FIELD_GUIDE; none where it is off).
     const guide = cleanGuideTake("guide" in got ? got.guide : undefined);
+    // The model step-up's hint (FT_MODEL_STEPUP; none where it is off).
+    const model = cleanModelHint(got.model);
     const next = await this.update((x) => {
       if (x.intent?.id !== got.intent.id) x.reads = {};
       x.intent = got.intent;
@@ -565,6 +577,8 @@ export class FireTridentTools {
       else delete x.lastReturn;
       if (guide) x.guide = guide;
       else delete x.guide;
+      if (model) x.model = model;
+      else delete x.model;
       x.lastBeat = now; // a take deposits fresh claims
     });
     return this.leaseView(next as Session & { intent: Intent; lease: WorkspaceLease });
@@ -904,5 +918,21 @@ export class FireTridentTools {
     if (!path) fail(400, `invalid path ${a.path}`);
     const entries = await this.ctx.trunk(s.colonyId).why(path, a.line);
     return whyAnswer(path, a.line, entries);
+  }
+
+  /**
+   * What a change to these paths (default: the held intent's footprint) reaches, and who works on it now
+   * (ColonyDO.impact, colony/impact.ts): the trunk files that import them, up to `depth` levels, the live claims on those
+   * files and the latest landings on them with their intents' whys. The answer's `about` labels its quoted text as data.
+   */
+  async impact(a: { paths?: string[]; depth?: number }): Promise<unknown> {
+    const s = await this.joined();
+    const asked = (a.paths ?? []).filter((p) => typeof p === "string" && p.trim() !== "");
+    const paths = asked.length > 0 ? asked : (s.intent?.footprint ?? []);
+    if (paths.length === 0) fail(400, "name the files to look at in paths, or take an intent first: impact then looks at its footprint");
+    const colony = this.ctx.colony(s.colonyId);
+    // Called as a method: on a Durable Object stub, a detached function would name a remote property.
+    if (!colony.impact) fail(503, "this colony cannot answer impact yet");
+    return colony.impact(paths, a.depth !== undefined ? { depth: a.depth } : {});
   }
 }

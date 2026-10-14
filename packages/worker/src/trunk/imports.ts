@@ -424,6 +424,27 @@ export class ImportIndex {
     return out;
   }
 
+  /**
+   * One level of an importer walk (trunk/impact.ts): the indexed files whose imports resolve to any of `paths`, each once
+   * with the first of those paths it imports (`via`), sorted by path, at most `limit`. The paths themselves and the files
+   * in `exclude` (the ones the walk has already reached) are left out.
+   */
+  importersOf(paths: readonly Path[], exclude: readonly Path[], limit: number): Array<{ path: Path; via: Path }> {
+    const max = Math.floor(Number.isFinite(limit) ? limit : 0);
+    if (paths.length === 0 || max <= 0) return [];
+    return this.sql
+      .exec<{ src: string; via: string }>(
+        `SELECT src, MIN(dst) AS via FROM ft_imp_edges
+          WHERE dst IN (SELECT value FROM json_each(?)) AND src NOT IN (SELECT value FROM json_each(?))
+          GROUP BY src ORDER BY src LIMIT ?`,
+        JSON.stringify(paths),
+        JSON.stringify([...paths, ...exclude]),
+        max,
+      )
+      .toArray()
+      .map((r) => ({ path: r.src, via: r.via }));
+  }
+
   /** True when the index describes trunk commit `head` with nothing left to read or to resolve again. */
   current(head: Sha): boolean {
     return this.meta("sha") === head && this.meta("resolve_from") === null && this.sql.exec("SELECT 1 AS x FROM ft_imp_dirty LIMIT 1").toArray().length === 0;

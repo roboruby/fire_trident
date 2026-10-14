@@ -16,6 +16,8 @@ import { LESSON_ARGUMENT } from "./guide.ts";
 import { serverInstructions } from "./instructions.ts";
 import { FireTridentTools, MAX_WAIT_S } from "./tools.ts";
 import type { McpColonyRpc, McpTrunkRpc, RepoReader, Session, ToolContext } from "./tools.ts";
+import { IMPACT_DESCRIPTION } from "./impact.ts";
+import { IMPACT_DEPTH, IMPACT_ENTRIES } from "../trunk/impact.ts";
 
 const SESSION_KEY = "ft:session";
 
@@ -57,7 +59,7 @@ const wait = z.number().min(0).max(MAX_WAIT_S).optional();
  * The FireTrident MCP server for external coding agents. Each MCP session is its
  * own Durable Object (binding MCP) holding the session's agent id, current
  * intent, lease and read set. Tools: join, sense, take, checkout, declare, read,
- * propose, inbox, release, escalate, why. Served over Streamable HTTP at /mcp and legacy SSE at /sse.
+ * propose, inbox, release, escalate, why, impact. Served over Streamable HTTP at /mcp and legacy SSE at /sse.
  */
 export class FireTridentMcp extends McpAgent<Env, Record<string, never>, Record<string, unknown>> {
   // Where FT_INLINE turns inline changes on, agents are told they may propose without git, and where FT_FIELD_GUIDE is
@@ -295,6 +297,21 @@ export class FireTridentMcp extends McpAgent<Env, Record<string, never>, Record<
         annotations: readOnly,
       },
       async (a) => run(() => this.tools().why(a)),
+    );
+
+    // Impact (colony/impact.ts): what a change to a file reaches through imports, and who works on those files now.
+    this.server.registerTool(
+      "impact",
+      {
+        title: "What a change reaches",
+        description: IMPACT_DESCRIPTION,
+        inputSchema: {
+          paths: z.array(path).max(IMPACT_ENTRIES).optional().describe("Repository paths: files, directories (trailing /) or globs (default: your intent's footprint)"),
+          depth: z.number().int().min(1).max(IMPACT_DEPTH).optional().describe(`Levels of importers to walk (1 to ${IMPACT_DEPTH}, default ${IMPACT_DEPTH})`),
+        },
+        annotations: readOnly,
+      },
+      async (a) => run(() => this.tools().impact(a)),
     );
   }
 }

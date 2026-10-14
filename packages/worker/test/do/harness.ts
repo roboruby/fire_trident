@@ -13,6 +13,7 @@ import type { Env } from "../../src/env.ts";
 import { runRevert, type RevertResult, type RevertTrunk } from "../../src/trunk/revert.ts";
 import { FENCE_WAIT_MS, directionReturns, fenceAnswer, mergeDirection, parseDirection, settlesWithin, type FenceAnswer } from "../../src/trunk/direction.ts";
 import type { DirectionInfo } from "../../src/colony/direction.ts";
+import { IMPACT_FILES, expandEntries, walkImporters, type ImportersOf, type ImporterWalk, type TrunkFiles } from "../../src/trunk/impact.ts";
 
 export { ColonyDO } from "../../src/colony/ColonyDO.ts";
 export { RegionDO } from "../../src/region/RegionDO.ts";
@@ -310,6 +311,32 @@ export class TrunkDO extends DurableObject<Env> {
       if (l && l.imports.length + l.importers.length > 0) out[p] = l;
     }
     return out;
+  }
+
+  /** The importer walk (trunk/impact.ts) over the import links setImports() set, as the real TrunkDO walks its index. */
+  async importerWalk(paths: Path[], opts: { depth?: number; max?: number } = {}): Promise<ImporterWalk> {
+    const s = await this.load();
+    if (s.imports === "fail") throw new Error("simulated import links failure");
+    const table = s.imports ?? {};
+    const files: TrunkFiles = {
+      has: (p) => s.files[p] !== undefined,
+      range: (from, to, limit) => Object.keys(s.files).filter((p) => p >= from && p < to).sort().slice(0, limit),
+    };
+    const max = Math.min(IMPACT_FILES, opts.max ?? IMPACT_FILES);
+    const expanded = expandEntries(files, paths, max);
+    const importersOf: ImportersOf = (frontier, exclude, limit) => {
+      const via = new Map<Path, Path>();
+      for (const f of frontier) {
+        for (const src of table[f]?.importers ?? []) {
+          if (exclude.includes(src) || frontier.includes(src)) continue;
+          const prev = via.get(src);
+          if (prev === undefined || f < prev) via.set(src, f);
+        }
+      }
+      return [...via].sort(([a], [b]) => (a < b ? -1 : 1)).slice(0, limit).map(([path, v]) => ({ path, via: v }));
+    };
+    const walk = walkImporters(expanded.roots, importersOf, Math.min(3, opts.depth ?? 3), max);
+    return { trunkSha: s.head, current: true, roots: expanded.roots, missing: expanded.missing, files: walk.files, truncated: expanded.truncated || walk.truncated };
   }
 
   async files(): Promise<Array<{ path: Path; size: number; blob: Sha }>> {
