@@ -1,0 +1,581 @@
+{
+  "kind": "scale-summary",
+  "at": "2026-10-14T00:26:39Z",
+  "stream": "Round 4: inline changes and asynchronous publishing",
+  "preview": "p18 (wrangler preview; own Durable Objects; Artifacts namespaces shared with production)",
+  "table": [
+    {
+      "file": "base-n1000.json",
+      "label": "base-n1000",
+      "colony": "p18-scale2",
+      "agents": 1000,
+      "inline": false,
+      "publish": "sync",
+      "startedAt": "2026-10-13T23:13:09.840Z",
+      "landedPerMin": 1626.3,
+      "commitsPerMin": 303.8,
+      "timeToLandMs": {
+        "p50": 15636,
+        "p90": 21886,
+        "p99": 27250
+      },
+      "landed": 3000,
+      "returned": 0,
+      "intentsExhausted": true,
+      "calls": 27816,
+      "errors": 0,
+      "takeMs": {
+        "p50": 135,
+        "p90": 593,
+        "p99": 1216
+      },
+      "batchSizeP50": 4,
+      "trunkCycle": {
+        "cycleMs": {
+          "p50": 4275,
+          "p90": 5450
+        },
+        "pullMs": {
+          "p50": 3193,
+          "p90": 4446
+        },
+        "buildMs": {
+          "p50": 267,
+          "p90": 726
+        },
+        "pushMs": {
+          "p50": 571,
+          "p90": 913
+        },
+        "queueWaitMs": {
+          "p50": 3886,
+          "p90": 9632
+        },
+        "proposalsPerCycle": {
+          "p50": 174,
+          "p90": 199
+        }
+      },
+      "topWaits": {
+        "admission closed in every candidate region": 8523,
+        "no open intents": 7427,
+        "every open intent's files are claimed by another agent": 484,
+        "no intent accepted at this agent's thresholds": 78
+      }
+    },
+    {
+      "file": "inline-n1000.json",
+      "label": "inline-n1000",
+      "colony": "p18-scale2",
+      "agents": 1000,
+      "inline": true,
+      "publish": "sync",
+      "startedAt": "2026-10-13T23:17:28.727Z",
+      "landedPerMin": 1433.1,
+      "commitsPerMin": 265.9,
+      "timeToLandMs": {
+        "p50": 9943,
+        "p90": 12498,
+        "p99": 14361
+      },
+      "landed": 3000,
+      "returned": 0,
+      "intentsExhausted": true,
+      "calls": 28469,
+      "errors": 0,
+      "takeMs": {
+        "p50": 112,
+        "p90": 1107,
+        "p99": 7145
+      },
+      "batchSizeP50": 4,
+      "trunkCycle": {
+        "cycleMs": {
+          "p50": 2812,
+          "p90": 3956
+        },
+        "pullMs": {
+          "p50": 565,
+          "p90": 1861
+        },
+        "buildMs": {
+          "p50": 227,
+          "p90": 632
+        },
+        "pushMs": {
+          "p50": 1553,
+          "p90": 2327
+        },
+        "queueWaitMs": {
+          "p50": 2425,
+          "p90": 5509
+        },
+        "proposalsPerCycle": {
+          "p50": 159,
+          "p90": 197
+        }
+      },
+      "topWaits": {
+        "no open intents": 11772,
+        "admission closed in every candidate region": 5383,
+        "every open intent's files are claimed by another agent": 740,
+        "no intent accepted at this agent's thresholds": 56
+      }
+    },
+    {
+      "file": "base-n5000.json",
+      "label": "base-n5000",
+      "colony": "p18-scale2",
+      "agents": 5000,
+      "inline": false,
+      "publish": "sync",
+      "startedAt": "2026-10-13T23:33:10.515Z",
+      "landedPerMin": 1820.8,
+      "commitsPerMin": 372,
+      "timeToLandMs": {
+        "p50": 19066,
+        "p90": 25027,
+        "p99": 27504
+      },
+      "landed": 3761,
+      "returned": 0,
+      "intentsExhausted": false,
+      "calls": 55965,
+      "errors": 666,
+      "takeMs": {
+        "p50": 431,
+        "p90": 4032,
+        "p99": 10877
+      },
+      "batchSizeP50": 5,
+      "trunkCycle": {
+        "cycleMs": {
+          "p50": 5060,
+          "p90": 6099
+        },
+        "pullMs": {
+          "p50": 3851,
+          "p90": 4722
+        },
+        "buildMs": {
+          "p50": 250,
+          "p90": 872
+        },
+        "pushMs": {
+          "p50": 808,
+          "p90": 1325
+        },
+        "queueWaitMs": {
+          "p50": 4561,
+          "p90": 10612
+        },
+        "proposalsPerCycle": {
+          "p50": 195,
+          "p90": 199
+        }
+      },
+      "topWaits": {
+        "admission closed in every candidate region": 22274,
+        "every open intent's files are claimed by another agent": 2672,
+        "no intent accepted at this agent's thresholds": 83,
+        "admission closed in bench/r18": 9
+      }
+    },
+    {
+      "file": "inline-n5000-stopped.json",
+      "label": "inline-n5000",
+      "note": "stopped itself at 15 s (63% of calls failing in a 5 s window during the ramp); rerun as inline-n5000",
+      "colony": "p18-scale2",
+      "agents": 5000,
+      "inline": true,
+      "publish": "sync",
+      "startedAt": "2026-10-13T23:38:02.233Z",
+      "landedPerMin": 1.3,
+      "commitsPerMin": 1.3,
+      "timeToLandMs": {
+        "p50": 6608,
+        "p90": 17485,
+        "p99": 19340
+      },
+      "landed": 303,
+      "returned": 0,
+      "intentsExhausted": false,
+      "calls": 15548,
+      "errors": 1705,
+      "takeMs": {
+        "p50": 2665,
+        "p90": 7565,
+        "p99": 12289
+      },
+      "batchSizeP50": 2,
+      "stoppedEarly": "error rate 63% over 5 s at 15 s",
+      "trunkCycle": {
+        "cycleMs": {
+          "p50": 149,
+          "p90": 189
+        },
+        "pullMs": {
+          "p50": 12,
+          "p90": 13
+        },
+        "buildMs": {
+          "p50": 16,
+          "p90": 17
+        },
+        "pushMs": {
+          "p50": 121,
+          "p90": 159
+        },
+        "queueWaitMs": {
+          "p50": 0,
+          "p90": 0
+        },
+        "proposalsPerCycle": {
+          "p50": 1,
+          "p90": 1
+        }
+      },
+      "topWaits": {
+        "admission closed in every candidate region": 3764,
+        "colony busy: too many takes in flight": 674,
+        "every open intent's files are claimed by another agent": 545,
+        "no intent accepted at this agent's thresholds": 6
+      }
+    },
+    {
+      "file": "inline-n5000.json",
+      "label": "inline-n5000",
+      "colony": "p18-scale2",
+      "agents": 5000,
+      "inline": true,
+      "publish": "sync",
+      "startedAt": "2026-10-13T23:41:34.978Z",
+      "landedPerMin": 3841.9,
+      "commitsPerMin": 550.7,
+      "timeToLandMs": {
+        "p50": 10652,
+        "p90": 14659,
+        "p99": 17126
+      },
+      "landed": 7485,
+      "returned": 0,
+      "intentsExhausted": false,
+      "calls": 48932,
+      "errors": 603,
+      "takeMs": {
+        "p50": 869,
+        "p90": 3360,
+        "p99": 10587
+      },
+      "batchSizeP50": 7,
+      "trunkCycle": {
+        "cycleMs": {
+          "p50": 2767,
+          "p90": 3238
+        },
+        "pullMs": {
+          "p50": 891,
+          "p90": 1222
+        },
+        "buildMs": {
+          "p50": 307,
+          "p90": 469
+        },
+        "pushMs": {
+          "p50": 1619,
+          "p90": 2221
+        },
+        "queueWaitMs": {
+          "p50": 4275,
+          "p90": 5131
+        },
+        "proposalsPerCycle": {
+          "p50": 196,
+          "p90": 199
+        }
+      },
+      "topWaits": {
+        "admission closed in every candidate region": 17242,
+        "every open intent's files are claimed by another agent": 7529,
+        "no intent accepted at this agent's thresholds": 63,
+        "admission closed in bench/r30": 13
+      }
+    },
+    {
+      "file": "inline-n5000-mixed.json",
+      "label": "inline-async-n5000",
+      "note": "not asynchronous: the colony object ran the new FT_ASYNC_PUBLISH, its trunk writer had not restarted and pushed every cycle; every take paid the old stale-base walk",
+      "colony": "p18-scale2",
+      "agents": 5000,
+      "inline": true,
+      "publish": "async",
+      "startedAt": "2026-10-13T23:47:26.058Z",
+      "landedPerMin": 2994.9,
+      "commitsPerMin": 492.6,
+      "timeToLandMs": {
+        "p50": 12400,
+        "p90": 16768,
+        "p99": 18832
+      },
+      "landed": 5812,
+      "returned": 0,
+      "intentsExhausted": false,
+      "calls": 52964,
+      "errors": 307,
+      "takeMs": {
+        "p50": 676,
+        "p90": 2810,
+        "p99": 10104
+      },
+      "batchSizeP50": 6,
+      "trunkCycle": {
+        "cycleMs": {
+          "p50": 3323,
+          "p90": 4088
+        },
+        "pullMs": {
+          "p50": 898,
+          "p90": 1231
+        },
+        "buildMs": {
+          "p50": 359,
+          "p90": 596
+        },
+        "pushMs": {
+          "p50": 2151,
+          "p90": 2822
+        },
+        "queueWaitMs": {
+          "p50": 5390,
+          "p90": 6465
+        },
+        "proposalsPerCycle": {
+          "p50": 197,
+          "p90": 200
+        }
+      },
+      "topWaits": {
+        "admission closed in every candidate region": 17152,
+        "every open intent's files are claimed by another agent": 8353,
+        "colony busy: too many takes in flight": 59,
+        "no intent accepted at this agent's thresholds": 51
+      }
+    },
+    {
+      "file": "inline-async-n5000-fullwalk.json",
+      "label": "inline-async-n5000",
+      "note": "asynchronous, code 068b5df: the take check re-walked the whole unpublished backlog whenever the colony head moved",
+      "colony": "p18-scale2",
+      "agents": 5000,
+      "inline": true,
+      "publish": "async",
+      "startedAt": "2026-10-14T00:01:41.990Z",
+      "landedPerMin": 3775.6,
+      "commitsPerMin": 684,
+      "timeToLandMs": {
+        "p50": 8028,
+        "p90": 20816,
+        "p99": 25900
+      },
+      "landed": 7502,
+      "returned": 0,
+      "intentsExhausted": false,
+      "calls": 52739,
+      "errors": 568,
+      "takeMs": {
+        "p50": 1175,
+        "p90": 13089,
+        "p99": 16344
+      },
+      "batchSizeP50": 5,
+      "trunkCycle": {
+        "cycleMs": {
+          "p50": 1757,
+          "p90": 3494
+        },
+        "pullMs": {
+          "p50": 1161,
+          "p90": 3159
+        },
+        "buildMs": {
+          "p50": 302,
+          "p90": 1551
+        },
+        "pushMs": {
+          "p50": 0,
+          "p90": 0
+        },
+        "queueWaitMs": {
+          "p50": 1554,
+          "p90": 3876
+        },
+        "proposalsPerCycle": {
+          "p50": 161,
+          "p90": 199
+        },
+        "publishWaitMs": {
+          "p50": 0,
+          "p90": 0
+        },
+        "unpublished": {
+          "p50": 357,
+          "p90": 536
+        },
+        "publishLagMs": {
+          "p50": 23283,
+          "p90": 43916
+        }
+      },
+      "topWaits": {
+        "colony busy: too many takes in flight": 10201,
+        "admission closed in every candidate region": 9019,
+        "every open intent's files are claimed by another agent": 1918,
+        "no open intents": 1072
+      }
+    },
+    {
+      "file": "inline-async-n5000.json",
+      "label": "inline-async-n5000",
+      "note": "asynchronous, code c16c1fa: the take check walks only the landings since its last answer",
+      "colony": "p18-scale2",
+      "agents": 5000,
+      "inline": true,
+      "publish": "async",
+      "startedAt": "2026-10-14T00:13:26.373Z",
+      "landedPerMin": 2759.4,
+      "commitsPerMin": 483.2,
+      "timeToLandMs": {
+        "p50": 8222,
+        "p90": 28065,
+        "p99": 37419
+      },
+      "landed": 5662,
+      "returned": 0,
+      "intentsExhausted": false,
+      "calls": 51961,
+      "errors": 456,
+      "takeMs": {
+        "p50": 1631,
+        "p90": 4504,
+        "p99": 10633
+      },
+      "batchSizeP50": 5,
+      "trunkCycle": {
+        "cycleMs": {
+          "p50": 2510,
+          "p90": 3672
+        },
+        "pullMs": {
+          "p50": 1986,
+          "p90": 3110
+        },
+        "buildMs": {
+          "p50": 366,
+          "p90": 660
+        },
+        "pushMs": {
+          "p50": 0,
+          "p90": 0
+        },
+        "queueWaitMs": {
+          "p50": 2019,
+          "p90": 16096
+        },
+        "proposalsPerCycle": {
+          "p50": 158,
+          "p90": 200
+        },
+        "publishWaitMs": {
+          "p50": 0,
+          "p90": 0
+        },
+        "unpublished": {
+          "p50": 119,
+          "p90": 181
+        },
+        "publishLagMs": {
+          "p50": 8007,
+          "p90": 14971
+        }
+      },
+      "topWaits": {
+        "admission closed in every candidate region": 19609,
+        "every open intent's files are claimed by another agent": 4379,
+        "colony busy: too many takes in flight": 237,
+        "admission closed in bench/r19": 14
+      }
+    },
+    {
+      "file": "inline-n5000-b-stopped.json",
+      "label": "inline-n5000-b",
+      "note": "stopped at 15 s; the colony object answered many calls with Durable Object is overloaded",
+      "colony": "p18-scale2",
+      "agents": 5000,
+      "inline": true,
+      "publish": "sync",
+      "startedAt": "2026-10-14T00:22:45.994Z",
+      "landedPerMin": 9.5,
+      "commitsPerMin": 6.3,
+      "timeToLandMs": {
+        "p50": 5291,
+        "p90": 20550,
+        "p99": 21258
+      },
+      "landed": 269,
+      "returned": 0,
+      "intentsExhausted": false,
+      "calls": 17834,
+      "errors": 5046,
+      "takeMs": {
+        "p50": 1396,
+        "p90": 8375,
+        "p99": 13678
+      },
+      "batchSizeP50": 2,
+      "stoppedEarly": "error rate 143% over 5 s at 15 s",
+      "trunkCycle": {
+        "cycleMs": {
+          "p50": 49,
+          "p90": 78
+        },
+        "pullMs": {
+          "p50": 24,
+          "p90": 55
+        },
+        "buildMs": {
+          "p50": 19,
+          "p90": 45
+        },
+        "pushMs": {
+          "p50": 0,
+          "p90": 0
+        },
+        "queueWaitMs": {
+          "p50": 0,
+          "p90": 49
+        },
+        "proposalsPerCycle": {
+          "p50": 1,
+          "p90": 5
+        },
+        "publishWaitMs": {
+          "p50": 0,
+          "p90": 0
+        },
+        "unpublished": {
+          "p50": 11,
+          "p90": 33
+        },
+        "publishLagMs": {
+          "p50": 2374,
+          "p90": 3852
+        }
+      },
+      "topWaits": {
+        "admission closed in every candidate region": 2441,
+        "every open intent's files are claimed by another agent": 170,
+        "no intent accepted at this agent's thresholds": 2
+      }
+    }
+  ]
+}

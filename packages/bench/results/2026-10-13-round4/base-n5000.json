@@ -1,0 +1,1779 @@
+{
+  "kind": "live",
+  "note": "MEASURED, real landings: synthetic API agents (no model, no agent-side git); every landed proposal is a real trunk commit built by the trunk writer from a blob read out of the agent's workspace fork.",
+  "label": "base-n5000",
+  "url": "https://p18-firetrident.mattsolt.workers.dev",
+  "colony": "p18-scale2",
+  "agents": 5000,
+  "durationS": 120,
+  "workMs": 0,
+  "regions": 64,
+  "startedAt": "2026-10-13T23:33:10.515Z",
+  "elapsedS": 135.281183583,
+  "stoppedEarly": null,
+  "ops": [
+    {
+      "op": "metrics",
+      "calls": 3,
+      "errors": 0,
+      "n": 3,
+      "min": 166.75491700001294,
+      "p50": 186.823332999993,
+      "p90": 278.39675,
+      "p99": 278.39675,
+      "max": 278.39675,
+      "mean": 210.65833333333532
+    },
+    {
+      "op": "intent",
+      "calls": 15000,
+      "errors": 0,
+      "n": 15000,
+      "min": 83.64720799999486,
+      "p50": 122.78754199999821,
+      "p90": 230.90579200000502,
+      "p99": 748.3533330000009,
+      "max": 2161.228666,
+      "mean": 165.24893190906658
+    },
+    {
+      "op": "status",
+      "calls": 1,
+      "errors": 0,
+      "n": 1,
+      "min": 1346.1827500000072,
+      "p50": 1346.1827500000072,
+      "p90": 1346.1827500000072,
+      "p99": 1346.1827500000072,
+      "max": 1346.1827500000072,
+      "mean": 1346.1827500000072
+    },
+    {
+      "op": "register",
+      "calls": 5000,
+      "errors": 455,
+      "n": 5000,
+      "min": 58.93908300000476,
+      "p50": 2402.9465409999975,
+      "p90": 10339.632542000007,
+      "p99": 16003.943667000014,
+      "max": 27788.83395799999,
+      "mean": 4112.592244782193
+    },
+    {
+      "op": "take",
+      "calls": 29079,
+      "errors": 206,
+      "n": 29079,
+      "min": 52.073334000000614,
+      "p50": 430.7840409999917,
+      "p90": 4032.194208999994,
+      "p99": 10877.19799999999,
+      "max": 26516.021833000006,
+      "mean": 1301.8212279336947
+    },
+    {
+      "op": "propose",
+      "calls": 3766,
+      "errors": 5,
+      "n": 3766,
+      "min": 97.7029170000169,
+      "p50": 345.582000000024,
+      "p90": 925.2462920000253,
+      "p99": 5241.351957999999,
+      "max": 30001.758874999985,
+      "mean": 620.639881208975
+    },
+    {
+      "op": "heartbeat",
+      "calls": 1913,
+      "errors": 0,
+      "n": 1913,
+      "min": 66.5616250000021,
+      "p50": 181.08554199998616,
+      "p90": 369.91270899999654,
+      "p99": 815.4789999999921,
+      "max": 1306.317584000004,
+      "mean": 224.3318670392057
+    },
+    {
+      "op": "poll",
+      "calls": 1203,
+      "errors": 0,
+      "n": 1203,
+      "min": 41.87058300001081,
+      "p50": 125.90033299999777,
+      "p90": 300.07204200001433,
+      "p99": 587.019500000024,
+      "max": 1348.1767090000212,
+      "mean": 159.0752081546132
+    }
+  ],
+  "takeAssigned": {
+    "n": 3766,
+    "min": 99.44204100000206,
+    "p50": 980.5059579999943,
+    "p90": 2140.566292000003,
+    "p99": 9987.023499999996,
+    "max": 26516.04808400001,
+    "mean": 1357.7308045764726
+  },
+  "takeWait": {
+    "n": 25107,
+    "min": 52.116041999994195,
+    "p50": 362.7471669999941,
+    "p90": 4084.1533749999944,
+    "p99": 10958.572249999997,
+    "max": 26377.550917,
+    "mean": 1225.3401857530985
+  },
+  "counts": {
+    "registered": 4545,
+    "assigned": 3766,
+    "waits": {
+      "admission closed in every candidate region": 22274,
+      "every open intent's files are claimed by another agent": 2672,
+      "no intent accepted at this agent's thresholds": 83,
+      "admission closed in bench/r32": 8,
+      "admission closed in bench/r08": 1,
+      "admission closed in bench/r18": 9,
+      "admission closed in bench/r44": 4,
+      "admission closed in bench/r48": 4,
+      "admission closed in bench/r60": 5,
+      "admission closed in bench/r41": 4,
+      "admission closed in bench/r40": 4,
+      "admission closed in bench/r26": 4,
+      "admission closed in bench/r09": 5,
+      "admission closed in bench/r10": 2,
+      "admission closed in bench/r12": 2,
+      "admission closed in bench/r14": 4,
+      "admission closed in bench/r15": 2,
+      "admission closed in bench/r33": 4,
+      "admission closed in bench/r35": 1,
+      "admission closed in bench/r30": 5,
+      "admission closed in bench/r21": 4,
+      "admission closed in bench/r23": 1,
+      "admission closed in bench/r19": 4,
+      "admission closed in bench/r25": 1
+    },
+    "proposals": 3761,
+    "landed": 3761,
+    "returned": 0,
+    "rejected": 0,
+    "unresolved": 0
+  },
+  "returns": {},
+  "window": {
+    "fromS": 25,
+    "toS": 120,
+    "commits": 589,
+    "landedProposals": 2883,
+    "landedPerMin": 1820.842105263158,
+    "commitsPerMin": 372,
+    "source": "live WebSocket landing events"
+  },
+  "snapshotDelta": {
+    "landings": 849,
+    "landedProposals": 3761,
+    "proposals": 3762,
+    "returned": 1,
+    "rejected": 0,
+    "takes": 3761
+  },
+  "timeToLandMs": {
+    "n": 3761,
+    "min": 150,
+    "p50": 19066,
+    "p90": 25027,
+    "p99": 27504,
+    "max": 38445,
+    "mean": 18071.0651422494
+  },
+  "batchSize": {
+    "n": 849,
+    "min": 1,
+    "p50": 5,
+    "p90": 7,
+    "p99": 9,
+    "max": 9,
+    "mean": 4.429917550058893
+  },
+  "commitGapMs": {
+    "n": 848,
+    "min": 0,
+    "p50": 0,
+    "p90": 0,
+    "p99": 5317,
+    "max": 6553,
+    "mean": 156.20754716981133
+  },
+  "feed": {
+    "connected": true,
+    "events": 58797,
+    "sigmaMax": 0.0909,
+    "sigmaEvents": 847,
+    "reconnects": 0
+  },
+  "outcomes": {
+    "feed": 3619,
+    "poll": 142
+  },
+  "timeline": [
+    {
+      "t": "23:31:24",
+      "calls": 1,
+      "errors": 0,
+      "maxMs": 278
+    },
+    {
+      "t": "23:31:25",
+      "calls": 16,
+      "errors": 0,
+      "maxMs": 1108
+    },
+    {
+      "t": "23:31:26",
+      "calls": 37,
+      "errors": 0,
+      "maxMs": 1723
+    },
+    {
+      "t": "23:31:27",
+      "calls": 96,
+      "errors": 0,
+      "maxMs": 1112
+    },
+    {
+      "t": "23:31:28",
+      "calls": 122,
+      "errors": 0,
+      "maxMs": 2161
+    },
+    {
+      "t": "23:31:29",
+      "calls": 104,
+      "errors": 0,
+      "maxMs": 802
+    },
+    {
+      "t": "23:31:30",
+      "calls": 132,
+      "errors": 0,
+      "maxMs": 822
+    },
+    {
+      "t": "23:31:31",
+      "calls": 135,
+      "errors": 0,
+      "maxMs": 937
+    },
+    {
+      "t": "23:31:32",
+      "calls": 131,
+      "errors": 0,
+      "maxMs": 859
+    },
+    {
+      "t": "23:31:33",
+      "calls": 130,
+      "errors": 0,
+      "maxMs": 1039
+    },
+    {
+      "t": "23:31:34",
+      "calls": 150,
+      "errors": 0,
+      "maxMs": 934
+    },
+    {
+      "t": "23:31:35",
+      "calls": 144,
+      "errors": 0,
+      "maxMs": 993
+    },
+    {
+      "t": "23:31:36",
+      "calls": 129,
+      "errors": 0,
+      "maxMs": 1010
+    },
+    {
+      "t": "23:31:37",
+      "calls": 152,
+      "errors": 0,
+      "maxMs": 803
+    },
+    {
+      "t": "23:31:38",
+      "calls": 134,
+      "errors": 0,
+      "maxMs": 747
+    },
+    {
+      "t": "23:31:39",
+      "calls": 147,
+      "errors": 0,
+      "maxMs": 844
+    },
+    {
+      "t": "23:31:40",
+      "calls": 145,
+      "errors": 0,
+      "maxMs": 991
+    },
+    {
+      "t": "23:31:41",
+      "calls": 144,
+      "errors": 0,
+      "maxMs": 978
+    },
+    {
+      "t": "23:31:42",
+      "calls": 143,
+      "errors": 0,
+      "maxMs": 827
+    },
+    {
+      "t": "23:31:43",
+      "calls": 161,
+      "errors": 0,
+      "maxMs": 795
+    },
+    {
+      "t": "23:31:44",
+      "calls": 136,
+      "errors": 0,
+      "maxMs": 1051
+    },
+    {
+      "t": "23:31:45",
+      "calls": 152,
+      "errors": 0,
+      "maxMs": 756
+    },
+    {
+      "t": "23:31:46",
+      "calls": 151,
+      "errors": 0,
+      "maxMs": 934
+    },
+    {
+      "t": "23:31:47",
+      "calls": 128,
+      "errors": 0,
+      "maxMs": 583
+    },
+    {
+      "t": "23:31:48",
+      "calls": 145,
+      "errors": 0,
+      "maxMs": 893
+    },
+    {
+      "t": "23:31:49",
+      "calls": 128,
+      "errors": 0,
+      "maxMs": 1441
+    },
+    {
+      "t": "23:31:50",
+      "calls": 151,
+      "errors": 0,
+      "maxMs": 879
+    },
+    {
+      "t": "23:31:51",
+      "calls": 151,
+      "errors": 0,
+      "maxMs": 725
+    },
+    {
+      "t": "23:31:52",
+      "calls": 149,
+      "errors": 0,
+      "maxMs": 1518
+    },
+    {
+      "t": "23:31:53",
+      "calls": 139,
+      "errors": 0,
+      "maxMs": 903
+    },
+    {
+      "t": "23:31:54",
+      "calls": 130,
+      "errors": 0,
+      "maxMs": 902
+    },
+    {
+      "t": "23:31:55",
+      "calls": 151,
+      "errors": 0,
+      "maxMs": 933
+    },
+    {
+      "t": "23:31:56",
+      "calls": 146,
+      "errors": 0,
+      "maxMs": 962
+    },
+    {
+      "t": "23:31:57",
+      "calls": 153,
+      "errors": 0,
+      "maxMs": 1238
+    },
+    {
+      "t": "23:31:58",
+      "calls": 155,
+      "errors": 0,
+      "maxMs": 953
+    },
+    {
+      "t": "23:31:59",
+      "calls": 136,
+      "errors": 0,
+      "maxMs": 1062
+    },
+    {
+      "t": "23:32:00",
+      "calls": 131,
+      "errors": 0,
+      "maxMs": 1067
+    },
+    {
+      "t": "23:32:01",
+      "calls": 159,
+      "errors": 0,
+      "maxMs": 528
+    },
+    {
+      "t": "23:32:02",
+      "calls": 162,
+      "errors": 0,
+      "maxMs": 933
+    },
+    {
+      "t": "23:32:03",
+      "calls": 141,
+      "errors": 0,
+      "maxMs": 631
+    },
+    {
+      "t": "23:32:04",
+      "calls": 132,
+      "errors": 0,
+      "maxMs": 1111
+    },
+    {
+      "t": "23:32:05",
+      "calls": 149,
+      "errors": 0,
+      "maxMs": 879
+    },
+    {
+      "t": "23:32:06",
+      "calls": 167,
+      "errors": 0,
+      "maxMs": 534
+    },
+    {
+      "t": "23:32:07",
+      "calls": 156,
+      "errors": 0,
+      "maxMs": 987
+    },
+    {
+      "t": "23:32:08",
+      "calls": 149,
+      "errors": 0,
+      "maxMs": 636
+    },
+    {
+      "t": "23:32:09",
+      "calls": 131,
+      "errors": 0,
+      "maxMs": 1454
+    },
+    {
+      "t": "23:32:10",
+      "calls": 157,
+      "errors": 0,
+      "maxMs": 1187
+    },
+    {
+      "t": "23:32:11",
+      "calls": 128,
+      "errors": 0,
+      "maxMs": 938
+    },
+    {
+      "t": "23:32:12",
+      "calls": 146,
+      "errors": 0,
+      "maxMs": 1188
+    },
+    {
+      "t": "23:32:13",
+      "calls": 143,
+      "errors": 0,
+      "maxMs": 671
+    },
+    {
+      "t": "23:32:14",
+      "calls": 105,
+      "errors": 0,
+      "maxMs": 1059
+    },
+    {
+      "t": "23:32:15",
+      "calls": 157,
+      "errors": 0,
+      "maxMs": 888
+    },
+    {
+      "t": "23:32:16",
+      "calls": 130,
+      "errors": 0,
+      "maxMs": 1459
+    },
+    {
+      "t": "23:32:17",
+      "calls": 144,
+      "errors": 0,
+      "maxMs": 800
+    },
+    {
+      "t": "23:32:18",
+      "calls": 162,
+      "errors": 0,
+      "maxMs": 751
+    },
+    {
+      "t": "23:32:19",
+      "calls": 135,
+      "errors": 0,
+      "maxMs": 789
+    },
+    {
+      "t": "23:32:20",
+      "calls": 172,
+      "errors": 0,
+      "maxMs": 1311
+    },
+    {
+      "t": "23:32:21",
+      "calls": 153,
+      "errors": 0,
+      "maxMs": 524
+    },
+    {
+      "t": "23:32:22",
+      "calls": 163,
+      "errors": 0,
+      "maxMs": 931
+    },
+    {
+      "t": "23:32:23",
+      "calls": 147,
+      "errors": 0,
+      "maxMs": 723
+    },
+    {
+      "t": "23:32:24",
+      "calls": 142,
+      "errors": 0,
+      "maxMs": 1041
+    },
+    {
+      "t": "23:32:25",
+      "calls": 152,
+      "errors": 0,
+      "maxMs": 732
+    },
+    {
+      "t": "23:32:26",
+      "calls": 148,
+      "errors": 0,
+      "maxMs": 1153
+    },
+    {
+      "t": "23:32:27",
+      "calls": 174,
+      "errors": 0,
+      "maxMs": 605
+    },
+    {
+      "t": "23:32:28",
+      "calls": 152,
+      "errors": 0,
+      "maxMs": 851
+    },
+    {
+      "t": "23:32:29",
+      "calls": 166,
+      "errors": 0,
+      "maxMs": 578
+    },
+    {
+      "t": "23:32:30",
+      "calls": 147,
+      "errors": 0,
+      "maxMs": 936
+    },
+    {
+      "t": "23:32:31",
+      "calls": 171,
+      "errors": 0,
+      "maxMs": 906
+    },
+    {
+      "t": "23:32:32",
+      "calls": 144,
+      "errors": 0,
+      "maxMs": 797
+    },
+    {
+      "t": "23:32:33",
+      "calls": 157,
+      "errors": 0,
+      "maxMs": 752
+    },
+    {
+      "t": "23:32:34",
+      "calls": 163,
+      "errors": 0,
+      "maxMs": 847
+    },
+    {
+      "t": "23:32:35",
+      "calls": 180,
+      "errors": 0,
+      "maxMs": 929
+    },
+    {
+      "t": "23:32:36",
+      "calls": 140,
+      "errors": 0,
+      "maxMs": 528
+    },
+    {
+      "t": "23:32:37",
+      "calls": 157,
+      "errors": 0,
+      "maxMs": 1038
+    },
+    {
+      "t": "23:32:38",
+      "calls": 160,
+      "errors": 0,
+      "maxMs": 833
+    },
+    {
+      "t": "23:32:39",
+      "calls": 136,
+      "errors": 0,
+      "maxMs": 744
+    },
+    {
+      "t": "23:32:40",
+      "calls": 165,
+      "errors": 0,
+      "maxMs": 989
+    },
+    {
+      "t": "23:32:41",
+      "calls": 149,
+      "errors": 0,
+      "maxMs": 543
+    },
+    {
+      "t": "23:32:42",
+      "calls": 151,
+      "errors": 0,
+      "maxMs": 918
+    },
+    {
+      "t": "23:32:43",
+      "calls": 156,
+      "errors": 0,
+      "maxMs": 963
+    },
+    {
+      "t": "23:32:44",
+      "calls": 143,
+      "errors": 0,
+      "maxMs": 762
+    },
+    {
+      "t": "23:32:45",
+      "calls": 158,
+      "errors": 0,
+      "maxMs": 550
+    },
+    {
+      "t": "23:32:46",
+      "calls": 158,
+      "errors": 0,
+      "maxMs": 817
+    },
+    {
+      "t": "23:32:47",
+      "calls": 158,
+      "errors": 0,
+      "maxMs": 938
+    },
+    {
+      "t": "23:32:48",
+      "calls": 160,
+      "errors": 0,
+      "maxMs": 610
+    },
+    {
+      "t": "23:32:49",
+      "calls": 139,
+      "errors": 0,
+      "maxMs": 1203
+    },
+    {
+      "t": "23:32:50",
+      "calls": 165,
+      "errors": 0,
+      "maxMs": 652
+    },
+    {
+      "t": "23:32:51",
+      "calls": 159,
+      "errors": 0,
+      "maxMs": 1145
+    },
+    {
+      "t": "23:32:52",
+      "calls": 134,
+      "errors": 0,
+      "maxMs": 1058
+    },
+    {
+      "t": "23:32:53",
+      "calls": 168,
+      "errors": 0,
+      "maxMs": 1466
+    },
+    {
+      "t": "23:32:54",
+      "calls": 147,
+      "errors": 0,
+      "maxMs": 708
+    },
+    {
+      "t": "23:32:55",
+      "calls": 153,
+      "errors": 0,
+      "maxMs": 754
+    },
+    {
+      "t": "23:32:56",
+      "calls": 149,
+      "errors": 0,
+      "maxMs": 953
+    },
+    {
+      "t": "23:32:57",
+      "calls": 166,
+      "errors": 0,
+      "maxMs": 673
+    },
+    {
+      "t": "23:32:58",
+      "calls": 165,
+      "errors": 0,
+      "maxMs": 1048
+    },
+    {
+      "t": "23:32:59",
+      "calls": 134,
+      "errors": 0,
+      "maxMs": 689
+    },
+    {
+      "t": "23:33:00",
+      "calls": 150,
+      "errors": 0,
+      "maxMs": 650
+    },
+    {
+      "t": "23:33:01",
+      "calls": 157,
+      "errors": 0,
+      "maxMs": 713
+    },
+    {
+      "t": "23:33:02",
+      "calls": 135,
+      "errors": 0,
+      "maxMs": 1584
+    },
+    {
+      "t": "23:33:03",
+      "calls": 168,
+      "errors": 0,
+      "maxMs": 628
+    },
+    {
+      "t": "23:33:04",
+      "calls": 120,
+      "errors": 0,
+      "maxMs": 621
+    },
+    {
+      "t": "23:33:05",
+      "calls": 171,
+      "errors": 0,
+      "maxMs": 610
+    },
+    {
+      "t": "23:33:06",
+      "calls": 156,
+      "errors": 0,
+      "maxMs": 511
+    },
+    {
+      "t": "23:33:07",
+      "calls": 174,
+      "errors": 0,
+      "maxMs": 598
+    },
+    {
+      "t": "23:33:08",
+      "calls": 32,
+      "errors": 0,
+      "maxMs": 525
+    },
+    {
+      "t": "23:33:10",
+      "calls": 115,
+      "errors": 0,
+      "maxMs": 1346
+    },
+    {
+      "t": "23:33:11",
+      "calls": 247,
+      "errors": 0,
+      "maxMs": 1115
+    },
+    {
+      "t": "23:33:12",
+      "calls": 230,
+      "errors": 0,
+      "maxMs": 2347
+    },
+    {
+      "t": "23:33:13",
+      "calls": 567,
+      "errors": 0,
+      "maxMs": 3138
+    },
+    {
+      "t": "23:33:14",
+      "calls": 105,
+      "errors": 0,
+      "maxMs": 4182
+    },
+    {
+      "t": "23:33:15",
+      "calls": 435,
+      "errors": 0,
+      "maxMs": 4959
+    },
+    {
+      "t": "23:33:16",
+      "calls": 992,
+      "errors": 3,
+      "maxMs": 5938
+    },
+    {
+      "t": "23:33:17",
+      "calls": 231,
+      "errors": 4,
+      "maxMs": 6664
+    },
+    {
+      "t": "23:33:18",
+      "calls": 102,
+      "errors": 6,
+      "maxMs": 7492
+    },
+    {
+      "t": "23:33:19",
+      "calls": 829,
+      "errors": 3,
+      "maxMs": 9163
+    },
+    {
+      "t": "23:33:20",
+      "calls": 924,
+      "errors": 0,
+      "maxMs": 10027
+    },
+    {
+      "t": "23:33:21",
+      "calls": 756,
+      "errors": 48,
+      "maxMs": 11096
+    },
+    {
+      "t": "23:33:22",
+      "calls": 412,
+      "errors": 108,
+      "maxMs": 11884
+    },
+    {
+      "t": "23:33:23",
+      "calls": 233,
+      "errors": 89,
+      "maxMs": 12741
+    },
+    {
+      "t": "23:33:24",
+      "calls": 165,
+      "errors": 92,
+      "maxMs": 13774
+    },
+    {
+      "t": "23:33:25",
+      "calls": 896,
+      "errors": 75,
+      "maxMs": 14572
+    },
+    {
+      "t": "23:33:26",
+      "calls": 1794,
+      "errors": 58,
+      "maxMs": 15339
+    },
+    {
+      "t": "23:33:27",
+      "calls": 1287,
+      "errors": 68,
+      "maxMs": 16743
+    },
+    {
+      "t": "23:33:28",
+      "calls": 784,
+      "errors": 43,
+      "maxMs": 18167
+    },
+    {
+      "t": "23:33:29",
+      "calls": 344,
+      "errors": 36,
+      "maxMs": 18278
+    },
+    {
+      "t": "23:33:30",
+      "calls": 198,
+      "errors": 25,
+      "maxMs": 18432
+    },
+    {
+      "t": "23:33:31",
+      "calls": 275,
+      "errors": 4,
+      "maxMs": 19468
+    },
+    {
+      "t": "23:33:32",
+      "calls": 226,
+      "errors": 0,
+      "maxMs": 21204
+    },
+    {
+      "t": "23:33:33",
+      "calls": 168,
+      "errors": 1,
+      "maxMs": 22152
+    },
+    {
+      "t": "23:33:34",
+      "calls": 188,
+      "errors": 1,
+      "maxMs": 23039
+    },
+    {
+      "t": "23:33:35",
+      "calls": 163,
+      "errors": 0,
+      "maxMs": 23513
+    },
+    {
+      "t": "23:33:36",
+      "calls": 189,
+      "errors": 0,
+      "maxMs": 24265
+    },
+    {
+      "t": "23:33:37",
+      "calls": 215,
+      "errors": 1,
+      "maxMs": 26516
+    },
+    {
+      "t": "23:33:38",
+      "calls": 204,
+      "errors": 0,
+      "maxMs": 26378
+    },
+    {
+      "t": "23:33:39",
+      "calls": 586,
+      "errors": 0,
+      "maxMs": 23417
+    },
+    {
+      "t": "23:33:40",
+      "calls": 271,
+      "errors": 0,
+      "maxMs": 27789
+    },
+    {
+      "t": "23:33:41",
+      "calls": 273,
+      "errors": 0,
+      "maxMs": 25490
+    },
+    {
+      "t": "23:33:42",
+      "calls": 383,
+      "errors": 1,
+      "maxMs": 30002
+    },
+    {
+      "t": "23:33:43",
+      "calls": 258,
+      "errors": 0,
+      "maxMs": 824
+    },
+    {
+      "t": "23:33:44",
+      "calls": 273,
+      "errors": 0,
+      "maxMs": 886
+    },
+    {
+      "t": "23:33:45",
+      "calls": 194,
+      "errors": 0,
+      "maxMs": 923
+    },
+    {
+      "t": "23:33:46",
+      "calls": 426,
+      "errors": 0,
+      "maxMs": 1554
+    },
+    {
+      "t": "23:33:47",
+      "calls": 218,
+      "errors": 0,
+      "maxMs": 1926
+    },
+    {
+      "t": "23:33:48",
+      "calls": 328,
+      "errors": 0,
+      "maxMs": 1634
+    },
+    {
+      "t": "23:33:49",
+      "calls": 298,
+      "errors": 0,
+      "maxMs": 2396
+    },
+    {
+      "t": "23:33:50",
+      "calls": 221,
+      "errors": 0,
+      "maxMs": 880
+    },
+    {
+      "t": "23:33:51",
+      "calls": 146,
+      "errors": 0,
+      "maxMs": 433
+    },
+    {
+      "t": "23:33:52",
+      "calls": 143,
+      "errors": 0,
+      "maxMs": 374
+    },
+    {
+      "t": "23:33:53",
+      "calls": 129,
+      "errors": 0,
+      "maxMs": 423
+    },
+    {
+      "t": "23:33:54",
+      "calls": 214,
+      "errors": 0,
+      "maxMs": 763
+    },
+    {
+      "t": "23:33:55",
+      "calls": 212,
+      "errors": 0,
+      "maxMs": 1412
+    },
+    {
+      "t": "23:33:56",
+      "calls": 210,
+      "errors": 0,
+      "maxMs": 1587
+    },
+    {
+      "t": "23:33:57",
+      "calls": 302,
+      "errors": 0,
+      "maxMs": 1702
+    },
+    {
+      "t": "23:33:58",
+      "calls": 369,
+      "errors": 0,
+      "maxMs": 2041
+    },
+    {
+      "t": "23:33:59",
+      "calls": 195,
+      "errors": 0,
+      "maxMs": 840
+    },
+    {
+      "t": "23:34:00",
+      "calls": 286,
+      "errors": 0,
+      "maxMs": 975
+    },
+    {
+      "t": "23:34:01",
+      "calls": 150,
+      "errors": 0,
+      "maxMs": 334
+    },
+    {
+      "t": "23:34:02",
+      "calls": 372,
+      "errors": 0,
+      "maxMs": 805
+    },
+    {
+      "t": "23:34:03",
+      "calls": 206,
+      "errors": 0,
+      "maxMs": 2291
+    },
+    {
+      "t": "23:34:04",
+      "calls": 345,
+      "errors": 0,
+      "maxMs": 2440
+    },
+    {
+      "t": "23:34:05",
+      "calls": 66,
+      "errors": 0,
+      "maxMs": 2357
+    },
+    {
+      "t": "23:34:06",
+      "calls": 576,
+      "errors": 0,
+      "maxMs": 3303
+    },
+    {
+      "t": "23:34:07",
+      "calls": 554,
+      "errors": 0,
+      "maxMs": 5324
+    },
+    {
+      "t": "23:34:08",
+      "calls": 399,
+      "errors": 0,
+      "maxMs": 5088
+    },
+    {
+      "t": "23:34:09",
+      "calls": 341,
+      "errors": 0,
+      "maxMs": 3222
+    },
+    {
+      "t": "23:34:10",
+      "calls": 212,
+      "errors": 0,
+      "maxMs": 764
+    },
+    {
+      "t": "23:34:11",
+      "calls": 429,
+      "errors": 0,
+      "maxMs": 1534
+    },
+    {
+      "t": "23:34:12",
+      "calls": 270,
+      "errors": 0,
+      "maxMs": 1306
+    },
+    {
+      "t": "23:34:13",
+      "calls": 471,
+      "errors": 0,
+      "maxMs": 1809
+    },
+    {
+      "t": "23:34:14",
+      "calls": 186,
+      "errors": 0,
+      "maxMs": 521
+    },
+    {
+      "t": "23:34:15",
+      "calls": 86,
+      "errors": 0,
+      "maxMs": 765
+    },
+    {
+      "t": "23:34:16",
+      "calls": 340,
+      "errors": 0,
+      "maxMs": 1901
+    },
+    {
+      "t": "23:34:17",
+      "calls": 444,
+      "errors": 0,
+      "maxMs": 2644
+    },
+    {
+      "t": "23:34:18",
+      "calls": 324,
+      "errors": 0,
+      "maxMs": 2902
+    },
+    {
+      "t": "23:34:19",
+      "calls": 183,
+      "errors": 0,
+      "maxMs": 352
+    },
+    {
+      "t": "23:34:20",
+      "calls": 73,
+      "errors": 0,
+      "maxMs": 382
+    },
+    {
+      "t": "23:34:21",
+      "calls": 379,
+      "errors": 0,
+      "maxMs": 1465
+    },
+    {
+      "t": "23:34:22",
+      "calls": 397,
+      "errors": 0,
+      "maxMs": 1973
+    },
+    {
+      "t": "23:34:23",
+      "calls": 523,
+      "errors": 0,
+      "maxMs": 2646
+    },
+    {
+      "t": "23:34:24",
+      "calls": 287,
+      "errors": 0,
+      "maxMs": 1089
+    },
+    {
+      "t": "23:34:25",
+      "calls": 165,
+      "errors": 0,
+      "maxMs": 354
+    },
+    {
+      "t": "23:34:26",
+      "calls": 330,
+      "errors": 0,
+      "maxMs": 888
+    },
+    {
+      "t": "23:34:27",
+      "calls": 438,
+      "errors": 0,
+      "maxMs": 1824
+    },
+    {
+      "t": "23:34:28",
+      "calls": 562,
+      "errors": 0,
+      "maxMs": 2106
+    },
+    {
+      "t": "23:34:29",
+      "calls": 206,
+      "errors": 0,
+      "maxMs": 1212
+    },
+    {
+      "t": "23:34:30",
+      "calls": 217,
+      "errors": 0,
+      "maxMs": 771
+    },
+    {
+      "t": "23:34:31",
+      "calls": 151,
+      "errors": 0,
+      "maxMs": 596
+    },
+    {
+      "t": "23:34:32",
+      "calls": 506,
+      "errors": 0,
+      "maxMs": 1145
+    },
+    {
+      "t": "23:34:33",
+      "calls": 435,
+      "errors": 0,
+      "maxMs": 1247
+    },
+    {
+      "t": "23:34:34",
+      "calls": 189,
+      "errors": 0,
+      "maxMs": 1064
+    },
+    {
+      "t": "23:34:35",
+      "calls": 161,
+      "errors": 0,
+      "maxMs": 720
+    },
+    {
+      "t": "23:34:36",
+      "calls": 384,
+      "errors": 0,
+      "maxMs": 752
+    },
+    {
+      "t": "23:34:37",
+      "calls": 210,
+      "errors": 0,
+      "maxMs": 1566
+    },
+    {
+      "t": "23:34:38",
+      "calls": 487,
+      "errors": 0,
+      "maxMs": 1149
+    },
+    {
+      "t": "23:34:39",
+      "calls": 261,
+      "errors": 0,
+      "maxMs": 655
+    },
+    {
+      "t": "23:34:40",
+      "calls": 203,
+      "errors": 0,
+      "maxMs": 670
+    },
+    {
+      "t": "23:34:41",
+      "calls": 200,
+      "errors": 0,
+      "maxMs": 341
+    },
+    {
+      "t": "23:34:42",
+      "calls": 212,
+      "errors": 0,
+      "maxMs": 408
+    },
+    {
+      "t": "23:34:43",
+      "calls": 379,
+      "errors": 0,
+      "maxMs": 1292
+    },
+    {
+      "t": "23:34:44",
+      "calls": 391,
+      "errors": 0,
+      "maxMs": 2031
+    },
+    {
+      "t": "23:34:45",
+      "calls": 397,
+      "errors": 0,
+      "maxMs": 1093
+    },
+    {
+      "t": "23:34:46",
+      "calls": 228,
+      "errors": 0,
+      "maxMs": 329
+    },
+    {
+      "t": "23:34:47",
+      "calls": 266,
+      "errors": 0,
+      "maxMs": 445
+    },
+    {
+      "t": "23:34:48",
+      "calls": 221,
+      "errors": 0,
+      "maxMs": 625
+    },
+    {
+      "t": "23:34:49",
+      "calls": 326,
+      "errors": 0,
+      "maxMs": 1303
+    },
+    {
+      "t": "23:34:50",
+      "calls": 269,
+      "errors": 0,
+      "maxMs": 2085
+    },
+    {
+      "t": "23:34:51",
+      "calls": 605,
+      "errors": 0,
+      "maxMs": 2581
+    },
+    {
+      "t": "23:34:52",
+      "calls": 256,
+      "errors": 0,
+      "maxMs": 1017
+    },
+    {
+      "t": "23:34:53",
+      "calls": 258,
+      "errors": 0,
+      "maxMs": 283
+    },
+    {
+      "t": "23:34:54",
+      "calls": 262,
+      "errors": 0,
+      "maxMs": 866
+    },
+    {
+      "t": "23:34:55",
+      "calls": 335,
+      "errors": 0,
+      "maxMs": 1325
+    },
+    {
+      "t": "23:34:56",
+      "calls": 401,
+      "errors": 0,
+      "maxMs": 1432
+    },
+    {
+      "t": "23:34:57",
+      "calls": 300,
+      "errors": 0,
+      "maxMs": 1170
+    },
+    {
+      "t": "23:34:58",
+      "calls": 266,
+      "errors": 0,
+      "maxMs": 1345
+    },
+    {
+      "t": "23:34:59",
+      "calls": 130,
+      "errors": 0,
+      "maxMs": 812
+    },
+    {
+      "t": "23:35:00",
+      "calls": 400,
+      "errors": 0,
+      "maxMs": 1635
+    },
+    {
+      "t": "23:35:01",
+      "calls": 316,
+      "errors": 0,
+      "maxMs": 2230
+    },
+    {
+      "t": "23:35:02",
+      "calls": 487,
+      "errors": 0,
+      "maxMs": 1803
+    },
+    {
+      "t": "23:35:03",
+      "calls": 208,
+      "errors": 0,
+      "maxMs": 1231
+    },
+    {
+      "t": "23:35:04",
+      "calls": 290,
+      "errors": 0,
+      "maxMs": 377
+    },
+    {
+      "t": "23:35:05",
+      "calls": 383,
+      "errors": 0,
+      "maxMs": 1348
+    },
+    {
+      "t": "23:35:06",
+      "calls": 306,
+      "errors": 0,
+      "maxMs": 1795
+    },
+    {
+      "t": "23:35:07",
+      "calls": 466,
+      "errors": 0,
+      "maxMs": 2122
+    },
+    {
+      "t": "23:35:08",
+      "calls": 212,
+      "errors": 0,
+      "maxMs": 708
+    },
+    {
+      "t": "23:35:09",
+      "calls": 120,
+      "errors": 0,
+      "maxMs": 233
+    },
+    {
+      "t": "23:35:10",
+      "calls": 220,
+      "errors": 0,
+      "maxMs": 352
+    },
+    {
+      "t": "23:35:11",
+      "calls": 89,
+      "errors": 0,
+      "maxMs": 695
+    },
+    {
+      "t": "23:35:15",
+      "calls": 4,
+      "errors": 0,
+      "maxMs": 170
+    },
+    {
+      "t": "23:35:16",
+      "calls": 24,
+      "errors": 0,
+      "maxMs": 235
+    },
+    {
+      "t": "23:35:20",
+      "calls": 5,
+      "errors": 0,
+      "maxMs": 126
+    },
+    {
+      "t": "23:35:21",
+      "calls": 3,
+      "errors": 0,
+      "maxMs": 224
+    },
+    {
+      "t": "23:35:27",
+      "calls": 1,
+      "errors": 0,
+      "maxMs": 167
+    }
+  ],
+  "colonyLag": [],
+  "stopped": {
+    "ok": true,
+    "ms": 107443,
+    "retired": 4545,
+    "failed": 0
+  },
+  "trunkCycles": {
+    "n": 19,
+    "perMin": 12,
+    "metrics": {
+      "batches": {
+        "n": 19,
+        "min": 15,
+        "p50": 30,
+        "p90": 49,
+        "p99": 49,
+        "max": 49,
+        "mean": 31
+      },
+      "buildMs": {
+        "n": 19,
+        "min": 82,
+        "p50": 250,
+        "p90": 872,
+        "p99": 891,
+        "max": 891,
+        "mean": 347.36842105263156
+      },
+      "commitMs": {
+        "n": 19,
+        "min": 0,
+        "p50": 0,
+        "p90": 0,
+        "p99": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "cycleMs": {
+        "n": 19,
+        "min": 2611,
+        "p50": 5060,
+        "p90": 6099,
+        "p99": 6978,
+        "max": 6978,
+        "mean": 4844.473684210527
+      },
+      "finalizeMs": {
+        "n": 19,
+        "min": 0,
+        "p50": 0,
+        "p90": 0,
+        "p99": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "landed": {
+        "n": 19,
+        "min": 30,
+        "p50": 195,
+        "p90": 199,
+        "p99": 200,
+        "max": 200,
+        "mean": 151.73684210526315
+      },
+      "landings": {
+        "n": 19,
+        "min": 15,
+        "p50": 30,
+        "p90": 49,
+        "p99": 49,
+        "max": 49,
+        "mean": 31
+      },
+      "lineageMs": {
+        "n": 19,
+        "min": 0,
+        "p50": 0,
+        "p90": 0,
+        "p99": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "proposals": {
+        "n": 19,
+        "min": 30,
+        "p50": 195,
+        "p90": 199,
+        "p99": 200,
+        "max": 200,
+        "mean": 151.73684210526315
+      },
+      "pullMs": {
+        "n": 19,
+        "min": 872,
+        "p50": 3851,
+        "p90": 4722,
+        "p99": 5169,
+        "max": 5169,
+        "mean": 3494.7894736842104
+      },
+      "pushMs": {
+        "n": 19,
+        "min": 682,
+        "p50": 808,
+        "p90": 1325,
+        "p99": 2516,
+        "max": 2516,
+        "mean": 1002.3157894736842
+      },
+      "returned": {
+        "n": 19,
+        "min": 0,
+        "p50": 0,
+        "p90": 0,
+        "p99": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "screenMs": {
+        "n": 19,
+        "min": 0,
+        "p50": 0,
+        "p90": 0,
+        "p99": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "surgeryMs": {
+        "n": 19,
+        "min": 0,
+        "p50": 0,
+        "p90": 0,
+        "p99": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "waitMs": {
+        "n": 19,
+        "min": 1695,
+        "p50": 4561,
+        "p90": 10612,
+        "p99": 11667,
+        "max": 11667,
+        "mean": 5744.368421052632
+      }
+    }
+  },
+  "publish": {
+    "mode": "sync",
+    "atEnd": null,
+    "drained": null,
+    "drainMs": null
+  },
+  "errors": [
+    "register: TypeError: fetch failed (ECONNRESET)",
+    "take: TypeError: fetch failed (ECONNRESET)",
+    "propose: TypeError: fetch failed (ECONNRESET)",
+    "register: TypeError: fetch failed (UND_ERR_CONNECT_TIMEOUT)",
+    "take: TypeError: fetch failed (UND_ERR_CONNECT_TIMEOUT)",
+    "propose: TypeError: fetch failed (UND_ERR_CONNECT_TIMEOUT)",
+    "take: TypeError: fetch failed (UND_ERR_SOCKET)",
+    "register: TypeError: fetch failed (UND_ERR_SOCKET)"
+  ]
+}

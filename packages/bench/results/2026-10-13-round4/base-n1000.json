@@ -1,0 +1,1240 @@
+{
+  "kind": "live",
+  "note": "MEASURED, real landings: synthetic API agents (no model, no agent-side git); every landed proposal is a real trunk commit built by the trunk writer from a blob read out of the agent's workspace fork.",
+  "label": "base-n1000",
+  "url": "https://p18-firetrident.mattsolt.workers.dev",
+  "colony": "p18-scale2",
+  "agents": 1000,
+  "durationS": 120,
+  "workMs": 0,
+  "regions": 64,
+  "startedAt": "2026-10-13T23:13:09.840Z",
+  "elapsedS": 120.07088449999999,
+  "stoppedEarly": null,
+  "ops": [
+    {
+      "op": "metrics",
+      "calls": 3,
+      "errors": 0,
+      "n": 3,
+      "min": 49.845624999987194,
+      "p50": 81.94658300000083,
+      "p90": 152.37166700000034,
+      "p99": 152.37166700000034,
+      "max": 152.37166700000034,
+      "mean": 94.7212916666628
+    },
+    {
+      "op": "intent",
+      "calls": 3000,
+      "errors": 0,
+      "n": 3000,
+      "min": 87.01750000000175,
+      "p50": 120.43212500000118,
+      "p90": 298.96875,
+      "p99": 816.8864589999994,
+      "max": 1623.325167,
+      "mean": 178.52401872733364
+    },
+    {
+      "op": "status",
+      "calls": 1,
+      "errors": 0,
+      "n": 1,
+      "min": 174.16662500000166,
+      "p50": 174.16662500000166,
+      "p90": 174.16662500000166,
+      "p99": 174.16662500000166,
+      "max": 174.16662500000166,
+      "mean": 174.16662500000166
+    },
+    {
+      "op": "register",
+      "calls": 1000,
+      "errors": 0,
+      "n": 1000,
+      "min": 62.068459000001894,
+      "p50": 115.66220800000156,
+      "p90": 237.21479199999885,
+      "p99": 441.19166699999914,
+      "max": 883.7232499999991,
+      "mean": 141.58818695000025
+    },
+    {
+      "op": "take",
+      "calls": 19531,
+      "errors": 0,
+      "n": 19531,
+      "min": 37.247292000000016,
+      "p50": 134.80708300000697,
+      "p90": 593.1341250000114,
+      "p99": 1215.6105829999942,
+      "max": 1913.4363339999982,
+      "mean": 242.17095287691257
+    },
+    {
+      "op": "propose",
+      "calls": 3000,
+      "errors": 0,
+      "n": 3000,
+      "min": 90.39374999998836,
+      "p50": 265.9753750000018,
+      "p90": 516.7612500000032,
+      "p99": 738.8257920000033,
+      "max": 1319.4758750000037,
+      "mean": 300.07321978166686
+    },
+    {
+      "op": "heartbeat",
+      "calls": 834,
+      "errors": 0,
+      "n": 834,
+      "min": 60.83520800000406,
+      "p50": 134.54675000000861,
+      "p90": 317.3472080000065,
+      "p99": 497.6641249999957,
+      "max": 734.5509159999929,
+      "mean": 164.4485495791367
+    },
+    {
+      "op": "poll",
+      "calls": 447,
+      "errors": 0,
+      "n": 447,
+      "min": 40.710625000006985,
+      "p50": 67.12350000000151,
+      "p90": 140.59495899999456,
+      "p99": 260.1619999999966,
+      "max": 432.38974999998754,
+      "mean": 86.80126751901591
+    }
+  ],
+  "takeAssigned": {
+    "n": 3000,
+    "min": 140.68108300000313,
+    "p50": 583.484209000002,
+    "p90": 1061.156332999999,
+    "p99": 1639.9118750000052,
+    "max": 1913.4456669999927,
+    "mean": 636.9644690256662
+  },
+  "takeWait": {
+    "n": 16531,
+    "min": 37.297583999999915,
+    "p50": 108.15320800000336,
+    "p90": 374.1217500000057,
+    "p99": 714.483917000005,
+    "max": 1427.906124999994,
+    "mean": 170.5555985431013
+  },
+  "counts": {
+    "registered": 1000,
+    "assigned": 3000,
+    "waits": {
+      "admission closed in every candidate region": 8523,
+      "no intent accepted at this agent's thresholds": 78,
+      "every open intent's files are claimed by another agent": 484,
+      "admission closed in bench/r60": 2,
+      "admission closed in bench/r56": 2,
+      "admission closed in bench/r31": 2,
+      "admission closed in bench/r41": 2,
+      "admission closed in bench/r32": 2,
+      "admission closed in bench/r34": 2,
+      "admission closed in bench/r42": 2,
+      "admission closed in bench/r35": 1,
+      "admission closed in bench/r54": 1,
+      "admission closed in bench/r38": 1,
+      "admission closed in bench/r61": 1,
+      "admission closed in bench/r37": 1,
+      "no open intents": 7427
+    },
+    "proposals": 3000,
+    "landed": 3000,
+    "returned": 0,
+    "rejected": 0,
+    "unresolved": 0
+  },
+  "returns": {},
+  "window": {
+    "fromS": 25,
+    "toS": 120,
+    "commits": 481,
+    "landedProposals": 2575,
+    "landedPerMin": 1626.3157894736842,
+    "commitsPerMin": 303.7894736842105,
+    "source": "live WebSocket landing events"
+  },
+  "snapshotDelta": {
+    "landings": 704,
+    "landedProposals": 3000,
+    "proposals": 3000,
+    "returned": 0,
+    "rejected": 0,
+    "takes": 3000
+  },
+  "timeToLandMs": {
+    "n": 3000,
+    "min": 1575,
+    "p50": 15636,
+    "p90": 21886,
+    "p99": 27250,
+    "max": 28929,
+    "mean": 15271.056333333334
+  },
+  "batchSize": {
+    "n": 704,
+    "min": 1,
+    "p50": 4,
+    "p90": 7,
+    "p99": 9,
+    "max": 9,
+    "mean": 4.261363636363637
+  },
+  "commitGapMs": {
+    "n": 703,
+    "min": 0,
+    "p50": 0,
+    "p90": 0,
+    "p99": 4319,
+    "max": 5305,
+    "mean": 128.60028449502133
+  },
+  "feed": {
+    "connected": true,
+    "events": 41760,
+    "sigmaMax": 0,
+    "sigmaEvents": 704,
+    "reconnects": 0
+  },
+  "outcomes": {
+    "feed": 2999,
+    "poll": 1
+  },
+  "timeline": [
+    {
+      "t": "23:12:46",
+      "calls": 1,
+      "errors": 0,
+      "maxMs": 152
+    },
+    {
+      "t": "23:12:47",
+      "calls": 24,
+      "errors": 0,
+      "maxMs": 1355
+    },
+    {
+      "t": "23:12:48",
+      "calls": 58,
+      "errors": 0,
+      "maxMs": 1623
+    },
+    {
+      "t": "23:12:49",
+      "calls": 100,
+      "errors": 0,
+      "maxMs": 1055
+    },
+    {
+      "t": "23:12:50",
+      "calls": 153,
+      "errors": 0,
+      "maxMs": 815
+    },
+    {
+      "t": "23:12:51",
+      "calls": 127,
+      "errors": 0,
+      "maxMs": 820
+    },
+    {
+      "t": "23:12:52",
+      "calls": 153,
+      "errors": 0,
+      "maxMs": 815
+    },
+    {
+      "t": "23:12:53",
+      "calls": 140,
+      "errors": 0,
+      "maxMs": 841
+    },
+    {
+      "t": "23:12:54",
+      "calls": 96,
+      "errors": 0,
+      "maxMs": 778
+    },
+    {
+      "t": "23:12:55",
+      "calls": 163,
+      "errors": 0,
+      "maxMs": 1047
+    },
+    {
+      "t": "23:12:56",
+      "calls": 154,
+      "errors": 0,
+      "maxMs": 752
+    },
+    {
+      "t": "23:12:57",
+      "calls": 138,
+      "errors": 0,
+      "maxMs": 887
+    },
+    {
+      "t": "23:12:58",
+      "calls": 148,
+      "errors": 0,
+      "maxMs": 612
+    },
+    {
+      "t": "23:12:59",
+      "calls": 127,
+      "errors": 0,
+      "maxMs": 709
+    },
+    {
+      "t": "23:13:00",
+      "calls": 148,
+      "errors": 0,
+      "maxMs": 861
+    },
+    {
+      "t": "23:13:01",
+      "calls": 152,
+      "errors": 0,
+      "maxMs": 871
+    },
+    {
+      "t": "23:13:02",
+      "calls": 162,
+      "errors": 0,
+      "maxMs": 578
+    },
+    {
+      "t": "23:13:03",
+      "calls": 173,
+      "errors": 0,
+      "maxMs": 709
+    },
+    {
+      "t": "23:13:04",
+      "calls": 163,
+      "errors": 0,
+      "maxMs": 737
+    },
+    {
+      "t": "23:13:05",
+      "calls": 146,
+      "errors": 0,
+      "maxMs": 738
+    },
+    {
+      "t": "23:13:06",
+      "calls": 157,
+      "errors": 0,
+      "maxMs": 592
+    },
+    {
+      "t": "23:13:07",
+      "calls": 166,
+      "errors": 0,
+      "maxMs": 761
+    },
+    {
+      "t": "23:13:08",
+      "calls": 150,
+      "errors": 0,
+      "maxMs": 797
+    },
+    {
+      "t": "23:13:09",
+      "calls": 12,
+      "errors": 0,
+      "maxMs": 578
+    },
+    {
+      "t": "23:13:10",
+      "calls": 182,
+      "errors": 0,
+      "maxMs": 770
+    },
+    {
+      "t": "23:13:11",
+      "calls": 301,
+      "errors": 0,
+      "maxMs": 886
+    },
+    {
+      "t": "23:13:12",
+      "calls": 299,
+      "errors": 0,
+      "maxMs": 1035
+    },
+    {
+      "t": "23:13:13",
+      "calls": 191,
+      "errors": 0,
+      "maxMs": 790
+    },
+    {
+      "t": "23:13:14",
+      "calls": 190,
+      "errors": 0,
+      "maxMs": 464
+    },
+    {
+      "t": "23:13:15",
+      "calls": 315,
+      "errors": 0,
+      "maxMs": 884
+    },
+    {
+      "t": "23:13:16",
+      "calls": 417,
+      "errors": 0,
+      "maxMs": 1262
+    },
+    {
+      "t": "23:13:17",
+      "calls": 322,
+      "errors": 0,
+      "maxMs": 623
+    },
+    {
+      "t": "23:13:18",
+      "calls": 375,
+      "errors": 0,
+      "maxMs": 552
+    },
+    {
+      "t": "23:13:19",
+      "calls": 243,
+      "errors": 0,
+      "maxMs": 587
+    },
+    {
+      "t": "23:13:20",
+      "calls": 355,
+      "errors": 0,
+      "maxMs": 1091
+    },
+    {
+      "t": "23:13:21",
+      "calls": 178,
+      "errors": 0,
+      "maxMs": 624
+    },
+    {
+      "t": "23:13:22",
+      "calls": 202,
+      "errors": 0,
+      "maxMs": 898
+    },
+    {
+      "t": "23:13:23",
+      "calls": 374,
+      "errors": 0,
+      "maxMs": 1648
+    },
+    {
+      "t": "23:13:24",
+      "calls": 213,
+      "errors": 0,
+      "maxMs": 683
+    },
+    {
+      "t": "23:13:25",
+      "calls": 187,
+      "errors": 0,
+      "maxMs": 665
+    },
+    {
+      "t": "23:13:26",
+      "calls": 219,
+      "errors": 0,
+      "maxMs": 739
+    },
+    {
+      "t": "23:13:27",
+      "calls": 378,
+      "errors": 0,
+      "maxMs": 1283
+    },
+    {
+      "t": "23:13:28",
+      "calls": 304,
+      "errors": 0,
+      "maxMs": 1317
+    },
+    {
+      "t": "23:13:29",
+      "calls": 93,
+      "errors": 0,
+      "maxMs": 834
+    },
+    {
+      "t": "23:13:30",
+      "calls": 341,
+      "errors": 0,
+      "maxMs": 916
+    },
+    {
+      "t": "23:13:31",
+      "calls": 294,
+      "errors": 0,
+      "maxMs": 1147
+    },
+    {
+      "t": "23:13:32",
+      "calls": 276,
+      "errors": 0,
+      "maxMs": 933
+    },
+    {
+      "t": "23:13:33",
+      "calls": 124,
+      "errors": 0,
+      "maxMs": 382
+    },
+    {
+      "t": "23:13:34",
+      "calls": 404,
+      "errors": 0,
+      "maxMs": 1147
+    },
+    {
+      "t": "23:13:35",
+      "calls": 200,
+      "errors": 0,
+      "maxMs": 1240
+    },
+    {
+      "t": "23:13:36",
+      "calls": 143,
+      "errors": 0,
+      "maxMs": 279
+    },
+    {
+      "t": "23:13:37",
+      "calls": 230,
+      "errors": 0,
+      "maxMs": 1087
+    },
+    {
+      "t": "23:13:38",
+      "calls": 387,
+      "errors": 0,
+      "maxMs": 1321
+    },
+    {
+      "t": "23:13:39",
+      "calls": 174,
+      "errors": 0,
+      "maxMs": 649
+    },
+    {
+      "t": "23:13:40",
+      "calls": 96,
+      "errors": 0,
+      "maxMs": 296
+    },
+    {
+      "t": "23:13:41",
+      "calls": 279,
+      "errors": 0,
+      "maxMs": 988
+    },
+    {
+      "t": "23:13:42",
+      "calls": 309,
+      "errors": 0,
+      "maxMs": 1038
+    },
+    {
+      "t": "23:13:43",
+      "calls": 195,
+      "errors": 0,
+      "maxMs": 1073
+    },
+    {
+      "t": "23:13:44",
+      "calls": 277,
+      "errors": 0,
+      "maxMs": 1428
+    },
+    {
+      "t": "23:13:45",
+      "calls": 311,
+      "errors": 0,
+      "maxMs": 1827
+    },
+    {
+      "t": "23:13:46",
+      "calls": 192,
+      "errors": 0,
+      "maxMs": 736
+    },
+    {
+      "t": "23:13:47",
+      "calls": 214,
+      "errors": 0,
+      "maxMs": 962
+    },
+    {
+      "t": "23:13:48",
+      "calls": 232,
+      "errors": 0,
+      "maxMs": 1367
+    },
+    {
+      "t": "23:13:49",
+      "calls": 122,
+      "errors": 0,
+      "maxMs": 603
+    },
+    {
+      "t": "23:13:50",
+      "calls": 148,
+      "errors": 0,
+      "maxMs": 400
+    },
+    {
+      "t": "23:13:51",
+      "calls": 257,
+      "errors": 0,
+      "maxMs": 1464
+    },
+    {
+      "t": "23:13:52",
+      "calls": 287,
+      "errors": 0,
+      "maxMs": 1127
+    },
+    {
+      "t": "23:13:53",
+      "calls": 109,
+      "errors": 0,
+      "maxMs": 806
+    },
+    {
+      "t": "23:13:54",
+      "calls": 39,
+      "errors": 0,
+      "maxMs": 274
+    },
+    {
+      "t": "23:13:55",
+      "calls": 136,
+      "errors": 0,
+      "maxMs": 517
+    },
+    {
+      "t": "23:13:56",
+      "calls": 343,
+      "errors": 0,
+      "maxMs": 1028
+    },
+    {
+      "t": "23:13:57",
+      "calls": 152,
+      "errors": 0,
+      "maxMs": 1032
+    },
+    {
+      "t": "23:13:58",
+      "calls": 113,
+      "errors": 0,
+      "maxMs": 527
+    },
+    {
+      "t": "23:13:59",
+      "calls": 101,
+      "errors": 0,
+      "maxMs": 463
+    },
+    {
+      "t": "23:14:00",
+      "calls": 147,
+      "errors": 0,
+      "maxMs": 978
+    },
+    {
+      "t": "23:14:01",
+      "calls": 412,
+      "errors": 0,
+      "maxMs": 1913
+    },
+    {
+      "t": "23:14:02",
+      "calls": 279,
+      "errors": 0,
+      "maxMs": 730
+    },
+    {
+      "t": "23:14:03",
+      "calls": 27,
+      "errors": 0,
+      "maxMs": 1275
+    },
+    {
+      "t": "23:14:04",
+      "calls": 9,
+      "errors": 0,
+      "maxMs": 1319
+    },
+    {
+      "t": "23:14:05",
+      "calls": 258,
+      "errors": 0,
+      "maxMs": 1053
+    },
+    {
+      "t": "23:14:06",
+      "calls": 213,
+      "errors": 0,
+      "maxMs": 1309
+    },
+    {
+      "t": "23:14:07",
+      "calls": 42,
+      "errors": 0,
+      "maxMs": 713
+    },
+    {
+      "t": "23:14:08",
+      "calls": 259,
+      "errors": 0,
+      "maxMs": 868
+    },
+    {
+      "t": "23:14:09",
+      "calls": 50,
+      "errors": 0,
+      "maxMs": 671
+    },
+    {
+      "t": "23:14:10",
+      "calls": 202,
+      "errors": 0,
+      "maxMs": 723
+    },
+    {
+      "t": "23:14:11",
+      "calls": 98,
+      "errors": 0,
+      "maxMs": 1076
+    },
+    {
+      "t": "23:14:12",
+      "calls": 164,
+      "errors": 0,
+      "maxMs": 894
+    },
+    {
+      "t": "23:14:13",
+      "calls": 221,
+      "errors": 0,
+      "maxMs": 1154
+    },
+    {
+      "t": "23:14:14",
+      "calls": 206,
+      "errors": 0,
+      "maxMs": 1363
+    },
+    {
+      "t": "23:14:15",
+      "calls": 409,
+      "errors": 0,
+      "maxMs": 1817
+    },
+    {
+      "t": "23:14:16",
+      "calls": 71,
+      "errors": 0,
+      "maxMs": 1269
+    },
+    {
+      "t": "23:14:17",
+      "calls": 29,
+      "errors": 0,
+      "maxMs": 596
+    },
+    {
+      "t": "23:14:18",
+      "calls": 229,
+      "errors": 0,
+      "maxMs": 1167
+    },
+    {
+      "t": "23:14:19",
+      "calls": 345,
+      "errors": 0,
+      "maxMs": 1633
+    },
+    {
+      "t": "23:14:20",
+      "calls": 26,
+      "errors": 0,
+      "maxMs": 583
+    },
+    {
+      "t": "23:14:21",
+      "calls": 255,
+      "errors": 0,
+      "maxMs": 565
+    },
+    {
+      "t": "23:14:22",
+      "calls": 193,
+      "errors": 0,
+      "maxMs": 517
+    },
+    {
+      "t": "23:14:23",
+      "calls": 194,
+      "errors": 0,
+      "maxMs": 624
+    },
+    {
+      "t": "23:14:24",
+      "calls": 141,
+      "errors": 0,
+      "maxMs": 893
+    },
+    {
+      "t": "23:14:25",
+      "calls": 133,
+      "errors": 0,
+      "maxMs": 429
+    },
+    {
+      "t": "23:14:26",
+      "calls": 176,
+      "errors": 0,
+      "maxMs": 179
+    },
+    {
+      "t": "23:14:27",
+      "calls": 119,
+      "errors": 0,
+      "maxMs": 206
+    },
+    {
+      "t": "23:14:28",
+      "calls": 122,
+      "errors": 0,
+      "maxMs": 273
+    },
+    {
+      "t": "23:14:29",
+      "calls": 238,
+      "errors": 0,
+      "maxMs": 596
+    },
+    {
+      "t": "23:14:30",
+      "calls": 260,
+      "errors": 0,
+      "maxMs": 1344
+    },
+    {
+      "t": "23:14:31",
+      "calls": 118,
+      "errors": 0,
+      "maxMs": 191
+    },
+    {
+      "t": "23:14:32",
+      "calls": 221,
+      "errors": 0,
+      "maxMs": 172
+    },
+    {
+      "t": "23:14:33",
+      "calls": 178,
+      "errors": 0,
+      "maxMs": 152
+    },
+    {
+      "t": "23:14:34",
+      "calls": 142,
+      "errors": 0,
+      "maxMs": 333
+    },
+    {
+      "t": "23:14:35",
+      "calls": 209,
+      "errors": 0,
+      "maxMs": 514
+    },
+    {
+      "t": "23:14:36",
+      "calls": 147,
+      "errors": 0,
+      "maxMs": 159
+    },
+    {
+      "t": "23:14:37",
+      "calls": 157,
+      "errors": 0,
+      "maxMs": 162
+    },
+    {
+      "t": "23:14:38",
+      "calls": 288,
+      "errors": 0,
+      "maxMs": 327
+    },
+    {
+      "t": "23:14:39",
+      "calls": 151,
+      "errors": 0,
+      "maxMs": 697
+    },
+    {
+      "t": "23:14:40",
+      "calls": 156,
+      "errors": 0,
+      "maxMs": 166
+    },
+    {
+      "t": "23:14:41",
+      "calls": 248,
+      "errors": 0,
+      "maxMs": 207
+    },
+    {
+      "t": "23:14:42",
+      "calls": 161,
+      "errors": 0,
+      "maxMs": 183
+    },
+    {
+      "t": "23:14:43",
+      "calls": 219,
+      "errors": 0,
+      "maxMs": 175
+    },
+    {
+      "t": "23:14:44",
+      "calls": 218,
+      "errors": 0,
+      "maxMs": 169
+    },
+    {
+      "t": "23:14:45",
+      "calls": 186,
+      "errors": 0,
+      "maxMs": 166
+    },
+    {
+      "t": "23:14:46",
+      "calls": 191,
+      "errors": 0,
+      "maxMs": 163
+    },
+    {
+      "t": "23:14:47",
+      "calls": 172,
+      "errors": 0,
+      "maxMs": 171
+    },
+    {
+      "t": "23:14:48",
+      "calls": 228,
+      "errors": 0,
+      "maxMs": 172
+    },
+    {
+      "t": "23:14:49",
+      "calls": 182,
+      "errors": 0,
+      "maxMs": 165
+    },
+    {
+      "t": "23:14:50",
+      "calls": 211,
+      "errors": 0,
+      "maxMs": 186
+    },
+    {
+      "t": "23:14:51",
+      "calls": 170,
+      "errors": 0,
+      "maxMs": 167
+    },
+    {
+      "t": "23:14:52",
+      "calls": 209,
+      "errors": 0,
+      "maxMs": 164
+    },
+    {
+      "t": "23:14:53",
+      "calls": 175,
+      "errors": 0,
+      "maxMs": 169
+    },
+    {
+      "t": "23:14:54",
+      "calls": 209,
+      "errors": 0,
+      "maxMs": 207
+    },
+    {
+      "t": "23:14:55",
+      "calls": 207,
+      "errors": 0,
+      "maxMs": 164
+    },
+    {
+      "t": "23:14:56",
+      "calls": 211,
+      "errors": 0,
+      "maxMs": 175
+    },
+    {
+      "t": "23:14:57",
+      "calls": 188,
+      "errors": 0,
+      "maxMs": 435
+    },
+    {
+      "t": "23:14:58",
+      "calls": 173,
+      "errors": 0,
+      "maxMs": 174
+    },
+    {
+      "t": "23:14:59",
+      "calls": 205,
+      "errors": 0,
+      "maxMs": 181
+    },
+    {
+      "t": "23:15:00",
+      "calls": 206,
+      "errors": 0,
+      "maxMs": 169
+    },
+    {
+      "t": "23:15:01",
+      "calls": 227,
+      "errors": 0,
+      "maxMs": 169
+    },
+    {
+      "t": "23:15:02",
+      "calls": 162,
+      "errors": 0,
+      "maxMs": 179
+    },
+    {
+      "t": "23:15:03",
+      "calls": 182,
+      "errors": 0,
+      "maxMs": 164
+    },
+    {
+      "t": "23:15:04",
+      "calls": 178,
+      "errors": 0,
+      "maxMs": 187
+    },
+    {
+      "t": "23:15:05",
+      "calls": 236,
+      "errors": 0,
+      "maxMs": 437
+    },
+    {
+      "t": "23:15:06",
+      "calls": 214,
+      "errors": 0,
+      "maxMs": 181
+    },
+    {
+      "t": "23:15:07",
+      "calls": 203,
+      "errors": 0,
+      "maxMs": 188
+    },
+    {
+      "t": "23:15:08",
+      "calls": 161,
+      "errors": 0,
+      "maxMs": 167
+    },
+    {
+      "t": "23:15:09",
+      "calls": 155,
+      "errors": 0,
+      "maxMs": 161
+    },
+    {
+      "t": "23:15:11",
+      "calls": 1,
+      "errors": 0,
+      "maxMs": 50
+    }
+  ],
+  "colonyLag": [],
+  "stopped": {
+    "ok": true,
+    "ms": 30378,
+    "retired": 1001,
+    "failed": 0
+  },
+  "trunkCycles": {
+    "n": 17,
+    "perMin": 10.736842105263158,
+    "metrics": {
+      "batches": {
+        "n": 17,
+        "min": 8,
+        "p50": 31,
+        "p90": 33,
+        "p99": 34,
+        "max": 34,
+        "mean": 28.294117647058822
+      },
+      "buildMs": {
+        "n": 17,
+        "min": 22,
+        "p50": 267,
+        "p90": 726,
+        "p99": 1161,
+        "max": 1161,
+        "mean": 335.29411764705884
+      },
+      "commitMs": {
+        "n": 17,
+        "min": 0,
+        "p50": 0,
+        "p90": 0,
+        "p99": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "cycleMs": {
+        "n": 17,
+        "min": 1128,
+        "p50": 4275,
+        "p90": 5450,
+        "p99": 5636,
+        "max": 5636,
+        "mean": 4049.5882352941176
+      },
+      "finalizeMs": {
+        "n": 17,
+        "min": 0,
+        "p50": 0,
+        "p90": 0,
+        "p99": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "landed": {
+        "n": 17,
+        "min": 30,
+        "p50": 174,
+        "p90": 199,
+        "p99": 200,
+        "max": 200,
+        "mean": 151.47058823529412
+      },
+      "landings": {
+        "n": 17,
+        "min": 8,
+        "p50": 31,
+        "p90": 33,
+        "p99": 34,
+        "max": 34,
+        "mean": 28.294117647058822
+      },
+      "lineageMs": {
+        "n": 17,
+        "min": 0,
+        "p50": 0,
+        "p90": 0,
+        "p99": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "proposals": {
+        "n": 17,
+        "min": 30,
+        "p50": 174,
+        "p90": 199,
+        "p99": 200,
+        "max": 200,
+        "mean": 151.47058823529412
+      },
+      "pullMs": {
+        "n": 17,
+        "min": 746,
+        "p50": 3193,
+        "p90": 4446,
+        "p99": 4926,
+        "max": 4926,
+        "mean": 3101
+      },
+      "pushMs": {
+        "n": 17,
+        "min": 360,
+        "p50": 571,
+        "p90": 913,
+        "p99": 945,
+        "max": 945,
+        "mean": 613.2941176470588
+      },
+      "returned": {
+        "n": 17,
+        "min": 0,
+        "p50": 0,
+        "p90": 0,
+        "p99": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "screenMs": {
+        "n": 17,
+        "min": 0,
+        "p50": 0,
+        "p90": 0,
+        "p99": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "surgeryMs": {
+        "n": 17,
+        "min": 0,
+        "p50": 0,
+        "p90": 0,
+        "p99": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "waitMs": {
+        "n": 17,
+        "min": 1495,
+        "p50": 3886,
+        "p90": 9632,
+        "p99": 9955,
+        "max": 9955,
+        "mean": 4998.588235294118
+      }
+    }
+  },
+  "publish": {
+    "mode": "sync",
+    "atEnd": null,
+    "drained": null,
+    "drainMs": null
+  },
+  "errors": []
+}

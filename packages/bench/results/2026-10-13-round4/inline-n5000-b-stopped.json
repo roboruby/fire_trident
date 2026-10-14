@@ -1,0 +1,898 @@
+{
+  "kind": "live",
+  "note": "MEASURED, real landings: synthetic API agents (no model, no git at all); every proposal is an inline change carrying its new file's text, and every landed one is a real trunk commit built by the trunk writer with no workspace read.",
+  "inline": true,
+  "label": "inline-n5000-b",
+  "url": "https://p18-firetrident.mattsolt.workers.dev",
+  "colony": "p18-scale2",
+  "agents": 5000,
+  "durationS": 120,
+  "workMs": 0,
+  "regions": 64,
+  "startedAt": "2026-10-14T00:22:45.994Z",
+  "elapsedS": 38.115965166,
+  "stoppedEarly": "error rate 143% over 5 s at 15 s",
+  "ops": [
+    {
+      "op": "metrics",
+      "calls": 3,
+      "errors": 0,
+      "n": 3,
+      "min": 170.8883330000026,
+      "p50": 240.69058300000324,
+      "p90": 869.26,
+      "p99": 869.26,
+      "max": 869.26,
+      "mean": 426.94630533333526
+    },
+    {
+      "op": "intent",
+      "calls": 5662,
+      "errors": 0,
+      "n": 5662,
+      "min": 86.57058400000096,
+      "p50": 123.82549999999992,
+      "p90": 273.42504199999894,
+      "p99": 797.0485420000005,
+      "max": 1534.318542,
+      "mean": 174.76095600229604
+    },
+    {
+      "op": "status",
+      "calls": 1,
+      "errors": 0,
+      "n": 1,
+      "min": 1151.6883330000055,
+      "p50": 1151.6883330000055,
+      "p90": 1151.6883330000055,
+      "p99": 1151.6883330000055,
+      "max": 1151.6883330000055,
+      "mean": 1151.6883330000055
+    },
+    {
+      "op": "register",
+      "calls": 5000,
+      "errors": 1110,
+      "n": 5000,
+      "min": 69.60904200000368,
+      "p50": 2258.5919589999976,
+      "p90": 10273.286958000004,
+      "p99": 15546.327250000002,
+      "max": 30002.393833999995,
+      "mean": 3697.7393960152067
+    },
+    {
+      "op": "take",
+      "calls": 6818,
+      "errors": 3856,
+      "n": 6818,
+      "min": 27.5969169999953,
+      "p50": 1396.441875000004,
+      "p90": 8375.396584000002,
+      "p99": 13677.710625,
+      "max": 30003.649875000003,
+      "mean": 2920.909741985192
+    },
+    {
+      "op": "propose",
+      "calls": 349,
+      "errors": 80,
+      "n": 349,
+      "min": 34.1840830000001,
+      "p50": 1170.8400419999962,
+      "p90": 9608.812333000002,
+      "p99": 18913.378707999997,
+      "max": 22458.510500000004,
+      "mean": 2733.6350141232087
+    },
+    {
+      "op": "poll",
+      "calls": 1,
+      "errors": 0,
+      "n": 1,
+      "min": 56.07645799999591,
+      "p50": 56.07645799999591,
+      "p90": 56.07645799999591,
+      "p99": 56.07645799999591,
+      "max": 56.07645799999591,
+      "mean": 56.07645799999591
+    }
+  ],
+  "takeAssigned": {
+    "n": 349,
+    "min": 49.74104200000147,
+    "p50": 3035.595582999995,
+    "p90": 10847.467957999994,
+    "p99": 17702.057875,
+    "max": 27139.723958000002,
+    "mean": 4595.799929441262
+  },
+  "takeWait": {
+    "n": 2613,
+    "min": 49.31587500000023,
+    "p50": 3684.500334000004,
+    "p90": 8350.732333,
+    "p99": 14556.537791999996,
+    "max": 25228.689333000002,
+    "mean": 4206.003571354756
+  },
+  "counts": {
+    "registered": 3890,
+    "assigned": 349,
+    "waits": {
+      "every open intent's files are claimed by another agent": 170,
+      "admission closed in every candidate region": 2441,
+      "no intent accepted at this agent's thresholds": 2
+    },
+    "proposals": 269,
+    "landed": 269,
+    "returned": 0,
+    "rejected": 0,
+    "unresolved": 0
+  },
+  "returns": {},
+  "window": {
+    "fromS": 25,
+    "toS": 120,
+    "commits": 10,
+    "landedProposals": 15,
+    "landedPerMin": 9.473684210526315,
+    "commitsPerMin": 6.315789473684211,
+    "source": "live WebSocket landing events"
+  },
+  "snapshotDelta": {
+    "landings": 152,
+    "landedProposals": 269,
+    "proposals": 269,
+    "returned": 0,
+    "rejected": 0,
+    "takes": 342
+  },
+  "timeToLandMs": {
+    "n": 269,
+    "min": 286,
+    "p50": 5291,
+    "p90": 20550,
+    "p99": 21258,
+    "max": 21258,
+    "mean": 8733.401486988847
+  },
+  "batchSize": {
+    "n": 152,
+    "min": 1,
+    "p50": 2,
+    "p90": 3,
+    "p99": 4,
+    "max": 4,
+    "mean": 1.769736842105263
+  },
+  "commitGapMs": {
+    "n": 151,
+    "min": 0,
+    "p50": 0,
+    "p90": 376,
+    "p99": 3039,
+    "max": 7934,
+    "mean": 199.3708609271523
+  },
+  "feed": {
+    "connected": true,
+    "events": 11080,
+    "sigmaMax": 0,
+    "sigmaEvents": 184,
+    "reconnects": 0
+  },
+  "outcomes": {
+    "feed": 268,
+    "poll": 1
+  },
+  "timeline": [
+    {
+      "t": "00:22:03",
+      "calls": 4,
+      "errors": 0,
+      "maxMs": 869
+    },
+    {
+      "t": "00:22:04",
+      "calls": 39,
+      "errors": 0,
+      "maxMs": 1534
+    },
+    {
+      "t": "00:22:05",
+      "calls": 100,
+      "errors": 0,
+      "maxMs": 958
+    },
+    {
+      "t": "00:22:06",
+      "calls": 118,
+      "errors": 0,
+      "maxMs": 950
+    },
+    {
+      "t": "00:22:07",
+      "calls": 125,
+      "errors": 0,
+      "maxMs": 1052
+    },
+    {
+      "t": "00:22:08",
+      "calls": 124,
+      "errors": 0,
+      "maxMs": 836
+    },
+    {
+      "t": "00:22:09",
+      "calls": 134,
+      "errors": 0,
+      "maxMs": 935
+    },
+    {
+      "t": "00:22:10",
+      "calls": 124,
+      "errors": 0,
+      "maxMs": 742
+    },
+    {
+      "t": "00:22:11",
+      "calls": 128,
+      "errors": 0,
+      "maxMs": 891
+    },
+    {
+      "t": "00:22:12",
+      "calls": 139,
+      "errors": 0,
+      "maxMs": 753
+    },
+    {
+      "t": "00:22:13",
+      "calls": 124,
+      "errors": 0,
+      "maxMs": 846
+    },
+    {
+      "t": "00:22:14",
+      "calls": 162,
+      "errors": 0,
+      "maxMs": 914
+    },
+    {
+      "t": "00:22:15",
+      "calls": 127,
+      "errors": 0,
+      "maxMs": 799
+    },
+    {
+      "t": "00:22:16",
+      "calls": 115,
+      "errors": 0,
+      "maxMs": 834
+    },
+    {
+      "t": "00:22:17",
+      "calls": 133,
+      "errors": 0,
+      "maxMs": 1052
+    },
+    {
+      "t": "00:22:18",
+      "calls": 118,
+      "errors": 0,
+      "maxMs": 1138
+    },
+    {
+      "t": "00:22:19",
+      "calls": 149,
+      "errors": 0,
+      "maxMs": 750
+    },
+    {
+      "t": "00:22:20",
+      "calls": 126,
+      "errors": 0,
+      "maxMs": 685
+    },
+    {
+      "t": "00:22:21",
+      "calls": 114,
+      "errors": 0,
+      "maxMs": 723
+    },
+    {
+      "t": "00:22:22",
+      "calls": 145,
+      "errors": 0,
+      "maxMs": 792
+    },
+    {
+      "t": "00:22:23",
+      "calls": 158,
+      "errors": 0,
+      "maxMs": 1127
+    },
+    {
+      "t": "00:22:24",
+      "calls": 166,
+      "errors": 0,
+      "maxMs": 832
+    },
+    {
+      "t": "00:22:25",
+      "calls": 142,
+      "errors": 0,
+      "maxMs": 666
+    },
+    {
+      "t": "00:22:26",
+      "calls": 138,
+      "errors": 0,
+      "maxMs": 994
+    },
+    {
+      "t": "00:22:27",
+      "calls": 162,
+      "errors": 0,
+      "maxMs": 821
+    },
+    {
+      "t": "00:22:28",
+      "calls": 125,
+      "errors": 0,
+      "maxMs": 1047
+    },
+    {
+      "t": "00:22:29",
+      "calls": 158,
+      "errors": 0,
+      "maxMs": 1328
+    },
+    {
+      "t": "00:22:30",
+      "calls": 142,
+      "errors": 0,
+      "maxMs": 790
+    },
+    {
+      "t": "00:22:31",
+      "calls": 136,
+      "errors": 0,
+      "maxMs": 608
+    },
+    {
+      "t": "00:22:32",
+      "calls": 156,
+      "errors": 0,
+      "maxMs": 720
+    },
+    {
+      "t": "00:22:33",
+      "calls": 169,
+      "errors": 0,
+      "maxMs": 747
+    },
+    {
+      "t": "00:22:34",
+      "calls": 145,
+      "errors": 0,
+      "maxMs": 742
+    },
+    {
+      "t": "00:22:35",
+      "calls": 173,
+      "errors": 0,
+      "maxMs": 714
+    },
+    {
+      "t": "00:22:36",
+      "calls": 144,
+      "errors": 0,
+      "maxMs": 707
+    },
+    {
+      "t": "00:22:37",
+      "calls": 155,
+      "errors": 0,
+      "maxMs": 926
+    },
+    {
+      "t": "00:22:38",
+      "calls": 143,
+      "errors": 0,
+      "maxMs": 932
+    },
+    {
+      "t": "00:22:39",
+      "calls": 160,
+      "errors": 0,
+      "maxMs": 539
+    },
+    {
+      "t": "00:22:40",
+      "calls": 166,
+      "errors": 0,
+      "maxMs": 700
+    },
+    {
+      "t": "00:22:41",
+      "calls": 146,
+      "errors": 0,
+      "maxMs": 536
+    },
+    {
+      "t": "00:22:42",
+      "calls": 196,
+      "errors": 0,
+      "maxMs": 847
+    },
+    {
+      "t": "00:22:43",
+      "calls": 140,
+      "errors": 0,
+      "maxMs": 879
+    },
+    {
+      "t": "00:22:44",
+      "calls": 96,
+      "errors": 0,
+      "maxMs": 425
+    },
+    {
+      "t": "00:22:45",
+      "calls": 1,
+      "errors": 0,
+      "maxMs": 1152
+    },
+    {
+      "t": "00:22:46",
+      "calls": 254,
+      "errors": 0,
+      "maxMs": 747
+    },
+    {
+      "t": "00:22:47",
+      "calls": 259,
+      "errors": 0,
+      "maxMs": 1484
+    },
+    {
+      "t": "00:22:48",
+      "calls": 438,
+      "errors": 0,
+      "maxMs": 2615
+    },
+    {
+      "t": "00:22:49",
+      "calls": 436,
+      "errors": 0,
+      "maxMs": 3749
+    },
+    {
+      "t": "00:22:50",
+      "calls": 349,
+      "errors": 0,
+      "maxMs": 4526
+    },
+    {
+      "t": "00:22:51",
+      "calls": 771,
+      "errors": 0,
+      "maxMs": 5487
+    },
+    {
+      "t": "00:22:52",
+      "calls": 372,
+      "errors": 3,
+      "maxMs": 5816
+    },
+    {
+      "t": "00:22:53",
+      "calls": 423,
+      "errors": 0,
+      "maxMs": 6419
+    },
+    {
+      "t": "00:22:54",
+      "calls": 724,
+      "errors": 2,
+      "maxMs": 8029
+    },
+    {
+      "t": "00:22:55",
+      "calls": 511,
+      "errors": 7,
+      "maxMs": 8719
+    },
+    {
+      "t": "00:22:56",
+      "calls": 144,
+      "errors": 44,
+      "maxMs": 9499
+    },
+    {
+      "t": "00:22:57",
+      "calls": 1420,
+      "errors": 770,
+      "maxMs": 10925
+    },
+    {
+      "t": "00:22:58",
+      "calls": 1982,
+      "errors": 1262,
+      "maxMs": 12004
+    },
+    {
+      "t": "00:22:59",
+      "calls": 1389,
+      "errors": 1136,
+      "maxMs": 12572
+    },
+    {
+      "t": "00:23:00",
+      "calls": 1510,
+      "errors": 1223,
+      "maxMs": 13710
+    },
+    {
+      "t": "00:23:01",
+      "calls": 368,
+      "errors": 277,
+      "maxMs": 14839
+    },
+    {
+      "t": "00:23:02",
+      "calls": 217,
+      "errors": 107,
+      "maxMs": 15700
+    },
+    {
+      "t": "00:23:03",
+      "calls": 245,
+      "errors": 94,
+      "maxMs": 16665
+    },
+    {
+      "t": "00:23:04",
+      "calls": 114,
+      "errors": 51,
+      "maxMs": 17385
+    },
+    {
+      "t": "00:23:05",
+      "calls": 112,
+      "errors": 45,
+      "maxMs": 19026
+    },
+    {
+      "t": "00:23:06",
+      "calls": 38,
+      "errors": 9,
+      "maxMs": 18473
+    },
+    {
+      "t": "00:23:07",
+      "calls": 26,
+      "errors": 2,
+      "maxMs": 20625
+    },
+    {
+      "t": "00:23:08",
+      "calls": 18,
+      "errors": 6,
+      "maxMs": 21662
+    },
+    {
+      "t": "00:23:09",
+      "calls": 19,
+      "errors": 3,
+      "maxMs": 22136
+    },
+    {
+      "t": "00:23:10",
+      "calls": 7,
+      "errors": 0,
+      "maxMs": 21921
+    },
+    {
+      "t": "00:23:11",
+      "calls": 3,
+      "errors": 1,
+      "maxMs": 17768
+    },
+    {
+      "t": "00:23:12",
+      "calls": 7,
+      "errors": 1,
+      "maxMs": 22459
+    },
+    {
+      "t": "00:23:13",
+      "calls": 6,
+      "errors": 1,
+      "maxMs": 25229
+    },
+    {
+      "t": "00:23:14",
+      "calls": 1,
+      "errors": 0,
+      "maxMs": 23819
+    },
+    {
+      "t": "00:23:15",
+      "calls": 2,
+      "errors": 0,
+      "maxMs": 27140
+    },
+    {
+      "t": "00:23:16",
+      "calls": 2,
+      "errors": 2,
+      "maxMs": 30004
+    },
+    {
+      "t": "00:23:17",
+      "calls": 1,
+      "errors": 0,
+      "maxMs": 25110
+    },
+    {
+      "t": "00:23:25",
+      "calls": 1,
+      "errors": 0,
+      "maxMs": 241
+    }
+  ],
+  "colonyLag": [],
+  "stopped": {
+    "ok": true,
+    "ms": 117066,
+    "retired": 3891,
+    "failed": 0
+  },
+  "trunkCycles": {
+    "n": 8,
+    "perMin": 5.052631578947368,
+    "metrics": {
+      "batches": {
+        "n": 8,
+        "min": 1,
+        "p50": 1,
+        "p90": 3,
+        "p99": 3,
+        "max": 3,
+        "mean": 1.25
+      },
+      "buildMs": {
+        "n": 8,
+        "min": 9,
+        "p50": 19,
+        "p90": 45,
+        "p99": 45,
+        "max": 45,
+        "mean": 22.625
+      },
+      "commitMs": {
+        "n": 8,
+        "min": 0,
+        "p50": 0,
+        "p90": 0,
+        "p99": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "cycleMs": {
+        "n": 8,
+        "min": 33,
+        "p50": 49,
+        "p90": 78,
+        "p99": 78,
+        "max": 78,
+        "mean": 53.625
+      },
+      "finalizeMs": {
+        "n": 8,
+        "min": 0,
+        "p50": 0,
+        "p90": 0,
+        "p99": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "landed": {
+        "n": 8,
+        "min": 1,
+        "p50": 1,
+        "p90": 5,
+        "p99": 5,
+        "max": 5,
+        "mean": 1.875
+      },
+      "landings": {
+        "n": 8,
+        "min": 1,
+        "p50": 1,
+        "p90": 3,
+        "p99": 3,
+        "max": 3,
+        "mean": 1.25
+      },
+      "lineageMs": {
+        "n": 8,
+        "min": 0,
+        "p50": 0,
+        "p90": 0,
+        "p99": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "proposals": {
+        "n": 8,
+        "min": 1,
+        "p50": 1,
+        "p90": 5,
+        "p99": 5,
+        "max": 5,
+        "mean": 1.875
+      },
+      "publishLagMs": {
+        "n": 8,
+        "min": 18,
+        "p50": 2374,
+        "p90": 3852,
+        "p99": 3852,
+        "max": 3852,
+        "mean": 1858.375
+      },
+      "publishWaitMs": {
+        "n": 8,
+        "min": 0,
+        "p50": 0,
+        "p90": 0,
+        "p99": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "pullMs": {
+        "n": 8,
+        "min": 19,
+        "p50": 24,
+        "p90": 55,
+        "p99": 55,
+        "max": 55,
+        "mean": 31
+      },
+      "pushMs": {
+        "n": 8,
+        "min": 0,
+        "p50": 0,
+        "p90": 0,
+        "p99": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "returned": {
+        "n": 8,
+        "min": 0,
+        "p50": 0,
+        "p90": 0,
+        "p99": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "screenMs": {
+        "n": 8,
+        "min": 0,
+        "p50": 0,
+        "p90": 0,
+        "p99": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "surgeryMs": {
+        "n": 8,
+        "min": 0,
+        "p50": 0,
+        "p90": 0,
+        "p99": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "unpublished": {
+        "n": 8,
+        "min": 1,
+        "p50": 11,
+        "p90": 33,
+        "p99": 33,
+        "max": 33,
+        "mean": 10.75
+      },
+      "waitMs": {
+        "n": 8,
+        "min": 0,
+        "p50": 0,
+        "p90": 49,
+        "p99": 49,
+        "max": 49,
+        "mean": 6.125
+      }
+    }
+  },
+  "publish": {
+    "mode": "sync",
+    "atEnd": null,
+    "drained": null,
+    "drainMs": null
+  },
+  "publishes": {
+    "n": 6,
+    "perMin": 3.7894736842105265,
+    "metrics": {
+      "failures": {
+        "n": 6,
+        "min": 0,
+        "p50": 0,
+        "p90": 0,
+        "p99": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "lagMs": {
+        "n": 6,
+        "min": 253,
+        "p50": 331,
+        "p90": 4092,
+        "p99": 4092,
+        "max": 4092,
+        "mean": 1689.8333333333333
+      },
+      "landings": {
+        "n": 6,
+        "min": 1,
+        "p50": 1,
+        "p90": 25,
+        "p99": 25,
+        "max": 25,
+        "mean": 7
+      },
+      "ms": {
+        "n": 6,
+        "min": 235,
+        "p50": 311,
+        "p90": 2293,
+        "p99": 2293,
+        "max": 2293,
+        "mean": 876.8333333333334
+      },
+      "objects": {
+        "n": 6,
+        "min": 5,
+        "p50": 5,
+        "p90": 148,
+        "p99": 148,
+        "max": 148,
+        "mean": 41.166666666666664
+      },
+      "unpublished": {
+        "n": 6,
+        "min": 0,
+        "p50": 0,
+        "p90": 8,
+        "p99": 8,
+        "max": 8,
+        "mean": 2.3333333333333335
+      }
+    }
+  },
+  "errors": [
+    "register: TypeError: fetch failed (ECONNRESET)",
+    "take: TypeError: fetch failed (ECONNRESET)",
+    "take: 500 Durable Object is overloaded. Requests queued for too long.",
+    "register: 500 Durable Object is overloaded. Requests queued for too long.",
+    "propose: 500 Durable Object is overloaded. Requests queued for too long.",
+    "register: TypeError: fetch failed (UND_ERR_CONNECT_TIMEOUT)",
+    "take: TypeError: fetch failed (UND_ERR_CONNECT_TIMEOUT)",
+    "propose: TypeError: fetch failed (UND_ERR_CONNECT_TIMEOUT)"
+  ]
+}

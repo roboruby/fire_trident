@@ -1,0 +1,1667 @@
+{
+  "kind": "live",
+  "note": "MEASURED, real landings: synthetic API agents (no model, no git at all); every proposal is an inline change carrying its new file's text, and every landed one is a real trunk commit built by the trunk writer with no workspace read.",
+  "inline": true,
+  "label": "inline-async-n5000",
+  "url": "https://p18-firetrident.mattsolt.workers.dev",
+  "colony": "p18-scale2",
+  "agents": 5000,
+  "durationS": 120,
+  "workMs": 0,
+  "regions": 64,
+  "startedAt": "2026-10-14T00:01:41.990Z",
+  "elapsedS": 132.07045724999998,
+  "stoppedEarly": null,
+  "ops": [
+    {
+      "op": "metrics",
+      "calls": 3,
+      "errors": 0,
+      "n": 3,
+      "min": 118.41625000000931,
+      "p50": 125.51845900000626,
+      "p90": 730.519458,
+      "p99": 730.519458,
+      "max": 730.519458,
+      "mean": 324.81805566667185
+    },
+    {
+      "op": "intent",
+      "calls": 5812,
+      "errors": 0,
+      "n": 5812,
+      "min": 91.7129999999961,
+      "p50": 134.50679200000013,
+      "p90": 285.9500829999997,
+      "p99": 1368.1887500000003,
+      "max": 3204.341624999999,
+      "mean": 201.03418797505176
+    },
+    {
+      "op": "status",
+      "calls": 14,
+      "errors": 0,
+      "n": 14,
+      "min": 723.1801250000135,
+      "p50": 972.3793749999895,
+      "p90": 1645.725792000012,
+      "p99": 4311.415915999998,
+      "max": 4311.415915999998,
+      "mean": 1217.3156310000008
+    },
+    {
+      "op": "register",
+      "calls": 5000,
+      "errors": 312,
+      "n": 5000,
+      "min": 11.313584000003175,
+      "p50": 2092.4476249999934,
+      "p90": 9277.959416999998,
+      "p99": 14875.109334,
+      "max": 30000.172542,
+      "mean": 3356.555949502202
+    },
+    {
+      "op": "take",
+      "calls": 30172,
+      "errors": 247,
+      "n": 30172,
+      "min": 40.45662499999162,
+      "p50": 1175.0731249999953,
+      "p90": 13088.670084000012,
+      "p99": 16344.32904099999,
+      "max": 26345.576083,
+      "mean": 3905.340897053425
+    },
+    {
+      "op": "propose",
+      "calls": 7511,
+      "errors": 9,
+      "n": 7511,
+      "min": 97.2796670000098,
+      "p50": 473.0460000000021,
+      "p90": 859.0720000000001,
+      "p99": 2237.6194169999944,
+      "max": 23073.275667,
+      "mean": 571.5769510475302
+    },
+    {
+      "op": "heartbeat",
+      "calls": 3681,
+      "errors": 0,
+      "n": 3681,
+      "min": 73.29591600000276,
+      "p50": 246.83837500000664,
+      "p90": 459.51350000000093,
+      "p99": 793.5063329999975,
+      "max": 1433.7993340000103,
+      "mean": 277.65601207497957
+    },
+    {
+      "op": "poll",
+      "calls": 546,
+      "errors": 0,
+      "n": 546,
+      "min": 42.29362499999115,
+      "p50": 72.21649999998044,
+      "p90": 192.48133300000336,
+      "p99": 511.57662500001607,
+      "max": 1002.8999170000025,
+      "mean": 112.98178976373681
+    }
+  ],
+  "takeAssigned": {
+    "n": 7511,
+    "min": 94.02129099999729,
+    "p50": 9041.140459000002,
+    "p90": 15112.216167000006,
+    "p99": 16952.691875000004,
+    "max": 18460.20725,
+    "mean": 8716.154242857016
+  },
+  "takeWait": {
+    "n": 22414,
+    "min": 40.47287500000675,
+    "p50": 524.5975000000035,
+    "p90": 6873.431874999995,
+    "p99": 14429.513500000001,
+    "max": 26345.608167,
+    "mean": 2234.813651956847
+  },
+  "counts": {
+    "registered": 4688,
+    "assigned": 7511,
+    "waits": {
+      "no intent accepted at this agent's thresholds": 13,
+      "every open intent's files are claimed by another agent": 1918,
+      "admission closed in every candidate region": 9019,
+      "colony busy: too many takes in flight": 10201,
+      "no open intents": 1072,
+      "admission closed in bench/r62": 5,
+      "admission closed in bench/r07": 1,
+      "admission closed in bench/r05": 11,
+      "admission closed in bench/r37": 48,
+      "admission closed in bench/r04": 40,
+      "admission closed in bench/r43": 30,
+      "admission closed in bench/r38": 18,
+      "admission closed in bench/r01": 11,
+      "admission closed in bench/r36": 3,
+      "admission closed in bench/r32": 6,
+      "admission closed in bench/r46": 4,
+      "admission closed in bench/r48": 4,
+      "admission closed in bench/r55": 3,
+      "admission closed in bench/r54": 2,
+      "admission closed in bench/r20": 2,
+      "admission closed in bench/r10": 2,
+      "admission closed in bench/r02": 1
+    },
+    "proposals": 7502,
+    "landed": 7502,
+    "returned": 0,
+    "rejected": 0,
+    "unresolved": 0
+  },
+  "returns": {},
+  "window": {
+    "fromS": 25,
+    "toS": 120,
+    "commits": 1083,
+    "landedProposals": 5978,
+    "landedPerMin": 3775.578947368421,
+    "commitsPerMin": 684,
+    "source": "live WebSocket landing events"
+  },
+  "snapshotDelta": {
+    "landings": 1393,
+    "landedProposals": 7502,
+    "proposals": 7502,
+    "returned": 0,
+    "rejected": 0,
+    "takes": 7502
+  },
+  "timeToLandMs": {
+    "n": 7502,
+    "min": 479,
+    "p50": 8028,
+    "p90": 20816,
+    "p99": 25900,
+    "max": 27343,
+    "mean": 9910.42521994135
+  },
+  "batchSize": {
+    "n": 1393,
+    "min": 1,
+    "p50": 5,
+    "p90": 10,
+    "p99": 12,
+    "max": 15,
+    "mean": 5.385498923187366
+  },
+  "commitGapMs": {
+    "n": 1392,
+    "min": 0,
+    "p50": 0,
+    "p90": 0,
+    "p99": 2702,
+    "max": 9965,
+    "mean": 93.13362068965517
+  },
+  "feed": {
+    "connected": true,
+    "events": 105854,
+    "sigmaMax": 0,
+    "sigmaEvents": 1393,
+    "reconnects": 0
+  },
+  "outcomes": {
+    "feed": 7466,
+    "poll": 36
+  },
+  "timeline": [
+    {
+      "t": "00:00:50",
+      "calls": 1,
+      "errors": 0,
+      "maxMs": 731
+    },
+    {
+      "t": "00:00:51",
+      "calls": 9,
+      "errors": 0,
+      "maxMs": 937
+    },
+    {
+      "t": "00:00:52",
+      "calls": 30,
+      "errors": 0,
+      "maxMs": 1696
+    },
+    {
+      "t": "00:00:53",
+      "calls": 77,
+      "errors": 0,
+      "maxMs": 2639
+    },
+    {
+      "t": "00:00:54",
+      "calls": 99,
+      "errors": 0,
+      "maxMs": 1091
+    },
+    {
+      "t": "00:00:55",
+      "calls": 105,
+      "errors": 0,
+      "maxMs": 2195
+    },
+    {
+      "t": "00:00:56",
+      "calls": 122,
+      "errors": 0,
+      "maxMs": 893
+    },
+    {
+      "t": "00:00:57",
+      "calls": 117,
+      "errors": 0,
+      "maxMs": 1344
+    },
+    {
+      "t": "00:00:58",
+      "calls": 129,
+      "errors": 0,
+      "maxMs": 960
+    },
+    {
+      "t": "00:00:59",
+      "calls": 147,
+      "errors": 0,
+      "maxMs": 735
+    },
+    {
+      "t": "00:01:00",
+      "calls": 114,
+      "errors": 0,
+      "maxMs": 1210
+    },
+    {
+      "t": "00:01:01",
+      "calls": 123,
+      "errors": 0,
+      "maxMs": 1054
+    },
+    {
+      "t": "00:01:02",
+      "calls": 105,
+      "errors": 0,
+      "maxMs": 757
+    },
+    {
+      "t": "00:01:03",
+      "calls": 102,
+      "errors": 0,
+      "maxMs": 2865
+    },
+    {
+      "t": "00:01:04",
+      "calls": 152,
+      "errors": 0,
+      "maxMs": 3204
+    },
+    {
+      "t": "00:01:05",
+      "calls": 133,
+      "errors": 0,
+      "maxMs": 1011
+    },
+    {
+      "t": "00:01:06",
+      "calls": 121,
+      "errors": 0,
+      "maxMs": 701
+    },
+    {
+      "t": "00:01:07",
+      "calls": 129,
+      "errors": 0,
+      "maxMs": 2102
+    },
+    {
+      "t": "00:01:08",
+      "calls": 152,
+      "errors": 0,
+      "maxMs": 928
+    },
+    {
+      "t": "00:01:09",
+      "calls": 147,
+      "errors": 0,
+      "maxMs": 803
+    },
+    {
+      "t": "00:01:10",
+      "calls": 118,
+      "errors": 0,
+      "maxMs": 1005
+    },
+    {
+      "t": "00:01:12",
+      "calls": 42,
+      "errors": 0,
+      "maxMs": 2658
+    },
+    {
+      "t": "00:01:13",
+      "calls": 126,
+      "errors": 0,
+      "maxMs": 2290
+    },
+    {
+      "t": "00:01:14",
+      "calls": 118,
+      "errors": 0,
+      "maxMs": 1879
+    },
+    {
+      "t": "00:01:15",
+      "calls": 93,
+      "errors": 0,
+      "maxMs": 1374
+    },
+    {
+      "t": "00:01:16",
+      "calls": 107,
+      "errors": 0,
+      "maxMs": 2007
+    },
+    {
+      "t": "00:01:17",
+      "calls": 103,
+      "errors": 0,
+      "maxMs": 1189
+    },
+    {
+      "t": "00:01:18",
+      "calls": 144,
+      "errors": 0,
+      "maxMs": 2210
+    },
+    {
+      "t": "00:01:19",
+      "calls": 151,
+      "errors": 0,
+      "maxMs": 909
+    },
+    {
+      "t": "00:01:20",
+      "calls": 151,
+      "errors": 0,
+      "maxMs": 673
+    },
+    {
+      "t": "00:01:21",
+      "calls": 144,
+      "errors": 0,
+      "maxMs": 1607
+    },
+    {
+      "t": "00:01:22",
+      "calls": 141,
+      "errors": 0,
+      "maxMs": 843
+    },
+    {
+      "t": "00:01:23",
+      "calls": 160,
+      "errors": 0,
+      "maxMs": 703
+    },
+    {
+      "t": "00:01:24",
+      "calls": 152,
+      "errors": 0,
+      "maxMs": 611
+    },
+    {
+      "t": "00:01:25",
+      "calls": 125,
+      "errors": 0,
+      "maxMs": 1359
+    },
+    {
+      "t": "00:01:26",
+      "calls": 103,
+      "errors": 0,
+      "maxMs": 1322
+    },
+    {
+      "t": "00:01:27",
+      "calls": 146,
+      "errors": 0,
+      "maxMs": 1348
+    },
+    {
+      "t": "00:01:28",
+      "calls": 142,
+      "errors": 0,
+      "maxMs": 908
+    },
+    {
+      "t": "00:01:29",
+      "calls": 166,
+      "errors": 0,
+      "maxMs": 774
+    },
+    {
+      "t": "00:01:30",
+      "calls": 135,
+      "errors": 0,
+      "maxMs": 902
+    },
+    {
+      "t": "00:01:31",
+      "calls": 108,
+      "errors": 0,
+      "maxMs": 1534
+    },
+    {
+      "t": "00:01:32",
+      "calls": 115,
+      "errors": 0,
+      "maxMs": 1368
+    },
+    {
+      "t": "00:01:33",
+      "calls": 115,
+      "errors": 0,
+      "maxMs": 2314
+    },
+    {
+      "t": "00:01:34",
+      "calls": 150,
+      "errors": 0,
+      "maxMs": 2828
+    },
+    {
+      "t": "00:01:35",
+      "calls": 122,
+      "errors": 0,
+      "maxMs": 1346
+    },
+    {
+      "t": "00:01:36",
+      "calls": 130,
+      "errors": 0,
+      "maxMs": 1459
+    },
+    {
+      "t": "00:01:37",
+      "calls": 136,
+      "errors": 0,
+      "maxMs": 949
+    },
+    {
+      "t": "00:01:38",
+      "calls": 158,
+      "errors": 0,
+      "maxMs": 535
+    },
+    {
+      "t": "00:01:39",
+      "calls": 97,
+      "errors": 0,
+      "maxMs": 1461
+    },
+    {
+      "t": "00:01:40",
+      "calls": 2,
+      "errors": 0,
+      "maxMs": 773
+    },
+    {
+      "t": "00:01:41",
+      "calls": 1,
+      "errors": 0,
+      "maxMs": 1200
+    },
+    {
+      "t": "00:01:42",
+      "calls": 342,
+      "errors": 0,
+      "maxMs": 795
+    },
+    {
+      "t": "00:01:43",
+      "calls": 229,
+      "errors": 0,
+      "maxMs": 1701
+    },
+    {
+      "t": "00:01:44",
+      "calls": 430,
+      "errors": 0,
+      "maxMs": 2536
+    },
+    {
+      "t": "00:01:45",
+      "calls": 543,
+      "errors": 0,
+      "maxMs": 3777
+    },
+    {
+      "t": "00:01:46",
+      "calls": 361,
+      "errors": 0,
+      "maxMs": 4149
+    },
+    {
+      "t": "00:01:47",
+      "calls": 806,
+      "errors": 2,
+      "maxMs": 5074
+    },
+    {
+      "t": "00:01:48",
+      "calls": 842,
+      "errors": 0,
+      "maxMs": 6171
+    },
+    {
+      "t": "00:01:49",
+      "calls": 187,
+      "errors": 1,
+      "maxMs": 6555
+    },
+    {
+      "t": "00:01:50",
+      "calls": 267,
+      "errors": 3,
+      "maxMs": 7970
+    },
+    {
+      "t": "00:01:51",
+      "calls": 654,
+      "errors": 4,
+      "maxMs": 8868
+    },
+    {
+      "t": "00:01:52",
+      "calls": 1065,
+      "errors": 1,
+      "maxMs": 9801
+    },
+    {
+      "t": "00:01:53",
+      "calls": 753,
+      "errors": 108,
+      "maxMs": 10742
+    },
+    {
+      "t": "00:01:54",
+      "calls": 830,
+      "errors": 86,
+      "maxMs": 11702
+    },
+    {
+      "t": "00:01:55",
+      "calls": 681,
+      "errors": 61,
+      "maxMs": 12626
+    },
+    {
+      "t": "00:01:56",
+      "calls": 873,
+      "errors": 62,
+      "maxMs": 13917
+    },
+    {
+      "t": "00:01:57",
+      "calls": 117,
+      "errors": 68,
+      "maxMs": 15089
+    },
+    {
+      "t": "00:01:58",
+      "calls": 1053,
+      "errors": 47,
+      "maxMs": 15977
+    },
+    {
+      "t": "00:01:59",
+      "calls": 836,
+      "errors": 65,
+      "maxMs": 17419
+    },
+    {
+      "t": "00:02:00",
+      "calls": 397,
+      "errors": 30,
+      "maxMs": 18213
+    },
+    {
+      "t": "00:02:01",
+      "calls": 731,
+      "errors": 22,
+      "maxMs": 18710
+    },
+    {
+      "t": "00:02:02",
+      "calls": 580,
+      "errors": 1,
+      "maxMs": 19213
+    },
+    {
+      "t": "00:02:03",
+      "calls": 322,
+      "errors": 2,
+      "maxMs": 20386
+    },
+    {
+      "t": "00:02:04",
+      "calls": 132,
+      "errors": 0,
+      "maxMs": 18487
+    },
+    {
+      "t": "00:02:05",
+      "calls": 197,
+      "errors": 2,
+      "maxMs": 23016
+    },
+    {
+      "t": "00:02:06",
+      "calls": 307,
+      "errors": 2,
+      "maxMs": 23224
+    },
+    {
+      "t": "00:02:07",
+      "calls": 386,
+      "errors": 0,
+      "maxMs": 23073
+    },
+    {
+      "t": "00:02:08",
+      "calls": 269,
+      "errors": 0,
+      "maxMs": 20832
+    },
+    {
+      "t": "00:02:09",
+      "calls": 207,
+      "errors": 0,
+      "maxMs": 19670
+    },
+    {
+      "t": "00:02:10",
+      "calls": 246,
+      "errors": 0,
+      "maxMs": 21477
+    },
+    {
+      "t": "00:02:11",
+      "calls": 208,
+      "errors": 0,
+      "maxMs": 26346
+    },
+    {
+      "t": "00:02:12",
+      "calls": 297,
+      "errors": 1,
+      "maxMs": 30000
+    },
+    {
+      "t": "00:02:13",
+      "calls": 178,
+      "errors": 0,
+      "maxMs": 2070
+    },
+    {
+      "t": "00:02:14",
+      "calls": 213,
+      "errors": 0,
+      "maxMs": 2449
+    },
+    {
+      "t": "00:02:15",
+      "calls": 192,
+      "errors": 0,
+      "maxMs": 2362
+    },
+    {
+      "t": "00:02:16",
+      "calls": 208,
+      "errors": 0,
+      "maxMs": 3167
+    },
+    {
+      "t": "00:02:17",
+      "calls": 464,
+      "errors": 0,
+      "maxMs": 3256
+    },
+    {
+      "t": "00:02:18",
+      "calls": 395,
+      "errors": 0,
+      "maxMs": 4386
+    },
+    {
+      "t": "00:02:19",
+      "calls": 363,
+      "errors": 0,
+      "maxMs": 4762
+    },
+    {
+      "t": "00:02:20",
+      "calls": 444,
+      "errors": 0,
+      "maxMs": 3556
+    },
+    {
+      "t": "00:02:21",
+      "calls": 53,
+      "errors": 0,
+      "maxMs": 3220
+    },
+    {
+      "t": "00:02:22",
+      "calls": 183,
+      "errors": 0,
+      "maxMs": 3478
+    },
+    {
+      "t": "00:02:23",
+      "calls": 150,
+      "errors": 0,
+      "maxMs": 3383
+    },
+    {
+      "t": "00:02:24",
+      "calls": 224,
+      "errors": 0,
+      "maxMs": 4326
+    },
+    {
+      "t": "00:02:25",
+      "calls": 360,
+      "errors": 0,
+      "maxMs": 5360
+    },
+    {
+      "t": "00:02:26",
+      "calls": 317,
+      "errors": 0,
+      "maxMs": 5689
+    },
+    {
+      "t": "00:02:27",
+      "calls": 261,
+      "errors": 0,
+      "maxMs": 6345
+    },
+    {
+      "t": "00:02:28",
+      "calls": 526,
+      "errors": 0,
+      "maxMs": 6931
+    },
+    {
+      "t": "00:02:29",
+      "calls": 248,
+      "errors": 0,
+      "maxMs": 7537
+    },
+    {
+      "t": "00:02:30",
+      "calls": 434,
+      "errors": 0,
+      "maxMs": 8535
+    },
+    {
+      "t": "00:02:31",
+      "calls": 193,
+      "errors": 0,
+      "maxMs": 9749
+    },
+    {
+      "t": "00:02:32",
+      "calls": 323,
+      "errors": 0,
+      "maxMs": 9518
+    },
+    {
+      "t": "00:02:33",
+      "calls": 397,
+      "errors": 0,
+      "maxMs": 11140
+    },
+    {
+      "t": "00:02:34",
+      "calls": 291,
+      "errors": 0,
+      "maxMs": 11600
+    },
+    {
+      "t": "00:02:35",
+      "calls": 456,
+      "errors": 0,
+      "maxMs": 12573
+    },
+    {
+      "t": "00:02:36",
+      "calls": 441,
+      "errors": 0,
+      "maxMs": 13616
+    },
+    {
+      "t": "00:02:37",
+      "calls": 356,
+      "errors": 0,
+      "maxMs": 13625
+    },
+    {
+      "t": "00:02:38",
+      "calls": 265,
+      "errors": 0,
+      "maxMs": 14151
+    },
+    {
+      "t": "00:02:39",
+      "calls": 246,
+      "errors": 0,
+      "maxMs": 14542
+    },
+    {
+      "t": "00:02:40",
+      "calls": 463,
+      "errors": 0,
+      "maxMs": 15035
+    },
+    {
+      "t": "00:02:41",
+      "calls": 388,
+      "errors": 0,
+      "maxMs": 14124
+    },
+    {
+      "t": "00:02:42",
+      "calls": 388,
+      "errors": 0,
+      "maxMs": 15364
+    },
+    {
+      "t": "00:02:43",
+      "calls": 452,
+      "errors": 0,
+      "maxMs": 15425
+    },
+    {
+      "t": "00:02:44",
+      "calls": 517,
+      "errors": 0,
+      "maxMs": 14948
+    },
+    {
+      "t": "00:02:45",
+      "calls": 304,
+      "errors": 0,
+      "maxMs": 16053
+    },
+    {
+      "t": "00:02:46",
+      "calls": 451,
+      "errors": 0,
+      "maxMs": 15515
+    },
+    {
+      "t": "00:02:47",
+      "calls": 291,
+      "errors": 0,
+      "maxMs": 15399
+    },
+    {
+      "t": "00:02:48",
+      "calls": 434,
+      "errors": 0,
+      "maxMs": 17550
+    },
+    {
+      "t": "00:02:49",
+      "calls": 499,
+      "errors": 0,
+      "maxMs": 941
+    },
+    {
+      "t": "00:02:50",
+      "calls": 167,
+      "errors": 0,
+      "maxMs": 17115
+    },
+    {
+      "t": "00:02:51",
+      "calls": 531,
+      "errors": 0,
+      "maxMs": 17882
+    },
+    {
+      "t": "00:02:52",
+      "calls": 391,
+      "errors": 0,
+      "maxMs": 17510
+    },
+    {
+      "t": "00:02:53",
+      "calls": 364,
+      "errors": 0,
+      "maxMs": 17122
+    },
+    {
+      "t": "00:02:54",
+      "calls": 1263,
+      "errors": 0,
+      "maxMs": 16499
+    },
+    {
+      "t": "00:02:55",
+      "calls": 181,
+      "errors": 0,
+      "maxMs": 16758
+    },
+    {
+      "t": "00:02:56",
+      "calls": 220,
+      "errors": 0,
+      "maxMs": 17851
+    },
+    {
+      "t": "00:02:57",
+      "calls": 235,
+      "errors": 0,
+      "maxMs": 2327
+    },
+    {
+      "t": "00:02:58",
+      "calls": 251,
+      "errors": 0,
+      "maxMs": 3198
+    },
+    {
+      "t": "00:02:59",
+      "calls": 126,
+      "errors": 0,
+      "maxMs": 3807
+    },
+    {
+      "t": "00:03:00",
+      "calls": 136,
+      "errors": 0,
+      "maxMs": 4877
+    },
+    {
+      "t": "00:03:01",
+      "calls": 366,
+      "errors": 0,
+      "maxMs": 5578
+    },
+    {
+      "t": "00:03:02",
+      "calls": 343,
+      "errors": 0,
+      "maxMs": 6282
+    },
+    {
+      "t": "00:03:03",
+      "calls": 530,
+      "errors": 0,
+      "maxMs": 6478
+    },
+    {
+      "t": "00:03:04",
+      "calls": 171,
+      "errors": 0,
+      "maxMs": 6949
+    },
+    {
+      "t": "00:03:05",
+      "calls": 644,
+      "errors": 0,
+      "maxMs": 8346
+    },
+    {
+      "t": "00:03:06",
+      "calls": 291,
+      "errors": 0,
+      "maxMs": 8661
+    },
+    {
+      "t": "00:03:07",
+      "calls": 357,
+      "errors": 0,
+      "maxMs": 9414
+    },
+    {
+      "t": "00:03:08",
+      "calls": 414,
+      "errors": 0,
+      "maxMs": 9632
+    },
+    {
+      "t": "00:03:09",
+      "calls": 249,
+      "errors": 0,
+      "maxMs": 10173
+    },
+    {
+      "t": "00:03:10",
+      "calls": 375,
+      "errors": 0,
+      "maxMs": 10903
+    },
+    {
+      "t": "00:03:11",
+      "calls": 429,
+      "errors": 0,
+      "maxMs": 12294
+    },
+    {
+      "t": "00:03:12",
+      "calls": 373,
+      "errors": 0,
+      "maxMs": 13596
+    },
+    {
+      "t": "00:03:13",
+      "calls": 186,
+      "errors": 0,
+      "maxMs": 14509
+    },
+    {
+      "t": "00:03:14",
+      "calls": 473,
+      "errors": 0,
+      "maxMs": 13740
+    },
+    {
+      "t": "00:03:15",
+      "calls": 170,
+      "errors": 0,
+      "maxMs": 15734
+    },
+    {
+      "t": "00:03:16",
+      "calls": 520,
+      "errors": 0,
+      "maxMs": 17313
+    },
+    {
+      "t": "00:03:17",
+      "calls": 278,
+      "errors": 0,
+      "maxMs": 16158
+    },
+    {
+      "t": "00:03:18",
+      "calls": 452,
+      "errors": 0,
+      "maxMs": 15923
+    },
+    {
+      "t": "00:03:19",
+      "calls": 306,
+      "errors": 0,
+      "maxMs": 15795
+    },
+    {
+      "t": "00:03:20",
+      "calls": 429,
+      "errors": 0,
+      "maxMs": 15507
+    },
+    {
+      "t": "00:03:21",
+      "calls": 341,
+      "errors": 0,
+      "maxMs": 15891
+    },
+    {
+      "t": "00:03:22",
+      "calls": 358,
+      "errors": 0,
+      "maxMs": 15278
+    },
+    {
+      "t": "00:03:23",
+      "calls": 236,
+      "errors": 0,
+      "maxMs": 16162
+    },
+    {
+      "t": "00:03:24",
+      "calls": 286,
+      "errors": 0,
+      "maxMs": 16903
+    },
+    {
+      "t": "00:03:25",
+      "calls": 295,
+      "errors": 0,
+      "maxMs": 15616
+    },
+    {
+      "t": "00:03:26",
+      "calls": 546,
+      "errors": 0,
+      "maxMs": 14875
+    },
+    {
+      "t": "00:03:27",
+      "calls": 333,
+      "errors": 0,
+      "maxMs": 16352
+    },
+    {
+      "t": "00:03:28",
+      "calls": 448,
+      "errors": 0,
+      "maxMs": 16869
+    },
+    {
+      "t": "00:03:29",
+      "calls": 412,
+      "errors": 0,
+      "maxMs": 16099
+    },
+    {
+      "t": "00:03:30",
+      "calls": 311,
+      "errors": 0,
+      "maxMs": 14271
+    },
+    {
+      "t": "00:03:31",
+      "calls": 302,
+      "errors": 0,
+      "maxMs": 14521
+    },
+    {
+      "t": "00:03:32",
+      "calls": 303,
+      "errors": 0,
+      "maxMs": 13852
+    },
+    {
+      "t": "00:03:33",
+      "calls": 275,
+      "errors": 0,
+      "maxMs": 13348
+    },
+    {
+      "t": "00:03:34",
+      "calls": 475,
+      "errors": 0,
+      "maxMs": 12387
+    },
+    {
+      "t": "00:03:35",
+      "calls": 380,
+      "errors": 0,
+      "maxMs": 9257
+    },
+    {
+      "t": "00:03:37",
+      "calls": 1198,
+      "errors": 0,
+      "maxMs": 5602
+    },
+    {
+      "t": "00:03:38",
+      "calls": 283,
+      "errors": 0,
+      "maxMs": 1086
+    },
+    {
+      "t": "00:03:39",
+      "calls": 322,
+      "errors": 0,
+      "maxMs": 1173
+    },
+    {
+      "t": "00:03:40",
+      "calls": 347,
+      "errors": 0,
+      "maxMs": 2089
+    },
+    {
+      "t": "00:03:41",
+      "calls": 263,
+      "errors": 0,
+      "maxMs": 962
+    },
+    {
+      "t": "00:03:42",
+      "calls": 89,
+      "errors": 0,
+      "maxMs": 2072
+    },
+    {
+      "t": "00:03:43",
+      "calls": 22,
+      "errors": 0,
+      "maxMs": 466
+    },
+    {
+      "t": "00:03:44",
+      "calls": 56,
+      "errors": 0,
+      "maxMs": 148
+    },
+    {
+      "t": "00:03:45",
+      "calls": 2,
+      "errors": 0,
+      "maxMs": 57
+    },
+    {
+      "t": "00:03:46",
+      "calls": 61,
+      "errors": 0,
+      "maxMs": 512
+    },
+    {
+      "t": "00:03:47",
+      "calls": 19,
+      "errors": 0,
+      "maxMs": 180
+    },
+    {
+      "t": "00:03:48",
+      "calls": 43,
+      "errors": 0,
+      "maxMs": 136
+    },
+    {
+      "t": "00:03:49",
+      "calls": 64,
+      "errors": 0,
+      "maxMs": 131
+    },
+    {
+      "t": "00:03:50",
+      "calls": 30,
+      "errors": 0,
+      "maxMs": 97
+    },
+    {
+      "t": "00:03:51",
+      "calls": 35,
+      "errors": 0,
+      "maxMs": 192
+    },
+    {
+      "t": "00:03:52",
+      "calls": 33,
+      "errors": 0,
+      "maxMs": 152
+    },
+    {
+      "t": "00:03:53",
+      "calls": 5,
+      "errors": 0,
+      "maxMs": 64
+    },
+    {
+      "t": "00:03:55",
+      "calls": 1,
+      "errors": 0,
+      "maxMs": 118
+    },
+    {
+      "t": "00:03:56",
+      "calls": 1,
+      "errors": 0,
+      "maxMs": 980
+    },
+    {
+      "t": "00:03:59",
+      "calls": 1,
+      "errors": 0,
+      "maxMs": 978
+    },
+    {
+      "t": "00:04:02",
+      "calls": 1,
+      "errors": 0,
+      "maxMs": 980
+    },
+    {
+      "t": "00:04:08",
+      "calls": 1,
+      "errors": 0,
+      "maxMs": 4311
+    },
+    {
+      "t": "00:04:11",
+      "calls": 1,
+      "errors": 0,
+      "maxMs": 753
+    },
+    {
+      "t": "00:04:15",
+      "calls": 1,
+      "errors": 0,
+      "maxMs": 1375
+    },
+    {
+      "t": "00:04:18",
+      "calls": 1,
+      "errors": 0,
+      "maxMs": 972
+    },
+    {
+      "t": "00:04:20",
+      "calls": 1,
+      "errors": 0,
+      "maxMs": 824
+    },
+    {
+      "t": "00:04:23",
+      "calls": 1,
+      "errors": 0,
+      "maxMs": 771
+    },
+    {
+      "t": "00:04:26",
+      "calls": 1,
+      "errors": 0,
+      "maxMs": 743
+    },
+    {
+      "t": "00:04:30",
+      "calls": 1,
+      "errors": 0,
+      "maxMs": 1646
+    },
+    {
+      "t": "00:04:32",
+      "calls": 1,
+      "errors": 0,
+      "maxMs": 723
+    },
+    {
+      "t": "00:04:35",
+      "calls": 1,
+      "errors": 0,
+      "maxMs": 785
+    }
+  ],
+  "colonyLag": [],
+  "stopped": {
+    "ok": true,
+    "ms": 115910,
+    "retired": 4689,
+    "failed": 0
+  },
+  "trunkCycles": {
+    "n": 42,
+    "perMin": 26.52631578947368,
+    "metrics": {
+      "batches": {
+        "n": 42,
+        "min": 1,
+        "p50": 25,
+        "p90": 38,
+        "p99": 45,
+        "max": 45,
+        "mean": 25.785714285714285
+      },
+      "buildMs": {
+        "n": 42,
+        "min": 51,
+        "p50": 302,
+        "p90": 1551,
+        "p99": 2791,
+        "max": 2791,
+        "mean": 553.7380952380952
+      },
+      "commitMs": {
+        "n": 42,
+        "min": 0,
+        "p50": 0,
+        "p90": 0,
+        "p99": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "cycleMs": {
+        "n": 42,
+        "min": 401,
+        "p50": 1757,
+        "p90": 3494,
+        "p99": 10544,
+        "max": 10544,
+        "mean": 2245.095238095238
+      },
+      "finalizeMs": {
+        "n": 42,
+        "min": 0,
+        "p50": 0,
+        "p90": 0,
+        "p99": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "landed": {
+        "n": 42,
+        "min": 2,
+        "p50": 161,
+        "p90": 199,
+        "p99": 200,
+        "max": 200,
+        "mean": 142.33333333333334
+      },
+      "landings": {
+        "n": 42,
+        "min": 1,
+        "p50": 25,
+        "p90": 38,
+        "p99": 45,
+        "max": 45,
+        "mean": 25.785714285714285
+      },
+      "lineageMs": {
+        "n": 42,
+        "min": 0,
+        "p50": 0,
+        "p90": 0,
+        "p99": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "proposals": {
+        "n": 42,
+        "min": 2,
+        "p50": 161,
+        "p90": 199,
+        "p99": 200,
+        "max": 200,
+        "mean": 142.33333333333334
+      },
+      "publishLagMs": {
+        "n": 42,
+        "min": 3902,
+        "p50": 23283,
+        "p90": 43916,
+        "p99": 62616,
+        "max": 62616,
+        "mean": 25171.52380952381
+      },
+      "publishWaitMs": {
+        "n": 42,
+        "min": 0,
+        "p50": 0,
+        "p90": 0,
+        "p99": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "pullMs": {
+        "n": 42,
+        "min": 346,
+        "p50": 1161,
+        "p90": 3159,
+        "p99": 10351,
+        "max": 10351,
+        "mean": 1691.357142857143
+      },
+      "pushMs": {
+        "n": 42,
+        "min": 0,
+        "p50": 0,
+        "p90": 0,
+        "p99": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "returned": {
+        "n": 42,
+        "min": 0,
+        "p50": 0,
+        "p90": 0,
+        "p99": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "screenMs": {
+        "n": 42,
+        "min": 0,
+        "p50": 0,
+        "p90": 0,
+        "p99": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "surgeryMs": {
+        "n": 42,
+        "min": 0,
+        "p50": 0,
+        "p90": 0,
+        "p99": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "unpublished": {
+        "n": 42,
+        "min": 67,
+        "p50": 357,
+        "p90": 536,
+        "p99": 609,
+        "max": 609,
+        "mean": 344.8095238095238
+      },
+      "waitMs": {
+        "n": 42,
+        "min": 142,
+        "p50": 1554,
+        "p90": 3876,
+        "p99": 5003,
+        "max": 5003,
+        "mean": 1932.547619047619
+      }
+    }
+  },
+  "publish": {
+    "mode": "async",
+    "atEnd": {
+      "on": true,
+      "publishedSha": "911a90c47615251122dfcf00bbd141c848c63da4",
+      "trunkSha": "5abfd2bc1ddc11c9d62e72735ed8912df2719a03",
+      "unpublished": 423,
+      "lagMs": 56192,
+      "running": true,
+      "failures": 0,
+      "publishedAt": 1791936222730
+    },
+    "drained": {
+      "on": true,
+      "publishedSha": "5abfd2bc1ddc11c9d62e72735ed8912df2719a03",
+      "trunkSha": "5abfd2bc1ddc11c9d62e72735ed8912df2719a03",
+      "unpublished": 0,
+      "lagMs": 0,
+      "running": false,
+      "failures": 0,
+      "publishedAt": 1791936273557
+    },
+    "drainMs": 40081
+  },
+  "publishes": {
+    "n": 4,
+    "perMin": 2.5263157894736836,
+    "metrics": {
+      "failures": {
+        "n": 4,
+        "min": 0,
+        "p50": 0,
+        "p90": 0,
+        "p99": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "lagMs": {
+        "n": 4,
+        "min": 7079,
+        "p50": 15857,
+        "p90": 39433,
+        "p99": 39433,
+        "max": 39433,
+        "mean": 21964
+      },
+      "landings": {
+        "n": 4,
+        "min": 53,
+        "p50": 80,
+        "p90": 248,
+        "p99": 248,
+        "max": 248,
+        "mean": 131.75
+      },
+      "ms": {
+        "n": 4,
+        "min": 5079,
+        "p50": 10712,
+        "p90": 24404,
+        "p99": 24404,
+        "max": 24404,
+        "mean": 13787.5
+      },
+      "objects": {
+        "n": 4,
+        "min": 333,
+        "p50": 506,
+        "p90": 2072,
+        "p99": 2072,
+        "max": 2072,
+        "mean": 1014
+      },
+      "unpublished": {
+        "n": 4,
+        "min": 80,
+        "p50": 146,
+        "p90": 314,
+        "p99": 314,
+        "max": 314,
+        "mean": 197
+      }
+    }
+  },
+  "errors": [
+    "register: TypeError: fetch failed (ECONNRESET)",
+    "register: TypeError: fetch failed (ENOTFOUND)",
+    "take: TypeError: fetch failed (ECONNRESET)",
+    "take: TypeError: fetch failed (UND_ERR_CONNECT_TIMEOUT)",
+    "register: TypeError: fetch failed (UND_ERR_CONNECT_TIMEOUT)",
+    "propose: TypeError: fetch failed (UND_ERR_CONNECT_TIMEOUT)",
+    "propose: TypeError: fetch failed (ECONNRESET)",
+    "register: TypeError: fetch failed (UND_ERR_SOCKET)"
+  ]
+}
