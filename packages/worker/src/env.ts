@@ -129,9 +129,10 @@ export interface Env {
    * opinion answers each line as met, not met or unclear, and each "met" names a file and quotes a line of the diff it
    * was shown; the platform looks for each quote in the added and unchanged lines (decide/quotes.ts). Its approval counts
    * only when every line is met with a quote found there: a line not met returns the change naming it, an unclear one
-   * sends it to a person. The acceptance list of the newest landing by another intent on the files the change modifies
-   * is asked too, as keep lines: one not met returns the change naming it. The decision and the lineage note keep each
-   * line with its verdict and quote.
+   * sends it to a person. A line stating what must not be there ("No other file changes") has no line to quote: its met
+   * counts on the model's word, and the record says so (basis). The acceptance list of the newest landing by another
+   * intent on the files the change modifies is asked too, as keep lines: one not met returns the change naming it. The
+   * decision and the lineage note keep each line with its verdict and quote.
    */
   FT_QUOTED_ACCEPTANCE?: string;
   /**

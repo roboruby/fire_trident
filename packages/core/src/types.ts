@@ -642,8 +642,15 @@ export interface NoteDecision extends Pick<Decision, "kind" | "layer" | "p" | "a
   acceptance?: NoteAcceptance[];
 }
 
-/** What counts for one acceptance line: met (with a quote the platform found), not met, or unclear. */
+/** What counts for one acceptance line: met (with a quote the platform found, or on the model's word for an absence), not met, or unclear. */
 export type AcceptanceVerdict = "met" | "not met" | "unclear";
+
+/**
+ * What a "met" rests on: `quote` when the platform found the model's quote in the diff it showed, `absence` when the
+ * line states what must not be there ("No other file changes"), so there is no changed line to quote and the met rests
+ * on the model's word (decide/quotes.ts isAbsence).
+ */
+export type AcceptanceBasis = "quote" | "absence";
 
 /**
  * One acceptance line as the second opinion answered it, and what the platform counts (FT_QUOTED_ACCEPTANCE,
@@ -656,9 +663,12 @@ export interface NoteAcceptance {
   line: string;
   /**
    * What the platform counts: `met` only when the model answered met and named a file and a quote of at least 8
-   * characters that the platform found in the added or unchanged lines of the diff the model was shown.
+   * characters that the platform found in the added or unchanged lines of the diff the model was shown, or, for a line
+   * stating an absence, answered met at all (`basis` says which).
    */
   verdict: AcceptanceVerdict;
+  /** What a `met` rests on: a quote the platform found, or the model's word for a line stating an absence. Absent on other verdicts and on records written before it. */
+  basis?: AcceptanceBasis;
   /** The model's own answer, when the platform counts another (a "met" whose quote it could not find). */
   said?: AcceptanceVerdict;
   /** The file the model named for it. */

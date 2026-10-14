@@ -110,3 +110,27 @@ describe("the other rules stand", () => {
     expect(gate(input({ llm: opinion(), innate: { ok: false, failures: ["missing Not verified"] }, acceptance: [MET_1, MET_2] })).rule).toBe("L2 innate");
   });
 });
+
+describe("a line stating an absence: met on the model's word, with no quote to check", () => {
+  const WORD: NoteAcceptance = { kind: "intent", line: "No other option, file or formatting changes", verdict: "met", basis: "absence" };
+
+  it("lands beside the quoted lines, the reason saying which lines rest on the model's word", () => {
+    const v = gate(input({ llm: opinion(), acceptance: [{ ...MET_1, basis: "quote" }, WORD] }));
+    expect(v).toMatchObject({ action: "land", layer: "llm", rule: "L3 innate+llm", confirmations: ["innate", "llm"] });
+    expect(v.reasons).toEqual([
+      "@cf/google/gemma-4-26b-a4b-it approves: does what the intent says",
+      "every acceptance line is met (2 lines): 1 with a quote found in the diff, 1 on the model's word (line 2 states an absence, so there is no changed line to quote)",
+    ]);
+  });
+
+  it("answered not met, the change goes back naming the line and what the model saw", () => {
+    const seen: NoteAcceptance = { kind: "intent", line: "No console output is added", verdict: "not met", path: "src/slug.ts", quote: "console.log(lower);" };
+    const v = gate(input({ llm: opinion(), acceptance: [MET_1, seen] }));
+    expect(v).toMatchObject({ action: "return", rule: "L6 acceptance not met", detectors: ["acceptance:not-met"] });
+    expect(v.reasons[0]).toBe('acceptance not met: line 2 "No console output is added" (it saw src/slug.ts: "console.log(lower);"); change it so it meets that line, or escalate if the intent cannot be met as written');
+  });
+
+  it("answered unclear, a person decides as for any line", () => {
+    expect(gate(input({ llm: opinion(), acceptance: [MET_1, { kind: "intent", line: WORD.line, verdict: "unclear" }] }))).toMatchObject({ action: "escalate", rule: "L7 acceptance unclear" });
+  });
+});

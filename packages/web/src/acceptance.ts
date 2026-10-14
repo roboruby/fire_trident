@@ -12,10 +12,12 @@ export interface AcceptanceRow {
   place: string;
   line: string;
   verdict: "met" | "not met" | "unclear";
+  /** What a met rests on: a quote the platform found, or the model's word for a line stating an absence (absent on older notes). */
+  basis?: "quote" | "absence";
   /** The file and the changed line quoted for it, when it was counted met. */
   path?: string;
   quote?: string;
-  /** Why it is unclear, in words: the model's own answer and the platform's problem with its quote. */
+  /** Why it is unclear, in words (the model's own answer and the platform's problem with its quote), or what the model saw for a line not met. */
   why?: string;
   /** Keep lines: the landing whose intent's list it comes from. */
   landingId?: string;
@@ -39,11 +41,13 @@ export function acceptanceOf(d: NoteDecision | null | undefined): AcceptanceRow[
     seen[kind]++;
     const row: AcceptanceRow = { place: `${kind === "keep" ? "keep line" : "line"} ${seen[kind]}`, line, verdict };
     if (verdict === "met") {
+      if (r.basis === "quote" || r.basis === "absence") row.basis = r.basis;
       if (str(r.path)) row.path = str(r.path);
       if (str(r.quote)) row.quote = str(r.quote);
     }
     const problem = str(r.problem);
     if (verdict === "unclear") row.why = problem ? `${str(r.said) ? `answered ${str(r.said)} but ` : ""}${problem}` : "the second opinion answered unclear";
+    if (verdict === "not met" && str(r.quote)) row.why = `it saw ${str(r.path) ? `${str(r.path)}: ` : ""}"${str(r.quote)}"`;
     if (kind === "keep" && str(r.landingId)) row.landingId = str(r.landingId);
     rows.push(row);
   }

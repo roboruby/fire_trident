@@ -475,7 +475,7 @@ export function gate(input: GateInput): GateVerdict {
       risk = Math.max(risk, policy.budgetRiskFloor);
       return escalate("llm", "L5 too large", 1, [`too large for model review: ${view.seen}, so its approval does not count and a person decides`], ["review:too-large"], []);
     }
-    // L6, L7 (FT_QUOTED_ACCEPTANCE): the approval counts only when every acceptance line is met with a quote found in the diff.
+    // L6, L7 (FT_QUOTED_ACCEPTANCE): the approval counts only when every acceptance line is met, with a quote found in the diff or, for a line stating an absence, on the model's word.
     const accepted = acceptanceGate(input.acceptance);
     if (accepted?.notMet) return verdict("return", "llm", "L6 acceptance not met", llm.confidence, [accepted.notMet, `${llm.model} approves otherwise: ${llm.reason}`], ["acceptance:not-met"]);
     if (accepted?.unclear) {

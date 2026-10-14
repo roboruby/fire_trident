@@ -11,7 +11,8 @@ const VERDICT_COLOR: Readonly<Record<AcceptanceRow["verdict"], string>> = {
 
 /**
  * Under a second opinion's decision (FT_QUOTED_ACCEPTANCE): each acceptance line with what counted for it and the
- * changed line quoted for it, so a person can check which line meets which criterion. Nothing when there are none.
+ * changed line quoted for it, so a person can check which line meets which criterion; a line stating an absence has no
+ * such line, and is marked as met on the model's word. Nothing when there are none.
  */
 export function AcceptanceLines({ rows }: { rows: AcceptanceRow[] }) {
   if (rows.length === 0) return null;
@@ -24,7 +25,9 @@ export function AcceptanceLines({ rows }: { rows: AcceptanceRow[] }) {
           </span>
           <b>{r.place}</b> {r.line}
           {r.landingId ? <span className="lin-dir-when"> · from landing {shortId(r.landingId)}</span> : null}
-          {r.verdict === "met" && r.quote ? (
+          {r.verdict === "met" && r.basis === "absence" ? (
+            <span className="lin-dir-why">{"model's word (it states an absence, so there is no changed line to quote)"}</span>
+          ) : r.verdict === "met" && r.quote ? (
             <span className="lin-dir-why mono" title={r.path}>
               {r.path ? `${r.path}: ` : ""}
               {r.quote}

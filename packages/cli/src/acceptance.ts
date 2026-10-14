@@ -27,8 +27,9 @@ function entries(decisions: readonly NoteDecision[] | undefined): NoteAcceptance
 
 /**
  * The rows `ft why` prints under a proposal's decisions: one per acceptance line, its mark (met, not met, unclear), its
- * place ("line 2", "keep line 1"), the line itself, and the file and changed line quoted for it, or why a "met" did not
- * count. Empty when the note keeps no acceptance lines.
+ * place ("line 2", "keep line 1"), the line itself, and the file and changed line quoted for it, that it rests on the
+ * model's word (a line stating an absence), what the model saw for a line not met, or why a "met" did not count. Empty
+ * when the note keeps no acceptance lines.
  */
 export function acceptanceRows(decisions: readonly NoteDecision[] | undefined, c: Colors): Array<{ k: string; v: string }> {
   const lines = entries(decisions);
@@ -41,9 +42,11 @@ export function acceptanceRows(decisions: readonly NoteDecision[] | undefined, c
     const what = `${mark} ${where} "${one(l.line, 80)}"`;
     const evidence =
       l.verdict === "met"
-        ? `${c.dim(`${one(l.path, 60)}:`)} "${one(l.quote, 90)}"`
+        ? l.basis === "absence"
+          ? c.dim("model's word (it states an absence, so there is no changed line to quote)")
+          : `${c.dim(`${one(l.path, 60)}:`)} "${one(l.quote, 90)}"`
         : l.verdict === "not met"
-          ? c.red("not met")
+          ? `${c.red("not met")}${l.quote ? c.dim(` (it saw ${l.path ? `${one(l.path, 60)}: ` : ""}"${one(l.quote, 90)}")`) : ""}`
           : c.yellow(`unclear${l.problem ? `: ${l.said ? `answered ${l.said} but ` : ""}${one(l.problem, 100)}` : ""}`);
     const from = kind === "keep" && typeof l.landingId === "string" ? c.dim(` (from ${l.landingId})`) : "";
     return { k: i === 0 ? "accept" : "", v: `${what}${from}  ${evidence}` };

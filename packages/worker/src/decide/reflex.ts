@@ -352,7 +352,8 @@ export function verdictSchema(acceptanceLines = 0): Record<string, unknown> {
 /** What the second opinion is told when it answers acceptance lines (FT_QUOTED_ACCEPTANCE). */
 const ACCEPTANCE_PROMPT = [
   'The intent carries numbered acceptance lines. Answer every numbered line in "acceptance": "met" when a line of the diff meets it, naming that file and copying that line exactly as the diff shows it (an added or unchanged line, at least 8 characters, never a removed one); "not met" when the change does not meet it; "unclear" when the diff cannot show it either way. Give "" as path and quote when a line is not met or unclear.',
-  "The platform looks for every quote in the lines of the diff you were shown: a quote it cannot find, or one from a removed line, counts as unclear, and your approval lands the change only when every acceptance line of the intent is met. Approve only when every one is met; a change that leaves one not met is a return.",
+  'A line that states what must not be there ("No other file changes", "jsr.json no longer contains the entry") has no changed line that proves it: answer "met" with "" as path and quote when the diff contains nothing of the kind, and "not met" when it does, giving the file as path and the line you saw as quote.',
+  "The platform looks for every quote in the lines of the diff you were shown: a quote it cannot find, or one from a removed line, counts as unclear (a line stating what must not be there counts on your word), and your approval lands the change only when every acceptance line of the intent is met. Approve only when every one is met; a change that leaves one not met is a return.",
   'Keep lines, numbered after the intent\'s own, are what a recent landing by another intent met in the files this change modifies: answer "not met" only when this change breaks one, "met" with a quote when the diff shows it still holds, and "unclear" otherwise.',
 ].join("\n");
 
@@ -427,7 +428,7 @@ export function secondOpinionMessages(x: ReflexInput, notVerified?: string): Arr
       : []),
     ...fenced(fence, "Diff", diff),
     'JSON fields: verdict ("approve" | "return" | "escalate"), needs_human (probability 0..1 that a human must review), off_intent (true if it does anything beyond the intent), sensitive (true if it touches secrets, auth, CI or dependencies), confidence (0..1), reason (one sentence).',
-    ...(own ? ['acceptance: one entry for each numbered line: line (its number), verdict ("met" | "not met" | "unclear"), path (the file, as the diff names it), quote (the line that meets it, copied exactly from the diff).'] : []),
+    ...(own ? ['acceptance: one entry for each numbered line: line (its number), verdict ("met" | "not met" | "unclear"), path (the file, as the diff names it), quote (the line that meets it, copied exactly from the diff; for a line stating what must not be there, "" when met and the line you saw when not met).'] : []),
   ].join("\n");
   return [
     { role: "system", content: own ? `${SYSTEM_PROMPT}\n${ACCEPTANCE_PROMPT}` : SYSTEM_PROMPT },

@@ -4,9 +4,10 @@ import type { AcceptanceVerdict, Id, Intent, IntentSource, NoteAcceptance, Path 
  * Quoted acceptance (FT_QUOTED_ACCEPTANCE): when a change's intent carries an acceptance list, the second opinion answers
  * each line as met, not met or unclear, and each "met" names a file and quotes the line of the diff that meets it. This
  * module checks those quotes against the diff the model was shown, and says what the gate counts: an approval is a
- * confirmation only when every line of the intent is met with a quote found in an added or unchanged line. Keep lines (the
- * acceptance list of the newest landing by another intent on the files the change modifies) only send a change back when
- * the model answers one not met. Pure: no I/O, no model.
+ * confirmation only when every line of the intent is met with a quote found in an added or unchanged line, or, for a line
+ * stating what must not be there (isAbsence), met on the model's word. Keep lines (the acceptance list of the newest
+ * landing by another intent on the files the change modifies) only send a change back when the model answers one not
+ * met. Pure: no I/O, no model.
  */
 
 /** Caps on what the second opinion is asked and what a decision keeps. */
@@ -63,6 +64,21 @@ const PLATFORM_SOURCES: ReadonlySet<string> = new Set(["certify", "system"]);
 /** Whitespace collapsed to single spaces, trimmed. */
 export function collapse(text: string): string {
   return text.replace(/\s+/g, " ").trim();
+}
+
+/** The words that make an acceptance line an absence, as whole words in any case, and any contraction ending in "n't". */
+const ABSENCE_WORDS = /\b(?:no|not|never|nothing|none|without|only|unchanged|untouched|cannot)\b|\b\w+n't\b/;
+
+/**
+ * Is an acceptance line phrased as an absence, saying what must NOT be there? True when the line contains, as a whole
+ * word in any case, "no", "not", "never", "nothing", "none", "without", "only", "unchanged", "untouched" or "cannot", or a
+ * contraction ending in "n't" (doesn't, isn't, won't). Nothing in a diff proves an absence, so a "met" for such a line
+ * counts on the model's word (checkAcceptance); every other line is positive, and its "met" needs a quote found in the
+ * diff. The rule is plain on purpose: a positive line that carries one of these words ("returns 404 when the slug does
+ * not exist") is read as an absence too, and its "met" then rests on the model's word.
+ */
+export function isAbsence(line: string): boolean {
+  return ABSENCE_WORDS.test(collapse(line).toLowerCase().replace(/[‘’]/g, "'"));
 }
 
 /** A line cut to `max` characters, marked with an ellipsis when cut. */
@@ -232,8 +248,9 @@ export function checkQuote(path: string | undefined, quote: string | undefined, 
 
 /**
  * Each acceptance line with what counts for it: the model's answer for its number, a "met" counted only when its quote
- * holds (checkQuote), else unclear with the model's own answer kept as `said` and the problem in words. A line the
- * model did not answer, or was not asked (past the cap), is unclear. Only a line's first answer is read.
+ * holds (checkQuote, `basis: "quote"`) or the line states an absence (isAbsence, `basis: "absence"`: on the model's word,
+ * no quote needed), else unclear with the model's own answer kept as `said` and the problem in words. A line the model
+ * did not answer, or was not asked (past the cap), is unclear. Only a line's first answer is read.
  */
 export function checkAcceptance(lines: readonly AcceptanceLine[], answers: readonly AcceptanceAnswer[] | undefined, shown: readonly ShownFile[]): NoteAcceptance[] {
   const asked = askedLines(lines);
@@ -261,8 +278,16 @@ export function checkAcceptance(lines: readonly AcceptanceLine[], answers: reado
     const found = checkQuote(a.path, a.quote, shown);
     if (found.ok) {
       out.verdict = "met";
+      out.basis = "quote";
       out.path = found.path;
       out.quote = found.quote.slice(0, ACCEPTANCE_LIMITS.quoteChars);
+    } else if (isAbsence(l.text)) {
+      // Nothing in a diff proves an absence ("No other file changes"): the met counts on the model's word, and a quote
+      // the platform could not find is not kept as evidence.
+      out.verdict = "met";
+      out.basis = "absence";
+      delete out.path;
+      delete out.quote;
     } else {
       out.said = "met";
       out.problem = found.problem;
@@ -282,13 +307,19 @@ function named(l: NoteAcceptance, lines: readonly NoteAcceptance[]): string {
   return `${place(l, lines)} "${cut(l.line, 160)}"${l.kind === "keep" && l.landingId ? ` (from landing ${l.landingId})` : ""}`;
 }
 
+/** What the model says it saw for a line it answered not met, when it named it: ` (it saw src/a.ts: "…")`; empty otherwise. */
+function saw(l: NoteAcceptance): string {
+  if (!l.quote) return "";
+  return ` (it saw ${l.path ? `${l.path}: ` : ""}"${cut(l.quote, 120)}")`;
+}
+
 /** What the gate makes of the checked lines (decide/gate.ts L6, L7): plain sentences for its reasons. */
 export interface AcceptanceGate {
   /** Lines answered not met (the intent's or keep lines): the change goes back naming them. */
   notMet?: string;
   /** Lines of the intent not shown met: the approval does not count and a person decides. */
   unclear?: string;
-  /** Every line of the intent met with a quote found in the diff. */
+  /** Every line of the intent met: with a quote found in the diff, or on the model's word for a line stating an absence. */
   met?: string;
 }
 
@@ -306,16 +337,24 @@ export function acceptanceGate(lines: readonly NoteAcceptance[] | undefined): Ac
     const ownNot = notMet.filter((l) => l.kind === "intent");
     const keepNot = notMet.filter((l) => l.kind === "keep");
     const parts: string[] = [];
-    if (ownNot.length > 0) parts.push(`acceptance not met: ${ownNot.map((l) => named(l, lines)).join(", ")}; change it so it meets ${ownNot.length === 1 ? "that line" : "those lines"}, or escalate if the intent cannot be met as written`);
+    if (ownNot.length > 0) parts.push(`acceptance not met: ${ownNot.map((l) => `${named(l, lines)}${saw(l)}`).join(", ")}; change it so it meets ${ownNot.length === 1 ? "that line" : "those lines"}, or escalate if the intent cannot be met as written`);
     if (keepNot.length > 0)
-      parts.push(`it breaks what a recent landing by another intent met: ${keepNot.map((l) => named(l, lines)).join(", ")}; keep what that landing did unless your intent says otherwise, and escalate if both cannot hold`);
+      parts.push(`it breaks what a recent landing by another intent met: ${keepNot.map((l) => `${named(l, lines)}${saw(l)}`).join(", ")}; keep what that landing did unless your intent says otherwise, and escalate if both cannot hold`);
     out.notMet = parts.join("; ");
   }
   if (unclear.length > 0) {
     const why = unclear.map((l) => `${named(l, lines)} (${l.problem ?? (l.said ? `answered ${l.said}` : "the second opinion answered unclear")})`).join(", ");
     out.unclear = `acceptance not shown met: ${why}; the second opinion's approval does not count, so a person decides`;
   }
-  if (own.length > 0 && notMet.length === 0 && unclear.length === 0) out.met = `every acceptance line is met, each with a quote found in the diff (${own.length} line${own.length === 1 ? "" : "s"})`;
+  if (own.length > 0 && notMet.length === 0 && unclear.length === 0) {
+    const count = `${own.length} line${own.length === 1 ? "" : "s"}`;
+    // Lines met on the model's word (absences) are named, so a reader knows which lines the platform checked.
+    const word = own.filter((l) => l.basis === "absence");
+    out.met =
+      word.length === 0
+        ? `every acceptance line is met, each with a quote found in the diff (${count})`
+        : `every acceptance line is met (${count}): ${own.length - word.length} with a quote found in the diff, ${word.length} on the model's word (${word.map((l) => place(l, lines)).join(", ")} ${word.length === 1 ? "states" : "state"} an absence, so there is no changed line to quote)`;
+  }
   return out;
 }
 
@@ -324,7 +363,7 @@ export function acceptanceDetail(lines: readonly NoteAcceptance[]): string {
   return lines
     .map((l) => {
       const head = `${place(l, lines)} ${l.verdict}`;
-      if (l.verdict === "met") return `${head}: ${l.path ?? "?"} "${cut(l.quote ?? "", 120)}"`;
+      if (l.verdict === "met") return l.basis === "absence" ? `${head}: on the model's word (it states an absence)` : `${head}: ${l.path ?? "?"} "${cut(l.quote ?? "", 120)}"`;
       if (l.problem) return `${head}: ${l.said ? `answered ${l.said} but ` : ""}${l.problem}`;
       return head;
     })
@@ -347,6 +386,7 @@ export function noteAcceptance(x: unknown): NoteAcceptance[] | undefined {
     if ((r.kind !== "intent" && r.kind !== "keep") || typeof r.line !== "string" || typeof r.verdict !== "string" || !VERDICTS.has(r.verdict)) continue;
     const e: NoteAcceptance = { kind: r.kind, line: cut(collapse(r.line), ACCEPTANCE_LIMITS.lineChars), verdict: r.verdict as AcceptanceVerdict };
     if (typeof r.said === "string" && VERDICTS.has(r.said)) e.said = r.said as AcceptanceVerdict;
+    if (r.basis === "quote" || r.basis === "absence") e.basis = r.basis;
     if (typeof r.path === "string" && r.path !== "") e.path = r.path.slice(0, ACCEPTANCE_LIMITS.pathChars);
     if (typeof r.quote === "string" && r.quote !== "") e.quote = collapse(r.quote).slice(0, ACCEPTANCE_LIMITS.quoteChars);
     if (typeof r.problem === "string" && r.problem !== "") e.problem = collapse(r.problem).slice(0, 300);

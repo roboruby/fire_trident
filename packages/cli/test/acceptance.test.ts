@@ -57,4 +57,21 @@ describe("acceptanceRows", () => {
     const { acceptance: _gone, ...before } = LLM;
     expect(formatWhy({ path: "src/slug.ts" }, [entry([before])], {}, plain, 0)).not.toContain("accept ");
   });
+
+  it("marks a met that rests on the model's word (a line stating an absence), and what the model saw for a line not met", () => {
+    const decision: NoteDecision = {
+      ...LLM,
+      acceptance: [
+        { kind: "intent", line: "No other option, file or formatting changes", verdict: "met", basis: "absence" },
+        { kind: "intent", line: "No console output is added", verdict: "not met", path: "src/slug.ts", quote: "console.log(lower);" },
+        { kind: "intent", line: "slugify lowercases its input", verdict: "met", basis: "quote", path: "src/slug.ts", quote: "const lower = text.toLowerCase();" },
+      ],
+    };
+    expect(acceptanceRows([decision], plain)).toEqual([
+      { k: "accept", v: `✓ line 1 "No other option, file or formatting changes"  model's word (it states an absence, so there is no changed line to quote)` },
+      { k: "", v: `✗ line 2 "No console output is added"  not met (it saw src/slug.ts: "console.log(lower);")` },
+      { k: "", v: `✓ line 3 "slugify lowercases its input"  src/slug.ts: "const lower = text.toLowerCase();"` },
+    ]);
+    expect(formatWhy({ path: "src/slug.ts" }, [entry([decision])], {}, plain, 0)).toContain("model's word (it states an absence, so there is no changed line to quote)");
+  });
 });

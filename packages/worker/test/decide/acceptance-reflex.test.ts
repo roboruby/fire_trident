@@ -50,6 +50,10 @@ describe("the prompt", () => {
     expect(outside.at(-1)).toMatch(/^acceptance: one entry for each numbered line/);
     expect(system!.content).toContain('Answer every numbered line in "acceptance"');
     expect(system!.content).toContain("a quote it cannot find, or one from a removed line, counts as unclear");
+    // A line stating what must not be there has no changed line to quote: the model is told to answer met on its word, and to name what it saw when not met.
+    expect(system!.content).toContain('A line that states what must not be there ("No other file changes", "jsr.json no longer contains the entry") has no changed line that proves it: answer "met" with "" as path and quote when the diff contains nothing of the kind, and "not met" when it does, giving the file as path and the line you saw as quote.');
+    expect(system!.content).toContain("a line stating what must not be there counts on your word");
+    expect(outside.at(-1)).toContain('for a line stating what must not be there, "" when met and the line you saw when not met');
   });
 
   it("without acceptance lines it is the prompt of today: no block, no field, no rules about them", () => {
