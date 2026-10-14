@@ -203,8 +203,8 @@ function available(scene: Scene | undefined, store: ColonyStore): boolean {
   }
 }
 
-/** The top-bar element each emphasis names (it may be absent, e.g. no vaccination yet). */
-const EMPHASIS: Readonly<Record<string, string>> = {
+/** The top-bar element each emphasis names (it may be absent, e.g. no vaccination yet). The tour uses it too. */
+export const EMPHASIS: Readonly<Record<string, string>> = {
   hero: ".top > .hero",
   stats: ".top > .stats",
   sigma: ".top > .gauge",

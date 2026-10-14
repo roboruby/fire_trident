@@ -1,0 +1,109 @@
+{
+  "$comment": "The tour of a finished run (/c/<colony>?tour=1, on its replay). Keys: → or PageDown next, ← or PageUp back, space play or pause, Home first step, End last step. Each step stands on a moment found in the colony's own events (replay.ts findMoment): at is a moment or a list tried in order (@rule, @first-claim, @first-landing, @first-proof, @first-stale, @first-notice, @first-return, @calm, @hot, @busiest, @batch, @converged, @last-landing, @start, @end); every moment but @rule counts only events after the rule was declared. A step whose moments the record lacks is left out, and steps follow the run: by their moment, ties in this order. kicker and caption are text, or an object keyed by moment name (\"*\" for any). Other fields, as in director/script.json: offset (seconds after the moment), duration (seconds the step holds when the tour plays), tab (events, intents, review, why), select (\"path\" or \"path:line\", used when the run landed on that path; @moment; @last-landing), highlight (@moment, @needs), focus (@moment, @selected; absent shows the whole map), emphasize (hero, stats, sigma, vaccine, funnel, trunk; text or keyed by moment), estimated (the numbers rest on claim times, estimated in a reconstructed record), commands (shell lines under the sentence, with {server}, {repo}, {colony} and {selArg} filled in). Captions are filled once, at the moment: {when} {rules} {violations} {needFiles} {agentsAtWork} {file} {files} {settledBy} {returnPath} {reason} {noticeAgents} {inFlight} {hotFile} {hotReturns} {hotLandings} {hotAgents} {batchSize} {fixed} {fixedIn} {intentsLanded} {landingsSince} {proofLine} {selWhere} {colony}.",
+  "steps": [
+    {
+      "id": "rule",
+      "kicker": "The rule",
+      "at": "@rule",
+      "caption": "A person declared {rules} that found {violations} violations in {needFiles}: each became a need in the field, and no one assigns the work.",
+      "duration": 10,
+      "tab": "intents",
+      "highlight": "@needs",
+      "emphasize": "hero"
+    },
+    {
+      "id": "claims",
+      "kicker": "Sense",
+      "at": "@first-claim",
+      "offset": 3,
+      "caption": "{agentsAtWork} {when}, each on an intent it chose from the field, and each claim keeps the other agents off its files.",
+      "duration": 9,
+      "tab": "events",
+      "estimated": true
+    },
+    {
+      "id": "land",
+      "kicker": "Land",
+      "at": ["@first-proof", "@first-landing"],
+      "caption": {
+        "@first-proof": "The first change settled by a deterministic proof landed {when}, in {file}: no model was consulted.",
+        "@first-landing": "The first change landed {when}, in {file}, settled by {settledBy}."
+      },
+      "duration": 10,
+      "tab": "events",
+      "highlight": "@moment",
+      "focus": "@moment",
+      "emphasize": "funnel"
+    },
+    {
+      "id": "contention",
+      "kicker": {
+        "@first-stale": "Stale read",
+        "@first-notice": "Landing notice",
+        "@first-return": "Sent back",
+        "@calm": "No collisions"
+      },
+      "at": ["@first-stale", "@first-notice", "@first-return", "@calm"],
+      "caption": {
+        "@first-stale": "The first change came back {when}, because {returnPath} had changed on trunk after its agent read it: it goes back to be redone rather than land stale.",
+        "@first-notice": "A landing changed {files} {when}, and the colony told {noticeAgents} still working on it what changed, before their changes could go stale.",
+        "@first-return": "The first change came back {when}, with this reason: “{reason}”.",
+        "@calm": "At the busiest moment, {when}, {inFlight} in flight at once, and in the whole run not one change came back to its agent."
+      },
+      "duration": 10,
+      "tab": "events",
+      "highlight": "@moment"
+    },
+    {
+      "id": "hot",
+      "kicker": {
+        "@hot": "Hottest file",
+        "@busiest": "Busiest file",
+        "@batch": "Group commit"
+      },
+      "at": ["@hot", "@busiest", "@batch"],
+      "caption": {
+        "@hot": "{hotFile} was the hottest file: {hotReturns} named it, and {hotAgents} worked on intents that cover it.",
+        "@busiest": "{hotFile} changed most often: {hotLandings} landed on it, from {hotAgents}.",
+        "@batch": "A lane landed {batchSize} non-conflicting changes in one commit {when}: {files}."
+      },
+      "duration": 9,
+      "tab": "events",
+      "highlight": "@moment",
+      "focus": "@moment",
+      "emphasize": { "@batch": "trunk" }
+    },
+    {
+      "id": "converge",
+      "kicker": "Converge",
+      "at": "@converged",
+      "caption": "{fixed} violations fixed in {fixedIn}: {intentsLanded} landed in {landingsSince} after the rule, and {proofLine}.",
+      "duration": 11,
+      "tab": "intents",
+      "emphasize": "hero"
+    },
+    {
+      "id": "why",
+      "kicker": "Remember",
+      "at": "@end",
+      "caption": "{selWhere} remembers why it changed: its intent, agent, model and checks ride with the commit as a git note, which any git clone can read.",
+      "duration": 14,
+      "tab": "why",
+      "select": ["src/index.ts:17", "@last-landing"],
+      "focus": "@selected",
+      "commands": [
+        "# The same lineage from the command line, no token needed",
+        "npx fire_trident why {colony} {selArg}",
+        "",
+        "# Clone a colony with stock git and read its newest note",
+        "git clone {server}/git/byo-demo.git && cd byo-demo",
+        "git fetch origin refs/notes/firetrident:refs/notes/firetrident",
+        "git log --notes=firetrident -1",
+        "",
+        "# Check that note against its commit's FT-Note digest: prints intact",
+        "curl -fsSLO {repo}/raw/main/scripts/verify_note.mjs",
+        "node verify_note.mjs HEAD"
+      ]
+    }
+  ]
+}

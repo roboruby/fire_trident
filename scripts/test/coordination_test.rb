@@ -399,6 +399,20 @@ class CoordinationTest < Minitest::Test
     assert_includes md, "| Hottest file | `src/a.ts`: named by 4 returns, 4 agents proposed to it, 4 → 6 lines |"
     assert_includes md, "| Returns, cumulative over 5 min | 6: stale 1, text merge 1, review 2, rule 1, other 1 |"
     assert_includes md, "| Sprawl | top-level directories 2 → 4, regions 3 → 5 over 8 commits |"
+    assert_includes md, "| Where the time went | 216.0 agent-seconds over 9 landed intents, from claim to landing:"
+    assert_includes md, "| Critical path to the last landing | `int_10` (int_10 title) landed at +299.0 s in lnd_6 (1 change): no claim in the record"
+  end
+
+  # This record has no claim events, so every landed intent's clock starts at its first proposal.
+  def test_where_the_time_went_from_the_colony_record
+    t = report[:timeSplit]
+    assert_equal [9, 9], t.values_at(:landedIntents, :noClaim)
+    t[:perIntent].each { |r| assert_in_delta r[:total], %i[agentWork review waitingToLand rework].sum { |k| r[k] }, 1e-6, r[:intent] }
+    # int_5: its first change came back stale at 30 s, and the change that landed was proposed at 208 s.
+    int5 = t[:perIntent].find { |r| r[:intent] == "int_5" }
+    assert_equal [0.0, 2.0, 0.0, 198.0], int5.values_at(:agentWork, :review, :waitingToLand, :rework)
+    assert_equal({ givenBack: 0.0, cameBack: 20.0, toNextProposal: 178.0 }, int5[:reworkParts])
+    assert_equal "int_10", t[:criticalPath][:intent]
   end
 
   # Through the command line: the API over HTTP (the record in two pages), the clone given with --clone.
@@ -411,7 +425,7 @@ class CoordinationTest < Minitest::Test
       assert_includes stdout, "| Proposals merged | 9 of 19 (0.474)"
       assert_includes stderr, "no lineage notes from #{url}/git/fx.git"
       r = JSON.parse(File.read(json), symbolize_names: true)
-      %i[mergedFraction conflicts specialization sprawl linesPerIntent].each { |k| assert_equal JSON.parse(JSON.generate(report[k]), symbolize_names: true), r[k], k }
+      %i[mergedFraction conflicts specialization sprawl linesPerIntent timeSplit].each { |k| assert_equal JSON.parse(JSON.generate(report[k]), symbolize_names: true), r[k], k }
       assert_equal report[:codeSharing][:lines], r[:codeSharing][:lines]
       assert_equal "src/a.ts", r[:hottestFile][:path]
     end
@@ -441,7 +455,177 @@ class CoordinationTest < Minitest::Test
       assert_equal 2, r[:regionDepth][:value]
       assert_includes stdout, "| Proposals merged | not computed: no event record |"
       assert_includes stdout, "- merged fraction: not computed, the event record could not be read (file://#{root}/srv is not an http(s) URL)"
+      assert_nil r[:timeSplit]
+      assert_includes stdout, "| Where the time went | not computed: no event record |"
+      assert_includes stdout, "- where the time went: not computed, the event record could not be read"
     end
+  end
+end
+
+# Definition 8 on a record with known phase times (seconds from T0). Events keep the order they are written in, which
+# is the order of each intent's story; H's landed event carries a time a tenth of a second before its ready (clock skew).
+module TimeFixture
+  T0 = 1_800_000_000_000
+  STALE = "stale: 1 path changed on trunk since read: src/b.ts (expected 1111111111, trunk 2222222222)"
+
+  # The record's events for the named intents (all of them by default), as GET /events pages them.
+  def self.page(only: nil, source: "recorded")
+    list = []
+    keep = ->(id) { only.nil? || only.include?(id) }
+    add = ->(sec, e) { list << e.merge("at" => T0 + (sec * 1000).round) if keep.(e["intentId"] || e["for"]) }
+    intent = ->(sec, id, status) { add.(sec, { "t" => "intent", "intentId" => id, "status" => status, "title" => "#{id} title", "footprint" => [] }) }
+    prop = ->(sec, pid, iid, aid, status, reason = nil) { add.(sec, { "t" => "proposal", "proposalId" => pid, "intentId" => iid, "agentId" => aid, "status" => status }.merge(reason ? { "reason" => reason } : {})) }
+    landing = ->(sec, id, iid, *pids) { add.(sec, { "t" => "landing", "landingId" => id, "trunkSha" => "", "proposalIds" => pids, "paths" => [], "for" => iid }) }
+    %w[A B C D E F H X].each { |i| intent.(0, i, "open") }
+    # A: claimed at 1, proposed at 11, ready at 13, landed at 16.
+    intent.(1, "A", "claimed")
+    prop.(11, "pa1", "A", "a1", "checking")
+    prop.(13, "pa1", "A", "a1", "ready")
+    prop.(16, "pa1", "A", "a1", "landed")
+    landing.(16, "L1", "A", "pa1")
+    # B: claimed at 2, proposed at 6, back stale at 9, claimed again at 10, proposed at 21, escalated at 22, a person
+    # approved it at 40, landed at 41.
+    intent.(2, "B", "claimed")
+    prop.(6, "pb1", "B", "a2", "checking")
+    prop.(9, "pb1", "B", "a2", "returned", STALE)
+    intent.(9, "B", "open")
+    intent.(10, "B", "claimed")
+    prop.(21, "pb2", "B", "a2", "checking")
+    prop.(22, "pb2", "B", "a2", "escalated")
+    add.(40, { "t" => "decision", "decisionId" => "d1", "kind" => "triage", "layer" => "human", "p" => 1, "action" => "approve", "subject" => "pb2", "for" => "B" })
+    prop.(40, "pb2", "B", "a2", "ready")
+    prop.(41, "pb2", "B", "a2", "landed")
+    landing.(41, "L3", "B", "pb2")
+    # C: claimed at 3 and given back at 20, claimed again at 25, proposed straight to ready at 30 (review off), landed at 45.
+    intent.(3, "C", "claimed")
+    intent.(20, "C", "open")
+    intent.(25, "C", "claimed")
+    prop.(30, "pc1", "C", "a3", "ready")
+    # D: no claim in the record; proposed at 5, ready at 6, landed at 8.
+    prop.(5, "pd1", "D", "a4", "checking")
+    prop.(6, "pd1", "D", "a4", "ready")
+    prop.(8, "pd1", "D", "a4", "landed")
+    landing.(8, "L2", "D", "pd1")
+    # E: claimed at 1, proposed at 4, back at 7, never lands.
+    intent.(1, "E", "claimed")
+    prop.(4, "pe1", "E", "a5", "checking")
+    prop.(7, "pe1", "E", "a5", "returned", "llm: the change does not do what the intent asks")
+    # F, a contest: claimed at 9, changes proposed at 10 and 12, the first superseded at 16, the second ready at 18, landed at 20.
+    intent.(9, "F", "claimed")
+    prop.(10, "pf1", "F", "a1", "checking")
+    prop.(12, "pf2", "F", "a6", "checking")
+    prop.(16, "pf1", "F", "a1", "returned", "superseded: contest for F won by pf2 (smaller diff)")
+    prop.(18, "pf2", "F", "a6", "ready")
+    prop.(20, "pf2", "F", "a6", "landed")
+    landing.(20, "L5", "F", "pf2")
+    # H: claimed at 27, proposed at 28, ready at 29, landed at 28.9 by another object's clock.
+    intent.(27, "H", "claimed")
+    prop.(28, "ph1", "H", "a7", "checking")
+    prop.(29, "ph1", "H", "a7", "ready")
+    prop.(28.9, "ph1", "H", "a7", "landed")
+    landing.(28.9, "L6", "H", "ph1")
+    # X: claimed at 26, proposed at 35, ready at 36; X and C land together at 45, the run's last landing, X ready last.
+    intent.(26, "X", "claimed")
+    prop.(35, "px1", "X", "a8", "checking")
+    prop.(36, "px1", "X", "a8", "ready")
+    prop.(45, "pc1", "C", "a3", "landed")
+    prop.(45, "px1", "X", "a8", "landed")
+    landing.(45, "L4", "C", "pc1", "px1")
+    # A vaccine change, left out.
+    prop.(3, "pv1", "V", "agt_v", "checking")
+    prop.(5, "pv1", "V", "agt_v", "rejected")
+    events = list.each_with_index.map { |e, i| e.except("for").merge("seq" => i + 1) }
+    { "source" => source, "total" => events.size, "events" => events }
+  end
+
+  def self.record(**kw) = Coordination::Record.new(page(**kw), vaccine_agents: Set["agt_v"])
+end
+
+class TimeSplitTest < Minitest::Test
+  PHASES = %i[agentWork review waitingToLand rework].freeze
+
+  def split(**kw) = Coordination.time_split(TimeFixture.record(**kw))
+
+  def test_each_landed_intents_phases_add_up_to_its_claim_to_landing_time
+    rows = split[:perIntent].to_h { |r| [r[:intent], r] }
+    assert_equal %w[A B C D F H X], rows.keys.sort
+    {
+      "A" => [10, 2, 3, 0, 15], "B" => [4, 19, 1, 15, 39], "C" => [5, 0, 15, 22, 42], "D" => [0, 1, 2, 0, 3],
+      "F" => [1, 6, 2, 2, 11], "H" => [1, 0.9, 0, 0, 1.9], "X" => [9, 1, 9, 0, 19]
+    }.each do |id, (work, review, wait, rework, total)|
+      r = rows[id]
+      assert_equal [work, review, wait, rework, total], [*r.values_at(*PHASES), r[:total]], id
+      assert_in_delta r[:total], PHASES.sum { |k| r[k] }, 1e-9, "#{id}: the phases add up to its time"
+      assert_in_delta (r[:landedAt] - r[:claimedAt]) / 1000.0, r[:total], 1e-9, "#{id}: claimed to landed"
+    end
+    assert_equal({ givenBack: 0.0, cameBack: 3.0, toNextProposal: 12.0 }, rows["B"][:reworkParts])
+    assert_equal({ givenBack: 22.0, cameBack: 0.0, toNextProposal: 0.0 }, rows["C"][:reworkParts])
+    assert_equal({ givenBack: 0.0, cameBack: 2.0, toNextProposal: 0.0 }, rows["F"][:reworkParts])
+    assert_equal [2, 1, 2], rows.values_at("B", "D", "F").map { |r| r[:proposals] }
+    refute rows["D"][:claimed]
+  end
+
+  def test_totals_medians_and_the_share_spent_waiting_to_land
+    t = split
+    assert_equal 7, t[:landedIntents]
+    assert_equal 1, t[:noClaim]
+    assert_equal({ agentWork: 30.0, review: 29.9, waitingToLand: 32.0, rework: 39.0, total: 130.9 }, t[:agentSeconds])
+    assert_equal({ agentWork: 4.0, review: 1.0, waitingToLand: 2.0, rework: 0.0 }, t[:median])
+    assert_in_delta 32 / 130.9, t[:waitingShare], 1e-4
+    assert_in_delta 1.0, t[:share].values.sum, 1e-3
+    refute t[:estimatedClaims]
+    assert_nil t[:note]
+  end
+
+  def test_the_critical_path_behind_the_last_landing_follows_the_change_ready_last
+    c = split[:criticalPath]
+    assert_equal ["L4", 45.0, 2, "X", "px1"], c.values_at(:landing, :at, :changesInLanding, :intent, :proposal)
+    assert_equal({ agentWork: 9.0, review: 1.0, waitingToLand: 9.0, rework: 0.0 }, c[:phases])
+    assert_equal 19.0, c[:total]
+    assert_equal [["declared", 0.0], ["claimed", 26.0], ["proposal", 35.0], ["lane and trunk writer", 36.0]], c[:steps].map { |s| [s[:step], s[:at]] }
+    assert_equal 9.0, c[:steps].last[:seconds]
+    # When the last landing's change came back first, the path shows each proposal and why it went back.
+    b = split(only: %w[B])[:criticalPath]
+    assert_equal [["claimed", 2.0], ["claimed", 10.0]], b[:steps].select { |s| s[:step] == "claimed" }.map { |s| [s[:step], s[:at]] }
+    assert_equal([["pb1", "returned", "stale"], ["pb2", "ready", nil]], b[:steps].select { |s| s[:step] == "proposal" }.map { |s| s.values_at(:proposal, :outcome, :class) })
+    # A contest's other change that lost is a change of direction, not a failure.
+    f = split(only: %w[F])
+    assert_equal [%w[pf1 redirected], ["pf2", nil]], f[:criticalPath][:steps].select { |s| s[:step] == "proposal" }.map { |s| s.values_at(:proposal, :class) }
+    assert_includes Coordination.time_rows(f)[1], "2 proposals, 1 came back (redirected); agent work 1.0 s, rework 2.0 s, review 6.0 s"
+  end
+
+  def test_markdown_rows
+    rows = Coordination.time_rows(split)
+    assert_equal "| Where the time went | 130.9 agent-seconds over 7 landed intents, from claim to landing: agent work 30.0 (22.9%, median 4.0 s), " \
+                 "review 29.9 (22.8%, median 1.0 s), waiting to land 32.0 (24.4%, median 2.0 s), rework 39.0 (29.8%, median 0.0 s); " \
+                 "24.4% of agent time waiting to land; 1 intent with no claim in the record |", rows[0]
+    assert_equal "| Critical path to the last landing | `X` (X title) landed at +45.0 s in L4 (2 changes): claimed at +26.0 s, 1 proposal; " \
+                 "agent work 9.0 s, rework 0.0 s, review 1.0 s, ready to landed 9.0 s (the lane and the trunk writer together); " \
+                 "19.0 s from claim to landing |", rows[1]
+    b = Coordination.time_rows(split(only: %w[B]))
+    assert_includes b[1], "claimed at +2.0 s, 2 proposals, 1 came back (stale); agent work 4.0 s, rework 15.0 s, review 19.0 s"
+  end
+
+  def test_a_reconstructed_record_labels_its_estimated_claim_times
+    t = split(source: "reconstructed")
+    assert t[:estimatedClaims]
+    assert_match(/claim times are estimated/, t[:note])
+    rows = Coordination.time_rows(t)
+    assert_includes rows[0], "; claim times estimated (reconstructed record); 1 intent with no claim in the record |"
+    assert_includes rows[1], "claimed at +26.0 s (estimated)"
+  end
+
+  def test_a_record_with_nothing_landed
+    t = split(only: %w[E])
+    assert_equal 0, t[:landedIntents]
+    assert_nil t[:criticalPath]
+    assert_equal ["| Where the time went | no landed intent in the record |"], Coordination.time_rows(t)
+  end
+
+  def test_covered_counts_overlapping_spans_once
+    assert_equal 6, Coordination.covered([[0, 4], [2, 6], [8, 9]], 0, 7)
+    assert_equal 0, Coordination.covered([], 0, 10)
+    assert_equal 3, Coordination.covered([[5, 20]], 0, 8)
   end
 end
 

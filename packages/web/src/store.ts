@@ -442,6 +442,11 @@ export class ColonyStore {
   loadingText: string | null = null;
   /** Paths seen in events but missing from the file list join the map on their own (a replay adds them as they land). */
   autoMergeFiles = true;
+  /**
+   * A replay: a new violations count starts its baseline when its rule was declared, as the colony measures convergence
+   * (the count itself is published after the rule's scan). Live views take the baseline from the server instead.
+   */
+  baselineFromRules = false;
   /** While true, applied events update state without queueing animations (a replay seeking). */
   fxMuted = false;
   /** Bumped when the colony is rebuilt from scratch (a replay seeking back): the map drops effects in flight. */
@@ -536,6 +541,8 @@ export class ColonyStore {
   markFx: MarkFx[] = [];
 
   selectedPath: string | null = null;
+  /** A line of the selected file whose lineage the Why tab leads with (null: the whole file). */
+  selectedLine: number | null = null;
   highlight: string[] = [];
 
   version = 0;
@@ -1220,7 +1227,7 @@ export class ColonyStore {
     if (this.retractPending || next > prev) {
       // A rule change (a retraction, or a new rule's violations): the counter starts again from here.
       this.retractPending = false;
-      this.baseline = { since: at, initial: next, convergedAt: null };
+      this.baseline = { since: this.baselineFromRules ? this.ruleChangeBefore(at) : at, initial: next, convergedAt: null };
       if (prev === 0 && next > 0) this.fixedRun = 0;
     } else if (next < prev) {
       this.fixedRun += prev - next;
@@ -1229,6 +1236,17 @@ export class ColonyStore {
     }
     this.violations = { total: next, byRule: byRule && typeof byRule === "object" ? byRule : {} };
     return next - prev;
+  }
+
+  /** The latest rule declared or retracted within a minute before `at`, else `at` itself. */
+  private ruleChangeBefore(at: number): number {
+    let best: number | null = null;
+    for (const r of this.rules.values()) {
+      for (const t of [r.createdAt, r.retractedAt]) {
+        if (typeof t === "number" && Number.isFinite(t) && t <= at && t >= at - 60_000 && (best === null || t > best)) best = t;
+      }
+    }
+    return best ?? at;
   }
 
   private setFiles(list: Array<{ path: string; size: number }>): void {
@@ -1534,10 +1552,12 @@ export class ColonyStore {
     return undefined;
   }
 
-  /** Select a path for the Why panel (null clears). */
-  select(path: string | null): void {
-    if (this.selectedPath === path) return;
+  /** Select a path for the Why panel (null clears), and optionally one of its lines (1-based). */
+  select(path: string | null, line: number | null = null): void {
+    const at = path !== null && line !== null && Number.isInteger(line) && line >= 1 ? line : null;
+    if (this.selectedPath === path && this.selectedLine === at) return;
     this.selectedPath = path;
+    this.selectedLine = at;
     this.bump();
   }
 

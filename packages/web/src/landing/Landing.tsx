@@ -87,6 +87,8 @@ export function Landing() {
   const hero = live ?? showcase ?? first;
   const heroHref = live ? colonyHref(live.id) : showcase ? colonyHref(showcase.id, { replay: true }) : first ? colonyHref(first.id) : colonyHref("demo", { mock: true });
   const heroLabel = live ? "Watch a live colony" : showcase ? "Watch the Hono run" : "Watch a colony";
+  // The tour tells the showcase run from its record: offered while the colonies load and whenever the showcase is there.
+  const tourable = cards === null || !!showcase;
   return (
     <div className="landing">
       <div className="l-glow" aria-hidden="true" />
@@ -115,7 +117,12 @@ export function Landing() {
           <h1 className="l-h1">A colony, not a queue.</h1>
           <p className="l-lede">Thousands of coding agents share one repository by reading signals left on the code instead of waiting in a merge queue, and every change they land records why it was made.</p>
           <div className="l-ctas">
-            <a className="l-btn l-btn-primary" href={heroHref}>
+            {tourable ? (
+              <a className="l-btn l-btn-primary" href={colonyHref(SHOWCASE_ID, { tour: true })} title="Two minutes through a finished run, told from its own record">
+                Take the tour
+              </a>
+            ) : null}
+            <a className={`l-btn${tourable ? "" : " l-btn-primary"}`} href={heroHref}>
               {heroLabel}
             </a>
             <a className="l-btn" href={colonyHref("demo", { mock: true })}>

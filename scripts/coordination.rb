@@ -93,6 +93,23 @@
 #    apart; `git log --numstat`, binary files left out), divided by the distinct intents those proposals carry. With
 #    it: the lines at HEAD of the files of 2, and how many of them are agent-written (given to an agent, or
 #    unattributed).
+#
+# 8. Where the time went. Each landed intent's time from its first claim to its landing, split into four phases that
+#    add up to it, from the record's intent, proposal and decision events. Its landing proposal is its first proposal
+#    that landed; its other proposals that started before that one are the ones that came back. Claimed: its first
+#    claim at or before its first proposal (when the record holds none, its first proposal, and the intent counts as
+#    having no claim). Agent work: from its latest claim before its first proposal to that proposal. Rework: from its
+#    first claim to that latest claim (holders that gave it back), plus from its first proposal to its landing proposal
+#    (time on proposals that came back, and each return to the next proposal). Review: from the landing proposal to its
+#    first ready event, or when it was escalated, to a person's decision on it (else its first ready after the
+#    escalation); to its landing when the record holds neither. Waiting to land: from there to its landed event. A
+#    point that clock skew between the colony's objects puts before the one ahead of it moves up to that one, so no
+#    phase is negative. Reported: each phase's total in agent-seconds (intents run side by side, so the totals exceed
+#    the run's wall time) and share of the whole, its median over the landed intents, the share of agent time spent
+#    waiting to land, and the critical path behind the run's last landing: of the changes in the last landing commit
+#    that carries any, the one that was ready last, with its intent's declaration, claims, proposals, review, and the
+#    span from ready to landed (the lane's wait and the trunk writer's cycle together: the record does not split them).
+#    In a reconstructed record claim times are estimates, so agent work, rework and the totals are too: it says so.
 require "fileutils"
 require "json"
 require "net/http"
@@ -117,6 +134,7 @@ module Coordination
   TEXT_MERGE = /\btext merge of \S.*?: \d+ conflicting hunks?\b/
   STALE = /\A(?:stale:|conflicts with )/
   IN_FLIGHT = %w[pending checking ready escalated].freeze
+  PHASES = %i[agentWork review waitingToLand rework].freeze
   EVENTS_PAGE = 5_000
   FETCH_CAP = 10_000
   THREADS = 8
@@ -536,7 +554,8 @@ module Coordination
 
   # The event record reduced to proposals and intents, vaccines left out.
   class Record
-    attr_reader :proposals, :intents, :landing_ids, :human_returns, :t0, :t_last, :source, :total, :vaccine_proposals
+    attr_reader :proposals, :intents, :landing_ids, :human_returns, :t0, :t_last, :source, :total, :vaccine_proposals,
+                :claims, :declared, :human_decisions, :landings, :first_at
 
     def initialize(page, vaccine_agents: Set.new)
       @source = page["source"]
@@ -545,6 +564,11 @@ module Coordination
       @intents = {}
       @landing_ids = Set.new
       @human_returns = Set.new
+      # Definition 8: each intent's claim times and first event, people's decisions by proposal, and the landings.
+      @claims = Hash.new { |h, k| h[k] = [] }
+      @declared = {}
+      @human_decisions = Hash.new { |h, k| h[k] = [] }
+      @landings = []
       vaccine_ids = Set.new
       vaccine_intents = Set.new
       events = (page["events"] || []).each_with_index.sort_by { |e, i| [e["seq"] || i, i] }.map(&:first)
@@ -556,22 +580,29 @@ module Coordination
             vaccine_intents << e["intentId"]
             next
           end
-          p = @proposals[e["proposalId"]] ||= { id: e["proposalId"], intent: e["intentId"], agent: e["agentId"], first_at: e["at"] }
+          p = @proposals[e["proposalId"]] ||= { id: e["proposalId"], intent: e["intentId"], agent: e["agentId"], first_at: e["at"], events: [] }
           p[:status] = e["status"]
           p[:at] = e["at"]
           p[:reason] = e["reason"]
+          p[:events] << [e["at"], e["status"]]
+          p[:landed_at] ||= e["at"] if e["status"] == "landed"
           if e["status"] == "returned"
             p[:returned_at] = e["at"]
             p[:return_reason] = e["reason"]
           end
         when "intent"
           (@intents[e["intentId"]] ||= { id: e["intentId"], title: e["title"] })[:status] = e["status"]
+          @declared[e["intentId"]] ||= e["at"]
+          @claims[e["intentId"]] << e["at"] if e["status"] == "claimed" && e["at"].is_a?(Numeric)
         when "landing"
           @landing_ids << e["landingId"] if e["landingId"]
+          @landings << { id: e["landingId"], at: e["at"], proposals: e["proposalIds"] || [] } if e["at"].is_a?(Numeric)
         when "decision"
           @human_returns << e["subject"] if e["layer"] == "human" && e["action"] == "return"
+          @human_decisions[e["subject"]] << e["at"] if e["layer"] == "human" && e["at"].is_a?(Numeric)
         end
       end
+      @first_at = events.filter_map { |e| e["at"] if e["at"].is_a?(Numeric) }.min
       @vaccine_proposals = vaccine_ids.size
       ours = @proposals.values.to_set { |p| p[:intent] }
       (vaccine_intents - ours).each { |id| @intents.delete(id) }
@@ -774,7 +805,7 @@ module Coordination
 
   # The whole report: every number as a Hash (`build`); `Coordination.markdown` turns it into the short table.
   class Report
-    RECORD_METRICS = ["merged fraction", "conflicts over time", "hottest file"].freeze
+    RECORD_METRICS = ["merged fraction", "conflicts over time", "hottest file", "where the time went"].freeze
 
     def initialize(colony:, git:, api: nil, url: nil, api_note: nil, log: ->(_m) {})
       @colony = colony
@@ -813,6 +844,7 @@ module Coordination
         hottestFile: record && hottest_file(record, lineage, others),
         sprawl: sprawl(lineage, depth),
         linesPerIntent: lines_per_intent(lineage, attribution),
+        timeSplit: record && Coordination.time_split(record),
         agents: agent_table(agents, record, lineage, attribution),
         missing: @missing,
         warnings: @warnings
@@ -1175,12 +1207,153 @@ module Coordination
     }
   end
 
+  # Definition 8: where each landed intent's time went, the totals and medians per phase, and the critical path behind
+  # the run's last landing.
+  def time_split(record)
+    rows = record.proposals.values.group_by { |p| p[:intent] }.filter_map { |intent, props| intent_time(intent, props, record) }
+    rows.sort_by! { |r| [r[:landedAt], r[:intent].to_s] }
+    totals = PHASES.to_h { |k| [k, rows.sum { |r| r[k] }] }
+    all = totals.values.sum
+    {
+      landedIntents: rows.size,
+      estimatedClaims: record.source == "reconstructed",
+      note: record.source == "reconstructed" ? "claim times are estimated (a reconstructed record), so agent work, rework and the totals are too" : nil,
+      noClaim: rows.count { |r| !r[:claimed] },
+      agentSeconds: totals.transform_values { |v| rounded(v, 3) }.merge(total: rounded(all, 3)),
+      share: totals.transform_values { |v| rounded(ratio(v, all)) },
+      median: PHASES.to_h { |k| [k, rounded(median(rows.map { |r| r[k] }), 3)] },
+      waitingShare: rounded(ratio(totals[:waitingToLand], all)),
+      criticalPath: critical_path(rows, record),
+      perIntent: rows.map do |r|
+        r.merge(PHASES.to_h { |k| [k, rounded(r[k], 3)] }).merge(total: rounded(r[:total], 3), reworkParts: r[:reworkParts].transform_values { |v| rounded(v, 3) })
+      end
+    }
+  end
+
+  # One landed intent's phases (definition 8), or nil when none of its proposals landed.
+  def intent_time(intent, props, record)
+    landed = props.select { |p| p[:landed_at].is_a?(Numeric) && p[:first_at].is_a?(Numeric) }.min_by { |p| [p[:landed_at], p[:id].to_s] }
+    return nil unless landed
+
+    earlier = props.select { |p| !p.equal?(landed) && p[:first_at].is_a?(Numeric) && p[:first_at] < landed[:first_at] }
+    first_proposal = ([landed[:first_at]] + earlier.map { |p| p[:first_at] }).min
+    claims = record.claims[intent].select { |t| t <= first_proposal }.sort
+    # The points the phases run between, in order: a point clock skew put earlier than the one before moves up to it.
+    claimed = claims.first || first_proposal
+    last_claim = [claims.last || first_proposal, claimed].max
+    first = [first_proposal, last_claim].max
+    start = [landed[:first_at], first].max
+    landed_at = [landed[:landed_at], start].max
+    ready = review_end(landed, record).clamp(start, landed_at)
+    came_back = covered(earlier.map { |p| [p[:first_at], [p[:at], p[:first_at]].max] }, first, start)
+    {
+      intent: intent, title: record.intents.dig(intent, :title), proposal: landed[:id], agent: landed[:agent], claimed: !claims.empty?,
+      proposals: earlier.size + 1, claimedAt: claimed, firstProposalAt: first, landingProposalAt: start, readyAt: ready, landedAt: landed_at,
+      agentWork: (first - last_claim) / 1000.0, review: (ready - start) / 1000.0, waitingToLand: (landed_at - ready) / 1000.0,
+      rework: ((last_claim - claimed) + (start - first)) / 1000.0,
+      reworkParts: { givenBack: (last_claim - claimed) / 1000.0, cameBack: came_back / 1000.0, toNextProposal: (start - first - came_back) / 1000.0 },
+      total: (landed_at - claimed) / 1000.0
+    }
+  end
+
+  # When review let a landing proposal go: a person's decision when it was escalated (else its first ready after the
+  # escalation), otherwise its first ready event; its landing when the record holds neither.
+  def review_end(p, record)
+    events = p[:events].select { |at, _s| at.is_a?(Numeric) }
+    escalated = events.filter_map { |at, s| at if s == "escalated" }.max
+    if escalated
+      decided = record.human_decisions[p[:id]].select { |t| t >= escalated }.min
+      return decided if decided
+    end
+    from = escalated || p[:first_at]
+    events.find { |at, s| s == "ready" && at >= from }&.first || p[:landed_at]
+  end
+
+  # Milliseconds of [from, to] that the intervals cover, each counted once.
+  def covered(intervals, from, to)
+    spans = intervals.map { |a, b| [[a, from].max, [b, to].min] }.select { |a, b| b > a }.sort
+    total = 0
+    reach = from
+    spans.each do |a, b|
+      total += b - [a, reach].max if b > reach
+      reach = [reach, b].max
+    end
+    total
+  end
+
+  # The critical path behind the run's last landing (definition 8), or nil when no landing carried a landed intent.
+  def critical_path(rows, record)
+    by_proposal = rows.to_h { |r| [r[:proposal], r] }
+    last = record.landings.select { |l| l[:proposals].any? { |id| by_proposal.key?(id) } }.max_by { |l| [l[:at], l[:id].to_s] }
+    return nil unless last
+
+    pick = last[:proposals].filter_map { |id| by_proposal[id] }.max_by { |r| [r[:readyAt], -r[:claimedAt], r[:intent].to_s] }
+    since = ->(t) { t && record.first_at ? rounded((t - record.first_at) / 1000.0, 3) : nil }
+    proposals = record.proposals.values.select { |p| p[:intent] == pick[:intent] && p[:first_at].is_a?(Numeric) && p[:first_at] <= pick[:landingProposalAt] }
+    steps = []
+    steps << { step: "declared", at: since.(record.declared[pick[:intent]]) } if record.declared[pick[:intent]].is_a?(Numeric)
+    record.claims[pick[:intent]].select { |t| t <= pick[:landedAt] }.sort.each { |t| steps << { step: "claimed", at: since.(t) } }
+    proposals.sort_by { |p| [p[:first_at], p[:id].to_s] }.each do |p|
+      mine = p[:id] == pick[:proposal]
+      step = { step: "proposal", proposal: p[:id], agent: p[:agent], at: since.(p[:first_at]), until: since.(mine ? pick[:readyAt] : p[:at]),
+               outcome: mine ? "ready" : p[:status], landed: mine }
+      if !mine && p[:status] == "returned"
+        step[:class] = redirect?(p[:return_reason]) ? "redirected" : classify(p[:return_reason], human: record.human_returns.include?(p[:id]))
+      end
+      steps << step
+    end
+    steps << { step: "lane and trunk writer", at: since.(pick[:readyAt]), until: since.(pick[:landedAt]), seconds: rounded(pick[:waitingToLand], 3),
+               note: "from ready to landed: the record does not split the lane's wait from the trunk writer's cycle" }
+    {
+      landing: last[:id], at: since.(last[:at]), changesInLanding: last[:proposals].size, intent: pick[:intent], title: pick[:title],
+      proposal: pick[:proposal], agent: pick[:agent], proposals: pick[:proposals], estimatedClaims: record.source == "reconstructed",
+      phases: PHASES.to_h { |k| [k, rounded(pick[k], 3)] }, total: rounded(pick[:total], 3), steps: steps
+    }
+  end
+
   def fmt(x, digits = 3) = x.nil? ? "n/a" : format("%.#{digits}f", x)
 
   def num(n) = n.to_i.to_s.reverse.scan(/\d{1,3}/).join(",").reverse
 
   # "1 return", "2 returns".
   def many(n, word) = "#{num(n)} #{word}#{n == 1 ? "" : "s"}"
+
+  # 1234.56 as "1,234.6".
+  def dec(x, digits = 1)
+    return "n/a" if x.nil?
+
+    whole, frac = format("%.#{digits}f", x).split(".")
+    frac ? "#{num(whole.to_i)}.#{frac}" : num(whole.to_i)
+  end
+
+  def pct(x) = x.nil? ? "n/a" : format("%.1f%%", x * 100)
+
+  # The markdown rows of definition 8.
+  def time_rows(t)
+    return ["| Where the time went | no landed intent in the record |"] if t[:landedIntents].zero?
+
+    a = t[:agentSeconds]
+    labels = { agentWork: "agent work", review: "review", waitingToLand: "waiting to land", rework: "rework" }
+    parts = labels.map { |k, label| "#{label} #{dec(a[k])} (#{pct(t[:share][k])}, median #{dec(t[:median][k])} s)" }
+    estimated = t[:estimatedClaims] ? "; claim times estimated (reconstructed record)" : ""
+    no_claim = t[:noClaim].positive? ? "; #{many(t[:noClaim], 'intent')} with no claim in the record" : ""
+    rows = ["| Where the time went | #{dec(a[:total])} agent-seconds over #{many(t[:landedIntents], 'landed intent')}, from claim to landing: " \
+            "#{parts.join(', ')}; #{pct(t[:waitingShare])} of agent time waiting to land#{estimated}#{no_claim} |"]
+    c = t[:criticalPath]
+    return rows unless c
+
+    claimed = c[:steps].find { |s| s[:step] == "claimed" }
+    back = c[:steps].select { |s| s[:step] == "proposal" && !s[:landed] }
+    back_text = back.empty? ? "" : ", #{num(back.size)} came back (#{back.map { |s| (s[:class] || s[:outcome]).to_s.tr('_', ' ') }.join(', ')})"
+    title = c[:title] ? " (#{c[:title].to_s.gsub(/[|\r\n]+/, ' ')[0, 80]})" : ""
+    claim_text = claimed ? "claimed at +#{dec(claimed[:at])} s#{c[:estimatedClaims] ? ' (estimated)' : ''}" : "no claim in the record"
+    p = c[:phases]
+    rows << "| Critical path to the last landing | `#{c[:intent]}`#{title} landed at +#{dec(c[:at])} s in #{c[:landing]} " \
+            "(#{many(c[:changesInLanding], 'change')}): #{claim_text}, #{many(c[:proposals], 'proposal')}#{back_text}; agent work #{dec(p[:agentWork])} s, " \
+            "rework #{dec(p[:rework])} s, review #{dec(p[:review])} s, ready to landed #{dec(p[:waitingToLand])} s (the lane and the trunk " \
+            "writer together); #{dec(c[:total])} s from claim to landing |"
+    rows
+  end
 
   # The short markdown table for stdout.
   def markdown(r)
@@ -1235,6 +1408,7 @@ module Coordination
       out << "| Lines per landed intent | #{fmt(l[:netPerIntent], 2)} (+#{num(l[:added])} −#{num(l[:removed])} over #{many(l[:landedIntents], "intent")}); " \
              "#{num(l[:linesInAgentTouchedFiles])} lines in #{many(l[:agentTouchedFiles], "agent-touched file")}, #{num(l[:agentWrittenLinesAtHead])} agent-written |"
     end
+    out.concat(r[:timeSplit] ? time_rows(r[:timeSplit]) : ["| Where the time went | not computed: no event record |"])
     notes = r[:missing] + r[:warnings].first(5).map { |w| "warning: #{w}" }
     notes << "#{r[:warnings].size - 5} more warnings in the JSON" if r[:warnings].size > 5
     out += [""] + notes.map { |x| "- #{x}" } unless notes.empty?

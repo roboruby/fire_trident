@@ -16,6 +16,8 @@ export type Route =
        * after waiting ?delay=<seconds>. Null for the live view.
        */
       replay: { source: "auto" | "recorded" | "reconstructed"; speed: number; offsetS: number; delayS: number } | null;
+      /** ?tour=1: a two-minute tour of the finished run (tour/tour.json), on its replay; never with ?mock or ?director. */
+      tour: boolean;
     };
 
 function flag(params: URLSearchParams, key: string): boolean {
@@ -38,7 +40,9 @@ export function parseRoute(pathname: string, search: string): Route {
     return params.has(key) && Number.isFinite(v) && v >= 0 ? v : fallback;
   };
   const source: "auto" | "recorded" | "reconstructed" = replayRaw === "recorded" || replayRaw === "reconstructed" ? replayRaw : "auto";
-  const replay = !mock && flag(params, "replay") ? { source, speed: num("speed", 1), offsetS: num("t", 0), delayS: num("delay", 0) } : null;
+  // A tour plays the finished run's record, so it implies a replay.
+  const tour = !mock && !director && flag(params, "tour");
+  const replay = !mock && (flag(params, "replay") || tour) ? { source, speed: num("speed", 1), offsetS: num("t", 0), delayS: num("delay", 0) } : null;
   const m = pathname.match(/^\/c\/([^/]+)/);
   if (m?.[1]) {
     let colonyId = m[1];
@@ -47,13 +51,13 @@ export function parseRoute(pathname: string, search: string): Route {
     } catch {
       // keep the raw segment
     }
-    return { kind: "colony", colonyId, mock, director, debug, replay };
+    return { kind: "colony", colonyId, mock, director, debug, replay, tour };
   }
-  if (mock || director) return { kind: "colony", colonyId: "demo", mock: true, director, debug, replay: null };
+  if (mock || director) return { kind: "colony", colonyId: "demo", mock: true, director, debug, replay: null, tour: false };
   return { kind: "landing" };
 }
 
-/** Link to a colony page (live, the simulator, or a replay of its finished run). */
-export function colonyHref(colonyId: string, opts: { mock?: boolean; replay?: boolean } = {}): string {
-  return `/c/${encodeURIComponent(colonyId)}${opts.mock ? "?mock=1" : opts.replay ? "?replay=1" : ""}`;
+/** Link to a colony page (live, the simulator, a replay of its finished run, or the tour of that replay). */
+export function colonyHref(colonyId: string, opts: { mock?: boolean; replay?: boolean; tour?: boolean } = {}): string {
+  return `/c/${encodeURIComponent(colonyId)}${opts.mock ? "?mock=1" : opts.tour ? "?tour=1" : opts.replay ? "?replay=1" : ""}`;
 }

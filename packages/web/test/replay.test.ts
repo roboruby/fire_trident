@@ -157,7 +157,8 @@ describe("replaying a run through the store", () => {
 
     e.advanceTo(e.end);
     expect(store.violations.total).toBe(0);
-    expect(store.convergedIn()).toEqual({ fixed: 3, ms: 8_000 - 1 });
+    // Measured from the rule's declaration (T + 1,000), as the colony measures it, not from the count after its scan.
+    expect(store.convergedIn()).toEqual({ fixed: 3, ms: 8_000 });
     expect(store.funnel).toEqual({ proof: 1, reflex: 0, llm: 1, human: 0 });
     expect(store.sigmaMax().value).toBe(1.4);
     expect(store.agentsActive()).toBe(0);

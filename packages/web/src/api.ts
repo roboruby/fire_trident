@@ -25,7 +25,8 @@ export interface Backend {
   /** Load the snapshot, open the live stream, and keep `store` current until stop(). */
   start(store: ColonyStore): void;
   stop(): void;
-  why(path: string): Promise<WhyEntry[]>;
+  /** Lineage of a file; with `line`, the landing that wrote that line comes first when the server finds one. */
+  why(path: string, line?: number): Promise<WhyEntry[]>;
   review(): Promise<Proposal[]>;
   decide(proposalId: string, decision: ReviewDecision, reason: string, by?: string): Promise<void>;
   /** Answer an agent's report that an intent cannot be done as written. */
@@ -272,8 +273,8 @@ export class HttpBackend implements Backend {
     return (await res.json()) as T;
   }
 
-  async why(path: string): Promise<WhyEntry[]> {
-    const data = await this.getJson<unknown>(`/why?path=${encodeURIComponent(path)}`);
+  async why(path: string, line?: number): Promise<WhyEntry[]> {
+    const data = await this.getJson<unknown>(`/why?path=${encodeURIComponent(path)}${line ? `&line=${line}` : ""}`);
     return Array.isArray(data) ? (data as WhyEntry[]).filter((e) => e && e.landing && e.note) : [];
   }
 
