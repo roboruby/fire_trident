@@ -196,6 +196,7 @@ async function requireColony(env: Env, colonyId: Id): Promise<void> {
  *   POST   /colonies/:id/proposals          propose a change
  *   GET    /colonies/:id/proposals/:pid     one proposal (poll its outcome)
  *   GET    /colonies/:id/why                ?path=&line=
+ *   GET    /colonies/:id/notes/verify       the newest landings' git notes against their commits' FT-Note trailers (?limit=)
  *   GET    /colonies/:id/review             review queue
  *   POST   /colonies/:id/review/:pid        approve | reject | return
  *   POST   /colonies/:id/swarm              spawn in-platform agents
@@ -499,6 +500,15 @@ export function createApi(deps: ApiDeps): Hono<ApiEnv> {
     const q = validate(WhyQuery, { path: c.req.query("path"), line: c.req.query("line") });
     await requireColony(c.env, colonyId);
     return json(await trunkStub(c.env, colonyId).why(q.path, q.line));
+  });
+
+  // Tamper evidence: each of the newest landings' notes on the trunk repository against the digest its commit carries.
+  app.get("/colonies/:id/notes/verify", async (c) => {
+    const colonyId = colonyParam(c);
+    const raw = c.req.query("limit");
+    if (raw !== undefined && !/^\d{1,4}$/.test(raw)) throw ftError(400, "limit must be a whole number");
+    await requireColony(c.env, colonyId);
+    return json(await trunkStub(c.env, colonyId).verifyNotes(raw === undefined ? undefined : Number(raw)));
   });
 
   app.get("/colonies/:id/review", async (c) => json(await colonyStub(c.env, colonyParam(c)).review()));

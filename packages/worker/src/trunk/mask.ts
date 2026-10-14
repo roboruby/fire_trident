@@ -109,12 +109,13 @@ export function maskStrings<T>(value: T, depth = 0): T {
 
 type NoteEntry = LineageNote["proposals"][number];
 
-/** One proposal of a note with its free text masked: the intent's title and why, the model name, decisions, evidence and alternatives. */
+/** One proposal of a note with its free text masked: the intent's title and why, the model name, decisions, evidence, alternatives and provenance (model names). */
 function maskEntry(e: NoteEntry): NoteEntry {
   const out: NoteEntry = { ...e, decisions: maskStrings(e.decisions), evidence: maskStrings(e.evidence) };
   if (e.intent) out.intent = { ...e.intent, title: maskSecrets(e.intent.title), why: maskSecrets(e.intent.why) };
   if (typeof e.model === "string") out.model = maskSecrets(e.model);
   if (e.alternatives) out.alternatives = maskStrings(e.alternatives);
+  if (e.provenance) out.provenance = maskStrings(e.provenance);
   return out;
 }
 

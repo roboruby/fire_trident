@@ -17,6 +17,7 @@ import type {
   Landing,
   LineageNote,
   MarkKind,
+  NoteProvenance,
   Proposal,
   Rule,
 } from "@fire_trident/core";
@@ -87,6 +88,14 @@ function hexFrom(rng: Rng, n: number): string {
 }
 
 const round = (v: number, d = 3): number => Math.round(v * 10 ** d) / 10 ** d;
+
+/** A simulated change's provenance as the trunk writer records it: an in-platform agent's model observed with its counts, any other declared. */
+function simProvenance(kind: AgentKind, model: string, seed: string): NoteProvenance {
+  if (kind !== "internal") return { author: kind === "external" ? "external" : "synthetic", ...(kind === "external" ? { auth: "mcp" as const } : {}), model: { evidence: "declared", name: model } };
+  const h = hashString(seed);
+  const calls = 1 + (h % 3);
+  return { author: "platform", auth: "platform", model: { evidence: "observed", name: model, observed: [{ model, calls, inputTokens: 1_800 * calls + (h % 900), outputTokens: 240 * calls + (h % 300) }] } };
+}
 
 // ---------------------------------------------------------------------------
 // The synthetic repository
@@ -1031,6 +1040,7 @@ export class ColonySim {
           evidence: sp.p.evidence,
           ...(alt.length ? { alternatives: alt } : {}),
           ...(sp.revalidated?.length ? { revalidated: sp.revalidated } : {}),
+          provenance: simProvenance(sp.agent.kind, sp.agent.model, sp.p.id),
         };
       }),
     };
@@ -1399,6 +1409,7 @@ export class ColonySim {
             residual: [],
             notVerified: NOT_VERIFIED[(rng() * NOT_VERIFIED.length) | 0],
           },
+          provenance: simProvenance("internal", "workers-ai/code-large", pid),
         },
       ],
     };

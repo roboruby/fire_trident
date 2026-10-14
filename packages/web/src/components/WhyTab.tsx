@@ -6,7 +6,7 @@ import { basename, dirname, fmtFixed, fmtInt, fmtMs, plural, shortId, shortSha, 
 import type { ColonyStore } from "../store.ts";
 import { FIELD_COLOR, KINDS, LAYER_COLOR, intensity, KIND_INDEX } from "../theme.ts";
 import { decisionsFromChecks, type DecisionStep } from "../decisions.ts";
-import { alternativesOf, revalidatedOf, type Alternative, type Revalidation } from "../lineage.ts";
+import { alternativesOf, provenanceOf, revalidatedOf, type Alternative, type ProvenanceView, type Revalidation } from "../lineage.ts";
 import { useThrottledVersion } from "../useStore.ts";
 import { certCounts, certTitle } from "../certs.ts";
 
@@ -415,6 +415,17 @@ function RevalidatedStep({ items }: { items: Revalidation[] }) {
   );
 }
 
+/** How the author and model of a change are known: observed by FireTrident, or declared by the agent (the note's provenance). */
+function ProvenanceLine({ v }: { v: ProvenanceView }) {
+  return (
+    <div className={`lin-prov is-${v.level}`}>
+      <span className="lin-prov-label">{v.label}</span>
+      {v.detail ? <span className="lin-prov-detail">{v.detail}</span> : null}
+      <span className="lin-prov-author">{v.author}</span>
+    </div>
+  );
+}
+
 /** The deterministic proof's verdict when it decided alone (from the evidence's gate check), else null. */
 function deterministicStep(checks: readonly CheckResult[]): { action: string; detail?: string } | null {
   const gate = checks.find((c) => c.name === "gate");
@@ -435,6 +446,7 @@ function ProposalChain({ p, path, store }: { p: NoteProposal; path: string; stor
   const residual = p.evidence?.residual ?? [];
   const alternatives = alternativesOf(p);
   const revalidated = revalidatedOf(p);
+  const provenance = provenanceOf(p);
   const agentName = store.agentName(p.agentId);
   const title = p.intent?.title ?? "Untitled intent";
   const rule = ruleId ? store.rules.get(ruleId) : undefined;
@@ -471,6 +483,7 @@ function ProposalChain({ p, path, store }: { p: NoteProposal; path: string; stor
             <span className={`kind kind-${p.agentKind}`}>{p.agentKind}</span>
           </div>
           {p.model ? <div className="mono lin-model">{p.model}</div> : null}
+          {provenance ? <ProvenanceLine v={provenance} /> : null}
         </div>
       </div>
       {alternatives.length ? <ContestStep alternatives={alternatives} store={store} /> : null}

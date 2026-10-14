@@ -2506,6 +2506,40 @@ a.lin-sha:hover,
   white-space: nowrap;
 }
 
+/* Provenance: how the author and model of a landed change are known. */
+.lin-prov {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  margin-top: 4px;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--text-3);
+}
+
+.lin-prov-label {
+  font-weight: 650;
+}
+
+.lin-prov.is-observed .lin-prov-label {
+  color: var(--trail);
+}
+
+.lin-prov.is-declared .lin-prov-label {
+  color: var(--need);
+}
+
+.lin-prov-detail {
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+
+.lin-prov-author {
+  flex-basis: 100%;
+  color: var(--text-4);
+}
+
 .dec-what b {
   font-weight: 600;
   color: var(--text);
