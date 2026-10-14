@@ -19,6 +19,7 @@ import type {
 } from "@fire_trident/core";
 import { newId, revalidationEnabled } from "@fire_trident/core";
 import type { Env } from "../env.ts";
+import { prelandAlone, prelandReturn, prelandTexts, type PrelandOutcome } from "../certify/preland.ts";
 import { runInnateChecks, type InnateResult } from "../colony/innate.ts";
 import { errorText, ftError } from "../colony/errors.ts";
 import { meteredAi, spendCounters } from "../colony/spend.ts";
@@ -113,6 +114,10 @@ export interface DecideHost {
   propose(input: ProposeInput): Promise<Proposal>;
   /** Finish a vaccine: rejected with the reason, its intent abandoned, no lane, no field effects. */
   seal(proposalId: Id, reason: string, evidence: Proposal["evidence"]): void;
+  /** Tests before landing (certify/preland.ts, FT_PRELAND): whether they cover a proposal (absent: never). */
+  prelandCovers?(p: Proposal): boolean;
+  /** Tests before landing: run the test files a proposal reaches (`texts`: its new files already read); null when they do not cover it. */
+  preland?(p: Proposal, texts?: ReadonlyMap<Sha, string>): Promise<PrelandOutcome | null>;
 }
 
 /** Decide runs in flight per colony. Most finish in the deterministic stage without a model call. */
@@ -220,6 +225,11 @@ export class DecideEngine {
     const rule = intent?.ruleId ? (rules.find((r) => r.id === intent.ruleId) ?? null) : null;
     const region = this.host.proposalRegion(p.id);
     const vaccine = this.store.vaccineByIntent(p.intentId);
+    // Tests before landing (certify/preland.ts, FT_PRELAND): with review off, a change that came here only for its tests
+    // runs them and goes on to its lane, or back to its agent when a test that passed on trunk fails with it.
+    if (!vaccine && !this.enabled() && this.host.prelandCovers?.(p) === true && protectedHits(p.writeSet.map((w) => w.path), policy.protectedPaths ?? []).length === 0) {
+      return prelandAlone(this.host, p);
+    }
     // Who wrote the why decides what it may ask for and whether earned autonomy covers it. A sealed
     // vaccine copies a rule intent (or a platform-written cleanup), so it is judged as that intent would be.
     const source: IntentSource | null = intent ? (vaccine ? (intent.ruleId ? "rule" : "human") : intent.source) : null;
@@ -317,6 +327,11 @@ export class DecideEngine {
       ...(goal?.check ? [goal.check] : []),
     ];
     let final: GateVerdict = gate(base);
+    // Tests before landing (certify/preland.ts, FT_PRELAND): the test files the change reaches run before the gate decides,
+    // unless it already goes back; a test that passed on trunk and fails with the change sends it back, before any model.
+    const preland = vaccine || final.action === "return" ? null : ((await this.host.preland?.(p, prelandTexts(innate.files))) ?? null);
+    if (preland) checks.push(preland.check);
+    if (preland?.run.status === "failed") final = prelandReturn(preland.reason ?? preland.check.detail ?? "", final);
     let v1: GateVerdict | null = null;
     let reflex: ReflexSignals | null | undefined;
     let llm: SecondOpinion | null | undefined;
@@ -437,7 +452,7 @@ export class DecideEngine {
       ms: 0,
       detail: `${final.rule} → ${final.action} by ${final.layer} at head ${p.headSha.slice(0, 12)}${final.confirmations.length > 0 ? ` (confirmations: ${final.confirmations.join(" + ")})` : ""}: ${final.reasons.join("; ")}`.slice(0, 1_000),
     });
-    const evidence = { ...p.evidence, checks: [...p.evidence.checks, ...checks] };
+    const evidence = { ...p.evidence, checks: [...p.evidence.checks, ...checks], ...(preland ? { preland: preland.run } : {}) };
 
     // Both confirmations are bound to this head commit and write set: if either moved, nothing lands.
     const cur = this.host.proposal(p.id);

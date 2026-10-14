@@ -1,5 +1,6 @@
-import type { Certification, CertificationStatus, ColonyEvent, FailingTest, FileVersion, FirstRed, Id, Landing, LineageNote, NoteCertification, Path, Sha } from "@fire_trident/core";
+import type { Certification, CertificationStatus, ColonyEvent, FailingTest, FileVersion, FirstRed, Id, Landing, LineageNote, NoteCertification, Path, Proposal, Sha } from "@fire_trident/core";
 import { FirstRedSearch } from "./bisect.ts";
+import { PrelandChecks, prelandMatches, type PrelandOutcome, type PrelandReader } from "./preland.ts";
 import { TEST_FILE } from "./compile.ts";
 import { SUSPECT_MS, findSuspects, publicSuspect, type FoundSuspect, type LandedOn } from "./culprit.ts";
 import { DEFAULT_CAPS, load, testFiles, type CompileMemo, type IndexedFile, type Loaded } from "./load.ts";
@@ -94,6 +95,8 @@ export interface CertifyHost {
   bisect?(): boolean;
   /** Rewrite an open repair intent's why (`edit` gives the new text, or null to leave it); false when nothing changed. */
   repairWhy?(intentId: Id, edit: (why: string) => string | null): boolean;
+  /** Tests before landing are on for this colony (FT_PRELAND, preland.ts); absent means off. */
+  preland?(): boolean;
 }
 
 /**
@@ -231,6 +234,8 @@ export class Certifier {
   private nothingToRun: boolean | null = null;
   /** The first red search (FT_BISECT, bisect.ts): after a red result is recorded, the first commit its failing tests fail on. */
   private readonly firstRed: FirstRedSearch;
+  /** Tests before landing (FT_PRELAND, preland.ts), made on first use. */
+  private prelandChecks: PrelandChecks | null = null;
 
   constructor(private readonly host: CertifyHost) {
     this.ensureSchema();
@@ -359,6 +364,7 @@ export class Certifier {
     this.nothingToRun = null;
     this.memo.clear();
     this.firstRed.reset();
+    this.prelandChecks = null;
     this.ensureSchema();
   }
 
@@ -533,6 +539,38 @@ export class Certifier {
     const first = report.files[0];
     if (first && typeof first.loadError === "string" && first.loadError.startsWith(RUNNER_FAILED)) throw new Error(`it could not start: ${first.loadError.slice(RUNNER_FAILED.length)}`);
     return report;
+  }
+
+  /**
+   * Do tests before landing cover a change that writes `paths` (FT_PRELAND, preland.ts): the colony's certification is
+   * on, the flag covers the colony, and the policy's prelandPaths match one of the paths (any, when there are none)?
+   */
+  prelandCovers(paths: readonly Path[]): boolean {
+    return this.host.preland?.() === true && this.active() && prelandMatches(this.policy().prelandPaths, paths);
+  }
+
+  /**
+   * Tests before landing (preland.ts): the test files a change reaches, run on its base with its files laid over it (read
+   * with `readNew`) in the same test Worker as run() uses, each judged against this colony's stored result for it on
+   * trunk. Null when they do not cover the change (see prelandCovers); otherwise never throws.
+   */
+  async precheck(p: Proposal, readNew: PrelandReader): Promise<PrelandOutcome | null> {
+    if (!this.prelandCovers((Array.isArray(p?.writeSet) ? p.writeSet : []).map((w) => w.path))) return null;
+    this.prelandChecks ??= new PrelandChecks({
+      trunk: () => this.host.trunk(),
+      memo: this.memo,
+      run: (plan, timeoutMs) => this.run(plan, { ...this.policy(), timeoutMs }),
+      results: (keys) => this.cachedFiles(keys),
+      testTimeoutMs: () => this.policy().testTimeoutMs,
+    });
+    try {
+      return await this.prelandChecks.check(p, readNew);
+    } finally {
+      for (const k of this.memo.keys()) {
+        if (this.memo.size <= MEMO_ENTRIES) break;
+        this.memo.delete(k);
+      }
+    }
   }
 
   /** Record a run that had nothing to judge. Published only when it changes what the colony shows. */

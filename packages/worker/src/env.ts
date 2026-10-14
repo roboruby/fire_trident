@@ -210,6 +210,16 @@ export interface Env {
    * `bisect` event says so, and the open repair intent's why names it (certify/bisect.ts). Never on a landing's path.
    */
   FT_BISECT?: string;
+  /**
+   * Optional: tests before landing, "on", or a comma-separated list of colony ids; absent or "off" is off. Where it
+   * covers a colony whose certification is on, a change that writes a path the certify policy's `prelandPaths` match
+   * (every change when they are empty) has the test files that reach it (at most 5) run on its base with its files laid
+   * over it, in the decide stage before the gate, in the sandbox certification uses (certify/preland.ts): a test that
+   * passed on trunk and fails with the change sends it back to its agent; a time-out (2 s), a runner problem, no trunk
+   * result to compare with or 3 runs already going in the colony let it go on as before, recorded as not checked.
+   * Takes the decide path with review off too. Never inside the trunk writer's cycle; landing still validates read sets.
+   */
+  FT_PRELAND?: string;
 }
 
 export const WORKSPACE_SHARDS = 4;

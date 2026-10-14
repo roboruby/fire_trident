@@ -435,6 +435,34 @@ export interface CheckResult {
   detail?: string;
 }
 
+/**
+ * Tests before landing (FT_PRELAND): the test files a change reaches, run on its base with its files laid over it, in the
+ * sandbox trunk certification uses, before the change went on. `failed`: a test that passed on trunk failed with the
+ * change, and the change went back to its agent. `unchecked`: the change went on as it would without the check, and
+ * `reason` says why (no test reaches it, a time-out, a runner problem, no trunk result to compare with, busy).
+ */
+export interface PrelandRun {
+  status: "passed" | "failed" | "unchecked";
+  /** The commit the change's files were laid over (its base). */
+  trunkSha?: Sha;
+  /** Test files run, at most 5, nearest to the change first. */
+  files: Path[];
+  /** Test files that reach the change, when more than were run. */
+  reached?: number;
+  /** Tests run with the change, and how many passed and failed. */
+  tests: number;
+  passed: number;
+  failed: number;
+  /** Failing tests that failed on trunk too: not held against the change. */
+  known?: number;
+  /** Tests that passed on trunk and failed with the change, with their errors (at most 5). */
+  broke?: Array<{ file: Path; name: string; error?: string }>;
+  /** Wall time of the check, from its start to its verdict. */
+  ms: number;
+  /** Why it was not checked (`unchecked`), in words. */
+  reason?: string;
+}
+
 export interface Evidence {
   checks: CheckResult[];
   /** Paths changed that the declared footprint did not predict (residual review). */
@@ -444,6 +472,8 @@ export interface Evidence {
   previewUrl?: string;
   /** The intent revision and directives the change was built under (set by the colony at propose time). */
   direction?: Direction;
+  /** Tests before landing (FT_PRELAND), when they covered the change (set by the decide stage). */
+  preland?: PrelandRun;
 }
 
 /** The names a change imports from one trunk file (see Proposal.nameAssumptions). */

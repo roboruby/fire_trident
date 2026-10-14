@@ -8,7 +8,8 @@ import type { ApiEnv } from "./app.ts";
  *   GET  /colonies/:id/certifications         results, newest first (?limit=), with the state: switches, policy, run in flight
  *   GET  /colonies/:id/certifications/:sha    one commit's result (a full sha or a unique prefix of 7+ characters)
  *   POST /colonies/:id/certify                certify the current trunk now (even if it was certified)
- *   POST /colonies/:id/certify/policy         change the colony's policy (partial): { enabled, repair, repairsPerHour, timeoutMs, testTimeoutMs, minIntervalMs }
+ *   POST /colonies/:id/certify/policy         change the colony's policy (partial): { enabled, repair, repairsPerHour, timeoutMs, testTimeoutMs, minIntervalMs,
+ *                                             prelandPaths (globs whose changes are tested before landing where FT_PRELAND covers the colony; [] = every change) }
  * POST routes need the admin token.
  */
 export function certifyRoutes(app: Hono<ApiEnv>, admin: MiddlewareHandler<ApiEnv>): void {

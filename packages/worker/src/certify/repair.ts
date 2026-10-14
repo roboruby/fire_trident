@@ -1,6 +1,7 @@
 import type { Certification, Id, IntentStatus, Path, Suspect } from "@fire_trident/core";
 import { newNonce } from "../agents/prompt.ts";
 import { lostOrigin } from "./owed.ts";
+import { prelandGlobs } from "./preland.ts";
 
 /**
  * The repair loop's rules. A red trunk becomes a need like any other: the colony declares one
@@ -26,11 +27,16 @@ export interface CertifyPolicy {
   testTimeoutMs: number;
   /** Runs start at least this far apart (landings in a burst share one run). */
   minIntervalMs: number;
+  /**
+   * Tests before landing (FT_PRELAND, preland.ts): globs whose changes have the tests that reach them run before they
+   * land. Empty or absent: every change that reaches a test file.
+   */
+  prelandPaths?: string[];
 }
 
 export const DEFAULT_POLICY: CertifyPolicy = { enabled: true, repair: true, repairsPerHour: 3, timeoutMs: 60_000, testTimeoutMs: 10_000, minIntervalMs: 2_000 };
 
-const LIMITS: Record<Exclude<keyof CertifyPolicy, "enabled" | "repair">, [number, number]> = {
+const LIMITS: Record<Exclude<keyof CertifyPolicy, "enabled" | "repair" | "prelandPaths">, [number, number]> = {
   repairsPerHour: [0, 60],
   timeoutMs: [5_000, 300_000],
   testTimeoutMs: [100, 120_000],
@@ -45,6 +51,12 @@ export function mergePolicy(base: CertifyPolicy, patch: unknown): { policy: Cert
     if (k === "enabled" || k === "repair") {
       if (typeof v !== "boolean") return { error: `${k} must be true or false` };
       out[k] = v;
+    } else if (k === "prelandPaths") {
+      // Tests before landing (preland.ts): an empty list goes back to every change.
+      const globs = prelandGlobs(v);
+      if (typeof globs === "string") return { error: globs };
+      if (globs.length > 0) out.prelandPaths = globs;
+      else delete out.prelandPaths;
     } else if (k in LIMITS) {
       const [lo, hi] = LIMITS[k as keyof typeof LIMITS];
       if (typeof v !== "number" || !Number.isFinite(v) || v < lo || v > hi) return { error: `${k} must be a number from ${lo} to ${hi}` };
