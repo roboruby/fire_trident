@@ -27,6 +27,7 @@ import { megafileLines } from "./megafile.ts";
 import { signatureLines } from "./signatures.ts";
 import { spendLine } from "./spend.ts";
 import { acceptanceRows } from "./acceptance.ts";
+import { prelandLine } from "./preland.ts";
 
 /** ANSI styling functions; identity functions when color is off. */
 export interface Colors {
@@ -784,6 +785,9 @@ export function formatWhy(
       // Quoted acceptance (FT_QUOTED_ACCEPTANCE): the changed line quoted for each acceptance line (acceptance.ts).
       for (const row of acceptanceRows(p.decisions, c)) out.push(`  ${label(row.k)}${row.v}`);
       out.push(`  ${label("checks")}${checkLine(p.evidence?.checks, c)}`);
+      // Tests before landing (FT_PRELAND, preland.ts): what ran on its base with the change before it landed.
+      const tested = prelandLine(p.evidence?.preland, c);
+      if (tested) out.push(`  ${label("tested")}${tested}`);
       if (p.evidence?.residual?.length) out.push(`  ${label("residual")}${c.yellow(paths(p.evidence.residual, 4))} ${c.dim("(outside the declared footprint)")}`);
       if (p.evidence?.notVerified) out.push(`  ${label("unproven")}${p.evidence.notVerified}`);
       out.push(`  ${label("wrote")}${paths(p.writeSet.map((w) => w.path), 4)}`);

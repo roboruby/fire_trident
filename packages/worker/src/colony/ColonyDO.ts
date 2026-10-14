@@ -138,6 +138,7 @@ import type { AgentListEntry, ColonySeries, ColonySummary, RegistryEntry, Snapsh
 import { Certifier, type CertifyHost, type CertifyTrunk } from "../certify/certifier.ts";
 import { culpritsEnabled, type LandedOn } from "../certify/culprit.ts";
 import { bisectEnabled } from "../certify/bisect.ts";
+import { prelandEnabled, prelandReader } from "../certify/preland.ts";
 import type { CertifyPolicy } from "../certify/repair.ts";
 import { reviewPreview, type ReviewPreview } from "../agents/preview.ts";
 import { RETURN_PATHS, extractUsage, returnReason, type LastReturn } from "../agents/prompt.ts";
@@ -2097,7 +2098,10 @@ export class ColonyDO extends DurableObject<Env> {
     // back here, the earliest point that knows what it writes, before any review (a sealed vaccine is left to its meter).
     const held = this.megafiles().heldBack(writeSet, intentRow.id);
     const heldBack = held !== null && engine.store.vaccineByIntent(intentRow.id) === null ? held : null;
-    const deciding = !heldBack && (engine.enabled() || engine.store.vaccineByIntent(intentRow.id) !== null || touchesProtected);
+    // Tests before landing (certify/preland.ts, FT_PRELAND): a change they cover takes the decide path even with review off,
+    // where the test files it reaches run before it goes on to its lane.
+    const prelanded = this.certifier.prelandCovers(writeSet.map((w) => w.path));
+    const deciding = !heldBack && (engine.enabled() || engine.store.vaccineByIntent(intentRow.id) !== null || touchesProtected || prelanded);
     const proposal: Proposal = heldBack ? { ...draft, status: "returned", reason: heldBack } : { ...draft, status: deciding ? "checking" : OPEN_LIKE.has(draft.status) ? "ready" : draft.status };
 
     const fresh = this.intentRow(proposal.intentId);
@@ -2699,6 +2703,13 @@ export class ColonyDO extends DurableObject<Env> {
           const row = this.intentRow(id);
           return row ? this.toIntent(row, this.requireColony().id) : null;
         }),
+      // Tests before landing (certify/preland.ts, FT_PRELAND): whether they cover a change, and the certifier's check of it.
+      prelandCovers: (p) => this.certifier.prelandCovers(p.writeSet.map((w) => w.path)),
+      preland: async (p, texts) => {
+        const out = await this.certifier.precheck(p, prelandReader(this.env, p, texts));
+        if (out) this.bump(`preland.${out.run.status}`, 1, Date.now());
+        return out;
+      },
     };
     this.decideEngine = new DecideEngine(host);
     return this.decideEngine;
@@ -3591,6 +3602,8 @@ export class ColonyDO extends DurableObject<Env> {
       // First red search (certify/bisect.ts): off unless FT_BISECT names this colony. A found commit is added to the
       // open repair intent's why, without a revision: it adds context and sends back no change in flight.
       bisect: () => bisectEnabled(this.env.FT_BISECT, this.loadColony()?.colony.id ?? ""),
+      // Tests before landing (certify/preland.ts): off unless FT_PRELAND names this colony.
+      preland: () => prelandEnabled(this.env.FT_PRELAND, this.loadColony()?.colony.id ?? ""),
       repairWhy: (intentId, edit) => {
         const row = this.sql.exec<{ why: string }>("SELECT why FROM intents WHERE id = ? AND source = 'certify' AND status IN ('open', 'claimed', 'proposed')", intentId).toArray()[0];
         const why = row ? edit(row.why) : null;
