@@ -13,6 +13,8 @@ import type { Env } from "../../src/env.ts";
 import { runRevert, type RevertResult, type RevertTrunk } from "../../src/trunk/revert.ts";
 import { FENCE_WAIT_MS, directionReturns, fenceAnswer, mergeDirection, parseDirection, settlesWithin, type FenceAnswer } from "../../src/trunk/direction.ts";
 import type { DirectionInfo } from "../../src/colony/direction.ts";
+import { newerProtect, parseProtectRecord, type ProtectRecord } from "../../src/colony/protect.ts";
+import { cycleProtect, protectionReturns, type ProtectContext } from "../../src/trunk/protect.ts";
 
 export { ColonyDO } from "../../src/colony/ColonyDO.ts";
 export { RegionDO } from "../../src/region/RegionDO.ts";
@@ -246,6 +248,29 @@ export class TrunkDO extends DurableObject<Env> {
     return fenceAnswer(ids, byProposal, settled, new Set());
   }
 
+  /**
+   * Protected paths, as the real TrunkDO keeps them: the colony's record when newer than the one kept, then the fence's
+   * answer for the changes the colony stopped (direction() with no intents).
+   */
+  async protect(p: { record: unknown; proposalIds: Id[] }): Promise<FenceAnswer> {
+    const kept = newerProtect(parseProtectRecord(await this.ctx.storage.get("protect")), parseProtectRecord(p?.record));
+    if (kept) await this.ctx.storage.put("protect", kept);
+    return this.direction({ intents: {}, proposalIds: p?.proposalIds ?? [] });
+  }
+
+  /** Test helper: the protected-paths record this writer keeps (null when none). */
+  async protectRecord(): Promise<ProtectRecord | null> {
+    return parseProtectRecord(await this.ctx.storage.get("protect")) ?? null;
+  }
+
+  /** One cycle's protection check (trunk/protect.ts): the newest of the kept record and the lane's, kept, and the changes it stops. */
+  private async protectionCheck(batch: Proposal[], ctx: ProtectContext | undefined): Promise<Map<Id, string>> {
+    const stored = parseProtectRecord(await this.ctx.storage.get("protect"));
+    const record = cycleProtect(stored, [ctx]);
+    if (record && record !== stored) await this.ctx.storage.put("protect", record);
+    return protectionReturns(record, batch.map((p) => ({ p, ctx })));
+  }
+
   /** The fence's records by intent id (what each land() call's direction check reads). */
   private async directionRecords(): Promise<Map<Id, DirectionInfo>> {
     const records = (await this.ctx.storage.get<Record<Id, DirectionInfo>>("direction")) ?? {};
@@ -347,7 +372,7 @@ export class TrunkDO extends DurableObject<Env> {
       gate.reached = true;
       await gate.opened;
     }
-    const { landing, returned, report } = await this.cycle(batch, gate);
+    const { landing, returned, report } = await this.cycle(batch, gate, ctx as ProtectContext | undefined);
     if (!landing) return { returned };
     // A convenience of this stand-in (reportLandings): the real TrunkDO never reports; its lane does, and the ColonyDO treats a second report as a no-op.
     if (report) await this.env.COLONY.get(this.env.COLONY.idFromName(landing.colonyId)).onLanding(landing);
@@ -364,12 +389,14 @@ export class TrunkDO extends DurableObject<Env> {
    * One cycle of land(): the direction check, then (past a "push" gate) the commit. It counts as a cycle the
    * direction fence waits for from just before its direction check until it ends.
    */
-  private async cycle(batch: Proposal[], gate: LandGate | null): Promise<{ landing?: Landing; returned: Returned[]; report: boolean }> {
+  private async cycle(batch: Proposal[], gate: LandGate | null, ctx?: ProtectContext): Promise<{ landing?: Landing; returned: Returned[]; report: boolean }> {
     let finish!: () => void;
     const running = new Promise<void>((resolve) => (finish = resolve));
     this.cycles.add(running);
     try {
       const redirected = directionReturns(batch, await this.directionRecords());
+      // Protected paths, read at the same point as the real writer reads them (trunk/protect.ts).
+      const guarded = await this.protectionCheck(batch, ctx);
       if (gate?.phase === "push") {
         gate.reached = true;
         await gate.opened;
@@ -378,7 +405,7 @@ export class TrunkDO extends DurableObject<Env> {
       const returned: Returned[] = [];
       const landed: Proposal[] = [];
       for (const p of batch) {
-        const back = redirected.get(p.id);
+        const back = redirected.get(p.id) ?? guarded.get(p.id);
         if (back) returned.push({ proposalId: p.id, reason: back });
         else if (s.returnNext.includes(p.id)) returned.push({ proposalId: p.id, reason: "conflict at land time: src/lib/util.ts", ...(s.returnConflicts?.[p.id] ? { conflicts: s.returnConflicts[p.id] } : {}) });
         else landed.push(p);

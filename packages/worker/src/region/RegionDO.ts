@@ -19,6 +19,7 @@ import type { Env } from "../env.ts";
 import { errorText } from "../colony/errors.ts";
 import { coalesceEvents } from "../colony/events.ts";
 import { isRedirect, splitByDirection } from "../colony/direction.ts";
+import { isProtectStop, splitByProtection } from "../colony/protect.ts";
 import type { ClearFilter, FieldOps } from "../colony/logic.ts";
 import { settleLane, suspects } from "../trunk/outcome.ts";
 import { textMergeEnabled, type LandResult } from "../trunk/plan.ts";
@@ -962,7 +963,9 @@ export class RegionDO extends DurableObject<Env> {
             .catch(() => undefined)
         : undefined;
     const direction = splitByDirection(valid, ctx?.intents);
-    const { batch } = selectBatch(direction.keep, LANE_SCAN);
+    // Protected paths (colony/protect.ts): a change that writes a path protected after a person last approved it goes to a person.
+    const guarded = splitByProtection(direction.keep, ctx?.protect, ctx?.decisions);
+    const { batch } = selectBatch(guarded.keep, LANE_SCAN);
     let result: LandResult | null = null;
     let landError: string | null = null;
     if (batch.length > 0) {
@@ -989,6 +992,11 @@ export class RegionDO extends DurableObject<Env> {
     for (const landing of settled.landings) this.recordLanding(landing, seen, now);
     for (const r of settled.returned) {
       remove.add(r.id);
+      // Protected paths (colony/protect.ts): one the trunk writer stopped at its protection check waits for a person; no causal event.
+      if (isProtectStop(r.reason)) {
+        updates.push({ id: r.id, patch: { status: "escalated", reason: r.reason } });
+        continue;
+      }
       // A text merge conflict travels with its return (FT_RESOLVER: the colony's conflict resolver reads it).
       updates.push({ id: r.id, patch: { status: "returned", reason: r.reason, ...(r.conflicts ? { mergeConflicts: r.conflicts } : {}) } });
       // A revalidation or text merge candidate the trunk writer sent back is still a stale return: its cause is a landing.
@@ -1000,6 +1008,11 @@ export class RegionDO extends DurableObject<Env> {
     for (const r of direction.returned) {
       remove.add(r.p.id);
       updates.push({ id: r.p.id, patch: { status: "returned", reason: r.reason } });
+    }
+    // Protected paths: a change the lane stopped for a path protected after its last approval goes to the review queue.
+    for (const r of guarded.stopped) {
+      remove.add(r.p.id);
+      updates.push({ id: r.p.id, patch: { status: "escalated", reason: r.reason } });
     }
     let retryMs: number | null = null;
     const keep = new Set(settled.keep);

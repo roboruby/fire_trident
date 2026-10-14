@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { mergeText } from "@fire_trident/core";
-import { checkMerged, cleanConflicts, cleanResolves, isMarker, mergeSides, noteResolves, type ConflictedMerge } from "../../src/colony/resolver-merge.ts";
+import { checkMerged, cleanConflicts, cleanResolves, isMarker, keptLines, lineLikeness, mergeSides, noteResolves, type ConflictedMerge } from "../../src/colony/resolver-merge.ts";
 
 /** The conflict resolver's merge split and the validation of a model's merged text (colony/resolver-merge.ts). */
 
@@ -54,7 +54,7 @@ function edit(text: string, r: () => number): string {
 describe("mergeSides", () => {
   it("merges what one side changed and splits at the hunk both changed differently", () => {
     const m = conflicted(BASE, OURS, THEIRS);
-    expect(m.conflicts).toEqual([{ line: 6, base: ["export const v6 = 6;\n"], ours: ["export const six = 6;\n"], theirs: ["export const v6 = 66;\n"] }]);
+    expect(m.conflicts).toEqual([{ line: 6, base: ["export const v6 = 6;\n"], ours: ["export const six = 6;\n"], theirs: ["export const v6 = 66;\n"], oursLine: 6, theirsLine: 6 }]);
     expect(m.segments.map((s) => s.join(""))).toEqual([file({ 2: "export const v2 = 20;", 6: null, 7: null, 8: null }), "export const v7 = 7;\nexport const v8 = 80;\n"]);
   });
 
@@ -153,11 +153,12 @@ describe("checkMerged", () => {
   });
 
   it("finds every segment in order with several conflicts, even where a resolution repeats a segment's line", () => {
-    const base = "a\n}\nb\n}\nc\n";
-    const multi = conflicted(base, "A\n}\nB\n}\nc\n", "a1\n}\nb1\n}\nc\n");
+    // Both sides rewrote the same two lines: each rewrite shares words with the line it replaced, so the merge combines them.
+    const base = "let a = 0;\n}\nlet b = 0;\n}\nc\n";
+    const multi = conflicted(base, "let a = 1;\n}\nlet b = 1;\n}\nc\n", "let a = 2;\n}\nlet b = 2;\n}\nc\n");
     expect(multi.conflicts.map((c) => c.line)).toEqual([1, 3]);
-    expect(checkMerged(multi, "A1\n}\nB1\n}\nc\n")).toEqual({ ok: true, resolutions: [["A1\n"], ["B1\n"]] });
-    expect(checkMerged(multi, "A1\n}\nB1\nc\n").ok).toBe(false);
+    expect(checkMerged(multi, "let a = 3;\n}\nlet b = 3;\n}\nc\n")).toEqual({ ok: true, resolutions: [["let a = 3;\n"], ["let b = 3;\n"]] });
+    expect(checkMerged(multi, "let a = 3;\n}\nlet b = 3;\nc\n").ok).toBe(false);
   });
 
   it("refuses trunk's side taken whole even where a repeated line lets the segments fit elsewhere", () => {
@@ -165,20 +166,113 @@ describe("checkMerged", () => {
     const ours = "l3\nl2\nl3\nl3\ny2\nl3\ny2\nx2\nl2\nl3\nl3\ny0\nl3\nl4\n";
     const theirs = "l3\nl2\nx1\nl2\nx0\nl3\ny2\nx2\nx3\nl3\nl3\nl3\nl4\n";
     const c = conflicted(base, ours, theirs);
-    // Segment [l3] fits right after the first hunk's trunk line as well as where it belongs.
+    // Segment [l3] fits right after the first hunk's trunk line as well as where it belongs. That placement is tried
+    // first, and there the first hunk keeps none of the lines the change added.
     const trunkSide = c.segments.flatMap((s, i) => [...(i > 0 ? c.conflicts[i - 1]!.ours : []), ...s]).join("");
-    expect(checkMerged(c, trunkSide)).toEqual({ ok: false, problem: "takes trunk's version of the conflicting hunk at line 3 of the base whole, which drops the change's edit there" });
+    expect(checkMerged(c, trunkSide)).toEqual({ ok: false, problem: "drops a line the change added in the conflicting hunk at line 3 of the base (line 3 of the change's version)" });
   });
 
   it("refuses a text whose repeated lines make too many placements to try", () => {
     const n = 40;
-    const base = Array.from({ length: n }, (_, i) => (i % 2 === 0 ? `c${i}\n` : "}\n")).join("");
-    const ours = Array.from({ length: n }, (_, i) => (i % 2 === 0 ? `o${i}\n` : "}\n")).join("");
-    const theirs = Array.from({ length: n }, (_, i) => (i % 2 === 0 ? `t${i}\n` : "}\n")).join("");
+    // Both sides rewrote every value line (each rewrite shares words with its base line), so no line has to be kept and
+    // the extra "}" lines of the merge let every resolution start and end in many places.
+    const base = Array.from({ length: n }, (_, i) => (i % 2 === 0 ? `let v${i} = 0;\n` : "}\n")).join("");
+    const ours = Array.from({ length: n }, (_, i) => (i % 2 === 0 ? `let v${i} = 1;\n` : "}\n")).join("");
+    const theirs = Array.from({ length: n }, (_, i) => (i % 2 === 0 ? `let v${i} = 2;\n` : "}\n")).join("");
     const c = conflicted(base, ours, theirs);
     expect(c.conflicts).toHaveLength(n / 2);
-    const merged = Array.from({ length: n }, (_, i) => (i % 2 === 0 ? `m${i}\n}\n}\n` : "}\n")).join("");
+    const merged = Array.from({ length: n }, (_, i) => (i % 2 === 0 ? `let v${i} = 3;\n}\n}\n` : "}\n")).join("");
     expect(checkMerged(c, merged)).toEqual({ ok: false, problem: "repeats lines so often that its conflicting hunks cannot be told apart" });
+  });
+
+  describe("keeps every line each side added in a conflicting hunk", () => {
+    const BASE_FN = ["export function handler(req) {", "  const user = load(req);", "  return render(user);", "}", ""].join("\n");
+    // Trunk added an auth check above the line the change rewrote: one conflicting hunk at line 2.
+    const TRUNK_FN = ["export function handler(req) {", "  requireAuth(req);", "  const user = load(req);", "  return render(user);", "}", ""].join("\n");
+    const CHANGE_FN = ["export function handler(req) {", "  const user = loadUser(req);", "  return render(user);", "}", ""].join("\n");
+    const fn = (...body: string[]) => ["export function handler(req) {", ...body, "  return render(user);", "}", ""].join("\n");
+
+    it("refuses a merge that drops the requireAuth() call trunk added inside the hunk, naming the line", () => {
+      const c = conflicted(BASE_FN, TRUNK_FN, CHANGE_FN);
+      expect(c.conflicts).toMatchObject([{ line: 2, ours: ["  requireAuth(req);\n", "  const user = load(req);\n"], theirs: ["  const user = loadUser(req);\n"], oursLine: 2, theirsLine: 2 }]);
+      // Neither side's version whole, so only the kept lines catch it.
+      expect(checkMerged(c, fn("  const user = loadUser(req);", "  audit(user);"))).toEqual({
+        ok: false,
+        problem: "drops a line trunk added in the conflicting hunk at line 2 of the base (line 2 of trunk's version)",
+      });
+      // Trunk kept the line the change rewrote, so the change's rewrite is kept too.
+      expect(checkMerged(c, fn("  requireAuth(req);", "  const user = load(req, true);"))).toEqual({
+        ok: false,
+        problem: "drops a line the change added in the conflicting hunk at line 2 of the base (line 2 of the change's version)",
+      });
+      expect(checkMerged(c, fn("  requireAuth(req);", "  const user = loadUser(req);"))).toEqual({ ok: true, resolutions: [["  requireAuth(req);\n", "  const user = loadUser(req);\n"]] });
+      // Indentation may change in a merge; the text may not.
+      expect(checkMerged(c, fn("    requireAuth(req);", "  const user = loadUser(req);")).ok).toBe(true);
+    });
+
+    it("accepts both sides' added lines interleaved, and refuses one side's lines out of order", () => {
+      const base = "const routes = [\n];\n";
+      const c = conflicted(base, 'const routes = [\n  "/a",\n  "/b",\n];\n', 'const routes = [\n  "/c",\n  "/d",\n];\n');
+      expect(c.conflicts).toHaveLength(1);
+      expect(checkMerged(c, 'const routes = [\n  "/a",\n  "/c",\n  "/b",\n  "/d",\n];\n')).toMatchObject({ ok: true });
+      expect(checkMerged(c, 'const routes = [\n  "/c",\n  "/a",\n  "/d",\n  "/b",\n];\n')).toMatchObject({ ok: true });
+      expect(checkMerged(c, 'const routes = [\n  "/b",\n  "/a",\n  "/c",\n  "/d",\n];\n')).toEqual({
+        ok: false,
+        problem: "changes the order of the lines trunk added in the conflicting hunk at line 2 of the base (line 3 of trunk's version is out of order)",
+      });
+      expect(checkMerged(c, 'const routes = [\n  "/a",\n  "/b",\n  "/c",\n];\n')).toEqual({
+        ok: false,
+        problem: "drops a line the change added in the conflicting hunk at line 2 of the base (line 3 of the change's version)",
+      });
+    });
+
+    it("lets a kept line gain the separator a joined list needs, and nothing else", () => {
+      const c = conflicted('const routes = [\n  "/x"\n];\n', 'const routes = [\n  "/x",\n  "/a"\n];\n', 'const routes = [\n  "/x",\n  "/c"\n];\n');
+      expect(checkMerged(c, 'const routes = [\n  "/x",\n  "/a",\n  "/c"\n];\n')).toMatchObject({ ok: true });
+      expect(checkMerged(c, 'const routes = [\n  "/x",\n  "/a2",\n  "/c"\n];\n')).toEqual({
+        ok: false,
+        problem: "drops a line trunk added in the conflicting hunk at line 2 of the base (line 3 of trunk's version)",
+      });
+    });
+
+    it("counts repeated identical lines: each copy a side added is kept, and a line both added once serves both", () => {
+      const base = "start();\nend();\n";
+      const c = conflicted(base, "start();\nlog();\nlog();\nend();\n", "start();\nlog();\ncheck();\nend();\n");
+      expect(keptLines(c.conflicts[0]!)).toEqual({
+        ours: [
+          { text: "log()", line: 2 },
+          { text: "log()", line: 3 },
+        ],
+        theirs: [
+          { text: "log()", line: 2 },
+          { text: "check()", line: 3 },
+        ],
+      });
+      expect(checkMerged(c, "start();\nlog();\nlog();\ncheck();\nend();\n")).toMatchObject({ ok: true });
+      expect(checkMerged(c, "start();\nlog();\ncheck();\nlog();\nend();\n")).toMatchObject({ ok: true });
+      // One log() for two: dropped (the change's version whole would be refused as that, before this check).
+      expect(checkMerged(c, "start();\ncheck();\nlog();\nend();\n")).toEqual({
+        ok: false,
+        problem: "drops a line trunk added in the conflicting hunk at line 2 of the base (line 3 of trunk's version)",
+      });
+    });
+
+    it("lets go of a line the other side deleted, and of blank lines", () => {
+      // Trunk moved x() below y(); the change deleted x() and added w(): x() may go, since the change deleted it.
+      const v = { line: 1, base: ["x();\n", "y();\n"], ours: ["y();\n", "x();\n"], theirs: ["y();\n", "w();\n"], oursLine: 1, theirsLine: 1 };
+      expect(keptLines(v)).toEqual({ ours: [], theirs: [{ text: "w()", line: 2 }] });
+      // A blank line a side added is not kept by rule.
+      const c = conflicted("a = 0;\nz();\n", "a = 1;\n\nlog(a);\nz();\n", "a = 2;\nz();\n");
+      expect(keptLines(c.conflicts[0]!).ours).toEqual([{ text: "log(a)", line: 3 }]);
+      expect(checkMerged(c, "a = 3;\nlog(a);\nz();\n")).toMatchObject({ ok: true });
+    });
+
+    it("tells a rewritten line from an inserted one by the words it shares with the line it replaced", () => {
+      expect(lineLikeness("export const v6 = 6;", "export const six = 6;")).toBe(0.75);
+      expect(lineLikeness("  const user = load(req);", "  requireAuth(req);")).toBeCloseTo(1 / 3, 6);
+      expect(lineLikeness("  x();", "x();")).toBe(1);
+      expect(lineLikeness("}", "});")).toBe(0);
+    });
   });
 
   it("rejects a text shorter than what both changes left as it was", () => {

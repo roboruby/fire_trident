@@ -155,6 +155,7 @@ import { MegafileAlarm, megafileEnabled, type MegafileHost } from "./megafile.ts
 import type { MegafileHold, MegafileReport } from "@fire_trident/core";
 import { RESOLVER_AGENT, Resolver, migrateResolver, type ResolverTrunk } from "./resolver.ts";
 import type { NoteResolves } from "@fire_trident/core";
+import { PROTECT_META, isProtectStop, parseProtectRecord, protectChanged, protectLandedText, type ProtectHost, type ProtectOutcome, type ProtectRecord } from "./protect.ts";
 
 /**
  * Result of ColonyDO.take: an assignment, or advice to wait and retry. `review`: what review will
@@ -1700,6 +1701,7 @@ export class ColonyDO extends DurableObject<Env> {
     decisions: Record<Id, NoteDecision[]>;
     alternatives?: Record<Id, ContestAlternative[]>;
     resolves?: Record<Id, NoteResolves>;
+    protect?: ProtectRecord;
   }> {
     const colonyId = this.requireColony().id;
     const intents: Record<Id, { title: string; why: string; ruleId?: Id; parentId?: Id } & DirectionInfo> = {};
@@ -1743,7 +1745,10 @@ export class ColonyDO extends DurableObject<Env> {
     const alternatives = this.contestAlternatives(wanted);
     // Conflict resolver: what each change its agent wrote resolves (the lineage note's `resolves`, colony/resolver.ts).
     const resolves = this.resolver().records(wanted);
-    return { intents, agents, decisions, ...(alternatives ? { alternatives } : {}), ...(Object.keys(resolves).length > 0 ? { resolves } : {}) };
+    // Protected paths (colony/protect.ts): the colony's protected globs, once it keeps a record of them; lanes check
+    // their batch against it, and the trunk writer keeps the newest one it is handed.
+    const protect = parseProtectRecord(this.decider().store.meta(PROTECT_META));
+    return { intents, agents, decisions, ...(alternatives ? { alternatives } : {}), ...(Object.keys(resolves).length > 0 ? { resolves } : {}), ...(protect ? { protect } : {}) };
   }
 
   /**
@@ -2248,7 +2253,9 @@ export class ColonyDO extends DurableObject<Env> {
       const missed = this.missedRevision(p);
       // Sent back by a change of direction that reached the trunk writer after its cycle read the old one: it landed, and says so.
       const raced = !missed && p.status === "returned" && isRedirect(p.reason) ? landedAnywayText(p.reason ?? "") : null;
-      const next: Proposal = { ...p, status: "landed", landingId: l.id, ...(missed ? { reason: missed.text } : raced ? { reason: raced } : {}) };
+      // Sent to a person for a newly protected path after its cycle had passed the trunk writer's check: it landed, and says so.
+      const unguarded = !missed && !raced && p.status === "escalated" && isProtectStop(p.reason) ? protectLandedText(p.reason ?? "") : null;
+      const next: Proposal = { ...p, status: "landed", landingId: l.id, ...(missed ? { reason: missed.text } : raced ? { reason: raced } : unguarded ? { reason: unguarded } : {}) };
       this.writeProposal(next, now);
       this.landingMissed = missed;
       try {
@@ -2514,10 +2521,39 @@ export class ColonyDO extends DurableObject<Env> {
     return this.decider().immune();
   }
 
-  /** Change the colony's decide policy (partial; numbers are clamped). */
-  async setDecidePolicy(patch: unknown): Promise<DecidePolicy> {
+  /**
+   * Change the colony's decide policy (partial; numbers are clamped). Newly protected globs also reach the changes
+   * already cleared to land (colony/protect.ts): `protection` says which were stopped and which had already landed.
+   */
+  async setDecidePolicy(patch: unknown): Promise<DecidePolicy & { protection?: ProtectOutcome }> {
     this.requireColony();
-    return this.decider().store.setPolicy(patch);
+    const store = this.decider().store;
+    const before = store.policy().protectedPaths;
+    const policy = store.setPolicy(patch);
+    // Protected paths (colony/protect.ts): a change of the protected globs moves the record lanes and the trunk writer read.
+    const protection = await protectChanged(this.protectHost(), before, policy.protectedPaths);
+    return protection ? { ...policy, protection } : policy;
+  }
+
+  /** The protected-paths record's host (colony/protect.ts): the decide store keeps the record, the trunk writer fences it. */
+  private protectHost(): ProtectHost {
+    const store = this.decider().store;
+    return {
+      record: () => parseProtectRecord(store.meta(PROTECT_META)),
+      keep: (record) => store.setMeta(PROTECT_META, JSON.stringify(record)),
+      now: () => Date.now(),
+      cleared: () =>
+        this.sql
+          .exec<{ data: string; approved: number | null }>(
+            `SELECT p.data AS data, (SELECT MAX(d.at) FROM decisions d WHERE d.subject = p.id AND d.layer = 'human' AND d.action = 'approve') AS approved
+               FROM proposals p WHERE p.status = 'ready' AND NOT EXISTS (SELECT 1 FROM intents i WHERE i.id = p.intent_id AND i.created_by = 'vaccine')`,
+          )
+          .toArray()
+          .map((r) => ({ p: JSON.parse(r.data) as Proposal, approved: typeof r.approved === "number" ? r.approved : null })),
+      fence: (record, proposalIds) => this.trunkStub().protect({ record, proposalIds }),
+      escalate: (items) => this.updateProposals(items.map((i) => ({ id: i.id, patch: { status: "escalated" as const, reason: i.reason } }))),
+      settle: (l) => this.onLanding(l),
+    };
   }
 
   /** Mark a detector (clef:<question> or antibody:<id>) useful or not useful. */

@@ -31,6 +31,7 @@ import {
   formatWithdraw,
   num,
   policyRows,
+  protectionLines,
   verifyFailed,
 } from "./format.ts";
 import type {
@@ -488,6 +489,8 @@ async function policy(cmd: Extract<Command, { name: "policy" }>, ctx: Ctx): Prom
   else {
     io.stdout(formatPolicy(cmd.colony, res ?? {}, c));
     for (const g of cmd.unprotect.filter((x) => !list.includes(x))) io.stdout(c.dim(`  ${g} was not protected`));
+    // Newly protected globs reach changes already cleared to land: which were stopped, which had already landed.
+    for (const line of protectionLines(cmd.colony, res?.protection, c)) io.stdout(line);
   }
   return 0;
 }
