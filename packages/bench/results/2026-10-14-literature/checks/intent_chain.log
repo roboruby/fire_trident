@@ -1,0 +1,42 @@
+PASS  GET /api/about lists FT_INTENT_CHAIN_GATE (["FT_A2A","FT_AGENT_CALL_BUDGET","FT_BISECT","FT_CONTEST_JURY","FT_CULPRITS","FT_DELETION_GUARD","FT_FIELD_GUIDE","FT_GOAL_CONFLICT","FT_INLINE","FT_INTENT_CHAI)
+PASS  created p26-chain-on3 (201)
+PASS  p26-chain-on3: chain-a joined as agt_mv8pq44h97497b (model scripted-a)
+PASS  p26-chain-on3: A declared intent 1 (int_mv8pq4bpicxqte), not held
+PASS  p26-chain-on3: agt_mv8pq44h97497b took int_mv8pq4bpicxqte
+PASS  p26-chain-on3: its take says A declared it ({"source":"agent","by":"agt_mv8pq44h97497b","model":"scripted-a","chainDepth":0,"parentId":null,"note":"An agent declared this intent (agt_mv8pq44h97497b, model)
+PASS  p26-chain-on3: A declared intent 2 (int_mv8pq6f56gt8id) as a child of intent 1, not held
+PASS  p26-chain-on3: chain-b joined as agt_mv8pq7o9174vhm (model scripted-b)
+PASS  p26-chain-on3: agt_mv8pq7o9174vhm took int_mv8pq6f56gt8id
+PASS  p26-chain-on3: B's take says A declared intent 2, model scripted-a, chain depth 1 ({"source":"agent","by":"agt_mv8pq44h97497b","model":"scripted-a","chainDepth":1,"parentId":"int_mv8pq4bpicxqte","note":"An agent declared this intent (agt_mv8pq)
+PASS  p26-chain-on3: and its note says the words are an agent's (An agent declared this intent (agt_mv8pq44h97497b, model scripted-a), not a person; 1 agent-declared intent is in its an)
+PASS  p26-chain-on3: B declared intent 3 (int_mv8pq96hpx8obm) as a child of intent 2
+PASS  p26-chain-on3: chain-c joined as agt_mv8pqahf22r8hi (model scripted-c)
+PASS  p26-chain-on3: the declare answer says it is held (Held for a person: agent agt_mv8pq7o9174vhm (model scripted-b) declared this intent from intent int_mv8pq6f56gt8id, which agent agt_mv8pq44h97497b declared; 2 agent-declared intents are in its ancestr)
+PASS  p26-chain-on3: the report names B, intent 2 and A
+PASS  p26-chain-on3: GET /escalations lists intent 3 with kind chain ([{"id":"int_mv8pq96hpx8obm","kind":"chain"}])
+PASS  p26-chain-on3: C's take does not offer it (true)
+PASS  p26-chain-on3: a person dismissed the report (200)
+PASS  p26-chain-on3: no report waits any more
+PASS  p26-chain-on3: agt_mv8pqahf22r8hi took int_mv8pq96hpx8obm
+PASS  p26-chain-on3: C's take says B declared intent 3 at chain depth 2 ({"source":"agent","by":"agt_mv8pq7o9174vhm","model":"scripted-b","chainDepth":2,"parentId":"int_mv8pq6f56gt8id","note":"An agent declared this intent (agt_mv8pq)
+PASS  p26-chain-on3: the decide policy's intentFanout set to 2 (200, was 2)
+PASS  p26-chain-on3: A's third declaration of the hour is held by the fan-out (Held for a person: agent agt_mv8pq44h97497b (model scripted-a) declared this intent, the 3rd it declared in the last hour, and the colony lets one agent declare 2 before a person checks the rest, sinc)
+PASS  p26-chain-on3: GET /escalations lists it with kind chain ([{"id":"int_mv8pqbjvvm7bqd","kind":"chain"}])
+PASS  created p26-chain-off3 (201)
+PASS  p26-chain-off3: chain-a joined as agt_mv8pqq0bekrkwv (model scripted-a)
+PASS  p26-chain-off3: A declared intent 1 (int_mv8pqq4ittm2o5), not held
+PASS  p26-chain-off3: agt_mv8pqq0bekrkwv took int_mv8pqq4ittm2o5
+PASS  p26-chain-off3: its take says A declared it ({"source":"agent","by":"agt_mv8pqq0bekrkwv","model":"scripted-a","chainDepth":0,"parentId":null,"note":"An agent declared this intent (agt_mv8pqq0bekrkwv, model)
+PASS  p26-chain-off3: A declared intent 2 (int_mv8pqrfueqezqu) as a child of intent 1, not held
+PASS  p26-chain-off3: chain-b joined as agt_mv8pqtcpw24mar (model scripted-b)
+PASS  p26-chain-off3: agt_mv8pqtcpw24mar took int_mv8pqrfueqezqu
+PASS  p26-chain-off3: B's take says A declared intent 2, model scripted-a, chain depth 1 ({"source":"agent","by":"agt_mv8pqq0bekrkwv","model":"scripted-a","chainDepth":1,"parentId":"int_mv8pqq4ittm2o5","note":"An agent declared this intent (agt_mv8pq)
+PASS  p26-chain-off3: and its note says the words are an agent's (An agent declared this intent (agt_mv8pqq0bekrkwv, model scripted-a), not a person; 1 agent-declared intent is in its an)
+PASS  p26-chain-off3: B declared intent 3 (int_mv8pqz61ov8ak9) as a child of intent 2
+PASS  p26-chain-off3: chain-c joined as agt_mv8pr06h0jb801 (model scripted-c)
+PASS  p26-chain-off3: the declare answer says nothing of a hold
+PASS  p26-chain-off3: no report waits
+PASS  p26-chain-off3: agt_mv8pr06h0jb801 took int_mv8pqz61ov8ak9
+PASS  p26-chain-off3: C's take still says B declared intent 3 at chain depth 2 ({"source":"agent","by":"agt_mv8pqtcpw24mar","model":"scripted-b","chainDepth":2,"parentId":"int_mv8pqrfueqezqu","note":"An agent declared this intent (agt_mv8pq)
+ALL CHECKS PASSED
+exit 0

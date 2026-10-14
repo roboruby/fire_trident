@@ -16,6 +16,7 @@ import type { Directive } from "@fire_trident/core";
 import { isInboxDirective } from "../colony/direction.ts";
 import type { VirtualReads } from "./virtual.ts";
 import { cleanModelHint, stepupCheck, type ModelHint } from "../colony/stepup.ts";
+import { cleanDeclaredBy, type DeclaredBy } from "../colony/chain.ts";
 
 /**
  * The in-platform agent loop as a journaled state machine.
@@ -155,6 +156,8 @@ export interface Job {
   guide?: GuideTake;
   /** The model the take asked this attempt to write with, and why (FT_MODEL_STEPUP, colony/stepup.ts); absent: the spec's model or the agent's own. */
   modelHint?: ModelHint;
+  /** Who declared the intent, from the take (colony/chain.ts): for an agent-declared intent every prompt says so beside the why. */
+  declaredBy?: DeclaredBy;
   /** The lesson the model left with an accepted file (the first one), proposed with the change. */
   lesson?: string;
   /** Build on trunk as it is now, not the lease base: a landing notice changed files this job covers (fetch takes the tip). */
@@ -656,6 +659,9 @@ async function takeWork(deps: LoopDeps, cfg: AgentConfig): Promise<StepResult> {
   // Model step-up (FT_MODEL_STEPUP): after two returns the take asks for the stronger model class (none where it is off).
   const modelHint = cleanModelHint(res.model);
   if (modelHint) job.modelHint = modelHint;
+  // Who declared the intent (colony/chain.ts; a colony on the previous version sends none).
+  const declaredBy = cleanDeclaredBy("declaredBy" in res ? res.declaredBy : undefined);
+  if (declaredBy) job.declaredBy = declaredBy;
   await adoptGuidance(deps, cfg, job, now);
   save(deps, cfg, job);
   deps.journal.bump("taken");
@@ -1018,6 +1024,7 @@ async function writeFile(
     history: job.history ?? [],
     lastReturn: job.lastReturn,
     guide: job.guide,
+    declaredBy: job.declaredBy,
     path,
     content: original,
     siblings,
@@ -1116,7 +1123,7 @@ async function modelEdit(
   if (original !== null && original.length > MAX_MODEL_CHARS) {
     return { ok: false, reason: `${path} is too large to rewrite with a model (${original.length} characters)` };
   }
-  const first = buildEditMessages({ intent: job.intent, directives: job.directives ?? [], antibodies: job.antibodies ?? [], history: job.history ?? [], lastReturn: job.lastReturn, guide: job.guide, rule: job.rule, path, content: original, violations });
+  const first = buildEditMessages({ intent: job.intent, directives: job.directives ?? [], antibodies: job.antibodies ?? [], history: job.history ?? [], lastReturn: job.lastReturn, guide: job.guide, declaredBy: job.declaredBy, rule: job.rule, path, content: original, violations });
   const maxTokens = maxTokensFor(original);
   let messages = first;
   let problem = "";
@@ -1194,7 +1201,7 @@ async function specifierEdit(
   const facts = await tree.settle(() => specifierFacts(rule, path, original, tree));
   if (facts.length === 0) return { ok: true, content: original };
   const first = await tree.settle(() =>
-    buildSpecifierMessages({ intent: job.intent, directives: job.directives ?? [], antibodies: job.antibodies ?? [], lastReturn: job.lastReturn, guide: job.guide, rule, path, content: original, facts, tree }),
+    buildSpecifierMessages({ intent: job.intent, directives: job.directives ?? [], antibodies: job.antibodies ?? [], lastReturn: job.lastReturn, guide: job.guide, declaredBy: job.declaredBy, rule, path, content: original, facts, tree }),
   );
   let messages = first;
   let problems: string[] = [];

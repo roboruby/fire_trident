@@ -4,6 +4,7 @@ import type { Env } from "../env.ts";
 import { bindingReader, contentsReader, textOf, type BlobReader } from "../colony/innate.ts";
 import type { WhyAuthor } from "./danger.ts";
 import { fileDiff, type FileDiff } from "./diff.ts";
+import type { JuryMember } from "./jury.ts";
 import type { CallLimiter } from "./limiter.ts";
 import { modelFamily } from "./policy.ts";
 import { isThrottled, modelText, requestOptions, withTimeout, type AiRunner } from "./reflex.ts";
@@ -38,11 +39,11 @@ const DANGER_CHECK = "danger patterns";
 const JUDGE_FILE_CHARS = 24_000;
 const JUDGE_SIDE_CHARS = 30_000;
 const JUDGE_FILES = 20;
-/** How long one pair may wait for judge slots and answers, and how long one call may take. */
-const JUDGE_DEADLINE_MS = 90_000;
-const JUDGE_TIMEOUT_MS = 45_000;
+/** How long one pair may wait for judge slots and answers, and how long one call may take (the jury keeps the same bounds). */
+export const JUDGE_DEADLINE_MS = 90_000;
+export const JUDGE_TIMEOUT_MS = 45_000;
 /** Throttled attempts per model before the next model is tried. */
-const JUDGE_ATTEMPTS = 3;
+export const JUDGE_ATTEMPTS = 3;
 /** Longest reason kept for a loser, and for the contest as a whole. */
 const WHY_CHARS = 300;
 const REASON_CHARS = 600;
@@ -183,6 +184,8 @@ export interface PairVerdict {
   model?: string;
   /** Model calls made. */
   calls: number;
+  /** The jury's members and how each voted, when a jury answered instead of one judge (FT_CONTEST_JURY, decide/jury.ts). */
+  jury?: JuryMember[];
 }
 
 /** Compares two candidates (see pairJudge). */

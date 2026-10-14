@@ -290,7 +290,7 @@ const EVENT_TYPES: ReadonlySet<string> = new Set([
   "bisect",
 ]);
 const AGENT_STATES: ReadonlySet<string> = new Set<AgentState>(["idle", "working", "proposing", "waiting", "dead"]);
-const ESCALATION_KINDS: ReadonlySet<string> = new Set<EscalationKind>(["broken-test", "contradictory-spec", "impossible", "other"]);
+const ESCALATION_KINDS: ReadonlySet<string> = new Set<EscalationKind>(["broken-test", "contradictory-spec", "impossible", "other", "chain"]);
 const ESCALATION_DECISIONS: ReadonlySet<string> = new Set(["amend", "withdraw", "dismiss"]);
 /** Returns that change direction (a withdrawal, a revision, a contest another attempt won) are not the work going wrong. */
 const REDIRECT = /^(withdrawn|intent revised|superseded)\b/i;

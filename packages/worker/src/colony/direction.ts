@@ -18,6 +18,7 @@ import type {
   RedirectOutcome,
 } from "@fire_trident/core";
 import { noteAcceptance } from "../decide/quotes.ts";
+import { CHAIN_KIND } from "./chain.ts";
 
 /**
  * Changing direction: intent revisions, withdrawals, retracted rules, human directives, and agents'
@@ -467,7 +468,8 @@ export function reportText(x: unknown, max = MAX_REPORT_CHARS): string {
 export function parseEscalation(text: string | null | undefined): IntentEscalation | null {
   const o = parse<Record<string, unknown> | null>(text, null);
   if (!o || typeof o !== "object" || Array.isArray(o)) return null;
-  const kind = escalationKind(o.kind) ?? "other";
+  // The colony's own chain hold (colony/chain.ts) is kept as a report too; its kind is not one an agent can report.
+  const kind = escalationKind(o.kind) ?? (o.kind === CHAIN_KIND ? CHAIN_KIND : "other");
   if (typeof o.report !== "string" || typeof o.by !== "string" || typeof o.at !== "number") return null;
   const out: IntentEscalation = { kind, report: o.report, by: o.by, at: o.at };
   const r = o.resolved as Record<string, unknown> | undefined;

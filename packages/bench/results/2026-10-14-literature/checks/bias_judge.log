@@ -1,0 +1,33 @@
+contest check cbmv8p3yk5 on https://p26-firetrident.mattsolt.workers.dev: 20 contests in p26-contest-judge, review off, flags on: FT_A2A, FT_AGENT_CALL_BUDGET, FT_BISECT, FT_CONTEST_JURY, FT_CULPRITS, FT_DELETION_GUARD, FT_FIELD_GUIDE, FT_GOAL_CONFLICT, FT_INLINE, FT_MEGAFILE, FT_MERGE_INSERTIONS, FT_MODEL_STEPUP, FT_PUBLIC_GIT, FT_PUBLIC_MCP, FT_QUOTED_ACCEPTANCE, FT_RESOLVER, FT_TEXT_MERGE, FT_TRUNK_TESTS, FT_TWINS, FT_VIRTUAL_CHECKOUT
+PASS  p26-contest-judge: colony ready (201)
+PASS  p26-contest-judge: review off for these contests
+judge models: ["@cf/google/gemma-4-26b-a4b-it","@cf/openai/gpt-oss-120b","@cf/zai-org/glm-4.7-flash"]; jury models: ["@cf/google/gemma-4-26b-a4b-it","@cf/openai/gpt-oss-20b","@cf/zai-org/glm-4.7-flash"]
+# 1  int_mv8p4ay32o7s5u  won by the arrow version (proposed first); judge: saw no clear difference, tie broken by the smaller diff: 1 lines against 3; settled in 2.0 s (events)
+# 2  int_mv8p4fwihd6id5  won by the arrow version (proposed second); judge: saw no clear difference, tie broken by the smaller diff: 1 lines against 3; settled in 1.8 s (events)
+# 3  int_mv8p4kfnh8ocfj  won by the arrow version (proposed first); judge: preferred the change shown first in both orders, tie broken by the smaller diff: 1 lines against 3; settled in 1.9 s (events)
+# 4  int_mv8p4qacxycs0t  won by the arrow version (proposed second); judge: saw no clear difference, tie broken by the smaller diff: 1 lines against 3; settled in 1.8 s (events)
+# 5  int_mv8p4zkrb8ovgh  won by the arrow version (proposed first); judge: saw no clear difference, tie broken by the smaller diff: 1 lines against 3; settled in 2.4 s (events)
+# 6  int_mv8p55l8bqrqje  won by the arrow version (proposed second); judge: saw no clear difference, tie broken by the smaller diff: 1 lines against 3; settled in 1.8 s (events)
+# 7  int_mv8p5bwftpk7zy  won by the arrow version (proposed first); judge: saw no clear difference, tie broken by the smaller diff: 1 lines against 3; settled in 1.5 s (events)
+# 8  int_mv8p5hr26aglfd  won by the arrow version (proposed second); judge: saw no clear difference, tie broken by the smaller diff: 1 lines against 3; settled in 2.1 s (events)
+# 9  int_mv8p5wfraoqth0  won by the arrow version (proposed first); judge: saw no clear difference, tie broken by the smaller diff: 1 lines against 3; settled in 1.9 s (events)
+#10  int_mv8p61c08j41pc  won by the arrow version (proposed second); judge: saw no clear difference, tie broken by the smaller diff: 1 lines against 3; settled in 1.6 s (events)
+#11  int_mv8p676up87b42  won by the arrow version (proposed first); judge: saw no clear difference, tie broken by the smaller diff: 1 lines against 3; settled in 1.3 s (events)
+#12  int_mv8p6actigsyho  won by the arrow version (proposed second); judge: saw no clear difference, tie broken by the smaller diff: 1 lines against 3; settled in 1.0 s (events)
+#13  int_mv8p6dveux53s0  won by the arrow version (proposed first); judge: saw no clear difference, tie broken by the smaller diff: 1 lines against 3; settled in 1.1 s (events)
+#14  int_mv8p6geuekyjd1  won by the arrow version (proposed second); judge: saw no clear difference, tie broken by the smaller diff: 1 lines against 3; settled in 2.0 s (events)
+#15  int_mv8p6jy2qpjuxs  won by the arrow version (proposed first); judge: saw no clear difference, tie broken by the smaller diff: 1 lines against 3; settled in 2.0 s (events)
+#16  int_mv8p6od6b1y9j0  won by the arrow version (proposed second); judge: saw no clear difference, tie broken by the smaller diff: 1 lines against 3; settled in 1.4 s (events)
+#17  int_mv8p6tbf4tzftt  won by the arrow version (proposed first); judge: saw no clear difference, tie broken by the smaller diff: 1 lines against 3; settled in 2.0 s (events)
+#18  int_mv8p70u0uqskd6  won by the arrow version (proposed second); judge: preferred the change shown first in both orders, tie broken by the smaller diff: 1 lines against 3; settled in 2.1 s (events)
+#19  int_mv8p75ikksme1x  won by the arrow version (proposed first); judge: saw no clear difference, tie broken by the smaller diff: 1 lines against 3; settled in 2.0 s (events)
+#20  int_mv8p7bnkryddpr  won by the arrow version (proposed second); judge: saw no clear difference, tie broken by the smaller diff: 1 lines against 3; settled in 0.9 s (events)
+
+settled 20 of 20; time to settle: median 1.9 s, max 2.4 s, from the later change ready to the decision
+judge: 20 contests; orders agreed 0 (0%); disagreed 2 (10%: shown first 2, shown second 0); no clear difference 18
+judge ties (the tie-break decided): 20 of 20 (100%)
+winners: arrow 20, function 0; proposed first 10, proposed second 10
+judge layer: 40 calls, 24152 in / 1283 out tokens, $0.0028 ($0.0001 a contest)
+PASS  every contest settled (20 of 20)
+ALL CHECKS PASSED
+exit 0

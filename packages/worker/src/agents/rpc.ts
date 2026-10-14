@@ -26,6 +26,7 @@ import type { Env } from "../env.ts";
 import type { LandedWhy } from "./landed.ts";
 import type { ReviewPreview } from "./preview.ts";
 import type { ModelHint } from "../colony/stepup.ts";
+import type { DeclaredBy } from "../colony/chain.ts";
 
 /**
  * The RPC surfaces the agents and the MCP server call, typed from the contracts in
@@ -39,10 +40,11 @@ import type { ModelHint } from "../colony/stepup.ts";
  * is what review will ask of the change (agents/preview.ts); `context` the latest landings that
  * changed the intent's files, with their intents' whys (agents/landed.ts); `guide`, where the field
  * guide is on, the newest lessons agents recorded (core/guide.ts); `model`, where the model step-up is
- * on, the stronger model class for this attempt and why (colony/stepup.ts). A colony on the previous
+ * on, the stronger model class for this attempt and why (colony/stepup.ts); `declaredBy`, who declared the
+ * intent (colony/chain.ts): its source, the declarer and its model, and the chain depth. A colony on the previous
  * version sends none of them.
  */
-export type TakeResult = { intent: Intent; lease: WorkspaceLease; rule?: Rule; review?: ReviewPreview; context?: LandedWhy[]; guide?: GuideTake; model?: ModelHint } | { wait: true; retryInMs: number; reason: string };
+export type TakeResult = { intent: Intent; lease: WorkspaceLease; rule?: Rule; review?: ReviewPreview; context?: LandedWhy[]; guide?: GuideTake; model?: ModelHint; declaredBy?: DeclaredBy } | { wait: true; retryInMs: number; reason: string };
 
 /** Input of ColonyDO.propose. */
 export type ProposeInput = Omit<Proposal, "id" | "status" | "createdAt" | "evidence"> & {

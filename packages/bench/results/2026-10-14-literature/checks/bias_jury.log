@@ -1,0 +1,34 @@
+contest check cbmv8p7ikn on https://p26-firetrident.mattsolt.workers.dev: 20 contests in p26-contest-jury, review off, flags on: FT_A2A, FT_AGENT_CALL_BUDGET, FT_BISECT, FT_CONTEST_JURY, FT_CULPRITS, FT_DELETION_GUARD, FT_FIELD_GUIDE, FT_GOAL_CONFLICT, FT_INLINE, FT_MEGAFILE, FT_MERGE_INSERTIONS, FT_MODEL_STEPUP, FT_PUBLIC_GIT, FT_PUBLIC_MCP, FT_QUOTED_ACCEPTANCE, FT_RESOLVER, FT_TEXT_MERGE, FT_TRUNK_TESTS, FT_TWINS, FT_VIRTUAL_CHECKOUT
+PASS  p26-contest-jury: colony ready (201)
+PASS  p26-contest-jury: review off for these contests
+judge models: ["@cf/google/gemma-4-26b-a4b-it","@cf/openai/gpt-oss-120b","@cf/zai-org/glm-4.7-flash"]; jury models: ["@cf/google/gemma-4-26b-a4b-it","@cf/openai/gpt-oss-20b","@cf/zai-org/glm-4.7-flash"]
+# 1  int_mv8p7t6th40i5i  won by the func version (proposed second); jury of 3: 1 consistent votes decided; settled in 22.7 s (events)
+# 2  int_mv8p8e518ekdm6  won by the arrow version (proposed second); jury of 3: no consistent vote (1 positional), tie broken by the smaller diff: 1 lines against 3; settled in 22.3 s (events)
+# 3  int_mv8p8z1hm67rcq  won by the arrow version (proposed first); jury of 3: no consistent vote (2 positional), tie broken by the smaller diff: 1 lines against 3; settled in 5.1 s (events)
+# 4  int_mv8p97sjwz1efv  won by the arrow version (proposed second); jury of 3: no consistent vote (1 positional), tie broken by the smaller diff: 1 lines against 3; settled in 2.1 s (events)
+# 5  int_mv8p9i6zj7f08o  won by the arrow version (proposed first); jury of 3: 1 consistent votes decided; settled in 2.5 s (events)
+# 6  int_mv8p9s87hld3c2  won by the arrow version (proposed second); jury of 3: 1 consistent votes decided; settled in 2.6 s (events)
+# 7  int_mv8pa03prfp4yn  won by the arrow version (proposed first); jury of 3: no consistent vote (1 positional), tie broken by the smaller diff: 1 lines against 3; settled in 9.8 s (events)
+# 8  int_mv8pabp8deojuv  won by the arrow version (proposed second); jury of 3: no consistent vote (1 positional), tie broken by the smaller diff: 1 lines against 3; settled in 3.7 s (events)
+# 9  int_mv8pah6wzt0yna  won by the arrow version (proposed first); jury of 3: no consistent vote (2 positional), tie broken by the smaller diff: 1 lines against 3; settled in 2.4 s (events)
+#10  int_mv8palkjwu9i5s  won by the arrow version (proposed second); jury of 3: no consistent vote (1 positional), tie broken by the smaller diff: 1 lines against 3; settled in 1.7 s (events)
+#11  int_mv8pas9bknpyuu  won by the arrow version (proposed first); jury of 3: no consistent vote (1 positional), tie broken by the smaller diff: 1 lines against 3; settled in 5.1 s (events)
+#12  int_mv8pay5xvgkleo  won by the arrow version (proposed second); jury of 3: no consistent vote (1 positional), tie broken by the smaller diff: 1 lines against 3; settled in 7.3 s (events)
+#13  int_mv8pb7517nd0h9  won by the arrow version (proposed first); jury of 3: no consistent vote (1 positional), tie broken by the smaller diff: 1 lines against 3; settled in 1.6 s (events)
+#14  int_mv8pbeeclga6wp  won by the arrow version (proposed second); jury of 3: no consistent vote (1 positional), tie broken by the smaller diff: 1 lines against 3; settled in 19.1 s (events)
+#15  int_mv8pbzpro8koo5  won by the arrow version (proposed first); jury of 3: no consistent vote (1 positional), tie broken by the smaller diff: 1 lines against 3; settled in 3.0 s (events)
+#16  int_mv8pc591t8yd0m  won by the arrow version (proposed second); jury of 3: 1 consistent votes decided (1 positional); settled in 6.0 s (events)
+#17  int_mv8pcea43klabs  won by the arrow version (proposed first); jury of 3: 1 consistent votes decided (1 late); settled in 45.0 s (events)
+#18  int_mv8pdgyc0bxn18  won by the arrow version (proposed second); jury of 3: no consistent vote (2 positional), tie broken by the smaller diff: 1 lines against 3; settled in 2.2 s (events)
+#19  int_mv8pdoshzohmy9  won by the arrow version (proposed first); jury of 3: 1 consistent votes decided (1 late); settled in 45.0 s (events)
+#20  int_mv8peswh0grcdw  won by the func version (proposed first); jury of 3: 1 consistent votes decided; settled in 2.6 s (events)
+
+settled 20 of 20; time to settle: median 4.4 s, max 45.0 s, from the later change ready to the decision
+jury: 20 contests; a majority decided 7 (35%); ties (the tie-break decided) 13 (65%)
+jury members: 60 seated; inconsistent 19 (positional 17, late 2, unusable 0)
+winners: arrow 18, function 2; proposed first 10, proposed second 10
+judge layer: 120 calls, 68646 in / 13006 out tokens, $0.0124 ($0.0006 a contest)
+jury counters: majority 7, ties 13, consistent votes 39, inconsistent 21
+PASS  every contest settled (20 of 20)
+ALL CHECKS PASSED
+exit 0

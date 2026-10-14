@@ -16,6 +16,7 @@ import type { ImpactReport } from "@fire_trident/core";
 import { cleanModelHint, stepupAdvice, type ModelHint } from "../colony/stepup.ts";
 import { movedView } from "../colony/movedby.ts";
 import { isTwinAnswer, type DeclareAnswer } from "../colony/twins.ts";
+import { cleanDeclaredBy, heldNote, type DeclaredBy } from "../colony/chain.ts";
 
 /** What one MCP session remembers (stored in the session's Durable Object). */
 export interface Session {
@@ -36,6 +37,8 @@ export interface Session {
   guide?: GuideTake;
   /** The take's model hint (FT_MODEL_STEPUP): after two returns, advice to use a stronger model for this attempt. */
   model?: ModelHint;
+  /** Who declared the held intent, as take returned it (colony/chain.ts): its source, the declarer and its model, the chain depth. */
+  declaredBy?: DeclaredBy;
   /** Read set of the current intent: path -> blob seen at the lease base (null = absent). */
   reads: Record<Path, Sha | null>;
   proposals: Array<{ id: Id; intentId: Id; headSha: Sha; at: number }>;
@@ -527,6 +530,7 @@ export class FireTridentTools {
         priority: intent.priority,
         ruleId: intent.ruleId ?? null,
         parentId: intent.parentId ?? null,
+        ...(s.declaredBy ? { declaredBy: s.declaredBy } : {}),
       },
       rule: ruleBrief(s.rule),
       ...(review ? { review } : {}),
@@ -573,6 +577,8 @@ export class FireTridentTools {
     const guide = cleanGuideTake("guide" in got ? got.guide : undefined);
     // The model step-up's hint (FT_MODEL_STEPUP; none where it is off).
     const model = cleanModelHint(got.model);
+    // Who declared the intent (colony/chain.ts; a colony on the previous version sends none).
+    const declaredBy = cleanDeclaredBy("declaredBy" in got ? got.declaredBy : undefined);
     const next = await this.update((x) => {
       if (x.intent?.id !== got.intent.id) x.reads = {};
       x.intent = got.intent;
@@ -588,6 +594,8 @@ export class FireTridentTools {
       else delete x.guide;
       if (model) x.model = model;
       else delete x.model;
+      if (declaredBy) x.declaredBy = declaredBy;
+      else delete x.declaredBy;
       x.lastBeat = now; // a take deposits fresh claims
     });
     return this.leaseView(next as Session & { intent: Intent; lease: WorkspaceLease });
@@ -662,7 +670,9 @@ export class FireTridentTools {
       if (x.colonyId !== s.colonyId || x.agentId !== s.agentId) return; // the session joined as another agent meanwhile
       x.declared = [...recentDeclares(x.declared, now), { fingerprint, at: now, intentId: intent.id, status: intent.status }].slice(-MAX_DECLARED);
     });
-    return { intent };
+    // The chain gate (FT_INTENT_CHAIN_GATE, colony/chain.ts): a held intent waits for a person, and the answer says so.
+    const held = heldNote(answer.intent);
+    return held ? { intent, held } : { intent };
   }
 
   /** A trunk file at the lease base; records (path, blob) in this session's read set. */
