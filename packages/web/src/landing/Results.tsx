@@ -4,7 +4,7 @@ import { parseSpend } from "../spend.ts";
 import { metricKey } from "../store.ts";
 import { fmtDuration, fmtInt, prettyUrl } from "../format.ts";
 import { colonyHref } from "../route.ts";
-import { loadGoalsCard, loadScaleCard, specBuild } from "./showcase.ts";
+import { loadFirstRedCard, loadGoalsCard, loadScaleCard, specBuild } from "./showcase.ts";
 
 /**
  * The results strip: what the production showcase colonies did, read from their own API (the
@@ -12,7 +12,7 @@ import { loadGoalsCard, loadScaleCard, specBuild } from "./showcase.ts";
  * what the API cannot know (a test run from a plain clone, the load generator's timing) is written here, as measured.
  */
 
-type Kind = "rule" | "spec" | "mcp" | "certify" | "scale" | "goals";
+type Kind = "rule" | "spec" | "mcp" | "certify" | "scale" | "goals" | "firstred";
 
 /** A showcase run: its colony, its kind of card, a fact measured outside the colony, and where its replay starts (`t=<s>&speed=<n>`, for a record that opens on setup). */
 interface Showcase {
@@ -27,6 +27,7 @@ const SHOWCASE: ReadonlyArray<Showcase> = [
   { id: "hono", kind: "rule" },
   { id: "shortlinks", kind: "spec", measured: "60/60 tests pass from a plain clone" },
   { id: "shortlinks-review", kind: "certify", measured: "67/67 from a plain clone; acceptance 7/7" },
+  { id: "first-red", kind: "firstred" },
   { id: "byo-demo", kind: "mcp" },
   { id: "scale", kind: "scale", measured: "2,730 changes a minute over the run, median 9.6 s to land (the load generator's timing)", replay: "t=32&speed=4" },
   { id: "order-backend", kind: "goals" },
@@ -37,7 +38,7 @@ interface Result {
   kind: Kind;
   name: string;
   source?: string;
-  /** Where a colony with no source came from (scale, goals); without either the card says it started from a spec. */
+  /** Where a colony with no source came from (scale, goals, firstred); without either the card says it started from a spec. */
   origin?: string;
   /** Where the replay link starts (Showcase.replay). */
   replay?: string;
@@ -138,6 +139,14 @@ async function loadResult(s: Showcase, listing: Json[], signal: AbortSignal): Pr
     out.lede = card.lede;
     out.origin = card.origin;
     details.push(...card.details);
+  } else if (s.kind === "firstred") {
+    // The first red commit on the live service (showcase.ts): the landing that broke the tests, found by running them, and the repair.
+    const card = await loadFirstRedCard(s.id, (url) => getJson(url, signal));
+    if (!card) return null;
+    out.headline = card.headline;
+    out.lede = card.lede;
+    out.origin = card.origin;
+    details.push(...card.details);
   } else {
     const [list, snap] = await Promise.all([getJson(`${base}/agents?all=1&journal=0`, signal).catch(() => null), getJson(base, signal).catch(() => null)]);
     const all = isObj(list) && Array.isArray(list.agents) ? (list.agents as Json[]) : [];
@@ -188,11 +197,11 @@ function Card({ r }: { r: Result }) {
   );
 }
 
-/** The showcase, or ?results=id:kind,id:kind (rule, spec, mcp, certify, scale or goals) for a deployment without the production colonies. */
+/** The showcase, or ?results=id:kind,id:kind (rule, spec, mcp, certify, scale, goals or firstred) for a deployment without the production colonies. */
 function showcase(): ReadonlyArray<Showcase> {
   const raw = new URLSearchParams(location.search).get("results");
   if (!raw) return SHOWCASE;
-  const kinds: ReadonlySet<string> = new Set(["rule", "spec", "mcp", "certify", "scale", "goals"]);
+  const kinds: ReadonlySet<string> = new Set(["rule", "spec", "mcp", "certify", "scale", "goals", "firstred"]);
   return raw
     .split(",")
     .map((x) => x.trim().split(":"))

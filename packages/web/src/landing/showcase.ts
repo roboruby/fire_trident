@@ -1,10 +1,12 @@
-import { fmtInt } from "../format.ts";
+import { fmtDuration, fmtInt, fmtMs, shortSha } from "../format.ts";
 
 /**
- * Two cards of the results strip (Results.tsx) about runs on the live service: `scale`, thousands of synthetic agents in
- * one repository, and `goals`, agents whose goals disagree, where the colony held the changes that would undo another's
- * landing for a person. Each reads only routes that answer without a token (metrics, the event record, the colony
- * listing, one proposal, one intent) and has nothing to show (null) until its colony has run.
+ * Cards of the results strip (Results.tsx) about runs on the live service: `scale`, thousands of synthetic agents in
+ * one repository; `goals`, agents whose goals disagree, where the colony held the changes that would undo another's
+ * landing for a person; and `firstred`, a red certification whose first red search named the landing that broke the
+ * tests, and the repair after it. Each reads only routes that answer without a token (metrics, the event record, the
+ * colony listing, one proposal, one intent, the certification results, the snapshot) and has nothing to show (null)
+ * until its colony has run.
  */
 
 /** Reads JSON from the API; rejects when the read fails (injected, so tests answer it). */
@@ -271,4 +273,86 @@ export async function loadGoalsCard(id: string, get: GetJson): Promise<ShowcaseC
     undone = { landingId, intentId, title: title || intentId, agentId: writer?.agentId || null };
   }
   return goalsCard({ held, undone });
+}
+
+// ---------------------------------------------------------------------------
+// firstred: the landing that broke the tests, found by running them, and the repair
+// ---------------------------------------------------------------------------
+
+/** Where the first red colony came from: the demo's scripted agents (scripts/bisect.ts --demo), which call no model. */
+export const FIRSTRED_ORIGIN = "scripted agents, no models";
+
+/** A test's own name: the last part of "suite > test". */
+function leafName(name: string): string {
+  const parts = name.split(" > ");
+  return parts[parts.length - 1] ?? name;
+}
+
+/** "a, b" for up to `max` items, "a, b +2" past it. */
+function listed(items: readonly string[], max: number): string {
+  return items.length > max ? `${items.slice(0, max).join(", ")} +${items.length - max}` : items.join(", ");
+}
+
+/**
+ * The first red card, from the colony's certification results (GET /certifications: newest first, a red result
+ * carrying the first red search's answer once the search ends) and its snapshot (only for the status of the repair
+ * intent the red result declared). It speaks of the newest red result whose search found the commit: the intent of the
+ * landing that broke the tests, the failing test, the search's test runs and time, and the first green result after it.
+ * Null when no search found a commit (none ran, or each was inconclusive).
+ */
+export function firstRedCard(certs: unknown, snapshot: unknown): ShowcaseCard | null {
+  const results = isObj(certs) && Array.isArray(certs.results) ? certs.results.filter(isObj) : [];
+  const red = results.find((r) => r.status === "red" && isObj(r.firstRed) && r.firstRed.status === "found");
+  const f = red && isObj(red.firstRed) ? red.firstRed : null;
+  const probes = num(f?.probes);
+  const sha = str(f?.trunkSha);
+  if (!red || !f || probes === null || probes < 1 || !sha) return null;
+  const commit = shortSha(sha);
+
+  // The proposals that changed what the failing tests load come first; their intent is the one that broke them.
+  const proposals = Array.isArray(f.proposals) ? f.proposals.filter(isObj) : [];
+  const intents = Array.isArray(f.intents) ? f.intents.filter(isObj) : [];
+  const lead = proposals[0];
+  const title = str(lead?.title) || str(intents.find((i) => i.id === lead?.intentId)?.title) || str(intents[0]?.title);
+  const failing = Array.isArray(red.failing) ? red.failing.filter(isObj) : [];
+  const names = [...new Set(failing.map((t) => leafName(str(t.name))).filter((n) => n !== ""))];
+  const broke = names.length === 0 ? "the tests" : names.length === 1 ? `the test “${names[0]}”` : `“${names[0]}” and ${words(names.length - 1)} more ${names.length === 2 ? "test" : "tests"}`;
+  const landings = num(f.landings);
+  const lede =
+    landings !== null && landings > 1
+      ? `of the ${words(landings)} landings since green, the one ${title ? `for “${title}”` : `at commit ${commit}`} broke ${broke}`
+      : `the landing ${title ? `for “${title}”` : `at commit ${commit}`} broke ${broke}`;
+
+  const details: string[] = [];
+  const paths = [...new Set(proposals.flatMap((p) => (Array.isArray(p.paths) ? p.paths : []).filter((x): x is string => typeof x === "string" && x !== "")))].sort();
+  const landingId = str(f.landingId);
+  details.push(paths.length > 0 ? `commit ${commit} changed ${listed(paths, 2)}` : `commit ${commit}${landingId ? `, landing ${landingId}` : ""}`);
+  const ms = num(f.ms);
+  details.push(`found${ms !== null ? ` in ${fmtMs(ms)}` : ""} by running the failing ${names.length === 1 ? "test" : "tests"} on earlier commits, not by a model`);
+
+  // The repair: the first green result after the red one (results come newest first), and how long trunk was red.
+  const redStart = num(red.startedAt);
+  const greens = redStart === null ? [] : results.filter((r) => r.status === "green" && (num(r.startedAt) ?? Number.NEGATIVE_INFINITY) > redStart);
+  const green = greens[greens.length - 1];
+  const repairId = str(red.repairIntentId);
+  const repairs = isObj(snapshot) && Array.isArray(snapshot.intents) ? snapshot.intents.filter(isObj) : [];
+  const repaired = repairId !== "" && repairs.some((i) => i.id === repairId && i.status === "landed");
+  if (green) {
+    const from = num(red.finishedAt) ?? redStart;
+    const to = num(green.finishedAt) ?? num(green.startedAt);
+    const after = from !== null && to !== null && to >= from ? ` ${fmtDuration(to - from)} after the red result` : "";
+    details.push(`${repaired ? "its repair intent landed; " : ""}trunk was certified green again${after}`);
+  } else if (repairId) {
+    details.push("the colony declared a repair intent; trunk is not green again yet");
+  }
+  return { headline: `Found the breaking landing in ${fmtInt(probes)} test ${probes === 1 ? "run" : "runs"}`, lede, details, origin: FIRSTRED_ORIGIN };
+}
+
+/**
+ * The first red card from routes that answer without a token: the colony's certification results and its snapshot.
+ * Null when the colony does not answer or no first red search found a commit, so it can be listed before its colony runs.
+ */
+export async function loadFirstRedCard(id: string, get: GetJson): Promise<ShowcaseCard | null> {
+  const [certs, snapshot] = await Promise.all([get(`${api(id)}/certifications?limit=50`).catch(() => null), get(api(id)).catch(() => null)]);
+  return firstRedCard(certs, snapshot);
 }
