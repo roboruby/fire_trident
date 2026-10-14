@@ -2569,6 +2569,102 @@ a.build-tag:hover {
   background: #0c1119;
 }
 
+/* Earned autonomy per region (AutonomyStrip.tsx), under the review head. */
+.autonomy {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #0c1119;
+}
+
+.autonomy-title {
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.autonomy-sub,
+.autonomy-off {
+  margin-top: 6px;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--text-3);
+}
+
+.autonomy-off {
+  color: var(--need);
+}
+
+.autonomy-list {
+  display: grid;
+  gap: 7px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.autonomy-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 8px;
+  min-width: 0;
+}
+
+.autonomy-region {
+  min-width: 0;
+  font-size: 11.5px;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.autonomy-badge {
+  flex: none;
+  padding: 0 6px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-size: 9.5px;
+  font-weight: 800;
+  line-height: 15px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-variant-numeric: tabular-nums;
+}
+
+.autonomy-badge.is-earned {
+  color: var(--trail);
+}
+
+.autonomy-badge.is-progress {
+  color: var(--text-3);
+}
+
+.autonomy-badge.is-revoked {
+  color: var(--danger);
+}
+
+.autonomy-text {
+  flex-basis: 100%;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-2);
+}
+
+.autonomy-more {
+  margin-top: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent-2);
+  font-size: 11.5px;
+  cursor: pointer;
+  appearance: none;
+}
+
+.autonomy-more:hover {
+  text-decoration: underline;
+}
+
 /* ------------------------------------------------------------ why, again */
 
 .lin.is-newest {

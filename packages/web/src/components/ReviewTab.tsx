@@ -13,6 +13,7 @@ import { TokenForm } from "./TokenForm.tsx";
 import { VaccineMeter } from "./VaccineMeter.tsx";
 import { MovedByList } from "./MovedBy.tsx";
 import { cleanMoved } from "../moved.ts";
+import { AutonomyStrip } from "./AutonomyStrip.tsx";
 
 const NONE: readonly string[] = [];
 
@@ -198,6 +199,8 @@ export function ReviewTab({ store, backend, director = false }: { store: ColonyS
             <VaccineMeter v={vaccine} compact />
           </div>
         ) : null}
+        {/* Earned autonomy per region (AutonomyStrip.tsx): where review relaxed, and what took it back. */}
+        <AutonomyStrip backend={backend} refresh={reviewVersion} />
       </div>
       {toast ? <div className="toast">{toast}</div> : null}
       {error ? <div className="alert">{error}</div> : null}

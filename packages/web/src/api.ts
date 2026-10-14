@@ -38,6 +38,8 @@ export interface Backend {
   verifyNote?(landingId: string): Promise<NoteCheck | null>;
   /** The change a landing made to one file (verified.ts; the server shows it for public colonies only); absent in the simulator. */
   landingDiff?(landingId: string, path: string): Promise<LandingDiff>;
+  /** The colony's immune report, read without a token (autonomy.ts reads earned autonomy from it); absent in the simulator and replays. */
+  immune?(): Promise<unknown>;
 }
 
 /** An HTTP failure with its status code. */
@@ -340,6 +342,11 @@ export class HttpBackend implements Backend {
 
   landingDiff(landingId: string, path: string): Promise<LandingDiff> {
     return fetchLandingDiff(this.colonyId, landingId, path);
+  }
+
+  /** GET /immune: a public read, so no token goes with it. */
+  immune(): Promise<unknown> {
+    return this.getJson<unknown>("/immune");
   }
 
   async review(): Promise<Proposal[]> {

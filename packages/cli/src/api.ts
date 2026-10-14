@@ -20,6 +20,7 @@ import type { Command } from "./args.ts";
  *   POST /api/colonies/:id/agents/:aid/stop   { reason? }  -> { ok, stopped, failed, retired }
  *   POST /api/colonies/:id/swarm/stop   { reason? }  -> { ok, considered, stopped, failed, retired }
  *   POST /api/colonies/:id/vaccinate    { count }
+ *   GET  /api/colonies/:id/immune       { enabled, policy, antibodies, detectors, autonomy: [{ region, approved, earned, revokedAt, reason, lastAt? }], alerts } (public)
  *   GET  /api/colonies/:id/certifications, POST .../certify, POST .../certify/policy { enabled }
  *   GET  /api/colonies/:id/decide/policy, POST .../decide/policy { protectedPaths?, commentProof? } -> the decide policy
  *   DELETE /api/colonies/:id            -> { found, ok, agents, repos, objects, unregistered }
@@ -175,6 +176,8 @@ export function planRequest(cmd: Command, by: string): ApiRequest | null {
       return { method: "DELETE", path: colonyPath(cmd.colony) };
     case "vaccinate":
       return { method: "POST", path: colonyPath(cmd.colony, "/vaccinate"), body: { count: cmd.count } };
+    case "immune":
+      return { method: "GET", path: colonyPath(cmd.colony, "/immune") };
     case "certify":
       if (cmd.action === "now") return { method: "POST", path: colonyPath(cmd.colony, "/certify") };
       if (cmd.action === "on" || cmd.action === "off") return { method: "POST", path: colonyPath(cmd.colony, "/certify/policy"), body: { enabled: cmd.action === "on" } };

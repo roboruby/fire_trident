@@ -261,17 +261,28 @@ export class DecideStore {
       .one().n;
   }
 
-  /** Regions with their approved landings and last revocation. */
-  autonomyTable(threshold: number): Array<{ region: string; approved: number; earned: boolean; revokedAt: number | null; reason: string | null }> {
+  /**
+   * Regions with their approved landings and last revocation, and when each last moved (its latest decision, a
+   * person's included, or its revocation), so readers can list the latest first.
+   */
+  autonomyTable(threshold: number): Array<{ region: string; approved: number; earned: boolean; revokedAt: number | null; reason: string | null; lastAt: number | null }> {
     const regions = this.sql
       .exec<{ region: string }>("SELECT DISTINCT region FROM decide_outcomes WHERE vaccine = 0 UNION SELECT region FROM autonomy_revocations")
       .toArray()
       .map((r) => r.region);
+    // Every region's latest decision in one read (vaccines left out, as above).
+    const latest = new Map(
+      this.sql
+        .exec<{ region: string; at: number | null }>("SELECT region, MAX(MAX(at, COALESCE(human_at, 0))) AS at FROM decide_outcomes WHERE vaccine = 0 GROUP BY region")
+        .toArray()
+        .map((r) => [r.region, r.at ?? 0]),
+    );
     return regions
       .map((region) => {
         const rev = this.sql.exec<{ at: number; reason: string }>("SELECT at, reason FROM autonomy_revocations WHERE region = ?", region).toArray()[0];
         const approved = this.approvedLandings(region);
-        return { region, approved, earned: approved >= threshold, revokedAt: rev?.at ?? null, reason: rev?.reason ?? null };
+        const lastAt = Math.max(latest.get(region) ?? 0, rev?.at ?? 0);
+        return { region, approved, earned: approved >= threshold, revokedAt: rev?.at ?? null, reason: rev?.reason ?? null, lastAt: lastAt > 0 ? lastAt : null };
       })
       .sort((a, b) => b.approved - a.approved || a.region.localeCompare(b.region));
   }
