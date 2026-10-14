@@ -607,6 +607,33 @@ export interface DecidePolicyView {
   deterministic?: boolean;
   commentProof?: boolean;
   protectedPaths?: string[];
+  /** After a POST that protected new globs: what that did to the changes already cleared to land. */
+  protection?: ProtectionView;
+}
+
+/** What protecting new globs did to the changes already cleared to land (the policy answer's `protection`). */
+export interface ProtectionView {
+  added?: string[];
+  stopped?: Array<{ proposalId?: string; path?: string; glob?: string }>;
+  landed?: Array<{ proposalId?: string; landingId?: string; trunkSha?: string; path?: string; glob?: string }>;
+  confirmed?: boolean;
+  unconfirmed?: string[];
+}
+
+/**
+ * The lines `ft policy` prints after protecting new globs: each change already cleared to land that now waits for a
+ * person, each one the trunk writer had already landed (with the revert that undoes it), and the ones it did not answer for.
+ */
+export function protectionLines(colony: string, p: ProtectionView | undefined, c: Colors): string[] {
+  if (!p || typeof p !== "object") return [];
+  const out: string[] = [];
+  const where = (x: { path?: string; glob?: string }) => `${x.path ?? "?"} (protected by ${x.glob ?? "?"})`;
+  for (const s of Array.isArray(p.stopped) ? p.stopped : []) out.push(`  ${c.yellow("stopped")} ${s.proposalId ?? "?"}: ${where(s)} waits for a person in the review queue`);
+  for (const l of Array.isArray(p.landed) ? p.landed : []) {
+    out.push(`  ${c.yellow("landed")}  ${l.proposalId ?? "?"} in ${l.landingId ?? "?"} (trunk ${(l.trunkSha ?? "").slice(0, 7)}) before the protection reached the trunk writer: ${where(l)}; ft revert ${colony} ${l.proposalId ?? "<proposal>"} undoes it`);
+  }
+  for (const id of Array.isArray(p.unconfirmed) ? p.unconfirmed : []) out.push(`  ${c.red("unconfirmed")} ${id}: the trunk writer did not answer, so it may still land`);
+  return out;
 }
 
 /** The protected paths, comma-separated, or "none". */

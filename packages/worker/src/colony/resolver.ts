@@ -27,8 +27,10 @@ import { markedText, parseResolveReply, resolveMaxTokens, resolveMessages } from
  *   writes each conflicting file whole, keeping both changes, or answers CANNOT. Everything agents, people and the
  *   repository wrote is fenced as data (colony/resolver-prompt.ts).
  * - The merge is validated before anything is proposed (colony/resolver-merge.ts): every line outside the conflicting
- *   hunks is exactly the clean merge of both changes, no conflicting hunk is either side's version whole, each file
- *   still parses where the colony checks syntax (agents/create.ts), and no other file changes.
+ *   hunks is exactly the clean merge of both changes, no conflicting hunk is either side's version whole, every line
+ *   either side added in a conflicting hunk is kept in that side's order (unless the other side deleted it: rewrote or
+ *   removed the base line it replaces), each file still parses where the colony checks syntax (agents/create.ts), and
+ *   no other file changes.
  * - Then it is a new inline proposal for the same intent by the resolver agent: provenance author `platform`, its model
  *   observed through the `agent model usage` check (trunk/provenance.ts), its read set the trunk blobs it merged against
  *   (and what the change read besides), and the record of what it resolves, which the lineage note carries as
@@ -585,7 +587,7 @@ export class Resolver {
         ok: true,
         ms: 0,
         detail: oneLine(
-          `resolves ${p.id} (${hunks} conflicting hunk${hunks === 1 ? "" : "s"} in ${listText(conflictPaths)}) against ${landingIds.length > 0 ? listText(landingIds) : "trunk"}: every line outside the conflicting hunks is exactly the clean merge of both changes, no conflicting hunk is either side's version whole, each file parses where both versions did, and no other file changed`,
+          `resolves ${p.id} (${hunks} conflicting hunk${hunks === 1 ? "" : "s"} in ${listText(conflictPaths)}) against ${landingIds.length > 0 ? listText(landingIds) : "trunk"}: every line outside the conflicting hunks is exactly the clean merge of both changes, no conflicting hunk is either side's version whole, every line either side added in one is kept in its order unless the other side deleted it, each file parses where both versions did, and no other file changed`,
           1_000,
         ),
       },
@@ -604,7 +606,7 @@ export class Resolver {
       ...(typeof p.intentRevision === "number" ? { intentRevision: p.intentRevision } : {}),
       evidence: {
         checks,
-        notVerified: `Not verified: written by the platform's conflict resolver with model ${used} from both changes' texts and intents. Checked before proposing: every line outside the conflicting hunks is exactly what a clean merge of both changes gives, no conflicting hunk is either side's version whole, and each file still parses. No tests, type checks or builds were run.`,
+        notVerified: `Not verified: written by the platform's conflict resolver with model ${used} from both changes' texts and intents. Checked before proposing: every line outside the conflicting hunks is exactly what a clean merge of both changes gives, no conflicting hunk is either side's version whole, every line either side added in one is kept in its order unless the other side deleted it, and each file still parses. No tests, type checks or builds were run.`,
       },
     };
     return { input, record: { proposalId: p.id, landingIds, paths: conflictPaths } };

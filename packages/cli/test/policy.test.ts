@@ -135,6 +135,31 @@ describe("ft policy against a server", () => {
     expect(u.out.at(-1)).toBe("  lib/** was not protected");
   });
 
+  it("says which changes already cleared to land were stopped, which had landed, and which the trunk writer did not answer for", async () => {
+    const protection = {
+      added: ["db/**"],
+      stopped: [{ proposalId: "prp_a", intentId: "int_a", path: "db/schema.sql", glob: "db/**" }],
+      landed: [{ proposalId: "prp_b", landingId: "lnd_1", trunkSha: "abcdef1234".padEnd(40, "0"), intentId: "int_b", path: "db/seed.sql", glob: "db/**" }],
+      confirmed: false,
+      unconfirmed: ["prp_c"],
+    };
+    const route = server();
+    const t = io((call) => {
+      const answer = route(call);
+      return call.method === "POST" ? { status: 200, body: { ...(answer.body as object), protection } } : answer;
+    });
+    expect(await main(["policy", "web", "--protect", "db/**"], t)).toBe(0);
+    expect(t.out.slice(-3)).toEqual([
+      "  stopped prp_a: db/schema.sql (protected by db/**) waits for a person in the review queue",
+      "  landed  prp_b in lnd_1 (trunk abcdef1) before the protection reached the trunk writer: db/seed.sql (protected by db/**); ft revert web prp_b undoes it",
+      "  unconfirmed prp_c: the trunk writer did not answer, so it may still land",
+    ]);
+    // A server that predates it says nothing more.
+    const plain = io(server());
+    expect(await main(["policy", "web", "--protect", "db/**"], plain)).toBe(0);
+    expect(plain.out.join("\n")).not.toMatch(/stopped|landed|unconfirmed/);
+  });
+
   it("prints the calls on a dry run without sending them", async () => {
     const t = io(server());
     expect(await main(["policy", "web", "--protect", "db/**", "--dry-run"], t)).toBe(0);

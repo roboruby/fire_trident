@@ -83,6 +83,7 @@ import { INLINE_FETCH_BYTES, isInlineChange } from "../colony/inline.ts";
 import { noteResolves } from "../colony/resolver-merge.ts";
 import { DIRECTION_TABLE, FENCE_WAIT_MS, directionReturns, fenceAnswer, mergeDirection, parseDirection, pushDelayMs, settlesWithin, type FenceAnswer } from "./direction.ts";
 import { PUBLISH_BOUND, addedObjects, asyncPublishEnabled, publishBackoffMs, publishChain, settlePublish, withinBound, type PublishBound, type RecordedCommit } from "./publish.ts";
+import { PROTECT_TABLE, keepProtect, protectReturns } from "./protect.ts";
 
 export type { LandResult, Returned } from "./plan.ts";
 
@@ -297,6 +298,8 @@ export class TrunkDO extends DurableObject<Env> {
     );
     // The direction fence (direction()): each intent's latest change of direction, read by every landing cycle.
     this.sql.exec(DIRECTION_TABLE);
+    // Protected paths (trunk/protect.ts): the colony's protected globs, read by every landing cycle.
+    this.sql.exec(PROTECT_TABLE);
     // Derived indexes (trunk/derived.ts): their tables are created here, outside any landing transaction.
     this.derivedSet();
   }
@@ -447,6 +450,19 @@ export class TrunkDO extends DurableObject<Env> {
       open = this.pushingProposals();
     }
     return fenceAnswer(ids, this.landingsByProposal(ids), settled, open);
+  }
+
+  /**
+   * Protected paths (trunk/protect.ts): the colony's protected globs, recorded the way a change of direction is. The
+   * colony calls it when its globs change, with the changes it stopped (`proposalIds`). The record is kept when it is
+   * newer than the writer's own; every later landing cycle reads it before it builds and sends back a change that writes
+   * a path protected after a person last approved it. Then the answer for those changes, as direction() gives it: each
+   * one a cycle that read the old record landed, with its landing, and the ones it cannot vouch for yet.
+   */
+  async protect(p: { record: unknown; proposalIds: Id[] }): Promise<FenceAnswer> {
+    this.state();
+    keepProtect(this.sql, p?.record, Date.now());
+    return this.direction({ intents: {}, proposalIds: Array.isArray(p?.proposalIds) ? p.proposalIds : [] });
   }
 
   /**
@@ -1312,6 +1328,14 @@ export class TrunkDO extends DurableObject<Env> {
     if (redirected.size > 0) {
       for (const [id, reason] of redirected) outcome.set(id, { kind: "returned", reason });
       live = live.filter((e) => !redirected.has(e.p.id));
+    }
+
+    // 2c. Protected paths (trunk/protect.ts), the same commit point: a change that writes a path protected after a person
+    //     last approved it (or that none approved) goes back to a person before anything is built. One read per cycle.
+    const guarded = protectReturns(this.sql, live.map((e) => ({ p: e.p, ctx: reqs[e.request]?.ctx })), Date.now());
+    if (guarded.size > 0) {
+      for (const [id, reason] of guarded) outcome.set(id, { kind: "returned", reason });
+      live = live.filter((e) => !guarded.has(e.p.id));
     }
 
     // 3. Screen against current trunk with local reads (base blobs, OCC, structure); stale ones never pull.
