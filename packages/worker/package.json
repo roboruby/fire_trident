@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
+    "deploy": "wrangler deploy --var FT_BUILD:$(git rev-parse --short HEAD) --tag $(git rev-parse --short HEAD)",
     "types": "wrangler types",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json"
