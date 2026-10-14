@@ -1,0 +1,41 @@
+first red demo on https://firetrident.mattsolt.workers.dev: colony first-red
+      A node:test project lands and certifies green; six changes land while certification is held, the fourth breaking sub(); certification goes red; the first red search names the landing; a scripted agent takes the repair intent; certification goes green.
+PASS  first-red: created (201)
+PASS  first-red: review off for this demo
+PASS  first-red: certification on with repairs (200)
+PASS  first-red: "Add the math module and its test" landed (landed, lnd_mv8n0wdesjrck1)
+PASS  first-red: certification is green on 79e2ee9 (green, {"tests":1,"pass":1,"fail":0,"cancelled":0,"skipped":0,"todo":0,"suites":0})
+PASS  first-red: certification held
+PASS  first-red: "Add note 1" landed (landed, lnd_mv8n17uvowslu7)
+PASS  first-red: "Add note 2" landed (landed, lnd_mv8n1fjaz5ky6z)
+PASS  first-red: "Add note 3" landed (landed, lnd_mv8n1lbmo1m4xd)
+PASS  first-red: "Speed up subtraction" landed (landed, lnd_mv8n1pycuvefx2)
+PASS  first-red: "Add note 4" landed (landed, lnd_mv8n1tti6bymmb)
+PASS  first-red: "Add note 5" landed (landed, lnd_mv8n1x4nsquplk)
+PASS  first-red: certification on again
+PASS  first-red: certification is red on the head c29ef0e (red, subtracts), green still 79e2ee9
+      firstRed: {"status":"found","trunkSha":"a545159366d1a1cf004cf58ef488be213ad1257e","landingId":"lnd_mv8n1pycuvefx2","intents":[{"id":"int_mv8n1mh9l5o5b0","title":"Speed up subtraction"}],"proposals":[{"id":"prp_mv8n1myq27ndl7","paths":["src/math.js"],"intentId":"int_mv8n1mh9l5o5b0","title":"Speed up subtraction"}],"files":["test/math.test.js"],"probes":3,"ms":202,"landings":6,"greenSha":"79e2ee9382a79df1d747
+PASS  first-red: the red result gained firstRed, found (found)
+PASS  first-red: it names the landing that holds the breaking change (lnd_mv8n1pycuvefx2, expected lnd_mv8n1pycuvefx2)
+PASS  first-red: and its commit (a545159, expected a545159)
+PASS  first-red: and the breaking proposal with the file it changed ([{"id":"prp_mv8n1myq27ndl7","paths":["src/math.js"],"intentId":"int_mv8n1mh9l5o5b0","title":"Speed up subtraction"}])
+PASS  first-red: and its intent with its title ([{"id":"int_mv8n1mh9l5o5b0","title":"Speed up subtraction"}])
+PASS  first-red: in at most 4 test runs over the 6 landings since green (3 runs, 202 ms, 6 landings)
+PASS  first-red: a bisect event was recorded after the red result (red #158, bisect #159)
+PASS  first-red: the repair intent int_mv8n1ygxe58pe6 names the commit and the proposal in its why
+
+      Red on c29ef0e: test/math.test.js > subtracts fails (AssertionError (strictEqual): actual 8, expected 2 (at test/math.test.js:6)).
+      The search ran only the failing test, alone, on earlier commits: 3 test runs in 202 ms over the 6 landings since green 79e2ee9.
+      It names commit a545159 (landing lnd_mv8n1pycuvefx2): the intent "Speed up subtraction", whose proposal prp_mv8n1myq27ndl7 changed src/math.js.
+
+PASS  first-red: the red result declared a repair intent (int_mv8n1ygxe58pe6)
+PASS  first-red: "Make sub() subtract again" landed (landed, lnd_mv8n2149z1lx4o)
+PASS  first-red: scripted-repair took "Make the failing tests pass: subtracts" (int_mv8n1ygxe58pe6), whose why names the first failing commit: First failing commit: the failing tests first failed at commit a545159 (landing lnd_mv8n1pycuvefx2): they did not fail on the commit before it and fail on it, run alone (found in 3 test runs). The cha
+PASS  first-red: certification is green again on the head 294d7d5 (green, {"tests":1,"pass":1,"fail":0,"cancelled":0,"skipped":0,"todo":0,"suites":0})
+      Trunk was red for 3.6 s, from the red result to the green one.
+
+Colony: https://firetrident.mattsolt.workers.dev/c/first-red
+Replay: https://firetrident.mattsolt.workers.dev/c/first-red?replay=1&t=3&speed=2 (from the first of the six landings)
+Card:   https://firetrident.mattsolt.workers.dev/?results=first-red:firstred (the landing page's showcase entry for this colony can carry replay: "t=3&speed=2")
+DEMO DONE: certification is green again
+exit 0
