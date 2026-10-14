@@ -22,6 +22,10 @@ A change whose files moved under it goes back naming them, unless its edits merg
 
 The cascade results: https://github.com/roboruby/fire_trident/tree/main/packages/bench/results/2026-10-13-round2
 
+When goals conflict, one agent cannot quietly undo another: on production, three agents each moved one order backend to a different language; the first change landed, and the 2 changes that would undo it wait for a person, each naming that landing, held by a deterministic check, not a model.
+
+See them: https://firetrident.com/c/order-backend (or `curl -s https://firetrident.com/api/colonies/order-backend/review`)
+
 ## How is work reviewed?
 
 Every change goes to deterministic proof first, then to decision models, a second model from another family and a person, each only when the cheaper layer is unsure: all 282 rule edits of the Hono run on production landed on deterministic proof.
@@ -51,7 +55,7 @@ Yes: any MCP client can ask the showcase colonies at /public/mcp with no token, 
 
 ### Ask a showcase colony, no token
 
-The colonies hono, shortlinks and byo-demo answer any MCP client, read only, over Streamable HTTP at https://firetrident.com/public/mcp. It takes no token and keeps no session. The tools are status, why, intent and sense.
+The colonies hono, shortlinks, byo-demo, scale and order-backend answer any MCP client, read only, over Streamable HTTP at https://firetrident.com/public/mcp. It takes no token and keeps no session. The tools are status, why, intent, sense and impact.
 
 ```sh
 claude mcp add --transport http firetrident-public https://firetrident.com/public/mcp
