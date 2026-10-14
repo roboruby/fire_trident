@@ -155,6 +155,7 @@ export function returnBlock(r: LastReturn | undefined, nonce: string): string | 
 export const ESCALATE_TEXT = [
   "If this file cannot be written correctly for the intent (a test that is wrong, a spec that contradicts itself, an impossible ask), do not work around it: reply with one line instead of a file, ESCALATE <kind>: <report>.",
   "<kind> is broken-test, contradictory-spec, impossible or other; the report names the test or spec line and says what is wrong. A person decides.",
+  'If this file would undo what a recent landing did for another intent (the landings under "Why this code is the way it is" give each one\'s intent and why), do not undo it: reply ESCALATE contradictory-spec: <report>, naming that intent and saying how the two goals disagree.',
   "Escalating is a normal part of the work and is not counted as a failure. Never edit, skip, delete or weaken a test to make it pass, and never hard-code a value a test expects.",
 ].join(" ");
 

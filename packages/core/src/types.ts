@@ -365,6 +365,17 @@ export interface NameAssumption {
   names: string[];
 }
 
+/**
+ * Goal conflict (FT_GOAL_CONFLICT, core/goalconflict.ts): lines of one file that a recent landing wrote for another
+ * intent and that a change removes: the landing, the intent it wrote them for, the file, and how many lines.
+ */
+export interface UndoneLines {
+  landingId: Id;
+  intentId: Id;
+  path: Path;
+  lines: number;
+}
+
 export interface Proposal {
   id: Id;
   colonyId: Id;
@@ -390,6 +401,11 @@ export interface Proposal {
    * (assumption revalidation); otherwise it goes back as usual.
    */
   nameAssumptions?: NameAssumption[];
+  /**
+   * Goal conflict (FT_GOAL_CONFLICT): the lines this change removes that recent landings wrote for other intents, set
+   * when it went to a person for that; a person's approval lands it, and its lineage note keeps the record.
+   */
+  undoes?: UndoneLines[];
   /** Contest mode: the proposal that won this intent's contest instead of this one. */
   supersededBy?: Id;
   declared: { footprint: Path[]; summary: string };
@@ -534,6 +550,8 @@ export interface LineageNote {
      * wrote (`theirs`) and the result, which its `writeSet` names.
      */
     merged?: Array<{ path: Path; base: Sha; trunk: Sha; theirs: Sha; result: Sha }>;
+    /** Goal conflict: lines recent landings wrote for other intents that this change undid, which a person approved. */
+    undoes?: UndoneLines[];
   }>;
   /** The project's own tests on this commit, when trunk certification ran on it (added after landing). */
   certification?: NoteCertification;

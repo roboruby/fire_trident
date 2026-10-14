@@ -56,6 +56,14 @@ export interface Env {
    */
   FT_DELETION_GUARD?: string;
   /**
+   * Optional: the goal-conflict check, "on", or a comma-separated list of colony ids; absent or "off" is off. In the
+   * decide stage, a change that would undo lines a recent landing wrote for another intent (neither an ancestor nor a
+   * descendant of its own; at least 3 lines and half of that landing's lines in the file) waits for a person instead of
+   * landing, the reason naming the landing and its intent's why (decide/goalconflict.ts, core/goalconflict.ts). Recent:
+   * the decide policy's goalConflictMinutes (60) and goalConflictLandings (200). The check fails open.
+   */
+  FT_GOAL_CONFLICT?: string;
+  /**
    * Optional: inline changes from outside, "on", or a comma-separated list of colony ids; absent or "off" is off. A
    * proposal may then carry the text of the files it writes (`contents` on POST /proposals, `files` on MCP propose)
    * instead of a commit pushed to its workspace, and the MCP server offers `files` and says so in its instructions.
