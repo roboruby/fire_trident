@@ -27,7 +27,15 @@ export interface Env {
   INGEST: Workflow;
   VERIFY: Workflow;
   METRICS: AnalyticsEngineDataset;
+  /** Version metadata: the Worker version serving a request (id, tag, upload time), for GET /api/about (front/about.ts). */
+  CF_VERSION_METADATA?: WorkerVersionMetadata;
   FT_PUBLIC_URL: string;
+  /**
+   * Optional: the short git commit this deployment was built from, set by the deploy command
+   * (`wrangler deploy --var FT_BUILD:$(git rev-parse --short HEAD)`). GET /api/about, every page's footer or top bar
+   * and `ft status` show it as "build <commit>"; absent, they show the Worker version instead.
+   */
+  FT_BUILD?: string;
   FT_DEFAULT_MODEL: string;
   FT_BULK_MODEL: string;
   FT_REFLEX_MODEL: string;

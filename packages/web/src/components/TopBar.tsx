@@ -1,10 +1,12 @@
 import type { FunnelStage } from "@fire_trident/core";
+import { useAbout } from "../about.ts";
 import { fmtDuration, fmtInt, fmtPct, fmtWhen } from "../format.ts";
 import { STAGES, type ColonyStore, type ConnState, type ReplayInfo } from "../store.ts";
 import { sparkPoints, type Series } from "../series.ts";
 import { STAGE_COLOR } from "../theme.ts";
 import { useThrottledVersion } from "../useStore.ts";
 import { AnimatedNumber } from "./AnimatedNumber.tsx";
+import { BuildTag } from "./BuildTag.tsx";
 import { ColonyPicker } from "./ColonyPicker.tsx";
 import { VaccineMeter } from "./VaccineMeter.tsx";
 
@@ -187,6 +189,8 @@ function Funnel({ funnel, last, settled }: { funnel: Record<FunnelStage, number>
 /** The top bar: brand and colony, the hero violations counter, live stats, sigma, vaccination, and the reflex funnel. */
 export function TopBar({ store, director = false, mock = false }: { store: ColonyStore; director?: boolean; mock?: boolean }) {
   useThrottledVersion(store, 200);
+  // The build serving the page, after the product name (left out of director recordings).
+  const about = useAbout();
   const now = store.now();
   const total = store.violations.total;
   const fixed = store.violationsFixed();
@@ -210,7 +214,10 @@ export function TopBar({ store, director = false, mock = false }: { store: Colon
           <TridentMark />
         </a>
         <div className="brand-text">
-          <div className="brand-name">FireTrident</div>
+          <div className="brand-name">
+            FireTrident
+            {director ? null : <BuildTag about={about} className="brand-build" />}
+          </div>
           <div className="brand-colony">
             {director ? <span className="mono brand-colony-name">{label}</span> : <ColonyPicker current={store.colonyId} label={label} mock={mock} />}
             <ConnPill conn={store.conn} replay={store.replay} idle={store.loaded && store.agentsActive() === 0} />

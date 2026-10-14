@@ -125,6 +125,25 @@ input {
   letter-spacing: -0.01em;
 }
 
+/* The build serving the page (BuildTag): muted, after the product name here and in the landing footer. */
+.build-tag {
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--text-4);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+a.build-tag:hover {
+  color: var(--text-2);
+}
+
+.brand-build {
+  margin-left: 8px;
+  vertical-align: 3px;
+}
+
 .brand-colony {
   display: flex;
   align-items: center;
