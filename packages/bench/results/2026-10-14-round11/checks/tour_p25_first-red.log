@@ -1,0 +1,30 @@
+Tour of p25-fr-on-40 (the first-red tour; recorded record, 756 events, rule none)
+
+1/4 Green (@green, 1.6 s into the record)
+  Trunk certified green on 5045fea: 1/1 tests pass in 83 ms, the project's own tests run by trunk certification after the landing.
+
+2/4 Held (@held, 113.4 s into the record)
+  40 changes landed in 40 commits over 97.0 s while certification was held, and no test ran on any of them; the 21th, “Speed up subtraction”, changed bisect/frmv8ol0wj/src/math.js.
+
+3/4 Red (@red, 114.0 s into the record)
+  Certification ran again on the head 6158ace, 112.4 s after the green result, and went red: 1 test failing, “subtracts” (AssertionError (strictEqual): actual 8, expected 2 (at bisect/frmv8ol0wj/test/math.test.js:6)).
+
+4/4 First red commit (@search, 114.5 s into the record)
+  The search ran the failing test alone at earlier commits, 6 test runs in 432 ms over the 40 landings since green, and named the 21th landing: commit 808b801, landing lnd_mv8on5009ajelc, intent “Speed up subtraction”, proposal prp_mv8on4xaegea6h, which changed bisect/frmv8ol0wj/src/math.js.
+
+Against the API:
+  ok   test runs the search used: tour 6, api 6
+  ok   search time (ms): tour 432, api 432
+  ok   landings since green: tour 40, api 40
+  ok   the landing that broke the tests: tour lnd_mv8on5009ajelc, api lnd_mv8on5009ajelc
+  ok   failing tests on the red commit: tour 1, api 1
+  ok   violations at the end: tour 0, api 0
+  ok   funnel proof at the end: tour 0, api 0
+  ok   funnel reflex at the end: tour 0, api 0
+  ok   funnel llm at the end: tour 0, api 0
+  ok   funnel human at the end: tour 0, api 0
+  ok   landings at the end: tour 41, api 41
+  ok   intents landed at the end: tour 41, api 41
+
+All 12 numbers agree.
+exit 0
