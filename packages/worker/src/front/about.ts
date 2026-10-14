@@ -56,6 +56,7 @@ export const NOT_FLAGS: readonly string[] = [
   "FT_DEFAULT_MODEL",
   "FT_LATERAL_INHIBITION",
   "FT_MCP_TOKEN",
+  "FT_NOTE_KEY",
   "FT_OPEN_WRITES",
   "FT_PUBLIC_URL",
   "FT_REFLEX_MODEL",
@@ -75,6 +76,8 @@ export interface About {
   deployedAt: string | null;
   /** The flags that are on, for every colony or for the colonies they list, by name, sorted. */
   flags: string[];
+  /** The id of the key that signs lineage notes, published at /.well-known/firetrident-keys.json (trunk/signature.ts); null when landings are not signed. */
+  noteKey: string | null;
 }
 
 /** The part of the env GET /api/about reads. */
@@ -99,8 +102,13 @@ export function flagsOn(env: object): string[] {
   return on.sort();
 }
 
-/** Which build is serving and which flags are on, from the Worker's env. Odd or missing values become null. */
-export function about(env: AboutEnv): About {
+const KEY_ID = /^[0-9a-f]{16}$/;
+
+/**
+ * Which build is serving and which flags are on, from the Worker's env, and `noteKey`, the id of the key that signs
+ * lineage notes (the caller derives it from FT_NOTE_KEY, trunk/signature.ts). Odd or missing values become null.
+ */
+export function about(env: AboutEnv, noteKey: string | null = null): About {
   const meta = env.CF_VERSION_METADATA;
   const commit = typeof env.FT_BUILD === "string" ? env.FT_BUILD.trim() : "";
   const id = typeof meta?.id === "string" ? meta.id.trim() : "";
@@ -113,10 +121,11 @@ export function about(env: AboutEnv): About {
     versionTag: PRINTABLE.test(tag) ? tag : null,
     deployedAt: Number.isFinite(at) ? new Date(at).toISOString() : null,
     flags: flagsOn(env),
+    noteKey: typeof noteKey === "string" && KEY_ID.test(noteKey) ? noteKey : null,
   };
 }
 
 /** The JSON response of GET /api/about, never cached, so a deploy shows at once. */
-export function aboutResponse(env: AboutEnv): Response {
-  return new Response(JSON.stringify(about(env)), { headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
+export function aboutResponse(env: AboutEnv, noteKey: string | null = null): Response {
+  return new Response(JSON.stringify(about(env, noteKey)), { headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
 }

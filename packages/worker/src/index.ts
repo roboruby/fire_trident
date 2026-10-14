@@ -7,6 +7,7 @@ import { mcpRefusal } from "./mcp/gate.ts";
 import { publicMcp } from "./mcp/public.ts";
 import { aboutResponse } from "./front/about.ts";
 import { frontDoor } from "./front/door.ts";
+import { KEYS_PATH, keysResponse, noteKeyId } from "./trunk/signature.ts";
 
 export { ColonyDO } from "./colony/ColonyDO.ts";
 export { RegionDO } from "./region/RegionDO.ts";
@@ -18,10 +19,13 @@ export { IngestWorkflow } from "./workflows/IngestWorkflow.ts";
 export { VerifyWorkflow } from "./workflows/VerifyWorkflow.ts";
 
 const app = new Hono<{ Bindings: Env }>();
-// Which build is serving (commit, Worker version, deploy time) and which flags are on, by name only (front/about.ts).
-app.get("/api/about", (c) => aboutResponse(c.env));
+// Which build is serving (commit, Worker version, deploy time), which flags are on, by name only (front/about.ts), and
+// the id of the key that signs lineage notes (trunk/signature.ts).
+app.get("/api/about", async (c) => aboutResponse(c.env, await noteKeyId(c.env.FT_NOTE_KEY)));
 app.route("/api", api);
 app.get("/healthz", (c) => c.json({ ok: true, service: "firetrident" }));
+// The public key that signs lineage notes, for any git client to check a commit's FT-Note-Signature (in run_worker_first).
+app.get(KEYS_PATH, (c) => keysResponse(c.env));
 // MCP for external agents: Streamable HTTP at /mcp, legacy SSE at /sse (one Durable Object per session, binding MCP).
 const mcpHttp = FireTridentMcp.serve("/mcp", { binding: "MCP" });
 const mcpSse = FireTridentMcp.serveSSE("/sse", { binding: "MCP" });

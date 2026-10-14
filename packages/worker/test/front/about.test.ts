@@ -25,11 +25,17 @@ describe("GET /api/about", () => {
       versionTag: "f9c7aad",
       deployedAt: "2026-10-14T18:02:11.123Z",
       flags: [],
+      noteKey: null,
     });
   });
 
+  it("names the key that signs lineage notes, as its caller derived it, and only a key id", () => {
+    expect(about(env({ FT_BUILD: "f9c7aad" }), "0123456789abcdef").noteKey).toBe("0123456789abcdef");
+    for (const odd of ["0123456789ABCDEF", "0123456789abcdef0", "", null]) expect(about(env({}), odd).noteKey).toBeNull();
+  });
+
   it("answers null for what the deployment does not say, and for odd values", () => {
-    expect(about(env({}))).toEqual({ service: "firetrident", commit: null, versionId: null, versionTag: null, deployedAt: null, flags: [] });
+    expect(about(env({}))).toEqual({ service: "firetrident", commit: null, versionId: null, versionTag: null, deployedAt: null, flags: [], noteKey: null });
     const odd = about(env({ FT_BUILD: "f9c7aad; echo hi", CF_VERSION_METADATA: { id: "not an id", tag: "", timestamp: "yesterday" } }));
     expect(odd).toMatchObject({ commit: null, versionId: null, versionTag: null, deployedAt: null });
     expect(about(env({ FT_BUILD: " f9c7aad-dirty ", CF_VERSION_METADATA: { id: META.id, tag: "x\u0007", timestamp: META.timestamp } }))).toMatchObject({
@@ -77,7 +83,7 @@ describe("GET /api/about", () => {
   });
 
   it("never shows a secret or a setting, by value or by name", () => {
-    const secrets = { FT_ADMIN_TOKEN: "s3cret-admin-token", FT_MCP_TOKEN: "on", ANTHROPIC_API_KEY: "not-a-real-model-key", FT_OPEN_WRITES: "1" };
+    const secrets = { FT_ADMIN_TOKEN: "s3cret-admin-token", FT_MCP_TOKEN: "on", ANTHROPIC_API_KEY: "not-a-real-model-key", FT_OPEN_WRITES: "1", FT_NOTE_KEY: '{"kty":"OKP","crv":"Ed25519","d":"not-a-real-key"}' };
     const settings = { FT_PUBLIC_URL: "https://firetrident.com", FT_DEFAULT_MODEL: "@cf/model", FT_COCHANGE_WEIGHT: "5", FT_LATERAL_INHIBITION: "on" };
     const text = JSON.stringify(about(env({ ...secrets, ...settings, FT_DELETION_GUARD: "on" })));
     expect(JSON.parse(text).flags).toEqual(["FT_DELETION_GUARD"]);

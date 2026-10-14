@@ -1,6 +1,7 @@
 import type { Id, Landing, LineageNote, NotesVerification, Sha } from "@fire_trident/core";
 import { errorText } from "../artifacts/git.ts";
 import { ftError } from "../colony/errors.ts";
+import type { PublishedKey } from "./signature.ts";
 import { checkLandings, summarize, type LandingRow, type ObjectSource } from "./verify.ts";
 
 /**
@@ -79,15 +80,15 @@ export function landingRow(sql: SqlStorage, s: StoredLanding): LandingRow {
 /**
  * One landing's note on the trunk repository against its commit's FT-Note trailer, answered as verifyNotes answers for
  * the newest (one check, counted). `tip` reads refs/notes/firetrident on the trunk repository (a failure is a 502, as in
- * verifyNotes); `src` reads git objects.
+ * verifyNotes); `src` reads git objects; `keys`, where the deployment signs notes, check the commit's signature.
  */
-export async function verifyOne(row: LandingRow, p: { colonyId: Id; tip: () => Promise<Sha | null>; src: ObjectSource }): Promise<NotesVerification> {
+export async function verifyOne(row: LandingRow, p: { colonyId: Id; tip: () => Promise<Sha | null>; src: ObjectSource; keys?: readonly PublishedKey[] }): Promise<NotesVerification> {
   let tip: Sha | null;
   try {
     tip = await p.tip();
   } catch (e) {
     throw ftError(502, `the trunk repository's notes ref could not be read: ${errorText(e)}`);
   }
-  const notes = await checkLandings([row], { src: p.src, tip });
+  const notes = await checkLandings([row], { src: p.src, tip, ...(p.keys ? { keys: p.keys } : {}) });
   return summarize(p.colonyId, tip, notes, Date.now());
 }

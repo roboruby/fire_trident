@@ -41,6 +41,15 @@ export interface Env {
   FT_REFLEX_MODEL: string;
   /** Secret: bearer token for mutating API routes. */
   FT_ADMIN_TOKEN?: string;
+  /**
+   * Secret (optional): the key that signs lineage notes, an Ed25519 private key as a JWK JSON string
+   * ({"kty":"OKP","crv":"Ed25519","d":"…","x":"…"}, with an optional "since": the ISO date it started signing). With it,
+   * the trunk writer signs each landing commit it builds (an FT-Note-Signature trailer just above FT-Note, over the note's
+   * digest, the commit's tree and its parent: trunk/signature.ts), its public key is published at
+   * /.well-known/firetrident-keys.json, GET /api/about names its key id, and the note checks say whether each commit is
+   * signed. Absent, or not such a key (logged once, never printed), landings stay unsigned and nothing fails.
+   */
+  FT_NOTE_KEY?: string;
   /** Optional: co-change repulsion weight (see ColonyDO; the simulator favors 5). */
   FT_COCHANGE_WEIGHT?: string;
   /** Optional: lateral inhibition threshold as a fraction of a fresh claim, or "off". */
