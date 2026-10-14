@@ -24,6 +24,11 @@ export interface DecidePolicy {
   reflexModel: string;
   /** System 2 candidates; the first whose family differs from the authoring agent's is used. */
   secondOpinionModels: string[];
+  /**
+   * Contest jury members (FT_CONTEST_JURY, decide/jury.ts): small models from different families, of which two or three
+   * outside the contestants' families are seated in place of the one judge, each asked in both orders.
+   */
+  juryModels: string[];
   /** A layer acts alone when the answers that decide are at least this confident (|2p - 1| for yes/no answers). */
   confidence: number;
   /** A yes/no detector answer at or above this probability is a hit. */
@@ -76,6 +81,7 @@ export const DEFAULT_POLICY: DecidePolicy = {
   commentProof: true,
   reflexModel: "@cf/cloudflare/clef",
   secondOpinionModels: ["@cf/google/gemma-4-26b-a4b-it", "@cf/openai/gpt-oss-120b", "@cf/zai-org/glm-4.7-flash"],
+  juryModels: ["@cf/google/gemma-4-26b-a4b-it", "@cf/openai/gpt-oss-20b", "@cf/zai-org/glm-4.7-flash"],
   confidence: 0.8,
   hit: 0.5,
   needsHuman: 0.5,
@@ -201,12 +207,14 @@ export function mergePolicy(base: DecidePolicy, patch: unknown): DecidePolicy {
   const p = patch as Record<string, unknown>;
   const prob = (p.probation && typeof p.probation === "object" ? p.probation : {}) as Record<string, unknown>;
   const models = Array.isArray(p.secondOpinionModels) ? p.secondOpinionModels.map((m) => model(m, "")).filter(Boolean) : [];
+  const jury = Array.isArray(p.juryModels) ? p.juryModels.map((m) => model(m, "")).filter(Boolean) : [];
   return {
     enabled: typeof p.enabled === "boolean" ? p.enabled : base.enabled,
     deterministic: typeof p.deterministic === "boolean" ? p.deterministic : base.deterministic,
     commentProof: typeof p.commentProof === "boolean" ? p.commentProof : base.commentProof,
     reflexModel: model(p.reflexModel, base.reflexModel),
     secondOpinionModels: models.length > 0 ? models.slice(0, 5) : base.secondOpinionModels,
+    juryModels: jury.length > 0 ? jury.slice(0, 5) : base.juryModels,
     confidence: num(p.confidence, 0, 1, base.confidence),
     hit: num(p.hit, 0.05, 0.99, base.hit),
     needsHuman: num(p.needsHuman, 0.01, 1, base.needsHuman),
