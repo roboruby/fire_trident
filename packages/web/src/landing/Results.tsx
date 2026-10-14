@@ -4,7 +4,8 @@ import { parseSpend } from "../spend.ts";
 import { metricKey } from "../store.ts";
 import { fmtDuration, fmtInt, prettyUrl } from "../format.ts";
 import { colonyHref } from "../route.ts";
-import { loadFirstRedCard, loadGoalsCard, loadScaleCard, specBuild } from "./showcase.ts";
+import { serverOrigin } from "./LiveNote.tsx";
+import { loadFirstRedCard, loadGoalsCard, loadScaleCard, loadSignedCard, specBuild } from "./showcase.ts";
 
 /**
  * The results strip: what the production showcase colonies did, read from their own API (the
@@ -12,10 +13,10 @@ import { loadFirstRedCard, loadGoalsCard, loadScaleCard, specBuild } from "./sho
  * what the API cannot know (a test run from a plain clone, the load generator's timing) is written here, as measured.
  */
 
-type Kind = "rule" | "spec" | "mcp" | "certify" | "scale" | "goals" | "firstred";
+type Kind = "rule" | "spec" | "mcp" | "certify" | "scale" | "goals" | "firstred" | "signed";
 
 /** A showcase run: its colony, its kind of card, a fact measured outside the colony, and where its replay starts (`t=<s>&speed=<n>`, for a record that opens on setup). */
-interface Showcase {
+export interface Showcase {
   id: string;
   kind: Kind;
   measured?: string;
@@ -31,6 +32,7 @@ const SHOWCASE: ReadonlyArray<Showcase> = [
   { id: "byo-demo", kind: "mcp" },
   { id: "scale", kind: "scale", measured: "2,730 changes a minute over the run, median 9.6 s to land (the load generator's timing)", replay: "t=32&speed=4" },
   { id: "order-backend", kind: "goals" },
+  { id: "signed-notes", kind: "signed" },
 ];
 
 interface Result {
@@ -38,7 +40,7 @@ interface Result {
   kind: Kind;
   name: string;
   source?: string;
-  /** Where a colony with no source came from (scale, goals, firstred); without either the card says it started from a spec. */
+  /** Where a colony with no source came from (scale, goals, firstred, signed); without either the card says it started from a spec. */
   origin?: string;
   /** Where the replay link starts (Showcase.replay). */
   replay?: string;
@@ -147,6 +149,14 @@ async function loadResult(s: Showcase, listing: Json[], signal: AbortSignal): Pr
     out.lede = card.lede;
     out.origin = card.origin;
     details.push(...card.details);
+  } else if (s.kind === "signed") {
+    // Signed lineage notes on the live service (showcase.ts): the trunk writer's published key and the newest notes it signed.
+    const card = await loadSignedCard(s.id, (url) => getJson(url, signal), serverOrigin(location));
+    if (!card) return null;
+    out.headline = card.headline;
+    out.lede = card.lede;
+    out.origin = card.origin;
+    details.push(...card.details);
   } else {
     const [list, snap] = await Promise.all([getJson(`${base}/agents?all=1&journal=0`, signal).catch(() => null), getJson(base, signal).catch(() => null)]);
     const all = isObj(list) && Array.isArray(list.agents) ? (list.agents as Json[]) : [];
@@ -197,17 +207,21 @@ function Card({ r }: { r: Result }) {
   );
 }
 
-/** The showcase, or ?results=id:kind,id:kind (rule, spec, mcp, certify, scale, goals or firstred) for a deployment without the production colonies. */
-function showcase(): ReadonlyArray<Showcase> {
-  const raw = new URLSearchParams(location.search).get("results");
+/** The kinds ?results= may name. */
+const KINDS: ReadonlySet<string> = new Set(["rule", "spec", "mcp", "certify", "scale", "goals", "firstred", "signed"]);
+
+/** The showcase, or ?results=id:kind,id:kind (rule, spec, mcp, certify, scale, goals, firstred or signed) for a deployment without the production colonies. */
+export function showcaseFrom(search: string): ReadonlyArray<Showcase> {
+  const raw = new URLSearchParams(search).get("results");
   if (!raw) return SHOWCASE;
-  const kinds: ReadonlySet<string> = new Set(["rule", "spec", "mcp", "certify", "scale", "goals", "firstred"]);
   return raw
     .split(",")
     .map((x) => x.trim().split(":"))
-    .filter(([id, kind]) => !!id && !!kind && kinds.has(kind))
+    .filter(([id, kind]) => !!id && !!kind && KINDS.has(kind))
     .map(([id, kind]) => ({ id: id as string, kind: kind as Kind }));
 }
+
+const showcase = (): ReadonlyArray<Showcase> => showcaseFrom(location.search);
 
 /** The results strip on the landing page (hidden when none of the showcase colonies answers). */
 export function Results() {

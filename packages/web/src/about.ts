@@ -17,6 +17,8 @@ export interface About {
   deployedAt: string | null;
   /** The flags that are on, by name. */
   flags: string[];
+  /** The id of the key that signs lineage notes (16 hex digits), published at /.well-known/firetrident-keys.json; null when landings are not signed. */
+  noteKey: string | null;
 }
 
 /** A short single-line string, or null. */
@@ -37,6 +39,7 @@ export function parseAbout(x: unknown): About | null {
     versionTag: text(o.versionTag, 100),
     deployedAt: Number.isFinite(at) ? new Date(at).toISOString() : null,
     flags: Array.isArray(o.flags) ? o.flags.filter((f): f is string => typeof f === "string" && /^[A-Z][A-Z0-9_]{0,63}$/.test(f)) : [],
+    noteKey: typeof o.noteKey === "string" && /^[0-9a-f]{16}$/.test(o.noteKey) ? o.noteKey : null,
   };
 }
 

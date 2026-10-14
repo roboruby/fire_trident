@@ -160,6 +160,22 @@ a.build-tag:hover {
   text-overflow: ellipsis;
 }
 
+/* The key that signs this colony's lineage notes (SignedBy): one muted line under the colony's name. */
+.signed-by {
+  display: block;
+  margin-top: 2px;
+  font-size: 10.5px;
+  color: var(--text-4);
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+a.signed-by:hover {
+  color: var(--text-2);
+}
+
 .conn {
   flex: none;
   display: inline-flex;

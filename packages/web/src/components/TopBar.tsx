@@ -8,6 +8,7 @@ import { useThrottledVersion } from "../useStore.ts";
 import { AnimatedNumber } from "./AnimatedNumber.tsx";
 import { BuildTag } from "./BuildTag.tsx";
 import { ColonyPicker } from "./ColonyPicker.tsx";
+import { SignedBy } from "./SignedBy.tsx";
 import { SpendNote } from "./Spend.tsx";
 import { VaccineMeter } from "./VaccineMeter.tsx";
 
@@ -187,7 +188,7 @@ function Funnel({ funnel, last, settled }: { funnel: Record<FunnelStage, number>
   );
 }
 
-/** The top bar: brand and colony, the hero violations counter, live stats, sigma, vaccination, the reflex funnel and model spend. */
+/** The top bar: brand and colony (with the key that signs its notes), the hero violations counter, live stats, sigma, vaccination, the reflex funnel and model spend. */
 export function TopBar({ store, director = false, mock = false }: { store: ColonyStore; director?: boolean; mock?: boolean }) {
   useThrottledVersion(store, 200);
   // The build serving the page, after the product name (left out of director recordings).
@@ -223,6 +224,7 @@ export function TopBar({ store, director = false, mock = false }: { store: Colon
             {director ? <span className="mono brand-colony-name">{label}</span> : <ColonyPicker current={store.colonyId} label={label} mock={mock} />}
             <ConnPill conn={store.conn} replay={store.replay} idle={store.loaded && store.agentsActive() === 0} />
           </div>
+          {director ? null : <SignedBy store={store} about={about} mock={mock} />}
         </div>
       </div>
       <div className={`hero${clean ? " is-clean" : ""}`} title={byRule || undefined}>

@@ -1,12 +1,14 @@
 import { fmtDuration, fmtInt, fmtMs, shortSha } from "../format.ts";
+import { KEYS_PATH } from "../signed.ts";
 
 /**
  * Cards of the results strip (Results.tsx) about runs on the live service: `scale`, thousands of synthetic agents in
  * one repository; `goals`, agents whose goals disagree, where the colony held the changes that would undo another's
  * landing for a person; and `firstred`, a red certification whose first red search named the landing that broke the
- * tests, and the repair after it. Each reads only routes that answer without a token (metrics, the event record, the
- * colony listing, one proposal, one intent, the certification results, the snapshot) and has nothing to show (null)
- * until its colony has run.
+ * tests, and the repair after it; and `signed`, lineage notes signed by the trunk writer's published key. Each reads
+ * only routes that answer without a token (metrics, the event record, the colony listing, one proposal, one intent, the
+ * certification results, the snapshot, the note checks, the published keys) and has nothing to show (null) until its
+ * colony has run.
  */
 
 /** Reads JSON from the API; rejects when the read fails (injected, so tests answer it). */
@@ -355,4 +357,111 @@ export function firstRedCard(certs: unknown, snapshot: unknown): ShowcaseCard | 
 export async function loadFirstRedCard(id: string, get: GetJson): Promise<ShowcaseCard | null> {
   const [certs, snapshot] = await Promise.all([get(`${api(id)}/certifications?limit=50`).catch(() => null), get(api(id)).catch(() => null)]);
   return firstRedCard(certs, snapshot);
+}
+
+// ---------------------------------------------------------------------------
+// signed: lineage notes signed by the trunk writer's published key
+// ---------------------------------------------------------------------------
+
+/** Where the signed notes colony came from: one scripted agent over MCP (scripts/signed_notes.ts), which calls no model. */
+export const SIGNED_ORIGIN = "one scripted agent over MCP, no models";
+
+/** Newest landings whose note checks the signed card reads (the route's own default). */
+export const SIGNED_NOTES_LIMIT = 20;
+
+/** A published key as GET /.well-known/firetrident-keys.json lists it: its id, and when it started signing. */
+interface PublishedKey {
+  id: string;
+  since: string | null;
+}
+
+const KEY_ID = /^[0-9a-f]{16}$/;
+
+/** The keys a deployment publishes, by id; empty when the answer is not a key list. */
+function keysOf(answer: unknown): Map<string, PublishedKey> {
+  const out = new Map<string, PublishedKey>();
+  const list = isObj(answer) && Array.isArray(answer.keys) ? answer.keys.filter(isObj) : [];
+  for (const k of list) {
+    const id = str(k.id);
+    if (!KEY_ID.test(id)) continue;
+    const at = typeof k.since === "string" ? Date.parse(k.since) : Number.NaN;
+    out.set(id, { id, since: Number.isFinite(at) ? new Date(at).toISOString() : null });
+  }
+  return out;
+}
+
+/** The published key that signed an intact note's commit, or null for any other check: the rule the badge on the colony page reads by (signed.ts). */
+function signerOf(note: Json, keys: ReadonlyMap<string, PublishedKey>): string | null {
+  const sig = isObj(note.signature) ? note.signature : null;
+  const id = str(sig?.keyId);
+  return note.status === "intact" && sig?.status === "signed" && keys.has(id) ? id : null;
+}
+
+/** A note check in the words of the badge on the colony page (verified.ts, signed.ts), for a detail line. */
+function badgeWords(note: Json, signed: boolean): string {
+  if (signed) return "note intact and signed";
+  const sig = isObj(note.signature) ? note.signature : null;
+  switch (note.status) {
+    case "intact":
+      return sig?.status === "bad-signature" ? "note intact, but its signature does not match" : sig?.status === "unsigned" ? "note intact, landed before signing" : "note intact";
+    case "altered":
+      return "note altered";
+    case "missing":
+      return "note missing";
+    case "pending":
+      return "note not pushed yet";
+    case "no-trailer":
+      return "landed before notes were sealed";
+    default:
+      return "note not checked";
+  }
+}
+
+/** "2026-10-14 15:59 UTC" for an ISO 8601 time. */
+const utc = (iso: string): string => `${iso.slice(0, 16).replace("T", " ")} UTC`;
+
+/**
+ * The signed card, from the colony's newest note checks (GET /notes/verify, newest first, each with `signature` where the
+ * deployment signs) and the keys it publishes (GET /.well-known/firetrident-keys.json). A note counts as signed when it
+ * is intact and its commit's signature verifies with a published key, as the badge on the colony page reads it. Null
+ * when the colony has no checked note, when no key is published, or when no note is signed, so the card can be listed
+ * before its colony exists or before the deployment signs. `origin` is the server the stock-git line names.
+ */
+export function signedCard(verify: unknown, keys: unknown, p: { colonyId: string; origin: string }): ShowcaseCard | null {
+  const published = keysOf(keys);
+  const notes = isObj(verify) && Array.isArray(verify.notes) ? verify.notes.filter(isObj) : [];
+  const newest = notes[0];
+  if (published.size === 0 || !newest) return null;
+  const signers = notes.map((n) => signerOf(n, published));
+  const signed = signers.filter((s) => s !== null).length;
+  if (signed === 0) return null;
+  // The key named is the newest signed note's, so after a rotation the card names the key signing now.
+  const first = signers.findIndex((s) => s !== null);
+  const keyId = signers[first]!;
+  const key = published.get(keyId)!;
+  const all = signed === notes.length;
+  // The stock-git check names HEAD when the newest landing is signed, else the newest signed commit.
+  const target = first === 0 ? "HEAD" : str(notes[first]!.trunkSha).slice(0, 12);
+  const keysUrl = `${p.origin}${KEYS_PATH}`;
+  return {
+    headline: all ? `Signed by ${keyId}` : `${fmtInt(signed)} of ${fmtInt(notes.length)} notes signed`,
+    lede: all
+      ? "every landing's note is sealed by its digest and signed by the trunk writer's key, published for any git client to check"
+      : `the newest landings' notes are sealed by their digests; ${words(signed)} of ${words(notes.length)} ${signed === 1 ? "is" : "are"} signed by the trunk writer's key, published for any git client to check`,
+    details: [
+      `key ${keyId} (Ed25519)${key.since ? `, signing since ${utc(key.since)}` : ""}, published at ${KEYS_PATH}`,
+      `newest landing ${shortSha(str(newest.trunkSha))}: ${badgeWords(newest, first === 0)}${all && notes.length > 1 ? `, as are the ${words(notes.length - 1)} before it` : ""}`,
+      `from a stock clone (git clone ${p.origin}/git/${p.colonyId}.git, fetch refs/notes/firetrident), node scripts/verify_note.mjs ${target} --keys ${keysUrl} prints “intact, signed by ${keyId}”`,
+    ],
+    origin: SIGNED_ORIGIN,
+  };
+}
+
+/**
+ * The signed card from routes that answer without a token: the colony's newest note checks and the deployment's
+ * published keys. Null when either does not answer, so it can be listed before its colony exists.
+ */
+export async function loadSignedCard(id: string, get: GetJson, origin: string): Promise<ShowcaseCard | null> {
+  const [verify, keys] = await Promise.all([get(`${api(id)}/notes/verify?limit=${SIGNED_NOTES_LIMIT}`).catch(() => null), get(KEYS_PATH).catch(() => null)]);
+  return signedCard(verify, keys, { colonyId: id, origin });
 }

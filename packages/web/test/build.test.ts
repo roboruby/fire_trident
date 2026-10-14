@@ -14,6 +14,7 @@ const ABOUT: About = {
   versionTag: "f9c7aad",
   deployedAt: "2026-10-14T18:02:11.123Z",
   flags: ["FT_INLINE", "FT_TEXT_MERGE"],
+  noteKey: null,
 };
 
 // The top bar asks for the build through useAbout; here it answers at once. Its store subscription has no server
@@ -33,6 +34,7 @@ describe("GET /api/about, read by the page", () => {
       versionTag: null,
       deployedAt: null,
       flags: ["FT_INLINE", "FT_X"],
+      noteKey: null,
     });
     expect(parseAbout(null)).toBeNull();
     expect(parseAbout(["f9c7aad"])).toBeNull();
@@ -58,7 +60,7 @@ describe("the build tag", () => {
 
   it("tells the rest on hover: commit, Worker version and tag, deploy time in UTC, flags on", () => {
     expect(buildTitle(ABOUT)).toBe("Commit f9c7aad · Worker version 3f2a1b9c-0d4e-4f6a-9b8c-7d6e5f4a3b2c (tag f9c7aad) · deployed 2026-10-14 18:02 UTC · flags on: FT_INLINE, FT_TEXT_MERGE");
-    expect(buildTitle({ commit: null, versionId: null, versionTag: null, deployedAt: null, flags: [] })).toBe("no flags on");
+    expect(buildTitle({ commit: null, versionId: null, versionTag: null, deployedAt: null, flags: [], noteKey: null })).toBe("no flags on");
   });
 
   it("links to the commit when it looks like one", () => {

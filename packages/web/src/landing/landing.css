@@ -1196,6 +1196,15 @@ a.lc:hover .lc-open {
   letter-spacing: -0.02em;
 }
 
+/* A key id: the mono face of the MCP card's name, in the green of an intact note's badge on the colony page. */
+.rs-signed .rs-headline {
+  color: #6fd9a6;
+  text-shadow: 0 0 26px rgba(31, 224, 142, 0.28);
+  font-family: var(--mono);
+  font-size: clamp(24px, 2.2vw, 32px);
+  letter-spacing: -0.02em;
+}
+
 .rs-lede {
   margin-top: 8px;
   font-size: 15px;
