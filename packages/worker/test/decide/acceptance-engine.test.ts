@@ -234,8 +234,8 @@ describe("flag on, an intent with an acceptance list", () => {
     const llm = c.llmDecision(p.id)!;
     expect(llm.answers.rule).toBe("L3 innate+llm");
     expect(llm.answers.acceptance).toEqual([
-      { kind: "intent", line: ACCEPTANCE[0], verdict: "met", path: "src/slug.ts", quote: "const lower = text.toLowerCase();" },
-      { kind: "intent", line: ACCEPTANCE[1], verdict: "met", path: "src/slug.ts", quote: 'return lower.replace(/ +/g, "-");' },
+      { kind: "intent", line: ACCEPTANCE[0], verdict: "met", basis: "quote", path: "src/slug.ts", quote: "const lower = text.toLowerCase();" },
+      { kind: "intent", line: ACCEPTANCE[1], verdict: "met", basis: "quote", path: "src/slug.ts", quote: 'return lower.replace(/ +/g, "-");' },
     ]);
     expect(llm.answers.reasons).toContain("every acceptance line is met, each with a quote found in the diff (2 lines)");
     expect(p.evidence.checks.find((k) => k.name === "acceptance: quoted")).toMatchObject({ ok: true, detail: expect.stringContaining('line 2 met: src/slug.ts "return lower.replace') });
@@ -302,5 +302,33 @@ describe("flag on, an intent with an acceptance list", () => {
     };
     c.ai.verdict = { ...APPROVE, acceptance: ANSWERS };
     expect((await c.decide(c.declare("human", { acceptance: [...ACCEPTANCE] }), [{ path: "src/slug.ts", before: BEFORE, after: AFTER }])).status).toBe("ready");
+  });
+
+  it("a line stating an absence counts met on the model's word; answered not met it still returns the change; a positive line met with no quote is still unclear", async () => {
+    const c = new Colonyish("on");
+    const lines = ["slugify lowercases its input", "No console output is added"];
+    c.ai.verdict = { ...APPROVE, acceptance: [ANSWERS[0], { line: 2, verdict: "met", path: "", quote: "" }] };
+    const p = await c.decide(c.declare("human", { acceptance: [...lines] }), [{ path: "src/slug.ts", before: BEFORE, after: AFTER }]);
+    expect(p.status).toBe("ready");
+    const llm = c.llmDecision(p.id)!;
+    expect(llm.answers.acceptance).toEqual([
+      { kind: "intent", line: lines[0], verdict: "met", basis: "quote", path: "src/slug.ts", quote: "const lower = text.toLowerCase();" },
+      { kind: "intent", line: lines[1], verdict: "met", basis: "absence" },
+    ]);
+    expect(llm.answers.reasons).toContain("every acceptance line is met (2 lines): 1 with a quote found in the diff, 1 on the model's word (line 2 states an absence, so there is no changed line to quote)");
+    expect(p.evidence.checks.find((k) => k.name === "acceptance: quoted")).toMatchObject({ ok: true, detail: expect.stringContaining("line 2 met: on the model's word (it states an absence)") });
+    // The lineage note keeps the basis with each line.
+    const rows: DecisionRow[] = c.decisions.map((d) => ({ id: d.id, kind: d.kind, subject: d.subject, layer: d.layer, answers: JSON.stringify(d.answers), p: d.p, action: d.action, at: d.at }));
+    expect(noteDecisions(rows)[p.id]!.find((d) => d.layer === "llm")!.acceptance).toEqual(llm.answers.acceptance);
+
+    c.ai.verdict = { ...APPROVE, acceptance: [ANSWERS[0], { line: 2, verdict: "not met", path: "src/slug.ts", quote: "console.log(lower);" }] };
+    const back = await c.decide(c.declare("human", { acceptance: [...lines] }), [{ path: "src/slug.ts", before: BEFORE, after: AFTER }]);
+    expect(back.status).toBe("returned");
+    expect(back.reason).toContain('acceptance not met: line 2 "No console output is added" (it saw src/slug.ts: "console.log(lower);"); change it so it meets that line');
+
+    c.ai.verdict = { ...APPROVE, acceptance: [{ line: 1, verdict: "met", path: "", quote: "" }, { line: 2, verdict: "met", path: "", quote: "" }] };
+    const unclear = await c.decide(c.declare("human", { acceptance: [...lines] }), [{ path: "src/slug.ts", before: BEFORE, after: AFTER }]);
+    expect(unclear.status).toBe("escalated");
+    expect(unclear.reason).toContain('acceptance not shown met: line 1 "slugify lowercases its input" (it named no file)');
   });
 });

@@ -8,6 +8,7 @@ import {
   acceptanceLines,
   checkAcceptance,
   checkQuote,
+  isAbsence,
   keepSource,
   noteAcceptance,
   parseAcceptance,
@@ -85,7 +86,7 @@ describe("checkAcceptance: what counts for each line", () => {
       VIEW,
     );
     expect(checked).toEqual([
-      { kind: "intent", line: LINES[0]!.text, verdict: "met", path: "src/slug.ts", quote: "const lower = text.toLowerCase();" },
+      { kind: "intent", line: LINES[0]!.text, verdict: "met", basis: "quote", path: "src/slug.ts", quote: "const lower = text.toLowerCase();" },
       { kind: "intent", line: LINES[1]!.text, verdict: "unclear", said: "met", path: "src/slug.ts", quote: 'return text.replaceAll(" ", "-");', problem: "its quote is not in the added or unchanged lines of src/slug.ts it was shown" },
     ]);
     expect(checkAcceptance(LINES, [{ line: 2, verdict: "not met" }], VIEW).map((l) => [l.verdict, l.problem])).toEqual([
@@ -210,5 +211,108 @@ describe("reading what models and stores give", () => {
     expect(out![1]).toEqual({ kind: "keep", line: "k", verdict: "not met", landingId: "lnd_1" });
     expect(noteAcceptance("nope")).toBeUndefined();
     expect(noteAcceptance([{ kind: "intent" }])).toBeUndefined();
+  });
+});
+
+describe("isAbsence: a line that says what must not be there", () => {
+  it("reads an absence from no, not, never, nothing, none, without, only, unchanged, untouched, cannot or an n't contraction", () => {
+    for (const line of [
+      "No other option, file or formatting changes",
+      'jsr.json no longer contains the "unstable": ["sloppy-imports"] entry',
+      "The token is not logged",
+      "Never writes outside src",
+      "Nothing else in src changes",
+      "None of the tests are deleted",
+      "Builds without warnings",
+      "Only jsr.json changes",
+      "Everything else in jsr.json is unchanged",
+      "tests/ is untouched",
+      "A request without a slug cannot reach the handler",
+      "Doesn't add a dependency",
+      "Won’t change the public API",
+      "  NO  other   files change ",
+    ])
+      expect(isAbsence(line), line).toBe(true);
+  });
+
+  it("reads every other line as positive, matching whole words only", () => {
+    for (const line of [
+      "slugify lowercases its input",
+      'compilerOptions in tsconfig.base.json contains "rewriteRelativeImportExtensions": true',
+      "Returns 404 for an unknown slug",
+      "Adds a notice to the README",
+      "Exports slugify from src/index.ts",
+      "Nonempty input gives a nonempty slug",
+      "Notes the change in CHANGELOG.md",
+      "",
+    ])
+      expect(isAbsence(line), line).toBe(false);
+  });
+});
+
+describe("checkAcceptance: a line stating an absence counts on the model's word", () => {
+  const ABSENT: AcceptanceLine[] = [LINES[0]!, { kind: "intent", text: "No console output is added" }];
+  const MET_1 = { line: 1, verdict: "met", path: "src/slug.ts", quote: "const lower = text.toLowerCase();" } as const;
+
+  it("answered met with no file or quote: met, basis absence, nothing kept as evidence", () => {
+    expect(checkAcceptance(ABSENT, [MET_1, { line: 2, verdict: "met" }], VIEW)).toEqual([
+      { kind: "intent", line: LINES[0]!.text, verdict: "met", basis: "quote", path: "src/slug.ts", quote: "const lower = text.toLowerCase();" },
+      { kind: "intent", line: "No console output is added", verdict: "met", basis: "absence" },
+    ]);
+    // A path without a quote is no evidence either.
+    expect(checkAcceptance(ABSENT, [MET_1, { line: 2, verdict: "met", path: "src/slug.ts" }], VIEW)[1]).toEqual({ kind: "intent", line: "No console output is added", verdict: "met", basis: "absence" });
+  });
+
+  it("a quote the platform finds stays the basis; one it cannot find is dropped and the met rests on the model's word", () => {
+    expect(checkAcceptance(ABSENT, [MET_1, { line: 2, verdict: "met", path: "src/slug.ts", quote: 'return lower.replace(/ +/g, "-");' }], VIEW)[1]).toEqual({
+      kind: "intent",
+      line: "No console output is added",
+      verdict: "met",
+      basis: "quote",
+      path: "src/slug.ts",
+      quote: 'return lower.replace(/ +/g, "-");',
+    });
+    expect(checkAcceptance(ABSENT, [MET_1, { line: 2, verdict: "met", path: "src/slug.ts", quote: "console.log(lower); // nowhere in the diff" }], VIEW)[1]).toEqual({ kind: "intent", line: "No console output is added", verdict: "met", basis: "absence" });
+  });
+
+  it("answered not met it still returns the change, naming what the model saw; answered unclear it stays unclear", () => {
+    const checked = checkAcceptance(ABSENT, [MET_1, { line: 2, verdict: "not met", path: "src/slug.ts", quote: "console.log(lower);" }], VIEW);
+    expect(checked[1]).toEqual({ kind: "intent", line: "No console output is added", verdict: "not met", path: "src/slug.ts", quote: "console.log(lower);" });
+    expect(acceptanceGate(checked)).toEqual({
+      notMet: 'acceptance not met: line 2 "No console output is added" (it saw src/slug.ts: "console.log(lower);"); change it so it meets that line, or escalate if the intent cannot be met as written',
+    });
+    expect(checkAcceptance(ABSENT, [MET_1, { line: 2, verdict: "unclear" }], VIEW)[1]).toEqual({ kind: "intent", line: "No console output is added", verdict: "unclear" });
+    expect(acceptanceGate(checkAcceptance(ABSENT, [MET_1, { line: 2, verdict: "unclear" }], VIEW))?.unclear).toContain('line 2 "No console output is added" (the second opinion answered unclear)');
+  });
+
+  it("a positive line answered met with no quote is still unclear", () => {
+    expect(checkAcceptance(ABSENT, [{ line: 1, verdict: "met" }, { line: 2, verdict: "met" }], VIEW)[0]).toEqual({ kind: "intent", line: LINES[0]!.text, verdict: "unclear", said: "met", problem: "it named no file" });
+    expect(checkAcceptance(ABSENT, [{ line: 1, verdict: "met", path: "src/slug.ts", quote: "" }, { line: 2, verdict: "met" }], VIEW)[0]).toMatchObject({ verdict: "unclear", said: "met", problem: "it quoted no line" });
+  });
+
+  it("the gate's reasons and the evidence line say which lines rest on the model's word", () => {
+    const word: NoteAcceptance = { kind: "intent", line: "No console output is added", verdict: "met", basis: "absence" };
+    const quoted: NoteAcceptance = { kind: "intent", line: "a", verdict: "met", basis: "quote", path: "src/slug.ts", quote: "const lower = text.toLowerCase();" };
+    expect(acceptanceGate([quoted, word])).toEqual({ met: "every acceptance line is met (2 lines): 1 with a quote found in the diff, 1 on the model's word (line 2 states an absence, so there is no changed line to quote)" });
+    expect(acceptanceGate([word, { ...word, line: "Never logs the token" }])).toEqual({
+      met: "every acceptance line is met (2 lines): 0 with a quote found in the diff, 2 on the model's word (line 1, line 2 state an absence, so there is no changed line to quote)",
+    });
+    // A keep line on the model's word changes nothing and is not among the intent's lines.
+    expect(acceptanceGate([quoted, { ...word, kind: "keep", landingId: "lnd_1" }])).toEqual({ met: "every acceptance line is met, each with a quote found in the diff (1 line)" });
+    expect(acceptanceDetail([quoted, word])).toBe('line 1 met: src/slug.ts "const lower = text.toLowerCase();"; line 2 met: on the model\'s word (it states an absence)');
+  });
+
+  it("noteAcceptance keeps the basis of a met and drops an odd one", () => {
+    expect(
+      noteAcceptance([
+        { kind: "intent", line: "a", verdict: "met", basis: "absence" },
+        { kind: "intent", line: "b", verdict: "met", basis: "quote", path: "src/a.ts", quote: "const a = 1;" },
+        { kind: "intent", line: "c", verdict: "met", basis: "guess", path: "src/a.ts", quote: "const a = 1;" },
+      ]),
+    ).toEqual([
+      { kind: "intent", line: "a", verdict: "met", basis: "absence" },
+      { kind: "intent", line: "b", verdict: "met", basis: "quote", path: "src/a.ts", quote: "const a = 1;" },
+      { kind: "intent", line: "c", verdict: "met", path: "src/a.ts", quote: "const a = 1;" },
+    ]);
   });
 });

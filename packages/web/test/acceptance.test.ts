@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import type { NoteDecision } from "@fire_trident/core";
 import { acceptanceOf } from "../src/acceptance.ts";
+import { AcceptanceLines } from "../src/components/AcceptanceLines.tsx";
 
 /** The Why panel's reading of quoted acceptance (FT_QUOTED_ACCEPTANCE) in a note's second-opinion decision. */
 
@@ -29,5 +32,38 @@ describe("acceptanceOf", () => {
     expect(acceptanceOf(BASE)).toEqual([]);
     expect(acceptanceOf(null)).toEqual([]);
     expect(acceptanceOf({ ...BASE, acceptance: [null, "x", { kind: "intent", line: "", verdict: "met" }, { kind: "intent", line: "a", verdict: "maybe" }] as unknown as NoteDecision["acceptance"] })).toEqual([]);
+  });
+
+  it("keeps the basis of a met, and what the model saw for a line not met", () => {
+    expect(
+      acceptanceOf({
+        ...BASE,
+        acceptance: [
+          { kind: "intent", line: "No other option, file or formatting changes", verdict: "met", basis: "absence" },
+          { kind: "intent", line: "slugify lowercases its input", verdict: "met", basis: "quote", path: "src/slug.ts", quote: "const lower = text.toLowerCase();" },
+          { kind: "intent", line: "No console output is added", verdict: "not met", path: "src/slug.ts", quote: "console.log(lower);" },
+        ],
+      }),
+    ).toEqual([
+      { place: "line 1", line: "No other option, file or formatting changes", verdict: "met", basis: "absence" },
+      { place: "line 2", line: "slugify lowercases its input", verdict: "met", basis: "quote", path: "src/slug.ts", quote: "const lower = text.toLowerCase();" },
+      { place: "line 3", line: "No console output is added", verdict: "not met", why: 'it saw src/slug.ts: "console.log(lower);"' },
+    ]);
+  });
+
+  it("the Why tab marks a met on the model's word, and shows the quote for the others", () => {
+    const rows = acceptanceOf({
+      ...BASE,
+      acceptance: [
+        { kind: "intent", line: "No other option, file or formatting changes", verdict: "met", basis: "absence" },
+        { kind: "intent", line: "slugify lowercases its input", verdict: "met", basis: "quote", path: "src/slug.ts", quote: "const lower = text.toLowerCase();" },
+        { kind: "intent", line: "No console output is added", verdict: "not met", path: "src/slug.ts", quote: "console.log(lower);" },
+      ],
+    });
+    const html = renderToStaticMarkup(createElement(AcceptanceLines, { rows }));
+    expect(html).toContain("model&#x27;s word (it states an absence, so there is no changed line to quote)");
+    expect(html).toContain("src/slug.ts: const lower = text.toLowerCase();");
+    expect(html).toContain("it saw src/slug.ts: &quot;console.log(lower);&quot;");
+    expect(renderToStaticMarkup(createElement(AcceptanceLines, { rows: [] }))).toBe("");
   });
 });
