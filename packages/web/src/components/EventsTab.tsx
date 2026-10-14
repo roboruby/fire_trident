@@ -5,7 +5,7 @@ import type { ColonyStore, LoggedEvent, NoticeGroup } from "../store.ts";
 import { escalationOf } from "../store.ts";
 import { ACCENT, FIELD_COLOR, LAYER_COLOR } from "../theme.ts";
 import { useThrottledVersion } from "../useStore.ts";
-import { certCounts, certTitle } from "../certs.ts";
+import { certCounts, certFirstRed, certTitle } from "../certs.ts";
 import { contestText, escalationText, firstLine, noticeText, revalidatedText } from "../eventText.ts";
 
 /** Changing direction: amendments, withdrawals, retracted rules, reverted landings and human directives. */
@@ -29,7 +29,7 @@ const FILTERS: ReadonlyArray<[key: string, label: string, color: string, types: 
   ["stuck", "Stuck", STUCK_COLOR, ["stuck"]],
   ["direction", "Direction", DIRECTION_COLOR, ["amended", "withdrawn", "retracted", "reverted", "directive"]],
   ["status", "Status", STATUS_COLOR, ["status"]],
-  ["certify", "Tests", TESTS_GREEN, ["certify"]],
+  ["certify", "Tests", TESTS_GREEN, ["certify", "bisect"]],
   ["agent", "Agents", "#c9d4e5", ["agent"]],
   ["violations", "Rules", FIELD_COLOR.need, ["violations"]],
   ["sigma", "Sigma", FIELD_COLOR.danger, ["sigma"]],
@@ -161,6 +161,11 @@ function describe(le: LoggedEvent, store: ColonyStore): Line {
       if (e.status === "green") return { tag: "tests", color: TESTS_GREEN, text: `✓ ${certCounts(cert, "pass")}${e.reusedFrom ? " (same tested files)" : ""}`, mono: shortSha(e.trunkSha), title: certTitle(cert) };
       if (e.status === "red") return { tag: "tests", color: TESTS_RED, text: `✗ ${certCounts(cert)}: ${(e.failing ?? []).map((f) => f.name).slice(0, 3).join(", ")}`, mono: shortSha(e.trunkSha), title: certTitle(cert) };
       return { tag: "tests", color: "#8b97a8", text: `${e.status}${e.detail ? ` · ${e.detail}` : ""}`, mono: shortSha(e.trunkSha), title: e.detail };
+    }
+    case "bisect": {
+      // The first red search ended for a red result: the commit its failing tests first failed at, or why none was named.
+      const text = certFirstRed({ firstRed: e.firstRed }, store.colony?.id ?? store.colonyId)?.text ?? "";
+      return { tag: "first red", color: e.firstRed?.status === "found" ? TESTS_RED : "#8b97a8", text, mono: typeof e.trunkSha === "string" ? shortSha(e.trunkSha) : undefined, title: text };
     }
     default:
       return { tag: String((e as { t?: unknown }).t ?? "event"), color: "#8b97a8", text: "" };

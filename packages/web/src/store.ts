@@ -10,6 +10,7 @@ import type {
   EscalationKind,
   FailingTest,
   FieldReading,
+  FirstRed,
   FunnelStage,
   Id,
   IntentEscalation,
@@ -51,6 +52,8 @@ export interface CertView {
   reusedFrom?: Sha;
   /** A red result's suspects (culprit finding): the changes that most likely broke its tests. */
   suspects?: Extract<ColonyEvent, { t: "certify" }>["suspects"];
+  /** A red result's first red commit (FT_BISECT), once the search ended (the result, or a `bisect` event). */
+  firstRed?: FirstRed;
   at: number;
 }
 
@@ -284,6 +287,7 @@ const EVENT_TYPES: ReadonlySet<string> = new Set([
   "revalidated",
   "status",
   "certify",
+  "bisect",
 ]);
 const AGENT_STATES: ReadonlySet<string> = new Set<AgentState>(["idle", "working", "proposing", "waiting", "dead"]);
 const ESCALATION_KINDS: ReadonlySet<string> = new Set<EscalationKind>(["broken-test", "contradictory-spec", "impossible", "other"]);
@@ -332,6 +336,12 @@ function tally<K extends string>(rec: Record<K, number>, key: string, d: number,
   if (!known.has(key)) return;
   const k = key as K;
   rec[k] = Math.max(0, (rec[k] ?? 0) + d);
+}
+
+/** Is this a first red answer the UI can word (a server may send odd or older data)? */
+export function isFirstRed(x: unknown): x is FirstRed {
+  const f = x as FirstRed | null | undefined;
+  return !!f && typeof f === "object" && (f.status === "found" || f.status === "inconclusive") && typeof f.probes === "number";
 }
 
 /**
@@ -624,6 +634,7 @@ export class ColonyStore {
     if (c.detail) view.detail = c.detail;
     if (c.reusedFrom) view.reusedFrom = c.reusedFrom;
     if (Array.isArray(c.suspects) && c.suspects.length > 0) view.suspects = c.suspects;
+    if (isFirstRed(c.firstRed)) view.firstRed = c.firstRed;
     this.certs.delete(c.trunkSha);
     this.certs.set(c.trunkSha, view);
     this.lastCertSha = c.trunkSha;
@@ -1011,6 +1022,12 @@ export class ColonyStore {
         if (ev.status === "green") this.greenSha = ev.trunkSha;
         else if (typeof ev.greenSha === "string" && ev.greenSha) this.greenSha = ev.greenSha;
         break;
+      case "bisect": {
+        // The first red search ended: the red result it was for gains its answer (a result this page never saw is left alone).
+        const cert = typeof ev.trunkSha === "string" ? this.certs.get(ev.trunkSha) : undefined;
+        if (cert && isFirstRed(ev.firstRed)) cert.firstRed = ev.firstRed;
+        break;
+      }
     }
     this.ring[this.ringHead] = group ? { seq: ++this.seq, ev, delta, group } : { seq: ++this.seq, ev, delta };
     this.ringHead = (this.ringHead + 1) % LOG_CAP;

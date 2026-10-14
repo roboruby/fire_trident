@@ -821,6 +821,36 @@ export interface Suspect {
   at: Millis;
 }
 
+/**
+ * The first trunk commit at which a red result's failing tests fail (FT_BISECT), searched after the result is recorded:
+ * only the failing test files and what they load run, alone, on commits between the last green certification and the
+ * red one, halving the range each run. `inconclusive` says why no commit was named: the tests passed when run alone on
+ * the red commit (flaky or order-dependent), there is no green commit to start from, a run failed or ran out of time,
+ * or the range was too long for the runs allowed.
+ */
+export interface FirstRed {
+  status: "found" | "inconclusive";
+  /** Inconclusive only: why, in one sentence. */
+  reason?: string;
+  /** Found only: the commit, the landing that made it, and the intents landed in it. */
+  trunkSha?: Sha;
+  landingId?: Id;
+  intents?: Array<{ id: Id; title?: string }>;
+  /** Found only: its proposals whose writes touch what the failing tests load (the test files included), with those paths. */
+  proposals?: Array<{ id: Id; intentId?: Id; title?: string; paths: Path[] }>;
+  /** Found only: the failing test files that failed on that commit. */
+  files?: Path[];
+  /** Test runs used (one per commit tried, the red one first), and the search's wall time. */
+  probes: number;
+  ms: number;
+  /** Landings between the last green commit and the red one. */
+  landings?: number;
+  /** The last green commit the search started from. */
+  greenSha?: Sha;
+  /** Copied from the search of this earlier red result: the same failing tests since the same green commit. */
+  reusedFrom?: Sha;
+}
+
 /** Counts in the order `node --test` prints them. `tests` = pass + fail + cancelled + skipped + todo. */
 export interface TestCounts {
   tests: number;
@@ -859,6 +889,8 @@ export interface Certification {
   repairIntentId?: Id;
   /** Red only, when culprit finding is on (FT_CULPRITS): the changes that may have broken the failing tests, newest first (at most 10). */
   suspects?: Suspect[];
+  /** Red only, when the first red search is on (FT_BISECT): the first commit its failing tests fail on, added once the search ends. */
+  firstRed?: FirstRed;
   /** Why it was skipped or could not run. */
   detail?: string;
   /** The tested files were identical to this earlier commit's run: its result was reused. */
@@ -960,7 +992,9 @@ export type ColonyEvent =
       reusedFrom?: Sha;
       /** The result's suspects (culprit finding), at most 5. */
       suspects?: Suspect[];
-    };
+    }
+  // The first red search (FT_BISECT) ended for the red result of `trunkSha`: the result now carries `firstRed`.
+  | { t: "bisect"; at: Millis; trunkSha: Sha; firstRed: FirstRed };
 
 /** Per-minute history for sparklines and the violations burn-down. */
 export interface ColonySeries {

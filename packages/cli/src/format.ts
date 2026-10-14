@@ -217,8 +217,9 @@ export function formatCertify(colony: string, action: "show" | "now" | "on" | "o
   if (r.policy) out.push(`${c.dim("repairs".padEnd(11))}${r.policy.repair === false ? "off" : `on, at most ${r.policy.repairsPerHour ?? 3} an hour`}`);
   const results = Array.isArray(r.results) ? r.results : [];
   if (results.length === 0) out.push(c.dim("no results yet"));
-  // A run of red results with the same suspects lists them once, under the newest.
+  // A run of red results with the same suspects lists them once, under the newest; the same goes for the first failing commit.
   let listed = "";
+  let listedFirst = "";
   for (const cert of results) {
     const when = typeof cert.startedAt === "number" ? c.dim(ago(cert.finishedAt ?? cert.startedAt, now).padStart(8)) : "";
     let what: string;
@@ -236,8 +237,36 @@ export function formatCertify(colony: string, action: "show" | "now" | "on" | "o
     const key = suspects.map((s) => s.proposalId ?? s.landingId).join(" ");
     if (suspects.length > 0 && key !== listed) out.push(...suspectLines(colony, suspects, c));
     if (suspects.length > 0) listed = key;
+    // The first red search (FT_BISECT): the commit at which the failing tests first failed, once the search ended.
+    const first = cert.status === "red" ? firstRedLines(colony, cert.firstRed, c) : [];
+    if (first.length > 0 && first[0] !== listedFirst) out.push(...first);
+    if (first.length > 0) listedFirst = first[0]!;
   }
   return out.join("\n");
+}
+
+/**
+ * A red result's first failing commit for `ft certify`: "first red 1a2b3c4 (landing lnd_4, intent "..."), found in 3
+ * test runs; its change to src/math.ts is the likely cause.", with the command that undoes each proposal it names, or
+ * why the search named none. Nothing for a result without an answer or with one it cannot read.
+ */
+function firstRedLines(colony: string, raw: unknown, c: Colors): string[] {
+  const f = (raw ?? null) as Partial<NonNullable<Certification["firstRed"]>> | null;
+  if (!f || typeof f !== "object") return [];
+  const runs = typeof f.probes === "number" ? `${f.probes} test run${f.probes === 1 ? "" : "s"}` : "";
+  if (f.status === "inconclusive") return [c.dim(`    first red not found: ${typeof f.reason === "string" && f.reason ? f.reason : "the search was inconclusive"}`)];
+  if (f.status !== "found" || typeof f.trunkSha !== "string") return [];
+  const intents = (Array.isArray(f.intents) ? f.intents : []).filter((i) => i && typeof i.id === "string");
+  const proposals = (Array.isArray(f.proposals) ? f.proposals : []).filter((p) => p && typeof p.id === "string" && Array.isArray(p.paths));
+  const titled = intents.map((i) => (typeof i.title === "string" && i.title ? quote(i.title, 60) : i.id));
+  const who = titled.length === 0 ? "a commit FireTrident made itself" : titled.length === 1 ? `intent ${titled[0]}` : `intents ${titled[0]} and ${titled.length - 1} more`;
+  const where = [typeof f.landingId === "string" && f.landingId ? `landing ${f.landingId}` : "", who].filter(Boolean).join(", ");
+  const paths = [...new Set(proposals.flatMap((p) => p.paths.filter((x): x is string => typeof x === "string")))].sort();
+  const shown = paths.length > 3 ? `${paths.slice(0, 3).join(", ")} +${paths.length - 3}` : paths.join(", ");
+  const cause = paths.length > 0 ? `its change to ${shown} is the likely cause.` : "none of its proposals changed a file the failing tests load.";
+  const out = [`    ${c.red("first red")} ${c.bold(shortSha(f.trunkSha))} (${where})${runs ? `, found in ${runs}` : ""}; ${cause}`];
+  for (const p of proposals.slice(0, SUSPECTS_SHOWN)) out.push(`      ${c.dim("undo:")} ft revert ${colony} ${p.id}`);
+  return out;
 }
 
 /** Suspects listed under one red result of `ft certify`. */
@@ -1317,6 +1346,11 @@ export function formatEvent(e: ColonyEvent, c: Colors, clock: (at: number) => st
         return `${time} ${tag("certify", "red")} ${sha} ${c.red(`✗ red, ${testsPhrase(e)}`)}${names ? ` ${names}` : ""}${e.greenSha ? c.dim(` · green ${shortSha(e.greenSha)}`) : ""}`;
       }
       return `${time} ${tag("certify", "dim")} ${sha} ${c.dim(`${e.status}${e.detail ? `: ${e.detail}` : ""}`)}`;
+    }
+    case "bisect": {
+      // The first red search ended for the red result of this commit.
+      const line = firstRedLines("", e.firstRed, c)[0]?.trim() ?? "";
+      return `${time} ${tag("bisect", e.firstRed?.status === "found" ? "red" : "dim")} ${c.bold(shortSha(e.trunkSha))} ${line}`;
     }
     default: {
       const unknown = e as { t?: unknown };

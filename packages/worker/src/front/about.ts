@@ -15,6 +15,7 @@ import { pushDelayMs } from "../trunk/direction.ts";
  */
 export const COLONY_FLAGS: readonly string[] = [
   "FT_ASYNC_PUBLISH",
+  "FT_BISECT",
   "FT_CULPRITS",
   "FT_DELETION_GUARD",
   "FT_FIELD_GUIDE",

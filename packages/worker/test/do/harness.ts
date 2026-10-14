@@ -16,6 +16,7 @@ import type { DirectionInfo } from "../../src/colony/direction.ts";
 import { IMPACT_FILES, expandEntries, walkImporters, type ImportersOf, type ImporterWalk, type TrunkFiles } from "../../src/trunk/impact.ts";
 import { newerProtect, parseProtectRecord, type ProtectRecord } from "../../src/colony/protect.ts";
 import { cycleProtect, protectionReturns, type ProtectContext } from "../../src/trunk/protect.ts";
+import type { LandingRange } from "../../src/certify/range.ts";
 
 export { ColonyDO } from "../../src/colony/ColonyDO.ts";
 export { RegionDO } from "../../src/region/RegionDO.ts";
@@ -462,7 +463,10 @@ export class TrunkDO extends DurableObject<Env> {
         at: Date.now(),
       };
       s.landings.push(landing);
-      s.notes = { ...(s.notes ?? {}), [landing.id]: JSON.stringify({ proposals: landed.map((p) => ({ id: p.id, intent: { id: p.intentId }, writeSet: p.writeSet })) }) };
+      // Each intent's title, from the lineage context the lane passes, as the real writer's notes carry it.
+      const titles = (ctx as { intents?: Record<Id, { title?: string }> } | undefined)?.intents;
+      const intentOf = (id: Id) => (typeof titles?.[id]?.title === "string" ? { id, title: titles[id]!.title } : { id });
+      s.notes = { ...(s.notes ?? {}), [landing.id]: JSON.stringify({ proposals: landed.map((p) => ({ id: p.id, intent: intentOf(p.intentId), writeSet: p.writeSet })) }) };
       await this.save(s);
       return { landing, returned, report: s.reportLandings };
     } finally {
@@ -496,6 +500,39 @@ export class TrunkDO extends DurableObject<Env> {
     const s = await this.load();
     const byBlob = new Map(Object.values(s.files).map((f) => [f.blob, f.content]));
     return Object.fromEntries(blobs.map((b) => [b, byBlob.get(b) ?? s.contents?.[b] ?? null]));
+  }
+
+  /**
+   * The first red search's range of the landing log, as the real TrunkDO answers it (certify/range.ts): the landings after
+   * `from` up to `to`, oldest first, parent by parent, each with a file it wrote.
+   */
+  async landingRange(q: { from: Sha; to: Sha }): Promise<LandingRange> {
+    const s = await this.load();
+    const out: Landing[] = [];
+    let at = q.to;
+    for (let i = s.landings.length - 1; i >= 0 && at !== q.from; i--) {
+      const l = s.landings[i]!;
+      if (l.trunkSha !== at) continue;
+      out.unshift(l);
+      at = l.parentSha;
+    }
+    if (at !== q.from || out.length === 0) return { ok: false, reason: `The landing log does not reach the last green commit ${q.from.slice(0, 7)} from the red commit ${q.to.slice(0, 7)}.` };
+    return {
+      ok: true,
+      landings: out.map((l) => {
+        const snap = s.commits[l.trunkSha] ?? {};
+        const path = l.paths.find((p) => snap[p] !== undefined);
+        return { landingId: l.id, trunkSha: l.trunkSha, at: l.at, ...(path ? { witness: { path, blob: snap[path]! } } : {}) };
+      }),
+    };
+  }
+
+  /** A landing (by id or commit) with its lineage note, as the real TrunkDO answers it; null when no landing matches. */
+  async landingNote(ref: string): Promise<{ landing: Landing; note: unknown } | null> {
+    const s = await this.load();
+    const landing = s.landings.find((l) => l.id === ref || (ref.length >= 7 && l.trunkSha.startsWith(ref)));
+    if (!landing) return null;
+    return { landing, note: s.notes?.[landing.id] === undefined ? null : (JSON.parse(s.notes[landing.id]!) as unknown) };
   }
 
   /** Lineage note fields added after landing (recorded for assertions). */

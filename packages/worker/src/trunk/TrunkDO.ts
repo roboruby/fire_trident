@@ -84,6 +84,7 @@ import { noteResolves } from "../colony/resolver-merge.ts";
 import { DIRECTION_TABLE, FENCE_WAIT_MS, directionReturns, fenceAnswer, mergeDirection, parseDirection, pushDelayMs, settlesWithin, type FenceAnswer } from "./direction.ts";
 import { PUBLISH_BOUND, addedObjects, asyncPublishEnabled, publishBackoffMs, publishChain, settlePublish, withinBound, type PublishBound, type RecordedCommit } from "./publish.ts";
 import { PROTECT_TABLE, keepProtect, protectReturns } from "./protect.ts";
+import { landingRange as rangeOfLandings, type LandingRange, type RangeQuery } from "../certify/range.ts";
 
 export type { LandResult, Returned } from "./plan.ts";
 
@@ -682,6 +683,16 @@ export class TrunkDO extends DurableObject<Env> {
       }
     }
     return out;
+  }
+
+  /**
+   * Trunk certification's first red search (certify/bisect.ts): the landings after commit `from` up to commit `to`,
+   * oldest first, from the landing log, while each one's parent is the one before it (certify/range.ts); or why there
+   * is no such range. Read only.
+   */
+  async landingRange(q: RangeQuery): Promise<LandingRange> {
+    this.state();
+    return rangeOfLandings(this.sql, q);
   }
 
   /**
