@@ -1,4 +1,4 @@
-import { fmtDuration, fmtInt } from "../format.ts";
+import { fmtInt } from "../format.ts";
 
 /**
  * Two cards of the results strip (Results.tsx) about runs on the live service: `scale`, thousands of synthetic agents in
@@ -24,11 +24,6 @@ const num = (x: unknown): number | null => (typeof x === "number" && Number.isFi
 const str = (x: unknown): string => (typeof x === "string" ? x.replace(/\s+/g, " ").trim() : "");
 const api = (id: string): string => `/api/colonies/${encodeURIComponent(id)}`;
 
-/** A duration as people say it about a run, as the strip's other cards say it: seconds under three minutes, whole minutes above. */
-function runTime(ms: number): string {
-  return ms < 180_000 ? fmtDuration(ms) : `${fmtInt(Math.round(ms / 60_000))} min`;
-}
-
 const WORDS = ["no", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"];
 /** Small counts in words ("three agents"), larger ones in digits. */
 function words(n: number): string {
@@ -39,63 +34,40 @@ function words(n: number): string {
 // scale: thousands of synthetic agents in one repository
 // ---------------------------------------------------------------------------
 
-/** What the scale card reads: the colony's metrics, and the times of its first landing and its last. */
+/** What the scale card reads: the colony's metrics. */
 export interface ScaleFacts {
-  /** Trunk commits landed (the `landings` metric). */
+  /** Trunk commits landed (the `landings` metric): each holds a batch of up to 50 changes. */
   landings: number;
+  /** Changes landed: each synthetic intent is one change that adds one new file. */
   landedIntents: number;
-  /** Agents that ever joined (the `agents` metric counts stopped ones too). */
+  /** Agents that ever joined (the `agents` metric counts stopped ones too, and the setup probe). */
   agents: number;
-  firstLandingAt: number | null;
-  lastLandingAt: number | null;
 }
 
 /** The conditions of a synthetic run, in one line: what the number does and does not measure. */
 export const SCALE_CONDITIONS = "synthetic agents: no model calls, review off, each change adds one new file";
 
-/** Fewer landings than this is a setup or a probe, not a run at scale: the card waits for the run. */
+/** Fewer changes landed than this is a setup or a probe, not a run at scale: the card waits for the run. */
 export const SCALE_MIN_LANDINGS = 100;
 
-/** The scale card, or null before the run (fewer than SCALE_MIN_LANDINGS landings). */
+/**
+ * The scale card, or null before the run (fewer than SCALE_MIN_LANDINGS changes landed). The colony keeps no time to
+ * land and its record starts with the setup probe, so the run's rates come from the load generator, as a measured line.
+ */
 export function scaleCard(f: ScaleFacts): ShowcaseCard | null {
-  if (!(f.landings >= SCALE_MIN_LANDINGS)) return null;
-  const span = f.firstLandingAt !== null && f.lastLandingAt !== null && f.lastLandingAt > f.firstLandingAt ? f.lastLandingAt - f.firstLandingAt : null;
-  const details: string[] = [];
-  const perMin = span !== null ? Math.round(f.landings / (span / 60_000)) : null;
-  details.push(`${fmtInt(f.landedIntents)} ${f.landedIntents === 1 ? "intent" : "intents"} landed${perMin !== null ? `, ${fmtInt(perMin)} landings a minute over the run` : ""}`);
-  details.push(SCALE_CONDITIONS);
+  if (!(f.landedIntents >= SCALE_MIN_LANDINGS)) return null;
+  const commits = f.landings > 0 ? `, in ${fmtInt(f.landings)} trunk ${f.landings === 1 ? "commit" : "commits"}` : "";
   return {
-    headline: `${fmtInt(f.landings)} ${f.landings === 1 ? "landing" : "landings"}`,
-    lede: `by ${fmtInt(f.agents)} synthetic ${f.agents === 1 ? "agent" : "agents"} in one repository${span !== null ? ` in ${runTime(span)}` : ""}`,
-    details,
+    headline: `${fmtInt(f.landedIntents)} ${f.landedIntents === 1 ? "change" : "changes"} landed`,
+    lede: `by ${fmtInt(f.agents)} synthetic ${f.agents === 1 ? "agent" : "agents"} in one repository${commits}`,
+    details: [SCALE_CONDITIONS],
     origin: "synthetic agents, no models",
   };
 }
 
-/** Events read from the start of a record for its first landing: a run's first landing comes within its first few events. */
-export const FIRST_EVENTS = 200;
-
-/** The time of the first landing among the first events of a colony's record (GET /events), or null. */
-export async function firstLandingAt(id: string, get: GetJson): Promise<number | null> {
-  const page = await get(`${api(id)}/events?limit=${FIRST_EVENTS}`).catch(() => null);
-  const events = isObj(page) && Array.isArray(page.events) ? page.events.filter(isObj) : [];
-  for (const e of events) if (e.t === "landing" && num(e.at) !== null) return num(e.at);
-  return null;
-}
-
-/**
- * The scale card from what the strip already read (the colony's metrics and its listing row) and the start of its
- * event record. The last landing is the listing's `lastLandingAt`; the API keeps no time to land, so none is shown.
- */
-export async function loadScaleCard(id: string, metric: (name: string) => number, row: Json | undefined, get: GetJson): Promise<ShowcaseCard | null> {
-  if (!(metric("landings") >= SCALE_MIN_LANDINGS)) return null;
-  return scaleCard({
-    landings: metric("landings"),
-    landedIntents: metric("landedIntents"),
-    agents: metric("agents"),
-    firstLandingAt: await firstLandingAt(id, get),
-    lastLandingAt: num(row?.lastLandingAt),
-  });
+/** The scale card from the colony's metrics, or null before the run. */
+export async function loadScaleCard(metric: (name: string) => number): Promise<ShowcaseCard | null> {
+  return scaleCard({ landings: metric("landings"), landedIntents: metric("landedIntents"), agents: metric("agents") });
 }
 
 // ---------------------------------------------------------------------------

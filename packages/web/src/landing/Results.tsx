@@ -9,14 +9,14 @@ import { loadGoalsCard, loadScaleCard } from "./showcase.ts";
 /**
  * The results strip: what the production showcase colonies did, read from their own API (the
  * convergence, counts, agents and the funnel), with a replay and the colony one click away. Only
- * what the API cannot know (model spend, a test run from a plain clone) is written here, as measured.
+ * what the API cannot know (a test run from a plain clone, the load generator's timing) is written here, as measured.
  */
 
 type Kind = "rule" | "spec" | "mcp" | "certify" | "scale" | "goals";
 
-/** The showcase runs, and the facts measured outside the colony (model spend from the agents' token counts, tests run on a plain clone). */
+/** The showcase runs, and the facts measured outside the colony (tests run on a plain clone, the load generator's timing). */
 const SHOWCASE: ReadonlyArray<{ id: string; kind: Kind; measured?: string }> = [
-  { id: "hono", kind: "rule", measured: "$0.05 of model calls" },
+  { id: "hono", kind: "rule" },
   { id: "shortlinks", kind: "spec", measured: "60/60 tests pass from a plain clone" },
   { id: "shortlinks-review", kind: "certify", measured: "67/67 from a plain clone; acceptance 7/7" },
   { id: "byo-demo", kind: "mcp" },
@@ -118,7 +118,7 @@ async function loadResult(s: (typeof SHOWCASE)[number], listing: Json[], signal:
   } else if (s.kind === "scale" || s.kind === "goals") {
     // Runs on the live service (showcase.ts): many synthetic agents in one repository, or changes held for a person.
     const get = (url: string) => getJson(url, signal);
-    const card = s.kind === "scale" ? await loadScaleCard(s.id, k, row, get) : await loadGoalsCard(s.id, get);
+    const card = s.kind === "scale" ? await loadScaleCard(k) : await loadGoalsCard(s.id, get);
     if (!card) return null;
     out.headline = card.headline;
     out.lede = card.lede;

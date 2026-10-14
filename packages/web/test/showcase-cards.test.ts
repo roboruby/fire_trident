@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FIRST_EVENTS, SCALE_CONDITIONS, SCALE_MIN_LANDINGS, goalsCard, loadGoalsCard, loadScaleCard, scaleCard, versionOf, type GetJson, type HeldChange } from "../src/landing/showcase.ts";
+import { SCALE_CONDITIONS, SCALE_MIN_LANDINGS, goalsCard, loadGoalsCard, loadScaleCard, scaleCard, versionOf, type GetJson, type HeldChange } from "../src/landing/showcase.ts";
 
 /** The scale and goals cards of the results strip: what they say, read from the routes that answer without a token. */
 
@@ -19,45 +19,28 @@ function api(answers: Record<string, unknown>): { get: GetJson; asked: string[] 
 }
 
 describe("scale card", () => {
-  it("says the landings, the agents and the time from the first landing to the last", () => {
-    const card = scaleCard({ landings: 1237, landedIntents: 7412, agents: 2001, firstLandingAt: 1_000_000, lastLandingAt: 1_140_000 });
+  it("leads with the changes landed, then the agents and the trunk commits", () => {
+    const card = scaleCard({ landings: 1237, landedIntents: 7412, agents: 2001 });
     expect(card).toEqual({
-      headline: "1,237 landings",
-      lede: "by 2,001 synthetic agents in one repository in 2 min 20 s",
-      details: ["7,412 intents landed, 530 landings a minute over the run", SCALE_CONDITIONS],
+      headline: "7,412 changes landed",
+      lede: "by 2,001 synthetic agents in one repository, in 1,237 trunk commits",
+      details: [SCALE_CONDITIONS],
       origin: "synthetic agents, no models",
     });
   });
 
-  it("leaves the time out when it cannot bound the run, and shows nothing before a landing", () => {
-    expect(scaleCard({ landings: 120, landedIntents: 400, agents: 50, firstLandingAt: null, lastLandingAt: 5 })?.lede).toBe("by 50 synthetic agents in one repository");
-    expect(scaleCard({ landings: 120, landedIntents: 400, agents: 50, firstLandingAt: null, lastLandingAt: 5 })?.details[0]).toBe("400 intents landed");
-    // The probe before a run, or nothing yet: no card.
-    expect(scaleCard({ landings: SCALE_MIN_LANDINGS - 1, landedIntents: 99, agents: 1, firstLandingAt: 1, lastLandingAt: 2 })).toBeNull();
-    expect(scaleCard({ landings: 0, landedIntents: 0, agents: 2000, firstLandingAt: null, lastLandingAt: null })).toBeNull();
+  it("shows nothing before the run: the setup probe lands one change", () => {
+    expect(scaleCard({ landings: 1, landedIntents: 1, agents: 1 })).toBeNull();
+    expect(scaleCard({ landings: 40, landedIntents: SCALE_MIN_LANDINGS - 1, agents: 2000 })).toBeNull();
+    expect(scaleCard({ landings: 0, landedIntents: 0, agents: 0 })).toBeNull();
   });
 
-  it("reads the first landing from the start of the record and the last from the listing", async () => {
+  it("reads only the colony's metrics", async () => {
     const metrics: Record<string, number> = { landings: 900, landedIntents: 5400, agents: 2001 };
-    const { get, asked } = api({
-      [`/api/colonies/scale/events?limit=${FIRST_EVENTS}`]: {
-        events: [
-          { seq: 1, t: "agent", at: 10, agentId: "agt_probe", kind: "synthetic", state: "idle" },
-          { seq: 2, t: "landing", at: 60_000, landingId: "lnd_1", trunkSha: "a", proposalIds: ["prp_1"], paths: ["bench/probe/p.txt"] },
-        ],
-        next: 3,
-      },
-    });
-    const card = await loadScaleCard("scale", (k) => metrics[k] ?? 0, { id: "scale", lastLandingAt: 180_000 }, get);
-    expect(card?.lede).toBe("by 2,001 synthetic agents in one repository in 2 min");
-    expect(card?.details[0]).toBe("5,400 intents landed, 450 landings a minute over the run");
-    expect(asked).toEqual([`/api/colonies/scale/events?limit=${FIRST_EVENTS}`]);
-  });
-
-  it("does not read the record of a colony with no landings", async () => {
-    const { get, asked } = api({});
-    expect(await loadScaleCard("scale", () => 0, undefined, get)).toBeNull();
-    expect(asked).toEqual([]);
+    const card = await loadScaleCard((k) => metrics[k] ?? 0);
+    expect(card?.headline).toBe("5,400 changes landed");
+    expect(card?.lede).toBe("by 2,001 synthetic agents in one repository, in 900 trunk commits");
+    expect(await loadScaleCard(() => 0)).toBeNull();
   });
 });
 
