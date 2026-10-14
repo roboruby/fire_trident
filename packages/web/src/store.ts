@@ -1259,8 +1259,16 @@ export class ColonyStore {
     const intent = this.intents.get(ev.intentId);
     if (intent && ev.agentId) intent.assignedTo = ev.agentId;
     if (ev.status === "escalated" || was === "escalated") this.reviewVersion++;
-    if (this.proposals.size > 6000) this.pruneProposals(now);
+    // Once a batch: within one batch `now` is fixed, so a pass that freed nothing frees nothing again (a replay's seek is one
+    // batch of thousands of proposal events, and a pass per event made it quadratic).
+    if (this.proposals.size > 6000 && this.prunedAt !== now) {
+      this.prunedAt = now;
+      this.pruneProposals(now);
+    }
   }
+
+  /** The batch time of the last pass over the proposals (pruneProposals). */
+  private prunedAt = Number.NaN;
 
   private setProposalStatus(p: ProposalView, s: ProposalStatus): void {
     if (p.status === s) return;

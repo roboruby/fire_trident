@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { metricKey } from "../store.ts";
 import { fmtDuration, fmtInt, prettyUrl } from "../format.ts";
 import { colonyHref } from "../route.ts";
+import { loadGoalsCard, loadScaleCard } from "./showcase.ts";
 
 /**
  * The results strip: what the production showcase colonies did, read from their own API (the
@@ -9,7 +10,7 @@ import { colonyHref } from "../route.ts";
  * what the API cannot know (model spend, a test run from a plain clone) is written here, as measured.
  */
 
-type Kind = "rule" | "spec" | "mcp" | "certify";
+type Kind = "rule" | "spec" | "mcp" | "certify" | "scale" | "goals";
 
 /** The showcase runs, and the facts measured outside the colony (model spend from the agents' token counts, tests run on a plain clone). */
 const SHOWCASE: ReadonlyArray<{ id: string; kind: Kind; measured?: string }> = [
@@ -17,6 +18,8 @@ const SHOWCASE: ReadonlyArray<{ id: string; kind: Kind; measured?: string }> = [
   { id: "shortlinks", kind: "spec", measured: "60/60 tests pass from a plain clone" },
   { id: "shortlinks-review", kind: "certify", measured: "67/67 from a plain clone; acceptance 7/7" },
   { id: "byo-demo", kind: "mcp" },
+  { id: "scale", kind: "scale" },
+  { id: "order-backend", kind: "goals" },
 ];
 
 interface Result {
@@ -24,6 +27,8 @@ interface Result {
   kind: Kind;
   name: string;
   source?: string;
+  /** Where a colony with no source came from (scale, goals); without either the card says it started from a spec. */
+  origin?: string;
   headline: string;
   lede: string;
   details: string[];
@@ -105,6 +110,15 @@ async function loadResult(s: (typeof SHOWCASE)[number], listing: Json[], signal:
   const repairs = isObj(snap) && Array.isArray(snap.intents) ? (snap.intents as Json[]).filter((i) => i.source === "certify" && i.status === "landed").length : 0;
   const ended = num(green.finishedAt);
   if (repairs > 0) details.push(`${fmtInt(repairs)} repair ${repairs === 1 ? "intent" : "intents"} landed${ended !== null ? `; green ${runTime(ended - began)} later` : ""}`);
+  } else if (s.kind === "scale" || s.kind === "goals") {
+    // Runs on the live service (showcase.ts): many synthetic agents in one repository, or changes held for a person.
+    const get = (url: string) => getJson(url, signal);
+    const card = s.kind === "scale" ? await loadScaleCard(s.id, k, row, get) : await loadGoalsCard(s.id, get);
+    if (!card) return null;
+    out.headline = card.headline;
+    out.lede = card.lede;
+    out.origin = card.origin;
+    details.push(...card.details);
   } else {
     const [list, snap] = await Promise.all([getJson(`${base}/agents?all=1&journal=0`, signal).catch(() => null), getJson(base, signal).catch(() => null)]);
     const all = isObj(list) && Array.isArray(list.agents) ? (list.agents as Json[]) : [];
@@ -131,7 +145,7 @@ function Card({ r }: { r: Result }) {
     <article className={`rs rs-${r.kind}`}>
       <div className="rs-head">
         <span className="rs-name mono">{r.name}</span>
-        {r.source ? <span className="rs-src mono">{r.source}</span> : <span className="rs-src">started from a spec</span>}
+        {r.source ? <span className="rs-src mono">{r.source}</span> : <span className="rs-src">{r.origin ?? "started from a spec"}</span>}
       </div>
       <div className="rs-headline">{r.headline}</div>
       <div className="rs-lede">{r.lede}</div>
@@ -155,11 +169,11 @@ function Card({ r }: { r: Result }) {
   );
 }
 
-/** The showcase, or ?results=id:kind,id:kind (rule, spec, mcp or certify) for a deployment without the production colonies. */
+/** The showcase, or ?results=id:kind,id:kind (rule, spec, mcp, certify, scale or goals) for a deployment without the production colonies. */
 function showcase(): ReadonlyArray<{ id: string; kind: Kind; measured?: string }> {
   const raw = new URLSearchParams(location.search).get("results");
   if (!raw) return SHOWCASE;
-  const kinds: ReadonlySet<string> = new Set(["rule", "spec", "mcp", "certify"]);
+  const kinds: ReadonlySet<string> = new Set(["rule", "spec", "mcp", "certify", "scale", "goals"]);
   return raw
     .split(",")
     .map((x) => x.trim().split(":"))
