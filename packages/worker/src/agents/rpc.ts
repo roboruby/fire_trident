@@ -8,10 +8,12 @@ import type {
   EscalationKind,
   Evidence,
   FieldReading,
+  GuideTake,
   Id,
   Intent,
   IntentEscalation,
   Landing,
+  LessonReceipt,
   LineageNote,
   Path,
   Proposal,
@@ -34,16 +36,19 @@ import type { ReviewPreview } from "./preview.ts";
 /**
  * What ColonyDO.take returns: work plus a workspace lease, or a hint to come back later. `review`
  * is what review will ask of the change (agents/preview.ts); `context` the latest landings that
- * changed the intent's files, with their intents' whys (agents/landed.ts). A colony on the previous
- * version sends neither.
+ * changed the intent's files, with their intents' whys (agents/landed.ts); `guide`, where the field
+ * guide is on, the newest lessons agents recorded (core/guide.ts). A colony on the previous
+ * version sends none of them.
  */
-export type TakeResult = { intent: Intent; lease: WorkspaceLease; rule?: Rule; review?: ReviewPreview; context?: LandedWhy[] } | { wait: true; retryInMs: number; reason: string };
+export type TakeResult = { intent: Intent; lease: WorkspaceLease; rule?: Rule; review?: ReviewPreview; context?: LandedWhy[]; guide?: GuideTake } | { wait: true; retryInMs: number; reason: string };
 
 /** Input of ColonyDO.propose. */
 export type ProposeInput = Omit<Proposal, "id" | "status" | "createdAt" | "evidence"> & {
   evidence?: Partial<Evidence>;
   /** Push the outcome to this agent's AgentDO (AgentDO.outcome) instead of making it poll. */
   notify?: boolean;
+  /** One surprising fact the agent learned, for the colony's field guide (FT_FIELD_GUIDE; ignored where it is off). */
+  lesson?: string;
 };
 
 /** ColonyDO methods used by agents, the swarm, and the MCP server. */
@@ -58,7 +63,8 @@ export interface ColonyRpc {
   take(agentId: Id): Promise<TakeResult>;
   /** Liveness and claim refresh; `{ claims: false }` when the agent refreshes its claims in the regions itself. */
   heartbeat(agentId: Id, opts?: { claims?: boolean }): Promise<void>;
-  propose(p: ProposeInput): Promise<Proposal>;
+  /** Where the field guide is on and the input left a lesson, the answer says what became of it (`lesson`). */
+  propose(p: ProposeInput): Promise<Proposal & { lesson?: LessonReceipt }>;
   getProposal(id: Id): Promise<Proposal | null>;
   /**
    * An agent's inbox, newest first: its recent proposals and, unless `proposalsOnly`, the directives

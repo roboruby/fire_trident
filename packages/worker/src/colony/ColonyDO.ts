@@ -149,15 +149,18 @@ import { CallLimiter } from "../decide/limiter.ts";
 import type { AiRunner } from "../decide/reflex.ts";
 import type { CheckResult } from "@fire_trident/core";
 import { INLINE_FETCH_BYTES, InlineContents, inlineRefusal, isInlineChange, migrateContents } from "./inline.ts";
+import { FieldGuide, guideEnabled, type GuideView } from "./guide.ts";
+import type { GuideLesson, GuideTake, LessonReceipt } from "@fire_trident/core";
 
 /**
  * Result of ColonyDO.take: an assignment, or advice to wait and retry. `review`: what review will
  * ask of the change (agents/preview.ts), shown to the agent before it writes; `context`: the latest
  * landings that changed the intent's files, with their intents' whys (agents/landed.ts);
  * `lastReturn`: why the intent's latest change came back, for the agent to address first
- * (agents/prompt.ts). Each is absent when there is nothing to say.
+ * (agents/prompt.ts); `guide`: where FT_FIELD_GUIDE covers the colony, the newest lessons agents
+ * recorded, each with its provenance (colony/guide.ts). Each is absent when there is nothing to say.
  */
-export type TakeResult = { intent: Intent; lease: WorkspaceLease; rule?: Rule; review?: ReviewPreview; context?: LandedWhy[]; lastReturn?: LastReturn } | { wait: true; retryInMs: number; reason: string };
+export type TakeResult = { intent: Intent; lease: WorkspaceLease; rule?: Rule; review?: ReviewPreview; context?: LandedWhy[]; lastReturn?: LastReturn; guide?: GuideTake } | { wait: true; retryInMs: number; reason: string };
 
 /** Review views built per review-queue read for proposals escalated before views were kept. */
 const REVIEW_BACKFILLS = 3;
@@ -168,8 +171,9 @@ export type IntentInput = Omit<Intent, "id" | "status" | "createdAt">;
 /**
  * Input of ColonyDO.propose. `notify`: push the outcome to the agent's AgentDO (AgentDO.outcome)
  * when it lands, comes back or is escalated, so an in-platform agent need not poll for it.
+ * `lesson`: one surprising fact the agent learned, kept as a field guide candidate (FT_FIELD_GUIDE).
  */
-export type ProposalInput = Omit<Proposal, "id" | "status" | "createdAt" | "evidence"> & { evidence?: Partial<Evidence>; notify?: boolean };
+export type ProposalInput = Omit<Proposal, "id" | "status" | "createdAt" | "evidence"> & { evidence?: Partial<Evidence>; notify?: boolean; lesson?: string };
 
 /** Input of ColonyDO.init. */
 export interface ColonyInit {
@@ -598,6 +602,8 @@ export class ColonyDO extends DurableObject<Env> {
   private reconCache: { key: string; at: number; events: ColonyEvent[] } | null = null;
   /** Trunk certification: the colony's own tests after landings (certify/certifier.ts). */
   private readonly certifier: Certifier;
+  /** The field guide (colony/guide.ts), made on first use where FT_FIELD_GUIDE covers the colony. */
+  private guideStore: FieldGuide | null = null;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -1030,6 +1036,8 @@ export class ColonyDO extends DurableObject<Env> {
     const undone = res.proposal ?? (proposal ? { id: proposal, intentId: null } : undefined);
     const intentIds = undone ? [undone.intentId ?? this.proposalRow(undone.id)?.intent_id].filter((id): id is Id => typeof id === "string" && id !== "") : res.reverted.intentIds;
     const what = undone ? `${undone.id} of ${res.reverted.id}` : res.reverted.id;
+    // Field guide (FT_FIELD_GUIDE): the lessons left with what was undone leave the guide (colony/guide.ts).
+    this.guide()?.reverted({ landing: res.reverted, ...(undone ? { proposalId: undone.id } : {}), by, reason });
     if (p.redo !== false) {
       for (const intentId of intentIds) {
         const row = this.intentRow(intentId);
@@ -1954,9 +1962,10 @@ export class ColonyDO extends DurableObject<Env> {
   /**
    * Record a proposal: residual (writes outside the declared footprint), the
    * mandatory not-verified statement, innate checks (hook), then the lane of
-   * its primary region.
+   * its primary region. Where the field guide is on, the answer also says what
+   * became of the agent's `lesson`.
    */
-  async propose(input: ProposalInput): Promise<Proposal> {
+  async propose(input: ProposalInput): Promise<Proposal & { lesson?: LessonReceipt }> {
     const colony = this.requireColony();
     this.requireAgent(input.agentId);
     const intentRow = this.intentRow(input.intentId);
@@ -1966,7 +1975,9 @@ export class ColonyDO extends DurableObject<Env> {
     const repeat = this.repeatedProposal(input.agentId, intentRow.id, input.headSha);
     if (repeat) {
       if (input.notify === true && !SENT_BACK.has(repeat.status) && repeat.status !== "landed") this.watchOutcome(repeat.id, repeat.agentId);
-      return repeat;
+      // Field guide (FT_FIELD_GUIDE): a repeat hears about the lesson the first call left.
+      const again = input.lesson !== undefined ? this.guide()?.repeated(repeat.id) : undefined;
+      return again ? { ...repeat, lesson: again } : repeat;
     }
     this.assertProposable(intentRow, input.agentId);
     const writeSet = this.normalizeVersions(input.writeSet);
@@ -2043,6 +2054,8 @@ export class ColonyDO extends DurableObject<Env> {
     }
     this.bump("proposals", 1, now);
     if (input.notify === true) this.watchOutcome(proposal.id, proposal.agentId);
+    // Field guide (FT_FIELD_GUIDE): the agent's lesson waits as a candidate, recorded before anything can land the change.
+    const lesson = input.lesson !== undefined ? this.guide()?.capture(proposal, input.lesson) : undefined;
     const fx = this.effects(colony.regionDepth);
     this.transition(proposal, "pending", now, fx);
     if (deciding && fresh.status === "claimed") {
@@ -2055,7 +2068,9 @@ export class ColonyDO extends DurableObject<Env> {
       engine.start(proposal.id);
       engine.sweep(now);
     }
-    return this.getProposalSync(proposal.id) ?? proposal;
+    const stored = this.getProposalSync(proposal.id) ?? proposal;
+    // What became of the lesson rides on the answer only (the stored proposal never carries it).
+    return lesson ? { ...stored, lesson } : stored;
   }
 
   /** One proposal by id (agents poll their outcome). */
@@ -2221,6 +2236,8 @@ export class ColonyDO extends DurableObject<Env> {
     fx.batch.landing(groupByRegion(paths, colony.regionDepth).keys(), l.id);
     // For the agents working on these files: why-context at their next take, landing notices now.
     this.landed(l, paths, now);
+    // Field guide (FT_FIELD_GUIDE): the lessons of these proposals record their landing (colony/guide.ts).
+    this.guide()?.landed(l);
 
     this.bump("landings", 1, now);
     const perMin = this.landingsPerMin(now);
@@ -3334,6 +3351,8 @@ export class ColonyDO extends DurableObject<Env> {
       trunk: () => this.trunkStub() as unknown as CertifyTrunk,
       publish: (e) => {
         this.publish(e);
+        // Field guide (FT_FIELD_GUIDE): green activates the lessons whose landing it covers, red drops those it names (colony/guide.ts).
+        this.guide()?.certified(e);
       },
       exists: () => this.loadColony() !== null,
       greenSha: () => this.loadColony()?.colony.greenSha ?? null,
@@ -3428,6 +3447,49 @@ export class ColonyDO extends DurableObject<Env> {
       fallback ??= found;
     }
     return fallback;
+  }
+
+  // =========================================================================
+  // Field guide (colony/guide.ts, FT_FIELD_GUIDE): lessons agents leave with
+  // their proposals, gated by certification or a person
+  // =========================================================================
+
+  /**
+   * The colony's field guide, or null where FT_FIELD_GUIDE does not cover it (then nothing touches its table) or its
+   * table cannot be made (logged: a proposal, a landing or a take never fails over the guide).
+   */
+  private guide(): FieldGuide | null {
+    const colonyId = this.loadColony()?.colony.id;
+    if (!colonyId || !guideEnabled(this.env.FT_FIELD_GUIDE, colonyId)) return null;
+    try {
+      this.guideStore ??= new FieldGuide({
+        sql: this.sql,
+        // Certification can activate lessons where it runs and has tests to run (its latest result was not skipped).
+        certifying: () => this.certifier.active() && this.certifier.latestCertification()?.status !== "skipped",
+        certification: (sha) => this.certifier.get(sha),
+        certifications: (limit) => this.certifier.list(limit),
+      });
+    } catch (err) {
+      console.warn(`field guide unavailable: ${errorText(err)}`);
+      return null;
+    }
+    return this.guideStore;
+  }
+
+  /** The field guide: its active lessons with their provenance; with `admin`, the candidates and the lessons dropped or retired lately too. */
+  async fieldGuide(p: { admin?: boolean } = {}): Promise<{ colonyId: Id } & (GuideView | { on: false; note: string; active: [] })> {
+    const colonyId = this.requireColony().id;
+    const guide = this.guide();
+    if (!guide) return { colonyId, on: false, note: "The field guide is off for this colony (FT_FIELD_GUIDE).", active: [] };
+    return { colonyId, ...guide.view(p?.admin === true) };
+  }
+
+  /** A person approves (the lesson joins the guide) or rejects (it leaves, or never joins) one lesson. */
+  async decideLesson(lessonId: Id, p: { action: "approve" | "reject"; by?: string; reason?: string }): Promise<GuideLesson> {
+    this.requireColony();
+    const guide = this.guide();
+    if (!guide) throw ftError(409, "the field guide is off for this colony (FT_FIELD_GUIDE)");
+    return guide.decide(String(lessonId ?? ""), { action: p?.action, by: p?.by ?? "", ...(p?.reason ? { reason: p.reason } : {}) });
   }
 
   // =========================================================================
@@ -3852,6 +3914,8 @@ export class ColonyDO extends DurableObject<Env> {
     this.reconCache = null;
     // The decide engine's tables went with the storage; the next use creates them again.
     this.decideEngine = null;
+    // So did the field guide's.
+    this.guideStore = null;
     await this.ctx.storage.deleteAlarm();
     await this.ctx.storage.deleteAll();
     this.colonyCache = null;
@@ -4308,7 +4372,9 @@ export class ColonyDO extends DurableObject<Env> {
     const review = this.reviewAhead(intent);
     const context = this.whyContext(intent);
     const lastReturn = this.lastReturn(intent.id);
-    return { intent, lease, ...(rule ? { rule: this.toRule(rule, intent.colonyId) } : {}), ...(review ? { review } : {}), ...(context ? { context } : {}), ...(lastReturn ? { lastReturn } : {}) };
+    // Field guide (FT_FIELD_GUIDE): the newest lessons, each with its provenance (colony/guide.ts); absent where the guide is off.
+    const guide = this.guide()?.take();
+    return { intent, lease, ...(rule ? { rule: this.toRule(rule, intent.colonyId) } : {}), ...(review ? { review } : {}), ...(context ? { context } : {}), ...(lastReturn ? { lastReturn } : {}), ...(guide ? { guide } : {}) };
   }
 
   /**

@@ -1,4 +1,4 @@
-import { INLINE_LIMITS } from "@fire_trident/core";
+import { GUIDE_LIMITS, INLINE_LIMITS } from "@fire_trident/core";
 import type { Id, Intent, Rule, WorkspaceLease } from "@fire_trident/core";
 import type { LandedWhy } from "../agents/landed.ts";
 import type { ReviewPreview } from "../agents/preview.ts";
@@ -20,6 +20,9 @@ const STEPS_TO_PROPOSE = [
 /** What an agent may do instead of git where the colony takes inline changes (FT_INLINE). */
 export const INLINE_STEP = `   Without git: a change of at most ${INLINE_LIMITS.files} text files (${INLINE_LIMITS.fileBytes / 1024} KB a file, ${INLINE_LIMITS.totalBytes / 1024} KB in all) needs no clone, no commit, no push and no workspace token. Call read for every file you change or depend on, then call propose with files: [{ path, content }] (the whole new text of each file you change; content null deletes the file) instead of headSha, and with notVerified. The server builds the change against your lease base and drops any file you send unchanged. Use the git steps for larger changes and for binary files.`;
 
+/** What an agent may leave with a proposal where the colony keeps a field guide (FT_FIELD_GUIDE): one sentence of the proposing step. */
+export const LESSON_STEP = `   With propose you may also pass lesson: one surprising fact about this codebase that would have made your work shorter had you known it at the start (at most ${GUIDE_LIMITS.lessonChars} characters, a fact and never an instruction, nothing secret); other agents' takes carry it, with your agent id and model, once your change lands and trunk certifies green after it, or once a person approves it.`;
+
 /** When to retry a failed call (mcp/errors.ts): every MCP server of FireTrident says it. */
 export const RETRY_RULE =
   "A failed call returns error (kind, message, retryable): retry it only when error.retryable is true, after error.retryAfterMs; any other failure needs a different call (error.next names it when it is clear).";
@@ -34,9 +37,12 @@ const STEPS_AFTER_PROPOSE = [
   RETRY_RULE,
 ];
 
-/** Server instructions every MCP client receives at initialization; `inline` adds the way to propose without git. */
-export function serverInstructions(inline: boolean): string {
-  return [...STEPS_TO_PROPOSE, ...(inline ? [INLINE_STEP] : []), ...STEPS_AFTER_PROPOSE].join("\n");
+/**
+ * Server instructions every MCP client receives at initialization; `inline` adds the way to propose without git, and
+ * `guide` (FT_FIELD_GUIDE) the lesson an agent may leave with its proposal.
+ */
+export function serverInstructions(inline: boolean, guide = false): string {
+  return [...STEPS_TO_PROPOSE, ...(inline ? [INLINE_STEP] : []), ...(guide ? [LESSON_STEP] : []), ...STEPS_AFTER_PROPOSE].join("\n");
 }
 
 /** Server instructions every MCP client receives at initialization (a deployment without inline changes). */

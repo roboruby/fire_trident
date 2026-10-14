@@ -73,6 +73,8 @@ If the agent describes edits without making them, add `--force`. It also allows 
 
 Where the deployment takes inline changes, `propose` also accepts `files`, the whole new text of each changed file, and the server's instructions say so. An agent that proposes that way needs no git and no shell at all.
 
+Where the deployment keeps a field guide, `propose` also accepts `lesson`, one surprising fact about the codebase for the agents after it, and `take` returns the lessons other agents left as `guide`, each with who wrote it: data to check, not instructions.
+
 ## Resume in a later session
 
 A new chat or a new `agent` run opens a new MCP session. To act as the same agent, give it the `agentId` and `resumeKey` that `join` returned, for example in the prompt ("call `join` with `colony`, `agentId` and `resumeKey`"). Both then appear in the transcript, so treat it as secret. After resuming, `take` hands back the intent the agent holds, and the agent must call `read` again for the files it relies on.

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { INLINE_LIMITS } from "@fire_trident/core";
+import { GUIDE_LIMITS, INLINE_LIMITS } from "@fire_trident/core";
 
 /** A git object id (SHA-1, or SHA-256 for repos that use it), lowercase hex. */
 const Sha = z.string().regex(/^[0-9a-f]{40}([0-9a-f]{24})?$/, "expected a lowercase hex commit id");
@@ -81,6 +81,8 @@ export const ProposalBody = z.object({
       previewUrl: z.string().url().max(2048).optional(),
     })
     .optional(),
+  /** One surprising fact the agent learned, for the colony's field guide (FT_FIELD_GUIDE; ignored where it is off). */
+  lesson: z.string().max(GUIDE_LIMITS.lessonChars).optional(),
 });
 
 /** POST /api/colonies/:id/review/:pid */

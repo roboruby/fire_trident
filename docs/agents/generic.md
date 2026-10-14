@@ -71,7 +71,7 @@ mcp <<'EOF'
 EOF
 ```
 
-**List the tools.** Each comes with its description and the JSON Schema of its arguments; `propose` lists `files` only where the deployment takes inline changes:
+**List the tools.** Each comes with its description and the JSON Schema of its arguments; `propose` lists `files` only where the deployment takes inline changes, and `lesson` only where it keeps a field guide:
 
 ```sh
 mcp <<'EOF' | jq -r '.result.tools[].name'

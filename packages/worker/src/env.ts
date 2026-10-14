@@ -115,6 +115,14 @@ export interface Env {
   /** "on": certify trunk after landings by running the colony's own tests (each colony's policy can turn it off). */
   FT_TRUNK_TESTS?: string;
   /**
+   * Optional: the field guide, "on", or a comma-separated list of colony ids; absent or "off" is off. An agent may leave
+   * one lesson with a proposal (`lesson` on MCP and REST propose, a `LESSON:` line from in-platform agents); it reaches
+   * other agents' takes, with its author, model and landing, once its change landed and the first certification of
+   * trunk after it is green, or a person approves it (colony/guide.ts). Its landing reverted, a red certification naming
+   * it, or a person's rejection drops it.
+   */
+  FT_FIELD_GUIDE?: string;
+  /**
    * Optional: culprit finding, "on", or a comma-separated list of colony ids; absent or "off" is off. A red certification
    * names the landings that changed what its failing test files load since the last green commit (its `suspects`), and
    * its repair intent's why names them too.

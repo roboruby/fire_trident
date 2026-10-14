@@ -10,6 +10,8 @@ import { diffTrees, onFirstParentChain, readFileAt } from "./gitread.ts";
 import type { ReadBlob, ReadCommit, ReadTree } from "./gitread.ts";
 import { RESUME_KEY_NOTE, contextBrief, escalateReceipt, gitInstructions, leaseNext, reviewBrief, ruleBrief } from "./instructions.ts";
 import { newResumeKey } from "./resume.ts";
+import { cleanGuideTake, type GuideTake, type LessonReceipt } from "@fire_trident/core";
+import { guideBrief } from "./guide.ts";
 
 /** What one MCP session remembers (stored in the session's Durable Object). */
 export interface Session {
@@ -26,6 +28,8 @@ export interface Session {
   context?: LandedWhy[];
   /** Why the held intent's latest change came back, as take returned it (to address first). */
   lastReturn?: LastReturn;
+  /** The colony's field guide as take returned it (FT_FIELD_GUIDE): lessons with their provenance, data to check. */
+  guide?: GuideTake;
   /** Read set of the current intent: path -> blob seen at the lease base (null = absent). */
   reads: Record<Path, Sha | null>;
   proposals: Array<{ id: Id; intentId: Id; headSha: Sha; at: number }>;
@@ -208,7 +212,7 @@ function directiveView(d: Directive): Record<string, unknown> {
   };
 }
 
-/** Forget the held intent: its lease, rule, review questions, why-context, last return and read set. */
+/** Forget the held intent: its lease, rule, review questions, why-context, last return, field guide and read set. */
 function dropHeld(s: Session): void {
   delete s.intent;
   delete s.lease;
@@ -216,6 +220,7 @@ function dropHeld(s: Session): void {
   delete s.review;
   delete s.context;
   delete s.lastReturn;
+  delete s.guide;
   s.reads = {};
 }
 
@@ -223,6 +228,13 @@ function dropHeld(s: Session): void {
 function lastReturnView(r: LastReturn | undefined): Record<string, unknown> | null {
   if (!r) return null;
   return { proposalId: r.proposalId, status: r.status, at: new Date(r.at).toISOString(), reason: r.reason, paths: r.paths, ...(r.morePaths ? { morePaths: r.morePaths } : {}) };
+}
+
+/** What a proposer is told about its lesson: the colony's receipt, or, from a colony that keeps no field guide (it sends none), that it was not recorded. */
+function lessonReceipt(x: unknown): LessonReceipt {
+  const r = x as Partial<LessonReceipt> | null | undefined;
+  if (r && typeof r === "object" && typeof r.status === "string" && typeof r.note === "string") return r as LessonReceipt;
+  return { status: "ignored", note: "This colony keeps no field guide (FT_FIELD_GUIDE), so the lesson was not recorded." };
 }
 
 /** What a take or checkout with a lastReturn asks first. */
@@ -485,6 +497,8 @@ export class FireTridentTools {
     const review = reviewBrief(s.review);
     const context = contextBrief(s.context);
     const lastReturn = lastReturnView(s.lastReturn);
+    // The colony's field guide (FT_FIELD_GUIDE): lessons other agents recorded, labeled as data to check.
+    const guide = guideBrief(s.guide);
     return {
       intent: {
         id: intent.id,
@@ -500,6 +514,7 @@ export class FireTridentTools {
       ...(review ? { review } : {}),
       ...(context ? { context } : {}),
       ...(lastReturn ? { lastReturn } : {}),
+      ...(guide ? { guide } : {}),
       lease: {
         baseSha: lease.baseSha,
         trunk: { remote: lease.trunk.remote, sha: lease.trunk.sha },
@@ -535,6 +550,8 @@ export class FireTridentTools {
     const context = cleanContext(got.context);
     // Why the intent's latest change came back (a colony on the previous version sends none).
     const lastReturn = cleanLastReturn("lastReturn" in got ? got.lastReturn : undefined);
+    // The colony's field guide (FT_FIELD_GUIDE; none where it is off).
+    const guide = cleanGuideTake("guide" in got ? got.guide : undefined);
     const next = await this.update((x) => {
       if (x.intent?.id !== got.intent.id) x.reads = {};
       x.intent = got.intent;
@@ -546,6 +563,8 @@ export class FireTridentTools {
       else delete x.context;
       if (lastReturn) x.lastReturn = lastReturn;
       else delete x.lastReturn;
+      if (guide) x.guide = guide;
+      else delete x.guide;
       x.lastBeat = now; // a take deposits fresh claims
     });
     return this.leaseView(next as Session & { intent: Intent; lease: WorkspaceLease });
@@ -648,9 +667,10 @@ export class FireTridentTools {
    * repo; head must descend from the base on its first-parent chain), or `files`, the new text of
    * each changed file (an inline change, see inlineChange: no git at all). The read set is what this
    * session read. `notVerified` is the agent's own statement of what it did not check (recorded as
-   * evidence and shown to review).
+   * evidence and shown to review). `lesson`, where the colony keeps a field guide (FT_FIELD_GUIDE), is
+   * one surprising fact the agent learned; the answer says what became of it.
    */
-  async propose(a: { headSha?: string; files?: InlineFile[]; summary?: string; notVerified?: string }): Promise<unknown> {
+  async propose(a: { headSha?: string; files?: InlineFile[]; summary?: string; notVerified?: string; lesson?: string }): Promise<unknown> {
     const s = await this.leased();
     const head = typeof a.headSha === "string" ? a.headSha.trim().toLowerCase() : "";
     if ((head !== "") === (a.files !== undefined)) fail(400, "pass exactly one of headSha (a commit pushed to your workspace) and files (each changed file's path and new content)");
@@ -684,6 +704,7 @@ export class FireTridentTools {
     const reads = latest.intent?.id === intent.id ? latest.reads : s.reads;
     const readSet: FileVersion[] = Object.entries(reads).map(([path, blob]) => ({ path, blob }));
     const stated = (a.notVerified ?? "").trim().slice(0, 5_000);
+    const lesson = typeof a.lesson === "string" && a.lesson.trim() !== "" ? a.lesson : undefined;
     const proposal = await this.ctx.colony(s.colonyId).propose({
       colonyId: s.colonyId,
       intentId: intent.id,
@@ -697,6 +718,7 @@ export class FireTridentTools {
       declared: { footprint: intent.footprint, summary: (a.summary ?? "").trim() || intent.title },
       ...(typeof intent.revision === "number" ? { intentRevision: intent.revision } : {}),
       evidence: { notVerified: stated === "" ? EXTERNAL_NOT_VERIFIED : /^not verified/i.test(stated) ? stated : `Not verified: ${stated}` },
+      ...(lesson ? { lesson } : {}),
     });
     const at = this.ctx.now();
     await this.update((x) => {
@@ -708,6 +730,8 @@ export class FireTridentTools {
       proposal: { id: proposal.id, status: proposal.status, reason: proposal.reason ?? null, residual: proposal.evidence?.residual ?? [] },
       writeSet,
       ...(unchanged.length > 0 ? { unchanged } : {}),
+      // What became of the lesson (a colony with the field guide off says nothing, so this says it).
+      ...(lesson ? { lesson: lessonReceipt(proposal.lesson) } : {}),
       readSet: readSet.length,
       next: `Call inbox with wait: ${MAX_WAIT_S} to wait for the outcome (repeat until it settles), then take for more work.`,
     };

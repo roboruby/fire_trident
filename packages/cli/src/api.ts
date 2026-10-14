@@ -31,6 +31,8 @@ import type { Command } from "./args.ts";
  *   POST   /api/colonies/:id/intents/:iid/escalation { decision: amend|withdraw|dismiss, note, by, amend?: { title?, why?, footprint? } } -> { intent }
  *   POST   /api/colonies/:id/landings/:ref/revert   { reason, by, redo, proposal? } -> { landing, reverted, redo, proposal? }
  *   GET    /api/colonies/:id/proposals/:pid         -> Proposal (with landingId once it landed)
+ *   GET    /api/colonies/:id/guide                  -> the field guide: { on, gate, active, chars, candidates?, ended? } (the last two with the token)
+ *   POST   /api/colonies/:id/guide/:lessonId        { action: approve|reject, by, reason? } -> the lesson
  *
  * Every request carries `Authorization: Bearer $FT_TOKEN` when the token is set.
  */
@@ -210,6 +212,14 @@ export function planRequest(cmd: Command, by: string): ApiRequest | null {
         body: { decision: cmd.decision, note: cmd.note, by: cmd.by ?? by, ...(Object.keys(amend).length > 0 ? { amend } : {}) },
       };
     }
+    case "guide":
+      return { method: "GET", path: colonyPath(cmd.colony, "/guide") };
+    case "guide-decide":
+      return {
+        method: "POST",
+        path: colonyPath(cmd.colony, `/guide/${encodeURIComponent(cmd.lessonId)}`),
+        body: { action: cmd.action, by: cmd.by ?? by, ...(cmd.reason ? { reason: cmd.reason } : {}) },
+      };
     default:
       return null;
   }
