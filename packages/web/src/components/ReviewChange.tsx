@@ -11,8 +11,8 @@ const FILE_LINES = 400;
 
 const NO_HITS: ReadonlySet<number> = new Set();
 
-/** Diff lines with their numbers: added and removed lines tinted, `hits` (new-text line numbers) marked. */
-function DiffLines({ lines, hits = NO_HITS, limit = FILE_LINES }: { lines: readonly DiffLine[]; hits?: ReadonlySet<number>; limit?: number }) {
+/** Diff lines with their numbers: added and removed lines tinted, `hits` (new-text line numbers) marked. Also the Why tab's view of a landing's change. */
+export function DiffLines({ lines, hits = NO_HITS, limit = FILE_LINES }: { lines: readonly DiffLine[]; hits?: ReadonlySet<number>; limit?: number }) {
   const [all, setAll] = useState(false);
   const cut = !all && lines.length > limit;
   const shown = cut ? lines.slice(0, limit) : lines;
