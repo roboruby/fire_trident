@@ -1,0 +1,80 @@
+first red check frmv8ol0wj on https://p25-firetrident.mattsolt.workers.dev (on: p25-fr-on-40, off: p25-fr-off-40; 40 landings since green with the break at position 21; the off colony lands the default 6)
+PASS  p25-fr-on-40: created (201)
+PASS  p25-fr-on-40: review off for these checks
+PASS  p25-fr-on-40: certification on with repairs (200)
+PASS  p25-fr-on-40: "Add the math module and its test" landed (landed, lnd_mv8olc491shkum)
+PASS  p25-fr-on-40: certification is green on 5045fea (green, {"tests":1,"pass":1,"fail":0,"cancelled":0,"skipped":0,"todo":0,"suites":0})
+PASS  p25-fr-on-40: certification held
+PASS  p25-fr-on-40: "Add note 1" landed (landed, lnd_mv8olnobucccsb)
+PASS  p25-fr-on-40: "Add note 2" landed (landed, lnd_mv8olvduv2tbll)
+PASS  p25-fr-on-40: "Add note 3" landed (landed, lnd_mv8om16enw087q)
+PASS  p25-fr-on-40: "Add note 4" landed (landed, lnd_mv8om5sr1rbqhy)
+PASS  p25-fr-on-40: "Add note 5" landed (landed, lnd_mv8om9oc1yme0d)
+PASS  p25-fr-on-40: "Add note 6" landed (landed, lnd_mv8omcytlcnwnp)
+PASS  p25-fr-on-40: "Add note 7" landed (landed, lnd_mv8omfutebhl68)
+PASS  p25-fr-on-40: "Add note 8" landed (landed, lnd_mv8omifqb4jp9i)
+PASS  p25-fr-on-40: "Add note 9" landed (landed, lnd_mv8omks1hqv1j2)
+PASS  p25-fr-on-40: "Add note 10" landed (landed, lnd_mv8ommvgsgu8ou)
+PASS  p25-fr-on-40: "Add note 11" landed (landed, lnd_mv8omp61xq0qrr)
+PASS  p25-fr-on-40: "Add note 12" landed (landed, lnd_mv8omra93j5z0k)
+PASS  p25-fr-on-40: "Add note 13" landed (landed, lnd_mv8omt705j47xc)
+PASS  p25-fr-on-40: "Add note 14" landed (landed, lnd_mv8omuzlwg1yu0)
+PASS  p25-fr-on-40: "Add note 15" landed (landed, lnd_mv8omwmvo5ydkd)
+PASS  p25-fr-on-40: "Add note 16" landed (landed, lnd_mv8omy63ixsyya)
+PASS  p25-fr-on-40: "Add note 17" landed (landed, lnd_mv8omzmhjzbx5l)
+PASS  p25-fr-on-40: "Add note 18" landed (landed, lnd_mv8on12m60javh)
+PASS  p25-fr-on-40: "Add note 19" landed (landed, lnd_mv8on2fshdawj2)
+PASS  p25-fr-on-40: "Add note 20" landed (landed, lnd_mv8on3rhcgkavv)
+PASS  p25-fr-on-40: "Speed up subtraction" landed (landed, lnd_mv8on5009ajelc)
+PASS  p25-fr-on-40: "Add note 21" landed (landed, lnd_mv8on65bcoj1fq)
+PASS  p25-fr-on-40: "Add note 22" landed (landed, lnd_mv8on7ioxfsnbw)
+PASS  p25-fr-on-40: "Add note 23" landed (landed, lnd_mv8on8lmt1hi36)
+PASS  p25-fr-on-40: "Add note 24" landed (landed, lnd_mv8on9ntnxgx6n)
+PASS  p25-fr-on-40: "Add note 25" landed (landed, lnd_mv8onaotq1zd61)
+PASS  p25-fr-on-40: "Add note 26" landed (landed, lnd_mv8onby5u1ems6)
+PASS  p25-fr-on-40: "Add note 27" landed (landed, lnd_mv8oncw7ubimxd)
+PASS  p25-fr-on-40: "Add note 28" landed (landed, lnd_mv8ondv1ughf73)
+PASS  p25-fr-on-40: "Add note 29" landed (landed, lnd_mv8onf86dny00r)
+PASS  p25-fr-on-40: "Add note 30" landed (landed, lnd_mv8ong636xqg4v)
+PASS  p25-fr-on-40: "Add note 31" landed (landed, lnd_mv8onh3yyhlv55)
+PASS  p25-fr-on-40: "Add note 32" landed (landed, lnd_mv8onikdsgm79r)
+PASS  p25-fr-on-40: "Add note 33" landed (landed, lnd_mv8onjmzdmxs01)
+PASS  p25-fr-on-40: "Add note 34" landed (landed, lnd_mv8onknn4qvuqh)
+PASS  p25-fr-on-40: "Add note 35" landed (landed, lnd_mv8onlnna3etwv)
+PASS  p25-fr-on-40: "Add note 36" landed (landed, lnd_mv8onmmsmcj9b9)
+PASS  p25-fr-on-40: "Add note 37" landed (landed, lnd_mv8onnouwnrt6v)
+PASS  p25-fr-on-40: "Add note 38" landed (landed, lnd_mv8ononiegwwaq)
+PASS  p25-fr-on-40: "Add note 39" landed (landed, lnd_mv8onqj0u2233j)
+      40 landings since green landed in 111.4 s, the break at position 21.
+PASS  p25-fr-on-40: certification on again
+PASS  p25-fr-on-40: certification is red on the head 6158ace (red, subtracts), green still 5045fea
+      firstRed: {"status":"found","trunkSha":"808b801bcdfaf0b7f809f9340d93bb18172e88d7","landingId":"lnd_mv8on5009ajelc","intents":[{"id":"int_mv8on4b75cpc8u","title":"Speed up subtraction"}],"proposals":[{"id":"prp_mv8on4xaegea6h","paths":["bisect/frmv8ol0wj/src/math.js"],"intentId":"int_mv8on4b75cpc8u","title":"Speed up subtraction"}],"files":["bisect/frmv8ol0wj/test/math.test.js"],"probes":6,"ms":432,"landings
+PASS  p25-fr-on-40: the red result gained firstRed, found (found)
+PASS  p25-fr-on-40: it names the landing that holds the breaking change (lnd_mv8on5009ajelc, expected lnd_mv8on5009ajelc)
+PASS  p25-fr-on-40: and its commit (808b801, expected 808b801)
+PASS  p25-fr-on-40: and the breaking proposal with the file it changed ([{"id":"prp_mv8on4xaegea6h","paths":["bisect/frmv8ol0wj/src/math.js"],"intentId":"int_mv8on4b75cpc8u","title":"Speed up subtraction"}])
+PASS  p25-fr-on-40: and its intent with its title ([{"id":"int_mv8on4b75cpc8u","title":"Speed up subtraction"}])
+PASS  p25-fr-on-40: in at most 7 test runs over the 40 landings since green (6 runs, 432 ms, 40 landings)
+PASS  p25-fr-on-40: a bisect event was recorded after the red result (red #729, bisect #730)
+PASS  p25-fr-on-40: the repair intent int_mv8onr89hhlaag names the commit and the proposal in its why
+      Search: 40 landings since green (landed in 111.4 s), 6 test runs in 432 ms, the right landing: yes. The fewest runs for 40 landings is 6 (ceil(log2(n + 1))) and the most 7; this history, the break at position 21, takes 6.
+PASS  p25-fr-off-40: created (201)
+PASS  p25-fr-off-40: review off for these checks
+PASS  p25-fr-off-40: certification on with repairs (200)
+PASS  p25-fr-off-40: "Add the math module and its test" landed (landed, lnd_mv8oo5vey5q3r6)
+PASS  p25-fr-off-40: certification is green on 369721a (green, {"tests":1,"pass":1,"fail":0,"cancelled":0,"skipped":0,"todo":0,"suites":0})
+PASS  p25-fr-off-40: certification held
+PASS  p25-fr-off-40: "Add note 1" landed (landed, lnd_mv8oohbrkldq86)
+PASS  p25-fr-off-40: "Add note 2" landed (landed, lnd_mv8ooq8ufqq50j)
+PASS  p25-fr-off-40: "Add note 3" landed (landed, lnd_mv8oow0n062bfo)
+PASS  p25-fr-off-40: "Speed up subtraction" landed (landed, lnd_mv8op0nf29nejc)
+PASS  p25-fr-off-40: "Add note 4" landed (landed, lnd_mv8op4i4hvpe49)
+PASS  p25-fr-off-40: "Add note 5" landed (landed, lnd_mv8op7t73j4b2o)
+      6 landings since green landed in 49.1 s, the break at position 4.
+PASS  p25-fr-off-40: certification on again
+PASS  p25-fr-off-40: certification is red on the head 07a7060 (red, subtracts), green still 369721a
+FAIL  p25-fr-off-40: the red result has no firstRed after 20 s ({"status":"found","trunkSha":"d04ad06432ef726160919306a9ab37f7ea187b48","landingId":"lnd_mv8op0nf29nejc","intents":[{"id":"int_mv8oox2wiupk1m","title":"Speed up)
+FAIL  p25-fr-off-40: no bisect event was recorded
+      In a browser: https://p25-firetrident.mattsolt.workers.dev/c/p25-fr-on-40 shows the red cross on the trunk bar; its card names the first failing commit 808b801 and "ft revert p25-fr-on-40 prp_mv8on4xaegea6h".
+SOME CHECKS FAILED
+exit 1
