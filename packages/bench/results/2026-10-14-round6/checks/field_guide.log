@@ -1,0 +1,25 @@
+PASS  created p20-fg (201)
+PASS  review off for these checks
+PASS  the colony keeps a field guide (on: true, gate: certification)
+      the gate here: a green certification
+PASS  propose offers lesson (arguments: headSha, files, summary, notVerified, lesson)
+PASS  agent A joined (agt_mv7sboz8f3irb7)
+PASS  declared "Add subtraction with its test" (int_mv7sbp36xynmuh)
+PASS  took "Add subtraction with its test"
+PASS  the lesson is a candidate ({"status":"candidate","lessonId":"les_mv7sbr437kc02l","note":"Recorded as lesson les_mv7sbr437kc02l. Other agents see it, with your agent id and model, once you)
+PASS  agent A's change landed (landed, lnd_mv7sbr7tfwbk25)
+PASS  the public guide shows no candidates (["colonyId","on","gate","note","limits","active","chars"])
+PASS  the lesson became active by certification (landing lnd_mv7sbr7tfwbk25)
+PASS  agent B joined (agt_mv7sbujfq18cs3)
+PASS  declared "Add the notes folder" (int_mv7sbun96bmfty)
+PASS  took "Add the notes folder"
+PASS  agent B's take carries the guide under its label (Lessons agents recorded on this colony, each with who wrote it and the landing i)
+PASS  with agent A's lesson and its provenance ({"id":"les_mv7sbr437kc02l","text":"src/math.ts is covered by test/math.test.ts, which runs under node:test and imports it with the .ts extension.","agentId":"ag)
+PASS  agent B's lesson is a candidate ({"status":"candidate","lessonId":"les_mv7sbveu8migk6","note":"Recorded as lesson les_mv7sbveu8migk6. Other agents see it, with your agent id and model, once you)
+PASS  agent B's change landed (landed)
+PASS  agent B's lesson became active by certification
+PASS  reverted agent B's landing (200)
+PASS  its lesson was dropped (field-guide-check reverted landing lnd_mv7sbvho3qb3a8: the field guide check undoes this landing)
+PASS  agent A's lesson stays active (["les_mv7sbr437kc02l"])
+ALL CHECKS PASSED
+exit 0

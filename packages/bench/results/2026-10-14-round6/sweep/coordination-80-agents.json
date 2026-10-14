@@ -1,0 +1,6558 @@
+{
+  "schema": "firetrident.coordination/v1",
+  "colony": "p19-sw80",
+  "url": "https://p19-firetrident.mattsolt.workers.dev",
+  "trunk": {
+    "head": "ee7e5b01c6ef43e50b15d8f1a13e2499d51e99e6",
+    "colonyTrunk": "ee7e5b01c6ef43e50b15d8f1a13e2499d51e99e6",
+    "firstParentCommits": 393,
+    "shallow": true,
+    "base": "588ec13fa68ea44fed1b5e1b503341db2bf09d70",
+    "firetridentCommits": 193,
+    "landingCommits": 193,
+    "systemCommits": 0,
+    "notes": {
+      "found": 193,
+      "foreign": 0,
+      "unreadable": 0
+    },
+    "knownFrom": {
+      "note": 193,
+      "apiAndTrailers": 0,
+      "trailersOnly": 0,
+      "unverified": 0
+    }
+  },
+  "record": {
+    "source": "recorded",
+    "events": 4810,
+    "proposals": 283,
+    "intents": 283,
+    "vaccineProposalsLeftOut": 0,
+    "colonyCounters": {
+      "proposals": 283,
+      "landedProposals": 283,
+      "returned": 0,
+      "rejected": 0,
+      "escalated": 0,
+      "intents": 283,
+      "intentsLanded": 283,
+      "landings": 193,
+      "agents": 81
+    }
+  },
+  "regionDepth": {
+    "value": 3,
+    "source": "colony"
+  },
+  "mergedFraction": {
+    "proposals": {
+      "made": 283,
+      "landed": 283,
+      "returned": 0,
+      "redirected": 0,
+      "rejected": 0,
+      "inFlight": 0,
+      "other": 0
+    },
+    "merged": 1.0,
+    "mergedOfSettled": 1.0,
+    "intents": {
+      "total": 283,
+      "withProposal": 283,
+      "landed": 283,
+      "byStatus": {
+        "landed": 283
+      }
+    },
+    "intentsMerged": 1.0,
+    "intentsMergedWithProposal": 1.0
+  },
+  "codeSharing": {
+    "denominators": {
+      "wholeFile": "every line of the file at HEAD",
+      "agentLines": "the lines at HEAD given to an agent"
+    },
+    "wholeFile": {
+      "agents": 81,
+      "median": 0.0,
+      "mean": 0.0,
+      "min": 0.0,
+      "p25": 0.0,
+      "p75": 0.0,
+      "max": 0.0,
+      "histogram": {
+        "0.0-0.1": 81,
+        "0.1-0.2": 0,
+        "0.2-0.3": 0,
+        "0.3-0.4": 0,
+        "0.4-0.5": 0,
+        "0.5-0.6": 0,
+        "0.6-0.7": 0,
+        "0.7-0.8": 0,
+        "0.8-0.9": 0,
+        "0.9-1.0": 0
+      }
+    },
+    "agentLines": {
+      "agents": 81,
+      "median": 0.0,
+      "mean": 0.0,
+      "min": 0.0,
+      "p25": 0.0,
+      "p75": 0.0,
+      "max": 0.0,
+      "histogram": {
+        "0.0-0.1": 81,
+        "0.1-0.2": 0,
+        "0.2-0.3": 0,
+        "0.3-0.4": 0,
+        "0.4-0.5": 0,
+        "0.5-0.6": 0,
+        "0.6-0.7": 0,
+        "0.7-0.8": 0,
+        "0.8-0.9": 0,
+        "0.9-1.0": 0
+      }
+    },
+    "lines": {
+      "lines": 78668,
+      "agentWritten": 959,
+      "imported": 77709,
+      "system": 0,
+      "unattributed": 0
+    },
+    "files": 283,
+    "skipped": {
+      "absentAtHead": 0,
+      "binary": 0
+    },
+    "agents": [
+      {
+        "agent": "agt_mv7qrmm14gde31",
+        "files": 4,
+        "lines": 24,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49o0yvttq",
+        "files": 3,
+        "lines": 12,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49o1436bc",
+        "files": 3,
+        "lines": 8,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49o1s1kce",
+        "files": 4,
+        "lines": 13,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49o1z9w8m",
+        "files": 4,
+        "lines": 18,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49o21d1bl",
+        "files": 5,
+        "lines": 11,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49o2nblhx",
+        "files": 6,
+        "lines": 7,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49o2p4jzm",
+        "files": 3,
+        "lines": 7,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49o2z6ywz",
+        "files": 3,
+        "lines": 8,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49o35mid0",
+        "files": 3,
+        "lines": 4,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49o3dqzmp",
+        "files": 3,
+        "lines": 7,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49o4qcdlo",
+        "files": 3,
+        "lines": 7,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49o5r0v7g",
+        "files": 2,
+        "lines": 8,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49o5rezae",
+        "files": 1,
+        "lines": 5,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49o64gtv2",
+        "files": 5,
+        "lines": 9,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49o6d01jn",
+        "files": 6,
+        "lines": 20,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49o6fajrx",
+        "files": 1,
+        "lines": 2,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49o6pygr2",
+        "files": 1,
+        "lines": 5,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49o6vi0sv",
+        "files": 5,
+        "lines": 8,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49o7zhmg0",
+        "files": 3,
+        "lines": 5,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49o8m7s1i",
+        "files": 5,
+        "lines": 23,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49o9c9whk",
+        "files": 5,
+        "lines": 12,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49o9kqpeo",
+        "files": 3,
+        "lines": 22,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49oa1y9eu",
+        "files": 5,
+        "lines": 36,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49oananz1",
+        "files": 5,
+        "lines": 25,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49oasjtoi",
+        "files": 5,
+        "lines": 18,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49obtdpz4",
+        "files": 6,
+        "lines": 29,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49obyaxle",
+        "files": 3,
+        "lines": 16,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49obz29h4",
+        "files": 4,
+        "lines": 15,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49oc7fke9",
+        "files": 4,
+        "lines": 15,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49och80k8",
+        "files": 3,
+        "lines": 6,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49ocus50s",
+        "files": 3,
+        "lines": 10,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49od8th44",
+        "files": 3,
+        "lines": 12,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49odql00c",
+        "files": 3,
+        "lines": 5,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49of0yplw",
+        "files": 2,
+        "lines": 5,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49ofd73fj",
+        "files": 2,
+        "lines": 4,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49og7pzys",
+        "files": 3,
+        "lines": 10,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49ogs388q",
+        "files": 2,
+        "lines": 9,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49oh2ddny",
+        "files": 3,
+        "lines": 12,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49ohm7zuq",
+        "files": 1,
+        "lines": 5,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49oi17v84",
+        "files": 4,
+        "lines": 10,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49oi44p2t",
+        "files": 5,
+        "lines": 11,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49ojbldi3",
+        "files": 3,
+        "lines": 8,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49ojby4ol",
+        "files": 6,
+        "lines": 29,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49ojfh7wu",
+        "files": 1,
+        "lines": 2,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49ojn2nyo",
+        "files": 4,
+        "lines": 18,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49ojwpz1u",
+        "files": 3,
+        "lines": 12,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49ok9n1ez",
+        "files": 1,
+        "lines": 2,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49okkdyf0",
+        "files": 4,
+        "lines": 15,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49oks2xv1",
+        "files": 2,
+        "lines": 6,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49okuu5q5",
+        "files": 6,
+        "lines": 20,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49olo463t",
+        "files": 3,
+        "lines": 16,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49onlmewx",
+        "files": 4,
+        "lines": 8,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49onrxxfc",
+        "files": 6,
+        "lines": 22,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49onum9ry",
+        "files": 2,
+        "lines": 5,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49oo3sqxt",
+        "files": 4,
+        "lines": 7,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49oo71jyz",
+        "files": 4,
+        "lines": 18,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49ooapw4w",
+        "files": 1,
+        "lines": 10,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49ooojllr",
+        "files": 4,
+        "lines": 11,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49oouyk5l",
+        "files": 3,
+        "lines": 9,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49opanqqc",
+        "files": 3,
+        "lines": 6,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49opqkwqq",
+        "files": 2,
+        "lines": 5,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49oq17fgg",
+        "files": 3,
+        "lines": 10,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49oql8dd8",
+        "files": 4,
+        "lines": 17,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49orhr63d",
+        "files": 2,
+        "lines": 7,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49osm3cvu",
+        "files": 2,
+        "lines": 12,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49otc5xbx",
+        "files": 6,
+        "lines": 14,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49otvp525",
+        "files": 7,
+        "lines": 35,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49ou22ohv",
+        "files": 3,
+        "lines": 12,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49ou4gdgc",
+        "files": 3,
+        "lines": 9,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49oud04az",
+        "files": 2,
+        "lines": 8,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49ous7ui7",
+        "files": 4,
+        "lines": 11,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49ovfit4n",
+        "files": 2,
+        "lines": 3,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49ovo8sfv",
+        "files": 2,
+        "lines": 8,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49ow4n131",
+        "files": 5,
+        "lines": 10,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49owlfgzz",
+        "files": 3,
+        "lines": 12,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49owtb9st",
+        "files": 4,
+        "lines": 10,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49ox2jxtj",
+        "files": 3,
+        "lines": 11,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49oya5fuq",
+        "files": 4,
+        "lines": 8,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49oyp7g97",
+        "files": 6,
+        "lines": 26,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qs49oz5m1yh",
+        "files": 5,
+        "lines": 9,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      }
+    ],
+    "perFile": [
+      {
+        "path": "src/adapter/aws-lambda/conninfo.test.ts",
+        "lines": 118,
+        "byAgent": {
+          "agt_mv7qs49o2p4jzm": 2
+        },
+        "imported": 116,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/aws-lambda/conninfo.ts",
+        "lines": 74,
+        "byAgent": {
+          "agt_mv7qs49otvp525": 3
+        },
+        "imported": 71,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/aws-lambda/handler.test.ts",
+        "lines": 678,
+        "byAgent": {
+          "agt_mv7qs49otvp525": 6
+        },
+        "imported": 672,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/aws-lambda/handler.ts",
+        "lines": 726,
+        "byAgent": {
+          "agt_mv7qrmm14gde31": 4
+        },
+        "imported": 722,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/aws-lambda/index.ts",
+        "lines": 18,
+        "byAgent": {
+          "agt_mv7qs49o1s1kce": 4
+        },
+        "imported": 14,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/bun/conninfo.test.ts",
+        "lines": 84,
+        "byAgent": {
+          "agt_mv7qs49ojbldi3": 3
+        },
+        "imported": 81,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/bun/conninfo.ts",
+        "lines": 44,
+        "byAgent": {
+          "agt_mv7qs49o4qcdlo": 3
+        },
+        "imported": 41,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/bun/index.ts",
+        "lines": 15,
+        "byAgent": {
+          "agt_mv7qs49oql8dd8": 6
+        },
+        "imported": 9,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/bun/serve-static.ts",
+        "lines": 35,
+        "byAgent": {
+          "agt_mv7qs49obyaxle": 3
+        },
+        "imported": 32,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/bun/server.test.ts",
+        "lines": 15,
+        "byAgent": {
+          "agt_mv7qs49onum9ry": 2
+        },
+        "imported": 13,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/bun/server.ts",
+        "lines": 15,
+        "byAgent": {
+          "agt_mv7qs49oql8dd8": 1
+        },
+        "imported": 14,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/bun/ssg.ts",
+        "lines": 29,
+        "byAgent": {
+          "agt_mv7qs49o4qcdlo": 2
+        },
+        "imported": 27,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/bun/websocket.test.ts",
+        "lines": 166,
+        "byAgent": {
+          "agt_mv7qs49o0yvttq": 3
+        },
+        "imported": 163,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/bun/websocket.ts",
+        "lines": 127,
+        "byAgent": {
+          "agt_mv7qs49oql8dd8": 3
+        },
+        "imported": 124,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/cloudflare-pages/conninfo.test.ts",
+        "lines": 27,
+        "byAgent": {
+          "agt_mv7qs49o6vi0sv": 2
+        },
+        "imported": 25,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/cloudflare-pages/conninfo.ts",
+        "lines": 27,
+        "byAgent": {
+          "agt_mv7qs49obz29h4": 1
+        },
+        "imported": 26,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/cloudflare-pages/handler.test.ts",
+        "lines": 286,
+        "byAgent": {
+          "agt_mv7qs49ocus50s": 5
+        },
+        "imported": 281,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/cloudflare-pages/handler.ts",
+        "lines": 133,
+        "byAgent": {
+          "agt_mv7qs49oq17fgg": 4
+        },
+        "imported": 129,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/cloudflare-pages/index.ts",
+        "lines": 12,
+        "byAgent": {
+          "agt_mv7qs49obyaxle": 3
+        },
+        "imported": 9,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/cloudflare-workers/conninfo.test.ts",
+        "lines": 19,
+        "byAgent": {
+          "agt_mv7qs49o3dqzmp": 2
+        },
+        "imported": 17,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/cloudflare-workers/conninfo.ts",
+        "lines": 10,
+        "byAgent": {
+          "agt_mv7qs49oi44p2t": 1
+        },
+        "imported": 9,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/cloudflare-workers/index.ts",
+        "lines": 12,
+        "byAgent": {
+          "agt_mv7qs49onum9ry": 3
+        },
+        "imported": 9,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/cloudflare-workers/serve-static-module.ts",
+        "lines": 12,
+        "byAgent": {
+          "agt_mv7qs49o6d01jn": 3
+        },
+        "imported": 9,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/cloudflare-workers/serve-static.test.ts",
+        "lines": 221,
+        "byAgent": {
+          "agt_mv7qs49o6d01jn": 4
+        },
+        "imported": 217,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/cloudflare-workers/serve-static.ts",
+        "lines": 45,
+        "byAgent": {
+          "agt_mv7qs49o3dqzmp": 4
+        },
+        "imported": 41,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/cloudflare-workers/utils.test.ts",
+        "lines": 33,
+        "byAgent": {
+          "agt_mv7qs49o6vi0sv": 1
+        },
+        "imported": 32,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/cloudflare-workers/websocket.test.ts",
+        "lines": 162,
+        "byAgent": {
+          "agt_mv7qs49ocus50s": 3
+        },
+        "imported": 159,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/cloudflare-workers/websocket.ts",
+        "lines": 56,
+        "byAgent": {
+          "agt_mv7qs49o6d01jn": 2
+        },
+        "imported": 54,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/deno/conninfo.test.ts",
+        "lines": 25,
+        "byAgent": {
+          "agt_mv7qs49oc7fke9": 2
+        },
+        "imported": 23,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/deno/conninfo.ts",
+        "lines": 18,
+        "byAgent": {
+          "agt_mv7qs49o21d1bl": 1
+        },
+        "imported": 17,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/deno/index.ts",
+        "lines": 13,
+        "byAgent": {
+          "agt_mv7qs49od8th44": 4
+        },
+        "imported": 9,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/deno/serve-static.ts",
+        "lines": 45,
+        "byAgent": {
+          "agt_mv7qs49odql00c": 3
+        },
+        "imported": 42,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/deno/ssg.ts",
+        "lines": 29,
+        "byAgent": {
+          "agt_mv7qs49ou4gdgc": 2
+        },
+        "imported": 27,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/deno/websocket.test.ts",
+        "lines": 162,
+        "byAgent": {
+          "agt_mv7qs49oananz1": 3
+        },
+        "imported": 159,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/deno/websocket.ts",
+        "lines": 41,
+        "byAgent": {
+          "agt_mv7qs49oi44p2t": 2
+        },
+        "imported": 39,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/lambda-edge/conninfo.test.ts",
+        "lines": 27,
+        "byAgent": {
+          "agt_mv7qs49o2p4jzm": 3
+        },
+        "imported": 24,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/lambda-edge/conninfo.ts",
+        "lines": 18,
+        "byAgent": {
+          "agt_mv7qs49oz5m1yh": 3
+        },
+        "imported": 15,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/lambda-edge/handler.test.ts",
+        "lines": 450,
+        "byAgent": {
+          "agt_mv7qs49oh2ddny": 6
+        },
+        "imported": 444,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/lambda-edge/handler.ts",
+        "lines": 263,
+        "byAgent": {
+          "agt_mv7qs49oz5m1yh": 2
+        },
+        "imported": 261,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/lambda-edge/index.ts",
+        "lines": 18,
+        "byAgent": {
+          "agt_mv7qs49oks2xv1": 3
+        },
+        "imported": 15,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/netlify/conninfo.test.ts",
+        "lines": 41,
+        "byAgent": {
+          "agt_mv7qs49oyp7g97": 2
+        },
+        "imported": 39,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/netlify/conninfo.ts",
+        "lines": 58,
+        "byAgent": {
+          "agt_mv7qs49o5r0v7g": 2
+        },
+        "imported": 56,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/netlify/handler.ts",
+        "lines": 13,
+        "byAgent": {
+          "agt_mv7qs49onrxxfc": 1
+        },
+        "imported": 12,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/netlify/index.ts",
+        "lines": 10,
+        "byAgent": {
+          "agt_mv7qs49o35mid0": 1
+        },
+        "imported": 9,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/netlify/mod.ts",
+        "lines": 2,
+        "byAgent": {
+          "agt_mv7qs49oasjtoi": 2
+        },
+        "imported": 0,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/service-worker/handler.test.ts",
+        "lines": 121,
+        "byAgent": {
+          "agt_mv7qs49ooojllr": 3
+        },
+        "imported": 118,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/service-worker/handler.ts",
+        "lines": 41,
+        "byAgent": {
+          "agt_mv7qs49oasjtoi": 3
+        },
+        "imported": 38,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/service-worker/index.ts",
+        "lines": 40,
+        "byAgent": {
+          "agt_mv7qs49o2z6ywz": 4
+        },
+        "imported": 36,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/vercel/conninfo.test.ts",
+        "lines": 18,
+        "byAgent": {
+          "agt_mv7qs49otc5xbx": 2
+        },
+        "imported": 16,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/vercel/conninfo.ts",
+        "lines": 11,
+        "byAgent": {
+          "agt_mv7qs49o1436bc": 1
+        },
+        "imported": 10,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/vercel/handler.test.ts",
+        "lines": 38,
+        "byAgent": {
+          "agt_mv7qs49oya5fuq": 2
+        },
+        "imported": 36,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/vercel/handler.ts",
+        "lines": 11,
+        "byAgent": {
+          "agt_mv7qs49otc5xbx": 1
+        },
+        "imported": 10,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/vercel/index.ts",
+        "lines": 11,
+        "byAgent": {
+          "agt_mv7qs49o1436bc": 2
+        },
+        "imported": 9,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/client/client.test.ts",
+        "lines": 2310,
+        "byAgent": {
+          "agt_mv7qs49obz29h4": 7
+        },
+        "imported": 2303,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/client/client.ts",
+        "lines": 249,
+        "byAgent": {
+          "agt_mv7qs49oud04az": 6
+        },
+        "imported": 243,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/client/index.ts",
+        "lines": 17,
+        "byAgent": {
+          "agt_mv7qs49oananz1": 3
+        },
+        "imported": 14,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/client/types.test.ts",
+        "lines": 146,
+        "byAgent": {
+          "agt_mv7qs49obtdpz4": 4
+        },
+        "imported": 142,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/client/types.ts",
+        "lines": 393,
+        "byAgent": {
+          "agt_mv7qs49oi44p2t": 6
+        },
+        "imported": 387,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/client/utils.test.ts",
+        "lines": 405,
+        "byAgent": {
+          "agt_mv7qs49obz29h4": 4
+        },
+        "imported": 401,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/client/utils.ts",
+        "lines": 117,
+        "byAgent": {
+          "agt_mv7qs49obz29h4": 3
+        },
+        "imported": 114,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/compose.test.ts",
+        "lines": 751,
+        "byAgent": {
+          "agt_mv7qs49orhr63d": 4
+        },
+        "imported": 747,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/compose.ts",
+        "lines": 73,
+        "byAgent": {
+          "agt_mv7qs49oi17v84": 2
+        },
+        "imported": 71,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/context.test.ts",
+        "lines": 629,
+        "byAgent": {
+          "agt_mv7qs49of0yplw": 2
+        },
+        "imported": 627,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/context.ts",
+        "lines": 797,
+        "byAgent": {
+          "agt_mv7qs49oa1y9eu": 8
+        },
+        "imported": 789,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/accepts/accepts.test.ts",
+        "lines": 344,
+        "byAgent": {
+          "agt_mv7qs49oa1y9eu": 5
+        },
+        "imported": 339,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/accepts/accepts.ts",
+        "lines": 96,
+        "byAgent": {
+          "agt_mv7qs49ojbldi3": 3
+        },
+        "imported": 93,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/accepts/index.ts",
+        "lines": 6,
+        "byAgent": {
+          "agt_mv7qs49ow4n131": 1
+        },
+        "imported": 5,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/adapter/index.test.ts",
+        "lines": 55,
+        "byAgent": {
+          "agt_mv7qs49ok9n1ez": 2
+        },
+        "imported": 53,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/adapter/index.ts",
+        "lines": 90,
+        "byAgent": {
+          "agt_mv7qs49oo3sqxt": 1
+        },
+        "imported": 89,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/conninfo/index.ts",
+        "lines": 6,
+        "byAgent": {
+          "agt_mv7qs49onrxxfc": 1
+        },
+        "imported": 5,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/conninfo/types.ts",
+        "lines": 45,
+        "byAgent": {
+          "agt_mv7qs49o21d1bl": 1
+        },
+        "imported": 44,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/cookie/index.test.ts",
+        "lines": 510,
+        "byAgent": {
+          "agt_mv7qs49o2p4jzm": 2
+        },
+        "imported": 508,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/cookie/index.ts",
+        "lines": 145,
+        "byAgent": {
+          "agt_mv7qs49oa1y9eu": 3
+        },
+        "imported": 142,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/css/common.case.test.tsx",
+        "lines": 506,
+        "byAgent": {
+          "agt_mv7qs49o64gtv2": 1
+        },
+        "imported": 505,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/css/index.test.tsx",
+        "lines": 634,
+        "byAgent": {
+          "agt_mv7qs49o9kqpeo": 9
+        },
+        "imported": 625,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/css/index.ts",
+        "lines": 262,
+        "byAgent": {
+          "agt_mv7qs49olo463t": 9
+        },
+        "imported": 253,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/dev/index.test.ts",
+        "lines": 181,
+        "byAgent": {
+          "agt_mv7qs49o1z9w8m": 4
+        },
+        "imported": 177,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/dev/index.ts",
+        "lines": 79,
+        "byAgent": {
+          "agt_mv7qs49osm3cvu": 4
+        },
+        "imported": 75,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/factory/index.test.ts",
+        "lines": 434,
+        "byAgent": {
+          "agt_mv7qs49ogs388q": 8
+        },
+        "imported": 426,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/factory/index.ts",
+        "lines": 375,
+        "byAgent": {
+          "agt_mv7qs49owtb9st": 3
+        },
+        "imported": 372,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/html/index.test.ts",
+        "lines": 78,
+        "byAgent": {
+          "agt_mv7qs49oasjtoi": 2
+        },
+        "imported": 76,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/html/index.ts",
+        "lines": 57,
+        "byAgent": {
+          "agt_mv7qs49ovfit4n": 2
+        },
+        "imported": 55,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/proxy/index.test.ts",
+        "lines": 356,
+        "byAgent": {
+          "agt_mv7qs49og7pzys": 2
+        },
+        "imported": 354,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/proxy/index.ts",
+        "lines": 202,
+        "byAgent": {
+          "agt_mv7qs49ofd73fj": 2
+        },
+        "imported": 200,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/route/index.test.ts",
+        "lines": 240,
+        "byAgent": {
+          "agt_mv7qs49owlfgzz": 3
+        },
+        "imported": 237,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/route/index.ts",
+        "lines": 141,
+        "byAgent": {
+          "agt_mv7qs49oh2ddny": 4
+        },
+        "imported": 137,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/ssg/index.ts",
+        "lines": 14,
+        "byAgent": {
+          "agt_mv7qs49ou22ohv": 3
+        },
+        "imported": 11,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/ssg/middleware.ts",
+        "lines": 83,
+        "byAgent": {
+          "agt_mv7qs49ow4n131": 3
+        },
+        "imported": 80,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/ssg/plugins.test.tsx",
+        "lines": 227,
+        "byAgent": {
+          "agt_mv7qs49onrxxfc": 5
+        },
+        "imported": 222,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/ssg/plugins.ts",
+        "lines": 72,
+        "byAgent": {
+          "agt_mv7qs49onrxxfc": 2
+        },
+        "imported": 70,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/ssg/ssg.test.tsx",
+        "lines": 1196,
+        "byAgent": {
+          "agt_mv7qs49oyp7g97": 5
+        },
+        "imported": 1191,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/ssg/ssg.ts",
+        "lines": 471,
+        "byAgent": {
+          "agt_mv7qs49oyp7g97": 9
+        },
+        "imported": 462,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/ssg/utils.test.ts",
+        "lines": 102,
+        "byAgent": {
+          "agt_mv7qs49oyp7g97": 1
+        },
+        "imported": 101,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/ssg/utils.ts",
+        "lines": 118,
+        "byAgent": {
+          "agt_mv7qs49olo463t": 4
+        },
+        "imported": 114,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/streaming/index.ts",
+        "lines": 9,
+        "byAgent": {
+          "agt_mv7qs49o64gtv2": 4
+        },
+        "imported": 5,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/streaming/sse.test.tsx",
+        "lines": 557,
+        "byAgent": {
+          "agt_mv7qs49okuu5q5": 3
+        },
+        "imported": 554,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/streaming/sse.ts",
+        "lines": 101,
+        "byAgent": {
+          "agt_mv7qs49o21d1bl": 4
+        },
+        "imported": 97,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/streaming/stream.test.ts",
+        "lines": 128,
+        "byAgent": {
+          "agt_mv7qs49o64gtv2": 2
+        },
+        "imported": 126,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/streaming/stream.ts",
+        "lines": 45,
+        "byAgent": {
+          "agt_mv7qs49oi17v84": 3
+        },
+        "imported": 42,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/streaming/text.test.ts",
+        "lines": 34,
+        "byAgent": {
+          "agt_mv7qs49o21d1bl": 2
+        },
+        "imported": 32,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/streaming/text.ts",
+        "lines": 15,
+        "byAgent": {
+          "agt_mv7qs49ous7ui7": 4
+        },
+        "imported": 11,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/testing/index.test.ts",
+        "lines": 42,
+        "byAgent": {
+          "agt_mv7qs49ojwpz1u": 2
+        },
+        "imported": 40,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/testing/index.ts",
+        "lines": 27,
+        "byAgent": {
+          "agt_mv7qs49ovo8sfv": 6
+        },
+        "imported": 21,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/websocket/index.test.ts",
+        "lines": 124,
+        "byAgent": {
+          "agt_mv7qs49o9c9whk": 3
+        },
+        "imported": 121,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/websocket/index.ts",
+        "lines": 140,
+        "byAgent": {
+          "agt_mv7qs49opqkwqq": 3
+        },
+        "imported": 137,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/hono-base.ts",
+        "lines": 549,
+        "byAgent": {
+          "agt_mv7qs49oa1y9eu": 8
+        },
+        "imported": 541,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/hono.test.ts",
+        "lines": 3814,
+        "byAgent": {
+          "agt_mv7qs49oa1y9eu": 12
+        },
+        "imported": 3802,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/hono.ts",
+        "lines": 34,
+        "byAgent": {
+          "agt_mv7qs49o8m7s1i": 6
+        },
+        "imported": 28,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/http-exception.test.ts",
+        "lines": 45,
+        "byAgent": {
+          "agt_mv7qs49o2nblhx": 1
+        },
+        "imported": 44,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/http-exception.ts",
+        "lines": 78,
+        "byAgent": {
+          "agt_mv7qs49ojn2nyo": 1
+        },
+        "imported": 77,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/index.ts",
+        "lines": 53,
+        "byAgent": {
+          "agt_mv7qs49ojn2nyo": 6
+        },
+        "imported": 47,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/base.test.tsx",
+        "lines": 79,
+        "byAgent": {
+          "agt_mv7qs49oo3sqxt": 3
+        },
+        "imported": 76,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/base.ts",
+        "lines": 490,
+        "byAgent": {
+          "agt_mv7qs49otvp525": 10
+        },
+        "imported": 480,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/children.test.ts",
+        "lines": 52,
+        "byAgent": {
+          "agt_mv7qs49o9kqpeo": 2
+        },
+        "imported": 50,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/children.ts",
+        "lines": 20,
+        "byAgent": {
+          "agt_mv7qs49oo3sqxt": 1
+        },
+        "imported": 19,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/components.test.tsx",
+        "lines": 936,
+        "byAgent": {
+          "agt_mv7qs49obtdpz4": 5
+        },
+        "imported": 931,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/components.ts",
+        "lines": 257,
+        "byAgent": {
+          "agt_mv7qs49otvp525": 10
+        },
+        "imported": 247,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/context-isolation.test.ts",
+        "lines": 655,
+        "byAgent": {
+          "agt_mv7qs49okkdyf0": 3
+        },
+        "imported": 652,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/context.ts",
+        "lines": 266,
+        "byAgent": {
+          "agt_mv7qs49oc7fke9": 6
+        },
+        "imported": 260,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/dom/client.test.tsx",
+        "lines": 128,
+        "byAgent": {
+          "agt_mv7qs49o7zhmg0": 2
+        },
+        "imported": 126,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/dom/client.ts",
+        "lines": 89,
+        "byAgent": {
+          "agt_mv7qs49o8m7s1i": 4
+        },
+        "imported": 85,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/dom/components.test.tsx",
+        "lines": 330,
+        "byAgent": {
+          "agt_mv7qs49oo71jyz": 3
+        },
+        "imported": 327,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/dom/components.ts",
+        "lines": 39,
+        "byAgent": {
+          "agt_mv7qs49otc5xbx": 4
+        },
+        "imported": 35,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/dom/context.test.tsx",
+        "lines": 184,
+        "byAgent": {
+          "agt_mv7qs49owtb9st": 2
+        },
+        "imported": 182,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/dom/context.ts",
+        "lines": 52,
+        "byAgent": {
+          "agt_mv7qs49ojby4ol": 5
+        },
+        "imported": 47,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/dom/css.test.tsx",
+        "lines": 149,
+        "byAgent": {
+          "agt_mv7qs49ojby4ol": 5
+        },
+        "imported": 144,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/dom/css.ts",
+        "lines": 263,
+        "byAgent": {
+          "agt_mv7qs49onrxxfc": 4
+        },
+        "imported": 259,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/dom/hooks/index.test.tsx",
+        "lines": 172,
+        "byAgent": {
+          "agt_mv7qs49otc5xbx": 2
+        },
+        "imported": 170,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/dom/hooks/index.ts",
+        "lines": 91,
+        "byAgent": {
+          "agt_mv7qs49ou22ohv": 5
+        },
+        "imported": 86,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/dom/index.test.tsx",
+        "lines": 3681,
+        "byAgent": {
+          "agt_mv7qs49oql8dd8": 7
+        },
+        "imported": 3674,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/dom/index.ts",
+        "lines": 169,
+        "byAgent": {
+          "agt_mv7qs49ojby4ol": 14
+        },
+        "imported": 155,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/dom/intrinsic-element/components.test.tsx",
+        "lines": 1344,
+        "byAgent": {
+          "agt_mv7qs49o21d1bl": 3
+        },
+        "imported": 1341,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/dom/intrinsic-element/components.ts",
+        "lines": 438,
+        "byAgent": {
+          "agt_mv7qs49onrxxfc": 9
+        },
+        "imported": 429,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/dom/jsx-dev-runtime.ts",
+        "lines": 23,
+        "byAgent": {
+          "agt_mv7qs49okuu5q5": 3
+        },
+        "imported": 20,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/dom/jsx-runtime.ts",
+        "lines": 8,
+        "byAgent": {
+          "agt_mv7qs49otc5xbx": 3
+        },
+        "imported": 5,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/dom/render.ts",
+        "lines": 879,
+        "byAgent": {
+          "agt_mv7qs49ojn2nyo": 9
+        },
+        "imported": 870,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/dom/server.test.tsx",
+        "lines": 199,
+        "byAgent": {
+          "agt_mv7qs49o7zhmg0": 2
+        },
+        "imported": 197,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/dom/server.ts",
+        "lines": 76,
+        "byAgent": {
+          "agt_mv7qs49oyp7g97": 5
+        },
+        "imported": 71,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/dom/utils.ts",
+        "lines": 7,
+        "byAgent": {
+          "agt_mv7qs49ovfit4n": 1
+        },
+        "imported": 6,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/hooks/dom.test.tsx",
+        "lines": 859,
+        "byAgent": {
+          "agt_mv7qs49o6fajrx": 2
+        },
+        "imported": 857,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/hooks/index.ts",
+        "lines": 437,
+        "byAgent": {
+          "agt_mv7qs49ou22ohv": 4
+        },
+        "imported": 433,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/hooks/string.test.tsx",
+        "lines": 40,
+        "byAgent": {
+          "agt_mv7qs49och80k8": 1
+        },
+        "imported": 39,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/index.test.tsx",
+        "lines": 1745,
+        "byAgent": {
+          "agt_mv7qs49okkdyf0": 7
+        },
+        "imported": 1738,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/index.ts",
+        "lines": 114,
+        "byAgent": {
+          "agt_mv7qs49obyaxle": 10
+        },
+        "imported": 104,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/intrinsic-element/common.ts",
+        "lines": 23,
+        "byAgent": {
+          "agt_mv7qs49onlmewx": 1
+        },
+        "imported": 22,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/intrinsic-element/components.test.tsx",
+        "lines": 666,
+        "byAgent": {
+          "agt_mv7qs49ojby4ol": 2
+        },
+        "imported": 664,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/intrinsic-element/components.ts",
+        "lines": 210,
+        "byAgent": {
+          "agt_mv7qs49oananz1": 10
+        },
+        "imported": 200,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/intrinsic-elements.ts",
+        "lines": 924,
+        "byAgent": {
+          "agt_mv7qs49o1z9w8m": 2
+        },
+        "imported": 922,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/jsx-dev-runtime.ts",
+        "lines": 26,
+        "byAgent": {
+          "agt_mv7qs49o1z9w8m": 5
+        },
+        "imported": 21,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/jsx-runtime.test.tsx",
+        "lines": 85,
+        "byAgent": {
+          "agt_mv7qs49o8m7s1i": 2
+        },
+        "imported": 83,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/jsx-runtime.ts",
+        "lines": 51,
+        "byAgent": {
+          "agt_mv7qs49o1z9w8m": 7
+        },
+        "imported": 44,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/streaming.test.tsx",
+        "lines": 1281,
+        "byAgent": {
+          "agt_mv7qs49obtdpz4": 7
+        },
+        "imported": 1274,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/streaming.ts",
+        "lines": 231,
+        "byAgent": {
+          "agt_mv7qs49obtdpz4": 11
+        },
+        "imported": 220,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/types.ts",
+        "lines": 40,
+        "byAgent": {
+          "agt_mv7qs49o9c9whk": 5
+        },
+        "imported": 35,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/utils.test.ts",
+        "lines": 366,
+        "byAgent": {
+          "agt_mv7qs49otvp525": 1
+        },
+        "imported": 365,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/basic-auth/index.test.ts",
+        "lines": 434,
+        "byAgent": {
+          "agt_mv7qs49ojby4ol": 2
+        },
+        "imported": 432,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/basic-auth/index.ts",
+        "lines": 153,
+        "byAgent": {
+          "agt_mv7qs49o6pygr2": 5
+        },
+        "imported": 148,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/bearer-auth/index.test.ts",
+        "lines": 1018,
+        "byAgent": {
+          "agt_mv7qs49oo71jyz": 3
+        },
+        "imported": 1015,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/bearer-auth/index.ts",
+        "lines": 221,
+        "byAgent": {
+          "agt_mv7qs49oouyk5l": 5
+        },
+        "imported": 216,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/body-limit/index.test.ts",
+        "lines": 273,
+        "byAgent": {
+          "agt_mv7qs49ojfh7wu": 2
+        },
+        "imported": 271,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/body-limit/index.ts",
+        "lines": 111,
+        "byAgent": {
+          "agt_mv7qs49og7pzys": 3
+        },
+        "imported": 108,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/cache/index.test.ts",
+        "lines": 1211,
+        "byAgent": {
+          "agt_mv7qs49oasjtoi": 3
+        },
+        "imported": 1208,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/cache/index.ts",
+        "lines": 324,
+        "byAgent": {
+          "agt_mv7qs49og7pzys": 5
+        },
+        "imported": 319,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/combine/index.test.ts",
+        "lines": 355,
+        "byAgent": {
+          "agt_mv7qs49o0yvttq": 3
+        },
+        "imported": 352,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/combine/index.ts",
+        "lines": 171,
+        "byAgent": {
+          "agt_mv7qs49oq17fgg": 5
+        },
+        "imported": 166,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/compress/index.test.ts",
+        "lines": 535,
+        "byAgent": {
+          "agt_mv7qs49oi17v84": 3
+        },
+        "imported": 532,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/compress/index.ts",
+        "lines": 143,
+        "byAgent": {
+          "agt_mv7qs49owlfgzz": 3
+        },
+        "imported": 140,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/context-storage/index.test.ts",
+        "lines": 43,
+        "byAgent": {
+          "agt_mv7qs49oi17v84": 2
+        },
+        "imported": 41,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/context-storage/index.ts",
+        "lines": 59,
+        "byAgent": {
+          "agt_mv7qs49ofd73fj": 2
+        },
+        "imported": 57,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/cors/index.test.ts",
+        "lines": 532,
+        "byAgent": {
+          "agt_mv7qs49oud04az": 2
+        },
+        "imported": 530,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/cors/index.ts",
+        "lines": 164,
+        "byAgent": {
+          "agt_mv7qs49ocus50s": 2
+        },
+        "imported": 162,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/csrf/index.test.ts",
+        "lines": 534,
+        "byAgent": {
+          "agt_mv7qs49okkdyf0": 3
+        },
+        "imported": 531,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/csrf/index.ts",
+        "lines": 151,
+        "byAgent": {
+          "agt_mv7qs49oks2xv1": 3
+        },
+        "imported": 148,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/etag/digest.test.ts",
+        "lines": 21,
+        "byAgent": {
+          "agt_mv7qs49o9c9whk": 1
+        },
+        "imported": 20,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/etag/index.test.ts",
+        "lines": 503,
+        "byAgent": {
+          "agt_mv7qs49o9c9whk": 2
+        },
+        "imported": 501,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/etag/index.ts",
+        "lines": 136,
+        "byAgent": {
+          "agt_mv7qs49opanqqc": 2
+        },
+        "imported": 134,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/ip-restriction/index.test.ts",
+        "lines": 217,
+        "byAgent": {
+          "agt_mv7qs49ohm7zuq": 5
+        },
+        "imported": 212,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/ip-restriction/index.ts",
+        "lines": 279,
+        "byAgent": {
+          "agt_mv7qs49okuu5q5": 5
+        },
+        "imported": 274,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/jsx-renderer/index.test.tsx",
+        "lines": 530,
+        "byAgent": {
+          "agt_mv7qs49o5rezae": 5
+        },
+        "imported": 525,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/jsx-renderer/index.ts",
+        "lines": 163,
+        "byAgent": {
+          "agt_mv7qs49ox2jxtj": 6
+        },
+        "imported": 157,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/jwk/index.test.ts",
+        "lines": 1135,
+        "byAgent": {
+          "agt_mv7qs49o9kqpeo": 11
+        },
+        "imported": 1124,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/jwk/index.ts",
+        "lines": 1,
+        "byAgent": {
+          "agt_mv7qs49opanqqc": 1
+        },
+        "imported": 0,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/jwk/jwk.ts",
+        "lines": 196,
+        "byAgent": {
+          "agt_mv7qrmm14gde31": 10
+        },
+        "imported": 186,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/jwt/index.test.ts",
+        "lines": 802,
+        "byAgent": {
+          "agt_mv7qs49o1s1kce": 4
+        },
+        "imported": 798,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/jwt/index.ts",
+        "lines": 9,
+        "byAgent": {
+          "agt_mv7qs49onlmewx": 4
+        },
+        "imported": 5,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/jwt/jwt.ts",
+        "lines": 190,
+        "byAgent": {
+          "agt_mv7qs49ooapw4w": 10
+        },
+        "imported": 180,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/language/index.test.ts",
+        "lines": 552,
+        "byAgent": {
+          "agt_mv7qs49olo463t": 3
+        },
+        "imported": 549,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/language/index.ts",
+        "lines": 12,
+        "byAgent": {
+          "agt_mv7qs49o2nblhx": 2
+        },
+        "imported": 10,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/language/language.ts",
+        "lines": 314,
+        "byAgent": {
+          "agt_mv7qs49och80k8": 4
+        },
+        "imported": 310,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/logger/index.test.ts",
+        "lines": 204,
+        "byAgent": {
+          "agt_mv7qs49ovo8sfv": 2
+        },
+        "imported": 202,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/logger/index.ts",
+        "lines": 95,
+        "byAgent": {
+          "agt_mv7qs49o8m7s1i": 2
+        },
+        "imported": 93,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/method-not-allowed/index.test.ts",
+        "lines": 292,
+        "byAgent": {
+          "agt_mv7qs49ojn2nyo": 2
+        },
+        "imported": 290,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/method-not-allowed/index.ts",
+        "lines": 141,
+        "byAgent": {
+          "agt_mv7qs49owlfgzz": 6
+        },
+        "imported": 135,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/method-override/index.test.ts",
+        "lines": 221,
+        "byAgent": {
+          "agt_mv7qs49o6vi0sv": 2
+        },
+        "imported": 219,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/method-override/index.ts",
+        "lines": 148,
+        "byAgent": {
+          "agt_mv7qs49od8th44": 4
+        },
+        "imported": 144,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/mount/index.test.ts",
+        "lines": 334,
+        "byAgent": {
+          "agt_mv7qs49ou4gdgc": 4
+        },
+        "imported": 330,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/mount/index.ts",
+        "lines": 109,
+        "byAgent": {
+          "agt_mv7qs49ou4gdgc": 3
+        },
+        "imported": 106,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/powered-by/index.test.ts",
+        "lines": 37,
+        "byAgent": {
+          "agt_mv7qs49owtb9st": 2
+        },
+        "imported": 35,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/powered-by/index.ts",
+        "lines": 35,
+        "byAgent": {
+          "agt_mv7qs49och80k8": 1
+        },
+        "imported": 34,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/pretty-json/index.test.ts",
+        "lines": 218,
+        "byAgent": {
+          "agt_mv7qs49o4qcdlo": 2
+        },
+        "imported": 216,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/pretty-json/index.ts",
+        "lines": 68,
+        "byAgent": {
+          "agt_mv7qs49o2nblhx": 1
+        },
+        "imported": 67,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/request-id/index.test.ts",
+        "lines": 168,
+        "byAgent": {
+          "agt_mv7qs49ox2jxtj": 3
+        },
+        "imported": 165,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/request-id/index.ts",
+        "lines": 7,
+        "byAgent": {
+          "agt_mv7qs49oh2ddny": 2
+        },
+        "imported": 5,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/request-id/request-id.ts",
+        "lines": 59,
+        "byAgent": {
+          "agt_mv7qs49o1s1kce": 2
+        },
+        "imported": 57,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/secure-headers/index.test.ts",
+        "lines": 671,
+        "byAgent": {
+          "agt_mv7qs49ous7ui7": 4
+        },
+        "imported": 667,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/secure-headers/index.ts",
+        "lines": 8,
+        "byAgent": {
+          "agt_mv7qs49owtb9st": 3
+        },
+        "imported": 5,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/secure-headers/secure-headers.ts",
+        "lines": 341,
+        "byAgent": {
+          "agt_mv7qs49oyp7g97": 4
+        },
+        "imported": 337,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/serve-static/index.test.ts",
+        "lines": 431,
+        "byAgent": {
+          "agt_mv7qs49ox2jxtj": 2
+        },
+        "imported": 429,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/serve-static/index.ts",
+        "lines": 135,
+        "byAgent": {
+          "agt_mv7qs49o5r0v7g": 6
+        },
+        "imported": 129,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/serve-static/path.test.ts",
+        "lines": 50,
+        "byAgent": {
+          "agt_mv7qs49o35mid0": 1
+        },
+        "imported": 49,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/timeout/index.test.ts",
+        "lines": 70,
+        "byAgent": {
+          "agt_mv7qs49okuu5q5": 5
+        },
+        "imported": 65,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/timeout/index.ts",
+        "lines": 58,
+        "byAgent": {
+          "agt_mv7qs49of0yplw": 3
+        },
+        "imported": 55,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/timing/index.test.ts",
+        "lines": 310,
+        "byAgent": {
+          "agt_mv7qs49otc5xbx": 2
+        },
+        "imported": 308,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/timing/index.ts",
+        "lines": 8,
+        "byAgent": {
+          "agt_mv7qs49okkdyf0": 2
+        },
+        "imported": 6,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/timing/timing.ts",
+        "lines": 257,
+        "byAgent": {
+          "agt_mv7qs49orhr63d": 3
+        },
+        "imported": 254,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/trailing-slash/index.test.ts",
+        "lines": 381,
+        "byAgent": {
+          "agt_mv7qs49o35mid0": 2
+        },
+        "imported": 379,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/trailing-slash/index.ts",
+        "lines": 158,
+        "byAgent": {
+          "agt_mv7qs49oya5fuq": 1
+        },
+        "imported": 157,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/preset/quick.test.ts",
+        "lines": 42,
+        "byAgent": {
+          "agt_mv7qs49oc7fke9": 2
+        },
+        "imported": 40,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/preset/quick.ts",
+        "lines": 24,
+        "byAgent": {
+          "agt_mv7qs49o0yvttq": 6
+        },
+        "imported": 18,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/preset/tiny.test.ts",
+        "lines": 42,
+        "byAgent": {
+          "agt_mv7qs49ooojllr": 2
+        },
+        "imported": 40,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/preset/tiny.ts",
+        "lines": 20,
+        "byAgent": {
+          "agt_mv7qs49oya5fuq": 4
+        },
+        "imported": 16,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/request.test.ts",
+        "lines": 751,
+        "byAgent": {
+          "agt_mv7qs49otvp525": 3
+        },
+        "imported": 748,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/request.ts",
+        "lines": 520,
+        "byAgent": {
+          "agt_mv7qrmm14gde31": 9
+        },
+        "imported": 511,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/router/common.case.test.ts",
+        "lines": 1118,
+        "byAgent": {
+          "agt_mv7qs49o2z6ywz": 1
+        },
+        "imported": 1117,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/router/linear-router/index.ts",
+        "lines": 6,
+        "byAgent": {
+          "agt_mv7qs49obtdpz4": 1
+        },
+        "imported": 5,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/router/linear-router/router.test.ts",
+        "lines": 80,
+        "byAgent": {
+          "agt_mv7qs49o2z6ywz": 3
+        },
+        "imported": 77,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/router/linear-router/router.ts",
+        "lines": 152,
+        "byAgent": {
+          "agt_mv7qs49oouyk5l": 3
+        },
+        "imported": 149,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/router/pattern-router/index.ts",
+        "lines": 6,
+        "byAgent": {
+          "agt_mv7qs49o7zhmg0": 1
+        },
+        "imported": 5,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/router/pattern-router/router.test.ts",
+        "lines": 42,
+        "byAgent": {
+          "agt_mv7qs49ow4n131": 3
+        },
+        "imported": 39,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/router/pattern-router/router.ts",
+        "lines": 54,
+        "byAgent": {
+          "agt_mv7qs49ow4n131": 2
+        },
+        "imported": 52,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/router/reg-exp-router/index.ts",
+        "lines": 7,
+        "byAgent": {
+          "agt_mv7qs49oo71jyz": 2
+        },
+        "imported": 5,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/router/reg-exp-router/matcher.ts",
+        "lines": 33,
+        "byAgent": {
+          "agt_mv7qs49ojwpz1u": 2
+        },
+        "imported": 31,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/router/reg-exp-router/node.ts",
+        "lines": 170,
+        "byAgent": {
+          "agt_mv7qs49oq17fgg": 1
+        },
+        "imported": 169,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/router/reg-exp-router/prepared-router.test.ts",
+        "lines": 154,
+        "byAgent": {
+          "agt_mv7qs49o1s1kce": 3
+        },
+        "imported": 151,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/router/reg-exp-router/prepared-router.ts",
+        "lines": 165,
+        "byAgent": {
+          "agt_mv7qs49o1436bc": 5
+        },
+        "imported": 160,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/router/reg-exp-router/router.test.ts",
+        "lines": 265,
+        "byAgent": {
+          "agt_mv7qs49oananz1": 4
+        },
+        "imported": 261,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/router/reg-exp-router/router.ts",
+        "lines": 174,
+        "byAgent": {
+          "agt_mv7qs49ojwpz1u": 8
+        },
+        "imported": 166,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/router/reg-exp-router/trie.ts",
+        "lines": 84,
+        "byAgent": {
+          "agt_mv7qs49o6d01jn": 3
+        },
+        "imported": 81,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/router/smart-router/index.ts",
+        "lines": 6,
+        "byAgent": {
+          "agt_mv7qs49oi44p2t": 1
+        },
+        "imported": 5,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/router/smart-router/router.test.ts",
+        "lines": 13,
+        "byAgent": {
+          "agt_mv7qs49od8th44": 4
+        },
+        "imported": 9,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/router/smart-router/router.ts",
+        "lines": 70,
+        "byAgent": {
+          "agt_mv7qs49oz5m1yh": 2
+        },
+        "imported": 68,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/router/trie-router/index.ts",
+        "lines": 6,
+        "byAgent": {
+          "agt_mv7qs49o2nblhx": 1
+        },
+        "imported": 5,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/router/trie-router/node.test.ts",
+        "lines": 869,
+        "byAgent": {
+          "agt_mv7qs49oouyk5l": 1
+        },
+        "imported": 868,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/router/trie-router/node.ts",
+        "lines": 217,
+        "byAgent": {
+          "agt_mv7qs49oc7fke9": 5
+        },
+        "imported": 212,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/router/trie-router/router.test.ts",
+        "lines": 8,
+        "byAgent": {
+          "agt_mv7qs49otvp525": 2
+        },
+        "imported": 6,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/router/trie-router/router.ts",
+        "lines": 18,
+        "byAgent": {
+          "agt_mv7qs49opanqqc": 3
+        },
+        "imported": 15,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/types.test.ts",
+        "lines": 4139,
+        "byAgent": {
+          "agt_mv7qs49oo71jyz": 10
+        },
+        "imported": 4129,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/types.ts",
+        "lines": 2782,
+        "byAgent": {
+          "agt_mv7qs49ooojllr": 5
+        },
+        "imported": 2777,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/utils/accept.test.ts",
+        "lines": 299,
+        "byAgent": {
+          "agt_mv7qs49okuu5q5": 1
+        },
+        "imported": 298,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/utils/basic-auth.test.ts",
+        "lines": 56,
+        "byAgent": {
+          "agt_mv7qs49o6d01jn": 1
+        },
+        "imported": 55,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/utils/basic-auth.ts",
+        "lines": 26,
+        "byAgent": {
+          "agt_mv7qs49odql00c": 1
+        },
+        "imported": 25,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/utils/body.test.ts",
+        "lines": 496,
+        "byAgent": {
+          "agt_mv7qs49onlmewx": 2
+        },
+        "imported": 494,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/utils/body.ts",
+        "lines": 263,
+        "byAgent": {
+          "agt_mv7qs49opqkwqq": 2
+        },
+        "imported": 261,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/utils/buffer.test.ts",
+        "lines": 147,
+        "byAgent": {
+          "agt_mv7qs49obtdpz4": 1
+        },
+        "imported": 146,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/utils/buffer.ts",
+        "lines": 117,
+        "byAgent": {
+          "agt_mv7qs49ous7ui7": 1
+        },
+        "imported": 116,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/utils/color.test.ts",
+        "lines": 49,
+        "byAgent": {
+          "agt_mv7qs49o64gtv2": 1
+        },
+        "imported": 48,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/utils/concurrent.test.ts",
+        "lines": 69,
+        "byAgent": {
+          "agt_mv7qs49ojby4ol": 1
+        },
+        "imported": 68,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/utils/cookie.test.ts",
+        "lines": 460,
+        "byAgent": {
+          "agt_mv7qs49o6vi0sv": 2
+        },
+        "imported": 458,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/utils/cookie.ts",
+        "lines": 280,
+        "byAgent": {
+          "agt_mv7qs49ooojllr": 1
+        },
+        "imported": 279,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/utils/crypto.test.ts",
+        "lines": 43,
+        "byAgent": {
+          "agt_mv7qs49oz5m1yh": 1
+        },
+        "imported": 42,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/utils/crypto.ts",
+        "lines": 58,
+        "byAgent": {
+          "agt_mv7qs49o3dqzmp": 1
+        },
+        "imported": 57,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/utils/encode.test.ts",
+        "lines": 61,
+        "byAgent": {
+          "agt_mv7qs49oya5fuq": 1
+        },
+        "imported": 60,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/utils/filepath.test.ts",
+        "lines": 78,
+        "byAgent": {
+          "agt_mv7qs49ow4n131": 1
+        },
+        "imported": 77,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/utils/handler.ts",
+        "lines": 15,
+        "byAgent": {
+          "agt_mv7qs49o64gtv2": 1
+        },
+        "imported": 14,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/utils/html.test.ts",
+        "lines": 16,
+        "byAgent": {
+          "agt_mv7qs49ous7ui7": 2
+        },
+        "imported": 14,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/utils/ipaddr.test.ts",
+        "lines": 149,
+        "byAgent": {
+          "agt_mv7qs49ogs388q": 1
+        },
+        "imported": 148,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/utils/ipaddr.ts",
+        "lines": 374,
+        "byAgent": {
+          "agt_mv7qs49o2nblhx": 1
+        },
+        "imported": 373,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/utils/jwt/index.ts",
+        "lines": 7,
+        "byAgent": {
+          "agt_mv7qs49oi44p2t": 1
+        },
+        "imported": 6,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/utils/jwt/jwa.test.ts",
+        "lines": 86,
+        "byAgent": {
+          "agt_mv7qs49ojbldi3": 2
+        },
+        "imported": 84,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/utils/jwt/jws.ts",
+        "lines": 234,
+        "byAgent": {
+          "agt_mv7qs49oananz1": 5
+        },
+        "imported": 229,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/utils/jwt/jwt.test.ts",
+        "lines": 1788,
+        "byAgent": {
+          "agt_mv7qs49oasjtoi": 8
+        },
+        "imported": 1780,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/utils/jwt/jwt.ts",
+        "lines": 292,
+        "byAgent": {
+          "agt_mv7qs49osm3cvu": 8
+        },
+        "imported": 284,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/utils/jwt/types.ts",
+        "lines": 156,
+        "byAgent": {
+          "agt_mv7qs49o9c9whk": 1
+        },
+        "imported": 155,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/utils/mime.test.ts",
+        "lines": 64,
+        "byAgent": {
+          "agt_mv7qs49oz5m1yh": 1
+        },
+        "imported": 63,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/utils/stream.test.ts",
+        "lines": 212,
+        "byAgent": {
+          "agt_mv7qs49o2nblhx": 1
+        },
+        "imported": 211,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/utils/types.test.ts",
+        "lines": 294,
+        "byAgent": {
+          "agt_mv7qs49o6vi0sv": 1
+        },
+        "imported": 293,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/utils/url.test.ts",
+        "lines": 384,
+        "byAgent": {
+          "agt_mv7qs49onlmewx": 1
+        },
+        "imported": 383,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/validator/index.ts",
+        "lines": 8,
+        "byAgent": {
+          "agt_mv7qs49okuu5q5": 3
+        },
+        "imported": 5,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/validator/utils.test.ts",
+        "lines": 82,
+        "byAgent": {
+          "agt_mv7qs49odql00c": 1
+        },
+        "imported": 81,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/validator/utils.ts",
+        "lines": 69,
+        "byAgent": {
+          "agt_mv7qs49oo3sqxt": 2
+        },
+        "imported": 67,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/validator/validator.test.ts",
+        "lines": 1488,
+        "byAgent": {
+          "agt_mv7qs49o8m7s1i": 9
+        },
+        "imported": 1479,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/validator/validator.ts",
+        "lines": 185,
+        "byAgent": {
+          "agt_mv7qs49o6d01jn": 7
+        },
+        "imported": 178,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "tsconfig.base.json",
+        "lines": 16,
+        "byAgent": {
+          "agt_mv7qrmm14gde31": 1
+        },
+        "imported": 15,
+        "system": 0,
+        "unattributed": 0
+      }
+    ]
+  },
+  "specialization": {
+    "minLandings": 3,
+    "agents": 62,
+    "observed": 0.3333,
+    "baseline": 0.3333,
+    "difference": 0.0,
+    "p": 0.8082,
+    "baselineP05": 0.25,
+    "baselineP95": 0.3333,
+    "shuffles": 1000,
+    "seed": 20261014,
+    "perAgent": [
+      {
+        "agent": "agt_mv7qs49o1z9w8m",
+        "landed": 4,
+        "topRegion": "src/jsx",
+        "topShare": 0.75
+      },
+      {
+        "agent": "agt_mv7qs49obz29h4",
+        "landed": 4,
+        "topRegion": "src/client",
+        "topShare": 0.75
+      },
+      {
+        "agent": "agt_mv7qs49oql8dd8",
+        "landed": 4,
+        "topRegion": "src/adapter/bun",
+        "topShare": 0.75
+      },
+      {
+        "agent": "agt_mv7qs49o1436bc",
+        "landed": 3,
+        "topRegion": "src/adapter/vercel",
+        "topShare": 0.6667
+      },
+      {
+        "agent": "agt_mv7qs49o3dqzmp",
+        "landed": 3,
+        "topRegion": "src/adapter/cloudflare-workers",
+        "topShare": 0.6667
+      },
+      {
+        "agent": "agt_mv7qs49o4qcdlo",
+        "landed": 3,
+        "topRegion": "src/adapter/bun",
+        "topShare": 0.6667
+      },
+      {
+        "agent": "agt_mv7qs49o7zhmg0",
+        "landed": 3,
+        "topRegion": "src/jsx/dom",
+        "topShare": 0.6667
+      },
+      {
+        "agent": "agt_mv7qs49ojwpz1u",
+        "landed": 3,
+        "topRegion": "src/router/reg-exp-router",
+        "topShare": 0.6667
+      },
+      {
+        "agent": "agt_mv7qs49ou4gdgc",
+        "landed": 3,
+        "topRegion": "src/middleware/mount",
+        "topShare": 0.6667
+      },
+      {
+        "agent": "agt_mv7qs49oa1y9eu",
+        "landed": 5,
+        "topRegion": "src",
+        "topShare": 0.6
+      },
+      {
+        "agent": "agt_mv7qs49o6d01jn",
+        "landed": 6,
+        "topRegion": "src/adapter/cloudflare-workers",
+        "topShare": 0.5
+      },
+      {
+        "agent": "agt_mv7qs49obtdpz4",
+        "landed": 6,
+        "topRegion": "src/jsx",
+        "topShare": 0.5
+      },
+      {
+        "agent": "agt_mv7qs49ojby4ol",
+        "landed": 6,
+        "topRegion": "src/jsx/dom",
+        "topShare": 0.5
+      },
+      {
+        "agent": "agt_mv7qs49ojn2nyo",
+        "landed": 4,
+        "topRegion": "src",
+        "topShare": 0.5
+      },
+      {
+        "agent": "agt_mv7qs49okkdyf0",
+        "landed": 4,
+        "topRegion": "src/jsx",
+        "topShare": 0.5
+      },
+      {
+        "agent": "agt_mv7qs49onlmewx",
+        "landed": 4,
+        "topRegion": "src/utils",
+        "topShare": 0.5
+      },
+      {
+        "agent": "agt_mv7qs49oo3sqxt",
+        "landed": 4,
+        "topRegion": "src/jsx",
+        "topShare": 0.5
+      },
+      {
+        "agent": "agt_mv7qs49otc5xbx",
+        "landed": 6,
+        "topRegion": "src/jsx/dom",
+        "topShare": 0.5
+      },
+      {
+        "agent": "agt_mv7qs49ous7ui7",
+        "landed": 4,
+        "topRegion": "src/utils",
+        "topShare": 0.5
+      },
+      {
+        "agent": "agt_mv7qs49oyp7g97",
+        "landed": 6,
+        "topRegion": "src/helper/ssg",
+        "topShare": 0.5
+      },
+      {
+        "agent": "agt_mv7qs49otvp525",
+        "landed": 7,
+        "topRegion": "src/jsx",
+        "topShare": 0.4286
+      },
+      {
+        "agent": "agt_mv7qs49o21d1bl",
+        "landed": 5,
+        "topRegion": "src/helper/streaming",
+        "topShare": 0.4
+      },
+      {
+        "agent": "agt_mv7qs49o64gtv2",
+        "landed": 5,
+        "topRegion": "src/helper/streaming",
+        "topShare": 0.4
+      },
+      {
+        "agent": "agt_mv7qs49o6vi0sv",
+        "landed": 5,
+        "topRegion": "src/utils",
+        "topShare": 0.4
+      },
+      {
+        "agent": "agt_mv7qs49o9c9whk",
+        "landed": 5,
+        "topRegion": "src/middleware/etag",
+        "topShare": 0.4
+      },
+      {
+        "agent": "agt_mv7qs49ow4n131",
+        "landed": 5,
+        "topRegion": "src/router/pattern-router",
+        "topShare": 0.4
+      },
+      {
+        "agent": "agt_mv7qs49oz5m1yh",
+        "landed": 5,
+        "topRegion": "src/adapter/lambda-edge",
+        "topShare": 0.4
+      },
+      {
+        "agent": "agt_mv7qs49o0yvttq",
+        "landed": 3,
+        "topRegion": "src/middleware/combine",
+        "topShare": 0.3333
+      },
+      {
+        "agent": "agt_mv7qs49o2nblhx",
+        "landed": 6,
+        "topRegion": "src/utils",
+        "topShare": 0.3333
+      },
+      {
+        "agent": "agt_mv7qs49o2p4jzm",
+        "landed": 3,
+        "topRegion": "src/adapter/aws-lambda",
+        "topShare": 0.3333
+      },
+      {
+        "agent": "agt_mv7qs49o2z6ywz",
+        "landed": 3,
+        "topRegion": "src/adapter/service-worker",
+        "topShare": 0.3333
+      },
+      {
+        "agent": "agt_mv7qs49o35mid0",
+        "landed": 3,
+        "topRegion": "src/adapter/netlify",
+        "topShare": 0.3333
+      },
+      {
+        "agent": "agt_mv7qs49o9kqpeo",
+        "landed": 3,
+        "topRegion": "src/jsx",
+        "topShare": 0.3333
+      },
+      {
+        "agent": "agt_mv7qs49obyaxle",
+        "landed": 3,
+        "topRegion": "src/adapter/bun",
+        "topShare": 0.3333
+      },
+      {
+        "agent": "agt_mv7qs49och80k8",
+        "landed": 3,
+        "topRegion": "src/jsx/hooks",
+        "topShare": 0.3333
+      },
+      {
+        "agent": "agt_mv7qs49ocus50s",
+        "landed": 3,
+        "topRegion": "src/adapter/cloudflare-pages",
+        "topShare": 0.3333
+      },
+      {
+        "agent": "agt_mv7qs49od8th44",
+        "landed": 3,
+        "topRegion": "src/middleware/method-override",
+        "topShare": 0.3333
+      },
+      {
+        "agent": "agt_mv7qs49odql00c",
+        "landed": 3,
+        "topRegion": "src/adapter/deno",
+        "topShare": 0.3333
+      },
+      {
+        "agent": "agt_mv7qs49og7pzys",
+        "landed": 3,
+        "topRegion": "src/helper/proxy",
+        "topShare": 0.3333
+      },
+      {
+        "agent": "agt_mv7qs49oh2ddny",
+        "landed": 3,
+        "topRegion": "src/adapter/lambda-edge",
+        "topShare": 0.3333
+      },
+      {
+        "agent": "agt_mv7qs49ojbldi3",
+        "landed": 3,
+        "topRegion": "src/adapter/bun",
+        "topShare": 0.3333
+      },
+      {
+        "agent": "agt_mv7qs49olo463t",
+        "landed": 3,
+        "topRegion": "src/helper/css",
+        "topShare": 0.3333
+      },
+      {
+        "agent": "agt_mv7qs49onrxxfc",
+        "landed": 6,
+        "topRegion": "src/helper/ssg",
+        "topShare": 0.3333
+      },
+      {
+        "agent": "agt_mv7qs49oouyk5l",
+        "landed": 3,
+        "topRegion": "src/middleware/bearer-auth",
+        "topShare": 0.3333
+      },
+      {
+        "agent": "agt_mv7qs49opanqqc",
+        "landed": 3,
+        "topRegion": "src/middleware/jwk",
+        "topShare": 0.3333
+      },
+      {
+        "agent": "agt_mv7qs49oq17fgg",
+        "landed": 3,
+        "topRegion": "src/adapter/cloudflare-pages",
+        "topShare": 0.3333
+      },
+      {
+        "agent": "agt_mv7qs49ou22ohv",
+        "landed": 3,
+        "topRegion": "src/helper/ssg",
+        "topShare": 0.3333
+      },
+      {
+        "agent": "agt_mv7qs49owlfgzz",
+        "landed": 3,
+        "topRegion": "src/helper/route",
+        "topShare": 0.3333
+      },
+      {
+        "agent": "agt_mv7qs49ox2jxtj",
+        "landed": 3,
+        "topRegion": "src/middleware/jsx-renderer",
+        "topShare": 0.3333
+      },
+      {
+        "agent": "agt_mv7qrmm14gde31",
+        "landed": 4,
+        "topRegion": ".",
+        "topShare": 0.25
+      },
+      {
+        "agent": "agt_mv7qs49o1s1kce",
+        "landed": 4,
+        "topRegion": "src/adapter/aws-lambda",
+        "topShare": 0.25
+      },
+      {
+        "agent": "agt_mv7qs49oc7fke9",
+        "landed": 4,
+        "topRegion": "src/adapter/deno",
+        "topShare": 0.25
+      },
+      {
+        "agent": "agt_mv7qs49oi17v84",
+        "landed": 4,
+        "topRegion": "src",
+        "topShare": 0.25
+      },
+      {
+        "agent": "agt_mv7qs49oo71jyz",
+        "landed": 4,
+        "topRegion": "src/middleware/bearer-auth",
+        "topShare": 0.25
+      },
+      {
+        "agent": "agt_mv7qs49ooojllr",
+        "landed": 4,
+        "topRegion": "src/adapter/service-worker",
+        "topShare": 0.25
+      },
+      {
+        "agent": "agt_mv7qs49owtb9st",
+        "landed": 4,
+        "topRegion": "src/helper/factory",
+        "topShare": 0.25
+      },
+      {
+        "agent": "agt_mv7qs49oya5fuq",
+        "landed": 4,
+        "topRegion": "src/adapter/vercel",
+        "topShare": 0.25
+      },
+      {
+        "agent": "agt_mv7qs49o8m7s1i",
+        "landed": 5,
+        "topRegion": "src/jsx/dom",
+        "topShare": 0.2
+      },
+      {
+        "agent": "agt_mv7qs49oananz1",
+        "landed": 5,
+        "topRegion": "src/client",
+        "topShare": 0.2
+      },
+      {
+        "agent": "agt_mv7qs49oasjtoi",
+        "landed": 5,
+        "topRegion": "src/adapter/service-worker",
+        "topShare": 0.2
+      },
+      {
+        "agent": "agt_mv7qs49oi44p2t",
+        "landed": 5,
+        "topRegion": "src/adapter/cloudflare-workers",
+        "topShare": 0.2
+      },
+      {
+        "agent": "agt_mv7qs49okuu5q5",
+        "landed": 6,
+        "topRegion": "src/middleware/ip-restriction",
+        "topShare": 0.1667
+      }
+    ],
+    "regionDepth": 3,
+    "landedProposals": 283
+  },
+  "conflicts": {
+    "returns": 0,
+    "byClass": {
+      "stale": 0,
+      "text_merge": 0,
+      "review": 0,
+      "rule": 0,
+      "other": 0
+    },
+    "firstProposalAt": 1791960098214,
+    "minutes": 2,
+    "cumulative": {
+      "stale": [
+        0,
+        0
+      ],
+      "text_merge": [
+        0,
+        0
+      ],
+      "review": [
+        0,
+        0
+      ],
+      "rule": [
+        0,
+        0
+      ],
+      "other": [
+        0,
+        0
+      ],
+      "total": [
+        0,
+        0
+      ]
+    },
+    "list": []
+  },
+  "hottestFile": {
+    "path": null,
+    "returns": 0,
+    "reason": "no returns"
+  },
+  "sprawl": {
+    "regionDepth": 3,
+    "start": {
+      "topDirs": 9,
+      "regions": 127,
+      "files": 583
+    },
+    "end": {
+      "topDirs": 9,
+      "regions": 127,
+      "files": 583
+    },
+    "maxTopDirs": 9,
+    "maxRegions": 127,
+    "points": [
+      {
+        "commit": "588ec13fa68ea44fed1b5e1b503341db2bf09d70",
+        "landing": null,
+        "at": null,
+        "kind": "base",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "696bcaa8e3f9be1c57785b03044268c62eb3c805",
+        "landing": "lnd_mv7qry8aq6wrf4",
+        "at": 1791960099000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "8db64af50e3d916a4f4e4f367e2c9f7a2bed63de",
+        "landing": "lnd_mv7qs5uvzn45hy",
+        "at": 1791960109000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "92d27d028c42acc09120ca4a13d5c4761fbaf551",
+        "landing": "lnd_mv7qs6s1xb1xn4",
+        "at": 1791960110000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "4070799b83ed448dbd7855f8f2d682e916f1e521",
+        "landing": "lnd_mv7qs6wsvpuhiq",
+        "at": 1791960111000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "1acf1422b56c895e8b653f48e886d772ae0535f1",
+        "landing": "lnd_mv7qs74vrtg9dd",
+        "at": 1791960111000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "5205aaaa13604e4cfcaf37bf41475c33c3ffbce8",
+        "landing": "lnd_mv7qs7cbwag7xp",
+        "at": 1791960111000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "fccab9cc9710d4d0a3cf74b437a9bcc3a7514355",
+        "landing": "lnd_mv7qs7wzxdfvuf",
+        "at": 1791960112000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "08677d2901b552f13198b6b49a5dc67f180da769",
+        "landing": "lnd_mv7qs831byz0zv",
+        "at": 1791960112000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "a7eb55e139ec3fd03095a11583e3bd7b8014d3cd",
+        "landing": "lnd_mv7qs88squ9cbp",
+        "at": 1791960112000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "ddc9afc91fbaf7e02bb796c5f93add29a89a70b8",
+        "landing": "lnd_mv7qs8q3t1w7da",
+        "at": 1791960113000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "a0f6955e836d4e7f47c32df5a925640144573791",
+        "landing": "lnd_mv7qs8zy4ecglq",
+        "at": 1791960113000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "0e723d1bac02f383bff5b910a7e1e270a86b9cf3",
+        "landing": "lnd_mv7qs95n7e40ny",
+        "at": 1791960114000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "fbd74a9834bee1482bcd39838dcd678596130a7a",
+        "landing": "lnd_mv7qs95n6evlpl",
+        "at": 1791960114000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "12bff0ee8ab69e8bc920b5edf2b43465ba179cb4",
+        "landing": "lnd_mv7qs9cwht0m3o",
+        "at": 1791960114000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "40c75ce4d37b3256a5c2a51c29d93eb5cc9c53d6",
+        "landing": "lnd_mv7qs9jkv8jho4",
+        "at": 1791960114000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "2d2003e3e4e85bf24e5e825beb4af051b4810ce3",
+        "landing": "lnd_mv7qs9siku964c",
+        "at": 1791960114000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "0d55122d5cba64de08188fc700233894cd23ff23",
+        "landing": "lnd_mv7qs9siyyvokq",
+        "at": 1791960114000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "fef2b8366a737263b334ef0a63640e5774f1c871",
+        "landing": "lnd_mv7qsa4skar9tw",
+        "at": 1791960115000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "abb314b7d774f92d4abe1b6d18e562cbca36848c",
+        "landing": "lnd_mv7qsao4895ysg",
+        "at": 1791960115000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "b5c9d15853aa7289a3f9750c11f353903d626846",
+        "landing": "lnd_mv7qsat4fxt7na",
+        "at": 1791960116000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "dc494ff2c5334d30a629bf62f40917e857dc0f29",
+        "landing": "lnd_mv7qsat429ujzz",
+        "at": 1791960116000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "c1fa03a953037da480f930148f52e6bfec307d33",
+        "landing": "lnd_mv7qsb01roiaj7",
+        "at": 1791960116000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "ba7ae2d550fa90092cea9ee7153e50551b20545c",
+        "landing": "lnd_mv7qsb6iyocmnd",
+        "at": 1791960116000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "9f80c5b2ccf9ea2f1ecbf8ffd66e576b5c0c2f82",
+        "landing": "lnd_mv7qsb6ifavpdp",
+        "at": 1791960116000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "b7a135d42a55014b13fa2583904215032482e7b7",
+        "landing": "lnd_mv7qsb6ilhgp1g",
+        "at": 1791960116000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "142ce6c4db8797ed929b2bca9f977cea3c1776b1",
+        "landing": "lnd_mv7qsbl6gdm0ao",
+        "at": 1791960117000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "2529361ac28544a2befbbb567af1303bee8c2445",
+        "landing": "lnd_mv7qsbse7yersl",
+        "at": 1791960117000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "a1ced5a7c0139964ddd3b6550a4a28e9dea9eafa",
+        "landing": "lnd_mv7qsc13ic07rd",
+        "at": 1791960117000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "6b48d4874ddc216e066a8942fa5ca974628c612f",
+        "landing": "lnd_mv7qscl0hwsytl",
+        "at": 1791960118000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "51de2a26992d71ac6083d421a5bd04a4ab8b6f3e",
+        "landing": "lnd_mv7qscl0qldnyo",
+        "at": 1791960118000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "7d18a5294cc904994c3d33a483f0adf004678a59",
+        "landing": "lnd_mv7qscl0l5n1an",
+        "at": 1791960118000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "c9731f1c1fc91d19d57dc8de4678073731dce4ef",
+        "landing": "lnd_mv7qscl04qbnyp",
+        "at": 1791960118000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "8d810ff69232fc02c014c94d7b6cf15c1f3dc485",
+        "landing": "lnd_mv7qscl01izk8d",
+        "at": 1791960118000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "0f55a1b4cfa1925e5ee9c0d606051e11b4a3c04c",
+        "landing": "lnd_mv7qscsd2fl1y9",
+        "at": 1791960118000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "272572f46902ca15f296714cc7c2280a8c9a72a4",
+        "landing": "lnd_mv7qscsdky8r2j",
+        "at": 1791960118000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "49b23c65e3d74004f597c48449d4fa1a25d6843d",
+        "landing": "lnd_mv7qscsdc7acim",
+        "at": 1791960118000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "4ffe3e58e60863a41c81aac0399c6e965942bdd2",
+        "landing": "lnd_mv7qscsdb1ngq3",
+        "at": 1791960118000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "860b6ef949ea6a012c64270707505aef3fd3beea",
+        "landing": "lnd_mv7qsd5fai2ay4",
+        "at": 1791960119000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "153a4f24197d9819a3ca4d4aa7b46988efb8d300",
+        "landing": "lnd_mv7qsderuip1zj",
+        "at": 1791960119000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "577e790441481db1b84a51226e64c3b7e85ca778",
+        "landing": "lnd_mv7qsder7lqqkb",
+        "at": 1791960119000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "c55d4cbfdb1013ccc900df12b4e5898139e25160",
+        "landing": "lnd_mv7qsdpstgv82m",
+        "at": 1791960119000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "9163d96fbe7ec679c10408f57321a0220cabbd6f",
+        "landing": "lnd_mv7qsdpscark6h",
+        "at": 1791960119000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "05d1cb4e515ab8b564865db52557af4e4bf7b109",
+        "landing": "lnd_mv7qsdpsscql7d",
+        "at": 1791960119000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "dc4151d333a6d390a9cafa6c29c20e708d4433ca",
+        "landing": "lnd_mv7qsdpsuq35wi",
+        "at": 1791960119000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "bef1a8d8b1b72b6af66c1b002fb698c0b075025d",
+        "landing": "lnd_mv7qsdpsf9emb6",
+        "at": 1791960119000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "b3edcf149a05ceaf3cc8dea114fb9f5fa6f48597",
+        "landing": "lnd_mv7qsdxh7d8tww",
+        "at": 1791960120000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "8c1dccb2886df162af24ed27dba20e6a3375f9e2",
+        "landing": "lnd_mv7qsdxhevj3to",
+        "at": 1791960120000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "7a5df85655ae0382fe28e3443bdabd2aef2d8b29",
+        "landing": "lnd_mv7qsdxh1h6xq4",
+        "at": 1791960120000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "64c28b090d391be1557835d7243809c8df8dacc8",
+        "landing": "lnd_mv7qsdxhh2j7x7",
+        "at": 1791960120000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "5c6f97380424edc60d69e894f733dcf45d4cf4b0",
+        "landing": "lnd_mv7qsdxhf94pmi",
+        "at": 1791960120000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "489366bf3aa7c5ca8f45ca974003a2cf4fbcb442",
+        "landing": "lnd_mv7qsehyagg0im",
+        "at": 1791960120000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "d6c6a0415e52218dbea1b8f7139e393e1774f935",
+        "landing": "lnd_mv7qsehy2hbvrn",
+        "at": 1791960120000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "c4c32ab0c76c497cb89f9dcbc421594edd110df1",
+        "landing": "lnd_mv7qsesxjrftsc",
+        "at": 1791960121000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "5869319f14f8307d13a9da39dcebf870496f4a21",
+        "landing": "lnd_mv7qsezxy2cpln",
+        "at": 1791960121000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "ea7b4102c7db43fbd0f89eb32fcdc65fb4430dbc",
+        "landing": "lnd_mv7qsfeaaca2vh",
+        "at": 1791960122000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "99cae317f649e12d9f370c658c54f6affc2abbff",
+        "landing": "lnd_mv7qsfeal8kd8m",
+        "at": 1791960122000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "3630472dcf7d5a23ff9045b3282bd07253e837d9",
+        "landing": "lnd_mv7qsfearcqar6",
+        "at": 1791960122000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "cb75fbe9938d634b871922057d79ac38baf1731d",
+        "landing": "lnd_mv7qsfpgs7e9d7",
+        "at": 1791960122000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "ab5fc4f74cdaaa5b1cece3a5b2b5270e5cfc12a5",
+        "landing": "lnd_mv7qsfpglfn6sj",
+        "at": 1791960122000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "7f57383cf13d45cd530571186275a4a7055a88b5",
+        "landing": "lnd_mv7qsfpgkk9u7u",
+        "at": 1791960122000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "fdece06f52f8b00bf305d3b3add0ae43dc8320d3",
+        "landing": "lnd_mv7qsg582z0v0q",
+        "at": 1791960123000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "0a6bf3156ac635ef414a77d698ff49ec51ed1e5b",
+        "landing": "lnd_mv7qsgfega9ntf",
+        "at": 1791960123000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "2fd26aa3ef83e645089c55d11c96e024739dcb4f",
+        "landing": "lnd_mv7qsgfew2lnz0",
+        "at": 1791960123000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "fde68bfe747639c3593a244b30e1ed9411042395",
+        "landing": "lnd_mv7qsgfe8r5624",
+        "at": 1791960123000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "f3ec543dc8e64afd3ce53c6059b449ef58447c51",
+        "landing": "lnd_mv7qsgfeijacoi",
+        "at": 1791960123000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "44a73f03326acae0ddc337200727ab47f41d8701",
+        "landing": "lnd_mv7qsgfe04xojd",
+        "at": 1791960123000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "f20afa0ec1b1ede7b9e97f58c1a2c8aa537b8d3c",
+        "landing": "lnd_mv7qsgn24zn1w3",
+        "at": 1791960123000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "fb5699ad9ee0bd44603ab9caeb86f9ed4d4acbbb",
+        "landing": "lnd_mv7qsgn2kedcv4",
+        "at": 1791960123000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "62eef776f41bb6bd6b5f83450358b9711f79ed71",
+        "landing": "lnd_mv7qsgn2kc47u6",
+        "at": 1791960123000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "de4c9171df2f03223ce03ddf7a7d846320f62395",
+        "landing": "lnd_mv7qsgn210rvip",
+        "at": 1791960123000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "1fdc8ed640297c62cc2e7eb6f205965cb4813851",
+        "landing": "lnd_mv7qsh07zqmn8a",
+        "at": 1791960124000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "dccd5a80de6163ff62c93124344a98539176fa03",
+        "landing": "lnd_mv7qsh07cb6dth",
+        "at": 1791960124000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "0998117b614104618834ed9aaade4c8334e24cf1",
+        "landing": "lnd_mv7qsh07rvaudw",
+        "at": 1791960124000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "b7802d213d51beb37efaa9fdbce9c8b267079b74",
+        "landing": "lnd_mv7qsheu3gyhgj",
+        "at": 1791960124000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "4de41c9a80bd3d8d15d961cc5b27167baa014085",
+        "landing": "lnd_mv7qsheugnl89i",
+        "at": 1791960124000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "e6a5240c06352c889abf9a0a7c9ad18bffa3ad85",
+        "landing": "lnd_mv7qsheuscryny",
+        "at": 1791960124000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "5087834d25bd9a1a7d1d8d5101dd1edd66abe5c9",
+        "landing": "lnd_mv7qshmvnrmgm0",
+        "at": 1791960124000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "621f6ea378e499ea1aa3949ae250a32236edd550",
+        "landing": "lnd_mv7qsi6h9dbc49",
+        "at": 1791960125000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "7b9ebd40a60c41a57f41fb2581bb124d52bbd603",
+        "landing": "lnd_mv7qsibkqbysb4",
+        "at": 1791960125000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "c4614bf2c04d9a91c15e64203c5f7265fa8155f5",
+        "landing": "lnd_mv7qsihzx9e8n8",
+        "at": 1791960126000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "5e744ca7db9d902b3752031411d4caf0a1da27c2",
+        "landing": "lnd_mv7qsihzlll7f7",
+        "at": 1791960126000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "00def59ad046675d2920f6fa86ef06282da2876d",
+        "landing": "lnd_mv7qsihzmud17b",
+        "at": 1791960126000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "c3c46158dfe586dcd8426a77e8a9e7cf48d7f33a",
+        "landing": "lnd_mv7qsihzg72c2a",
+        "at": 1791960126000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "6ceea3dd1c2ab5ab6fa492f9b968fb794b2fe848",
+        "landing": "lnd_mv7qsiqbdpjbtc",
+        "at": 1791960126000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "3581debac342131271777cf3f2959f28a75a5aaf",
+        "landing": "lnd_mv7qsiqbr9ygx0",
+        "at": 1791960126000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "e08c19feece42e4f87e645c698f16e0fd1e5014a",
+        "landing": "lnd_mv7qsiqbclwyzs",
+        "at": 1791960126000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "e36f479622a72b468fc46be6a2bfcc5c18d7a2eb",
+        "landing": "lnd_mv7qsiqbdkwqp1",
+        "at": 1791960126000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "9dcd43a77fa3d879ab8e65b0f04964c648b3f9b1",
+        "landing": "lnd_mv7qsj2deefmqz",
+        "at": 1791960126000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "6e7016187b1ad61fc6996d0e8c7d3003a9a20681",
+        "landing": "lnd_mv7qsj2dy3jrf5",
+        "at": 1791960126000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "1e9b514b9c47c8025427caea04de662f9606efc2",
+        "landing": "lnd_mv7qsjlh1qxthe",
+        "at": 1791960127000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "49c70b0e7487d2579a4142c5417121918b7cb7d4",
+        "landing": "lnd_mv7qsk62obcb8j",
+        "at": 1791960128000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "18fda214387adc05eb06b45eaed44e582ef72afd",
+        "landing": "lnd_mv7qskb10uy63h",
+        "at": 1791960128000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "19a0fe3e95c4acc416eadaf183df88cd9242ab8a",
+        "landing": "lnd_mv7qskb14js69g",
+        "at": 1791960128000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "9bcb05afb7755dec3877806d0d6939a2d19add66",
+        "landing": "lnd_mv7qskb102ptz8",
+        "at": 1791960128000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "a4299e66f2b2673148354753055f91bfb97ff390",
+        "landing": "lnd_mv7qskjlwtt7o0",
+        "at": 1791960128000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "b4b651363c8dbde0f81cb2105ac36cfe750dd34d",
+        "landing": "lnd_mv7qsl1so5onw3",
+        "at": 1791960129000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "8fbc149d54966968b7afeb4fed2f8d72d42c23db",
+        "landing": "lnd_mv7qsl9smxlo5o",
+        "at": 1791960129000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "1998dd3834db843fbe4c98bcfee6936c0b0e7cd9",
+        "landing": "lnd_mv7qsl9s7olkk2",
+        "at": 1791960129000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "abdf0b50f4ec8db2b20d6debe8eef999cd78f81f",
+        "landing": "lnd_mv7qsl9s573ty5",
+        "at": 1791960129000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "02905b2191e09276eeff389a687ad5f08f7ae9f8",
+        "landing": "lnd_mv7qsl9saxmdwc",
+        "at": 1791960129000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "db4797f67456aad6ce17da66dcf67117f046b63c",
+        "landing": "lnd_mv7qsl9s0qw43a",
+        "at": 1791960129000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "b1dd77a0e89d2ae4b8bb0bebf4eb9db4e04eea7a",
+        "landing": "lnd_mv7qsl9spq4t52",
+        "at": 1791960129000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "7fae38ea5bb137669006003a4e74645580c523d5",
+        "landing": "lnd_mv7qslj5e86f2n",
+        "at": 1791960130000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "d9e088987aea05e0afa36bfd960b2834cebe0b10",
+        "landing": "lnd_mv7qslj5a0xlbv",
+        "at": 1791960130000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "78ad7882b27eb809860745bb046f1201e12b7376",
+        "landing": "lnd_mv7qslvfc4lkfm",
+        "at": 1791960130000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "5bcff44e34694dbdeb65d993ad9d2ab868178040",
+        "landing": "lnd_mv7qslvfknsqjk",
+        "at": 1791960130000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "205cf269b3a92b0845c328aa4dbdf942799470b2",
+        "landing": "lnd_mv7qsm4a729s7j",
+        "at": 1791960130000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "ceb4efbbc99377d1be1907f4897eed5a6a1b185c",
+        "landing": "lnd_mv7qsm4advares",
+        "at": 1791960130000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "fed95676126df7ff099f86364e98ef6d675148b6",
+        "landing": "lnd_mv7qsmcfyrzprc",
+        "at": 1791960131000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "097af007db64459440cbe69a8eea3a659bc6ac8d",
+        "landing": "lnd_mv7qsmjyqt8b8t",
+        "at": 1791960131000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "dfbf93da19520348ca3fc087e4b35b1e92d18fce",
+        "landing": "lnd_mv7qsms74qn18t",
+        "at": 1791960131000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "221c5c7b8fcf2603c489802f82c656862807e76c",
+        "landing": "lnd_mv7qsnb1y94afs",
+        "at": 1791960132000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "b977fccde18925ea2322363d9428b5bad21e90f5",
+        "landing": "lnd_mv7qsnij73cmvq",
+        "at": 1791960132000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "fd96ecfc5fea2bf7a3a69627f6843c48862131e0",
+        "landing": "lnd_mv7qsnt8atqb2f",
+        "at": 1791960133000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "7d4392f21ed67c91f6518fae3317311295b54357",
+        "landing": "lnd_mv7qso6lrfqf25",
+        "at": 1791960133000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "89a3ee8f502f006021742714f9a9bfc31adeecd5",
+        "landing": "lnd_mv7qso6lx3zri7",
+        "at": 1791960133000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "433076acb78613284249aa59b7d5bc2b46781b2b",
+        "landing": "lnd_mv7qso6lkr8770",
+        "at": 1791960133000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "cbbbb9c7d26f1095cff26c342526242bd57e526a",
+        "landing": "lnd_mv7qso6lei6gk3",
+        "at": 1791960133000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "e3a1614e3509cf8c14d0f43f10c3b984c0206699",
+        "landing": "lnd_mv7qso6lbz5z2d",
+        "at": 1791960133000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "d17331df96d39aa2f12f5c495e45d1273cfbf272",
+        "landing": "lnd_mv7qsodhxpvsdx",
+        "at": 1791960133000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "10525a36fa9912ecedc92c1f22b21f33f565833f",
+        "landing": "lnd_mv7qsodhmnwm2o",
+        "at": 1791960133000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "eeb098f392f019b68689df840cb8d609bf545a36",
+        "landing": "lnd_mv7qsodh2fuohg",
+        "at": 1791960133000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "15376963fef6db7eb9e788506d22eb59ab10a4c9",
+        "landing": "lnd_mv7qsopy5ksglc",
+        "at": 1791960134000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "2c4ecc9fa69d41bb00a3c82765bb43c867d02ef0",
+        "landing": "lnd_mv7qsopyfbx77i",
+        "at": 1791960134000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "c9eec599b3132283f8da8cde23ae06f2b1c673c5",
+        "landing": "lnd_mv7qsoyhprm800",
+        "at": 1791960134000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "573b89c147a8348d2937042fadee818f8631f59e",
+        "landing": "lnd_mv7qsoyhrbvzuo",
+        "at": 1791960134000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "10b72264780f1a51344cc781506183961e921bd0",
+        "landing": "lnd_mv7qsoyhkpy0l8",
+        "at": 1791960134000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "657c111d43eeff340611dbd6adbbf1abcdb2be74",
+        "landing": "lnd_mv7qsoyh08xytc",
+        "at": 1791960134000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "94a14f4f4919690baf7d27deefc4f45ea3d57328",
+        "landing": "lnd_mv7qsp6mtim42g",
+        "at": 1791960134000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "bbecf5d1af859a8b5c91eff026007174edef5aa2",
+        "landing": "lnd_mv7qsp6m6ver0r",
+        "at": 1791960134000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "14a01305ffa6c11544bb975988e400448b27f0fb",
+        "landing": "lnd_mv7qsp6m36gzaq",
+        "at": 1791960134000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "a18026778b5c3aaed88953a1676f1be9a94c6868",
+        "landing": "lnd_mv7qspip2c75xw",
+        "at": 1791960135000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "4b36cc9039dd14f00f02f1bb9a8cfcf9f5e35e4d",
+        "landing": "lnd_mv7qspipie39k2",
+        "at": 1791960135000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "6356d01e6154b62776855f8689ec9a598be8ac83",
+        "landing": "lnd_mv7qsptjqngx0q",
+        "at": 1791960135000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "2b470ae8f473225de99d6d693a74da6b4f7a9629",
+        "landing": "lnd_mv7qsptjdxmrgb",
+        "at": 1791960135000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "eee753dd0a809a32b15bfe43b539bd0e9eee0ba0",
+        "landing": "lnd_mv7qsq1fklax9b",
+        "at": 1791960135000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "fa040f65309bcbf0639d6465484cae5871104a30",
+        "landing": "lnd_mv7qsq9cpe44rv",
+        "at": 1791960136000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "c55d566e1e9bde7bc3e94f6dd6ab292f95d9933f",
+        "landing": "lnd_mv7qsq9chemmfr",
+        "at": 1791960136000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "2ec8ccda53a61c7d630fe1e17bfba9a25db71c97",
+        "landing": "lnd_mv7qsq9cgg951e",
+        "at": 1791960136000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "da12b3ddca5d974d0c21c9a1e9fb34bd0127eb0f",
+        "landing": "lnd_mv7qsqhf551gun",
+        "at": 1791960136000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "2342f080528582798069a35f1a5c06edd38474d4",
+        "landing": "lnd_mv7qsqpfyzngb2",
+        "at": 1791960136000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "02377820d1d7d19a0933c72f8c04f3fe5b55d00d",
+        "landing": "lnd_mv7qsqpff04gxc",
+        "at": 1791960136000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "9edcbac6bbc43fdcd2ff947db066d77abf1b32da",
+        "landing": "lnd_mv7qsqpf6cnekc",
+        "at": 1791960136000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "f7414a30fed280583d655822970c152d9a8a6c09",
+        "landing": "lnd_mv7qsqpfs8p8tr",
+        "at": 1791960136000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "ae07843af9ef979b37eebd84588f15b816e422cc",
+        "landing": "lnd_mv7qsqyxzup3vj",
+        "at": 1791960137000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "938cd13db530046b79bd136bba43ac1ebe9b49da",
+        "landing": "lnd_mv7qsqyx85kd5t",
+        "at": 1791960137000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "86851a3f8806ef0eb3b63383bd061fbc62bd69e6",
+        "landing": "lnd_mv7qsrghz3g1tb",
+        "at": 1791960137000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "76b3abeb8b166f2b1db7d6a2007e0c7cdfac6869",
+        "landing": "lnd_mv7qss1dmtoase",
+        "at": 1791960138000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "db7c0b44cc32f1691e0e1af624432f5f0330a562",
+        "landing": "lnd_mv7qss1dji5c41",
+        "at": 1791960138000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "fa797ac54364cf3da82d4a34784c519dac01616b",
+        "landing": "lnd_mv7qss7zxnkpul",
+        "at": 1791960138000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "6a774e5624536108a3613cd0800621cd5b371ca1",
+        "landing": "lnd_mv7qssecyeyxiu",
+        "at": 1791960138000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "bad11f6c9799f0c8e6f5a99b07da7ec8ef397cd8",
+        "landing": "lnd_mv7qsseclk4uhu",
+        "at": 1791960138000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "07595ab8a5bc982788f2bf73e0511b29f82b0467",
+        "landing": "lnd_mv7qssecb623lu",
+        "at": 1791960138000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "40be4387dc7229443c160d1dc6179e0399cd87b3",
+        "landing": "lnd_mv7qssec096cof",
+        "at": 1791960138000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "548e0b9539625035dd0a6aa4740815fdf9da4e72",
+        "landing": "lnd_mv7qssody18ifl",
+        "at": 1791960139000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "2cec38027fff9482d203afd475c149198f25a413",
+        "landing": "lnd_mv7qssoddf6zq7",
+        "at": 1791960139000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "ea16491b1ea84bea45514b74c41a28f48007acbb",
+        "landing": "lnd_mv7qssy7a4n055",
+        "at": 1791960139000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "3ec373a6f354bd1ef1a6766a987dff4f0b13fba0",
+        "landing": "lnd_mv7qssy76czz0l",
+        "at": 1791960139000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "f3b7c4950114953ccea7535f879bba00bff53403",
+        "landing": "lnd_mv7qst6yht5wvo",
+        "at": 1791960139000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "d61ee3b918ecc1b186554e757676aefc8a3dd29f",
+        "landing": "lnd_mv7qste00sklok",
+        "at": 1791960140000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "fd2a74371f6ab449396359a2c3dd587bf15b0e33",
+        "landing": "lnd_mv7qste068o6xl",
+        "at": 1791960140000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "8081c4c9bc3b41f1d27a5c61d78da6502cad2d3d",
+        "landing": "lnd_mv7qste0qkaesn",
+        "at": 1791960140000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "3f69400fa7a532f1bda1dd1cffc1991c824e2d44",
+        "landing": "lnd_mv7qste04wh5ut",
+        "at": 1791960140000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "ee5aa54d847c64bd9c4dd88fdfc0795301618827",
+        "landing": "lnd_mv7qstl97kx7d2",
+        "at": 1791960140000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "2a8c1f2647381585fc288e645d667d826e8e4913",
+        "landing": "lnd_mv7qstw27712st",
+        "at": 1791960140000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "4be5c595dcdc2e79c4eb0c238d4e40331bc6043c",
+        "landing": "lnd_mv7qsu73a0mo2p",
+        "at": 1791960141000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "e98df6130f1339ee4c07eeab895cf4783e1ae5f4",
+        "landing": "lnd_mv7qsuuw5kpxip",
+        "at": 1791960142000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "cd0018a3b00b058b9e26873fe6ffd571a02ce008",
+        "landing": "lnd_mv7qsv5gcxdck3",
+        "at": 1791960142000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "55604cfbcfb33f4b191058eb4b429935debd0a3e",
+        "landing": "lnd_mv7qsvcf5il3h2",
+        "at": 1791960142000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "72d89966934ec34fff2f7c07f26b1c2c0bb58f42",
+        "landing": "lnd_mv7qsvcfzxa2fj",
+        "at": 1791960142000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "f1255678c23a104bc9d891218c884ea39882ad6f",
+        "landing": "lnd_mv7qsvcfdnfy2b",
+        "at": 1791960142000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "5a80bd9269445a970e9342884883c866ab4660fb",
+        "landing": "lnd_mv7qsvpx9bdcf2",
+        "at": 1791960143000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "a75a5dd96a16e0654021784d77f44145461df283",
+        "landing": "lnd_mv7qsvwya1iwky",
+        "at": 1791960143000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "885790b5fad3ddf16c7d60af674913f123ed3a3c",
+        "landing": "lnd_mv7qsvwynyadow",
+        "at": 1791960143000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "595a875d1f1add7f2ab9ac0a919f9fd5cd09c63a",
+        "landing": "lnd_mv7qswaovajbmm",
+        "at": 1791960144000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "8b21740dd9822b3c69aa7373825285906e380503",
+        "landing": "lnd_mv7qswipbfkddw",
+        "at": 1791960144000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "01307b3bf1b53004a622db356e27bacc8d1d3cea",
+        "landing": "lnd_mv7qswpsrwj2iw",
+        "at": 1791960144000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "71c91945b8135611cb9a1a97928a2497e293c1b1",
+        "landing": "lnd_mv7qsxsca0eff8",
+        "at": 1791960145000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "823e5d0838a8c8a9e67ef5e56592d7d498138ac3",
+        "landing": "lnd_mv7qsyixutjez6",
+        "at": 1791960146000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "5712f224bc1c55ec886582ede7614c047701029e",
+        "landing": "lnd_mv7qsyuqw6i5xg",
+        "at": 1791960147000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "4931dbbb620b81244e421a5736dd339c1323d41b",
+        "landing": "lnd_mv7qszjew1hhl8",
+        "at": 1791960148000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "0a156d3cf4888f504aac58c73a61ad1ca41b5127",
+        "landing": "lnd_mv7qszxyf5l8dd",
+        "at": 1791960148000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "e4162ba156a03b5f65267b400c83bc400ea7dfd3",
+        "landing": "lnd_mv7qszxyd2v13b",
+        "at": 1791960148000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "fb1a49dfc91fedd6b5165c80180c5c45bf8215a1",
+        "landing": "lnd_mv7qt04hgf1uhf",
+        "at": 1791960148000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "4e41ddeb4a33e9219d4b9d7b7c9ac16ded4a1ea2",
+        "landing": "lnd_mv7qt0gcfv5ddu",
+        "at": 1791960149000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "7b8f4b22af6d553796930f05936230f03070bf48",
+        "landing": "lnd_mv7qt2crh8jka1",
+        "at": 1791960151000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "b021f413e7eadcb63afc853b2bc4df8d50787059",
+        "landing": "lnd_mv7qt2kr4a7nck",
+        "at": 1791960152000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "e12b359efa1cf1900cbc478f8bb5f3d7fce6953e",
+        "landing": "lnd_mv7qt2pj4ohs6s",
+        "at": 1791960152000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "2ec3a8b82d41cebea11d27a6514984c9f7a6fb9d",
+        "landing": "lnd_mv7qt4hh2mvdt8",
+        "at": 1791960154000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "11d507ec5c0c4acfbf7cd912669b88af1400fc7a",
+        "landing": "lnd_mv7qt5cdkvejc7",
+        "at": 1791960155000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "a558301c33667194bd3c95c817a4d8b1b87a196c",
+        "landing": "lnd_mv7qt70huyjgbp",
+        "at": 1791960157000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "a3416efda4f69c1361a3c637819120d6ef7122f0",
+        "landing": "lnd_mv7qt883dppf4p",
+        "at": 1791960159000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "ee7e5b01c6ef43e50b15d8f1a13e2499d51e99e6",
+        "landing": "lnd_mv7qt9aha79n1f",
+        "at": 1791960160000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      }
+    ]
+  },
+  "linesPerIntent": {
+    "added": 959,
+    "removed": 958,
+    "net": 1,
+    "binaryFiles": 0,
+    "landedIntents": 283,
+    "netPerIntent": 0.0,
+    "system": {
+      "added": 0,
+      "removed": 0,
+      "binary": 0
+    },
+    "agentTouchedFiles": 283,
+    "linesInAgentTouchedFiles": 78668,
+    "agentWrittenLinesAtHead": 959,
+    "attributedLinesAtHead": 959
+  },
+  "agents": [
+    {
+      "id": "agt_mv7qrmm14gde31",
+      "name": "internal-rmly-1",
+      "kind": "internal",
+      "model": "@cf/moonshotai/kimi-k2.7-code",
+      "proposals": 4,
+      "returned": 0,
+      "landed": 4,
+      "linesAtHead": 24
+    },
+    {
+      "id": "agt_mv7qs49o0yvttq",
+      "name": "internal-s4ao-69",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 3,
+      "returned": 0,
+      "landed": 3,
+      "linesAtHead": 12
+    },
+    {
+      "id": "agt_mv7qs49o1436bc",
+      "name": "internal-s4ao-23",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 3,
+      "returned": 0,
+      "landed": 3,
+      "linesAtHead": 8
+    },
+    {
+      "id": "agt_mv7qs49o1s1kce",
+      "name": "internal-s4ao-18",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 4,
+      "returned": 0,
+      "landed": 4,
+      "linesAtHead": 13
+    },
+    {
+      "id": "agt_mv7qs49o1z9w8m",
+      "name": "internal-s4ao-50",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 4,
+      "returned": 0,
+      "landed": 4,
+      "linesAtHead": 18
+    },
+    {
+      "id": "agt_mv7qs49o21d1bl",
+      "name": "internal-s4ao-13",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 5,
+      "returned": 0,
+      "landed": 5,
+      "linesAtHead": 11
+    },
+    {
+      "id": "agt_mv7qs49o2nblhx",
+      "name": "internal-s4ao-80",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 6,
+      "returned": 0,
+      "landed": 6,
+      "linesAtHead": 7
+    },
+    {
+      "id": "agt_mv7qs49o2p4jzm",
+      "name": "internal-s4ao-3",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 3,
+      "returned": 0,
+      "landed": 3,
+      "linesAtHead": 7
+    },
+    {
+      "id": "agt_mv7qs49o2z6ywz",
+      "name": "internal-s4ao-22",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 3,
+      "returned": 0,
+      "landed": 3,
+      "linesAtHead": 8
+    },
+    {
+      "id": "agt_mv7qs49o35mid0",
+      "name": "internal-s4ao-41",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 3,
+      "returned": 0,
+      "landed": 3,
+      "linesAtHead": 4
+    },
+    {
+      "id": "agt_mv7qs49o3dqzmp",
+      "name": "internal-s4ao-9",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 3,
+      "returned": 0,
+      "landed": 3,
+      "linesAtHead": 7
+    },
+    {
+      "id": "agt_mv7qs49o4qcdlo",
+      "name": "internal-s4ao-4",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 3,
+      "returned": 0,
+      "landed": 3,
+      "linesAtHead": 7
+    },
+    {
+      "id": "agt_mv7qs49o5r0v7g",
+      "name": "internal-s4ao-19",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 2,
+      "returned": 0,
+      "landed": 2,
+      "linesAtHead": 8
+    },
+    {
+      "id": "agt_mv7qs49o5rezae",
+      "name": "internal-s4ao-77",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 1,
+      "returned": 0,
+      "landed": 1,
+      "linesAtHead": 5
+    },
+    {
+      "id": "agt_mv7qs49o64gtv2",
+      "name": "internal-s4ao-38",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 5,
+      "returned": 0,
+      "landed": 5,
+      "linesAtHead": 9
+    },
+    {
+      "id": "agt_mv7qs49o6d01jn",
+      "name": "internal-s4ao-27",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 6,
+      "returned": 0,
+      "landed": 6,
+      "linesAtHead": 20
+    },
+    {
+      "id": "agt_mv7qs49o6fajrx",
+      "name": "internal-s4ao-61",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 1,
+      "returned": 0,
+      "landed": 1,
+      "linesAtHead": 2
+    },
+    {
+      "id": "agt_mv7qs49o6pygr2",
+      "name": "internal-s4ao-64",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 1,
+      "returned": 0,
+      "landed": 1,
+      "linesAtHead": 5
+    },
+    {
+      "id": "agt_mv7qs49o6vi0sv",
+      "name": "internal-s4ao-5",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 5,
+      "returned": 0,
+      "landed": 5,
+      "linesAtHead": 8
+    },
+    {
+      "id": "agt_mv7qs49o7zhmg0",
+      "name": "internal-s4ao-55",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 3,
+      "returned": 0,
+      "landed": 3,
+      "linesAtHead": 5
+    },
+    {
+      "id": "agt_mv7qs49o8m7s1i",
+      "name": "internal-s4ao-57",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 5,
+      "returned": 0,
+      "landed": 5,
+      "linesAtHead": 23
+    },
+    {
+      "id": "agt_mv7qs49o9c9whk",
+      "name": "internal-s4ao-51",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 5,
+      "returned": 0,
+      "landed": 5,
+      "linesAtHead": 12
+    },
+    {
+      "id": "agt_mv7qs49o9kqpeo",
+      "name": "internal-s4ao-58",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 3,
+      "returned": 0,
+      "landed": 3,
+      "linesAtHead": 22
+    },
+    {
+      "id": "agt_mv7qs49oa1y9eu",
+      "name": "internal-s4ao-39",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 5,
+      "returned": 0,
+      "landed": 5,
+      "linesAtHead": 36
+    },
+    {
+      "id": "agt_mv7qs49oananz1",
+      "name": "internal-s4ao-53",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 5,
+      "returned": 0,
+      "landed": 5,
+      "linesAtHead": 25
+    },
+    {
+      "id": "agt_mv7qs49oasjtoi",
+      "name": "internal-s4ao-24",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 5,
+      "returned": 0,
+      "landed": 5,
+      "linesAtHead": 18
+    },
+    {
+      "id": "agt_mv7qs49obtdpz4",
+      "name": "internal-s4ao-29",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 6,
+      "returned": 0,
+      "landed": 6,
+      "linesAtHead": 29
+    },
+    {
+      "id": "agt_mv7qs49obyaxle",
+      "name": "internal-s4ao-32",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 3,
+      "returned": 0,
+      "landed": 3,
+      "linesAtHead": 16
+    },
+    {
+      "id": "agt_mv7qs49obz29h4",
+      "name": "internal-s4ao-8",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 4,
+      "returned": 0,
+      "landed": 4,
+      "linesAtHead": 15
+    },
+    {
+      "id": "agt_mv7qs49oc7fke9",
+      "name": "internal-s4ao-12",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 4,
+      "returned": 0,
+      "landed": 4,
+      "linesAtHead": 15
+    },
+    {
+      "id": "agt_mv7qs49och80k8",
+      "name": "internal-s4ao-60",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 3,
+      "returned": 0,
+      "landed": 3,
+      "linesAtHead": 6
+    },
+    {
+      "id": "agt_mv7qs49ocus50s",
+      "name": "internal-s4ao-7",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 3,
+      "returned": 0,
+      "landed": 3,
+      "linesAtHead": 10
+    },
+    {
+      "id": "agt_mv7qs49od8th44",
+      "name": "internal-s4ao-78",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 3,
+      "returned": 0,
+      "landed": 3,
+      "linesAtHead": 12
+    },
+    {
+      "id": "agt_mv7qs49odql00c",
+      "name": "internal-s4ao-14",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 3,
+      "returned": 0,
+      "landed": 3,
+      "linesAtHead": 5
+    },
+    {
+      "id": "agt_mv7qs49of0yplw",
+      "name": "internal-s4ao-34",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 2,
+      "returned": 0,
+      "landed": 2,
+      "linesAtHead": 5
+    },
+    {
+      "id": "agt_mv7qs49ofd73fj",
+      "name": "internal-s4ao-67",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 2,
+      "returned": 0,
+      "landed": 2,
+      "linesAtHead": 4
+    },
+    {
+      "id": "agt_mv7qs49og7pzys",
+      "name": "internal-s4ao-45",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 3,
+      "returned": 0,
+      "landed": 3,
+      "linesAtHead": 10
+    },
+    {
+      "id": "agt_mv7qs49ogs388q",
+      "name": "internal-s4ao-43",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 2,
+      "returned": 0,
+      "landed": 2,
+      "linesAtHead": 9
+    },
+    {
+      "id": "agt_mv7qs49oh2ddny",
+      "name": "internal-s4ao-17",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 3,
+      "returned": 0,
+      "landed": 3,
+      "linesAtHead": 12
+    },
+    {
+      "id": "agt_mv7qs49ohm7zuq",
+      "name": "internal-s4ao-71",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 1,
+      "returned": 0,
+      "landed": 1,
+      "linesAtHead": 5
+    },
+    {
+      "id": "agt_mv7qs49oi17v84",
+      "name": "internal-s4ao-30",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 4,
+      "returned": 0,
+      "landed": 4,
+      "linesAtHead": 10
+    },
+    {
+      "id": "agt_mv7qs49oi44p2t",
+      "name": "internal-s4ao-11",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 5,
+      "returned": 0,
+      "landed": 5,
+      "linesAtHead": 11
+    },
+    {
+      "id": "agt_mv7qs49ojbldi3",
+      "name": "internal-s4ao-2",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 3,
+      "returned": 0,
+      "landed": 3,
+      "linesAtHead": 8
+    },
+    {
+      "id": "agt_mv7qs49ojby4ol",
+      "name": "internal-s4ao-59",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 6,
+      "returned": 0,
+      "landed": 6,
+      "linesAtHead": 29
+    },
+    {
+      "id": "agt_mv7qs49ojfh7wu",
+      "name": "internal-s4ao-66",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 1,
+      "returned": 0,
+      "landed": 1,
+      "linesAtHead": 2
+    },
+    {
+      "id": "agt_mv7qs49ojn2nyo",
+      "name": "internal-s4ao-79",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 4,
+      "returned": 0,
+      "landed": 4,
+      "linesAtHead": 18
+    },
+    {
+      "id": "agt_mv7qs49ojwpz1u",
+      "name": "internal-s4ao-54",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 3,
+      "returned": 0,
+      "landed": 3,
+      "linesAtHead": 12
+    },
+    {
+      "id": "agt_mv7qs49ok9n1ez",
+      "name": "internal-s4ao-36",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 1,
+      "returned": 0,
+      "landed": 1,
+      "linesAtHead": 2
+    },
+    {
+      "id": "agt_mv7qs49okkdyf0",
+      "name": "internal-s4ao-70",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 4,
+      "returned": 0,
+      "landed": 4,
+      "linesAtHead": 15
+    },
+    {
+      "id": "agt_mv7qs49oks2xv1",
+      "name": "internal-s4ao-42",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 2,
+      "returned": 0,
+      "landed": 2,
+      "linesAtHead": 6
+    },
+    {
+      "id": "agt_mv7qs49okuu5q5",
+      "name": "internal-s4ao-72",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 6,
+      "returned": 0,
+      "landed": 6,
+      "linesAtHead": 20
+    },
+    {
+      "id": "agt_mv7qs49olo463t",
+      "name": "internal-s4ao-40",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 3,
+      "returned": 0,
+      "landed": 3,
+      "linesAtHead": 16
+    },
+    {
+      "id": "agt_mv7qs49onlmewx",
+      "name": "internal-s4ao-62",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 4,
+      "returned": 0,
+      "landed": 4,
+      "linesAtHead": 8
+    },
+    {
+      "id": "agt_mv7qs49onrxxfc",
+      "name": "internal-s4ao-16",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 6,
+      "returned": 0,
+      "landed": 6,
+      "linesAtHead": 22
+    },
+    {
+      "id": "agt_mv7qs49onum9ry",
+      "name": "internal-s4ao-10",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 2,
+      "returned": 0,
+      "landed": 2,
+      "linesAtHead": 5
+    },
+    {
+      "id": "agt_mv7qs49oo3sqxt",
+      "name": "internal-s4ao-35",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 4,
+      "returned": 0,
+      "landed": 4,
+      "linesAtHead": 7
+    },
+    {
+      "id": "agt_mv7qs49oo71jyz",
+      "name": "internal-s4ao-63",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 4,
+      "returned": 0,
+      "landed": 4,
+      "linesAtHead": 18
+    },
+    {
+      "id": "agt_mv7qs49ooapw4w",
+      "name": "internal-s4ao-76",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 1,
+      "returned": 0,
+      "landed": 1,
+      "linesAtHead": 10
+    },
+    {
+      "id": "agt_mv7qs49ooojllr",
+      "name": "internal-s4ao-21",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 4,
+      "returned": 0,
+      "landed": 4,
+      "linesAtHead": 11
+    },
+    {
+      "id": "agt_mv7qs49oouyk5l",
+      "name": "internal-s4ao-65",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 3,
+      "returned": 0,
+      "landed": 3,
+      "linesAtHead": 9
+    },
+    {
+      "id": "agt_mv7qs49opanqqc",
+      "name": "internal-s4ao-73",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 3,
+      "returned": 0,
+      "landed": 3,
+      "linesAtHead": 6
+    },
+    {
+      "id": "agt_mv7qs49opqkwqq",
+      "name": "internal-s4ao-56",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 2,
+      "returned": 0,
+      "landed": 2,
+      "linesAtHead": 5
+    },
+    {
+      "id": "agt_mv7qs49oq17fgg",
+      "name": "internal-s4ao-28",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 3,
+      "returned": 0,
+      "landed": 3,
+      "linesAtHead": 10
+    },
+    {
+      "id": "agt_mv7qs49oql8dd8",
+      "name": "internal-s4ao-6",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 4,
+      "returned": 0,
+      "landed": 4,
+      "linesAtHead": 17
+    },
+    {
+      "id": "agt_mv7qs49orhr63d",
+      "name": "internal-s4ao-31",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 2,
+      "returned": 0,
+      "landed": 2,
+      "linesAtHead": 7
+    },
+    {
+      "id": "agt_mv7qs49osm3cvu",
+      "name": "internal-s4ao-44",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 2,
+      "returned": 0,
+      "landed": 2,
+      "linesAtHead": 12
+    },
+    {
+      "id": "agt_mv7qs49otc5xbx",
+      "name": "internal-s4ao-25",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 6,
+      "returned": 0,
+      "landed": 6,
+      "linesAtHead": 14
+    },
+    {
+      "id": "agt_mv7qs49otvp525",
+      "name": "internal-s4ao-1",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 7,
+      "returned": 0,
+      "landed": 7,
+      "linesAtHead": 35
+    },
+    {
+      "id": "agt_mv7qs49ou22ohv",
+      "name": "internal-s4ao-48",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 3,
+      "returned": 0,
+      "landed": 3,
+      "linesAtHead": 12
+    },
+    {
+      "id": "agt_mv7qs49ou4gdgc",
+      "name": "internal-s4ao-37",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 3,
+      "returned": 0,
+      "landed": 3,
+      "linesAtHead": 9
+    },
+    {
+      "id": "agt_mv7qs49oud04az",
+      "name": "internal-s4ao-68",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 2,
+      "returned": 0,
+      "landed": 2,
+      "linesAtHead": 8
+    },
+    {
+      "id": "agt_mv7qs49ous7ui7",
+      "name": "internal-s4ao-74",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 4,
+      "returned": 0,
+      "landed": 4,
+      "linesAtHead": 11
+    },
+    {
+      "id": "agt_mv7qs49ovfit4n",
+      "name": "internal-s4ao-49",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 2,
+      "returned": 0,
+      "landed": 2,
+      "linesAtHead": 3
+    },
+    {
+      "id": "agt_mv7qs49ovo8sfv",
+      "name": "internal-s4ao-52",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 2,
+      "returned": 0,
+      "landed": 2,
+      "linesAtHead": 8
+    },
+    {
+      "id": "agt_mv7qs49ow4n131",
+      "name": "internal-s4ao-33",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 5,
+      "returned": 0,
+      "landed": 5,
+      "linesAtHead": 10
+    },
+    {
+      "id": "agt_mv7qs49owlfgzz",
+      "name": "internal-s4ao-47",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 3,
+      "returned": 0,
+      "landed": 3,
+      "linesAtHead": 12
+    },
+    {
+      "id": "agt_mv7qs49owtb9st",
+      "name": "internal-s4ao-46",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 4,
+      "returned": 0,
+      "landed": 4,
+      "linesAtHead": 10
+    },
+    {
+      "id": "agt_mv7qs49ox2jxtj",
+      "name": "internal-s4ao-75",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 3,
+      "returned": 0,
+      "landed": 3,
+      "linesAtHead": 11
+    },
+    {
+      "id": "agt_mv7qs49oya5fuq",
+      "name": "internal-s4ao-26",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 4,
+      "returned": 0,
+      "landed": 4,
+      "linesAtHead": 8
+    },
+    {
+      "id": "agt_mv7qs49oyp7g97",
+      "name": "internal-s4ao-20",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 6,
+      "returned": 0,
+      "landed": 6,
+      "linesAtHead": 26
+    },
+    {
+      "id": "agt_mv7qs49oz5m1yh",
+      "name": "internal-s4ao-15",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 5,
+      "returned": 0,
+      "landed": 5,
+      "linesAtHead": 9
+    }
+  ],
+  "missing": [],
+  "warnings": []
+}

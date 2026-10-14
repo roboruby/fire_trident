@@ -1,0 +1,30 @@
+PASS  created p20-mf (201)
+PASS  review off, src/guarded.ts protected (200)
+PASS  the megafile alarm is on for p20-mf (FT_MEGAFILE)
+PASS  seeded src/big.ts with 650 lines (landed)
+PASS  a change that writes src/big.ts waits for a person (escalated)
+  writer 1: landed, src/big.ts now 695 lines
+  writer 2: landed, src/big.ts now 740 lines
+  writer 3: landed, src/big.ts now 785 lines
+  writer 4: landed, src/big.ts now 830 lines
+PASS  src/big.ts turned hot and is held ({"path":"src/big.ts","intentId":"int_mv7sckguamf18l","by":"colony","at":1791962741448,"until":1791966341448,"signal":"growth","lines":830,"baseline":650,"growth":0.27692307692307694,"agents":5,"returns":0,"windowMs":1800000})
+PASS  the split intent: "Split src/big.ts into smaller modules", source system, priority 8, footprint ["src/big.ts","src/*","src/big/**"]
+PASS  its why states the numbers (src/big.ts has 830 lines, up from 650 (28%) in the last 30 minutes, and changes from 5 agents landed on it in that time. A file that many agents each add a little to keeps growing until it is slow to read, diff and merge)
+PASS  its acceptance keeps every export importable from src/big.ts (["Every name src/big.ts exports today is still exported from src/big.ts (re-export what moved), so no import of it changes","The tests pass"])
+PASS  the colony's status lists the held file ([{"path":"src/big.ts","intentId":"int_mv7sckguamf18l","by":"colony","at":1791962741448,"until":1791966341448,"signal":"growth","lines":830,"baseline":650,"growt)
+PASS  the change waiting for a person went back with the hold's reason (returned: src/big.ts is being split by intent int_mv7sckguamf18l; take again after it lands)
+PASS  a change proposed after the hold began goes back at once (returned: src/big.ts is being split by intent int_mv7sckguamf18l; take again after it lands)
+PASS  declared new work on src/big.ts (201)
+PASS  a new agent is offered the split intent, not the new work (int_mv7sckguamf18l)
+PASS  the next agent waits: every open intent covers the held file (every open intent covers a file being split: src/big.ts is being split by intent int_mv7sckguamf18l; take again after it lands)
+PASS  the split keeps every name src/big.ts exports (69 of 69)
+PASS  the split landed (landed)
+PASS  the hold lifted when the split landed ({"path":"src/big.ts","intentId":"int_mv7sckguamf18l","by":"colony","at":1791962741448,"until":1791966341448,"signal":"growth","lines":830,"baseline":650,"growth":0.27692307692307694,"agents":5,"returns":0,"windowMs":1800000,"liftedAt":17919)
+PASS  the status records the file's lines before and after (830 → 3)
+PASS  the split landing's lineage note records src/big.ts's lines before and after (src/big.ts: 830 lines when it was held (650 when its window opened); 3 lines after this change)
+PASS  work on src/big.ts is offered again (int_mv7scmi3vdg8jw)
+PASS  every name src/big.ts exported is still exported from it (69 of 65 seeded)
+PASS  a person holds src/big.ts (201: {"path":"src/big.ts","intentId":"int_mv7scuz2vnowa2","by":"megafile-check","at":1791962755064,"until":1791966355064,"signal":"person","lines":3,"baseline":3,"gr)
+PASS  and releases it (200: released by megafile-check)
+ALL CHECKS PASSED
+exit 0

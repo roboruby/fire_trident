@@ -1,0 +1,145 @@
+{
+  "kind": "flood",
+  "label": "MEASURED",
+  "run": "off",
+  "generatedAt": "2026-10-14T07:19:51.210Z",
+  "url": "https://p20-firetrident.mattsolt.workers.dev",
+  "colony": "flood-mv7s1gz8",
+  "createdColony": true,
+  "options": {
+    "greedy": 16,
+    "concurrency": 4,
+    "honest": 4,
+    "durationS": 120,
+    "baselineS": 30,
+    "drainS": 60,
+    "tool": "inbox",
+    "intents": 300,
+    "regions": 4
+  },
+  "note": "Synthetic agents over MCP, no model calls. Greedy sessions call the tool with no wait as fast as answers come back and ignore retryAfterMs; honest agents take with wait, read, propose an inline change and wait on inbox with wait, honoring retryAfterMs.",
+  "budgetSeen": false,
+  "honest": {
+    "agents": 4,
+    "baseline": {
+      "seconds": 30,
+      "landed": 23,
+      "landingsPerMin": 46,
+      "proposeToLandedMs": {
+        "n": 27,
+        "min": 1207,
+        "p50": 2426,
+        "p90": 10457,
+        "p99": 15223,
+        "max": 15223,
+        "mean": 4196.555555555556
+      }
+    },
+    "flood": {
+      "seconds": 120,
+      "landed": 247,
+      "landingsPerMin": 123.5,
+      "proposeToLandedMs": {
+        "n": 243,
+        "min": 397,
+        "p50": 1332,
+        "p90": 2233,
+        "p99": 3587,
+        "max": 4463,
+        "mean": 1465.3374485596707
+      }
+    },
+    "outcomes": {
+      "landed": 270
+    },
+    "noWork": 0,
+    "calls": 1080,
+    "refused429": 0,
+    "errors": {},
+    "latencyMs": {
+      "take": {
+        "n": 270,
+        "min": 146,
+        "p50": 229,
+        "p90": 406,
+        "p99": 984,
+        "max": 1296,
+        "mean": 271.24074074074076,
+        "errors": 0
+      },
+      "read": {
+        "n": 270,
+        "min": 117,
+        "p50": 177,
+        "p90": 280,
+        "p99": 660,
+        "max": 787,
+        "mean": 199.4925925925926,
+        "errors": 0
+      },
+      "propose": {
+        "n": 270,
+        "min": 123,
+        "p50": 190,
+        "p90": 318,
+        "p99": 528,
+        "max": 1012,
+        "mean": 214.28148148148148,
+        "errors": 0
+      },
+      "inbox": {
+        "n": 270,
+        "min": 125,
+        "p50": 1128,
+        "p90": 2139,
+        "p99": 10180,
+        "max": 15100,
+        "mean": 1524.1,
+        "errors": 0
+      }
+    }
+  },
+  "greedy": {
+    "sessions": 16,
+    "loops": 64,
+    "tool": "inbox",
+    "seconds": 120,
+    "calls": 56450,
+    "callsPerSec": 470.4,
+    "answered429": 0,
+    "share429": 0,
+    "reachedColony": 56450,
+    "reachedColonyPerSec": 470.4,
+    "retryAfterMs": {
+      "n": 0,
+      "min": null,
+      "p50": null,
+      "p90": null,
+      "p99": null,
+      "max": null,
+      "mean": null
+    },
+    "latencyMs": {
+      "answered": {
+        "n": 50000,
+        "min": 64,
+        "p50": 118,
+        "p90": 187,
+        "p99": 526,
+        "max": 1465,
+        "mean": 136.09064
+      },
+      "refused": {
+        "n": 0,
+        "min": null,
+        "p50": null,
+        "p90": null,
+        "p99": null,
+        "max": null,
+        "mean": null
+      }
+    },
+    "errors": {}
+  },
+  "errors": []
+}

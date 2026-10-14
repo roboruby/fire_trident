@@ -1,0 +1,5074 @@
+{
+  "schema": "firetrident.coordination/v1",
+  "colony": "p19-sw10",
+  "url": "https://p19-firetrident.mattsolt.workers.dev",
+  "trunk": {
+    "head": "9029d69d6aa60fe85e7584812e9dceec3d420e8e",
+    "colonyTrunk": "9029d69d6aa60fe85e7584812e9dceec3d420e8e",
+    "firstParentCommits": 393,
+    "shallow": true,
+    "base": "588ec13fa68ea44fed1b5e1b503341db2bf09d70",
+    "firetridentCommits": 193,
+    "landingCommits": 193,
+    "systemCommits": 0,
+    "notes": {
+      "found": 193,
+      "foreign": 0,
+      "unreadable": 0
+    },
+    "knownFrom": {
+      "note": 193,
+      "apiAndTrailers": 0,
+      "trailersOnly": 0,
+      "unverified": 0
+    }
+  },
+  "record": {
+    "source": "recorded",
+    "events": 5275,
+    "proposals": 283,
+    "intents": 283,
+    "vaccineProposalsLeftOut": 0,
+    "colonyCounters": {
+      "proposals": 283,
+      "landedProposals": 283,
+      "returned": 0,
+      "rejected": 0,
+      "escalated": 0,
+      "intents": 283,
+      "intentsLanded": 283,
+      "landings": 193,
+      "agents": 11
+    }
+  },
+  "regionDepth": {
+    "value": 3,
+    "source": "colony"
+  },
+  "mergedFraction": {
+    "proposals": {
+      "made": 283,
+      "landed": 283,
+      "returned": 0,
+      "redirected": 0,
+      "rejected": 0,
+      "inFlight": 0,
+      "other": 0
+    },
+    "merged": 1.0,
+    "mergedOfSettled": 1.0,
+    "intents": {
+      "total": 283,
+      "withProposal": 283,
+      "landed": 283,
+      "byStatus": {
+        "landed": 283
+      }
+    },
+    "intentsMerged": 1.0,
+    "intentsMergedWithProposal": 1.0
+  },
+  "codeSharing": {
+    "denominators": {
+      "wholeFile": "every line of the file at HEAD",
+      "agentLines": "the lines at HEAD given to an agent"
+    },
+    "wholeFile": {
+      "agents": 11,
+      "median": 0.0,
+      "mean": 0.0,
+      "min": 0.0,
+      "p25": 0.0,
+      "p75": 0.0,
+      "max": 0.0,
+      "histogram": {
+        "0.0-0.1": 11,
+        "0.1-0.2": 0,
+        "0.2-0.3": 0,
+        "0.3-0.4": 0,
+        "0.4-0.5": 0,
+        "0.5-0.6": 0,
+        "0.6-0.7": 0,
+        "0.7-0.8": 0,
+        "0.8-0.9": 0,
+        "0.9-1.0": 0
+      }
+    },
+    "agentLines": {
+      "agents": 11,
+      "median": 0.0,
+      "mean": 0.0,
+      "min": 0.0,
+      "p25": 0.0,
+      "p75": 0.0,
+      "max": 0.0,
+      "histogram": {
+        "0.0-0.1": 11,
+        "0.1-0.2": 0,
+        "0.2-0.3": 0,
+        "0.3-0.4": 0,
+        "0.4-0.5": 0,
+        "0.5-0.6": 0,
+        "0.6-0.7": 0,
+        "0.7-0.8": 0,
+        "0.8-0.9": 0,
+        "0.9-1.0": 0
+      }
+    },
+    "lines": {
+      "lines": 78668,
+      "agentWritten": 960,
+      "imported": 77708,
+      "system": 0,
+      "unattributed": 0
+    },
+    "files": 283,
+    "skipped": {
+      "absentAtHead": 0,
+      "binary": 0
+    },
+    "agents": [
+      {
+        "agent": "agt_mv7qeyyai628jb",
+        "files": 22,
+        "lines": 66,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qfiui1irma9",
+        "files": 20,
+        "lines": 69,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qfiui2ac0tb",
+        "files": 23,
+        "lines": 76,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qfiuia4pwli",
+        "files": 24,
+        "lines": 65,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qfiuieeb7ff",
+        "files": 33,
+        "lines": 125,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qfiuiib7p8n",
+        "files": 30,
+        "lines": 102,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qfiuik5vte7",
+        "files": 26,
+        "lines": 91,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qfiuiljsyzo",
+        "files": 27,
+        "lines": 73,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qfiuimtfyhq",
+        "files": 30,
+        "lines": 123,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qfiuin4kqbr",
+        "files": 19,
+        "lines": 79,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      },
+      {
+        "agent": "agt_mv7qfiuip8mb3z",
+        "files": 29,
+        "lines": 91,
+        "wholeFile": 0.0,
+        "agentLines": 0.0
+      }
+    ],
+    "perFile": [
+      {
+        "path": "src/adapter/aws-lambda/conninfo.test.ts",
+        "lines": 118,
+        "byAgent": {
+          "agt_mv7qfiuiib7p8n": 2
+        },
+        "imported": 116,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/aws-lambda/conninfo.ts",
+        "lines": 74,
+        "byAgent": {
+          "agt_mv7qfiuia4pwli": 3
+        },
+        "imported": 71,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/aws-lambda/handler.test.ts",
+        "lines": 678,
+        "byAgent": {
+          "agt_mv7qfiuip8mb3z": 6
+        },
+        "imported": 672,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/aws-lambda/handler.ts",
+        "lines": 726,
+        "byAgent": {
+          "agt_mv7qfiuiljsyzo": 4
+        },
+        "imported": 722,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/aws-lambda/index.ts",
+        "lines": 18,
+        "byAgent": {
+          "agt_mv7qfiui2ac0tb": 4
+        },
+        "imported": 14,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/bun/conninfo.test.ts",
+        "lines": 84,
+        "byAgent": {
+          "agt_mv7qeyyai628jb": 3
+        },
+        "imported": 81,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/bun/conninfo.ts",
+        "lines": 44,
+        "byAgent": {
+          "agt_mv7qfiui2ac0tb": 3
+        },
+        "imported": 41,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/bun/index.ts",
+        "lines": 15,
+        "byAgent": {
+          "agt_mv7qfiui1irma9": 6
+        },
+        "imported": 9,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/bun/serve-static.ts",
+        "lines": 35,
+        "byAgent": {
+          "agt_mv7qfiuip8mb3z": 3
+        },
+        "imported": 32,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/bun/server.test.ts",
+        "lines": 15,
+        "byAgent": {
+          "agt_mv7qeyyai628jb": 2
+        },
+        "imported": 13,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/bun/server.ts",
+        "lines": 15,
+        "byAgent": {
+          "agt_mv7qfiui1irma9": 1
+        },
+        "imported": 14,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/bun/ssg.ts",
+        "lines": 29,
+        "byAgent": {
+          "agt_mv7qfiuia4pwli": 2
+        },
+        "imported": 27,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/bun/websocket.test.ts",
+        "lines": 166,
+        "byAgent": {
+          "agt_mv7qeyyai628jb": 3
+        },
+        "imported": 163,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/bun/websocket.ts",
+        "lines": 127,
+        "byAgent": {
+          "agt_mv7qfiuimtfyhq": 3
+        },
+        "imported": 124,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/cloudflare-pages/conninfo.test.ts",
+        "lines": 27,
+        "byAgent": {
+          "agt_mv7qfiuin4kqbr": 2
+        },
+        "imported": 25,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/cloudflare-pages/conninfo.ts",
+        "lines": 27,
+        "byAgent": {
+          "agt_mv7qfiuimtfyhq": 1
+        },
+        "imported": 26,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/cloudflare-pages/handler.test.ts",
+        "lines": 286,
+        "byAgent": {
+          "agt_mv7qfiuimtfyhq": 5
+        },
+        "imported": 281,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/cloudflare-pages/handler.ts",
+        "lines": 133,
+        "byAgent": {
+          "agt_mv7qfiuin4kqbr": 4
+        },
+        "imported": 129,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/cloudflare-pages/index.ts",
+        "lines": 12,
+        "byAgent": {
+          "agt_mv7qfiuieeb7ff": 3
+        },
+        "imported": 9,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/cloudflare-workers/conninfo.test.ts",
+        "lines": 19,
+        "byAgent": {
+          "agt_mv7qfiuik5vte7": 2
+        },
+        "imported": 17,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/cloudflare-workers/conninfo.ts",
+        "lines": 10,
+        "byAgent": {
+          "agt_mv7qfiuiib7p8n": 1
+        },
+        "imported": 9,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/cloudflare-workers/index.ts",
+        "lines": 12,
+        "byAgent": {
+          "agt_mv7qfiuik5vte7": 3
+        },
+        "imported": 9,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/cloudflare-workers/serve-static-module.ts",
+        "lines": 12,
+        "byAgent": {
+          "agt_mv7qfiuimtfyhq": 3
+        },
+        "imported": 9,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/cloudflare-workers/serve-static.test.ts",
+        "lines": 221,
+        "byAgent": {
+          "agt_mv7qfiuieeb7ff": 4
+        },
+        "imported": 217,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/cloudflare-workers/serve-static.ts",
+        "lines": 45,
+        "byAgent": {
+          "agt_mv7qfiuiib7p8n": 4
+        },
+        "imported": 41,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/cloudflare-workers/utils.test.ts",
+        "lines": 33,
+        "byAgent": {
+          "agt_mv7qfiuip8mb3z": 1
+        },
+        "imported": 32,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/cloudflare-workers/websocket.test.ts",
+        "lines": 162,
+        "byAgent": {
+          "agt_mv7qfiuimtfyhq": 3
+        },
+        "imported": 159,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/cloudflare-workers/websocket.ts",
+        "lines": 56,
+        "byAgent": {
+          "agt_mv7qfiuiib7p8n": 2
+        },
+        "imported": 54,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/deno/conninfo.test.ts",
+        "lines": 25,
+        "byAgent": {
+          "agt_mv7qfiui2ac0tb": 2
+        },
+        "imported": 23,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/deno/conninfo.ts",
+        "lines": 18,
+        "byAgent": {
+          "agt_mv7qfiuieeb7ff": 1
+        },
+        "imported": 17,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/deno/index.ts",
+        "lines": 13,
+        "byAgent": {
+          "agt_mv7qfiui2ac0tb": 4
+        },
+        "imported": 9,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/deno/serve-static.ts",
+        "lines": 45,
+        "byAgent": {
+          "agt_mv7qfiuiljsyzo": 3
+        },
+        "imported": 42,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/deno/ssg.ts",
+        "lines": 29,
+        "byAgent": {
+          "agt_mv7qfiuia4pwli": 2
+        },
+        "imported": 27,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/deno/websocket.test.ts",
+        "lines": 162,
+        "byAgent": {
+          "agt_mv7qfiuiljsyzo": 3
+        },
+        "imported": 159,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/deno/websocket.ts",
+        "lines": 41,
+        "byAgent": {
+          "agt_mv7qfiuiib7p8n": 2
+        },
+        "imported": 39,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/lambda-edge/conninfo.test.ts",
+        "lines": 27,
+        "byAgent": {
+          "agt_mv7qfiuip8mb3z": 3
+        },
+        "imported": 24,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/lambda-edge/conninfo.ts",
+        "lines": 18,
+        "byAgent": {
+          "agt_mv7qfiui1irma9": 3
+        },
+        "imported": 15,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/lambda-edge/handler.test.ts",
+        "lines": 450,
+        "byAgent": {
+          "agt_mv7qfiuieeb7ff": 6
+        },
+        "imported": 444,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/lambda-edge/handler.ts",
+        "lines": 263,
+        "byAgent": {
+          "agt_mv7qfiuin4kqbr": 2
+        },
+        "imported": 261,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/lambda-edge/index.ts",
+        "lines": 18,
+        "byAgent": {
+          "agt_mv7qeyyai628jb": 3
+        },
+        "imported": 15,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/netlify/conninfo.test.ts",
+        "lines": 41,
+        "byAgent": {
+          "agt_mv7qfiuieeb7ff": 2
+        },
+        "imported": 39,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/netlify/conninfo.ts",
+        "lines": 58,
+        "byAgent": {
+          "agt_mv7qfiuik5vte7": 2
+        },
+        "imported": 56,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/netlify/handler.ts",
+        "lines": 13,
+        "byAgent": {
+          "agt_mv7qfiuieeb7ff": 1
+        },
+        "imported": 12,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/netlify/index.ts",
+        "lines": 10,
+        "byAgent": {
+          "agt_mv7qfiui1irma9": 1
+        },
+        "imported": 9,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/netlify/mod.ts",
+        "lines": 2,
+        "byAgent": {
+          "agt_mv7qfiui1irma9": 2
+        },
+        "imported": 0,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/service-worker/handler.test.ts",
+        "lines": 121,
+        "byAgent": {
+          "agt_mv7qfiuia4pwli": 3
+        },
+        "imported": 118,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/service-worker/handler.ts",
+        "lines": 41,
+        "byAgent": {
+          "agt_mv7qfiuimtfyhq": 3
+        },
+        "imported": 38,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/service-worker/index.ts",
+        "lines": 40,
+        "byAgent": {
+          "agt_mv7qfiuia4pwli": 4
+        },
+        "imported": 36,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/vercel/conninfo.test.ts",
+        "lines": 18,
+        "byAgent": {
+          "agt_mv7qfiuiib7p8n": 2
+        },
+        "imported": 16,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/vercel/conninfo.ts",
+        "lines": 11,
+        "byAgent": {
+          "agt_mv7qfiui2ac0tb": 1
+        },
+        "imported": 10,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/vercel/handler.test.ts",
+        "lines": 38,
+        "byAgent": {
+          "agt_mv7qfiuiib7p8n": 2
+        },
+        "imported": 36,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/vercel/handler.ts",
+        "lines": 11,
+        "byAgent": {
+          "agt_mv7qfiuiljsyzo": 1
+        },
+        "imported": 10,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/adapter/vercel/index.ts",
+        "lines": 11,
+        "byAgent": {
+          "agt_mv7qfiuiljsyzo": 2
+        },
+        "imported": 9,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/client/client.test.ts",
+        "lines": 2310,
+        "byAgent": {
+          "agt_mv7qfiuin4kqbr": 7
+        },
+        "imported": 2303,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/client/client.ts",
+        "lines": 249,
+        "byAgent": {
+          "agt_mv7qfiuin4kqbr": 6
+        },
+        "imported": 243,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/client/index.ts",
+        "lines": 17,
+        "byAgent": {
+          "agt_mv7qfiuip8mb3z": 3
+        },
+        "imported": 14,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/client/types.test.ts",
+        "lines": 146,
+        "byAgent": {
+          "agt_mv7qeyyai628jb": 4
+        },
+        "imported": 142,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/client/types.ts",
+        "lines": 393,
+        "byAgent": {
+          "agt_mv7qfiuip8mb3z": 6
+        },
+        "imported": 387,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/client/utils.test.ts",
+        "lines": 405,
+        "byAgent": {
+          "agt_mv7qfiuimtfyhq": 4
+        },
+        "imported": 401,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/client/utils.ts",
+        "lines": 117,
+        "byAgent": {
+          "agt_mv7qfiuip8mb3z": 3
+        },
+        "imported": 114,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/compose.test.ts",
+        "lines": 751,
+        "byAgent": {
+          "agt_mv7qfiuieeb7ff": 4
+        },
+        "imported": 747,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/compose.ts",
+        "lines": 73,
+        "byAgent": {
+          "agt_mv7qfiuik5vte7": 2
+        },
+        "imported": 71,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/context.test.ts",
+        "lines": 629,
+        "byAgent": {
+          "agt_mv7qfiuik5vte7": 2
+        },
+        "imported": 627,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/context.ts",
+        "lines": 797,
+        "byAgent": {
+          "agt_mv7qfiuik5vte7": 8
+        },
+        "imported": 789,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/accepts/accepts.test.ts",
+        "lines": 344,
+        "byAgent": {
+          "agt_mv7qfiuia4pwli": 5
+        },
+        "imported": 339,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/accepts/accepts.ts",
+        "lines": 96,
+        "byAgent": {
+          "agt_mv7qfiuik5vte7": 3
+        },
+        "imported": 93,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/accepts/index.ts",
+        "lines": 6,
+        "byAgent": {
+          "agt_mv7qfiuimtfyhq": 1
+        },
+        "imported": 5,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/adapter/index.test.ts",
+        "lines": 55,
+        "byAgent": {
+          "agt_mv7qfiui1irma9": 2
+        },
+        "imported": 53,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/adapter/index.ts",
+        "lines": 90,
+        "byAgent": {
+          "agt_mv7qfiui1irma9": 1
+        },
+        "imported": 89,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/conninfo/index.ts",
+        "lines": 6,
+        "byAgent": {
+          "agt_mv7qeyyai628jb": 1
+        },
+        "imported": 5,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/conninfo/types.ts",
+        "lines": 45,
+        "byAgent": {
+          "agt_mv7qfiuin4kqbr": 1
+        },
+        "imported": 44,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/cookie/index.test.ts",
+        "lines": 510,
+        "byAgent": {
+          "agt_mv7qfiui2ac0tb": 2
+        },
+        "imported": 508,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/cookie/index.ts",
+        "lines": 145,
+        "byAgent": {
+          "agt_mv7qfiui2ac0tb": 3
+        },
+        "imported": 142,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/css/common.case.test.tsx",
+        "lines": 506,
+        "byAgent": {
+          "agt_mv7qfiuimtfyhq": 1
+        },
+        "imported": 505,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/css/index.test.tsx",
+        "lines": 634,
+        "byAgent": {
+          "agt_mv7qfiuieeb7ff": 9
+        },
+        "imported": 625,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/css/index.ts",
+        "lines": 262,
+        "byAgent": {
+          "agt_mv7qfiuiib7p8n": 9
+        },
+        "imported": 253,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/dev/index.test.ts",
+        "lines": 181,
+        "byAgent": {
+          "agt_mv7qfiuia4pwli": 4
+        },
+        "imported": 177,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/dev/index.ts",
+        "lines": 79,
+        "byAgent": {
+          "agt_mv7qfiuieeb7ff": 4
+        },
+        "imported": 75,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/factory/index.test.ts",
+        "lines": 434,
+        "byAgent": {
+          "agt_mv7qfiuip8mb3z": 8
+        },
+        "imported": 426,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/factory/index.ts",
+        "lines": 375,
+        "byAgent": {
+          "agt_mv7qfiuia4pwli": 3
+        },
+        "imported": 372,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/html/index.test.ts",
+        "lines": 78,
+        "byAgent": {
+          "agt_mv7qfiuin4kqbr": 2
+        },
+        "imported": 76,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/html/index.ts",
+        "lines": 57,
+        "byAgent": {
+          "agt_mv7qfiuik5vte7": 2
+        },
+        "imported": 55,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/proxy/index.test.ts",
+        "lines": 356,
+        "byAgent": {
+          "agt_mv7qfiuip8mb3z": 2
+        },
+        "imported": 354,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/proxy/index.ts",
+        "lines": 202,
+        "byAgent": {
+          "agt_mv7qfiuimtfyhq": 2
+        },
+        "imported": 200,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/route/index.test.ts",
+        "lines": 240,
+        "byAgent": {
+          "agt_mv7qfiuip8mb3z": 3
+        },
+        "imported": 237,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/route/index.ts",
+        "lines": 141,
+        "byAgent": {
+          "agt_mv7qfiuimtfyhq": 4
+        },
+        "imported": 137,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/ssg/index.ts",
+        "lines": 14,
+        "byAgent": {
+          "agt_mv7qfiuik5vte7": 3
+        },
+        "imported": 11,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/ssg/middleware.ts",
+        "lines": 83,
+        "byAgent": {
+          "agt_mv7qfiuiljsyzo": 3
+        },
+        "imported": 80,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/ssg/plugins.test.tsx",
+        "lines": 227,
+        "byAgent": {
+          "agt_mv7qfiui1irma9": 5
+        },
+        "imported": 222,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/ssg/plugins.ts",
+        "lines": 72,
+        "byAgent": {
+          "agt_mv7qfiuiljsyzo": 2
+        },
+        "imported": 70,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/ssg/ssg.test.tsx",
+        "lines": 1196,
+        "byAgent": {
+          "agt_mv7qfiuieeb7ff": 5
+        },
+        "imported": 1191,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/ssg/ssg.ts",
+        "lines": 471,
+        "byAgent": {
+          "agt_mv7qfiuieeb7ff": 9
+        },
+        "imported": 462,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/ssg/utils.test.ts",
+        "lines": 102,
+        "byAgent": {
+          "agt_mv7qfiuieeb7ff": 1
+        },
+        "imported": 101,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/ssg/utils.ts",
+        "lines": 118,
+        "byAgent": {
+          "agt_mv7qfiuieeb7ff": 4
+        },
+        "imported": 114,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/streaming/index.ts",
+        "lines": 9,
+        "byAgent": {
+          "agt_mv7qfiuimtfyhq": 4
+        },
+        "imported": 5,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/streaming/sse.test.tsx",
+        "lines": 557,
+        "byAgent": {
+          "agt_mv7qfiuip8mb3z": 3
+        },
+        "imported": 554,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/streaming/sse.ts",
+        "lines": 101,
+        "byAgent": {
+          "agt_mv7qfiuiib7p8n": 4
+        },
+        "imported": 97,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/streaming/stream.test.ts",
+        "lines": 128,
+        "byAgent": {
+          "agt_mv7qeyyai628jb": 2
+        },
+        "imported": 126,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/streaming/stream.ts",
+        "lines": 45,
+        "byAgent": {
+          "agt_mv7qfiuip8mb3z": 3
+        },
+        "imported": 42,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/streaming/text.test.ts",
+        "lines": 34,
+        "byAgent": {
+          "agt_mv7qeyyai628jb": 2
+        },
+        "imported": 32,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/streaming/text.ts",
+        "lines": 15,
+        "byAgent": {
+          "agt_mv7qfiuiib7p8n": 4
+        },
+        "imported": 11,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/testing/index.test.ts",
+        "lines": 42,
+        "byAgent": {
+          "agt_mv7qfiuiljsyzo": 2
+        },
+        "imported": 40,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/testing/index.ts",
+        "lines": 27,
+        "byAgent": {
+          "agt_mv7qfiui1irma9": 6
+        },
+        "imported": 21,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/websocket/index.test.ts",
+        "lines": 124,
+        "byAgent": {
+          "agt_mv7qfiuimtfyhq": 3
+        },
+        "imported": 121,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/helper/websocket/index.ts",
+        "lines": 140,
+        "byAgent": {
+          "agt_mv7qfiui2ac0tb": 3
+        },
+        "imported": 137,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/hono-base.ts",
+        "lines": 549,
+        "byAgent": {
+          "agt_mv7qfiuik5vte7": 8
+        },
+        "imported": 541,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/hono.test.ts",
+        "lines": 3814,
+        "byAgent": {
+          "agt_mv7qfiuin4kqbr": 12
+        },
+        "imported": 3802,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/hono.ts",
+        "lines": 34,
+        "byAgent": {
+          "agt_mv7qfiuia4pwli": 6
+        },
+        "imported": 28,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/http-exception.test.ts",
+        "lines": 45,
+        "byAgent": {
+          "agt_mv7qfiuiljsyzo": 1
+        },
+        "imported": 44,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/http-exception.ts",
+        "lines": 78,
+        "byAgent": {
+          "agt_mv7qfiuiib7p8n": 1
+        },
+        "imported": 77,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/index.ts",
+        "lines": 53,
+        "byAgent": {
+          "agt_mv7qfiuip8mb3z": 6
+        },
+        "imported": 47,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/base.test.tsx",
+        "lines": 79,
+        "byAgent": {
+          "agt_mv7qfiuik5vte7": 3
+        },
+        "imported": 76,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/base.ts",
+        "lines": 490,
+        "byAgent": {
+          "agt_mv7qfiuimtfyhq": 10
+        },
+        "imported": 480,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/children.test.ts",
+        "lines": 52,
+        "byAgent": {
+          "agt_mv7qfiuip8mb3z": 2
+        },
+        "imported": 50,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/children.ts",
+        "lines": 20,
+        "byAgent": {
+          "agt_mv7qeyyai628jb": 1
+        },
+        "imported": 19,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/components.test.tsx",
+        "lines": 936,
+        "byAgent": {
+          "agt_mv7qfiuimtfyhq": 5
+        },
+        "imported": 931,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/components.ts",
+        "lines": 257,
+        "byAgent": {
+          "agt_mv7qfiuimtfyhq": 10
+        },
+        "imported": 247,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/context-isolation.test.ts",
+        "lines": 655,
+        "byAgent": {
+          "agt_mv7qfiuieeb7ff": 3
+        },
+        "imported": 652,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/context.ts",
+        "lines": 266,
+        "byAgent": {
+          "agt_mv7qfiuieeb7ff": 6
+        },
+        "imported": 260,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/dom/client.test.tsx",
+        "lines": 128,
+        "byAgent": {
+          "agt_mv7qfiuik5vte7": 2
+        },
+        "imported": 126,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/dom/client.ts",
+        "lines": 89,
+        "byAgent": {
+          "agt_mv7qfiuia4pwli": 4
+        },
+        "imported": 85,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/dom/components.test.tsx",
+        "lines": 330,
+        "byAgent": {
+          "agt_mv7qfiui2ac0tb": 3
+        },
+        "imported": 327,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/dom/components.ts",
+        "lines": 39,
+        "byAgent": {
+          "agt_mv7qfiuin4kqbr": 4
+        },
+        "imported": 35,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/dom/context.test.tsx",
+        "lines": 184,
+        "byAgent": {
+          "agt_mv7qfiuia4pwli": 2
+        },
+        "imported": 182,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/dom/context.ts",
+        "lines": 52,
+        "byAgent": {
+          "agt_mv7qeyyai628jb": 5
+        },
+        "imported": 47,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/dom/css.test.tsx",
+        "lines": 149,
+        "byAgent": {
+          "agt_mv7qfiuip8mb3z": 5
+        },
+        "imported": 144,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/dom/css.ts",
+        "lines": 263,
+        "byAgent": {
+          "agt_mv7qfiui2ac0tb": 4
+        },
+        "imported": 259,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/dom/hooks/index.test.tsx",
+        "lines": 172,
+        "byAgent": {
+          "agt_mv7qfiuip8mb3z": 2
+        },
+        "imported": 170,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/dom/hooks/index.ts",
+        "lines": 91,
+        "byAgent": {
+          "agt_mv7qfiuimtfyhq": 5
+        },
+        "imported": 86,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/dom/index.test.tsx",
+        "lines": 3681,
+        "byAgent": {
+          "agt_mv7qfiui2ac0tb": 7
+        },
+        "imported": 3674,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/dom/index.ts",
+        "lines": 169,
+        "byAgent": {
+          "agt_mv7qfiuiib7p8n": 14
+        },
+        "imported": 155,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/dom/intrinsic-element/components.test.tsx",
+        "lines": 1344,
+        "byAgent": {
+          "agt_mv7qfiuik5vte7": 3
+        },
+        "imported": 1341,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/dom/intrinsic-element/components.ts",
+        "lines": 438,
+        "byAgent": {
+          "agt_mv7qeyyai628jb": 9
+        },
+        "imported": 429,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/dom/jsx-dev-runtime.ts",
+        "lines": 23,
+        "byAgent": {
+          "agt_mv7qfiuia4pwli": 3
+        },
+        "imported": 20,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/dom/jsx-runtime.ts",
+        "lines": 8,
+        "byAgent": {
+          "agt_mv7qfiuiljsyzo": 3
+        },
+        "imported": 5,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/dom/render.ts",
+        "lines": 879,
+        "byAgent": {
+          "agt_mv7qfiuiib7p8n": 9
+        },
+        "imported": 870,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/dom/server.test.tsx",
+        "lines": 199,
+        "byAgent": {
+          "agt_mv7qfiuiib7p8n": 2
+        },
+        "imported": 197,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/dom/server.ts",
+        "lines": 76,
+        "byAgent": {
+          "agt_mv7qfiuiljsyzo": 5
+        },
+        "imported": 71,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/dom/utils.ts",
+        "lines": 7,
+        "byAgent": {
+          "agt_mv7qfiuip8mb3z": 1
+        },
+        "imported": 6,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/hooks/dom.test.tsx",
+        "lines": 859,
+        "byAgent": {
+          "agt_mv7qfiuiljsyzo": 2
+        },
+        "imported": 857,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/hooks/index.ts",
+        "lines": 437,
+        "byAgent": {
+          "agt_mv7qfiuiljsyzo": 4
+        },
+        "imported": 433,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/hooks/string.test.tsx",
+        "lines": 40,
+        "byAgent": {
+          "agt_mv7qfiuiib7p8n": 1
+        },
+        "imported": 39,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/index.test.tsx",
+        "lines": 1745,
+        "byAgent": {
+          "agt_mv7qfiuiljsyzo": 7
+        },
+        "imported": 1738,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/index.ts",
+        "lines": 114,
+        "byAgent": {
+          "agt_mv7qfiuik5vte7": 10
+        },
+        "imported": 104,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/intrinsic-element/common.ts",
+        "lines": 23,
+        "byAgent": {
+          "agt_mv7qfiuik5vte7": 1
+        },
+        "imported": 22,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/intrinsic-element/components.test.tsx",
+        "lines": 666,
+        "byAgent": {
+          "agt_mv7qfiuia4pwli": 2
+        },
+        "imported": 664,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/intrinsic-element/components.ts",
+        "lines": 210,
+        "byAgent": {
+          "agt_mv7qfiuiib7p8n": 10
+        },
+        "imported": 200,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/intrinsic-elements.ts",
+        "lines": 924,
+        "byAgent": {
+          "agt_mv7qeyyai628jb": 2
+        },
+        "imported": 922,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/jsx-dev-runtime.ts",
+        "lines": 26,
+        "byAgent": {
+          "agt_mv7qfiuip8mb3z": 5
+        },
+        "imported": 21,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/jsx-runtime.test.tsx",
+        "lines": 85,
+        "byAgent": {
+          "agt_mv7qfiuiib7p8n": 2
+        },
+        "imported": 83,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/jsx-runtime.ts",
+        "lines": 51,
+        "byAgent": {
+          "agt_mv7qfiuieeb7ff": 7
+        },
+        "imported": 44,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/streaming.test.tsx",
+        "lines": 1281,
+        "byAgent": {
+          "agt_mv7qfiuimtfyhq": 7
+        },
+        "imported": 1274,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/streaming.ts",
+        "lines": 231,
+        "byAgent": {
+          "agt_mv7qfiuimtfyhq": 11
+        },
+        "imported": 220,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/types.ts",
+        "lines": 40,
+        "byAgent": {
+          "agt_mv7qfiuik5vte7": 5
+        },
+        "imported": 35,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/jsx/utils.test.ts",
+        "lines": 366,
+        "byAgent": {
+          "agt_mv7qfiuieeb7ff": 1
+        },
+        "imported": 365,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/basic-auth/index.test.ts",
+        "lines": 434,
+        "byAgent": {
+          "agt_mv7qfiuik5vte7": 2
+        },
+        "imported": 432,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/basic-auth/index.ts",
+        "lines": 153,
+        "byAgent": {
+          "agt_mv7qfiuin4kqbr": 5
+        },
+        "imported": 148,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/bearer-auth/index.test.ts",
+        "lines": 1018,
+        "byAgent": {
+          "agt_mv7qfiui1irma9": 3
+        },
+        "imported": 1015,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/bearer-auth/index.ts",
+        "lines": 221,
+        "byAgent": {
+          "agt_mv7qfiui2ac0tb": 5
+        },
+        "imported": 216,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/body-limit/index.test.ts",
+        "lines": 273,
+        "byAgent": {
+          "agt_mv7qfiuip8mb3z": 2
+        },
+        "imported": 271,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/body-limit/index.ts",
+        "lines": 111,
+        "byAgent": {
+          "agt_mv7qfiuimtfyhq": 3
+        },
+        "imported": 108,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/cache/index.test.ts",
+        "lines": 1211,
+        "byAgent": {
+          "agt_mv7qfiuik5vte7": 3
+        },
+        "imported": 1208,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/cache/index.ts",
+        "lines": 324,
+        "byAgent": {
+          "agt_mv7qfiuieeb7ff": 5
+        },
+        "imported": 319,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/combine/index.test.ts",
+        "lines": 355,
+        "byAgent": {
+          "agt_mv7qfiuia4pwli": 3
+        },
+        "imported": 352,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/combine/index.ts",
+        "lines": 171,
+        "byAgent": {
+          "agt_mv7qfiuin4kqbr": 5
+        },
+        "imported": 166,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/compress/index.test.ts",
+        "lines": 535,
+        "byAgent": {
+          "agt_mv7qfiuia4pwli": 3
+        },
+        "imported": 532,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/compress/index.ts",
+        "lines": 143,
+        "byAgent": {
+          "agt_mv7qfiuia4pwli": 3
+        },
+        "imported": 140,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/context-storage/index.test.ts",
+        "lines": 43,
+        "byAgent": {
+          "agt_mv7qfiuip8mb3z": 2
+        },
+        "imported": 41,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/context-storage/index.ts",
+        "lines": 59,
+        "byAgent": {
+          "agt_mv7qfiui2ac0tb": 2
+        },
+        "imported": 57,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/cors/index.test.ts",
+        "lines": 532,
+        "byAgent": {
+          "agt_mv7qfiui2ac0tb": 2
+        },
+        "imported": 530,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/cors/index.ts",
+        "lines": 164,
+        "byAgent": {
+          "agt_mv7qfiuiljsyzo": 2
+        },
+        "imported": 162,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/csrf/index.test.ts",
+        "lines": 534,
+        "byAgent": {
+          "agt_mv7qfiuieeb7ff": 3
+        },
+        "imported": 531,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/csrf/index.ts",
+        "lines": 151,
+        "byAgent": {
+          "agt_mv7qfiuiljsyzo": 3
+        },
+        "imported": 148,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/etag/digest.test.ts",
+        "lines": 21,
+        "byAgent": {
+          "agt_mv7qfiui1irma9": 1
+        },
+        "imported": 20,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/etag/index.test.ts",
+        "lines": 503,
+        "byAgent": {
+          "agt_mv7qfiuik5vte7": 2
+        },
+        "imported": 501,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/etag/index.ts",
+        "lines": 136,
+        "byAgent": {
+          "agt_mv7qfiuik5vte7": 2
+        },
+        "imported": 134,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/ip-restriction/index.test.ts",
+        "lines": 217,
+        "byAgent": {
+          "agt_mv7qfiuiib7p8n": 5
+        },
+        "imported": 212,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/ip-restriction/index.ts",
+        "lines": 279,
+        "byAgent": {
+          "agt_mv7qfiui1irma9": 5
+        },
+        "imported": 274,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/jsx-renderer/index.test.tsx",
+        "lines": 530,
+        "byAgent": {
+          "agt_mv7qfiuieeb7ff": 5
+        },
+        "imported": 525,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/jsx-renderer/index.ts",
+        "lines": 163,
+        "byAgent": {
+          "agt_mv7qfiuin4kqbr": 6
+        },
+        "imported": 157,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/jwk/index.test.ts",
+        "lines": 1135,
+        "byAgent": {
+          "agt_mv7qeyyai628jb": 11
+        },
+        "imported": 1124,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/jwk/index.ts",
+        "lines": 1,
+        "byAgent": {
+          "agt_mv7qfiuimtfyhq": 1
+        },
+        "imported": 0,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/jwk/jwk.ts",
+        "lines": 196,
+        "byAgent": {
+          "agt_mv7qfiuieeb7ff": 10
+        },
+        "imported": 186,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/jwt/index.test.ts",
+        "lines": 802,
+        "byAgent": {
+          "agt_mv7qfiuieeb7ff": 4
+        },
+        "imported": 798,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/jwt/index.ts",
+        "lines": 9,
+        "byAgent": {
+          "agt_mv7qfiuiib7p8n": 4
+        },
+        "imported": 5,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/jwt/jwt.ts",
+        "lines": 190,
+        "byAgent": {
+          "agt_mv7qfiui2ac0tb": 10
+        },
+        "imported": 180,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/language/index.test.ts",
+        "lines": 552,
+        "byAgent": {
+          "agt_mv7qfiuip8mb3z": 3
+        },
+        "imported": 549,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/language/index.ts",
+        "lines": 12,
+        "byAgent": {
+          "agt_mv7qfiuiib7p8n": 2
+        },
+        "imported": 10,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/language/language.ts",
+        "lines": 314,
+        "byAgent": {
+          "agt_mv7qfiuip8mb3z": 4
+        },
+        "imported": 310,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/logger/index.test.ts",
+        "lines": 204,
+        "byAgent": {
+          "agt_mv7qfiuia4pwli": 2
+        },
+        "imported": 202,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/logger/index.ts",
+        "lines": 95,
+        "byAgent": {
+          "agt_mv7qfiuieeb7ff": 2
+        },
+        "imported": 93,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/method-not-allowed/index.test.ts",
+        "lines": 292,
+        "byAgent": {
+          "agt_mv7qfiuiljsyzo": 2
+        },
+        "imported": 290,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/method-not-allowed/index.ts",
+        "lines": 141,
+        "byAgent": {
+          "agt_mv7qfiui1irma9": 6
+        },
+        "imported": 135,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/method-override/index.test.ts",
+        "lines": 221,
+        "byAgent": {
+          "agt_mv7qfiuimtfyhq": 2
+        },
+        "imported": 219,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/method-override/index.ts",
+        "lines": 148,
+        "byAgent": {
+          "agt_mv7qfiuimtfyhq": 4
+        },
+        "imported": 144,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/mount/index.test.ts",
+        "lines": 334,
+        "byAgent": {
+          "agt_mv7qeyyai628jb": 4
+        },
+        "imported": 330,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/mount/index.ts",
+        "lines": 109,
+        "byAgent": {
+          "agt_mv7qfiui2ac0tb": 3
+        },
+        "imported": 106,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/powered-by/index.test.ts",
+        "lines": 37,
+        "byAgent": {
+          "agt_mv7qfiuia4pwli": 2
+        },
+        "imported": 35,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/powered-by/index.ts",
+        "lines": 35,
+        "byAgent": {
+          "agt_mv7qfiuia4pwli": 1
+        },
+        "imported": 34,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/pretty-json/index.test.ts",
+        "lines": 218,
+        "byAgent": {
+          "agt_mv7qfiuiljsyzo": 2
+        },
+        "imported": 216,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/pretty-json/index.ts",
+        "lines": 68,
+        "byAgent": {
+          "agt_mv7qfiuiljsyzo": 1
+        },
+        "imported": 67,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/request-id/index.test.ts",
+        "lines": 168,
+        "byAgent": {
+          "agt_mv7qfiuin4kqbr": 3
+        },
+        "imported": 165,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/request-id/index.ts",
+        "lines": 7,
+        "byAgent": {
+          "agt_mv7qfiuiib7p8n": 2
+        },
+        "imported": 5,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/request-id/request-id.ts",
+        "lines": 59,
+        "byAgent": {
+          "agt_mv7qfiuiib7p8n": 2
+        },
+        "imported": 57,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/secure-headers/index.test.ts",
+        "lines": 671,
+        "byAgent": {
+          "agt_mv7qeyyai628jb": 4
+        },
+        "imported": 667,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/secure-headers/index.ts",
+        "lines": 8,
+        "byAgent": {
+          "agt_mv7qfiuiib7p8n": 3
+        },
+        "imported": 5,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/secure-headers/secure-headers.ts",
+        "lines": 341,
+        "byAgent": {
+          "agt_mv7qfiuin4kqbr": 4
+        },
+        "imported": 337,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/serve-static/index.test.ts",
+        "lines": 431,
+        "byAgent": {
+          "agt_mv7qfiuin4kqbr": 2
+        },
+        "imported": 429,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/serve-static/index.ts",
+        "lines": 135,
+        "byAgent": {
+          "agt_mv7qfiuik5vte7": 6
+        },
+        "imported": 129,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/serve-static/path.test.ts",
+        "lines": 50,
+        "byAgent": {
+          "agt_mv7qfiuieeb7ff": 1
+        },
+        "imported": 49,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/timeout/index.test.ts",
+        "lines": 70,
+        "byAgent": {
+          "agt_mv7qfiuik5vte7": 5
+        },
+        "imported": 65,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/timeout/index.ts",
+        "lines": 58,
+        "byAgent": {
+          "agt_mv7qfiuiib7p8n": 3
+        },
+        "imported": 55,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/timing/index.test.ts",
+        "lines": 310,
+        "byAgent": {
+          "agt_mv7qfiuimtfyhq": 2
+        },
+        "imported": 308,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/timing/index.ts",
+        "lines": 8,
+        "byAgent": {
+          "agt_mv7qfiuiib7p8n": 2
+        },
+        "imported": 6,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/timing/timing.ts",
+        "lines": 257,
+        "byAgent": {
+          "agt_mv7qfiuik5vte7": 3
+        },
+        "imported": 254,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/trailing-slash/index.test.ts",
+        "lines": 381,
+        "byAgent": {
+          "agt_mv7qfiuia4pwli": 2
+        },
+        "imported": 379,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/middleware/trailing-slash/index.ts",
+        "lines": 158,
+        "byAgent": {
+          "agt_mv7qfiui2ac0tb": 1
+        },
+        "imported": 157,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/preset/quick.test.ts",
+        "lines": 42,
+        "byAgent": {
+          "agt_mv7qfiui1irma9": 2
+        },
+        "imported": 40,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/preset/quick.ts",
+        "lines": 24,
+        "byAgent": {
+          "agt_mv7qfiuiljsyzo": 6
+        },
+        "imported": 18,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/preset/tiny.test.ts",
+        "lines": 42,
+        "byAgent": {
+          "agt_mv7qfiuip8mb3z": 2
+        },
+        "imported": 40,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/preset/tiny.ts",
+        "lines": 20,
+        "byAgent": {
+          "agt_mv7qfiui1irma9": 4
+        },
+        "imported": 16,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/request.test.ts",
+        "lines": 751,
+        "byAgent": {
+          "agt_mv7qfiuik5vte7": 3
+        },
+        "imported": 748,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/request.ts",
+        "lines": 520,
+        "byAgent": {
+          "agt_mv7qfiui2ac0tb": 9
+        },
+        "imported": 511,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/router/common.case.test.ts",
+        "lines": 1118,
+        "byAgent": {
+          "agt_mv7qfiuiljsyzo": 1
+        },
+        "imported": 1117,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/router/linear-router/index.ts",
+        "lines": 6,
+        "byAgent": {
+          "agt_mv7qeyyai628jb": 1
+        },
+        "imported": 5,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/router/linear-router/router.test.ts",
+        "lines": 80,
+        "byAgent": {
+          "agt_mv7qfiuieeb7ff": 3
+        },
+        "imported": 77,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/router/linear-router/router.ts",
+        "lines": 152,
+        "byAgent": {
+          "agt_mv7qfiuieeb7ff": 3
+        },
+        "imported": 149,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/router/pattern-router/index.ts",
+        "lines": 6,
+        "byAgent": {
+          "agt_mv7qfiuik5vte7": 1
+        },
+        "imported": 5,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/router/pattern-router/router.test.ts",
+        "lines": 42,
+        "byAgent": {
+          "agt_mv7qfiui1irma9": 3
+        },
+        "imported": 39,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/router/pattern-router/router.ts",
+        "lines": 54,
+        "byAgent": {
+          "agt_mv7qeyyai628jb": 2
+        },
+        "imported": 52,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/router/reg-exp-router/index.ts",
+        "lines": 7,
+        "byAgent": {
+          "agt_mv7qfiuimtfyhq": 2
+        },
+        "imported": 5,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/router/reg-exp-router/matcher.ts",
+        "lines": 33,
+        "byAgent": {
+          "agt_mv7qfiuimtfyhq": 2
+        },
+        "imported": 31,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/router/reg-exp-router/node.ts",
+        "lines": 170,
+        "byAgent": {
+          "agt_mv7qfiuip8mb3z": 1
+        },
+        "imported": 169,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/router/reg-exp-router/prepared-router.test.ts",
+        "lines": 154,
+        "byAgent": {
+          "agt_mv7qfiuiljsyzo": 3
+        },
+        "imported": 151,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/router/reg-exp-router/prepared-router.ts",
+        "lines": 165,
+        "byAgent": {
+          "agt_mv7qfiuiljsyzo": 5
+        },
+        "imported": 160,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/router/reg-exp-router/router.test.ts",
+        "lines": 265,
+        "byAgent": {
+          "agt_mv7qfiuimtfyhq": 4
+        },
+        "imported": 261,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/router/reg-exp-router/router.ts",
+        "lines": 174,
+        "byAgent": {
+          "agt_mv7qfiuip8mb3z": 8
+        },
+        "imported": 166,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/router/reg-exp-router/trie.ts",
+        "lines": 84,
+        "byAgent": {
+          "agt_mv7qfiuieeb7ff": 3
+        },
+        "imported": 81,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/router/smart-router/index.ts",
+        "lines": 6,
+        "byAgent": {
+          "agt_mv7qfiui2ac0tb": 1
+        },
+        "imported": 5,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/router/smart-router/router.test.ts",
+        "lines": 13,
+        "byAgent": {
+          "agt_mv7qfiuiib7p8n": 4
+        },
+        "imported": 9,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/router/smart-router/router.ts",
+        "lines": 70,
+        "byAgent": {
+          "agt_mv7qfiui2ac0tb": 2
+        },
+        "imported": 68,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/router/trie-router/index.ts",
+        "lines": 6,
+        "byAgent": {
+          "agt_mv7qfiuin4kqbr": 1
+        },
+        "imported": 5,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/router/trie-router/node.test.ts",
+        "lines": 869,
+        "byAgent": {
+          "agt_mv7qfiuin4kqbr": 1
+        },
+        "imported": 868,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/router/trie-router/node.ts",
+        "lines": 217,
+        "byAgent": {
+          "agt_mv7qfiuin4kqbr": 5
+        },
+        "imported": 212,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/router/trie-router/router.test.ts",
+        "lines": 8,
+        "byAgent": {
+          "agt_mv7qfiuia4pwli": 2
+        },
+        "imported": 6,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/router/trie-router/router.ts",
+        "lines": 18,
+        "byAgent": {
+          "agt_mv7qfiui1irma9": 3
+        },
+        "imported": 15,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/types.test.ts",
+        "lines": 4139,
+        "byAgent": {
+          "agt_mv7qfiuieeb7ff": 10
+        },
+        "imported": 4129,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/types.ts",
+        "lines": 2782,
+        "byAgent": {
+          "agt_mv7qfiui1irma9": 5
+        },
+        "imported": 2777,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/utils/accept.test.ts",
+        "lines": 299,
+        "byAgent": {
+          "agt_mv7qfiuieeb7ff": 1
+        },
+        "imported": 298,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/utils/basic-auth.test.ts",
+        "lines": 56,
+        "byAgent": {
+          "agt_mv7qfiuiib7p8n": 1
+        },
+        "imported": 55,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/utils/basic-auth.ts",
+        "lines": 26,
+        "byAgent": {
+          "agt_mv7qeyyai628jb": 1
+        },
+        "imported": 25,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/utils/body.test.ts",
+        "lines": 496,
+        "byAgent": {
+          "agt_mv7qfiui2ac0tb": 2
+        },
+        "imported": 494,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/utils/body.ts",
+        "lines": 263,
+        "byAgent": {
+          "agt_mv7qfiuia4pwli": 2
+        },
+        "imported": 261,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/utils/buffer.test.ts",
+        "lines": 147,
+        "byAgent": {
+          "agt_mv7qfiuiib7p8n": 1
+        },
+        "imported": 146,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/utils/buffer.ts",
+        "lines": 117,
+        "byAgent": {
+          "agt_mv7qfiuieeb7ff": 1
+        },
+        "imported": 116,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/utils/color.test.ts",
+        "lines": 49,
+        "byAgent": {
+          "agt_mv7qfiui1irma9": 1
+        },
+        "imported": 48,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/utils/concurrent.test.ts",
+        "lines": 69,
+        "byAgent": {
+          "agt_mv7qfiuiib7p8n": 1
+        },
+        "imported": 68,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/utils/cookie.test.ts",
+        "lines": 460,
+        "byAgent": {
+          "agt_mv7qfiuieeb7ff": 2
+        },
+        "imported": 458,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/utils/cookie.ts",
+        "lines": 280,
+        "byAgent": {
+          "agt_mv7qfiui2ac0tb": 1
+        },
+        "imported": 279,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/utils/crypto.test.ts",
+        "lines": 43,
+        "byAgent": {
+          "agt_mv7qfiuia4pwli": 1
+        },
+        "imported": 42,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/utils/crypto.ts",
+        "lines": 58,
+        "byAgent": {
+          "agt_mv7qfiuip8mb3z": 1
+        },
+        "imported": 57,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/utils/encode.test.ts",
+        "lines": 61,
+        "byAgent": {
+          "agt_mv7qfiuiljsyzo": 1
+        },
+        "imported": 60,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/utils/filepath.test.ts",
+        "lines": 78,
+        "byAgent": {
+          "agt_mv7qfiuiib7p8n": 1
+        },
+        "imported": 77,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/utils/handler.ts",
+        "lines": 15,
+        "byAgent": {
+          "agt_mv7qfiuiljsyzo": 1
+        },
+        "imported": 14,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/utils/html.test.ts",
+        "lines": 16,
+        "byAgent": {
+          "agt_mv7qfiui2ac0tb": 2
+        },
+        "imported": 14,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/utils/ipaddr.test.ts",
+        "lines": 149,
+        "byAgent": {
+          "agt_mv7qfiuip8mb3z": 1
+        },
+        "imported": 148,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/utils/ipaddr.ts",
+        "lines": 374,
+        "byAgent": {
+          "agt_mv7qfiuiljsyzo": 1
+        },
+        "imported": 373,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/utils/jwt/index.ts",
+        "lines": 7,
+        "byAgent": {
+          "agt_mv7qfiuieeb7ff": 1
+        },
+        "imported": 6,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/utils/jwt/jwa.test.ts",
+        "lines": 86,
+        "byAgent": {
+          "agt_mv7qeyyai628jb": 2
+        },
+        "imported": 84,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/utils/jwt/jws.ts",
+        "lines": 234,
+        "byAgent": {
+          "agt_mv7qfiuik5vte7": 5
+        },
+        "imported": 229,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/utils/jwt/jwt.test.ts",
+        "lines": 1788,
+        "byAgent": {
+          "agt_mv7qfiuimtfyhq": 8
+        },
+        "imported": 1780,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/utils/jwt/jwt.ts",
+        "lines": 292,
+        "byAgent": {
+          "agt_mv7qfiuimtfyhq": 8
+        },
+        "imported": 284,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/utils/jwt/types.ts",
+        "lines": 156,
+        "byAgent": {
+          "agt_mv7qeyyai628jb": 1
+        },
+        "imported": 155,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/utils/mime.test.ts",
+        "lines": 64,
+        "byAgent": {
+          "agt_mv7qfiuia4pwli": 1
+        },
+        "imported": 63,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/utils/stream.test.ts",
+        "lines": 212,
+        "byAgent": {
+          "agt_mv7qeyyai628jb": 1
+        },
+        "imported": 211,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/utils/types.test.ts",
+        "lines": 294,
+        "byAgent": {
+          "agt_mv7qfiuieeb7ff": 1
+        },
+        "imported": 293,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/utils/url.test.ts",
+        "lines": 384,
+        "byAgent": {
+          "agt_mv7qfiuip8mb3z": 1
+        },
+        "imported": 383,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/validator/index.ts",
+        "lines": 8,
+        "byAgent": {
+          "agt_mv7qfiuiljsyzo": 3
+        },
+        "imported": 5,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/validator/utils.test.ts",
+        "lines": 82,
+        "byAgent": {
+          "agt_mv7qfiuip8mb3z": 1
+        },
+        "imported": 81,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/validator/utils.ts",
+        "lines": 69,
+        "byAgent": {
+          "agt_mv7qfiuimtfyhq": 2
+        },
+        "imported": 67,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/validator/validator.test.ts",
+        "lines": 1488,
+        "byAgent": {
+          "agt_mv7qfiui1irma9": 9
+        },
+        "imported": 1479,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "src/validator/validator.ts",
+        "lines": 185,
+        "byAgent": {
+          "agt_mv7qfiuin4kqbr": 7
+        },
+        "imported": 178,
+        "system": 0,
+        "unattributed": 0
+      },
+      {
+        "path": "tsconfig.base.json",
+        "lines": 16,
+        "byAgent": {
+          "agt_mv7qeyyai628jb": 2
+        },
+        "imported": 14,
+        "system": 0,
+        "unattributed": 0
+      }
+    ]
+  },
+  "specialization": {
+    "minLandings": 3,
+    "agents": 11,
+    "observed": 0.1304,
+    "baseline": 0.1212,
+    "difference": 0.0092,
+    "p": 0.3666,
+    "baselineP05": 0.1034,
+    "baselineP95": 0.1379,
+    "shuffles": 1000,
+    "seed": 20261014,
+    "perAgent": [
+      {
+        "agent": "agt_mv7qfiuik5vte7",
+        "landed": 26,
+        "topRegion": "src",
+        "topShare": 0.1923
+      },
+      {
+        "agent": "agt_mv7qfiuimtfyhq",
+        "landed": 30,
+        "topRegion": "src/jsx",
+        "topShare": 0.1667
+      },
+      {
+        "agent": "agt_mv7qfiuin4kqbr",
+        "landed": 19,
+        "topRegion": "src/router/trie-router",
+        "topShare": 0.1579
+      },
+      {
+        "agent": "agt_mv7qeyyai628jb",
+        "landed": 22,
+        "topRegion": "src/adapter/bun",
+        "topShare": 0.1364
+      },
+      {
+        "agent": "agt_mv7qfiuiib7p8n",
+        "landed": 30,
+        "topRegion": "src/utils",
+        "topShare": 0.1333
+      },
+      {
+        "agent": "agt_mv7qfiui2ac0tb",
+        "landed": 23,
+        "topRegion": "src/jsx/dom",
+        "topShare": 0.1304
+      },
+      {
+        "agent": "agt_mv7qfiuia4pwli",
+        "landed": 24,
+        "topRegion": "src/jsx/dom",
+        "topShare": 0.125
+      },
+      {
+        "agent": "agt_mv7qfiuieeb7ff",
+        "landed": 33,
+        "topRegion": "src/helper/ssg",
+        "topShare": 0.1212
+      },
+      {
+        "agent": "agt_mv7qfiuiljsyzo",
+        "landed": 27,
+        "topRegion": "src/utils",
+        "topShare": 0.1111
+      },
+      {
+        "agent": "agt_mv7qfiuip8mb3z",
+        "landed": 29,
+        "topRegion": "src/client",
+        "topShare": 0.1034
+      },
+      {
+        "agent": "agt_mv7qfiui1irma9",
+        "landed": 20,
+        "topRegion": "src/adapter/bun",
+        "topShare": 0.1
+      }
+    ],
+    "regionDepth": 3,
+    "landedProposals": 283
+  },
+  "conflicts": {
+    "returns": 0,
+    "byClass": {
+      "stale": 0,
+      "text_merge": 0,
+      "review": 0,
+      "rule": 0,
+      "other": 0
+    },
+    "firstProposalAt": 1791959511611,
+    "minutes": 4,
+    "cumulative": {
+      "stale": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "text_merge": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "review": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "rule": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "other": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "total": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "list": []
+  },
+  "hottestFile": {
+    "path": null,
+    "returns": 0,
+    "reason": "no returns"
+  },
+  "sprawl": {
+    "regionDepth": 3,
+    "start": {
+      "topDirs": 9,
+      "regions": 127,
+      "files": 583
+    },
+    "end": {
+      "topDirs": 9,
+      "regions": 127,
+      "files": 583
+    },
+    "maxTopDirs": 9,
+    "maxRegions": 127,
+    "points": [
+      {
+        "commit": "588ec13fa68ea44fed1b5e1b503341db2bf09d70",
+        "landing": null,
+        "at": null,
+        "kind": "base",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "b55a6bbf87b325e6ddc6e68f51ca7466af3379cf",
+        "landing": "lnd_mv7qfeol9rqar7",
+        "at": 1791959514000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "ef4e72eda9b85ec1d25879eff1bda75f6f311047",
+        "landing": "lnd_mv7qflxtzeh562",
+        "at": 1791959524000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "188bc6d087b4a9c937479687d156a26ce4ff983e",
+        "landing": "lnd_mv7qfm59qzmnpn",
+        "at": 1791959524000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "ad9ec1335fd763dcca96ae09d4471bb4cfc677e0",
+        "landing": "lnd_mv7qfmavb8bjf5",
+        "at": 1791959524000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "b40bfc713044870278fbb3b41bbc557fb0dbc161",
+        "landing": "lnd_mv7qfmkmbk4xa7",
+        "at": 1791959524000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "919c4d0d83f86813ec6439b5f9e66861c69d1aca",
+        "landing": "lnd_mv7qfroz2zrfz9",
+        "at": 1791959531000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "21ae151b585633d656b52cc2919ef5a579f51df0",
+        "landing": "lnd_mv7qfrwg5aarfe",
+        "at": 1791959531000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "23f8be8e825959e035cafad217bf55a03bd8a642",
+        "landing": "lnd_mv7qfs0v1mk02x",
+        "at": 1791959531000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "ad13e0dd8624d235599ac3d4e182b543407ba248",
+        "landing": "lnd_mv7qftvo7pf113",
+        "at": 1791959534000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "b6acf69ed88290a5229be900a349a0133cb05027",
+        "landing": "lnd_mv7qftzunb86c4",
+        "at": 1791959534000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "ea98afda7bf7b19fb815ba0fbe094b9be8269ee3",
+        "landing": "lnd_mv7qfv49z93rhz",
+        "at": 1791959535000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "3c9b613724acb0e2701e027ae02c851f1c4f843b",
+        "landing": "lnd_mv7qfway5ums9r",
+        "at": 1791959537000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "267f1c49bbe7846539b086c4df41549b3324ae05",
+        "landing": "lnd_mv7qfwiw8y5oqe",
+        "at": 1791959537000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "23975c2f707a6428ffd3a695f67da40d4ec30e0e",
+        "landing": "lnd_mv7qfx5sta94xd",
+        "at": 1791959538000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "7ae7a123ab4b457bf684b0c5240327803577409f",
+        "landing": "lnd_mv7qfxccllwweb",
+        "at": 1791959538000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "5a6db14ce10680e3b273c4fd9fd8997602790a67",
+        "landing": "lnd_mv7qfxna014w3u",
+        "at": 1791959539000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "5e5515e4fab75fedecdd30154cd5becb969de5b6",
+        "landing": "lnd_mv7qfyqi1qj6a5",
+        "at": 1791959540000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "f1dd68acb54b40dc58bf101ec1de29f838c5a588",
+        "landing": "lnd_mv7qfzo9b7ma7m",
+        "at": 1791959541000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "81c2896d1b97d9def4fc72acdf30f52b61cc2c82",
+        "landing": "lnd_mv7qfzsqzec2sg",
+        "at": 1791959542000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "43b780cb32e610ff990aaedad96f83d598b4bcbf",
+        "landing": "lnd_mv7qg1a9fw6ct9",
+        "at": 1791959543000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "cfb9887f4c97e1ad7fde89f12b49a931b6c5fcce",
+        "landing": "lnd_mv7qg2zy8dkw4u",
+        "at": 1791959546000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "002824048c072ca6829d98151900ff704f817705",
+        "landing": "lnd_mv7qg36kshsrgl",
+        "at": 1791959546000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "fb74df6532c40fff5afe9ead2f351cf2d2b34cc7",
+        "landing": "lnd_mv7qg4je3p8xsq",
+        "at": 1791959548000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "7dc79de56f4af2f7133f4fc50ba4a55b1a5f4ff5",
+        "landing": "lnd_mv7qg4ve685eqq",
+        "at": 1791959548000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "e6f5fc6f7df5d074696606e941424a4377f5380d",
+        "landing": "lnd_mv7qg588c4w9jn",
+        "at": 1791959549000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "aa7959a1c01a025e4acb11e3392095565e04dc72",
+        "landing": "lnd_mv7qg5nz11kgqu",
+        "at": 1791959549000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "574306b87038dfb3fd5f0022760daa5558170365",
+        "landing": "lnd_mv7qg7t7f97xdt",
+        "at": 1791959552000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "0fd68cb941a1ef4b9fc982e39434904e13f68ebf",
+        "landing": "lnd_mv7qg7xa7a9vkz",
+        "at": 1791959552000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "0d5e96c446599ad028c6cbe8a1cff2a0fea240df",
+        "landing": "lnd_mv7qg8zkitgroi",
+        "at": 1791959553000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "480914d692e75cc6e74a2471d358669ead5a6ab1",
+        "landing": "lnd_mv7qg95dbnqmmo",
+        "at": 1791959554000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "1e60f04de32e961bab7f8462b2ee50baece9789e",
+        "landing": "lnd_mv7qgav1e63dbo",
+        "at": 1791959556000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "2211bd9f83c1cad626b872be013906171571a224",
+        "landing": "lnd_mv7qgb1kz3w308",
+        "at": 1791959556000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "7561e1600640a9e06c76dc0490972c62a5efb51d",
+        "landing": "lnd_mv7qgcatc1rmsj",
+        "at": 1791959558000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "83766f74c3ea14c2a86d564334fb74cd054e76f5",
+        "landing": "lnd_mv7qgcf34px2m6",
+        "at": 1791959558000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "d866f7a5e4d05565c6494d9cd1f92b14404d3af9",
+        "landing": "lnd_mv7qgddq7u4aob",
+        "at": 1791959559000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "1ec6460a9c6a244b4e785c9f8eb7f23bf810f256",
+        "landing": "lnd_mv7qgehxgolq68",
+        "at": 1791959561000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "33bd5df7ef44e079a6b477a89feb241f6b17a065",
+        "landing": "lnd_mv7qgflsm1y5ir",
+        "at": 1791959562000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "e3110c3e8143efe202e83d5577a297a31e92cf72",
+        "landing": "lnd_mv7qgfr3104tva",
+        "at": 1791959562000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "b58fcedb414123cf0ae360d049de5343b212a488",
+        "landing": "lnd_mv7qghah0wnx14",
+        "at": 1791959564000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "f6bbd33f08de99918d7eed46b4bad91fcc80d735",
+        "landing": "lnd_mv7qgi3e6ooycc",
+        "at": 1791959565000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "2e3430dd8f818ecc1973d3a5da10bfd800bc8282",
+        "landing": "lnd_mv7qgid35ptwfa",
+        "at": 1791959566000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "b001be7d582cb2bf81553d6d6dfc41ace6773707",
+        "landing": "lnd_mv7qgj6625mk6t",
+        "at": 1791959567000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "827c6723fe1b8e5a81e5ab206d1f5ea778765099",
+        "landing": "lnd_mv7qgji6nbtvba",
+        "at": 1791959567000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "09147445e952b195ebb96b388264d732950f42ae",
+        "landing": "lnd_mv7qgjnpubw66s",
+        "at": 1791959567000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "840c23f8df36ad271a4d3b6a3cffbdb0f97d1a20",
+        "landing": "lnd_mv7qgl54wytqpk",
+        "at": 1791959569000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "f8f00826b83ea4c78b5e72544eed69402bfdc868",
+        "landing": "lnd_mv7qglb24w5enx",
+        "at": 1791959569000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "2132e5acb4f7bf6140a50979c0f1e6850ab1f43d",
+        "landing": "lnd_mv7qgmdshbruif",
+        "at": 1791959571000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "c7b1802516ab7b9c40053ee61fc30af832885662",
+        "landing": "lnd_mv7qgmpu1599hi",
+        "at": 1791959571000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "8fc310e1b370f93f4e26a4505e33cec57b3d441e",
+        "landing": "lnd_mv7qgmtxk3j87l",
+        "at": 1791959571000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "b67da03a43f68d142a075ebc2b63c3a361661598",
+        "landing": "lnd_mv7qgn6jzxduea",
+        "at": 1791959572000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "790b87f9772f30e1349eb6bf095395400b3fae78",
+        "landing": "lnd_mv7qgnw10t8ya8",
+        "at": 1791959573000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "6bed365766556d6284d0147e379d41bf0f7d7a53",
+        "landing": "lnd_mv7qgo1e6tlvsm",
+        "at": 1791959573000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "f9ebc33c74e1833271e49864732e224f8abffb86",
+        "landing": "lnd_mv7qgo7v6je72y",
+        "at": 1791959573000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "1535208b8598b78a4ba8febe172e05ccad9ca3bf",
+        "landing": "lnd_mv7qgoz7aazqth",
+        "at": 1791959574000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "06d0224ea0fc142fdf6e023b1508e8c975ad1ac8",
+        "landing": "lnd_mv7qgq2eejlt24",
+        "at": 1791959576000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "07bec34c4a4f01fb72e75ce49d9bdb33aba541ba",
+        "landing": "lnd_mv7qgqf3t0ul1r",
+        "at": 1791959576000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "5c2c2c2e0578b61458dc5bf2defb1a964a0fcc37",
+        "landing": "lnd_mv7qgtq6kjv0ho",
+        "at": 1791959580000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "e41c09fa97bb9385090b0ce796982ff285c70342",
+        "landing": "lnd_mv7qgu59wj05zl",
+        "at": 1791959581000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "636f2f4b6b2df5fc146f23f1ae6f128183c02bf1",
+        "landing": "lnd_mv7qgu59iootdc",
+        "at": 1791959581000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "8bc4d00c7cc2d5244115262292bb0d8973feb3ac",
+        "landing": "lnd_mv7qgv5ssexh2j",
+        "at": 1791959582000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "0ab6b0753a4acc902572e96ddd59870219bca6ad",
+        "landing": "lnd_mv7qgwqi8s81i6",
+        "at": 1791959584000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "279149ebd7ef30497195280dc96ae02a75e4f408",
+        "landing": "lnd_mv7qgxh70yyq5y",
+        "at": 1791959585000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "316e4a3cf4fe9e3d67e146b5a44424fe595cbd56",
+        "landing": "lnd_mv7qgxqfajkiod",
+        "at": 1791959585000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "1e364a1c937063ec2c876f978fc2998714d15b97",
+        "landing": "lnd_mv7qgym7fqfxka",
+        "at": 1791959587000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "189106bb492ee743771a32c8018e2d61cdbb3283",
+        "landing": "lnd_mv7qgyz5qq79qe",
+        "at": 1791959587000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "48df755e89011e30fbe57fee832306336634e2ca",
+        "landing": "lnd_mv7qgz32a5cb2k",
+        "at": 1791959587000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "f7979da330139dd9dffb4aa4305a8bf300e74795",
+        "landing": "lnd_mv7qh0vn6ihwub",
+        "at": 1791959590000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "f9c47a020e30bcd900cf9df0aedda3085eb21ccd",
+        "landing": "lnd_mv7qh18c2aeol4",
+        "at": 1791959590000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "2d9a6b740d3267467e3c70ca5497f4e126ba5abb",
+        "landing": "lnd_mv7qh1e10xzjaq",
+        "at": 1791959590000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "b7ab57e9264086e25dcaf885e3f9899c70696873",
+        "landing": "lnd_mv7qh1q5a5jhop",
+        "at": 1791959591000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "aceac816d7f051109995c08a7e57f2c93adea7da",
+        "landing": "lnd_mv7qh1xsxyupad",
+        "at": 1791959591000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "0694de0d1e4cc351396341822770c86183c3be2b",
+        "landing": "lnd_mv7qh2gbj0uyes",
+        "at": 1791959592000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "73bfb7fac5a61a2c784f43cdbb5ac80868508679",
+        "landing": "lnd_mv7qh3bfgvl7wz",
+        "at": 1791959593000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "7f1a686d36b0e06b323ac6f2bda97994a8844fe4",
+        "landing": "lnd_mv7qh3jjphkill",
+        "at": 1791959593000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "22cf77ddebfbe72186b0ef8a3f7fe32071fcbf31",
+        "landing": "lnd_mv7qh3w3o2gmbh",
+        "at": 1791959593000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "ae79150f0fc987354934c4a08e33c3552a17f1ee",
+        "landing": "lnd_mv7qh4sh033t35",
+        "at": 1791959595000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "2554b8d5361c33e41d28492f2ba315288cbbe3f1",
+        "landing": "lnd_mv7qh63nayhf3f",
+        "at": 1791959596000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "acf6dface754bbd3c73b9ba716153caefe8b43a0",
+        "landing": "lnd_mv7qh710g87k1i",
+        "at": 1791959598000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "3468efbce0f182ce9d04b57f40f5f58a09fa7156",
+        "landing": "lnd_mv7qh77sp2dvd4",
+        "at": 1791959598000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "0dec071d81ee309b078010cf232be90550131e67",
+        "landing": "lnd_mv7qh8zwx79jrp",
+        "at": 1791959600000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "3b24b0bc2d7d3e389312b705c88b986110918d7e",
+        "landing": "lnd_mv7qh93qx7lxx1",
+        "at": 1791959600000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "b34ce7b91734a6a9aa29d340edaaaf7d009b1f45",
+        "landing": "lnd_mv7qh9j5joi41x",
+        "at": 1791959601000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "003f1b8e8a30a29814a080d85f41fc5337bd0aec",
+        "landing": "lnd_mv7qhab030sp74",
+        "at": 1791959602000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "46660b7a12260acbe7f70e6a3f1e7bf22735730b",
+        "landing": "lnd_mv7qhb0mdhnz6b",
+        "at": 1791959603000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "7b7ab932f00f2792e8475fe9cb767da8c905ae18",
+        "landing": "lnd_mv7qhb5sq31mrr",
+        "at": 1791959603000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "ee1263ced98b680393f44e6e715d5fcf0da71b3e",
+        "landing": "lnd_mv7qhbbf0meft7",
+        "at": 1791959603000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "2e59e7b79dcfc7ffdfd1524ebb3d76087a4eaa00",
+        "landing": "lnd_mv7qhd8deqs2gt",
+        "at": 1791959606000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "9d85ee0b540035ea5e5c2f3956311df6276b46f1",
+        "landing": "lnd_mv7qhdckdk2ddl",
+        "at": 1791959606000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "e9b7adec4e453627f29edcff44a768c3b8d6613d",
+        "landing": "lnd_mv7qhew8zfyhtp",
+        "at": 1791959608000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "b5a2e6fd542955fece536dd557561177e9c36b4f",
+        "landing": "lnd_mv7qhf4gmfliqk",
+        "at": 1791959608000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "e148e9d1aeff6b93d18a48b8e4cd39072c9e9873",
+        "landing": "lnd_mv7qhf92hro6bq",
+        "at": 1791959608000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "c0d7a94a7d0f55096d4e1de9a3b843996d231814",
+        "landing": "lnd_mv7qhg61gye020",
+        "at": 1791959609000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "c7ee255b93fb3164a447c1fa70cb2768fdb0a3c3",
+        "landing": "lnd_mv7qhgsw1n223o",
+        "at": 1791959610000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "e337ef384ad492ad9e702403d3e5eb374e3c49ff",
+        "landing": "lnd_mv7qhgzwqs8fe4",
+        "at": 1791959610000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "6ab92bd3181fecfb792ea8f200358007f4e6bf5b",
+        "landing": "lnd_mv7qhii44wsqzl",
+        "at": 1791959612000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "44e11b257ee19d8749d5f0e2f4545fbeba49d5bb",
+        "landing": "lnd_mv7qhis6326krk",
+        "at": 1791959613000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "64e1f1cdbbe0a13cde62837f46a2929551464f0a",
+        "landing": "lnd_mv7qhk0rdwrl7l",
+        "at": 1791959614000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "2089204a618efb81e15b5fe375ee80580afa5cde",
+        "landing": "lnd_mv7qhkb1kq0oll",
+        "at": 1791959615000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "1ce60600be3de0c357e5d5b9ee4d89ee52a79078",
+        "landing": "lnd_mv7qhl3pn85xiz",
+        "at": 1791959616000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "057e88796c9a3fd2df1fb798550abbe8dd89aa31",
+        "landing": "lnd_mv7qhll4efvywr",
+        "at": 1791959616000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "56082053d60ec879e3439808ba1f8c45d82518d4",
+        "landing": "lnd_mv7qhlty5g0p40",
+        "at": 1791959617000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "aa11737ec3900ff0782b5d2c3fdbe675682b6ed8",
+        "landing": "lnd_mv7qhm0ie08g3d",
+        "at": 1791959617000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "04c0f86ca2e1d37fbb95519d923ca3ed99e58fe4",
+        "landing": "lnd_mv7qhmkpwsy510",
+        "at": 1791959618000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "bbaddd0fb375347850209d5cfad4940c3cec1634",
+        "landing": "lnd_mv7qhmu8vf08n8",
+        "at": 1791959618000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "db223eed1a19bf89ce7d1a390abdaeebfcfec9d9",
+        "landing": "lnd_mv7qhmyp74yfn0",
+        "at": 1791959618000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "9ba3d7ff4c6070973788a621b81213c2b5e6b83e",
+        "landing": "lnd_mv7qhnr7n54nz4",
+        "at": 1791959619000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "bc901e4eb00acd789385b34721a7df39dd340b09",
+        "landing": "lnd_mv7qhnzgi5yxoi",
+        "at": 1791959620000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "c71fe02f411754bca93218df3487d964b2834902",
+        "landing": "lnd_mv7qho42h6162y",
+        "at": 1791959620000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "4baf41de819c0ce905d2702e154ddc99443bdec6",
+        "landing": "lnd_mv7qhodqrm3f9t",
+        "at": 1791959620000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "6d041a280bda2b5225c03748d9a5214586df732a",
+        "landing": "lnd_mv7qhqg969bemd",
+        "at": 1791959623000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "e8b35fb759dc26a1c6edcff9daedccb61b641c9c",
+        "landing": "lnd_mv7qhqqrijeu1p",
+        "at": 1791959623000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "c7aa714d4a30e4e21c6dad14cd29177dea6a1952",
+        "landing": "lnd_mv7qhr0t3532vl",
+        "at": 1791959623000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "824d33cba52f32b624f5b23c1180047790502281",
+        "landing": "lnd_mv7qhrcyfc32eg",
+        "at": 1791959624000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "ce33becde9d8b47237c56dcfd11a2d3f403169a8",
+        "landing": "lnd_mv7qhsytsl982a",
+        "at": 1791959626000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "4c0e95a7b7e5f5bdd86e02b07717577fae4eb5fd",
+        "landing": "lnd_mv7qhubw4og99w",
+        "at": 1791959628000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "0b5ee16e0a0558e8b052c7b478672ff617b34dff",
+        "landing": "lnd_mv7qhv036tppuf",
+        "at": 1791959629000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "78d14e49e339a5bb59af0447e917df5d06c39193",
+        "landing": "lnd_mv7qhvx5tnt2gf",
+        "at": 1791959630000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "929d7bb32b3375ccb5dadcf2cc87df111e133fa9",
+        "landing": "lnd_mv7qhw3kdoay9h",
+        "at": 1791959630000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "c21028a7ab321294524b39af3598257f0f31405c",
+        "landing": "lnd_mv7qhwxdt0mtn8",
+        "at": 1791959631000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "446c3a4c0e1fdbd3114c3df92c69ba7c68565926",
+        "landing": "lnd_mv7qhxclbm7hw8",
+        "at": 1791959632000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "ae104121312610bd29e1c86433b415b86647313a",
+        "landing": "lnd_mv7qhxz1orrosj",
+        "at": 1791959632000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "f5021accda11fbc5c934d13be585d399f1744f74",
+        "landing": "lnd_mv7qhyugunz6zq",
+        "at": 1791959634000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "e5a1342f5a04c608aa3a108a87ea09c928fc90e2",
+        "landing": "lnd_mv7qhz2p75mdgj",
+        "at": 1791959634000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "e7f33b984be631a395cde4c45a17faa5cea7d497",
+        "landing": "lnd_mv7qhzcxi6yt3y",
+        "at": 1791959634000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "79ec1d6274d1b6b8d580c9a6c1eaef941447b16a",
+        "landing": "lnd_mv7qhzod1k5vae",
+        "at": 1791959635000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "f0320416abad257973a41befd78763c56e9162a5",
+        "landing": "lnd_mv7qhzvy1pq9pa",
+        "at": 1791959635000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "cb1b724915ee85bd4321b1095b23bf64ff9ce6ea",
+        "landing": "lnd_mv7qi0092fw9jd",
+        "at": 1791959635000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "6122c9bc4671f8b9a74c59176e8802300b70e887",
+        "landing": "lnd_mv7qi0h70grxii",
+        "at": 1791959636000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "a590319be0b3bb3f2b29edb4b8c0fe0a94ad1b36",
+        "landing": "lnd_mv7qi16b15fqc5",
+        "at": 1791959637000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "8511b26e559b917e720f42816c42cf446b60ed02",
+        "landing": "lnd_mv7qi1eacsatj0",
+        "at": 1791959637000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "71a0a8b34c36a19fd874031ef18b03dee55ab683",
+        "landing": "lnd_mv7qi1j4h9g80q",
+        "at": 1791959637000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "89cae412a7c31a6872a81050ad7d7e4dabc2dd9d",
+        "landing": "lnd_mv7qi1y9qcg5mq",
+        "at": 1791959638000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "0d04a30c57d1903be0d0233c73201aa3d0871cca",
+        "landing": "lnd_mv7qi2t27nj2l0",
+        "at": 1791959639000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "4cd4695c57707be2e88b77016152421710a25422",
+        "landing": "lnd_mv7qi3kx1djzel",
+        "at": 1791959640000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "c5f3022ac044bdbfad5661da8aed94db1070db48",
+        "landing": "lnd_mv7qi4ik0fvi1e",
+        "at": 1791959641000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "e844437451d232859be8aa24fa5bfac72a77f07c",
+        "landing": "lnd_mv7qi5f0xvzxf1",
+        "at": 1791959642000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "22111782d18ba1c4d7a74e042953b9bd4c5ac1f2",
+        "landing": "lnd_mv7qi730ij6w1d",
+        "at": 1791959644000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "923b6e5803b791d9ac77be818988a9af8aeb426c",
+        "landing": "lnd_mv7qi7ohzxmm1t",
+        "at": 1791959645000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "a35b6e80071a8f6cd81deac3d17569561c7b3b4d",
+        "landing": "lnd_mv7qi9df10m3j2",
+        "at": 1791959647000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "d8959c0291cf7b9aa2269253c2fb9ae46777285a",
+        "landing": "lnd_mv7qibanjt3t0r",
+        "at": 1791959650000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "c1193df15f74a645866f20af04d36889b5103339",
+        "landing": "lnd_mv7qibejeebwxu",
+        "at": 1791959650000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "aa8e8beb6116ff5b9d2df88b27583714685e9959",
+        "landing": "lnd_mv7qibm3hg0mji",
+        "at": 1791959650000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "7f00831fcbf1f289dd400bfde78f081406faea48",
+        "landing": "lnd_mv7qic1lm1dep6",
+        "at": 1791959651000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "497cab898a16fbe51bf543c6fa24b89ac78f6e20",
+        "landing": "lnd_mv7qiceiaktv44",
+        "at": 1791959651000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "09bc366621d118efd1b922ea421f0ac24bcf35e9",
+        "landing": "lnd_mv7qiczwgbqg74",
+        "at": 1791959652000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "cd2f9486ddf2119ccc6ab655851a8e9fda76a668",
+        "landing": "lnd_mv7qid5bbs765n",
+        "at": 1791959652000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "63a871b050cdb31fede1d135cb5d6ae686a570a5",
+        "landing": "lnd_mv7qid9yqil4rx",
+        "at": 1791959652000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "69a3db0dab69055b688989f1a6cf9ba5acad5b1b",
+        "landing": "lnd_mv7qiebzqz9ynq",
+        "at": 1791959654000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "14ecc5f8e79bcd058c884c8cafc7b73e69245175",
+        "landing": "lnd_mv7qiegiqeg9qq",
+        "at": 1791959654000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "7f9b171706b2028cbd711073ab0b8c76a9e8956a",
+        "landing": "lnd_mv7qietdq896ea",
+        "at": 1791959654000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "7a8bdd158aeef1089ab00a6030f6be2bff153d96",
+        "landing": "lnd_mv7qifdq1batyp",
+        "at": 1791959655000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "661ec1a0aa2af07473fdf164c3ab9b829462f62b",
+        "landing": "lnd_mv7qifhsa0zgvq",
+        "at": 1791959655000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "d0eceee23ec2ea10840f9d38b5a8e7c0815137cc",
+        "landing": "lnd_mv7qigugf0g8hb",
+        "at": 1791959657000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "56069f2967a7f2d7ad49ae551458a40c6c59b3ad",
+        "landing": "lnd_mv7qih1cy3kme0",
+        "at": 1791959657000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "a3e479d9ff6fe7d523a98ae43ddc228f6dad3ed1",
+        "landing": "lnd_mv7qij38drphhq",
+        "at": 1791959660000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "672223d0eaabef197eeaa3cfac32f2535bf61297",
+        "landing": "lnd_mv7qik4j5kccrb",
+        "at": 1791959661000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "d1a56bad481653969b14445a2b65dad44f5ccf83",
+        "landing": "lnd_mv7qikm4zcktt5",
+        "at": 1791959662000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "4fda86f23d9283c3b65d1ea0a38fbb4f52064d46",
+        "landing": "lnd_mv7qikskjp8gg9",
+        "at": 1791959662000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "19cb59ddaa6514f8e89e047fa19eb86e38ef3ad2",
+        "landing": "lnd_mv7qilgl15j49g",
+        "at": 1791959663000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "397337f2482e298924310670e72c2a93f3adf841",
+        "landing": "lnd_mv7qilnq1zkwrs",
+        "at": 1791959663000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "e4b64d85aeb49bf7632a7e10a7c89930db75d376",
+        "landing": "lnd_mv7qimbppthqgc",
+        "at": 1791959664000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "8bb2eb93c26355cbc60545b5be1dd2c65e8e10c8",
+        "landing": "lnd_mv7qin6n779tvs",
+        "at": 1791959665000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "99655fdc6c210e2952e7bd5dd56089fc7de1cde1",
+        "landing": "lnd_mv7qioke9emkhz",
+        "at": 1791959667000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "482029c72b9a62240e920ec4d58a095677687e56",
+        "landing": "lnd_mv7qipww7ic08e",
+        "at": 1791959669000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "3b4306a72a79ccdf519091a7c063996532bb37aa",
+        "landing": "lnd_mv7qiq48izbgl8",
+        "at": 1791959669000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "9e27b1c62deca2a455936e0901f56dac8496b89b",
+        "landing": "lnd_mv7qiqnhm40myt",
+        "at": 1791959670000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "bdaf554772ef4f24a4a33b2250f99a802e56d16f",
+        "landing": "lnd_mv7qirgtoaudmg",
+        "at": 1791959671000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "9284475314594b065a736dbbd68c401ea3ef9e26",
+        "landing": "lnd_mv7qiu0e2n1u19",
+        "at": 1791959674000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "5b7f5938a7698df8a04e44133e2aa52b143a241a",
+        "landing": "lnd_mv7qiu4c3md6e2",
+        "at": 1791959674000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "d021ac12bd08733e1446ac7187e9da92eeb075d1",
+        "landing": "lnd_mv7qiv6p406pzx",
+        "at": 1791959676000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "1c006783710d0a0493b11936dd52bd9621974f22",
+        "landing": "lnd_mv7qivduovg8em",
+        "at": 1791959676000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "6dad9ffb143ab620e8f54bdcb343adce762c3d9f",
+        "landing": "lnd_mv7qivducpzd18",
+        "at": 1791959676000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "21c9a932e1e0e21e2516d98e3fbc015bcb833f90",
+        "landing": "lnd_mv7qiwp7qnxvus",
+        "at": 1791959677000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "89c0d144f0ce685daaf33f8f2cda701dc2d17c52",
+        "landing": "lnd_mv7qiwzqh1qoza",
+        "at": 1791959678000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "9b6099d781e70a07c0516228c5bb31d08c5263ed",
+        "landing": "lnd_mv7qixuq5kqzg3",
+        "at": 1791959679000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "e1221ec2012d9a911b99af90f4ad2b693226a8c3",
+        "landing": "lnd_mv7qiympgtai3w",
+        "at": 1791959680000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "9d1a215551af9f9e8378ff9fc56373dd1a93a80b",
+        "landing": "lnd_mv7qj0yw6kvmu7",
+        "at": 1791959683000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "1c04df96c6e1b8578309b6a4f1d431d90b29c246",
+        "landing": "lnd_mv7qj13jax3exi",
+        "at": 1791959683000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "f68ec708821b7660e31211aff67ebd31ec197f0e",
+        "landing": "lnd_mv7qj26vamqmyh",
+        "at": 1791959685000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "4f1fc1230a37e75c71db0018d197aecbe0ac411a",
+        "landing": "lnd_mv7qj2c40t2w0w",
+        "at": 1791959685000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "94135784b8d599073c8be4e4c34656836c3d0f99",
+        "landing": "lnd_mv7qj3m4hali96",
+        "at": 1791959686000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "69f28b4a814c3d90bff6264bc55a6ef16fb78390",
+        "landing": "lnd_mv7qj4be8ukr0f",
+        "at": 1791959687000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "4fb4131a23af99eed6d781593c11c01d8a7c9ea6",
+        "landing": "lnd_mv7qj4nbha3awm",
+        "at": 1791959688000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "e662c3e3e8886b5a96cbf45445231a10634e16fe",
+        "landing": "lnd_mv7qj67f2x37eu",
+        "at": 1791959690000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "d646de23eef2daf53d812202d8f72cfecbeb6e39",
+        "landing": "lnd_mv7qj6qqwyqb0f",
+        "at": 1791959690000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "dcd10c4f3941250f10cbaf848447dd29b8180241",
+        "landing": "lnd_mv7qj7rc3yftuh",
+        "at": 1791959692000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "93ad0fca2ed24637d34c01475d646ee2b23a2cc8",
+        "landing": "lnd_mv7qj889qj5da5",
+        "at": 1791959692000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "0710d27a75e47a37d33d72e324446368e2d0a60a",
+        "landing": "lnd_mv7qj8z4nj3hhd",
+        "at": 1791959693000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "8cad6acbf1186bbf8f0b6b6d60107c4a89ab5f9a",
+        "landing": "lnd_mv7qja30suqsa7",
+        "at": 1791959695000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "4cc9bdc5279bd572e91c193d43f85fce9d05e501",
+        "landing": "lnd_mv7qjafjzaq8iw",
+        "at": 1791959695000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "56d5e4db4d29fc8bab5032003549bd9af649c3a6",
+        "landing": "lnd_mv7qjb4pvwqu87",
+        "at": 1791959696000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "cfd7232e1b42b931ee853f9830b1194c7adb7079",
+        "landing": "lnd_mv7qjf3n1hr8zp",
+        "at": 1791959701000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      },
+      {
+        "commit": "9029d69d6aa60fe85e7584812e9dceec3d420e8e",
+        "landing": "lnd_mv7qjhgw3k40mv",
+        "at": 1791959704000,
+        "kind": "landing",
+        "files": 583,
+        "topDirs": 9,
+        "regions": 127
+      }
+    ]
+  },
+  "linesPerIntent": {
+    "added": 960,
+    "removed": 959,
+    "net": 1,
+    "binaryFiles": 0,
+    "landedIntents": 283,
+    "netPerIntent": 0.0,
+    "system": {
+      "added": 0,
+      "removed": 0,
+      "binary": 0
+    },
+    "agentTouchedFiles": 283,
+    "linesInAgentTouchedFiles": 78668,
+    "agentWrittenLinesAtHead": 960,
+    "attributedLinesAtHead": 960
+  },
+  "agents": [
+    {
+      "id": "agt_mv7qeyyai628jb",
+      "name": "internal-eyy3-1",
+      "kind": "internal",
+      "model": "@cf/moonshotai/kimi-k2.7-code",
+      "proposals": 22,
+      "returned": 0,
+      "landed": 22,
+      "linesAtHead": 66
+    },
+    {
+      "id": "agt_mv7qfiui1irma9",
+      "name": "internal-fiux-7",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 20,
+      "returned": 0,
+      "landed": 20,
+      "linesAtHead": 69
+    },
+    {
+      "id": "agt_mv7qfiui2ac0tb",
+      "name": "internal-fiux-3",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 23,
+      "returned": 0,
+      "landed": 23,
+      "linesAtHead": 76
+    },
+    {
+      "id": "agt_mv7qfiuia4pwli",
+      "name": "internal-fiux-6",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 24,
+      "returned": 0,
+      "landed": 24,
+      "linesAtHead": 65
+    },
+    {
+      "id": "agt_mv7qfiuieeb7ff",
+      "name": "internal-fiux-8",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 33,
+      "returned": 0,
+      "landed": 33,
+      "linesAtHead": 125
+    },
+    {
+      "id": "agt_mv7qfiuiib7p8n",
+      "name": "internal-fiux-2",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 30,
+      "returned": 0,
+      "landed": 30,
+      "linesAtHead": 102
+    },
+    {
+      "id": "agt_mv7qfiuik5vte7",
+      "name": "internal-fiux-9",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 26,
+      "returned": 0,
+      "landed": 26,
+      "linesAtHead": 91
+    },
+    {
+      "id": "agt_mv7qfiuiljsyzo",
+      "name": "internal-fiux-1",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 27,
+      "returned": 0,
+      "landed": 27,
+      "linesAtHead": 73
+    },
+    {
+      "id": "agt_mv7qfiuimtfyhq",
+      "name": "internal-fiux-4",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 30,
+      "returned": 0,
+      "landed": 30,
+      "linesAtHead": 123
+    },
+    {
+      "id": "agt_mv7qfiuin4kqbr",
+      "name": "internal-fiux-5",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 19,
+      "returned": 0,
+      "landed": 19,
+      "linesAtHead": 79
+    },
+    {
+      "id": "agt_mv7qfiuip8mb3z",
+      "name": "internal-fiux-10",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "proposals": 29,
+      "returned": 0,
+      "landed": 29,
+      "linesAtHead": 91
+    }
+  ],
+  "missing": [],
+  "warnings": []
+}

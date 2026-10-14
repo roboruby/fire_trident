@@ -1,0 +1,40 @@
+
+Flag on: p20-gc-on
+PASS  p20-gc-on: created (201)
+PASS  p20-gc-on: review off for the seed
+PASS  p20-gc-on: declared "Start the order backend" (201)
+PASS  p20-gc-on: src/backend.ts seeded in Python (landed)
+PASS  p20-gc-on: declared "Move the order backend to Rust" (201)
+PASS  p20-gc-on: declared "Move the order backend to Go" (201)
+PASS  p20-gc-on: declared "Move the order backend to TypeScript" (201)
+PASS  p20-gc-on: review on, so the decide stage runs the check
+PASS  the first change (rust) landed, not held for a goal conflict: lnd_mv7sc1ih3qs5h2
+PASS  the check ran on it and found nothing to undo (no recent landing of another intent undone: 1 file and 5 removed lines traced)
+PASS  goal-check-second's take carried landing lnd_mv7sc1ih3qs5h2 and its intent's why in its context
+PASS  the go change waits for a person (escalated): escalated by deterministic: would undo 5 lines in src/backend.ts that landing lnd_mv7sc1ih3qs5h2 wrote 2 seconds ago for intent "Move the order backend to Rust" (Ship the order backend as one static binary with no runtime to install, and keep its latency predi
+PASS    its record names the landing it would undo ([{"landingId":"lnd_mv7sc1ih3qs5h2","intentId":"int_mv7sbs2m0vep5q","path":"src/backend.ts","lines":5}])
+PASS  goal-check-third's take carried landing lnd_mv7sc1ih3qs5h2 and its intent's why in its context
+PASS  the typescript change waits for a person (escalated): escalated by deterministic: would undo 5 lines in src/backend.ts that landing lnd_mv7sc1ih3qs5h2 wrote 4 seconds ago for intent "Move the order backend to Rust" (Ship the order backend as one static binary with no runtime to install, and keep its latency predi
+PASS    its record names the landing it would undo ([{"landingId":"lnd_mv7sc1ih3qs5h2","intentId":"int_mv7sbs2m0vep5q","path":"src/backend.ts","lines":5}])
+PASS  both wait in the review queue (2 of 2)
+PASS  trunk still holds the first change: src/backend.ts is the rust version (landing lnd_mv7sc1ih3qs5h2)
+PASS  approved by a person, the go change lands (200, landed)
+PASS  its lineage note records what it undid ([{"intentId":"int_mv7sbs2m0vep5q","landingId":"lnd_mv7sc1ih3qs5h2","lines":5,"path":"src/backend.ts"}])
+PASS    and the decision with its reason (approve: the go goal stands; would undo 5 lines in src/backend.ts that landing lnd_mv7sc1ih3qs5h2 wrote 2 seconds ago for intent "Move the order back)
+PASS  trunk now holds the go version
+PASS  returning the typescript change works as before (200, returned)
+
+Flag off: p20-gc-off
+PASS  p20-gc-off: created (201)
+PASS  p20-gc-off: review off for the seed
+PASS  p20-gc-off: declared "Start the order backend" (201)
+PASS  p20-gc-off: src/backend.ts seeded in Python (landed)
+PASS  p20-gc-off: declared "Move the order backend to Rust" (201)
+PASS  p20-gc-off: declared "Move the order backend to Go" (201)
+PASS  p20-gc-off: declared "Move the order backend to TypeScript" (201)
+PASS  the go change lands with no goal-conflict check (landed)
+PASS  the rust change lands with no goal-conflict check (landed)
+PASS  the typescript change lands with no goal-conflict check (landed)
+PASS  all three landed, and the last one wins: src/backend.ts is the typescript version
+ALL CHECKS PASSED
+exit 0

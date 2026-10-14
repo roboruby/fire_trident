@@ -1,0 +1,77 @@
+[   0.0s] FireTrident demo on https://github.com/honojs/hono -> colony p19-sw20 at https://p19-firetrident.mattsolt.workers.dev
+[   0.0s] plan: pool 24, 20 agents on @cf/google/gemma-4-26b-a4b-it, prerequisite on, payoff off
+
+[   0.7s] == Import honojs/hono
+$ ft import https://github.com/honojs/hono --name p19-sw20 --branch main --region-depth 3 --pool 24 --timeout 900
+  ✓ Importing https://github.com/honojs/hono (main) as p19-sw20 p19-sw20
+  p19-sw20 p19-sw20  from https://github.com/honojs/hono (main)
+  trunk      588ec13  not certified yet
+  files      583 in 127 regions
+  intents    none
+  agents     none
+  violations 0 left
+  decisions  reflex 0 · llm 0 · human 0
+  landings   none yet
+  in flight  0 proposals · 0 landings/min
+  last 30m   no landings
+  stuck      none
+  
+    Next: ft rule add p19-sw20 --pattern <regex> --hint <text> --description <text>
+          ft watch p19-sw20
+[  28.8s] trunk 588ec13fa6: 583 files
+[  28.8s] letting the workspace pool warm up for 8 s
+
+[  36.9s] == Prerequisite: a human intent lands first
+[  38.0s] intent int_mv7qkef4677cu7: Let TypeScript accept .ts import specifiers (tsconfig.base.json)
+$ ft swarm p19-sw20 --agents 1 --model @cf/moonshotai/kimi-k2.7-code
+  ✓ 1 internal agent joining p19-sw20 (@cf/moonshotai/kimi-k2.7-code)
+    They self-assign from the field. Watch: ft watch p19-sw20
+[  56.5s] prerequisite landed in 17.3 s
+
+[  56.5s] == Declare the rule
+$ ft rule import-boundary p19-sw20 --from 'src/**/*.ts' --from 'src/**/*.tsx' --module '^\.\.?(?:/.*)?(?<!\.ts|\.tsx|\.json)$' --hint 'Name the file in every relative import: ./x becomes ./x.ts when x.ts exists; a directory ./d becomes ./d/index.ts (".", ".." and "../.." are directories). Check the tree. Change nothing else.' --description 'Relative imports in src name their file, so Hono runs on Deno, JSR and Node built-in TypeScript without the unstable sloppy-imports flag.'
+  ✓ rul_mv7qktk7t4uh9y added (forbid-import, approved by ms)
+    958 violations → 282 intents in the field
+    Next: ft swarm p19-sw20 --agents 50   then   ft watch p19-sw20
+[  60.0s] violations: 958, open intents: 281, regions: 79
+
+[  60.0s] == Release the swarm
+$ ft swarm p19-sw20 --agents 20 --model @cf/google/gemma-4-26b-a4b-it
+  ✓ 20 internal agents joining p19-sw20 (@cf/google/gemma-4-26b-a4b-it)
+    They self-assign from the field. Watch: ft watch p19-sw20
+[  66.8s] violations  947 | intents open 255 claimed  10 proposed  11 landed   7 | landings   6 (52.7/min, now 7/min) | returned 0 | agents working 21
+[  72.1s] violations  929 | intents open 250 claimed   3 proposed  17 landed  13 | landings  10 (49.7/min, now 11/min) | returned 0 | agents working 19
+[  77.3s] violations  870 | intents open 228 claimed   6 proposed  15 landed  34 | landings  17 (59.0/min, now 18/min) | returned 0 | agents working 21
+[  82.5s] violations  808 | intents open 207 claimed  12 proposed   8 landed  56 | landings  32 (85.2/min, now 33/min) | returned 0 | agents working 20
+[  87.7s] violations  758 | intents open 192 claimed   6 proposed  15 landed  70 | landings  44 (95.4/min, now 45/min) | returned 0 | agents working 21
+[  92.8s] violations  733 | intents open 184 claimed   7 proposed  13 landed  79 | landings  50 (91.4/min, now 51/min) | returned 0 | agents working 20
+[  98.3s] violations  683 | intents open 168 claimed   6 proposed  15 landed  94 | landings  60 (94.0/min, now 61/min) | returned 0 | agents working 21
+[ 103.5s] violations  618 | intents open 150 claimed  10 proposed  11 landed 112 | landings  74 (102.0/min, now 75/min) | returned 0 | agents working 20
+[ 108.7s] violations  528 | intents open 132 claimed   8 proposed  13 landed 130 | landings  88 (108.3/min, now 89/min) | returned 0 | agents working 21
+[ 114.3s] violations  481 | intents open 119 claimed   6 proposed  15 landed 143 | landings  95 (105.0/min, now 95/min) | returned 0 | agents working 21
+[ 119.5s] violations  393 | intents open 103 claimed   8 proposed  10 landed 162 | landings 108 (108.8/min, now 108/min) | returned 0 | agents working 17
+[ 125.0s] violations  324 | intents open  81 claimed   9 proposed  11 landed 182 | landings 127 (117.2/min, now 124/min) | returned 0 | agents working 20
+[ 130.2s] violations  272 | intents open  71 claimed   9 proposed  11 landed 192 | landings 136 (116.2/min, now 128/min) | returned 0 | agents working 20
+[ 135.7s] violations  247 | intents open  63 claimed   7 proposed  14 landed 199 | landings 141 (111.7/min, now 126/min) | returned 0 | agents working 21
+[ 141.0s] violations  200 | intents open  49 claimed   6 proposed  14 landed 214 | landings 155 (114.8/min, now 126/min) | returned 0 | agents working 20
+[ 146.2s] violations  145 | intents open  35 claimed   4 proposed  16 landed 228 | landings 166 (115.6/min, now 124/min) | returned 0 | agents working 20
+[ 151.4s] violations  103 | intents open  27 claimed   4 proposed  12 landed 240 | landings 174 (114.2/min, now 127/min) | returned 0 | agents working 16
+[ 156.6s] violations   54 | intents open  12 claimed   9 proposed   3 landed 259 | landings 183 (113.7/min, now 126/min) | returned 0 | agents working 11
+[ 161.9s] violations   25 | intents open   1 claimed   3 proposed   3 landed 276 | landings 189 (111.3/min, now 119/min) | returned 0 | agents working 6
+[ 167.1s] violations   21 | intents open   1 claimed   0 proposed   2 landed 280 | landings 191 (107.0/min, now 106/min) | returned 0 | agents working 2
+[ 172.3s] violations    7 | intents open   0 claimed   0 proposed   1 landed 282 | landings 193 (103.1/min, now 100/min) | returned 0 | agents working 1
+[ 177.5s] violations    0 | intents open   0 claimed   0 proposed   0 landed 283 | landings 194 (99.0/min, now 93/min) | returned 0 | agents working 0
+
+[ 177.5s] == Result
+[ 178.2s] violations reached 0 in 117.5 s
+[ 178.2s] landings 194 (99.0 per minute), intents landed 283, proposals returned 0, abandons 0, review queue 0
+[ 178.2s] @cf/google/gemma-4-26b-a4b-it             20 agents,  273 calls,  226272 in /  15186 out tokens,    0 throttled waits, $0.0272
+[ 178.2s] @cf/moonshotai/kimi-k2.7-code              1 agents,   10 calls,   10319 in /   2139 out tokens,    0 throttled waits, $0.0184
+[ 178.2s] model cost estimate: $0.0455
+[ 178.2s] cost per landed intent: $0.0002 (the estimate above over 283 intents landed)
+[ 178.2s] cost per certified intent: does not apply (Hono's tests are not node:test tests, so trunk certification has none to run)
+[ 178.3s] violations event reached 0 at +112.6 s (from the colony's own clock)
+[ 178.3s] event log: $TMPDIR/ft-watch-p19-sw20-1791959770.jsonl
+[ 179.5s] swarm stopped (["agt_mv7qkw0qyfqnst", "agt_mv7qkw0qo7jlnk", "agt_mv7qkw0qvwvpsj", "agt_mv7qkw0qf45oj9", "agt_mv7qkw0q1v5s7e", "agt_mv7qkw0q99zj1t", "agt_mv7qkw0qzpv5g8", "agt_mv7qkw0q3knagp", "agt_mv7qkw0qa3b08b", "agt_mv7qkw0qv3djy4", "agt_mv7qkw0q94s4bv", "agt_mv7qkw0qr1llhl", "agt_mv7qkw0q2zvmid", "agt_mv7qkw0q8ystdt", "agt_mv7qkw0qatw87s", "agt_mv7qkw0q8washc", "agt_mv7qkw0qzvnhsy", "agt_mv7qkfbv2q0bbb", "agt_mv7qkw0q4pfdkv", "agt_mv7qkw0qqwr8z1", "agt_mv7qkw0qb2loqd"])
+[ 179.5s] open https://p19-firetrident.mattsolt.workers.dev/c/p19-sw20 for the colony map; ft why p19-sw20 src/index.ts:17 for the lineage of one line
+exit 0

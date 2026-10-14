@@ -1,0 +1,22 @@
+resolver check rsmv7sbfim on https://p20-firetrident.mattsolt.workers.dev (on: p20-rs-on, off: p20-rs-off, review off)
+PASS  p20-rs-on: colony ready (201)
+PASS  p20-rs-on: review off for these checks
+PASS  p20-rs-on: the rename landed first (landed)
+PASS  p20-rs-on: the second change came back with its conflict (returned, {"path":"resolver/rsmv7sbfim/values.ts","base":"5631e98426a8e18a447dcca03475946b91b62646","trunk":"4e8576c017cf037adefd448163b75bc8df1300a0","theirs":"6576fd382)
+PASS  p20-rs-on: the second agent's inbox says the resolver is merging it (Your change prp_mv7sc17h5fi47m came back because text merge found overlapping hunks (resolver/rsmv7sbfim/values.ts at li)
+PASS  p20-rs-on: the intent landed through the resolver (landed)
+PASS  p20-rs-on: the second agent's inbox says the merge landed (The conflict resolver merged your change prp_mv7sc17h5fi47m with the change that landed first (lnd_mv7sc09yvg8b2j), and the merge landed (prp_mv7scdh91rx89l in )
+PASS  p20-rs-on: the merge's lineage note records what it resolves ({"landingIds":["lnd_mv7sc09yvg8b2j"],"paths":["resolver/rsmv7sbfim/values.ts"],"proposalId":"prp_mv7sc17h5fi47m"})
+PASS  p20-rs-on: written by the platform, its model observed ({"auth":"platform","author":"platform","model":{"evidence":"observed","name":"@cf/moonshotai/kimi-k2.7-code","observed":[{"calls":1,"inputTokens":983,"model":"@)
+PASS  p20-rs-on: the merged file keeps both edits (line 6 is "export const six = 66;")
+PASS  p20-rs-on: line 6's newest landing is the merge (lnd_mv7scds3ddm5dn)
+PASS  p20-rs-on: metrics count it (attempted 1, landed 1, failed 0)
+PASS  p20-rs-off: colony ready (201)
+PASS  p20-rs-off: review off for these checks
+PASS  p20-rs-off: the rename landed first (landed)
+PASS  p20-rs-off: the second change came back as today, naming the hunk (stale: resolver/rsmv7sbfim/values.ts (expected 5631e98426a8e18a447dcca03475946b91b62646, trunk has 4e8576c017cf037adefd448163b75bc8df1300a0); text merge of resolver/rsmv7sbfim/values.ts: 1 conflicting)
+PASS  p20-rs-off: no conflict record travels with it
+PASS  p20-rs-off: its intent reopened for the next agent (open)
+PASS  p20-rs-off: no resolution notice
+ALL CHECKS PASSED
+exit 0
