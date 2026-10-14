@@ -165,7 +165,7 @@ describe("landing notices", () => {
 
   it("come from commits outside any intent too, and are kept for in-platform agents the push missed", async () => {
     const c = await newColony();
-    const internal = await api<AgentInfo>("POST", `/colonies/${c.id}/agents`, { name: "writer", kind: "internal" });
+    const internal = { status: 201, body: await colony(c.id).registerAgent({ name: "writer", kind: "internal" }) };
     const held = await addIntent(c.id, ["src/lib/util.ts"], { title: "Rename helper", assignedTo: internal.body.id });
     // Synthetic agents are load: they are not told.
     const s = await addAgent(c.id, "synthetic");

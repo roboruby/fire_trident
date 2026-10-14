@@ -445,6 +445,8 @@ export function createApi(deps: ApiDeps): Hono<ApiEnv> {
   app.post("/colonies/:id/agents", requireAdmin, async (c) => {
     const colonyId = colonyParam(c);
     const b = await body(c, AgentBody);
+    // An in-platform agent is one FireTrident runs (its notes say the model was observed), so only the platform starts one.
+    if (b.kind === "internal") throw ftError(400, "in-platform agents are started by the platform (POST /api/colonies/:id/swarm); register an external or synthetic agent here");
     const agent = await colonyStub(c.env, colonyId).registerAgent({ kind: b.kind, name: b.name, ...(b.model ? { model: b.model } : {}) });
     return json(agent, 201);
   });
@@ -472,6 +474,10 @@ export function createApi(deps: ApiDeps): Hono<ApiEnv> {
           ...(b.evidence.previewUrl !== undefined ? { previewUrl: b.evidence.previewUrl } : {}),
         }
       : undefined;
+    // An in-platform agent proposes through the platform, never through this route: its notes say what FireTrident observed.
+    if ((await colonyStub(c.env, colonyId).getAgent(b.agentId))?.kind === "internal") {
+      throw ftError(403, `agent ${b.agentId} is an in-platform agent; it proposes through the platform, not this API`);
+    }
     const proposal = await colonyStub(c.env, colonyId).propose({
       colonyId,
       intentId: b.intentId,

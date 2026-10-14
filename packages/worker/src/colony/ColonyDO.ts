@@ -1674,7 +1674,7 @@ export class ColonyDO extends DurableObject<Env> {
    */
   async landContext(intentIds: Id[], agentIds: Id[], proposalIds: Id[] = []): Promise<{
     intents: Record<Id, { title: string; why: string; ruleId?: Id; parentId?: Id } & DirectionInfo>;
-    agents: Record<Id, { kind: AgentKind; model?: string }>;
+    agents: Record<Id, { kind: AgentKind; model?: string; resumeKey?: boolean }>;
     decisions: Record<Id, NoteDecision[]>;
     alternatives?: Record<Id, ContestAlternative[]>;
   }> {
@@ -1696,12 +1696,14 @@ export class ColonyDO extends DurableObject<Env> {
       }
       intents[id] = entry;
     }
-    const agents: Record<Id, { kind: AgentKind; model?: string }> = {};
+    const agents: Record<Id, { kind: AgentKind; model?: string; resumeKey?: boolean }> = {};
     for (const id of new Set(agentIds)) {
       const row = this.agentRow(id);
       if (!row) continue;
       const a = this.toAgent(row, colonyId, false);
-      agents[id] = { kind: a.kind, ...(a.model ? { model: a.model } : {}) };
+      // External agents: whether the agent joined over MCP and holds a resume key (lineage provenance names how it was authenticated).
+      const resumeKey = a.kind === "external" ? this.sql.exec("SELECT 1 AS x FROM agent_keys WHERE agent_id = ?", id).toArray().length > 0 : undefined;
+      agents[id] = { kind: a.kind, ...(a.model ? { model: a.model } : {}), ...(resumeKey !== undefined ? { resumeKey } : {}) };
     }
     const wanted = [...new Set(Array.isArray(proposalIds) ? proposalIds : [])].slice(0, 500);
     const decisions =
