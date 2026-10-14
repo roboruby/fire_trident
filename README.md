@@ -51,7 +51,7 @@ Git platforms coordinate people through things they lock and queue: branches, pu
 
 Humans declare a **target morphology** (architecture rules plus tests). Every violation becomes a need in the field, and the colony converges until there are none.
 
-Each colony prices its own model calls as they happen (its agents, review, the contest judge, the conflict resolver) at Workers AI list prices, in total, by layer and per landed intent, from the tokens it counted: the top bar, `ft status` and `GET /api/colonies/:id/metrics` show it.
+Each colony prices its own model calls as they happen (its agents, review, the contest judge, the conflict resolver) at Workers AI list prices, in total, by layer and per landed intent, from the tokens it counted: the top bar, `ft status` and `GET /api/colonies/:id/metrics` show it. Where `FT_INTENT_SPEND` is on, each intent's own calls are priced too (`GET /api/colonies/:id/intents/:id/spend`, the Intents tab, `ft intent show`).
 
 ## How git's ideas map
 
