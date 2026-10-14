@@ -183,6 +183,17 @@ export interface JobUsage {
   ms: number;
 }
 
+/** One intent's model calls in an agent's journal, by model (spend per intent, FT_INTENT_SPEND; Journal.bumpIntent). */
+export interface AgentIntentUsage {
+  intentId: Id;
+  model: string;
+  calls: number;
+  input: number;
+  output: number;
+  /** When the last call was counted. */
+  at: number;
+}
+
 /** Bytes and time the git network calls cost (accumulated until taken). */
 export interface NetStats {
   requests: number;
@@ -233,6 +244,8 @@ export interface Journal {
   log(e: StepLogEntry): void;
   finish(h: HistoryEntry): void;
   bump(counter: string, by?: number): void;
+  /** Spend per intent (FT_INTENT_SPEND): one model call for an intent, under the model that answered; the colony reads these with the journal. */
+  bumpIntent?(intentId: Id, model: string, usage: { input: number; output: number }, at: number): void;
   /** Directives the colony pushed, kept until acted on (agents/direction.ts). */
   directives?(): HeldDirective[];
   setDirectives?(list: HeldDirective[]): void;
@@ -338,6 +351,8 @@ export interface LoopDeps {
    * taken with it keeps reading through it whatever `on` says later.
    */
   virtual?: { on: boolean; reads: VirtualReads };
+  /** Spend per intent (FT_INTENT_SPEND for the colony): count each model call under the job's intent in the journal too. */
+  intentSpend?: boolean;
 }
 
 export const MAX_STEP_ATTEMPTS = 4;
@@ -1154,6 +1169,8 @@ function countCall(deps: LoopDeps, cfg: AgentConfig, job: Job, reply: ModelReply
   save(deps, cfg, job);
   deps.journal.bump("llmCalls");
   if (other) deps.journal.bump(`llmCalls:${other}`);
+  // Per intent too, where FT_INTENT_SPEND covers the colony: the colony prices each intent's calls from these rows.
+  if (deps.intentSpend) deps.journal.bumpIntent?.(job.intentId, model, { input: reply.usage?.input ?? 0, output: reply.usage?.output ?? 0 }, deps.now());
 }
 
 /**

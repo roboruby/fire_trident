@@ -26,7 +26,8 @@ import type { Command } from "./args.ts";
  *   DELETE /api/colonies/:id            -> { found, ok, agents, repos, objects, unregistered }
  *   PATCH  /api/colonies/:id/intents/:iid           { title?, why?, footprint?, priority?, reason, by } -> { intent, revision, returned, notified }
  *   POST   /api/colonies/:id/intents/:iid/withdraw  { reason, by } -> { intent, returned, notified }
- *   GET    /api/colonies/:id/intents/:iid           -> { intent, revisions, directives }
+ *   GET    /api/colonies/:id/intents/:iid           -> { intent, revisions, directives, spend? }
+ *   GET    /api/colonies/:id/intents/:iid/spend     -> IntentSpend: what the intent's model calls cost, by layer and model (FT_INTENT_SPEND)
  *   DELETE /api/colonies/:id/rules/:rid             { reason, by } -> { rule, withdrawn, returned, notified }
  *   POST   /api/colonies/:id/agents/:aid/directive  { message, intentId?, by } -> Directive + { delivery }
  *   GET    /api/colonies/:id/escalations            -> { colonyId, total, intents: Intent[] } (reports waiting for a person)

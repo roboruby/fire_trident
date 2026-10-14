@@ -1,4 +1,4 @@
-import type { ColonySpend, ModelSpend, SpendLayer } from "./types.ts";
+import type { ColonySpend, Id, IntentSpend, IntentSpendBrief, ModelSpend, SpendLayer } from "./types.ts";
 
 /**
  * Model prices. A colony counts the tokens of the model calls it makes (its in-platform agents, review, contest judging,
@@ -171,4 +171,83 @@ export function spendDetail(spend: ColonySpend | null | undefined): string {
   if (wholeCount(spend.agentsUnread) > 0) lines.push(`${n(spend.agentsUnread ?? 0)} in-platform agents not read yet: their calls are not in this sum.`);
   lines.push(`Priced at Workers AI list prices on ${spend.priceDate || PRICE_DATE}, from the ${n(spend.tokens.input)} input and ${n(spend.tokens.output)} output tokens the colony counted.`);
   return lines.join("\n");
+}
+
+/** Tokens and calls one layer spent on one model for one intent, as the colony counted them. */
+export interface IntentUsage extends LayerUsage {
+  calls: number;
+}
+
+/** Every layer at zero. */
+function zeroLayers(): Record<SpendLayer, number> {
+  return { agents: 0, review: 0, judge: 0, resolver: 0, other: 0 };
+}
+
+/**
+ * One intent's spend from the tokens and calls counted for it: each layer's tokens priced by model (as colonySpend does)
+ * and its calls summed by layer. A call that reported no tokens counts as a call and prices at nothing.
+ */
+export function intentSpend(intentId: Id, usage: readonly IntentUsage[]): IntentSpend {
+  const s = colonySpend(usage, 0);
+  const calls = zeroLayers();
+  for (const u of usage) {
+    const layer: SpendLayer = SPEND_LAYERS.includes(u?.layer) ? u.layer : "other";
+    calls[layer] += wholeCount(u?.calls);
+  }
+  return { intentId, usd: s.usd, byLayer: s.byLayer, calls, tokens: s.tokens, byModel: s.byModel, unpriced: s.unpriced, priceDate: s.priceDate };
+}
+
+/** True when any token was counted for the intent (nothing counted reads as no spend, never as a spend of zero). */
+export function spentOnIntent(spend: IntentSpend | IntentSpendBrief | null | undefined): spend is IntentSpend | IntentSpendBrief {
+  return !!spend && typeof spend.usd === "number" && !!spend.tokens && wholeCount(spend.tokens.input) + wholeCount(spend.tokens.output) > 0;
+}
+
+/** The short form of an intent's spend for a listing, or null when nothing was counted for it. */
+export function intentSpendBrief(spend: IntentSpend | null | undefined): IntentSpendBrief | null {
+  if (!spentOnIntent(spend) || !("calls" in spend)) return null;
+  const byLayer: IntentSpendBrief["byLayer"] = {};
+  for (const l of SPEND_LAYERS) {
+    const calls = wholeCount(spend.calls?.[l]);
+    const usd = typeof spend.byLayer?.[l] === "number" && spend.byLayer[l] > 0 ? spend.byLayer[l] : 0;
+    if (calls > 0 || usd > 0) byLayer[l] = { usd, calls };
+  }
+  const brief: IntentSpendBrief = { usd: spend.usd, byLayer, tokens: { input: wholeCount(spend.tokens.input), output: wholeCount(spend.tokens.output) } };
+  if (Object.keys(spend.unpriced ?? {}).length > 0) brief.unpriced = true;
+  return brief;
+}
+
+/** Whether some of the intent's tokens had no list price, from either form. */
+function intentUnpriced(spend: IntentSpend | IntentSpendBrief): boolean {
+  return "calls" in spend ? Object.keys(spend.unpriced ?? {}).length > 0 : spend.unpriced === true;
+}
+
+/** "$0.0004 of model calls" (with " (some unpriced)" when a model had no list price), or null when nothing was counted for the intent. */
+export function intentSpendLine(spend: IntentSpend | IntentSpendBrief | null | undefined): string | null {
+  if (!spentOnIntent(spend)) return null;
+  return `${usdText(spend.usd)} of model calls${intentUnpriced(spend) ? " (some unpriced)" : ""}`;
+}
+
+/** Each layer that called, with its calls: "agents $0.0003 in 2 calls, review $0.0001 in 1 call". */
+function layerCalls(spend: IntentSpend | IntentSpendBrief): string {
+  const parts: string[] = [];
+  for (const l of SPEND_LAYERS) {
+    const usd = "calls" in spend ? (spend.byLayer?.[l] ?? 0) : (spend.byLayer?.[l]?.usd ?? 0);
+    const calls = "calls" in spend ? wholeCount(spend.calls?.[l]) : wholeCount(spend.byLayer?.[l]?.calls);
+    if (calls === 0 && !(usd > 0)) continue;
+    parts.push(`${LAYER_TEXT[l]} ${usdText(usd)} in ${calls.toLocaleString("en-US")} call${calls === 1 ? "" : "s"}`);
+  }
+  return parts.join(", ");
+}
+
+/**
+ * The intent's spend by layer with each layer's calls, its tokens and where the prices come from, in one sentence
+ * (a tooltip, or the detail beside a line). Empty when nothing was counted for the intent.
+ */
+export function intentSpendDetail(spend: IntentSpend | IntentSpendBrief | null | undefined, priceDate = PRICE_DATE): string {
+  if (!spentOnIntent(spend)) return "";
+  const n = (x: number): string => wholeCount(x).toLocaleString("en-US");
+  const date = "calls" in spend && spend.priceDate ? spend.priceDate : priceDate;
+  const layers = layerCalls(spend);
+  const unpriced = intentUnpriced(spend) ? "; some tokens had no list price and count in no dollar sum" : "";
+  return `${layers ? `${layers}; ` : ""}${n(spend.tokens.input)} input and ${n(spend.tokens.output)} output tokens at Workers AI list prices on ${date}${unpriced}.`;
 }

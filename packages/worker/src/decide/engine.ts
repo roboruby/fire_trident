@@ -125,6 +125,8 @@ export interface DecideHost {
   prelandCovers?(p: Proposal): boolean;
   /** Tests before landing: run the test files a proposal reaches (`texts`: its new files already read); null when they do not cover it. */
   preland?(p: Proposal, texts?: ReadonlyMap<Sha, string>): Promise<PrelandOutcome | null>;
+  /** Spend per intent (FT_INTENT_SPEND, colony/intentspend.ts): one of the stage's model calls, for the proposal's intent, as it happens; a host without it counts none. */
+  countIntentCall?(intentId: Id, layer: "review" | "judge", model: string, usage: { input?: number; output?: number } | null): void;
 }
 
 /** Decide runs in flight per colony. Most finish in the deterministic stage without a model call. */
@@ -373,6 +375,8 @@ export class DecideEngine {
         this.host.bump("decide.clef.tokens", r.tokens);
         // Per model too, for the colony's spend (colony/spend.ts).
         for (const [name, delta] of spendCounters("decide.clef", policy.reflexModel, { input: r.tokens })) this.host.bump(name, delta);
+        // And for the proposal's intent (spend per intent, FT_INTENT_SPEND).
+        this.host.countIntentCall?.(p.intentId, "review", policy.reflexModel, { input: r.tokens });
       } catch (err) {
         reflex = null;
         clefError = errorText(err);
@@ -578,6 +582,7 @@ export class DecideEngine {
           this.host.bump("decide.llm.tokensOut", r.tokens.out);
           // Per model too, for the colony's spend (colony/spend.ts).
           for (const [name, delta] of spendCounters("decide.llm", model, { input: r.tokens.in, output: r.tokens.out })) this.host.bump(name, delta);
+          this.host.countIntentCall?.(p.intentId, "review", model, { input: r.tokens.in, output: r.tokens.out });
           return { opinion: r.opinion, model, ms: Date.now() - t0, error: "" };
         } catch (err) {
           error = errorText(err);

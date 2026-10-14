@@ -21,11 +21,12 @@ import type {
   Rule,
 } from "@fire_trident/core";
 import type { StuckAction, StuckItem, StuckReport } from "@fire_trident/core";
+import type { IntentSpend } from "@fire_trident/core";
 import { changeSize, dangerLines, lookHereFirst, parseHunks, reviewOf, visible, type DiffLine, type ReviewFile, type ReviewView } from "./review.ts";
 import { whySummary } from "./spec.ts";
 import { megafileLines } from "./megafile.ts";
 import { signatureLines } from "./signatures.ts";
-import { spendLine } from "./spend.ts";
+import { intentSpendDetail, intentSpendLine, spendLine } from "./spend.ts";
 import { acceptanceRows } from "./acceptance.ts";
 import { prelandLine } from "./preland.ts";
 
@@ -1102,6 +1103,8 @@ export interface IntentShowResult {
   directives?: Array<{ id: string; kind: string; agentId: string; message: string; by: string; at: number; deliveredAt?: number; via?: string }>;
   /** The reports agents made on it, newest first (servers before reports send none). */
   escalations?: IntentEscalation[];
+  /** What its model calls cost, where the colony counts per intent (FT_INTENT_SPEND); servers before it, and intents nothing was counted for, send none. */
+  spend?: IntentSpend;
 }
 
 const ANSWERED: Record<string, string> = { amend: "amended", withdraw: "withdrawn", dismiss: "dismissed" };
@@ -1120,6 +1123,9 @@ export function formatIntentShow(res: IntentShowResult, c: Colors, now: number):
   if (i.footprint?.length) out.push(`  ${c.dim("footprint".padEnd(10))}${paths(i.footprint, 4)}`);
   if (i.withdrawnReason) out.push(`  ${c.dim("withdrawn".padEnd(10))}${i.withdrawnReason}`);
   if (i.why) out.push(`  ${c.dim("why".padEnd(10))}${cut(i.why.replace(/\s+/g, " "), 160)}`);
+  // What its model calls cost, as the colony priced them (spend.ts); a server that does not count per intent sends none.
+  const spent = intentSpendLine(res.spend);
+  if (spent) out.push(`  ${c.dim("spend".padEnd(10))}${spent}${c.dim(` (${intentSpendDetail(res.spend).replace(/\.$/, "")})`)}`);
   const reports = res.escalations && res.escalations.length > 0 ? res.escalations : i.escalation ? [i.escalation] : [];
   for (const [n, e] of reports.slice(0, 5).entries()) out.push(`  ${c.dim((n === 0 ? "report" : "").padEnd(10))}${reportLine(e, c, now)}`);
   for (const r of res.revisions ?? []) {

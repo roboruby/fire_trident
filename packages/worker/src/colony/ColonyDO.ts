@@ -167,7 +167,8 @@ import { a2aTasks, type A2APage, type A2AQuery } from "./a2a.ts";
 import { REVIEW_MOVED, cleanMovedBy, movedCollision, movedReturn, type StalePath } from "./movedby.ts";
 import { PROTECT_META, isProtectStop, parseProtectRecord, protectChanged, protectLandedText, type ProtectHost, type ProtectOutcome, type ProtectRecord } from "./protect.ts";
 import { SpendBook, modelOfClass, resolverClient, spendCounters } from "./spend.ts";
-import type { ColonySpend } from "@fire_trident/core";
+import type { ColonySpend, IntentSpendBrief } from "@fire_trident/core";
+import { IntentSpendBook, intentSpendEnabled, type IntentSpendAnswer } from "./intentspend.ts";
 
 /**
  * Result of ColonyDO.take: an assignment, or advice to wait and retry. `review`: what review will
@@ -763,6 +764,8 @@ export class ColonyDO extends DurableObject<Env> {
     const stuck = this.stuckReport(now);
     // Megafile alarm (colony/megafile.ts): the files held for their split, while FT_MEGAFILE covers the colony.
     const megafiles = this.megafileReportSafe();
+    // Spend per intent (colony/intentspend.ts), for the Intents tab's rows; absent when nothing was counted per intent.
+    const intentSpend = this.intentSpendMap();
     return {
       colony: certification || publish ? { ...colony, ...(certification ? { certification } : {}), ...(publish ? { publish } : {}) } : colony,
       files,
@@ -777,6 +780,7 @@ export class ColonyDO extends DurableObject<Env> {
       convergence: this.convergence(violations.total),
       ...(stuck ? { stuck } : {}),
       ...(megafiles ? { megafiles } : {}),
+      ...(intentSpend ? { intentSpend } : {}),
     };
   }
 
@@ -2680,6 +2684,8 @@ export class ColonyDO extends DurableObject<Env> {
             ...(r.escalated_from ? { escalatedFrom: r.escalated_from } : {}),
           })),
       bump: (name, delta) => void this.bump(name, delta, Date.now()),
+      // Spend per intent (FT_INTENT_SPEND, colony/intentspend.ts): the stage's calls, counted for the proposal's intent.
+      countIntentCall: (intentId, layer, model, usage) => this.intentSpends().count(intentId, layer, model, usage, Date.now()),
       setMetric: (name, value) => this.setMetric(name, value, Date.now()),
       emit: (events) => void this.publish(events),
       trunk: () => this.trunkStub() as unknown as TrunkRpc,
@@ -3335,7 +3341,7 @@ export class ColonyDO extends DurableObject<Env> {
     const limiter = this.contestLimiter();
     limiter.configure(policy.llmConcurrency, policy.llmPerMinute);
     return pairJudge({
-      ai: this.judgeSpend(ai),
+      ai: this.judgeSpend(ai, intent.id),
       models: judgeModels(authors, policy.secondOpinionModels),
       limiter,
       intent: { title: intent.title, why: intent.why, whyBy: whyAuthor(intent.source), ...(intent.acceptance ? { acceptance: intent.acceptance } : {}) },
@@ -3348,7 +3354,7 @@ export class ColonyDO extends DurableObject<Env> {
    * (decide.llm.tokensIn and decide.llm.tokensOut, where the second opinion's go: the judge runs on
    * the same second-opinion models). The answer itself passes through untouched.
    */
-  private judgeSpend(ai: AiRunner): AiRunner {
+  private judgeSpend(ai: AiRunner, intentId: Id): AiRunner {
     return {
       run: async (model, input, options) => {
         const res = await (options === undefined ? ai.run(model, input) : ai.run(model, input, options));
@@ -3358,6 +3364,8 @@ export class ColonyDO extends DurableObject<Env> {
         if (usage && usage.output > 0) this.bump("decide.llm.tokensOut", usage.output, now);
         // Per model too, as the contest judge's own layer of the colony's spend (colony/spend.ts).
         for (const [name, delta] of spendCounters("contest.judge", model, usage)) this.bump(name, delta, now);
+        // And for the contested intent (spend per intent, FT_INTENT_SPEND).
+        this.intentSpends().count(intentId, "judge", model, usage, now);
         return res;
       },
     };
@@ -4017,6 +4025,7 @@ export class ColonyDO extends DurableObject<Env> {
     convergence: Convergence;
     stuck?: StuckReport;
     spend?: ColonySpend;
+    intentSpend?: Record<Id, IntentSpendBrief>;
   }> {
     const colony = this.requireColony();
     const now = Date.now();
@@ -4036,7 +4045,9 @@ export class ColonyDO extends DurableObject<Env> {
     };
     // Model spend (colony/spend.ts): left out when it cannot be computed; the rest of the report stands.
     const spend = await this.spendReport(now, metrics);
-    return spend ? { ...report, spend } : report;
+    // Spend per intent (colony/intentspend.ts), for the Intents tab's rows; absent when nothing was counted per intent.
+    const intentSpend = this.intentSpendMap();
+    return { ...report, ...(spend ? { spend } : {}), ...(intentSpend ? { intentSpend } : {}) };
   }
 
   /** What the colony's model calls cost so far (colony/spend.ts), for the status GET /api/colonies/:id serves; null before init. */
@@ -4069,6 +4080,42 @@ export class ColonyDO extends DurableObject<Env> {
       console.warn(`spend report failed: ${errorText(err)}`);
       return undefined;
     }
+  }
+
+  /** The per-intent book (colony/intentspend.ts), made on first use; it counts only where FT_INTENT_SPEND covers the colony. */
+  private intentSpendRun: IntentSpendBook | null = null;
+
+  private intentSpends(): IntentSpendBook {
+    return (this.intentSpendRun ??= new IntentSpendBook(this.sql, () => {
+      const id = this.loadColony()?.colony.id;
+      return !!id && intentSpendEnabled(this.env.FT_INTENT_SPEND, id);
+    }));
+  }
+
+  /** The spend of the intents counted per intent, by id, for a listing; null when nothing was counted or it cannot be computed (logged). */
+  private intentSpendMap(): Record<Id, IntentSpendBrief> | null {
+    try {
+      return this.intentSpends().map();
+    } catch (err) {
+      console.warn(`intent spend map failed: ${errorText(err)}`);
+      return null;
+    }
+  }
+
+  /**
+   * What one intent's model calls cost (GET /api/colonies/:id/intents/:iid/spend; colony/intentspend.ts): the agents'
+   * calls on its takes and the decide stage's on its changes, counted where FT_INTENT_SPEND covers the colony. The
+   * journals due a read are read first, so a finished take's calls are in the answer. Null for an unknown intent.
+   */
+  async intentSpend(intentId: Id): Promise<IntentSpendAnswer | null> {
+    this.requireColony();
+    if (!this.intentRow(intentId)) return null;
+    try {
+      await this.spendBook().refreshed(Date.now());
+    } catch (err) {
+      console.warn(`intent spend: journal reads failed: ${errorText(err)}`);
+    }
+    return this.intentSpends().report(intentId);
   }
 
   /**

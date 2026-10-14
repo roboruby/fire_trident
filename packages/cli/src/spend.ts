@@ -1,4 +1,4 @@
-import type { ColonySpend } from "@fire_trident/core";
+import type { ColonySpend, IntentSpend, SpendLayer } from "@fire_trident/core";
 
 /**
  * The spend line of `ft status`: what the colony's model calls cost so far, as the colony priced them (`spend` on GET
@@ -24,4 +24,44 @@ export function spendLine(spend: ColonySpend | null | undefined): string | null 
   const total = `${usdText(spend.usd)} of model calls${some}`;
   const per = spend.perLandedIntent;
   return typeof per === "number" && Number.isFinite(per) ? `${total} · ${usdText(per)} a landed intent` : total;
+}
+
+/** True when any token was counted for the intent (the server sends `spend` on GET /intents/:iid only then; a reply from an older server has none). */
+function spentOnIntent(spend: IntentSpend | null | undefined): spend is IntentSpend {
+  return !!spend && typeof spend.usd === "number" && !!spend.tokens && tokens(spend.tokens.input) + tokens(spend.tokens.output) > 0;
+}
+
+/** "$0.0004 of model calls" (with " (some unpriced)" when a model had no list price), or null when nothing was counted for the intent. */
+export function intentSpendLine(spend: IntentSpend | null | undefined): string | null {
+  if (!spentOnIntent(spend)) return null;
+  const some = Object.keys(spend.unpriced ?? {}).length > 0 ? " (some unpriced)" : "";
+  return `${usdText(spend.usd)} of model calls${some}`;
+}
+
+/** The layers in the order every report lists them, as core/pricing.ts reads them in a sentence. */
+const LAYERS: ReadonlyArray<[SpendLayer, string]> = [
+  ["agents", "agents"],
+  ["review", "review"],
+  ["judge", "contest judge"],
+  ["resolver", "conflict resolver"],
+  ["other", "other"],
+];
+
+/**
+ * The intent's spend by layer with each layer's calls, its tokens and where the prices come from, in one sentence, as
+ * core/pricing.ts intentSpendDetail writes it. Empty when nothing was counted for the intent.
+ */
+export function intentSpendDetail(spend: IntentSpend | null | undefined): string {
+  if (!spentOnIntent(spend)) return "";
+  const n = (x: number): string => tokens(x).toLocaleString("en-US");
+  const parts: string[] = [];
+  for (const [l, text] of LAYERS) {
+    const usd = typeof spend.byLayer?.[l] === "number" && spend.byLayer[l] > 0 ? spend.byLayer[l] : 0;
+    const calls = tokens(spend.calls?.[l]);
+    if (calls === 0 && !(usd > 0)) continue;
+    parts.push(`${text} ${usdText(usd)} in ${n(calls)} call${calls === 1 ? "" : "s"}`);
+  }
+  const unpriced = Object.keys(spend.unpriced ?? {}).length > 0 ? "; some tokens had no list price and count in no dollar sum" : "";
+  const date = typeof spend.priceDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(spend.priceDate) ? ` on ${spend.priceDate}` : "";
+  return `${parts.length ? `${parts.join(", ")}; ` : ""}${n(spend.tokens.input)} input and ${n(spend.tokens.output)} output tokens at Workers AI list prices${date}${unpriced}.`;
 }

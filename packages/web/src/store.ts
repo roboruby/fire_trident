@@ -24,11 +24,11 @@ import type {
 } from "@fire_trident/core";
 import type { StuckAction, StuckItem, StuckKind, StuckRepairState } from "@fire_trident/core";
 import type { MovedBy } from "@fire_trident/core";
-import type { ColonySpend } from "@fire_trident/core";
+import type { ColonySpend, IntentSpendBrief } from "@fire_trident/core";
 import { finite } from "./format.ts";
 import { movedByOf } from "./moved.ts";
 import { parseSeries, type Series } from "./series.ts";
-import { parseSpend } from "./spend.ts";
+import { parseIntentSpendMap, parseSpend } from "./spend.ts";
 import { KIND_INDEX, KINDS, decayed } from "./theme.ts";
 
 /** Connection state shown in the top bar. */
@@ -593,6 +593,8 @@ export class ColonyStore {
   series: Series | null = null;
   /** What the colony's model calls cost so far (spend.ts; null for the simulator, replays and older servers). */
   spend: ColonySpend | null = null;
+  /** What each intent's model calls cost, by intent id, where the colony counts per intent (FT_INTENT_SPEND); empty otherwise. */
+  readonly intentSpend = new Map<Id, IntentSpendBrief>();
   readonly sigma = new Map<string, { sigma: number; at: number }>();
 
   private ring: Array<LoggedEvent | undefined> = new Array<LoggedEvent | undefined>(LOG_CAP);
@@ -782,6 +784,8 @@ export class ColonyStore {
     for (const [k, v] of Object.entries(s.metrics ?? {})) if (typeof v === "number" && Number.isFinite(v)) this.metrics.set(metricKey(k), v);
     this.series = parseSeries((s as { series?: unknown }).series);
     this.spend = parseSpend((s as { spend?: unknown }).spend);
+    this.intentSpend.clear();
+    for (const [id, b] of parseIntentSpendMap((s as { intentSpend?: unknown }).intentSpend) ?? []) this.intentSpend.set(id, b);
     // A server without the stuck-work detector sends no report: nothing is stuck as far as this page knows.
     this.stuck.clear();
     this.stuckMore = 0;
@@ -834,6 +838,15 @@ export class ColonyStore {
     const next = parseSpend(raw);
     if (!next) return;
     this.spend = next;
+    this.bump();
+  }
+
+  /** Replace the spend per intent with the server's (a periodic /metrics refresh); a reply without one changes nothing. */
+  applyIntentSpend(raw: unknown): void {
+    const next = parseIntentSpendMap(raw);
+    if (!next) return;
+    this.intentSpend.clear();
+    for (const [id, b] of next) this.intentSpend.set(id, b);
     this.bump();
   }
 

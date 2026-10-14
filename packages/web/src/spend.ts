@@ -1,5 +1,5 @@
 import { PRICE_DATE, SPEND_LAYERS } from "@fire_trident/core";
-import type { ColonySpend, ModelSpend, SpendLayer } from "@fire_trident/core";
+import type { ColonySpend, Id, IntentSpendBrief, ModelSpend, SpendLayer } from "@fire_trident/core";
 
 /**
  * A colony's model spend as the server reports it (`spend` on GET /api/colonies/:id and /metrics), read defensively:
@@ -43,4 +43,33 @@ export function parseSpend(raw: unknown): ColonySpend | null {
     priceDate: typeof raw.priceDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(raw.priceDate) ? raw.priceDate : PRICE_DATE,
     ...(unread > 0 ? { agentsUnread: unread } : {}),
   };
+}
+
+/** An intent's spend in its short form (IntentSpendBrief), read defensively, or null when `raw` is not one. */
+export function parseIntentSpendBrief(raw: unknown): IntentSpendBrief | null {
+  if (!isObj(raw) || typeof raw.usd !== "number" || !Number.isFinite(raw.usd) || !isObj(raw.tokens)) return null;
+  const layers = isObj(raw.byLayer) ? raw.byLayer : {};
+  const byLayer: IntentSpendBrief["byLayer"] = {};
+  for (const l of SPEND_LAYERS) {
+    const v = layers[l];
+    if (isObj(v)) byLayer[l] = { usd: num(v.usd), calls: Math.floor(num(v.calls)) };
+  }
+  const out: IntentSpendBrief = { usd: num(raw.usd), byLayer, tokens: { input: num(raw.tokens.input), output: num(raw.tokens.output) } };
+  if (raw.unpriced === true) out.unpriced = true;
+  return out;
+}
+
+/**
+ * The spend per intent in `raw` (`intentSpend` on GET /api/colonies/:id and /metrics), by intent id, or null when there
+ * is none (a server without it, a colony that counts nothing per intent, a mock or a replay). Entries that do not read
+ * as an intent's spend are left out.
+ */
+export function parseIntentSpendMap(raw: unknown): Map<Id, IntentSpendBrief> | null {
+  if (!isObj(raw)) return null;
+  const out = new Map<Id, IntentSpendBrief>();
+  for (const [id, v] of Object.entries(raw)) {
+    const brief = parseIntentSpendBrief(v);
+    if (brief) out.set(id, brief);
+  }
+  return out;
 }

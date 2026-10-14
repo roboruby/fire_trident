@@ -156,12 +156,14 @@ export class HttpBackend implements Backend {
     window.clearInterval(this.seriesTimer);
     this.seriesTimer = window.setInterval(() => {
       if (this.stopped || !this.store?.loaded || document.hidden) return;
-      this.getJson<{ series?: unknown; stuck?: unknown; spend?: unknown }>("/metrics")
+      this.getJson<{ series?: unknown; stuck?: unknown; spend?: unknown; intentSpend?: unknown }>("/metrics")
         .then((m) => {
           this.store?.applySeries(m?.series);
           this.store?.applyStuck(m?.stuck);
           // Model spend moves as agents work: the top bar shows the colony's latest.
           this.store?.applySpend(m?.spend);
+          // And what each intent's calls cost so far, for the Intents tab's rows.
+          this.store?.applyIntentSpend(m?.intentSpend);
         })
         .catch(() => undefined);
     }, 30_000);

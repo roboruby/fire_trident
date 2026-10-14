@@ -6,7 +6,8 @@ import { WorkspaceGit } from "./gitfs.ts";
 import { SqlJournal } from "./journal.ts";
 import { modelClient, resolveModel } from "./llm.ts";
 import { DEFAULT_TICK_BUDGET_MS, agentState, receiveDirective, stopAgent, tick } from "./loop.ts";
-import type { AgentConfig, HistoryEntry, Job, JobStep, LoopDeps, StepLogEntry } from "./loop.ts";
+import type { AgentConfig, AgentIntentUsage, HistoryEntry, Job, JobStep, LoopDeps, StepLogEntry } from "./loop.ts";
+import { intentSpendEnabled } from "../colony/intentspend.ts";
 import { OutcomeBox, regionNames, type ClaimRefresher, type PushedOutcome } from "./outcomes.ts";
 import { colonyStub, errorMessage, trunkBlobsStub } from "./rpc.ts";
 import type { AgentStartParams } from "./rpc.ts";
@@ -35,6 +36,8 @@ export interface AgentStatus extends AgentInfo {
   stopReason?: string;
   history: HistoryEntry[];
   steps: StepLogEntry[];
+  /** Model calls by intent and model (spend per intent, FT_INTENT_SPEND); absent when none was counted. */
+  intentUsage?: AgentIntentUsage[];
 }
 
 /**
@@ -95,6 +98,8 @@ export class AgentDO extends DurableObject<Env> {
       outcome: (proposalId) => this.outcomes.get(proposalId),
       refreshClaims: (job) => this.refreshClaims(colonyId, job),
       virtual: { on: virtualCheckoutEnabled(this.env.FT_VIRTUAL_CHECKOUT, colonyId), reads: new VirtualReads(objects, SHARED_OBJECTS) },
+      // Spend per intent (colony/intentspend.ts): each call counted under the job's intent too, where the flag covers the colony.
+      intentSpend: intentSpendEnabled(this.env.FT_INTENT_SPEND, colonyId),
     };
   }
 
@@ -239,6 +244,9 @@ export class AgentDO extends DurableObject<Env> {
       history: this.journal.history(10),
       steps: this.journal.steps(20),
     };
+    // Spend per intent (FT_INTENT_SPEND): the colony's spend book reads these rows with the counters.
+    const intentUsage = this.journal.intentUsage();
+    if (intentUsage.length > 0) out.intentUsage = intentUsage;
     if (cfg?.model) out.model = cfg.model;
     if (cfg?.lastError) out.lastError = cfg.lastError;
     if (cfg?.stopReason) out.stopReason = cfg.stopReason;
