@@ -13,6 +13,7 @@ import { Prongs } from "./Prongs.tsx";
 import { Questions } from "./Questions.tsx";
 import { Results } from "./Results.tsx";
 import { RunIt, SERVER } from "./RunIt.tsx";
+import { TryIt } from "./TryIt.tsx";
 import "./landing.css";
 
 const REPO = "https://github.com/roboruby/fire_trident";
@@ -104,6 +105,7 @@ export function Landing() {
         </a>
         <nav className="l-links">
           <a href="#results">Results</a>
+          <a href="#try">Try it</a>
           <a href="#colonies">Colonies</a>
           <a href="#how">How it works</a>
           <a href="#run">Run it</a>
@@ -144,6 +146,8 @@ export function Landing() {
       <Results />
 
       <Compared />
+
+      <TryIt />
 
       <Questions />
 

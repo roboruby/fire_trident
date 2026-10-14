@@ -1622,3 +1622,258 @@ a.lc:hover .lc-open {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* try the rules: the core's checks run on the visitor's own text (TryIt.tsx, tryit.ts) */
+
+.tr {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+}
+
+.tr-scene {
+  min-width: 0;
+  padding: 20px 22px 22px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #090d14;
+  scroll-margin-top: 24px;
+}
+
+.tr-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.tr-n {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid rgba(243, 128, 32, 0.45);
+  border-radius: 50%;
+  font-size: 12.5px;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent-2);
+}
+
+.tr-name {
+  margin: 3px 0 0;
+  font-size: 19px;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -0.015em;
+  text-wrap: balance;
+}
+
+.tr-cap {
+  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-3);
+  text-wrap: pretty;
+}
+
+.tr-cap code {
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: #131a26;
+  font: 12px var(--mono);
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+
+.tr-presets {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 16px;
+}
+
+.tr-presets-k {
+  margin-right: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.tr-preset {
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--line-2);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.tr-preset:hover {
+  border-color: #3a475e;
+  color: var(--text);
+}
+
+.tr-inputs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.tr-cols-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.tr-col {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  min-width: 0;
+}
+
+.tr-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.tr-k {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-4);
+  overflow-wrap: anywhere;
+}
+
+.tr-field textarea,
+.tr-field input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 9px 11px;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  outline: none;
+  background: #080b11;
+  color: #dbe4f1;
+  font: 12.5px / 1.55 var(--mono);
+  tab-size: 2;
+  resize: vertical;
+}
+
+.tr-field input {
+  font-family: var(--sans);
+  font-size: 14px;
+}
+
+.tr-field input.mono {
+  font-family: var(--mono);
+  font-size: 12.5px;
+}
+
+.tr-field textarea:focus,
+.tr-field input:focus {
+  border-color: rgba(243, 128, 32, 0.6);
+}
+
+.tr-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.tr-check input {
+  accent-color: var(--accent);
+}
+
+/* The outcome: green when the change lands or goes on, amber when it is held or goes back. */
+.tr-result {
+  margin: 14px 0 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line-2);
+  border-left-width: 3px;
+  border-radius: 0 8px 8px 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+  text-wrap: pretty;
+}
+
+.tr-result + .tr-result {
+  margin-top: 8px;
+}
+
+.tr-result.is-clear {
+  border-left-color: var(--trail);
+}
+
+.tr-result.is-held {
+  border-left-color: var(--need);
+}
+
+.tr-who {
+  margin-right: 6px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.tr-lane {
+  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-3);
+  text-wrap: pretty;
+}
+
+.tr-out {
+  margin-top: 12px;
+}
+
+.tr-out pre {
+  margin: 6px 0 0;
+  padding: 12px 14px;
+  overflow-x: auto;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  background: #080b11;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: #dbe4f1;
+}
+
+@media (max-width: 900px) {
+  .tr-inputs,
+  .tr-cols-2 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 520px) {
+  .tr-scene {
+    padding: 16px 14px 18px;
+  }
+  /* 16px keeps phones from zooming into a field on focus. */
+  .tr-field textarea,
+  .tr-field input,
+  .tr-field input.mono {
+    font-size: 16px;
+  }
+  /* The merged text wraps rather than scrolling sideways. */
+  .tr-out pre {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+}
