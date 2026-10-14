@@ -722,7 +722,7 @@ Commands
 Global options
   --json         Machine-readable output (one JSON object per line for watch)
   --dry-run      Print the HTTP request(s) instead of sending them
-  --url <url>    Server (default: $FT_URL, else https://firetrident.mattsolt.workers.dev)
+  --url <url>    Server (default: $FT_URL, else https://firetrident.com)
   -h, --help     Help for a command: ft <command> --help
   --version      Print the version
 

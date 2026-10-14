@@ -38,7 +38,7 @@ import type { Command } from "./args.ts";
  */
 
 /** The server used when neither --url nor FT_URL is given. */
-export const DEFAULT_URL = "https://firetrident.mattsolt.workers.dev";
+export const DEFAULT_URL = "https://firetrident.com";
 
 /** CLI version, printed by `ft --version` and sent as the user agent. */
 export const VERSION = "0.0.1";

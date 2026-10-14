@@ -17,7 +17,7 @@ npx fire_trident review openspec-w1 --diff   # a change waiting for a person, co
 Colonies are plain git too. The `certified` branch only moves to commits whose tests passed, and the lineage notes travel with the repository:
 
 ```sh
-git clone -b certified https://firetrident.mattsolt.workers.dev/git/shortlinks.git
+git clone -b certified https://firetrident.com/git/shortlinks.git
 cd shortlinks && git fetch origin refs/notes/firetrident:refs/notes/firetrident && git log --notes=firetrident -3
 ```
 
