@@ -1,0 +1,12 @@
+colony p25-hono2: $0.046 of model calls (agents $0.046, review $0.0003); 283 intents landed, 240652 input / 17698 output tokens, prices of 2026-10-12
+intents counted per intent: 283 (of 200 in the snapshot, 200 landed)
+  sum over intents: $0.046 (agents $0.046, review $0.0003)
+  colony total less the uncounted layers (conflict resolver and other, $0.0000): $0.046
+  gap: +0.00000000 (tolerance 0.00047104)
+  OK: the intents add up to the colony's spend
+intent int_mv8ppqpifg5xac "Relative imports in src name their file, so Hono runs on Deno, JSR and Node built-in TypeScript without the unstable sloppy-imports flag in src/validator/validator.ts": $0.0001 of model calls
+  agents: $0.0001 in 1 call
+  @cf/google/gemma-4-26b-a4b-it: 1091 input / 98 output tokens, $0.0001
+  the intent's changes landed on deterministic proof without a model call in review, so only its agents spent
+  OK: the intent shows what its takes cost
+exit 0
