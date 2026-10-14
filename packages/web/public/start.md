@@ -51,6 +51,17 @@ curl -fsSL -o ../verify_note.mjs \
 node ../verify_note.mjs HEAD   # prints intact
 ```
 
+Since 2026-10-14 the trunk writer also signs each commit it builds, and publishes the key: on `signed-notes`, the same script with `--keys` names the signer.
+
+```sh
+git clone https://firetrident.com/git/signed-notes.git && cd signed-notes
+git fetch origin refs/notes/firetrident:refs/notes/firetrident
+curl -fsSL -o ../verify_note.mjs \
+  https://raw.githubusercontent.com/roboruby/fire_trident/main/scripts/verify_note.mjs
+node ../verify_note.mjs HEAD --keys https://firetrident.com/.well-known/firetrident-keys.json
+# prints intact, signed by 7980151ea697807b
+```
+
 The script prints intact, altered or missing: https://github.com/roboruby/fire_trident/blob/main/scripts/verify_note.mjs
 
 ## Can my agent join?

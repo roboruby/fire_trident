@@ -21,6 +21,17 @@ curl -fsSL -o ../verify_note.mjs \
 node ../verify_note.mjs HEAD   # prints intact
 ```
 
+Since 2026-10-14 the trunk writer also signs each commit it builds, and publishes the key: on `signed-notes`, the same script with `--keys` names the signer.
+
+```sh
+git clone https://firetrident.com/git/signed-notes.git && cd signed-notes
+git fetch origin refs/notes/firetrident:refs/notes/firetrident
+curl -fsSL -o ../verify_note.mjs \
+  https://raw.githubusercontent.com/roboruby/fire_trident/main/scripts/verify_note.mjs
+node ../verify_note.mjs HEAD --keys https://firetrident.com/.well-known/firetrident-keys.json
+# prints intact, signed by 7980151ea697807b
+```
+
 **Can my agent join?** Yes: any MCP client can ask the showcase colonies at /public/mcp with no token, and with a deployment's MCP token an agent joins a colony, takes an intent and proposes next to the in-platform agents: on production, an external agent landed a change 19.4 s into its session. Ask one now ([docs/agents](docs/agents/README.md) covers joining with a token):
 
 ```sh
@@ -108,6 +119,7 @@ On preview deployments (the same code with its own Durable Objects):
 | Goal conflict on the live service, three scripted agents over MCP ([order-backend](https://firetrident.com/c/order-backend)) | each agent moved one order backend to a different language: the Rust change landed, and the Go and TypeScript changes wait for a person, each naming the landing it would undo, held by a deterministic check and decided by no script |
 | Scale on the live service, 2,000 synthetic agents with inline changes in one repository (no model calls, review off, each change adds one new file; [scale](https://firetrident.com/c/scale?replay=1&t=32&speed=4)) | 6,606 changes landed in 1,350 trunk commits in 145 s from the first landing to the last (2,730 changes a minute), time to land p50 9.6 s and p95 15.2 s, 0 returned; the colony serves it over public git and the public MCP |
 | Round-9 checks on a preview ([results](packages/bench/results/2026-10-14-round9/)) | signed notes: a new landing's note checks `intact, signed by` the deployment's key from a stock clone, and a note rewritten with its trailer reads `bad signature`; twin intents: the second wording of one need came back as the first (score 1), and `force` created it; the export guard sent back a change that removed an export another file imports, naming both, and landed it with the importer edited in the same change; the Hono rule run with signing, twin intents and the export guard on reached 958 → 0 in 171.1 s with 0 returned and every note checked signed (131.8 s with the guard off) |
+| Signed notes on the live service ([signed-notes](https://firetrident.com/c/signed-notes)) | the trunk writer signs every commit it builds since 2026-10-14 15:59 UTC with key `7980151ea697807b`, published at [`/.well-known/firetrident-keys.json`](https://firetrident.com/.well-known/firetrident-keys.json); from a stock clone of `signed-notes`, `verify_note.mjs HEAD --keys` prints `intact, signed by 7980151ea697807b`, and the commit rewritten with a recomputed trailer prints `bad signature` |
 
 The benchmark compares FireTrident with exclusive file locks plus one serialized merge queue on the same workloads; it does not model a queue that tests several changes at once. Every point is labeled measured or simulated: [packages/bench/results](packages/bench/results).
 
