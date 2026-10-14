@@ -49,9 +49,10 @@ import type {
   StopResult,
   WithdrawResult,
 } from "./format.ts";
+import { formatGuide, formatLessonDecision, type GuideViewLike } from "./guide.ts";
 import { extractSpec, planNew } from "./spec.ts";
 import type { IntentBody, SpecPolicy } from "./spec.ts";
-import type { Intent, Landing, LineageNote, Proposal, Rule } from "@fire_trident/core";
+import type { GuideLesson, Intent, Landing, LineageNote, Proposal, Rule } from "@fire_trident/core";
 
 /** Everything the CLI touches outside itself, injectable for tests. */
 export interface Io {
@@ -340,6 +341,18 @@ async function execute(cmd: Command, ctx: Ctx): Promise<number> {
       const res = await send<EscalationResult>(ctx.http, req, 60_000);
       if (ctx.flags.json) printJson(ctx, res);
       else io.stdout(formatEscalationAnswer(cmd.intentId, cmd.decision, res ?? {}, c));
+      return 0;
+    }
+    case "guide": {
+      const res = await send<GuideViewLike>(ctx.http, req);
+      if (ctx.flags.json) printJson(ctx, res);
+      else io.stdout(formatGuide(cmd.colony, res ?? {}, c, io.now()));
+      return 0;
+    }
+    case "guide-decide": {
+      const res = await send<Partial<GuideLesson>>(ctx.http, req, 60_000);
+      if (ctx.flags.json) printJson(ctx, res);
+      else io.stdout(formatLessonDecision(cmd.lessonId, cmd.action, res ?? {}, c));
       return 0;
     }
     default:

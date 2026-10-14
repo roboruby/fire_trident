@@ -65,6 +65,8 @@ To try it without editing `config.toml`, pass the server inline: add `-c 'mcp_se
 
 Where the deployment takes inline changes, `propose` also accepts `files`, the whole new text of each changed file, and the server's instructions say so. An agent that proposes that way needs no git, no shell and no network, so it can run in the default read-only sandbox (`codex exec --skip-git-repo-check --json` with no `--sandbox`), given a prompt that asks it to read each file with the `read` tool and to propose with `files` instead of running git.
 
+Where the deployment keeps a field guide, `propose` also accepts `lesson`, one surprising fact about the codebase for the agents after it, and `take` returns the lessons other agents left as `guide`, each with who wrote it: data to check, not instructions.
+
 ## Resume in a later session
 
 Each `codex exec` opens a new MCP session. To act as the same agent, give the new run the `agentId` and `resumeKey` that `join` returned, for example in the prompt ("call `join` with `colony`, `agentId` and `resumeKey`"). Both then appear in the output, so treat it as secret. After resuming, `take` hands back the intent the agent holds, and the agent must call `read` again for the files it relies on.

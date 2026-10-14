@@ -58,7 +58,9 @@ export type Command =
   | { name: "revert"; colony: string; ref: string; reason: string; by?: string; redo: boolean }
   | { name: "direct"; colony: string; agentId: string; message: string; intentId?: string; by?: string }
   | { name: "escalations"; colony: string }
-  | { name: "escalation"; colony: string; intentId: string; decision: EscalationDecision; note: string; title?: string; why?: string; footprint?: string[]; by?: string };
+  | { name: "escalation"; colony: string; intentId: string; decision: EscalationDecision; note: string; title?: string; why?: string; footprint?: string[]; by?: string }
+  | { name: "guide"; colony: string }
+  | { name: "guide-decide"; colony: string; lessonId: string; action: "approve" | "reject"; reason?: string; by?: string };
 
 /** Options every command accepts. */
 export interface GlobalFlags {
@@ -107,6 +109,7 @@ const COMMAND_OPTIONS: Record<string, Record<string, OptionSpec>> = {
   direct: { intent: { type: "string" }, by: { type: "string" } },
   escalations: {},
   escalation: { note: { type: "string" }, title: { type: "string" }, why: { type: "string" }, footprint: { type: "string", multiple: true }, by: { type: "string" } },
+  guide: { reason: { type: "string" }, by: { type: "string" } },
   swarm: { agents: { type: "string" }, model: { type: "string" }, kind: { type: "string" } },
   why: {},
   verify: { limit: { type: "string" } },
@@ -474,9 +477,35 @@ function build(word: string, v: Record<string, unknown>, p: string[]): Command {
     }
     case "escalation":
       return buildEscalation(v, p);
+    case "guide":
+      return buildGuide(v, p);
     default:
       return fail(`unknown command "${word}"`);
   }
+}
+
+/** `ft guide <colony>`, or a person's decision on one lesson: `ft guide <colony> approve|reject <lessonId>`. */
+function buildGuide(v: Record<string, unknown>, p: string[]): Command {
+  const usage = "ft guide <colony> | ft guide <colony> approve|reject <lessonId> [--reason <text>] [--by <name>]";
+  noExtras(p, 3, usage);
+  const colony = colonyArg(p[0], usage);
+  if (p.length === 1) {
+    onlyFlags(v, [], "listing the guide");
+    return { name: "guide", colony };
+  }
+  const action = p[1];
+  if (action !== "approve" && action !== "reject") fail(`the action must be approve or reject; got "${action}". Usage: ${usage}`);
+  const lessonId = p[2]?.trim();
+  if (!lessonId) fail(`missing <lessonId>. Usage: ${usage}`);
+  const cmd: Extract<Command, { name: "guide-decide" }> = { name: "guide-decide", colony, lessonId, action };
+  const reason = str(v.reason)?.trim();
+  if (reason) {
+    if (reason.length > 500) fail(`--reason is ${reason.length} characters; at most 500`);
+    cmd.reason = reason;
+  }
+  const by = str(v.by)?.trim();
+  if (by) cmd.by = by;
+  return cmd;
 }
 
 function buildEscalation(v: Record<string, unknown>, p: string[]): Command {
@@ -659,6 +688,7 @@ Commands
   direct <colony> <agent> "text"   Send one agent free-text guidance mid-flight
   escalations <colony>             Agents' reports that an intent cannot be done as written
   escalation <colony> <intent>     Answer a report: amend, withdraw or dismiss
+  guide <colony>                   Lessons agents left (the field guide); approve or reject one
   swarm <colony> --agents <n>      Spawn in-platform agents
   agents <colony>                  List agents: state, intent, step, what each says it is doing
   stop <colony> <agentId>|--all    Stop one agent, or every in-platform agent
@@ -889,6 +919,24 @@ that whoever takes it next reads. The report keeps the answer.
 Examples
   ft escalation web int_42 dismiss --note "The test is right: 405 is the spec"
   ft escalation web int_42 amend --why "Return 404 for unknown slugs" --note "spec changed"
+`,
+  guide: `
+ft guide <colony>
+ft guide <colony> approve|reject <lessonId> [--reason <text>] [--by <name>]
+
+The colony's field guide (FT_FIELD_GUIDE): lessons agents left with their
+changes, each with the agent that wrote it, its model and the landing it came
+from. A lesson joins the guide once its change lands and the first
+certification of trunk after it is green, or once a person approves it; every
+take then carries the newest ones as data. A revert of its landing, a red
+certification that names its change, or a person's rejection drops it. With
+the operator token the list also shows the candidates waiting and the lessons
+dropped or retired lately. approve makes a lesson active; reject drops it.
+
+Examples
+  ft guide web
+  ft guide web approve les_42
+  ft guide web reject les_42 --reason "the router moved to src/routes"
 `,
   watch: `
 ft watch <colony> [--only <type,...>]

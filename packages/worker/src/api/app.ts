@@ -29,6 +29,7 @@ import {
 import { decideApi } from "./vaccinate.ts";
 import { inlineEnabled } from "../colony/inline.ts";
 import { certifyRoutes } from "./certify.ts";
+import { guideRoutes } from "./guide.ts";
 
 /** Hono environment of the API. */
 export type ApiEnv = { Bindings: Env };
@@ -202,6 +203,7 @@ async function requireColony(env: Env, colonyId: Id): Promise<void> {
  *   POST   /colonies/:id/swarm              spawn in-platform agents
  *   POST   /colonies/:id/swarm/stop         stop every running in-platform agent
  *   GET    /colonies/:id/certifications     trunk certification results and state (api/certify.ts; also POST certify, certify/policy)
+ *   GET    /colonies/:id/guide              the field guide's active lessons (api/guide.ts; candidates with the admin token; POST guide/:lessonId approves or rejects)
  * POST routes require the admin bearer token when FT_ADMIN_TOKEN is set; DELETE always does.
  */
 export function createApi(deps: ApiDeps): Hono<ApiEnv> {
@@ -491,6 +493,8 @@ export function createApi(deps: ApiDeps): Hono<ApiEnv> {
       ...(b.intentRevision !== undefined ? { intentRevision: b.intentRevision } : {}),
       ...(b.contents !== undefined ? { contents: b.contents } : {}),
       ...(evidence ? { evidence } : {}),
+      // Field guide (FT_FIELD_GUIDE): the agent's lesson; the answer says what became of it where the guide is on.
+      ...(b.lesson !== undefined ? { lesson: b.lesson } : {}),
     });
     return json(proposal, 201);
   });
@@ -546,6 +550,7 @@ export function createApi(deps: ApiDeps): Hono<ApiEnv> {
 
   app.route("/", decideApi); // Decide prong: vaccination meter, immune state, decide policy, detector feedback (api/vaccinate.ts)
   certifyRoutes(app, requireAdmin); // Trunk certification: results, certify now, policy (api/certify.ts)
+  guideRoutes(app, requireAdmin, isAdminRequest); // Field guide: lessons agents left, and a person's approval or rejection (api/guide.ts)
 
   // Unknown API paths answer JSON here instead of falling through to the static UI.
   app.all("*", (c) => json({ error: `no route for ${c.req.method} ${c.req.path}` }, 404));

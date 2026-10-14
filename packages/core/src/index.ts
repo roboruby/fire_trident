@@ -9,5 +9,6 @@ export * from "./batch.ts";
 export * from "./morph.ts";
 export * from "./residual.ts";
 export * from "./lineage.ts";
+export * from "./guide.ts";
 export * from "./cochange.ts";
 export * from "./changeset.ts";

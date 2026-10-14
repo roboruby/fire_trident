@@ -1,10 +1,11 @@
-import { checkFile, importsOf, ruleApplies } from "@fire_trident/core";
-import type { AgentKind, AgentState, CheckResult, EscalationKind, FileVersion, Id, Intent, Path, Proposal, ProposalStatus, Rule, Sha, WorkspaceLease } from "@fire_trident/core";
+import { checkFile, cleanGuideTake, importsOf, ruleApplies } from "@fire_trident/core";
+import type { AgentKind, AgentState, CheckResult, EscalationKind, FileVersion, GuideTake, Id, Intent, Path, Proposal, ProposalStatus, Rule, Sha, WorkspaceLease } from "@fire_trident/core";
 import { agentIdentity, applyReplacement, changeSummary, cleanPath, commitMessage, decodeText, expandFootprint, inlineChange, isLiteralPath, oneLine, recheck, ruleReplacement } from "./change.ts";
 import { TreeIndex, applySpecifierEdits, isImportRule, parseSpecifierEdits, specifierFacts } from "./context.ts";
 import { checkWrittenFile, parseIntentSpec, resolveImport, wantsErasable, writeOrder } from "./create.ts";
 import { cleanContext, noticeEntry, withLanded, type LandedWhy } from "./landed.ts";
 import { TREE_MAX, buildEditMessages, buildSpecifierMessages, buildWriteMessages, cleanLastReturn, maxTokensFor, parseEscalateReply, parseFileReply, retryMessages, specifierRetryMessages, violationProblem } from "./prompt.ts";
+import { parseLessonReply } from "./prompt.ts";
 import type { ChatMessage, LastReturn, TokenUsage } from "./prompt.ts";
 import { cleanPreview, type AntibodyQuestion } from "./preview.ts";
 import { TERMINAL_STATUSES, errorMessage, errorStatus } from "./rpc.ts";
@@ -149,6 +150,10 @@ export interface Job {
   history?: LandedWhy[];
   /** Why the intent's latest change came back, from the take (agents/prompt.ts); every prompt shows it, to address first. */
   lastReturn?: LastReturn;
+  /** The colony's field guide, from the take where FT_FIELD_GUIDE is on: every prompt shows its lessons and invites one (agents/prompt.ts). */
+  guide?: GuideTake;
+  /** The lesson the model left with an accepted file (the first one), proposed with the change. */
+  lesson?: string;
   /** Build on trunk as it is now, not the lease base: a landing notice changed files this job covers (fetch takes the tip). */
   freshBase?: boolean;
   /**
@@ -627,6 +632,9 @@ async function takeWork(deps: LoopDeps, cfg: AgentConfig): Promise<StepResult> {
   // Why the intent's latest change came back, so this one addresses that first (a colony on the previous version sends none).
   const lastReturn = cleanLastReturn("lastReturn" in res ? res.lastReturn : undefined);
   if (lastReturn) job.lastReturn = lastReturn;
+  // The colony's field guide (FT_FIELD_GUIDE; a colony with it off, or on the previous version, sends none).
+  const guide = cleanGuideTake("guide" in res ? res.guide : undefined);
+  if (guide) job.guide = guide;
   await adoptGuidance(deps, cfg, job, now);
   save(deps, cfg, job);
   deps.journal.bump("taken");
@@ -988,6 +996,7 @@ async function writeFile(
     antibodies: job.antibodies ?? [],
     history: job.history ?? [],
     lastReturn: job.lastReturn,
+    guide: job.guide,
     path,
     content: original,
     siblings,
@@ -1035,6 +1044,11 @@ async function writeFile(
         const check = await tree.settle(() => checkWrittenFile({ path, before: original, after: parsed.content, rules, exists, planned, erasable, source: (p) => sources.get(p) ?? null }));
         if (check.problems.length === 0) {
           addCheck(job, { name: `write ${path}`, ok: true, ms: deps.now() - t0, detail: `${check.detail} (model ${used}, attempt ${attempt + 1})` });
+          // Field guide: the first lesson an accepted reply leaves goes with the change.
+          if (job.guide && job.lesson === undefined) {
+            const lesson = parseLessonReply(text);
+            if (lesson) job.lesson = lesson;
+          }
           return { ok: true, content: parsed.content };
         }
         problem = `the file has these problems:\n${check.problems.map((p) => `- ${p}`).join("\n")}`;
@@ -1078,7 +1092,7 @@ async function modelEdit(
   if (original !== null && original.length > MAX_MODEL_CHARS) {
     return { ok: false, reason: `${path} is too large to rewrite with a model (${original.length} characters)` };
   }
-  const first = buildEditMessages({ intent: job.intent, directives: job.directives ?? [], antibodies: job.antibodies ?? [], history: job.history ?? [], lastReturn: job.lastReturn, rule: job.rule, path, content: original, violations });
+  const first = buildEditMessages({ intent: job.intent, directives: job.directives ?? [], antibodies: job.antibodies ?? [], history: job.history ?? [], lastReturn: job.lastReturn, guide: job.guide, rule: job.rule, path, content: original, violations });
   const maxTokens = maxTokensFor(original);
   let messages = first;
   let problem = "";
@@ -1091,6 +1105,11 @@ async function modelEdit(
     const v = judgeReply(job.rule, path, original, text, reply.finishReason);
     if (v.ok) {
       addCheck(job, { name: `recheck ${path}`, ok: true, ms: deps.now() - t0, detail: `${v.detail} (model ${cfg.model}, attempt ${attempt + 1})` });
+      // Field guide: the first lesson an accepted reply leaves goes with the change.
+      if (job.guide && job.lesson === undefined) {
+        const lesson = parseLessonReply(text);
+        if (lesson) job.lesson = lesson;
+      }
       return { ok: true, content: v.content };
     }
     problem = v.problem;
@@ -1149,7 +1168,7 @@ async function specifierEdit(
   const facts = await tree.settle(() => specifierFacts(rule, path, original, tree));
   if (facts.length === 0) return { ok: true, content: original };
   const first = await tree.settle(() =>
-    buildSpecifierMessages({ intent: job.intent, directives: job.directives ?? [], antibodies: job.antibodies ?? [], lastReturn: job.lastReturn, rule, path, content: original, facts, tree }),
+    buildSpecifierMessages({ intent: job.intent, directives: job.directives ?? [], antibodies: job.antibodies ?? [], lastReturn: job.lastReturn, guide: job.guide, rule, path, content: original, facts, tree }),
   );
   let messages = first;
   let problems: string[] = [];
@@ -1416,6 +1435,8 @@ async function proposeStep(deps: LoopDeps, cfg: AgentConfig, job: Job): Promise<
         // With pushed outcomes the colony tells this agent when the proposal settles (no polling).
         ...(deps.outcome ? { notify: true } : {}),
         ...(contents ? { contents } : {}),
+        // Field guide (FT_FIELD_GUIDE): the lesson the model left, a candidate until its gate passes.
+        ...(job.lesson ? { lesson: job.lesson } : {}),
       });
     } catch (e) {
       // A colony that refuses the inline form (bad request, too large) gets the change committed and pushed instead.
