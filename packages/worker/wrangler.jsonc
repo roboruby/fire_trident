@@ -5,6 +5,11 @@
   "compatibility_date": "2026-10-11",
   "compatibility_flags": ["nodejs_compat"],
   "observability": { "enabled": true },
+  "workers_dev": true,
+  "routes": [
+    { "pattern": "firetrident.com", "custom_domain": true },
+    { "pattern": "www.firetrident.com", "custom_domain": true }
+  ],
   "assets": {
     "directory": "../web/dist",
     "binding": "ASSETS",
