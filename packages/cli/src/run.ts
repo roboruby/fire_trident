@@ -26,10 +26,12 @@ import {
   formatStop,
   formatVaccinate,
   formatCertify,
+  formatVerify,
   formatWhy,
   formatWithdraw,
   num,
   policyRows,
+  verifyFailed,
 } from "./format.ts";
 import type {
   AgentRow,
@@ -236,6 +238,13 @@ async function execute(cmd: Command, ctx: Ctx): Promise<number> {
       if (snap?.rules) why.rules = snap.rules;
       io.stdout(formatWhy(target, entries, why, c, io.now()));
       return 0;
+    }
+    case "verify": {
+      // Reads the trunk repository's notes: allow for a slow repository.
+      const res = await send<unknown>(ctx.http, req, 60_000);
+      if (ctx.flags.json) printJson(ctx, res);
+      else io.stdout(formatVerify(cmd.colony, res, c, io.now()));
+      return verifyFailed(res) ? 1 : 0;
     }
     case "review-list": {
       const snapReq = planRequest({ name: "status", colony: cmd.colony }, ctx.by) as ApiRequest;

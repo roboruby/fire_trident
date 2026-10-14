@@ -269,7 +269,8 @@ export class FireTridentMcp extends McpAgent<Env, Record<string, never>, Record<
       "why",
       {
         title: "Why is this here",
-        description: "Lineage of a trunk path, or one line of it: the landings, intents, agents, read and write sets, review decisions and evidence that produced it.",
+        description:
+          "Lineage of a trunk path, or one line of it: the landings, intents, agents, read and write sets, review decisions and evidence that produced it. Each proposal's provenance says how its author and model are known: an in-platform agent's model is observed (FireTrident made the model calls, with their counts), an external agent's is declared (named by the agent itself).",
         inputSchema: { path: path.describe("Repository path"), line: z.number().int().min(1).optional() },
         annotations: readOnly,
       },

@@ -458,6 +458,49 @@ export interface NoteDecision extends Pick<Decision, "kind" | "layer" | "p" | "a
   answer?: string;
 }
 
+/**
+ * Who wrote a landed change, as the platform knows it: `platform` for an in-platform agent (FireTrident's own agent
+ * object ran the loop), `external` for an agent that joined over MCP or the API, `synthetic` for a bench agent.
+ */
+export type ProvenanceAuthor = "platform" | "external" | "synthetic";
+
+/**
+ * What authenticated an agent's calls, as far as the colony knows: `platform` (FireTrident's own agent object, no outside
+ * credential), `mcp` (the deployment's MCP token, bound to this agent by its MCP session or its per-agent resume key),
+ * `token` (a deployment token only, the MCP token or the operator's API token, neither bound to this agent).
+ */
+export type ProvenanceAuth = "platform" | "mcp" | "token";
+
+/** How a note knows a change's model: `observed` when FireTrident made the model calls itself, `declared` when the agent named the model. */
+export type ModelEvidence = "observed" | "declared";
+
+/** Model calls FireTrident made for a change and counted as they returned (in-platform agents), per model. */
+export interface ObservedModel {
+  model: string;
+  calls?: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  cachedTokens?: number;
+}
+
+/**
+ * How a landed change's author and model are known. The trunk writer computes it from the colony's record of the agent,
+ * never from the proposal's claims about itself; notes written before it have none, and readers treat unknown values
+ * as unknown. `model` is absent when the model is not known.
+ */
+export interface NoteProvenance {
+  author: ProvenanceAuthor;
+  /** Absent when the colony did not say. */
+  auth?: ProvenanceAuth;
+  model?: {
+    evidence: ModelEvidence;
+    /** The model named on the agent's record: assigned by FireTrident for in-platform agents; otherwise given by the agent when it joined, or failing that in its proposal. */
+    name?: string;
+    /** `observed` only: the models FireTrident called for this change, with the calls and tokens counted. */
+    observed?: ObservedModel[];
+  };
+}
+
 /** The JSON stored under refs/notes/firetrident for each landed commit. */
 export interface LineageNote {
   schema: "firetrident.lineage/v1";
@@ -478,9 +521,46 @@ export interface LineageNote {
     alternatives?: Array<{ proposalId: Id; agentId: Id; model?: string; reason: string }>;
     /** Assumption revalidation: files that changed after this change read them, and the names it relies on that still held. */
     revalidated?: Array<{ path: Path; read: Sha | null; landedOn: Sha | null; names: string[] }>;
+    /** How the author and model are known (computed by the trunk writer; absent on older notes). */
+    provenance?: NoteProvenance;
   }>;
   /** The project's own tests on this commit, when trunk certification ran on it (added after landing). */
   certification?: NoteCertification;
+}
+
+/**
+ * One landing's lineage note on the trunk repository against the FT-Note trailer of its commit (the sha256 of the note as
+ * the trunk writer wrote it, without `certification`): `intact` (they match), `altered` (they do not, or the note is not
+ * in the form the trunk writer writes), `missing` (no note for the commit), `pending` (the note is not pushed yet),
+ * `no-trailer` (the commit predates the trailer), `unreadable` (the commit or the note could not be read).
+ */
+export type NoteCheckStatus = "intact" | "altered" | "missing" | "pending" | "no-trailer" | "unreadable";
+
+/** The check of one landing's lineage note (`ft verify`, GET /api/colonies/:id/notes/verify). */
+export interface NoteCheck {
+  landingId: Id;
+  trunkSha: Sha;
+  at: Millis;
+  status: NoteCheckStatus;
+  /** The sha256 the commit's FT-Note trailer carries. */
+  trailer?: string;
+  /** `altered`: the sha256 of the note found, when it could be computed. */
+  found?: string;
+  /** Whether the trunk writer's own copy of the note still matches the trailer (an altered or missing note can be put back from it). */
+  ownCopy?: boolean;
+  /** Why the note is not intact, in words. */
+  detail?: string;
+}
+
+/** The newest landings' lineage notes on the trunk repository, checked against their commits. */
+export interface NotesVerification {
+  colonyId: Id;
+  /** The notes commit read (refs/notes/firetrident on the trunk repository); null when the repository has none. */
+  notesTip: Sha | null;
+  /** Newest first. */
+  notes: NoteCheck[];
+  counts: Partial<Record<NoteCheckStatus, number>>;
+  at: Millis;
 }
 
 // ---------------------------------------------------------------------------

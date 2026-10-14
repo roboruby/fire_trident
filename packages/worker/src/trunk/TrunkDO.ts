@@ -1,6 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 import { landingMessage, newId, regionOf, revalidationCandidate, revalidationEnabled, serializeNote, validateProposal } from "@fire_trident/core";
-import type { AgentKind, ColonyEvent, ColonySnapshot, Decision, ExportSurface, FileVersion, Id, Landing, LineageNote, OccResult, Path, Proposal, RepoRef, Revalidated, Sha, TrunkPublish } from "@fire_trident/core";
+import type { AgentKind, ColonyEvent, ColonySnapshot, Decision, ExportSurface, FileVersion, Id, Landing, LineageNote, NotesVerification, OccResult, Path, Proposal, RepoRef, Revalidated, Sha, TrunkPublish } from "@fire_trident/core";
 import type { TreeEntry } from "isomorphic-git";
 import type { Env } from "../env.ts";
 import {
@@ -22,6 +22,7 @@ import {
   isAncestor,
   isAuthError,
   isSha,
+  listRemoteRefs,
   listTreeFiles,
   mintToken,
   pushRef,
@@ -42,6 +43,9 @@ import {
 import { mapLine } from "./blame.ts";
 import { maskNote } from "./mask.ts";
 import { addNotes } from "./notes.ts";
+import { sealNote, withNoteDigest } from "./digest.ts";
+import { noteProvenance } from "./provenance.ts";
+import { bindingSource, checkLandings, layered, localSource, summarize, verifyLimit } from "./verify.ts";
 import { BoundedMap, applyTreeChangesDeferred, writePending, type PendingObject } from "./surgery.ts";
 import { commitContent, objectId } from "./objects.ts";
 import { pushPack } from "./push.ts";
@@ -55,6 +59,7 @@ import { durableFs } from "../artifacts/workspace.ts";
 import { TRUNK_NAMESPACE, bindingFor } from "../artifacts/shards.ts";
 import { noteAlternatives, type ContestAlternative } from "../decide/contest.ts";
 import type { DirectionInfo } from "../colony/direction.ts";
+import { ftError } from "../colony/errors.ts";
 import { INLINE_FETCH_BYTES, isInlineChange } from "../colony/inline.ts";
 import { DIRECTION_TABLE, FENCE_WAIT_MS, directionReturns, fenceAnswer, mergeDirection, parseDirection, pushDelayMs, settlesWithin, type FenceAnswer } from "./direction.ts";
 import { PUBLISH_BOUND, addedObjects, asyncPublishEnabled, publishBackoffMs, publishChain, settlePublish, withinBound, type PublishBound, type RecordedCommit } from "./publish.ts";
@@ -93,6 +98,8 @@ const MAIN_REF = "refs/heads/main";
 /** Moves only to trunk commits whose own tests passed (trunk certification). */
 const CERTIFIED_REF = "refs/heads/certified";
 const WHY_LIMIT = 50;
+/** How long verifyNotes reuses the trunk repository's notes tip it read (ms). */
+const NOTES_TIP_TTL_MS = 15_000;
 /** How long a path history read spends catching the index up at most (ms); the rest waits for the next read. */
 const PATH_HISTORY_MS = 250;
 
@@ -103,14 +110,15 @@ const PATH_HISTORY_MS = 250;
  */
 export interface LandContext {
   intents?: Record<Id, { title: string; why?: string; ruleId?: Id; parentId?: Id }>;
-  agents?: Record<Id, { kind: AgentKind; model?: string }>;
+  /** `resumeKey`: an external agent holds an MCP resume key (it joined over MCP), for the note's provenance. */
+  agents?: Record<Id, { kind: AgentKind; model?: string; resumeKey?: boolean }>;
   decisions?: Record<Id, Array<Pick<Decision, "kind" | "layer" | "p" | "action">>>;
   /** Contest mode: the other attempts at a winner's intent and why each lost (keyed by the winner's proposal id). */
   alternatives?: Record<Id, ContestAlternative[]>;
 }
 
 type IntentInfo = { title: string; why: string; ruleId?: Id; parentId?: Id };
-type AgentLite = { kind: AgentKind; model?: string };
+type AgentLite = { kind: AgentKind; model?: string; resumeKey?: boolean };
 type StagedChange = { blob: Sha; mode: string; size: number; before: Sha | null } | { blob: null; before: Sha | null };
 
 /** Everything needed to record a landing, journaled before the trunk push. */
@@ -232,6 +240,8 @@ export class TrunkDO extends DurableObject<Env> {
   private publishBound: PublishBound = PUBLISH_BOUND;
   /** Moves when this object's storage is erased: a publish attempt of an earlier epoch writes nothing more. */
   private epoch = 0;
+  /** The trunk repository's notes tip as verifyNotes last read it (remoteNotesTip), and when. */
+  private notesTipRead: { at: number; tip: Promise<Sha | null> } | null = null;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -495,6 +505,47 @@ export class TrunkDO extends DurableObject<Env> {
       .exec<{ data: string }>(`SELECT data FROM ft_landings ORDER BY seq DESC LIMIT ?`, n)
       .toArray()
       .map((r) => JSON.parse(r.data) as Landing);
+  }
+
+  /**
+   * The newest `limit` landings' lineage notes on the trunk repository (default 20, at most 200), each checked against
+   * the FT-Note trailer its commit carries (trunk/digest.ts, trunk/verify.ts): intact, altered, missing, pending (its push
+   * is still due), no-trailer (landed before the trailer) or unreadable. `ownCopy` says whether this object's own copy
+   * of a note still matches its trailer. Read only: it resolves refs/notes/firetrident on the trunk repository (at most
+   * every 15 s) and reads notes locally when it wrote them, through the binding otherwise.
+   */
+  async verifyNotes(limit?: number): Promise<NotesVerification> {
+    const st = this.state();
+    const rows = this.sql
+      .exec<{ id: string; trunk_sha: string; at: number; note: string | null }>(
+        `SELECT l.id AS id, l.trunk_sha AS trunk_sha, l.at AS at, n.note AS note FROM ft_landings l LEFT JOIN ft_notes n ON n.landing_id = l.id ORDER BY l.seq DESC LIMIT ?`,
+        verifyLimit(limit),
+      )
+      .toArray();
+    const due = new Set(
+      this.sql
+        .exec<{ landing_id: string }>(`SELECT landing_id FROM ft_journal WHERE landing_id IN (SELECT value FROM json_each(?))`, JSON.stringify(rows.map((r) => r.id)))
+        .toArray()
+        .map((r) => r.landing_id),
+    );
+    let tip: Sha | null;
+    try {
+      tip = await this.remoteNotesTip();
+    } catch (e) {
+      throw ftError(502, `the trunk repository's notes ref could not be read: ${errorText(e)}`);
+    }
+    // The binding's handle is opened only if a commit or note is not in the local repository.
+    const opened: { repo?: Promise<ArtifactsRepo> } = {};
+    const remote = bindingSource(() => (opened.repo ??= this.trunkBinding(st.trunk).get(st.trunk.name)));
+    try {
+      const notes = await checkLandings(
+        rows.map((r) => ({ landingId: r.id, trunkSha: r.trunk_sha, at: r.at, note: r.note, waiting: due.has(r.id) })),
+        { src: layered(localSource(this.repo()), remote), tip },
+      );
+      return summarize(st.colonyId, tip, notes, Date.now());
+    } finally {
+      if (opened.repo) dispose(await opened.repo.catch(() => null));
+    }
   }
 
   /**
@@ -1300,7 +1351,11 @@ export class TrunkDO extends DurableObject<Env> {
       const at = this.nextLandingAt();
       const id = newId("lnd_");
       const intentIds = unique(proposals.map((p) => p.intentId));
-      const message = landingMessage({ id, intentIds }, proposals, info.titles);
+      // The note names the landing, never the commit, so it is final here and the commit carries its digest as the
+      // FT-Note trailer (trunk/digest.ts); certification, added after landing, is left out of the digest.
+      const note = await sealNote(buildNote({ id, colonyId: st.colonyId }, proposals, info, ctx, revalidated));
+      lap("note");
+      const message = withNoteDigest(landingMessage({ id, intentIds }, proposals, info.titles), note.digest);
       const content = commitContent({ tree, parents: [parent], message, name: LANDING_IDENTITY.name, email: LANDING_IDENTITY.email, timestamp: Math.floor(at / 1000) });
       const commit = objectId("commit", content);
       pending.set(commit, { type: "commit", content });
@@ -1318,10 +1373,8 @@ export class TrunkDO extends DurableObject<Env> {
         regions: unique(paths.map((path) => regionOf(path, st.regionDepth))).sort(),
         at,
       };
-      const note = serializeNote(buildNote(landing, proposals, info, ctx, revalidated));
-      items.push({ request: i, data: { landing, note, changes: [...changes] } });
+      items.push({ request: i, data: { landing, note: note.text, changes: [...changes] } });
       parent = commit;
-      lap("note");
     }
     await writePending(g, pending, WRITE_CONCURRENCY);
     for (const id of pending.keys()) objects.add(id);
@@ -1627,7 +1680,9 @@ export class TrunkDO extends DurableObject<Env> {
       const tree = await applyTreeChanges(g, parentTree, treeChanges);
       const at = this.nextLandingAt();
       const id = newId("lnd_");
-      const message = `${p.message.replace(/\s+$/, "")}\nFT-Landing: ${id}`;
+      // Sealed like a landing's note: the commit's last trailer is the note's digest (trunk/digest.ts).
+      const note = await sealNote({ ...p.note, landingId: id, colonyId: st.colonyId });
+      const message = withNoteDigest(`${p.message.replace(/\s+$/, "")}\nFT-Landing: ${id}`, note.digest);
       const commit = await writeCommitObject(g, { tree, parents: [parent], message, at });
       const paths = [...changes.keys()].sort();
       const landing: Landing = {
@@ -1641,8 +1696,7 @@ export class TrunkDO extends DurableObject<Env> {
         regions: unique(paths.map((path) => regionOf(path, st.regionDepth))).sort(),
         at,
       };
-      const note = serializeNote({ ...p.note, landingId: id, colonyId: st.colonyId });
-      const data: JournalData = { landing, note, changes: [...changes] };
+      const data: JournalData = { landing, note: note.text, changes: [...changes] };
       if (asyncPublish) {
         // Recorded is landed: it joins the publish queue in the transaction that records it.
         this.ctx.storage.transactionSync(() => {
@@ -2166,7 +2220,7 @@ export class TrunkDO extends DurableObject<Env> {
 
   private async lineageInfo(proposals: Proposal[], ctx: LandContext, colonyId: Id): Promise<{ titles: Record<Id, string>; intents: Map<Id, IntentInfo>; agents: Map<Id, AgentLite> }> {
     for (const [id, i] of Object.entries(ctx.intents ?? {})) this.intentCache.set(id, { title: i.title, why: i.why ?? "", ruleId: i.ruleId, parentId: i.parentId });
-    for (const [id, a] of Object.entries(ctx.agents ?? {})) this.agentCache.set(id, { kind: a.kind, model: a.model });
+    for (const [id, a] of Object.entries(ctx.agents ?? {})) this.agentCache.set(id, { kind: a.kind, model: a.model, ...(typeof a.resumeKey === "boolean" ? { resumeKey: a.resumeKey } : {}) });
     const missing = proposals.some((p) => !this.intentCache.has(p.intentId) || !this.agentCache.has(p.agentId));
     if (missing) await this.loadColonyContext(colonyId);
     const intents = new Map<Id, IntentInfo>();
@@ -2192,7 +2246,8 @@ export class TrunkDO extends DurableObject<Env> {
       const snap = await Promise.race([stub.snapshot(), sleep(2_500).then(() => null)]);
       if (!snap) return;
       for (const i of snap.intents ?? []) this.intentCache.set(i.id, { title: i.title, why: i.why, ruleId: i.ruleId, parentId: i.parentId });
-      for (const a of snap.agents ?? []) this.agentCache.set(a.id, { kind: a.kind, model: a.model });
+      // A snapshot does not say who holds a resume key: keep what a land context said.
+      for (const a of snap.agents ?? []) this.agentCache.set(a.id, { ...this.agentCache.get(a.id), kind: a.kind, model: a.model });
     } catch {
       // lineage falls back to proposal summaries
     }
@@ -2368,6 +2423,24 @@ export class TrunkDO extends DurableObject<Env> {
     return log[0]?.hash ?? null;
   }
 
+  /**
+   * The notes commit refs/notes/firetrident names on the trunk repository (its ref advertisement), or null when it has
+   * none. Read at most every NOTES_TIP_TTL_MS: verifyNotes is a public read, and git requests are limited per repository.
+   */
+  private remoteNotesTip(): Promise<Sha | null> {
+    const now = Date.now();
+    if (this.notesTipRead && now - this.notesTipRead.at < NOTES_TIP_TTL_MS) return this.notesTipRead.tip;
+    const st = this.state();
+    const tip = this.authed((token) => listRemoteRefs(st.trunk.remote, token)).then((refs) => refs.find((r) => r.ref === NOTES_REF)?.oid ?? null);
+    const read = { at: now, tip };
+    this.notesTipRead = read;
+    // A failed read is not kept.
+    tip.catch(() => {
+      if (this.notesTipRead === read) this.notesTipRead = null;
+    });
+    return tip;
+  }
+
   /** Blob of each path at `baseSha`, or null when the commit is unknown locally and remotely. */
   private async baseBlobMap(baseSha: Sha, paths: Path[], caches?: BaseCaches): Promise<Map<Path, Sha | null> | null> {
     const st = this.state();
@@ -2517,11 +2590,14 @@ export class TrunkDO extends DurableObject<Env> {
 
 /**
  * The lineage note for a landing. A proposal that landed over files it read that changed records each
- * of them under `revalidated`: the blob it read, the blob it landed on, and the names that held. Notes
- * are public, so the free text agents and people wrote is masked where it looks like a secret (mask.ts).
+ * of them under `revalidated`: the blob it read, the blob it landed on, and the names that held. Each
+ * proposal's `provenance` says how its author and model are known, from the colony's record of the agent
+ * (trunk/provenance.ts); a proposal whose agent the writer does not know gets none. The note names the
+ * landing, never its commit, so it is final before the commit is built (the commit carries its digest).
+ * Notes are public, so the free text agents and people wrote is masked where it looks like a secret (mask.ts).
  */
 function buildNote(
-  landing: Landing,
+  landing: Pick<Landing, "id" | "colonyId">,
   proposals: Proposal[],
   info: { intents: Map<Id, IntentInfo>; agents: Map<Id, AgentLite> },
   ctx: LandContext,
@@ -2534,6 +2610,7 @@ function buildNote(
     proposals: proposals.map((p) => {
       const i = info.intents.get(p.intentId) ?? { title: p.intentId, why: "" };
       const a = info.agents.get(p.agentId);
+      const provenance = noteProvenance(a, p.evidence);
       return {
         id: p.id,
         agentId: p.agentId,
@@ -2546,6 +2623,7 @@ function buildNote(
         evidence: p.evidence ?? { checks: [] },
         ...(revalidated.has(p.id) ? { revalidated: revalidated.get(p.id) } : {}),
         ...noteAlternatives(ctx.alternatives, p.id),
+        ...(provenance ? { provenance } : {}),
       };
     }),
   });

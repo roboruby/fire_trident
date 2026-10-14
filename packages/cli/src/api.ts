@@ -135,6 +135,8 @@ export function planRequest(cmd: Command, by: string): ApiRequest | null {
       if (cmd.line !== undefined) q.set("line", String(cmd.line));
       return { method: "GET", path: `${colonyPath(cmd.colony, "/why")}?${q}` };
     }
+    case "verify":
+      return { method: "GET", path: `${colonyPath(cmd.colony, "/notes/verify")}${cmd.limit !== undefined ? `?limit=${cmd.limit}` : ""}` };
     case "review-list":
       return { method: "GET", path: colonyPath(cmd.colony, "/review") };
     case "review-decide":

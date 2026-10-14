@@ -39,6 +39,7 @@ export type Command =
   | { name: "rule-import-boundary"; colony: string; from: string[]; module: string; hint: string; description: string; by?: string }
   | { name: "swarm"; colony: string; agents: number; model?: string; kind?: Extract<AgentKind, "internal" | "synthetic"> }
   | { name: "why"; colony: string; path: string; line?: number }
+  | { name: "verify"; colony: string; limit?: number }
   | { name: "review-list"; colony: string; diff: boolean }
   | { name: "review-decide"; colony: string; proposalId: string; decision: ReviewDecision; reason: string; by?: string }
   | { name: "watch"; colony: string; only: string[] }
@@ -108,6 +109,7 @@ const COMMAND_OPTIONS: Record<string, Record<string, OptionSpec>> = {
   escalation: { note: { type: "string" }, title: { type: "string" }, why: { type: "string" }, footprint: { type: "string", multiple: true }, by: { type: "string" } },
   swarm: { agents: { type: "string" }, model: { type: "string" }, kind: { type: "string" } },
   why: {},
+  verify: { limit: { type: "string" } },
   review: { reason: { type: "string" }, by: { type: "string" }, diff: { type: "boolean" } },
   revert: { reason: { type: "string" }, by: { type: "string" }, "no-redo": { type: "boolean" } },
   watch: { only: { type: "string", multiple: true } },
@@ -320,6 +322,13 @@ function build(word: string, v: Record<string, unknown>, p: string[]): Command {
       const colony = colonyArg(p[0], usage);
       if (!p[1]) fail(`missing <path[:line]>. Usage: ${usage}`);
       return { name: "why", colony, ...parseLocation(p[1]) };
+    }
+    case "verify": {
+      const usage = "ft verify <colony> [--limit <n>]";
+      noExtras(p, 1, usage);
+      const cmd: Command = { name: "verify", colony: colonyArg(p[0], usage) };
+      if (str(v.limit) !== undefined) cmd.limit = positiveInt(str(v.limit) ?? "", "--limit", 200);
+      return cmd;
     }
     case "review": {
       const usage = "ft review <colony> [--diff] | ft review <colony> <proposalId> approve|reject|return --reason <text>";
@@ -657,6 +666,7 @@ Commands
   certify <colony>                 Trunk certification: results, --now, --on/--off
   policy <colony>                  Paths only a person may change; the comment-only proof
   why <colony> <path[:line]>       Show the lineage behind a file or line
+  verify <colony>                  Check the newest lineage notes on git against their commits
   review <colony> [--diff]         List proposals escalated to a human, code first
   review <colony> <id> <decision>  Approve, reject, or return a proposal
   revert <colony> <landing|prp>    Undo a landing or one proposal of it unless work landed on top
@@ -772,10 +782,29 @@ ft why <colony> <path[:line]>
 
 Walk the lineage behind a file or a line: the landing, each proposal that wrote
 the file, its intent chain, the rule and its approver, the decision path, the
-agent and model, and the checks that ran.
+agent and model, and the checks that ran. "source" says how the author and model
+are known: an in-platform agent's model is observed by FireTrident (it made the
+model calls, with their counts); an external agent's is declared by the agent.
 
 Example
   ft why web src/server/links.ts:42
+`,
+  verify: `
+ft verify <colony> [--limit <n>]
+
+Check the newest lineage notes on the trunk repository against their commits.
+Each landing commit's last line is an FT-Note trailer: the sha256 of its note as
+FireTrident wrote it (without the certification added later). Anyone who can
+write to the repository could rewrite a note, but not the commit that carries
+its digest. Each note is intact, altered, missing, not pushed yet, or from a
+commit that predates the trailer; for an altered or missing note, ft verify
+says whether FireTrident's own copy still matches. Exits 1 when a note is
+altered or missing.
+
+  --limit <n>    Landings to check, newest first (default 20, at most 200)
+
+Example
+  ft verify web --limit 50
 `,
   review: `
 ft review <colony> [--diff]

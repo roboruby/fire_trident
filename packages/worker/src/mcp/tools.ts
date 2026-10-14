@@ -764,7 +764,8 @@ export class FireTridentTools {
   /**
    * Lineage of a trunk path (optionally one line): the landings and intents behind it, in the trunk's
    * order (with a line, the landing that wrote it first). Each landing's note keeps only the proposals
-   * that wrote the path, with a count of the others it carried.
+   * that wrote the path, with a count of the others it carried; each proposal keeps its provenance (how
+   * its author and model are known), which notes written before it lack.
    */
   async why(a: { path: string; line?: number }): Promise<unknown> {
     const s = await this.joined();

@@ -12,7 +12,10 @@ import type {
   LineageNote,
   MarkKind,
   NoteCertification,
+  NoteCheck,
+  NoteCheckStatus,
   NoteDecision,
+  NotesVerification,
   Proposal,
   ProposalStatus,
   Rule,
@@ -688,6 +691,8 @@ export function formatWhy(
     if (proposals.length > shown.length) out.push(`  ${c.dim(`${proposals.length - shown.length} other proposal(s) in this landing touched other files`)}`);
     for (const p of shown) {
       out.push(`  ${label("proposal")}${p.id} ${c.dim("by")} ${p.agentId} ${c.dim(`(${p.agentKind}${p.model ? ` · ${p.model}` : ""})`)}`);
+      const source = provenanceLine((p as { provenance?: unknown }).provenance, p.model, c);
+      if (source) out.push(`  ${label("source")}${source}`);
       out.push(`  ${label("intent")}${p.intent.id} ${quote(p.intent.title ?? "")}`);
       if (p.intent.why) out.push(`  ${label("why")}${whySummary(p.intent.why)}`);
       // Walk the parent chain (the why behind the why), guarding against cycles.
@@ -760,6 +765,93 @@ export function decisionSteps(decisions: NoteDecision[] | undefined, checks: Che
     out.push(d.answer ? { head, detail: `${d.layer}: ${cut(d.answer, 160)}` } : { head });
   }
   return out;
+}
+
+const provText = (v: unknown): string => (typeof v === "string" ? v.replace(/\s+/g, " ").trim() : "");
+const provCount = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null);
+
+/**
+ * How a landed change's author and model are known, from its note's provenance, in one line: "in-platform agent, run by
+ * FireTrident · model observed by FireTrident: 3 calls, 4,120 in / 812 out tokens", or "external agent (MCP token and
+ * its resume key) · model declared by the agent". Null for a note written before provenance was kept; a value it does
+ * not know is shown as it is. `model` is the model the proposal line already names.
+ */
+export function provenanceLine(provenance: unknown, model: string | undefined, c: Colors): string | null {
+  if (!provenance || typeof provenance !== "object" || Array.isArray(provenance)) return null;
+  const p = provenance as { author?: unknown; auth?: unknown; model?: { evidence?: unknown; name?: unknown; observed?: unknown } | null };
+  const auth = provText(p.auth);
+  const via = auth === "mcp" ? "MCP token and its resume key" : auth === "token" ? "a deployment token, not bound to it" : auth === "" ? "MCP or API token" : auth;
+  const author = provText(p.author);
+  const who =
+    author === "platform" ? "in-platform agent, run by FireTrident" : author === "external" ? `external agent ${c.dim(`(${via})`)}` : author === "synthetic" ? "bench agent" : `author ${author || "unknown"}`;
+  const m = p.model && typeof p.model === "object" ? p.model : null;
+  const evidence = provText(m?.evidence);
+  const name = provText(m?.name);
+  const named = name && name !== model ? ` ${name}` : "";
+  let how: string;
+  if (!m || evidence === "") how = c.dim("model not known");
+  else if (evidence === "observed") {
+    const calls = (Array.isArray(m.observed) ? m.observed : []).filter((o): o is Record<string, unknown> => !!o && typeof o === "object");
+    const usage = calls.map((o) => {
+      const id = provText(o.model);
+      const [n, input, output, cached] = [o.calls, o.inputTokens, o.outputTokens, o.cachedTokens].map(provCount);
+      const parts = [
+        n === null || n === undefined ? "" : `${num(n)} call${n === 1 ? "" : "s"}`,
+        input == null || output == null ? "" : `${num(input)} in / ${num(output)} out tokens${cached ? ` (${num(cached)} cached)` : ""}`,
+      ].filter(Boolean);
+      return `${id && id !== model ? `${id} ` : ""}${parts.join(", ")}`.trim();
+    }).filter(Boolean);
+    how = `${c.green("model observed by FireTrident")}${usage.length > 0 ? `: ${usage.join("; ")}` : named ? `:${named}` : ""}${usage.length === 0 ? c.dim(" (no model call recorded for this change)") : ""}`;
+  } else if (evidence === "declared") how = `${c.yellow("model declared by the agent")}${named ? `:${named}` : ""}`;
+  else how = `model ${evidence}${named ? `:${named}` : ""}`;
+  return `${who} ${c.dim("·")} ${how}`;
+}
+
+/** What `ft verify` lists per status: its mark, its words, and its color. */
+const VERIFY_ROWS: ReadonlyArray<{ status: NoteCheckStatus; mark: string; words: string; color: keyof Colors }> = [
+  { status: "intact", mark: "✓", words: "intact", color: "green" },
+  { status: "altered", mark: "✗", words: "altered", color: "red" },
+  { status: "missing", mark: "✗", words: "missing", color: "red" },
+  { status: "unreadable", mark: "?", words: "could not be read", color: "yellow" },
+  { status: "pending", mark: "…", words: "not pushed yet", color: "dim" },
+  { status: "no-trailer", mark: "-", words: "landed before commits carried the note's digest", color: "dim" },
+];
+/** Notes listed one by one per status at most. */
+const VERIFY_LISTED = 10;
+
+/** Whether a verification found a note that was altered or is missing (`ft verify` then exits 1). */
+export function verifyFailed(res: unknown): boolean {
+  const notes = (res as Partial<NotesVerification> | null)?.notes;
+  return Array.isArray(notes) && notes.some((n) => n?.status === "altered" || n?.status === "missing");
+}
+
+/**
+ * What `ft verify` prints: the newest landings' lineage notes on the trunk repository against the FT-Note trailer each
+ * commit carries, counted by status, then each note that is not intact with the reason, and whether FireTrident's own
+ * copy still matches (so the note can be put back from it).
+ */
+export function formatVerify(colony: string, res: unknown, c: Colors, now: number): string {
+  const r = (res ?? {}) as Partial<NotesVerification>;
+  const notes = (Array.isArray(r.notes) ? r.notes : []).filter((n): n is NoteCheck => !!n && typeof n === "object" && typeof n.status === "string");
+  const where = typeof r.notesTip === "string" ? `notes commit ${shortSha(r.notesTip)}` : "the trunk repository has no notes";
+  const out = [`${c.bold(colony)} lineage notes on the trunk repository against each commit's FT-Note trailer ${c.dim(`(newest ${num(notes.length)} landing${notes.length === 1 ? "" : "s"}; ${where})`)}`];
+  if (notes.length === 0) return [...out, c.dim("  no landings yet")].join("\n");
+  const known = new Set<string>(VERIFY_ROWS.map((v) => v.status));
+  const rows = [...VERIFY_ROWS, ...[...new Set(notes.map((n) => n.status).filter((s) => !known.has(s)))].map((s) => ({ status: s, mark: "?", words: s, color: "yellow" as const }))];
+  const of = (s: string): NoteCheck[] => notes.filter((n) => n.status === s);
+  out.push(`  ${rows.filter((v) => of(v.status).length > 0).map((v) => c[v.color](`${v.mark} ${num(of(v.status).length)} ${v.words}`)).join(c.dim(" · "))}`);
+  for (const v of rows) {
+    if (v.status === "intact" || v.status === "no-trailer") continue;
+    const list = of(v.status);
+    for (const n of list.slice(0, VERIFY_LISTED)) {
+      const when = typeof n.at === "number" && n.at > 0 ? c.dim(` ${ago(n.at, now)}`) : "";
+      const own = v.status === "altered" || v.status === "missing" ? c.dim(n.ownCopy ? "; FireTrident's own copy still matches the trailer" : "; FireTrident's own copy does not match the trailer") : "";
+      out.push(`  ${c[v.color](v.mark)} ${n.landingId} ${shortSha(n.trunkSha)}${when}  ${n.detail ?? v.words}${own}`);
+    }
+    if (list.length > VERIFY_LISTED) out.push(c.dim(`    +${num(list.length - VERIFY_LISTED)} more`));
+  }
+  if (verifyFailed(r)) out.push(c.dim("  A commit's trailer cannot change without changing the commit: the note on the repository is what changed."));
+  return out.join("\n");
 }
 
 /**
