@@ -216,7 +216,7 @@ describe("planCycle: assumptions (the files a change's imports resolve to)", () 
   });
 });
 
-describe("planCycle: assumption revalidation (decision conflicts, not version conflicts)", () => {
+describe("planCycle: import-name revalidation (decision conflicts, not version conflicts)", () => {
   const S = "src/core/config.ts";
   const NEW = sha("1");
   const trunk: Record<Path, Sha | null> = { [S]: NEW, "src/core/other.ts": OLD, "src/a.ts": OLD };
@@ -226,18 +226,35 @@ describe("planCycle: assumption revalidation (decision conflicts, not version co
     ...prop(id, { [`src/core/${id}.ts`]: sha("9"), ...(extra.writes ?? {}) }, { [S]: OLD, ...(extra.reads ?? {}) }),
     ...(names ? { nameAssumptions: names } : {}),
   });
-  const exportsOf = (by: Record<Sha, string[] | ExportSurface>): ExportedNames => (_path, blob) => {
-    const e = by[blob];
-    return e === undefined ? null : Array.isArray(e) ? { names: new Set(e), open: false } : e;
+  const enc = new TextEncoder();
+  /** The version of S the readers read: two exports, two statements. */
+  const WAS = "export const config = { port: 1 };\nexport default config;\n";
+  /** A version that only grew: an export appended. */
+  const GROWN = `${WAS}export const added = 2;\n`;
+  /**
+   * What the trunk writer read, by blob: a version's text (its exports and statements are read from it, as the trunk
+   * writer reads them), a bare surface (no statements read), or nothing. The version read (OLD) is `read`.
+   */
+  const exportsOf = (by: Record<Sha, string | ExportSurface>, read: string | null = WAS): ExportedNames => (path, blob) => {
+    const e = blob === OLD ? read : by[blob];
+    if (e === undefined || e === null) return null;
+    return typeof e === "string" ? exportSurface(enc.encode(e), path) : e;
   };
   const staleReason = `stale: ${S} (expected ${OLD}, trunk has ${NEW})`;
 
-  it("lands a change whose read file changed when every name it imports is still exported, and records it", () => {
+  it("lands a change whose read file only grew when every name it imports is still exported, and records it", () => {
     const r = reader("r", [{ path: S, names: ["config", "default"] }]);
-    const plan = planCycle([[entry(r, trunk)]], at, exportsOf({ [NEW]: ["config", "default", "added"] }));
+    const plan = planCycle([[entry(r, trunk)]], at, exportsOf({ [NEW]: GROWN }));
     expect(plan.accepted).toEqual([[r]]);
     expect(plan.returned).toEqual([[]]);
-    expect(plan.revalidated.get("r")).toEqual([{ path: S, read: OLD, landedOn: NEW, names: ["config", "default"] }]);
+    expect(plan.revalidated.get("r")).toEqual([{ path: S, read: OLD, landedOn: NEW, names: ["config", "default"], grew: true }]);
+  });
+
+  it("lands when the new declaration sits in the middle of the file", () => {
+    const r = reader("r", [{ path: S, names: ["config"] }]);
+    const plan = planCycle([[entry(r, trunk)]], at, exportsOf({ [NEW]: "export const config = { port: 1 };\nexport function added() {}\nexport default config;\n" }));
+    expect(plan.accepted).toEqual([[r]]);
+    expect(plan.revalidated.get("r")?.[0]?.grew).toBe(true);
   });
 
   it("returns it as today when revalidation is off (no exported names given)", () => {
@@ -249,33 +266,51 @@ describe("planCycle: assumption revalidation (decision conflicts, not version co
 
   it("returns a change whose imported name was removed, naming it", () => {
     const r = reader("r", [{ path: S, names: ["config", "load"] }]);
-    const plan = planCycle([[entry(r, trunk)]], at, exportsOf({ [NEW]: ["config"] }));
+    const plan = planCycle([[entry(r, trunk)]], at, exportsOf({ [NEW]: GROWN }));
     expect(plan.accepted).toEqual([[]]);
     expect(plan.returned[0]).toEqual([{ proposalId: "r", reason: `${staleReason}; ${S} no longer exports load, which this change imports` }]);
   });
 
   it("returns a change whose imported name was renamed (the old name is gone, a new one appeared)", () => {
     const r = reader("r", [{ path: S, names: ["load"] }]);
-    const plan = planCycle([[entry(r, trunk)]], at, exportsOf({ [NEW]: ["loadConfig"] }));
+    const plan = planCycle([[entry(r, trunk)]], at, exportsOf({ [NEW]: "export const loadConfig = 1;\n" }));
     expect(plan.returned[0]![0]!.reason).toContain(`${S} no longer exports load`);
+  });
+
+  it("returns a change whose read file did more than grow, naming the file and the first changed statement's line", () => {
+    const r = reader("r", [{ path: S, names: ["config"] }]);
+    const edited = planCycle([[entry(r, trunk)]], at, exportsOf({ [NEW]: WAS.replace("port: 1", "port: 2") }));
+    expect(edited.accepted).toEqual([[]]);
+    expect(edited.returned[0]).toEqual([{ proposalId: "r", reason: `${staleReason}; ${S} changed after this change read it: the statement at line 1 of the version it read is no longer there as it was, so re-read the file and propose again` }]);
+    const ran = planCycle([[entry(r, trunk)]], at, exportsOf({ [NEW]: `${WAS}config.port = 3;\n` }));
+    expect(ran.returned[0]).toEqual([{ proposalId: "r", reason: `${staleReason}; ${S} changed after this change read it: line 3 of the version it would land on adds a statement that is not a declaration, so re-read the file and propose again` }]);
+    expect(edited.revalidated.size + ran.revalidated.size).toBe(0);
+  });
+
+  it("returns as today, without blame, when either version's statements cannot be read for sure", () => {
+    const r = reader("r", [{ path: S, names: ["config"] }]);
+    const unreadable = `${WAS}export function f() {}\n/re/.test(s);\n`;
+    expect(planCycle([[entry(r, trunk)]], at, exportsOf({ [NEW]: unreadable })).returned[0]).toEqual([{ proposalId: "r", reason: staleReason }]);
+    expect(planCycle([[entry(r, trunk)]], at, exportsOf({ [NEW]: GROWN }, unreadable)).returned[0]).toEqual([{ proposalId: "r", reason: staleReason }]);
+    expect(planCycle([[entry(r, trunk)]], at, exportsOf({ [NEW]: GROWN }, null)).returned[0]).toEqual([{ proposalId: "r", reason: staleReason }]);
   });
 
   it("still returns a write/write conflict as today, whatever the assumptions say", () => {
     const w = reader("w", [{ path: S, names: ["config"] }], { writes: { [S]: sha("2") } });
-    const plan = planCycle([[entry(w, trunk, { [S]: OLD })]], at, exportsOf({ [NEW]: ["config"] }));
+    const plan = planCycle([[entry(w, trunk, { [S]: OLD })]], at, exportsOf({ [NEW]: GROWN }));
     expect(plan.accepted).toEqual([[]]);
     expect(plan.returned[0]).toEqual([{ proposalId: "w", reason: staleReason }]);
   });
 
   it("returns a change whose import of the file gives no checkable names (a namespace import records no assumption)", () => {
     const r = reader("r", []);
-    const plan = planCycle([[entry(r, trunk)]], at, exportsOf({ [NEW]: ["config"] }));
+    const plan = planCycle([[entry(r, trunk)]], at, exportsOf({ [NEW]: GROWN }));
     expect(plan.returned[0]).toEqual([{ proposalId: "r", reason: staleReason }]);
   });
 
   it("returns as today when another stale read file has no assumption, or the exports cannot be read", () => {
     const r = reader("r", [{ path: S, names: ["config"] }], { reads: { "src/core/other.ts": sha("5") } });
-    expect(planCycle([[entry(r, trunk)]], at, exportsOf({ [NEW]: ["config"] })).accepted).toEqual([[]]);
+    expect(planCycle([[entry(r, trunk)]], at, exportsOf({ [NEW]: GROWN })).accepted).toEqual([[]]);
     const unread = reader("u", [{ path: S, names: ["config"] }]);
     expect(planCycle([[entry(unread, trunk)]], at, exportsOf({})).returned[0]).toEqual([{ proposalId: "u", reason: staleReason }]);
   });
@@ -291,46 +326,56 @@ describe("planCycle: assumption revalidation (decision conflicts, not version co
     const freshAt = (path: Path): Sha | null => fresh[path] ?? null;
     const w = prop("w", { [S]: sha("2") });
     const keeps = reader("r", [{ path: S, names: ["config"] }]);
-    const kept = planCycle([[entry(w, fresh)], [entry(keeps, fresh)]], freshAt, exportsOf({ [sha("2")]: ["config", "added"] }));
+    const kept = planCycle([[entry(w, fresh)], [entry(keeps, fresh)]], freshAt, exportsOf({ [sha("2")]: GROWN }));
     expect(kept.accepted).toEqual([[w], [keeps]]);
-    expect(kept.revalidated.get("r")).toEqual([{ path: S, read: OLD, landedOn: sha("2"), names: ["config"] }]);
-    const drops = planCycle([[entry(w, fresh)], [entry(keeps, fresh)]], freshAt, exportsOf({ [sha("2")]: ["added"] }));
+    expect(kept.revalidated.get("r")).toEqual([{ path: S, read: OLD, landedOn: sha("2"), names: ["config"], grew: true }]);
+    const drops = planCycle([[entry(w, fresh)], [entry(keeps, fresh)]], freshAt, exportsOf({ [sha("2")]: "export const added = 1;\n" }));
     expect(drops.accepted).toEqual([[w], []]);
     expect(drops.returned[1]![0]!.reason).toBe(`stale: ${S} (expected ${OLD}, trunk has ${sha("2")}, landing ahead in this cycle from w); ${S} no longer exports config, which this change imports`);
+    const edits = planCycle([[entry(w, fresh)], [entry(keeps, fresh)]], freshAt, exportsOf({ [sha("2")]: WAS.replace("port: 1", "port: 2") }));
+    expect(edits.accepted).toEqual([[w], []]);
+    expect(edits.returned[1]![0]!.reason).toContain(`${S} changed after this change read it: the statement at line 1 of the version it read`);
   });
 
   it("keeps the lane's rule inside one batch: a reader beside the writer of its file still conflicts", () => {
     const fresh: Record<Path, Sha | null> = { [S]: OLD };
     const w = prop("w", { [S]: sha("2") });
     const r = reader("r", [{ path: S, names: ["config"] }]);
-    const plan = planCycle([[entry(w, fresh), entry(r, fresh)]], (path) => fresh[path] ?? null, exportsOf({ [sha("2")]: ["config"] }));
+    const plan = planCycle([[entry(w, fresh), entry(r, fresh)]], (path) => fresh[path] ?? null, exportsOf({ [sha("2")]: GROWN }));
     expect(plan.accepted).toEqual([[w]]);
     expect(plan.returned[0]).toEqual([{ proposalId: "r", reason: `conflicts with another proposal in this landing on ${S}` }]);
   });
 
   it("still applies the existence assumptions to a revalidated change", () => {
     const gone = { ...reader("r", [{ path: S, names: ["config"] }]), assumptions: ["src/core/deleted.ts"] };
-    const plan = planCycle([[entry(gone, trunk)]], at, exportsOf({ [NEW]: ["config"] }));
+    const plan = planCycle([[entry(gone, trunk)]], at, exportsOf({ [NEW]: GROWN }));
     expect(plan.returned[0]).toEqual([{ proposalId: "r", reason: "stale: its imports resolve to src/core/deleted.ts, which is no longer on trunk" }]);
     expect(plan.revalidated.size).toBe(0);
   });
 });
 
-describe("assumption revalidation: what the trunk writer reads", () => {
+describe("import-name revalidation: what the trunk writer reads", () => {
   const S = "src/core/config.ts";
-  it("asks for trunk's blob of each read file with a name assumption and every new blob the cycle writes there", () => {
+  it("asks for trunk's blob of each read file with a name assumption, every new blob the cycle writes there, then the blob read", () => {
     const reader = { ...prop("r", { "src/core/r.ts": sha("9") }, { [S]: OLD, "src/core/plain.ts": OLD }), nameAssumptions: [{ path: S, names: ["a"] }, { path: "src/core/unread.ts", names: ["b"] }] };
     const writer = prop("w", { [S]: sha("2") });
     const deleter = prop("d", { [S]: null });
     const trunk: Record<Path, Sha | null> = { [S]: sha("1"), "src/core/unread.ts": sha("3") };
-    expect(surfaceBlobs([reader, writer, deleter], (path) => trunk[path] ?? null)).toEqual([sha("1"), sha("2")]);
+    expect(surfaceBlobs([reader, writer, deleter], (path) => trunk[path] ?? null)).toEqual([
+      { blob: sha("1"), path: S },
+      { blob: sha("2"), path: S },
+      { blob: OLD, path: S },
+    ]);
     expect(surfaceBlobs([writer, { ...reader, nameAssumptions: "junk" as unknown as NameAssumption[] }], (path) => trunk[path] ?? null)).toEqual([]);
   });
 
-  it("skips the version a proposal read: nothing changed under it there", () => {
+  it("skips a file whose only version is the one read: nothing changed under it there", () => {
     const reader = { ...prop("r", { "src/core/r.ts": sha("9") }, { [S]: OLD }), nameAssumptions: [{ path: S, names: ["a"] }] };
     expect(surfaceBlobs([reader], () => OLD)).toEqual([]);
-    expect(surfaceBlobs([reader, prop("w", { [S]: sha("2") })], () => OLD)).toEqual([sha("2")]);
+    expect(surfaceBlobs([reader, prop("w", { [S]: sha("2") })], () => OLD)).toEqual([
+      { blob: sha("2"), path: S },
+      { blob: OLD, path: S },
+    ]);
   });
 
   it("reads a version's exports from its bytes, and refuses binary, oversized or unreadable sources", () => {
@@ -340,6 +385,16 @@ describe("assumption revalidation: what the trunk writer reads", () => {
     expect(exportSurface(new Uint8Array([0xff, 0xfe, 0x00]))).toBeNull();
     expect(exportSurface(enc.encode("export = thing;\n"))).toBeNull();
     expect(exportSurface(new Uint8Array(SURFACE_FILE_BYTES + 1))).toBeNull();
+  });
+
+  it("reads a version's top-level statements too when given its path, null when they cannot be read for sure", () => {
+    const enc = new TextEncoder();
+    expect(exportSurface(enc.encode("export const a = 1;\nexport function f() {}\n"), "src/a.ts")).toEqual({
+      names: new Set(["a", "f"]),
+      open: false,
+      statements: { mode: "ts", hashes: [expect.any(String), expect.any(String)], lines: [1, 2], declares: [true, true], prologue: 0 },
+    });
+    expect(exportSurface(enc.encode("export function f() {}\n/re/.test(s);\n"), "src/a.ts")).toEqual({ names: new Set(["f"]), open: false, statements: null });
   });
 });
 

@@ -111,7 +111,7 @@ const TREE_CACHE = 4_000;
 /** Objects of a cycle written to the git store at once. */
 const WRITE_CONCURRENCY = 16;
 const COMMIT_CACHE = 2_000;
-/** Assumption revalidation: export surfaces kept by blob id, and what one cycle reads at most to compute new ones. */
+/** Import-name revalidation: export surfaces (with top-level statements) kept by blob id, and what one cycle reads at most to compute new ones. */
 const SURFACE_CACHE = 2_000;
 const SURFACE_READS = 400;
 const SURFACE_BYTES = 8 * 1024 * 1024;
@@ -270,7 +270,7 @@ export class TrunkDO extends DurableObject<Env> {
   private importStore: ImportIndex | null = null;
   /** The derived indexes of the landing log and their cursors (trunk/derived.ts), created with the object. */
   private derivedStore: DerivedSet<TrunkLanding> | null = null;
-  /** Assumption revalidation: the names each version of a file exports, by blob id (immutable, so cached across cycles). */
+  /** Import-name revalidation: the names each version of a file exports and its top-level statements, by blob id (immutable, so cached across cycles). */
   private readonly surfaces = new BoundedMap<Sha, ExportSurface | null>(SURFACE_CACHE);
   /** Export guard (FT_EXPORT_GUARD): the exports of versions it read, by blob id, and its pause after a stalled read. */
   private readonly exportMemo = new ExportMemo();
@@ -1202,17 +1202,18 @@ export class TrunkDO extends DurableObject<Env> {
   }
 
   /**
-   * Assumption revalidation: the export surface of every version a stale read of this cycle could land on.
-   * For each file a proposal read and imports names from, that is trunk's blob and each new blob a
-   * proposal of the cycle writes there (pulled already). Read from the local store and cached by blob
-   * id; at most SURFACE_READS new blobs and SURFACE_BYTES per cycle. A blob that cannot be read maps to
-   * null, and its readers go back as stale.
+   * Import-name revalidation: the export surface and top-level statements of every version a stale read
+   * of this cycle could land on, and of the version it read (the growth check compares the two). For each
+   * file a proposal read and imports names from, that is trunk's blob and each new blob a proposal of the
+   * cycle writes there (pulled already), then the blob it read (in trunk history). Read from the local
+   * store and cached by blob id; at most SURFACE_READS new blobs and SURFACE_BYTES per cycle. A blob that
+   * cannot be read maps to null, and its readers go back as stale.
    */
   private async assumptionSurfaces(proposals: Proposal[]): Promise<Map<Sha, ExportSurface | null>> {
     const out = new Map<Sha, ExportSurface | null>();
     let reads = 0;
     let bytes = 0;
-    for (const blob of surfaceBlobs(proposals, (path) => this.indexBlob(path))) {
+    for (const { blob, path } of surfaceBlobs(proposals, (p) => this.indexBlob(p))) {
       const hit = this.surfaces.get(blob);
       if (hit !== undefined) {
         out.set(blob, hit);
@@ -1229,7 +1230,7 @@ export class TrunkDO extends DurableObject<Env> {
         continue;
       }
       bytes += data.length;
-      const surface = exportSurface(data);
+      const surface = exportSurface(data, path);
       this.surfaces.set(blob, surface);
       out.set(blob, surface);
     }
@@ -1313,8 +1314,9 @@ export class TrunkDO extends DurableObject<Env> {
     const drained = await this.publishFirst(asyncPublish);
     if (asyncPublish) await this.publishRoom();
     if (asyncPublish || drained) lap("publishWait");
-    // Assumption revalidation (FT_REVALIDATE): a proposal stale only through files it read can still land
-    // when the names it imports from them hold on the trunk it lands on. Off: stale means back.
+    // Import-name revalidation (FT_REVALIDATE): a proposal stale only through files it read can still land
+    // when the names it imports from them hold on the trunk it lands on and those files only grew (new
+    // top-level declarations) since it read them. Off: stale means back.
     const revalidating = revalidationEnabled((this.env as unknown as { FT_REVALIDATE?: string } | undefined)?.FT_REVALIDATE, st.colonyId);
     // Deletion guard (FT_DELETION_GUARD): a change goes back while a trunk file's import of a file it deletes would
     // resolve to nothing. Only cycles that delete a trunk file read the import index.

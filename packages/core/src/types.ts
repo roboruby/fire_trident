@@ -743,8 +743,8 @@ export interface LineageNote {
     evidence: Evidence;
     /** Contest mode: the other attempts at the same intent, and why each lost. */
     alternatives?: Array<{ proposalId: Id; agentId: Id; model?: string; reason: string }>;
-    /** Assumption revalidation: files that changed after this change read them, and the names it relies on that still held. */
-    revalidated?: Array<{ path: Path; read: Sha | null; landedOn: Sha | null; names: string[] }>;
+    /** Import-name revalidation: files that changed after this change read them, the names it relies on that still held, and (notes written since the growth check) that each only grew. */
+    revalidated?: Array<{ path: Path; read: Sha | null; landedOn: Sha | null; names: string[]; grew?: true }>;
     /** How the author and model are known (computed by the trunk writer; absent on older notes). */
     provenance?: NoteProvenance;
     /**

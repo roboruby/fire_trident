@@ -18,12 +18,17 @@
  *
  *   node packages/bench/src/scenarios/cascade.ts --colony bench-w2-cascade --readers 30 --out cascade.json
  *
- * With --imports (assumption revalidation): each reader's new file is a real TypeScript module that
+ * With --imports (import-name revalidation): each reader's new file is a real TypeScript module that
  * imports a name S already exports (found in S, or --import-name), pushed to the reader's workspace,
  * and the writer's real edit to S adds a new export without removing any. With FT_REVALIDATE on for
  * the colony (and the decide stage on, which records the readers' name assumptions), the readers land
  * instead of going back; without it they go back as above. Proposals then pass through review, so
  * outcomes are awaited for --settle seconds (default 300; 60 without --imports).
+ *
+ * With --imports --edit-body, the writer instead edits the body of an existing declaration in S (a
+ * member added to its first exported class, or a statement to its first exported function): every name
+ * still exports, but the file did more than grow, so with FT_REVALIDATE on the readers still go back,
+ * each naming S and the changed statement's line (`imports.namedLine` counts the returns that do).
  */
 import { mkdirSync, readFileSync, writeFileSync, appendFileSync } from "node:fs";
 import { dirname, join, posix } from "node:path";
@@ -44,6 +49,32 @@ const run = promisify(execFile);
 function firstExport(text: string): { name: string; type: boolean } | null {
   const m = /^export\s+(?:declare\s+)?(?:async\s+)?(?:abstract\s+)?(function\*?|class|const|let|var|interface|type)\s+([A-Za-z_$][\w$]*)/m.exec(text);
   return m ? { name: m[2]!, type: m[1] === "interface" || m[1] === "type" } : null;
+}
+
+/**
+ * The first exported class or function of a module's text whose body starts at its first "{": where to edit
+ * inside it (the offset just past that brace), its kind, its name and the line its declaration starts on (the
+ * line a return names). Null when there is none the edit can trust (a function whose parameters hold a brace is
+ * skipped).
+ */
+function firstBody(text: string): { name: string; kind: "class" | "function"; at: number; line: number } | null {
+  const m = /^export\s+(?:default\s+)?(?:declare\s+)?(?:abstract\s+)?(?:async\s+)?(class|function\*?)\s+([A-Za-z_$][\w$]*)([^{};]*)\{/m.exec(text);
+  if (!m) return null;
+  const kind = m[1]!.startsWith("function") ? "function" : "class";
+  if (kind === "function" && !/\)\s*(?::[^{]*)?$/.test(m[3]!)) return null;
+  return { name: m[2]!, kind, at: m.index + m[0].length, line: text.slice(0, m.index).split("\n").length };
+}
+
+/** The shared file with the body of its first exported declaration edited (see firstBody), and what was edited. */
+function editBody(text: string, tag: string): { text: string; edited: string; line: number } {
+  const body = firstBody(text);
+  if (!body) throw new Error("--edit-body: the shared file has no exported class or function with a body this demo can edit");
+  const stamp = new Date().toISOString();
+  const member =
+    body.kind === "class"
+      ? `\n  /** Cascade demo: an existing declaration's body edited. */\n  static readonly cascadeEdited_${tag} = "${stamp}"\n`
+      : `\n  void "cascade demo ${tag}: an existing declaration's body edited ${stamp}"\n`;
+  return { text: text.slice(0, body.at) + member + text.slice(body.at), edited: `${body.kind} ${body.name}`, line: body.line };
 }
 
 /** A reader's new module for --imports: it imports `name` from the shared file and uses it. */
@@ -77,6 +108,7 @@ async function main(): Promise<void> {
       state: { type: "string" },
       imports: { type: "boolean" },
       "import-name": { type: "string" },
+      "edit-body": { type: "boolean" },
       settle: { type: "string" },
     },
     strict: true,
@@ -89,6 +121,8 @@ async function main(): Promise<void> {
   const observeMs = Number(values.observe ?? 90) * 1000;
   const stateDir = values.state ?? "/tmp/ft-w2";
   const imports = values.imports === true;
+  const editsBody = values["edit-body"] === true;
+  if (editsBody && !imports) throw new Error("--edit-body goes with --imports: the readers must import a name from the shared file");
   const settleMs = Number(values.settle ?? (imports ? 300 : 60)) * 1000;
   const cfg = liveConfig();
   const rec = new Recorder();
@@ -172,16 +206,24 @@ async function main(): Promise<void> {
     await git(["reset", "--quiet", "--hard", trunkHead], wt.lease.trunk.token, dir);
     mark("readers pushed their modules", { readers: readers.length, imports: imported.name, from: shared });
   }
-  // The writer's real edit: a comment, or with --imports a new export (nothing removed).
-  appendFileSync(
-    join(dir, shared),
-    imports ? `\nexport const cascade_${tag} = "${new Date().toISOString()}";\n` : `\n// FireTrident cascade demo ${new Date().toISOString()}: shared configuration changed.\n`,
-  );
+  // The writer's real edit: a comment, or with --imports a new export (nothing removed), or with --edit-body the
+  // body of an existing declaration (nothing removed either, but the file did more than grow).
+  let bodyEdit: { edited: string; line: number } | null = null;
+  if (editsBody) {
+    const edit = editBody(readFileSync(join(dir, shared), "utf8"), tag);
+    writeFileSync(join(dir, shared), edit.text);
+    bodyEdit = { edited: edit.edited, line: edit.line };
+  } else {
+    appendFileSync(
+      join(dir, shared),
+      imports ? `\nexport const cascade_${tag} = "${new Date().toISOString()}";\n` : `\n// FireTrident cascade demo ${new Date().toISOString()}: shared configuration changed.\n`,
+    );
+  }
   await git(["-c", "user.name=FireTrident bench", "-c", "user.email=bench@agents.firetrident.dev", "commit", "-qam", `cascade: change ${shared}\n\nFT-Intent: ${wIntent.id}`], wt.lease.trunk.token, dir);
   const headSha = (await git(["rev-parse", "HEAD"], wt.lease.trunk.token, dir)).trim();
   const newBlob = (await git(["rev-parse", `HEAD:${shared}`], wt.lease.trunk.token, dir)).trim();
   await git(["push", "--quiet", "--force", wt.lease.repo.remote, "HEAD:refs/heads/main"], wt.lease.token, dir);
-  mark("writer pushed its workspace", { oldBlob: oldBlob.slice(0, 10), newBlob: newBlob.slice(0, 10) });
+  mark("writer pushed its workspace", { oldBlob: oldBlob.slice(0, 10), newBlob: newBlob.slice(0, 10), ...(bodyEdit ? { edited: bodyEdit.edited, line: bodyEdit.line } : {}) });
 
   // Readers read S at its current (old) blob: that is their read set.
   const readSet = [{ path: shared, blob: oldBlob }];
@@ -206,7 +248,14 @@ async function main(): Promise<void> {
     writeSet: [{ path: shared, blob: newBlob }],
     readSet: [{ path: shared, blob: oldBlob }],
     declared: { footprint: [shared], summary: `change ${shared}` },
-    evidence: { checks: [], notVerified: imports ? "cascade demo writer: one new export appended, nothing removed" : "cascade demo writer: a one-line comment appended" },
+    evidence: {
+      checks: [],
+      notVerified: bodyEdit
+        ? `cascade demo writer: the body of ${bodyEdit.edited} edited, nothing removed`
+        : imports
+          ? "cascade demo writer: one new export appended, nothing removed"
+          : "cascade demo writer: a one-line comment appended",
+    },
   });
   if (!wp) throw new Error(`writer propose failed: ${rec.errorSamples.join("; ")}`);
   mark("writer proposed", { proposal: wp.id });
@@ -253,9 +302,13 @@ async function main(): Promise<void> {
     const recorded = await Promise.all(ids.map((id) => client.call<Proposal>("proposal", "GET", `/proposals/${id}`)));
     based = recorded.filter((p) => p?.nameAssumptions?.some((np) => np.path === shared)).length;
     mark("reader name assumptions", { recorded: based, of: ids.length, landedFirstTry: returnedAt.size - returnedCount });
-    if (based === 0) log("no name assumptions recorded: assumption revalidation needs the decide stage on for this colony (Workers AI bound, decide policy enabled)");
+    if (based === 0) log("no name assumptions recorded: import-name revalidation needs the decide stage on for this colony (Workers AI bound, decide policy enabled)");
   }
-  mark("readers returned", { returned: returnedCount, landedInstead: returnedAt.size - returnedCount, reasons: [...new Set([...firstIds.keys()].map((id) => feed.proposalStatus.get(id)?.reason?.slice(0, 80)))].slice(0, 3) });
+  const reasons = [...firstIds.keys()].filter(Boolean).map((id) => feed.proposalStatus.get(id)?.reason ?? "");
+  // --edit-body: returns that name the shared file and the changed statement's line, as the growth check words them.
+  const sharedPattern = shared.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const namedLine = reasons.filter((r) => new RegExp(`${sharedPattern} changed after this change read it: the statement at line \\d+`).test(r)).length;
+  mark("readers returned", { returned: returnedCount, landedInstead: returnedAt.size - returnedCount, ...(editsBody ? { namedLine } : {}), reasons: [...new Set(reasons.map((r) => r.slice(0, 120)))].slice(0, 3) });
   const second = (await Promise.all(reproposed)) as Array<Proposal | null>;
   mark("readers re-proposed after rework", { proposals: second.filter(Boolean).length });
 
@@ -283,16 +336,20 @@ async function main(): Promise<void> {
     startedAt: new Date(T0).toISOString(),
     writerLanding: { id: writerLanding.id, tMs: writerLanding.at - T0 },
     returned: returnedCount,
-    ...(imports && imported ? { imports: { name: imported.name, type: imported.type, assumptionsRecorded: based, landedFirstTry: returnedAt.size - returnedCount, returnedFirstTry: returnedCount } } : {}),
+    edit: bodyEdit ? "body" : imports ? "export" : "comment",
+    ...(bodyEdit ? { bodyEdit } : {}),
+    ...(imports && imported ? { imports: { name: imported.name, type: imported.type, assumptionsRecorded: based, landedFirstTry: returnedAt.size - returnedCount, returnedFirstTry: returnedCount, ...(editsBody ? { namedLine } : {}) } } : {}),
     relandings,
     sigma: { max: sigmaMax, firstAboveOneMs: above[0]?.tMs ?? null, lastAboveOneMs: above[above.length - 1]?.tMs ?? null, events: regionSigma, polled },
     inhibition,
     laneDelay,
     timeline,
     errors: rec.errorSamples,
-    note: imports
-      ? "Readers are synthetic API agents whose new modules import a name the shared file exports (one real commit pushed to every reader's workspace fork); the writer's change to the shared file adds one export, a real git commit pushed to its workspace fork and landed on trunk."
-      : "Readers are synthetic API agents (their writes reuse an existing blob); the writer's change to the shared file is a real git commit pushed to its workspace fork and landed on trunk.",
+    note: bodyEdit
+      ? "Readers are synthetic API agents whose new modules import a name the shared file exports (one real commit pushed to every reader's workspace fork); the writer's change to the shared file edits the body of an existing declaration and removes nothing, a real git commit pushed to its workspace fork and landed on trunk."
+      : imports
+        ? "Readers are synthetic API agents whose new modules import a name the shared file exports (one real commit pushed to every reader's workspace fork); the writer's change to the shared file adds one export, a real git commit pushed to its workspace fork and landed on trunk."
+        : "Readers are synthetic API agents (their writes reuse an existing blob); the writer's change to the shared file is a real git commit pushed to its workspace fork and landed on trunk.",
   };
   const out = values.out ?? "cascade.json";
   mkdirSync(dirname(out), { recursive: true });

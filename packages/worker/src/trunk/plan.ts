@@ -10,9 +10,10 @@
  * trunk as it will be once every earlier accepted proposal of the cycle has landed. That is
  * what serving the batches one commit at a time would decide, without a push per batch.
  */
-import { mergeProblem, mergeText, revalidate, revalidationEnabled, textMergeCandidate, validateProposal } from "@fire_trident/core";
-import type { ExportSurface, ExportedNames, FileVersion, Id, Landing, MergeConflict, OccResult, Path, Proposal, Revalidated, Sha, TextMerged } from "@fire_trident/core";
+import { mergeProblem, mergeText, onlyGrew, revalidate, revalidationEnabled, textMergeCandidate, validateProposal } from "@fire_trident/core";
+import type { ExportSurface, ExportedNames, FileVersion, GrewOnly, Id, Landing, MergeConflict, OccResult, Path, Proposal, Revalidated, Sha, TextMerged } from "@fire_trident/core";
 import { exportedNames, resolveModule } from "../decide/mechanical.ts";
+import { topStatements } from "../decide/statements.ts";
 import { importBindings, isRelative, mayName, specifierTarget, type ImportBinding } from "../decide/mechanical.ts";
 import { guardExports, guardsScript, removedNames, type GuardExports } from "./exportguard.ts";
 import { importTargets } from "./imports.ts";
@@ -54,7 +55,7 @@ export interface PlanProposal {
 /**
  * Per batch (same order as the input): the proposals that land in its commit, and the ones that go
  * back. `revalidated`: accepted proposals that land over files they read that changed, with the names
- * that held in each (assumption revalidation). `merged`: accepted proposals whose stale files were merged
+ * that held in each, each file having only grown (import-name revalidation). `merged`: accepted proposals whose stale files were merged
  * line by line (text merge); their write sets in `accepted` name the results, whose texts are in
  * `mergedTexts` (the trunk writer stores them before it builds the commits).
  */
@@ -144,6 +145,13 @@ function short(blob: Sha | null): string {
   return blob === null ? "absent" : blob.slice(0, 10);
 }
 
+/** Import-name revalidation: how a stale read file did more than grow, as the return's reason says it. */
+function changedText(c: { path: Path; line: number; why: "edited" | "added" }): string {
+  return c.why === "edited"
+    ? `${c.path} changed after this change read it: the statement at line ${c.line} of the version it read is no longer there as it was, so re-read the file and propose again`
+    : `${c.path} changed after this change read it: line ${c.line} of the version it would land on adds a statement that is not a declaration, so re-read the file and propose again`;
+}
+
 /**
  * Plan one cycle. Batches are served in order and proposals in batch order:
  *
@@ -159,11 +167,13 @@ function short(blob: Sha | null): string {
  * - Assumptions (the files a proposal's imports resolve to) must still exist: a proposal whose assumption
  *   is gone from the virtual trunk goes back, and so does one that would delete a assumption of a
  *   proposal accepted earlier in the cycle. Only existence counts; an edited assumption is fine.
- * - Assumption revalidation (with `exported`, the names each version of a file exports): a proposal
- *   stale only through files it read, each covered by a name assumption, still lands when every name it
- *   imports from each is exported by the version on the virtual trunk (trunk, or the new blob of a
- *   proposal accepted earlier in the cycle). A name that is gone is named in the reason; anything
- *   else goes back as above. Without `exported`, stale means back.
+ * - Import-name revalidation (with `exported`, the names each version of a file exports and its top-level
+ *   statements): a proposal stale only through files it read, each covered by a name assumption, still lands
+ *   when every name it imports from each is exported by the version on the virtual trunk (trunk, or the
+ *   new blob of a proposal accepted earlier in the cycle) and that version only grew since the one it
+ *   read (core onlyGrew: every statement it read still there unchanged and in order, every new one a
+ *   declaration). A name that is gone, or the first statement that did more than grow, is named in the
+ *   reason; anything else goes back as above. Without `exported`, stale means back.
  * - Deletion guard (with `deletions`, see brokenImports): a proposal that deletes a file goes back
  *   while a trunk file's import of it would resolve to nothing once the proposal lands, unless the
  *   proposal itself or one accepted earlier in the cycle deletes that file or rewrites it. Checked
@@ -216,10 +226,17 @@ export function planCycle(
     ? (path, blob) => {
         const made = produced.get(blob);
         if (!made) return exported(path, blob);
-        if (!surfaces.has(blob)) surfaces.set(blob, exportSurface(new TextEncoder().encode(made.text)));
+        if (!surfaces.has(blob)) surfaces.set(blob, exportSurface(new TextEncoder().encode(made.text), made.path));
         return surfaces.get(blob) ?? null;
       }
     : undefined;
+  // The growth check (core onlyGrew) compares the statements of the version a stale read saw with those of the
+  // version it would land on, both read with their export surfaces.
+  const grewOnly: GrewOnly = (path, read, landed) => {
+    const was = exportedOf?.(path, read)?.statements;
+    const now = exportedOf?.(path, landed)?.statements;
+    return was && now ? onlyGrew(was, now) : null;
+  };
   const imported = new Map<Sha, readonly string[]>();
   const targetsOf = (blob: Sha): readonly string[] | undefined => {
     const known = deletions?.targets.get(blob);
@@ -272,7 +289,7 @@ export function planCycle(
       let files: TextMerged[] | null = null;
       if (!occ.eligible) {
         const tried = merge ? mergeWrites(p, occ.stale, base, virtual, textOf, merge.blobOf, merge.insertions === true) : null;
-        const rv = tried?.ok || !exportedOf ? null : revalidate(p, occ.stale, exportedOf);
+        const rv = tried?.ok || !exportedOf ? null : revalidate(p, occ.stale, exportedOf, grewOnly);
         if (tried?.ok) {
           // The change goes on with its merged files: what it lands, and what later batches see.
           files = tried.files;
@@ -289,9 +306,10 @@ export function planCycle(
             })
             .join(", ");
           const broken = rv?.ok === false && rv.broken ? `; ${rv.broken.path} no longer exports ${rv.broken.names.join(", ")}, which this change imports` : "";
+          const changed = rv?.ok === false && rv.changed ? `; ${changedText(rv.changed)}` : "";
           const conflicted = tried && !tried.ok && tried.conflicts.length > 0 ? tried.conflicts : null;
           const conflicts = conflicted ? `; ${conflictText(conflicted)}` : "";
-          back.push({ proposalId: p.id, reason: `stale: ${detail}${broken}${conflicts}`, ...(conflicted ? { conflicts: conflicted } : {}) });
+          back.push({ proposalId: p.id, reason: `stale: ${detail}${broken}${changed}${conflicts}`, ...(conflicted ? { conflicts: conflicted } : {}) });
           continue;
         }
       }
@@ -684,12 +702,14 @@ function listText(items: readonly string[], max: number): string {
 export const SURFACE_FILE_BYTES = 512 * 1024;
 
 /**
- * Assumption revalidation: the blobs whose exported names a cycle may need. For each file a proposal read
- * and imports names from (a name assumption), trunk's blob of it and every new blob a proposal of the
- * cycle writes there (the versions the plan's virtual trunk can hold), unless it is the blob the
- * proposal read (not stale, nothing to check). Each once, in first-seen order.
+ * Import-name revalidation: the blobs whose exported names and statements a cycle may need, each with
+ * its file. For each file a proposal read and imports names from (a name assumption): trunk's blob of it and
+ * every new blob a proposal of the cycle writes there (the versions the plan's virtual trunk can hold),
+ * other than the blob the proposal read, and then, when there is any, the blob it read (the growth check
+ * compares the two). A file whose only version is the one read is not stale: nothing to read. Each blob
+ * once, in first-seen order, with the first file it was wanted for.
  */
-export function surfaceBlobs(proposals: Proposal[], trunk: (path: Path) => Sha | null): Sha[] {
+export function surfaceBlobs(proposals: Proposal[], trunk: (path: Path) => Sha | null): Array<{ blob: Sha; path: Path }> {
   const written = new Map<Path, Sha[]>();
   for (const p of proposals) {
     for (const w of p.writeSet) {
@@ -699,7 +719,7 @@ export function surfaceBlobs(proposals: Proposal[], trunk: (path: Path) => Sha |
       written.set(w.path, list);
     }
   }
-  const want = new Set<Sha>();
+  const want = new Map<Sha, Path>();
   for (const p of proposals) {
     if (!Array.isArray(p.nameAssumptions)) continue;
     const reads = new Map<Path, Set<Sha | null>>();
@@ -707,10 +727,12 @@ export function surfaceBlobs(proposals: Proposal[], trunk: (path: Path) => Sha |
     for (const np of p.nameAssumptions) {
       const read = np && typeof np.path === "string" ? reads.get(np.path) : undefined;
       if (!read) continue;
-      for (const blob of [trunk(np.path), ...(written.get(np.path) ?? [])]) if (blob !== null && !read.has(blob)) want.add(blob);
+      const others = [trunk(np.path), ...(written.get(np.path) ?? [])].filter((blob): blob is Sha => blob !== null && !read.has(blob));
+      if (others.length === 0) continue;
+      for (const blob of [...others, ...read]) if (blob !== null && !want.has(blob)) want.set(blob, np.path);
     }
   }
-  return [...want];
+  return [...want].map(([blob, path]) => ({ blob, path }));
 }
 
 /**
@@ -746,10 +768,12 @@ export function mergeBlobs(entries: readonly PlanProposal[], trunk: (path: Path)
 }
 
 /**
- * The export surface of one file version (assumption revalidation), or null when it cannot be known for
- * sure: too large, not UTF-8 text, or a source the export reader cannot read reliably.
+ * The export surface of one file version (import-name revalidation), or null when it cannot be known for
+ * sure: too large, not UTF-8 text, or a source the export reader cannot read reliably. With `path` (which
+ * says how to read the file), its top-level statements too, for the growth check: null when they cannot
+ * be read for sure (decide/statements.ts), so a change that read another version of the file goes back.
  */
-export function exportSurface(bytes: Uint8Array): ExportSurface | null {
+export function exportSurface(bytes: Uint8Array, path?: Path): ExportSurface | null {
   if (bytes.length > SURFACE_FILE_BYTES) return null;
   let text: string;
   try {
@@ -758,7 +782,10 @@ export function exportSurface(bytes: Uint8Array): ExportSurface | null {
     return null;
   }
   const ex = exportedNames(text);
-  return ex === null ? null : { names: ex.names, open: ex.star.length > 0 };
+  if (ex === null) return null;
+  const surface: ExportSurface = { names: ex.names, open: ex.star.length > 0 };
+  if (path !== undefined) surface.statements = topStatements(path, text);
+  return surface;
 }
 
 /**
