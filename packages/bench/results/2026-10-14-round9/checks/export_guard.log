@@ -1,0 +1,14 @@
+export guard check egmv8a4rhn on https://p23-firetrident.mattsolt.workers.dev (on: p23-eg-on, off: p23-eg-off, review off)
+PASS  the deployment has FT_EXPORT_GUARD and FT_INLINE on (FT_AGENT_CALL_BUDGET, FT_BISECT, FT_CULPRITS, FT_DELETION_GUARD, FT_EXPORT_GUARD, FT_FIELD_GUIDE, FT_GOAL_CONFLICT, FT_INLINE, FT_MEGAFILE, FT_MERGE_INSERTIONS, FT_MODEL_STEPUP, FT_PUBLIC_GIT, FT_PUBL)
+PASS  p23-eg-on: created empty (201)
+PASS  p23-eg-on: review off for these checks
+PASS  p23-eg-on: the seed landed (landed)
+PASS  p23-eg-on: removing foo alone came back naming src/a.ts and foo (returned: removing export foo from src/b.ts breaks the import in src/a.ts: change src/a.ts in the same change, or first)
+PASS  p23-eg-on: the next take of the intent carries that reason (removing export foo from src/b.ts breaks the import in src/a.ts: change src/a.ts in the same change, or first)
+PASS  p23-eg-on: the same removal with src/a.ts edited in the same change landed (landed)
+PASS  p23-eg-off: created empty (201)
+PASS  p23-eg-off: review off for these checks
+PASS  p23-eg-off: the seed landed (landed)
+PASS  p23-eg-off: removing foo alone landed, as without the guard (landed)
+ALL CHECKS PASSED
+exit 0

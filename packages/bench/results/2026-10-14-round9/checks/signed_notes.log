@@ -1,0 +1,20 @@
+PASS  https://p23-firetrident.mattsolt.workers.dev/.well-known/firetrident-keys.json lists one Ed25519 key (200, {"id":"afca69888e5b6493","alg":"Ed25519","publicKey":"uuBlojuVmEWeM-GVVqQRuUh9g9nq7FphOYogowaGcwg","since":"2026-10-14T15:41:51.000Z"})
+PASS  its id afca69888e5b6493 is the first 16 hex digits of the SHA-256 of its public key
+PASS  it says since when it signs (2026-10-14T15:41:51.000Z)
+PASS  GET /api/about names the same key (afca69888e5b6493)
+PASS  created p23-signed (201)
+PASS  p23-signed: review off for this check
+PASS  p23-signed: joined (agt_mv8a3l8x04uqvo)
+PASS  p23-signed: declared "Add notes/signed.md" (int_mv8a3left9u1h9)
+PASS  p23-signed: took "Add notes/signed.md"
+PASS  p23-signed: "Add notes/signed.md" landed (landed, lnd_mv8a3nohqkoo0y)
+PASS  the note check finds it intact and signed by afca69888e5b6493 (intact, {"status":"signed","keyId":"afca69888e5b6493"})
+PASS  ft verify's read says the same of the newest landing ({"status":"signed","keyId":"afca69888e5b6493"})
+PASS  the clone's commit e4e4b46 ends with FT-Note-Signature (key afca69888e5b6493) and then FT-Note
+PASS  verify_note.mjs e4e4b46 prints intact, as before (intact, exit 0)
+PASS  verify_note.mjs e4e4b46 --keys https://p23-firetrident.mattsolt.workers.dev/.well-known/firetrident-keys.json prints "intact, signed by afca69888e5b6493" (intact, signed by afca69888e5b6493, exit 0)
+PASS  with the note edited in the clone, it prints altered (altered, exit 1)
+PASS  the history rewritten to match (ce03e21): the digest alone says intact (intact, exit 0)
+PASS  and with --keys it prints bad signature (bad signature, exit 1)
+ALL CHECKS PASSED
+exit 0

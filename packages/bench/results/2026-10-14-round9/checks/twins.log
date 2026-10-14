@@ -1,0 +1,22 @@
+PASS  GET /api/about lists FT_TWINS (["FT_AGENT_CALL_BUDGET","FT_BISECT","FT_CULPRITS","FT_DELETION_GUARD","FT_EXPORT_GUARD","FT_FIELD_GUIDE","FT_GOAL_CONFLICT","FT_INLINE","FT_MEGAFILE","FT_MERGE_)
+PASS  created p23-tw-on (201)
+PASS  p23-tw-on: twins-first joined (agt_mv8a902dam1lfu)
+PASS  p23-tw-on: the first session declared "Add rate limiting to /api/links" (int_mv8a907749b0sq)
+PASS  p23-tw-on: twins-second joined (agt_mv8a92le7h9724)
+PASS  p23-tw-on: the declare tool offers force and says what a twin answers
+PASS  p23-tw-on: the second session's "Rate-limit the links API" came back as int_mv8a907749b0sq, score 1
+PASS  p23-tw-on: its note says what to do (This looks like int_mv8a907749b0sq "Add rate limiting to /api/links" (open): take that one, or declare again with force: true if yours is different work.)
+PASS  p23-tw-on: no intent "Rate-limit the links API" was created
+PASS  p23-tw-on: with force: true it created int_mv8a93x8db968c
+PASS  p23-tw-on: the colony has it once
+PASS  p23-tw-on: over REST a third wording answers 200 with duplicateOf int_mv8a907749b0sq
+PASS  p23-tw-on: and with force: true 201 (int_mv8a94o9nsjuli)
+PASS  created p23-tw-off (201)
+PASS  p23-tw-off: twins-first joined (agt_mv8a9f8dvmz34c)
+PASS  p23-tw-off: the first session declared "Add rate limiting to /api/links" (int_mv8a9frsazzybe)
+PASS  p23-tw-off: twins-second joined (agt_mv8a9he2v9qkg9)
+PASS  p23-tw-off: the second session's "Rate-limit the links API" created int_mv8a9hl26an3l2
+PASS  p23-tw-off: over REST the third wording answers 201 (201)
+PASS  p23-tw-off: all three intents exist
+ALL CHECKS PASSED
+exit 0
