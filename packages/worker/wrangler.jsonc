@@ -9,7 +9,7 @@
     "directory": "../web/dist",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api", "/api/*", "/mcp", "/mcp/*", "/sse", "/sse/*", "/healthz", "/git/*"]
+    "run_worker_first": ["/api", "/api/*", "/mcp", "/mcp/*", "/public/mcp", "/sse", "/sse/*", "/healthz", "/git/*"]
   },
   "durable_objects": {
     "bindings": [
