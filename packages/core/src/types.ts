@@ -423,6 +423,11 @@ export interface Landing {
   paths: Path[];
   regions: string[];
   at: Millis;
+  /**
+   * Text merge (FT_TEXT_MERGE): files a proposal of this landing wrote on an older version, merged line by line with the
+   * version they landed on, each with the blob that landed in place of the one the proposal wrote. Absent when none was.
+   */
+  merged?: Array<{ proposalId: Id; path: Path; blob: Sha }>;
 }
 
 /**
@@ -478,6 +483,12 @@ export interface LineageNote {
     alternatives?: Array<{ proposalId: Id; agentId: Id; model?: string; reason: string }>;
     /** Assumption revalidation: files that changed after this change read them, and the names it relies on that still held. */
     revalidated?: Array<{ path: Path; read: Sha | null; landedOn: Sha | null; names: string[] }>;
+    /**
+     * Text merge: files this change wrote on a version that had changed by the time it landed, merged line by line: its
+     * base blob, the blob it landed on (`trunk`: trunk's, or a change's landing ahead in the same cycle), the blob it
+     * wrote (`theirs`) and the result, which its `writeSet` names.
+     */
+    merged?: Array<{ path: Path; base: Sha; trunk: Sha; theirs: Sha; result: Sha }>;
   }>;
   /** The project's own tests on this commit, when trunk certification ran on it (added after landing). */
   certification?: NoteCertification;
