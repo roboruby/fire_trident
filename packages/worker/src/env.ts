@@ -180,6 +180,14 @@ export interface Env {
    * sense, over read stubs only (mcp/public.ts). Empty or unset turns the endpoint off (404).
    */
   FT_PUBLIC_MCP?: string;
+  /**
+   * Optional: the Agent2Agent door for orchestrators, "on", or a comma-separated list of colony ids; absent or "off" is
+   * off (404). A covered colony serves an agent card at GET /api/colonies/:id/.well-known/agent-card.json and JSON-RPC
+   * at POST /api/colonies/:id/a2a (api/a2a.ts): SendMessage declares an intent and CancelTask withdraws one, both with
+   * the admin token like POST /intents; GetTask and ListTasks follow intents as tasks to their landing commit, public
+   * like every read.
+   */
+  FT_A2A?: string;
   /** Local development only: "1" lets writes and MCP through when their tokens are not configured. Never set it on a deployment. */
   FT_OPEN_WRITES?: string;
   /** Secret (optional): token MCP clients must present at /mcp and /sse. */

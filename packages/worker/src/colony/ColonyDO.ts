@@ -163,6 +163,7 @@ import type { ImporterWalk } from "../trunk/impact.ts";
 import type { ImpactReport } from "@fire_trident/core";
 import { modelHintFor, stepupEnabled, type ModelHint } from "./stepup.ts";
 import { findTwin, twinChecked, twinsEnabled, type DeclareAnswer, type TwinAnswer } from "./twins.ts";
+import { a2aTasks, type A2APage, type A2AQuery } from "./a2a.ts";
 import { REVIEW_MOVED, cleanMovedBy, movedCollision, movedReturn, type StalePath } from "./movedby.ts";
 import { PROTECT_META, isProtectStop, parseProtectRecord, protectChanged, protectLandedText, type ProtectHost, type ProtectOutcome, type ProtectRecord } from "./protect.ts";
 import { SpendBook, modelOfClass, resolverClient, spendCounters } from "./spend.ts";
@@ -4764,6 +4765,18 @@ export class ColonyDO extends DurableObject<Env> {
       },
       { paths, depth: opts?.depth },
     );
+  }
+
+  /**
+   * Intents as Agent2Agent tasks (colony/a2a.ts; api/a2a.ts serves them where FT_A2A covers the colony): one by id, or a
+   * page latest update first, each landed one with its landing. Read only.
+   */
+  async a2aTasks(q: A2AQuery): Promise<A2APage> {
+    const colony = this.requireColony();
+    return a2aTasks(this.sql, q ?? {}, (id) => {
+      const row = this.intentRow(id);
+      return row ? this.toIntent(row, colony.id) : null;
+    });
   }
 
   /** Titles and whys of these intents. */
