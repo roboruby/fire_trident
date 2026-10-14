@@ -11,6 +11,7 @@ import {
   revalidationCandidate,
   revalidationEnabled,
   selectBatch,
+  textMergeCandidate,
   validateProposal,
 } from "@fire_trident/core";
 import type { CausalEvent, ColonyEvent, FieldReading, FileVersion, Id, Landing, Mark, MarkKind, OccResult, Path, Proposal, Sha } from "@fire_trident/core";
@@ -20,7 +21,7 @@ import { coalesceEvents } from "../colony/events.ts";
 import { isRedirect, splitByDirection } from "../colony/direction.ts";
 import type { ClearFilter, FieldOps } from "../colony/logic.ts";
 import { settleLane, suspects } from "../trunk/outcome.ts";
-import type { LandResult } from "../trunk/plan.ts";
+import { textMergeEnabled, type LandResult } from "../trunk/plan.ts";
 import {
   accumulates,
   admissionBar,
@@ -930,8 +931,11 @@ export class RegionDO extends DurableObject<Env> {
     // 2. Optimistic concurrency: stale proposals go back with the exact delta. With assumption revalidation
     //    on for the colony (FT_REVALIDATE), one stale only through files it read, each still on trunk and
     //    covered by a name assumption, goes on to the trunk writer instead: it reads those files and lands
-    //    the change only when every name the change imports from them is still exported.
+    //    the change only when every name the change imports from them is still exported. With text merge
+    //    on (FT_TEXT_MERGE), so does one stale only on files it writes: the trunk writer merges each of
+    //    them with trunk's version line by line and lands the change only when every merge is clean.
     const revalidating = revalidationEnabled((this.env as unknown as { FT_REVALIDATE?: string } | undefined)?.FT_REVALIDATE, colonyId);
+    const merging = textMergeEnabled((this.env as unknown as { FT_TEXT_MERGE?: string } | undefined)?.FT_TEXT_MERGE, colonyId);
     const valid: Proposal[] = [];
     const stale: Array<{ p: Proposal; occ: OccResult }> = [];
     const candidates = new Map<Id, OccResult["stale"]>();
@@ -940,7 +944,7 @@ export class RegionDO extends DurableObject<Env> {
       const baseBlobs: FileVersion[] = p.writeSet.map((w) => ({ path: w.path, blob: base?.get(w.path) ?? null }));
       const occ = validateProposal(p, (path) => current[path], baseBlobs);
       if (occ.eligible) valid.push(p);
-      else if (revalidating && revalidationCandidate(p, occ.stale)) {
+      else if ((revalidating && revalidationCandidate(p, occ.stale)) || (merging && textMergeCandidate(p, occ.stale))) {
         valid.push(p);
         candidates.set(p.id, occ.stale);
       } else stale.push({ p, occ });
@@ -986,7 +990,7 @@ export class RegionDO extends DurableObject<Env> {
     for (const r of settled.returned) {
       remove.add(r.id);
       updates.push({ id: r.id, patch: { status: "returned", reason: r.reason } });
-      // A revalidation candidate the trunk writer sent back is still a stale return: its cause is a landing.
+      // A revalidation or text merge candidate the trunk writer sent back is still a stale return: its cause is a landing.
       // One it sent back at its direction check is not: a person changed course, so sigma never sees it.
       if (r.p && !isRedirect(r.reason)) this.recordReturn(r.p, r.stale ?? candidates.get(r.id) ?? null, now);
     }
@@ -1026,11 +1030,16 @@ export class RegionDO extends DurableObject<Env> {
   /**
    * Causal bookkeeping for a landing: one cause event per landed proposal, linked
    * to the return that sent its intent back (if any), and a path+blob index so a
-   * later stale return can name the landing that caused it.
+   * later stale return can name the landing that caused it. A file the trunk writer
+   * merged (text merge) is indexed at the blob that landed, not the one proposed.
    */
   private recordLanding(landing: Landing, batch: Proposal[], now: number): void {
     this.log(`land:${landing.id}`, "land", now);
     const landed = new Set(landing.proposalIds);
+    const merged = new Map<string, Sha>();
+    for (const m of Array.isArray(landing.merged) ? landing.merged : []) {
+      if (m && typeof m.proposalId === "string" && typeof m.path === "string" && typeof m.blob === "string") merged.set(`${m.proposalId}\u0000${m.path}`, m.blob);
+    }
     for (const p of batch) {
       if (!landed.has(p.id)) continue;
       const eventId = `land:${landing.id}:${p.id}`;
@@ -1040,7 +1049,7 @@ export class RegionDO extends DurableObject<Env> {
         this.sql.exec(
           "INSERT INTO path_landing (path, blob, event_id, at) VALUES (?, ?, ?, ?) ON CONFLICT(path, blob) DO UPDATE SET event_id = excluded.event_id, at = excluded.at",
           w.path,
-          w.blob ?? "",
+          merged.get(`${p.id}\u0000${w.path}`) ?? w.blob ?? "",
           eventId,
           now,
         );

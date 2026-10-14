@@ -3364,7 +3364,8 @@ export class ColonyDO extends DurableObject<Env> {
   /**
    * Culprit finding: the latest landings that changed any of `paths` (at most three, newest first),
    * read from the per-path landing index through whyContext, each with the proposal of its intent in
-   * that landing and the blobs that proposal wrote for those paths (one query for all of them).
+   * that landing and the blobs that proposal landed for those paths (one query for all of them; a file
+   * the trunk writer merged, the merged blob).
    */
   private async suspectLandings(paths: Path[]): Promise<LandedOn[]> {
     // whyContext reads only the footprint, and the id for its log line.
@@ -3379,6 +3380,24 @@ export class ColonyDO extends DurableObject<Env> {
         JSON.stringify(paths),
       )
       .toArray();
+    // Text merge: a file the trunk writer merged landed as the merged blob, not the one its proposal wrote.
+    const landedAs = new Map<string, Sha>();
+    if (writes.length > 0) {
+      const rows = this.sql
+        .exec<{ id: string; merged: string | null }>("SELECT id, json_extract(data, '$.merged') AS merged FROM landings WHERE id IN (SELECT value FROM json_each(?))", JSON.stringify(found.map((e) => e.landingId)))
+        .toArray();
+      for (const r of rows) {
+        let list: unknown = null;
+        try {
+          list = typeof r.merged === "string" ? JSON.parse(r.merged) : null;
+        } catch {
+          list = null;
+        }
+        for (const m of Array.isArray(list) ? (list as Array<{ proposalId?: unknown; path?: unknown; blob?: unknown }>) : []) {
+          if (m && typeof m.proposalId === "string" && typeof m.path === "string" && typeof m.blob === "string") landedAs.set(`${r.id}\u0000${m.proposalId}\u0000${m.path}`, m.blob);
+        }
+      }
+    }
     return found.map((e) => {
       const out: LandedOn = { landingId: e.landingId, at: e.at, title: e.title, why: e.why, paths: e.paths };
       if (e.trunkSha) out.trunkSha = e.trunkSha;
@@ -3388,7 +3407,7 @@ export class ColonyDO extends DurableObject<Env> {
       const ids = [...new Set(mine.map((w) => w.proposal_id))];
       if (ids.length === 1) {
         out.proposalId = ids[0]!;
-        out.wrote = Object.fromEntries(mine.map((w) => [w.path!, typeof w.blob === "string" ? w.blob : null]));
+        out.wrote = Object.fromEntries(mine.map((w) => [w.path!, landedAs.get(`${w.landing_id}\u0000${w.proposal_id}\u0000${w.path}`) ?? (typeof w.blob === "string" ? w.blob : null)]));
       }
       return out;
     });
@@ -4574,8 +4593,11 @@ export class ColonyDO extends DurableObject<Env> {
     const texts = this.intentTexts([...writers.values(), ...(single ? [single] : [])]);
     const now = Date.now();
     const notices: Notice[] = [];
+    // A landing with merged files (text merge) can leave a file it names as it was (the change was already on trunk): no news.
+    const merged = Array.isArray(l.merged) && l.merged.length > 0;
     for (const r of recipients) {
-      const shown = r.paths.slice(0, NOTICE_PATHS);
+      const shown = r.paths.slice(0, NOTICE_PATHS).filter((path) => !merged || (was.get(path) ?? null) !== (is.get(path) ?? null));
+      if (shown.length === 0) continue;
       // The intent that changed most of this agent's files names the notice.
       const count = new Map<Id, number>();
       for (const p of shown) {

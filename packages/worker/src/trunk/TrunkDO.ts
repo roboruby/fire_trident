@@ -1,6 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
-import { landingMessage, newId, regionOf, revalidationCandidate, revalidationEnabled, serializeNote, validateProposal } from "@fire_trident/core";
-import type { AgentKind, ColonyEvent, ColonySnapshot, Decision, ExportSurface, FileVersion, Id, Landing, LineageNote, NotesVerification, OccResult, Path, Proposal, RepoRef, Revalidated, Sha, TrunkPublish } from "@fire_trident/core";
+import { blobId, landingMessage, mergeContentProblem, newId, regionOf, revalidationCandidate, revalidationEnabled, serializeNote, textMergeCandidate, validateProposal } from "@fire_trident/core";
+import type { AgentKind, ColonyEvent, ColonySnapshot, Decision, ExportSurface, FileVersion, Id, Landing, LineageNote, NotesVerification, OccResult, Path, Proposal, RepoRef, Revalidated, Sha, TextMerged, TrunkPublish } from "@fire_trident/core";
 import type { TreeEntry } from "isomorphic-git";
 import type { Env } from "../env.ts";
 import {
@@ -53,7 +53,22 @@ import { CoChangeStore, mineHistory, type CoChangeStats, type Neighbor } from ".
 import { DerivedSet, trunkLog, type DerivedStatus, type TrunkLanding } from "./derived.ts";
 import { HISTORY_LIMIT, PATH_HISTORY, pathHistory, pathHistoryDerived, type PathHistoryEntry } from "./history.ts";
 import { IMPORTS_INDEX, IMPORT_LINKS_MAX, ImportIndex, deletionImports, importsDerived, type ImportLinks } from "./imports.ts";
-import { deletionGuardEnabled, exportSurface, planCycle, resultsFor, surfaceBlobs, uniqueProposals, type DeletionImports, type LandResult, type Outcome, type PlanProposal, type Returned } from "./plan.ts";
+import {
+  deletionGuardEnabled,
+  exportSurface,
+  mergeBlobs,
+  planCycle,
+  resultsFor,
+  surfaceBlobs,
+  textMergeEnabled,
+  uniqueProposals,
+  type DeletionImports,
+  type LandResult,
+  type Outcome,
+  type PlanProposal,
+  type Returned,
+  type TextMergeInput,
+} from "./plan.ts";
 import { runRevert, sqlRevertTrunk, type RevertResult, type RevertTrunk } from "./revert.ts";
 import { durableFs } from "../artifacts/workspace.ts";
 import { TRUNK_NAMESPACE, bindingFor } from "../artifacts/shards.ts";
@@ -89,6 +104,9 @@ const COMMIT_CACHE = 2_000;
 const SURFACE_CACHE = 2_000;
 const SURFACE_READS = 400;
 const SURFACE_BYTES = 8 * 1024 * 1024;
+/** Text merge: blobs one cycle reads at most for the texts its merges need, and bytes. */
+const MERGE_READS = 400;
+const MERGE_BYTES = 8 * 1024 * 1024;
 /** Recent cycle summaries kept for stats(). */
 const CYCLE_LOG_KEEP = 50;
 const STAGING_REF = "refs/heads/ft-landing";
@@ -144,6 +162,13 @@ interface BaseCaches {
   remote: Map<string, ArtifactsTreeEntry[] | null>;
 }
 
+/** Text merge: the texts one cycle read for its merges (null: no text), and what reading them cost, kept across its rebuilds. */
+interface MergeLoad {
+  texts: Map<Sha, string | null>;
+  reads: number;
+  bytes: number;
+}
+
 /** What one trunk cycle did, for stats() and the cycle log line. */
 export interface CycleStat {
   at: number;
@@ -157,12 +182,14 @@ export interface CycleStat {
   rebuilds: number;
   /** Proposals that landed over files they read that changed, their imported names still exported (assumption revalidation). */
   revalidated?: number;
+  /** Proposals that landed with files they wrote on an older version merged line by line with the newer one (text merge). */
+  merged?: number;
   /** Oldest request's time in the queue before the cycle started. */
   waitMs: number;
   /**
    * Time per phase: recover, publishWait (asynchronous publishing, or commits left to publish), screen, pull, assumptions
-   * (revalidation on), deletions (deletion guard on, cycles that delete files), plan, build, push (not with asynchronous
-   * publishing), finalize.
+   * (revalidation on), deletions (deletion guard on, cycles that delete files), merges (text merge on: reading texts),
+   * plan, build, push (not with asynchronous publishing), finalize.
    */
   ms: Record<string, number>;
   /** Asynchronous publishing (FT_ASYNC_PUBLISH) as the cycle ended: the published head, and the landings recorded but not published and the age of the oldest. */
@@ -1023,6 +1050,8 @@ export class TrunkDO extends DurableObject<Env> {
       ...(stat.publish
         ? [metric("unpublished", stat.publish.unpublished), metric("publishLagMs", stat.publish.lagMs), metric("publishWaitMs", stat.ms.publishWait ?? 0)]
         : []),
+      // Text merge: changes that landed with files merged line by line (only cycles that merged one).
+      ...(stat.merged ? [metric("merged", stat.merged)] : []),
     ];
     const stub = ns.get(ns.idFromName(colonyId)) as unknown as { emit(e: unknown[]): Promise<unknown> };
     await stub.emit(events);
@@ -1104,6 +1133,60 @@ export class TrunkDO extends DurableObject<Env> {
   }
 
   /**
+   * Text merge (FT_TEXT_MERGE): the texts a cycle's merges may read (plan.ts mergeBlobs: for each file a change writes
+   * on a base that trunk has moved past, or that more than one change of the cycle writes, its base, trunk and written
+   * versions). The pull step wrote the changes' blobs to the local store and base blobs are in trunk history (blobBytes
+   * reads the trunk repository for one the local store lacks). `load` keeps them for the whole cycle, so a rebuilt plan
+   * reads only what is new, at most MERGE_READS blobs and MERGE_BYTES in all. A blob larger than 512 KB, binary, not
+   * UTF-8 or unreadable has no text, and so does one past the budget: a change that needs it goes back as stale.
+   */
+  private async mergeTexts(entries: PlanProposal[], load: MergeLoad): Promise<TextMergeInput> {
+    // Fatal and BOM-keeping, so a text encodes back to exactly the bytes it was read from.
+    const decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
+    for (const blob of mergeBlobs(entries, (path) => this.indexBlob(path))) {
+      if (load.texts.has(blob)) continue;
+      if (load.reads >= MERGE_READS || load.bytes > MERGE_BYTES) break;
+      load.reads++;
+      const data = await this.blobBytes(blob).catch(() => null);
+      let text: string | null = null;
+      if (data !== null) {
+        load.bytes += data.length;
+        if (mergeContentProblem([data]) === null) {
+          try {
+            text = decoder.decode(data);
+          } catch {
+            text = null;
+          }
+        }
+      }
+      load.texts.set(blob, text);
+    }
+    return { text: (blob) => load.texts.get(blob) ?? null, blobOf: blobId };
+  }
+
+  /**
+   * Text merge: write a cycle's merged texts to the local store (commits name them; the push and the publish loop read
+   * them there). Their sizes by blob id, or null when one could not be stored under the id the plan gave it.
+   */
+  private async storeMerged(texts: Map<Sha, string>): Promise<Map<Sha, number> | null> {
+    const g = this.repo();
+    const enc = new TextEncoder();
+    const sizes = new Map<Sha, number>();
+    try {
+      for (const [blob, text] of texts) {
+        const bytes = enc.encode(text);
+        const stored = await writeLocalBlob(g, bytes);
+        if (stored !== blob) throw new Error(`a merged text hashes to ${stored}, not ${blob}`);
+        sizes.set(blob, bytes.length);
+      }
+    } catch (e) {
+      console.error(`text merge left out of this cycle: merged files not stored: ${errorText(e)}`);
+      return null;
+    }
+    return sizes;
+  }
+
+  /**
    * One group-commit cycle: idempotency per proposal id, screening against trunk, blob pulls,
    * the plan over the virtual trunk (plan.ts), one chained commit per batch, one push of the tip
    * with compare-and-swap, and the record of every landing in one transaction. With asynchronous
@@ -1132,6 +1215,9 @@ export class TrunkDO extends DurableObject<Env> {
     // Deletion guard (FT_DELETION_GUARD): a change goes back while a trunk file's import of a file it deletes would
     // resolve to nothing. Only cycles that delete a trunk file read the import index.
     const guarding = deletionGuardEnabled((this.env as unknown as { FT_DELETION_GUARD?: string } | undefined)?.FT_DELETION_GUARD, st.colonyId);
+    // Text merge (FT_TEXT_MERGE): a change stale only on files it writes lands when each of them merges cleanly, line by
+    // line, with the version it would land on (core/textmerge.ts). Off: stale means back.
+    const merging = textMergeEnabled((this.env as unknown as { FT_TEXT_MERGE?: string } | undefined)?.FT_TEXT_MERGE, st.colonyId);
     const batches = reqs.map((r) => r.batch);
     const outcome = new Map<Id, Outcome>();
     const own: Array<Landing | undefined> = reqs.map(() => undefined);
@@ -1172,9 +1258,11 @@ export class TrunkDO extends DurableObject<Env> {
         const fv = w.map((path) => ({ path, blob: base.get(path) ?? null }));
         bases.set(e.p.id, fv);
         const occ = validateProposal(e.p, (path) => this.indexBlob(path), fv);
-        // A revalidation candidate (stale only through files it read, each covered by a name assumption)
-        // is decided by the plan, which reads those files.
-        if (!occ.eligible && !(revalidating && revalidationCandidate(e.p, occ.stale))) return { kind: "returned", reason: `stale: ${staleDetail(occ.stale)}` };
+        // A revalidation candidate (stale only through files it read, each covered by a name assumption), or a
+        // text merge candidate (stale only on files it writes), is decided by the plan, which reads those files.
+        if (!occ.eligible && !(revalidating && revalidationCandidate(e.p, occ.stale)) && !(merging && textMergeCandidate(e.p, occ.stale))) {
+          return { kind: "returned", reason: `stale: ${staleDetail(occ.stale)}` };
+        }
         const structural = this.structuralProblem(e.p);
         return structural ? { kind: "returned", reason: structural } : null;
       } catch (err) {
@@ -1211,6 +1299,7 @@ export class TrunkDO extends DurableObject<Env> {
     lap("pull");
 
     // 5. Plan over the virtual trunk, build one chained commit per batch, push the tip once.
+    const mergeLoad: MergeLoad = { texts: new Map(), reads: 0, bytes: 0 };
     for (let attempt = 0; ; attempt++) {
       if (attempt > 0) {
         // Trunk moved underneath: the plan re-validates against the new index, structure too.
@@ -1226,12 +1315,23 @@ export class TrunkDO extends DurableObject<Env> {
       if (surfaces) lap("assumptions");
       const deletions = guarding ? await this.deletionGuardInput(live.map((e) => e.p)) : undefined;
       if (deletions !== undefined) lap("deletions");
-      const plan = planCycle(input, (path) => this.indexBlob(path), surfaces ? (_path, blob) => surfaces.get(blob) ?? null : undefined, deletions);
+      const merge = merging ? await this.mergeTexts(input.flat(), mergeLoad) : undefined;
+      if (merge) lap("merges");
+      const trunkBlob = (path: Path): Sha | null => this.indexBlob(path);
+      const exported = surfaces ? (_path: Path, blob: Sha) => surfaces.get(blob) ?? null : undefined;
+      let plan = planCycle(input, trunkBlob, exported, deletions, merge);
+      // Merged files go to the local store before a commit names them. One that cannot be stored there: the cycle plans
+      // again without merging, and the changes it would have merged go back as stale.
+      let mergedSizes = plan.mergedTexts.size > 0 ? await this.storeMerged(plan.mergedTexts) : new Map<Sha, number>();
+      if (mergedSizes === null) {
+        plan = planCycle(input, trunkBlob, exported, deletions);
+        mergedSizes = new Map();
+      }
       const back = (): void => {
         for (const r of plan.returned.flat()) outcome.set(r.proposalId, { kind: "returned", reason: r.reason });
       };
       lap("plan");
-      const chain = await this.buildChain(reqs, plan.accepted, sizes, stat, plan.revalidated);
+      const chain = await this.buildChain(reqs, plan.accepted, sizes, stat, plan.revalidated, { merged: plan.merged, sizes: mergedSizes });
       lap("build");
       if (chain === null) {
         back();
@@ -1264,6 +1364,7 @@ export class TrunkDO extends DurableObject<Env> {
           stat.revalidated = plan.revalidated.size;
           void this.emitRevalidated(plan.accepted.flat(), plan.revalidated).catch(() => undefined);
         }
+        if (plan.merged.size > 0) stat.merged = plan.merged.size;
         back();
         lap("finalize");
         break;
@@ -1296,7 +1397,8 @@ export class TrunkDO extends DurableObject<Env> {
   /**
    * One commit per batch with accepted proposals, by tree surgery, each on top of the previous
    * one (the first on current main), with its message, landing and lineage note. Null when the
-   * plan accepted nothing.
+   * plan accepted nothing. `merges`: the files the plan merged (text merge) per proposal, and the
+   * sizes of the merged blobs, which the local store holds.
    */
   private async buildChain(
     reqs: LandRequest[],
@@ -1304,6 +1406,7 @@ export class TrunkDO extends DurableObject<Env> {
     sizes: Map<Id, Map<Path, number>>,
     stat?: CycleStat,
     revalidated: Map<Id, Revalidated[]> = new Map(),
+    merges: { merged: Map<Id, TextMerged[]>; sizes: Map<Sha, number> } = { merged: new Map(), sizes: new Map() },
   ): Promise<{ parent: Sha; tip: Sha; items: Array<{ request: number; data: JournalData }>; objects: string[] } | null> {
     if (accepted.every((a) => a.length === 0)) return null;
     const st = this.state();
@@ -1326,22 +1429,28 @@ export class TrunkDO extends DurableObject<Env> {
     // commits are computed in memory and written together after the loop (writePending).
     const objects = new Set<string>();
     const pending = new Map<string, PendingObject & { entries?: TreeEntry[] }>();
+    // What the chain's earlier commits left at the paths they changed (null: deleted).
+    const chained = new Map<Path, { blob: Sha; mode: string } | null>();
     for (let i = 0; i < accepted.length; i++) {
       const proposals = accepted[i]!;
       if (proposals.length === 0) continue;
-      // No earlier batch of the cycle touches these paths (the plan), so `before` is current trunk.
+      // A path no earlier batch of the cycle changed is as current trunk has it. One an earlier batch changed (a later
+      // batch writes it again only through a text merge onto that batch's version) is as that commit left it.
       const changes = new Map<Path, StagedChange>();
       for (const p of proposals) {
         for (const w of p.writeSet) {
-          const before = this.indexBlob(w.path);
+          const prev = chained.get(w.path);
+          const before = prev !== undefined ? (prev?.blob ?? null) : this.indexBlob(w.path);
           if (w.blob === null) {
             if (before !== null) changes.set(w.path, { blob: null, before });
           } else if (w.blob !== before) {
-            const size = sizes.get(p.id)?.get(w.path) ?? (await readLocalBlob(g, w.blob)).length;
-            changes.set(w.path, { blob: w.blob, mode: this.indexMode(w.path) ?? NEW_FILE_MODE, size, before });
+            // A merged blob's size is known from the merge; the pull step measured the proposal's own blobs.
+            const size = merges.sizes.get(w.blob) ?? sizes.get(p.id)?.get(w.path) ?? (await readLocalBlob(g, w.blob)).length;
+            changes.set(w.path, { blob: w.blob, mode: prev?.mode ?? this.indexMode(w.path) ?? NEW_FILE_MODE, size, before });
           }
         }
       }
+      for (const [path, c] of changes) chained.set(path, c.blob === null ? null : { blob: c.blob, mode: c.mode });
       const treeChanges = new Map<Path, PathChange>();
       for (const [path, c] of changes) treeChanges.set(path, c.blob === null ? null : { blob: c.blob, mode: c.mode });
       lap("changes");
@@ -1353,7 +1462,7 @@ export class TrunkDO extends DurableObject<Env> {
       const intentIds = unique(proposals.map((p) => p.intentId));
       // The note names the landing, never the commit, so it is final here and the commit carries its digest as the
       // FT-Note trailer (trunk/digest.ts); certification, added after landing, is left out of the digest.
-      const note = await sealNote(buildNote({ id, colonyId: st.colonyId }, proposals, info, ctx, revalidated));
+      const note = await sealNote(buildNote({ id, colonyId: st.colonyId }, proposals, info, ctx, revalidated, merges.merged));
       lap("note");
       const message = withNoteDigest(landingMessage({ id, intentIds }, proposals, info.titles), note.digest);
       const content = commitContent({ tree, parents: [parent], message, name: LANDING_IDENTITY.name, email: LANDING_IDENTITY.email, timestamp: Math.floor(at / 1000) });
@@ -1362,6 +1471,8 @@ export class TrunkDO extends DurableObject<Env> {
       this.commitTrees.set(commit, tree);
       lap("commit");
       const paths = [...changes.keys()].sort();
+      // Text merge: the blob that landed for each merged file (its proposal wrote another).
+      const mergedHere = proposals.flatMap((p) => (merges.merged.get(p.id) ?? []).map((f) => ({ proposalId: p.id, path: f.path, blob: f.result })));
       const landing: Landing = {
         id,
         colonyId: st.colonyId,
@@ -1372,6 +1483,7 @@ export class TrunkDO extends DurableObject<Env> {
         paths,
         regions: unique(paths.map((path) => regionOf(path, st.regionDepth))).sort(),
         at,
+        ...(mergedHere.length > 0 ? { merged: mergedHere } : {}),
       };
       items.push({ request: i, data: { landing, note: note.text, changes: [...changes] } });
       parent = commit;
@@ -2616,11 +2728,13 @@ export class TrunkDO extends DurableObject<Env> {
 
 /**
  * The lineage note for a landing. A proposal that landed over files it read that changed records each
- * of them under `revalidated`: the blob it read, the blob it landed on, and the names that held. Each
- * proposal's `provenance` says how its author and model are known, from the colony's record of the agent
- * (trunk/provenance.ts); a proposal whose agent the writer does not know gets none. The note names the
- * landing, never its commit, so it is final before the commit is built (the commit carries its digest).
- * Notes are public, so the free text agents and people wrote is masked where it looks like a secret (mask.ts).
+* of them under `revalidated`: the blob it read, the blob it landed on, and the names that held. One
+* whose files were merged line by line records each under `merged` (its base blob, the blob it landed
+* on, the blob it wrote, the result); its write set names the results. Each proposal's `provenance` says
+* how its author and model are known, from the colony's record of the agent (trunk/provenance.ts); a
+* proposal whose agent the writer does not know gets none. The note names the landing, never its commit,
+* so it is final before the commit is built (the commit carries its digest). Notes are public, so the free
+* text agents and people wrote is masked where it looks like a secret (mask.ts).
  */
 function buildNote(
   landing: Pick<Landing, "id" | "colonyId">,
@@ -2628,6 +2742,7 @@ function buildNote(
   info: { intents: Map<Id, IntentInfo>; agents: Map<Id, AgentLite> },
   ctx: LandContext,
   revalidated: Map<Id, Revalidated[]> = new Map(),
+  merged: Map<Id, TextMerged[]> = new Map(),
 ): LineageNote {
   return maskNote({
     schema: "firetrident.lineage/v1",
@@ -2648,6 +2763,7 @@ function buildNote(
         decisions: ctx.decisions?.[p.id] ?? [],
         evidence: p.evidence ?? { checks: [] },
         ...(revalidated.has(p.id) ? { revalidated: revalidated.get(p.id) } : {}),
+        ...(merged.has(p.id) ? { merged: merged.get(p.id) } : {}),
         ...noteAlternatives(ctx.alternatives, p.id),
         ...(provenance ? { provenance } : {}),
       };

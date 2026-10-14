@@ -10,9 +10,10 @@
  * trunk as it will be once every earlier accepted proposal of the cycle has landed. That is
  * what serving the batches one commit at a time would decide, without a push per batch.
  */
-import { revalidate, revalidationEnabled, validateProposal } from "@fire_trident/core";
-import type { ExportSurface, ExportedNames, FileVersion, Id, Landing, Path, Proposal, Revalidated, Sha } from "@fire_trident/core";
+import { mergeProblem, mergeText, revalidate, revalidationEnabled, textMergeCandidate, validateProposal } from "@fire_trident/core";
+import type { ExportSurface, ExportedNames, FileVersion, Id, Landing, OccResult, Path, Proposal, Revalidated, Sha, TextMerged } from "@fire_trident/core";
 import { exportedNames, resolveModule } from "../decide/mechanical.ts";
+import { importTargets } from "./imports.ts";
 
 /** A proposal sent back from `land`, with the exact reason. */
 export interface Returned {
@@ -49,12 +50,34 @@ export interface PlanProposal {
 /**
  * Per batch (same order as the input): the proposals that land in its commit, and the ones that go
  * back. `revalidated`: accepted proposals that land over files they read that changed, with the names
- * that held in each (assumption revalidation).
+ * that held in each (assumption revalidation). `merged`: accepted proposals whose stale files were merged
+ * line by line (text merge); their write sets in `accepted` name the results, whose texts are in
+ * `mergedTexts` (the trunk writer stores them before it builds the commits).
  */
 export interface PlanResult {
   accepted: Proposal[][];
   returned: Returned[][];
   revalidated: Map<Id, Revalidated[]>;
+  merged: Map<Id, TextMerged[]>;
+  mergedTexts: Map<Sha, string>;
+}
+
+/**
+ * Text merge (FT_TEXT_MERGE): what the plan reads to merge a stale change's files with the virtual trunk. `text` gives a
+ * blob's text as the trunk writer loaded it, or null when it did not (larger than 512 KB, binary, not UTF-8, unreadable,
+ * or past the cycle's budget); `blobOf` gives the git blob id of a text.
+ */
+export interface TextMergeInput {
+  text(blob: Sha): string | null;
+  blobOf(text: string): Sha;
+}
+
+/**
+ * Is text merge on for this colony? `setting` is FT_TEXT_MERGE, read like FT_REVALIDATE: "on" (every colony), a
+ * comma-separated list of colony ids, or absent / empty / "off" (no colony).
+ */
+export function textMergeEnabled(setting: string | undefined, colonyId: Id): boolean {
+  return revalidationEnabled(setting, colonyId);
 }
 
 /**
@@ -111,10 +134,23 @@ function short(blob: Sha | null): string {
  *   while a trunk file's import of it would resolve to nothing once the proposal lands, unless the
  *   proposal itself or one accepted earlier in the cycle deletes that file or rewrites it. Checked
  *   last, so a proposal that goes back for another reason gets that reason.
+ * - Text merge (with `merge`, see mergeWrites): a proposal stale only on files it writes (each written,
+ *   in its base and on the virtual trunk: textMergeCandidate) has each of them merged line by line with
+ *   the version on the virtual trunk. When every merge is clean it goes on with those files' blobs
+ *   replaced by the results, every other rule still applying, and later batches see the results (they
+ *   may merge against them in turn). A conflict, a text the trunk writer did not load, or a file that is
+ *   never merged (binary, over 512 KB, a lockfile) leaves it to the rules above, and a conflict is named
+ *   in the reason. Without `merge`, stale means back as before.
  *
  * Proposal ids must be unique across the cycle (the caller dedupes); a repeated id is skipped.
  */
-export function planCycle(batches: PlanProposal[][], trunk: (path: Path) => Sha | null, exported?: ExportedNames, deletions?: DeletionImports | null): PlanResult {
+export function planCycle(
+  batches: PlanProposal[][],
+  trunk: (path: Path) => Sha | null,
+  exported?: ExportedNames,
+  deletions?: DeletionImports | null,
+  merge?: TextMergeInput | null,
+): PlanResult {
   const ahead = new Map<Path, { blob: Sha | null; by: Id }>();
   const aheadPaths: Path[] = [];
   /** Assumptions of the proposals accepted in earlier batches, with the proposal relying on each. */
@@ -127,6 +163,29 @@ export function planCycle(batches: PlanProposal[][], trunk: (path: Path) => Sha 
   const accepted: Proposal[][] = [];
   const returned: Returned[][] = [];
   const revalidated = new Map<Id, Revalidated[]>();
+  const merged = new Map<Id, TextMerged[]>();
+  const mergedTexts = new Map<Sha, string>();
+  /** The versions this cycle's merges made, by blob id, with their file: a later merge, export or import check may read one. */
+  const produced = new Map<Sha, { path: Path; text: string }>();
+  const textOf = (blob: Sha): string | null => produced.get(blob)?.text ?? merge?.text(blob) ?? null;
+  // A merged version is not one the trunk writer read exports or imports from: they are read from its text here.
+  const surfaces = new Map<Sha, ExportSurface | null>();
+  const exportedOf: ExportedNames | undefined = exported
+    ? (path, blob) => {
+        const made = produced.get(blob);
+        if (!made) return exported(path, blob);
+        if (!surfaces.has(blob)) surfaces.set(blob, exportSurface(new TextEncoder().encode(made.text)));
+        return surfaces.get(blob) ?? null;
+      }
+    : undefined;
+  const imported = new Map<Sha, readonly string[]>();
+  const targetsOf = (blob: Sha): readonly string[] | undefined => {
+    const known = deletions?.targets.get(blob);
+    const made = known ? undefined : produced.get(blob);
+    if (!made) return known;
+    if (!imported.has(blob)) imported.set(blob, importTargets(made.path, made.text));
+    return imported.get(blob);
+  };
   for (const batch of batches) {
     const ok: Proposal[] = [];
     const back: Returned[] = [];
@@ -141,7 +200,8 @@ export function planCycle(batches: PlanProposal[][], trunk: (path: Path) => Sha 
       const w = batchWrites.get(path);
       return w !== undefined ? w : virtual(path);
     };
-    for (const { p, base } of batch) {
+    for (const { p: proposal, base } of batch) {
+      let p = proposal;
       if (seen.has(p.id)) continue;
       seen.add(p.id);
       const w = p.writeSet.map((f) => f.path);
@@ -166,9 +226,17 @@ export function planCycle(batches: PlanProposal[][], trunk: (path: Path) => Sha 
       }
       const occ = validateProposal(p, virtual, base);
       let kept: Revalidated[] | null = null;
+      let files: TextMerged[] | null = null;
       if (!occ.eligible) {
-        const rv = exported ? revalidate(p, occ.stale, exported) : null;
-        if (rv?.ok) {
+        const tried = merge ? mergeWrites(p, occ.stale, base, virtual, textOf, merge.blobOf) : null;
+        const rv = tried?.ok || !exportedOf ? null : revalidate(p, occ.stale, exportedOf);
+        if (tried?.ok) {
+          // The change goes on with its merged files: what it lands, and what later batches see.
+          files = tried.files;
+          const result = new Map(files.map((f) => [f.path, f.result]));
+          for (const f of files) produced.set(f.result, { path: f.path, text: tried.texts.get(f.result)! });
+          p = { ...p, writeSet: p.writeSet.map((f) => (result.has(f.path) ? { path: f.path, blob: result.get(f.path)! } : f)) };
+        } else if (rv?.ok) {
           kept = rv.revalidated;
         } else {
           const detail = occ.stale
@@ -178,7 +246,8 @@ export function planCycle(batches: PlanProposal[][], trunk: (path: Path) => Sha 
             })
             .join(", ");
           const broken = rv?.ok === false && rv.broken ? `; ${rv.broken.path} no longer exports ${rv.broken.names.join(", ")}, which this change imports` : "";
-          back.push({ proposalId: p.id, reason: `stale: ${detail}${broken}` });
+          const conflicts = tried && !tried.ok && tried.conflicts.length > 0 ? `; ${conflictText(tried.conflicts)}` : "";
+          back.push({ proposalId: p.id, reason: `stale: ${detail}${broken}${conflicts}` });
           continue;
         }
       }
@@ -195,13 +264,17 @@ export function planCycle(batches: PlanProposal[][], trunk: (path: Path) => Sha 
         back.push({ proposalId: p.id, reason: `conflicts with ${a.by} on ${shape}: ${a.by} ${a.blob === null ? "deletes" : `writes ${short(a.blob)} at`} ${x}, landing ahead in this cycle` });
         continue;
       }
-      const broken = deletions ? brokenImports(p, before, trunk, deletions) : null;
+      const broken = deletions ? brokenImports(p, before, trunk, deletions, targetsOf) : null;
       if (broken !== null) {
         back.push({ proposalId: p.id, reason: broken });
         continue;
       }
       ok.push(p);
       if (kept) revalidated.set(p.id, kept);
+      if (files) {
+        merged.set(p.id, files);
+        for (const f of files) mergedTexts.set(f.result, produced.get(f.result)!.text);
+      }
       for (const path of w) writes.add(path);
       for (const path of r) reads.add(path);
       for (const f of p.writeSet) batchWrites.set(f.path, f.blob ?? null);
@@ -219,7 +292,71 @@ export function planCycle(batches: PlanProposal[][], trunk: (path: Path) => Sha 
     accepted.push(ok);
     returned.push(back);
   }
-  return { accepted, returned, revalidated };
+  return { accepted, returned, revalidated, merged, mergedTexts };
+}
+
+/** The merge of one stale proposal's files (mergeWrites): the files and their merged texts by blob id, or the conflicts that stopped it. */
+type MergeTry = { ok: true; files: TextMerged[]; texts: Map<Sha, string> } | { ok: false; conflicts: Array<{ path: Path; lines: number[] }> };
+
+/**
+ * Text merge for one stale proposal (see planCycle), or null when it is not a candidate (textMergeCandidate). Every
+ * stale file must be one whose base the virtual trunk moved past, with its three versions loaded (`textOf`) and
+ * mergeable (core mergeProblem), or nothing is merged and no conflict is named; then each file is merged (core
+ * mergeText): its base, the virtual trunk's version (ours) and the proposal's (theirs). `conflicts` lists the files
+ * whose merge conflicted, with where each conflicting hunk starts in the base.
+ */
+function mergeWrites(
+  p: Proposal,
+  stale: OccResult["stale"],
+  base: FileVersion[],
+  virtual: (path: Path) => Sha | null,
+  textOf: (blob: Sha) => string | null,
+  blobOf: (text: string) => Sha,
+): MergeTry | null {
+  if (!textMergeCandidate(p, stale)) return null;
+  const started = new Map(base.map((f) => [f.path, f.blob ?? null]));
+  const wrote = new Map(p.writeSet.map((w) => [w.path, w.blob ?? null]));
+  const todo: Array<{ path: Path; base: Sha; trunk: Sha; theirs: Sha; texts: [string, string, string] }> = [];
+  for (const path of new Set(stale.map((s) => s.path))) {
+    const b = started.get(path) ?? null;
+    const o = virtual(path);
+    const t = wrote.get(path) ?? null;
+    // A file stale only through what the change read of it (its base is still the version here) is not a merge.
+    if (b === null || o === null || t === null || b === o) return { ok: false, conflicts: [] };
+    const texts = [textOf(b), textOf(o), textOf(t)];
+    if (texts.some((x) => x === null) || mergeProblem(path, texts as string[]) !== null) return { ok: false, conflicts: [] };
+    todo.push({ path, base: b, trunk: o, theirs: t, texts: texts as [string, string, string] });
+  }
+  const files: TextMerged[] = [];
+  const texts = new Map<Sha, string>();
+  const conflicts: Array<{ path: Path; lines: number[] }> = [];
+  let limited = false;
+  for (const f of todo) {
+    const r = mergeText(...f.texts);
+    if (!r.clean) {
+      if (r.conflicts > 0) conflicts.push({ path: f.path, lines: r.lines });
+      else limited = true;
+      continue;
+    }
+    const result = blobOf(r.text);
+    texts.set(result, r.text);
+    files.push({ path: f.path, base: f.base, trunk: f.trunk, theirs: f.theirs, result });
+  }
+  if (conflicts.length > 0 || limited) return { ok: false, conflicts };
+  return { ok: true, files, texts };
+}
+
+/** Conflicting hunks a reason places at most, per file. */
+const MERGE_LINES_NAMED = 5;
+
+/** A text merge's conflicts as a return reason states them: each file, its conflicting hunks and where they start in the change's base. */
+function conflictText(conflicts: Array<{ path: Path; lines: number[] }>): string {
+  return conflicts
+    .map((c) => {
+      const n = c.lines.length;
+      return `text merge of ${c.path}: ${n} conflicting hunk${n === 1 ? "" : "s"}, at line${n === 1 ? "" : "s"} ${listText(c.lines.map(String), MERGE_LINES_NAMED)} of its base`;
+    })
+    .join("; ");
 }
 
 /** Importers a deletion guard reason names at most, and deleted files. */
@@ -233,9 +370,16 @@ const GUARD_FILES_NAMED = 3;
  * deletes is fine; one rewritten in the cycle is checked in its new version; and an import breaks when it resolves
  * on `before` but to nothing once `p` lands, resolved as the decide stage and `ft revert` resolve relative imports.
  * An import that finds another file afterwards (the module moved into a directory, or a .js name now finds its
- * TypeScript twin) does not break.
+ * TypeScript twin) does not break. `targetsOf` gives a new version's import targets (`deletions.targets`, or read from
+ * a version a text merge of the cycle made); a version it does not know leaves its file unchecked.
  */
-function brokenImports(p: Proposal, before: (path: Path) => Sha | null, trunk: (path: Path) => Sha | null, deletions: DeletionImports): string | null {
+function brokenImports(
+  p: Proposal,
+  before: (path: Path) => Sha | null,
+  trunk: (path: Path) => Sha | null,
+  deletions: DeletionImports,
+  targetsOf: (blob: Sha) => readonly string[] | undefined = (blob) => deletions.targets.get(blob),
+): string | null {
   const own = new Map<Path, Sha | null>();
   for (const f of p.writeSet) own.set(f.path, f.blob ?? null);
   const gone = new Set<Path>();
@@ -260,7 +404,7 @@ function brokenImports(p: Proposal, before: (path: Path) => Sha | null, trunk: (
     const mine = own.get(importer);
     const blob = mine !== undefined ? mine : before(importer);
     if (blob === null) continue;
-    const targets = blob === trunk(importer) ? onTrunk : deletions.targets.get(blob);
+    const targets = blob === trunk(importer) ? onTrunk : targetsOf(blob);
     if (!targets) continue;
     for (const t of targets) {
       const was = resolveModule(t, existed);
@@ -310,6 +454,38 @@ export function surfaceBlobs(proposals: Proposal[], trunk: (path: Path) => Sha |
       const read = np && typeof np.path === "string" ? reads.get(np.path) : undefined;
       if (!read) continue;
       for (const blob of [trunk(np.path), ...(written.get(np.path) ?? [])]) if (blob !== null && !read.has(blob)) want.add(blob);
+    }
+  }
+  return [...want];
+}
+
+/**
+ * Text merge: the blobs whose texts a cycle's merges may read. For each file a proposal writes (not deletes) on a
+ * base that has it, when trunk holds another version or another proposal of the cycle writes the file too: the
+ * proposal's base blob and its own, trunk's blob, and every blob the cycle's other proposals write there (one of them
+ * can be on the virtual trunk when it lands). Versions a merge of the cycle makes are not listed: the plan holds their
+ * texts. Each once, in first-seen order.
+ */
+export function mergeBlobs(entries: readonly PlanProposal[], trunk: (path: Path) => Sha | null): Sha[] {
+  const writers = new Map<Path, Array<{ blob: Sha | null; base: Sha | null }>>();
+  for (const { p, base } of entries) {
+    const started = new Map(base.map((f) => [f.path, f.blob ?? null]));
+    for (const w of p.writeSet) {
+      const list = writers.get(w.path) ?? [];
+      list.push({ blob: w.blob ?? null, base: started.get(w.path) ?? null });
+      writers.set(w.path, list);
+    }
+  }
+  const want = new Set<Sha>();
+  for (const [path, list] of writers) {
+    const now = trunk(path);
+    const shared = list.length > 1;
+    for (const w of list) {
+      if (w.blob === null || w.base === null || (!shared && w.base === now)) continue;
+      want.add(w.base);
+      if (now !== null) want.add(now);
+      want.add(w.blob);
+      if (shared) for (const x of list) if (x.blob !== null) want.add(x.blob);
     }
   }
   return [...want];

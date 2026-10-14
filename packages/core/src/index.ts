@@ -4,6 +4,7 @@ export * from "./field.ts";
 export * from "./threshold.ts";
 export * from "./sigma.ts";
 export * from "./occ.ts";
+export * from "./textmerge.ts";
 export * from "./batch.ts";
 export * from "./morph.ts";
 export * from "./residual.ts";

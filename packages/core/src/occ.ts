@@ -1,4 +1,5 @@
 import type { FileVersion, Id, Path, Proposal, Sha } from "./types.ts";
+import { isLockfile } from "./textmerge.ts";
 
 /** Current trunk blob per path (null = absent). */
 export type TrunkIndex = (path: Path) => Sha | null | undefined;
@@ -114,6 +115,19 @@ export function revalidationCandidate(p: Pick<Proposal, "readSet" | "writeSet" |
   const read = new Set(p.readSet.map((r) => r.path));
   const assumptions = assumptionNames(p);
   return stale.every((s) => read.has(s.path) && !written.has(s.path) && s.expected !== null && s.actual !== null && assumptions.has(s.path));
+}
+
+/**
+ * The part of text merge that needs no file contents (FT_TEXT_MERGE; the lane's and the trunk writer's pre-check): the
+ * proposal is stale only on files it writes, each written with new content (not deleted), present both in what it
+ * expected and on trunk, and not a lockfile. The trunk writer then merges each of them with trunk's version line by
+ * line (textmerge.ts) and lands the change only when every merge is clean; anything else goes back as usual.
+ */
+export function textMergeCandidate(p: Pick<Proposal, "writeSet">, stale: OccResult["stale"]): boolean {
+  if (stale.length === 0) return false;
+  const written = new Map<Path, Sha | null>();
+  for (const w of p.writeSet) written.set(w.path, w.blob ?? null);
+  return stale.every((s) => (written.get(s.path) ?? null) !== null && s.expected !== null && s.actual !== null && !isLockfile(s.path));
 }
 
 /**

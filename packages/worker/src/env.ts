@@ -45,6 +45,12 @@ export interface Env {
    */
   FT_REVALIDATE?: string;
   /**
+   * Optional: text merge, "on", or a comma-separated list of colony ids; absent or "off" is off. A change stale only on
+   * files it writes (trunk changed them after its base) lands when each of them merges cleanly, line by line, with the
+   * version it would land on (core/textmerge.ts); otherwise it goes back as before, a conflict named in the reason.
+   */
+  FT_TEXT_MERGE?: string;
+  /**
    * Optional: the deletion guard, "on", or a comma-separated list of colony ids; absent or "off" is off. In a trunk
    * cycle that deletes files, a change goes back while a trunk file's import of a file it deletes would resolve to nothing.
    */
