@@ -5595,13 +5595,22 @@ export class ColonyDO extends DurableObject<Env> {
    * With asynchronous publishing, the paths changed by landings recorded after `publishedSha` (the colony's own landing
    * records, walked from its trunk head back to that commit through parent links). Null when publishing is synchronous,
    * nothing is waiting, or the walk does not reach the published head within UNPUBLISHED_WALK landings: a take then
-   * leases as before. The commits between two heads never change, so the answer serves every take until a head moves.
+   * leases as before. The commits between two heads never change, so the answer serves every take until a head moves;
+   * when only the colony's head moved, the landings since the last answer are walked and their paths added.
    */
   private unpublishedPaths(publishedSha: Sha): Set<Path> | null {
     const colony = this.requireColony();
     if (!asyncPublishEnabled(this.env.FT_ASYNC_PUBLISH, colony.id) || colony.trunkSha === publishedSha) return null;
     const memo = this.unpublishedMemo;
-    if (memo && memo.trunk === colony.trunkSha && memo.published === publishedSha) return memo.paths;
+    if (memo && memo.published === publishedSha) {
+      if (memo.trunk === colony.trunkSha) return memo.paths;
+      const added = memo.paths ? this.walkUnpublished(colony.trunkSha, memo.trunk) : null;
+      if (memo.paths && added) {
+        for (const p of added) memo.paths.add(p);
+        memo.trunk = colony.trunkSha;
+        return memo.paths;
+      }
+    }
     const paths = this.walkUnpublished(colony.trunkSha, publishedSha);
     this.unpublishedMemo = { trunk: colony.trunkSha, published: publishedSha, paths };
     return paths;
