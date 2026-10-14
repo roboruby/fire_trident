@@ -1,0 +1,39 @@
+{
+  "colony": "p22-hono",
+  "at": "2026-10-14T14:41:53Z",
+  "spend": {
+    "usd": 0.04380726,
+    "byLayer": {
+      "agents": 0.0435037,
+      "review": 0.00030356,
+      "judge": 0,
+      "resolver": 0,
+      "other": 0
+    },
+    "perLandedIntent": 0.0001548,
+    "landedIntents": 283,
+    "tokens": {
+      "input": 238569,
+      "output": 17064
+    },
+    "byModel": {
+      "@cf/google/gemma-4-26b-a4b-it": {
+        "input": 227935,
+        "output": 15350,
+        "usd": 0.0273985
+      },
+      "@cf/moonshotai/kimi-k2.7-code": {
+        "input": 9860,
+        "output": 1714,
+        "usd": 0.016223
+      },
+      "@cf/cloudflare/clef": {
+        "input": 774,
+        "output": 0,
+        "usd": 0.00018576
+      }
+    },
+    "unpriced": {},
+    "priceDate": "2026-10-12"
+  }
+}

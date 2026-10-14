@@ -1,0 +1,8 @@
+[14:52:03] inline probe landed prp_mv88akluo0y43c in 1793 ms
+[14:52:03] creating 8000 bench intents over 64 regions (open 0, target 8000)
+[14:52:34] feed connected; 2000 agents for 120s (ramp 10s, work 0 ms)
+[14:56:02] stopped the run's agents: {"ok":true,"ms":59618,"retired":2001,"failed":0}
+[14:56:02] wrote <scratch>/r8-live/scale-production.json
+[14:56:02] N=2000: landed/min 2876.8 (commits/min 596.8), take p50 15265 ms p99 26442 ms, ttl p50 9622 ms p90 13891 ms p99 17638 ms, batch p50 5, returned 0, errors 2, outcomes feed 6090 poll 158, publish sync
+[14:56:02] run: 2000 agents joined; 1350 landings, 6606 changes and 6606 intents landed in 145 s (first landing to last: 558 landings and 2730 changes a minute); time to land p50 9622 ms, p95 15151 ms
+exit 0

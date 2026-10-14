@@ -1,0 +1,8 @@
+[14:26:05] inline probe landed prp_mv87d6062x6yqt in 1946 ms
+[14:26:05] creating 8000 bench intents over 64 regions (open 0, target 8000)
+[14:26:40] feed connected; 2000 agents for 120s (ramp 10s, work 0 ms)
+[14:29:58] stopped the run's agents: {"ok":true,"ms":61430,"retired":2001,"failed":0}
+[14:29:58] wrote <scratch>/r8-live/p22-scale.json
+[14:29:58] N=2000: landed/min 2985.5 (commits/min 493.9), take p50 2054 ms p99 7612 ms, ttl p50 11327 ms p90 15860 ms p99 20309 ms, batch p50 6, returned 0, errors 1, outcomes feed 5938 poll 21, publish sync
+[14:29:58] run: 2000 agents joined; 1132 landings, 5959 changes and 5959 intents landed in 133 s (first landing to last: 511 landings and 2690 changes a minute); time to land p50 11327 ms, p95 17123 ms
+exit 0

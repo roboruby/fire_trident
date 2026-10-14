@@ -1,0 +1,43 @@
+first red check frmv87px1e on https://p22-firetrident.mattsolt.workers.dev (on: p22-bis-on, off: p22-bis-off)
+PASS  p22-bis-on: created (201)
+PASS  p22-bis-on: review off for these checks
+PASS  p22-bis-on: certification on with repairs (200)
+PASS  p22-bis-on: "Add the math module and its test" landed (landed, lnd_mv87qfztg5w1ij)
+PASS  p22-bis-on: certification is green on 2ab1b21 (green, {"tests":1,"pass":1,"fail":0,"cancelled":0,"skipped":0,"todo":0,"suites":0})
+PASS  p22-bis-on: certification held
+PASS  p22-bis-on: "Add note 1" landed (landed, lnd_mv87qru00dt5hf)
+PASS  p22-bis-on: "Add note 2" landed (landed, lnd_mv87qzhxy2rhp2)
+PASS  p22-bis-on: "Add note 3" landed (landed, lnd_mv87r5a8xw255a)
+PASS  p22-bis-on: "Speed up subtraction" landed (landed, lnd_mv87ram5m68eue)
+PASS  p22-bis-on: "Add note 4" landed (landed, lnd_mv87rduhx34nib)
+PASS  p22-bis-on: "Add note 5" landed (landed, lnd_mv87rh68ogmbvq)
+PASS  p22-bis-on: certification on again
+PASS  p22-bis-on: certification is red on the head f3a226a (red, subtracts), green still 2ab1b21
+      firstRed: {"status":"found","trunkSha":"01763b56dfa595bb9bf9f98aad741e8f77dd779c","landingId":"lnd_mv87ram5m68eue","intents":[{"id":"int_mv87r7ixdjg511","title":"Speed up subtraction"}],"proposals":[{"id":"prp_mv87r8pq5cxn5b","paths":["bisect/frmv87px1e/src/math.js"],"intentId":"int_mv87r7ixdjg511","title":"Speed up subtraction"}],"files":["bisect/frmv87px1e/test/math.test.js"],"probes":3,"ms":267,"landings
+PASS  p22-bis-on: the red result gained firstRed, found (found)
+PASS  p22-bis-on: it names the landing that holds the breaking change (lnd_mv87ram5m68eue, expected lnd_mv87ram5m68eue)
+PASS  p22-bis-on: and its commit (01763b5, expected 01763b5)
+PASS  p22-bis-on: and the breaking proposal with the file it changed ([{"id":"prp_mv87r8pq5cxn5b","paths":["bisect/frmv87px1e/src/math.js"],"intentId":"int_mv87r7ixdjg511","title":"Speed up subtraction"}])
+PASS  p22-bis-on: and its intent with its title ([{"id":"int_mv87r7ixdjg511","title":"Speed up subtraction"}])
+PASS  p22-bis-on: in at most 4 test runs over the 6 landings since green (3 runs, 267 ms, 6 landings)
+PASS  p22-bis-on: a bisect event was recorded after the red result (red #166, bisect #167)
+PASS  p22-bis-on: the repair intent int_mv87ri25y4aglz names the commit and the proposal in its why
+PASS  p22-bis-off: created (201)
+PASS  p22-bis-off: review off for these checks
+PASS  p22-bis-off: certification on with repairs (200)
+PASS  p22-bis-off: "Add the math module and its test" landed (landed, lnd_mv87rwk6r4v0ng)
+PASS  p22-bis-off: certification is green on ee490ad (green, {"tests":1,"pass":1,"fail":0,"cancelled":0,"skipped":0,"todo":0,"suites":0})
+PASS  p22-bis-off: certification held
+PASS  p22-bis-off: "Add note 1" landed (landed, lnd_mv87s849gqnc4c)
+PASS  p22-bis-off: "Add note 2" landed (landed, lnd_mv87sfsqig82zw)
+PASS  p22-bis-off: "Add note 3" landed (landed, lnd_mv87sllelh0sku)
+PASS  p22-bis-off: "Speed up subtraction" landed (landed, lnd_mv87sq84oeto12)
+PASS  p22-bis-off: "Add note 4" landed (landed, lnd_mv87su39jynuwt)
+PASS  p22-bis-off: "Add note 5" landed (landed, lnd_mv87sxe0b7nj1v)
+PASS  p22-bis-off: certification on again
+PASS  p22-bis-off: certification is red on the head f632a47 (red, subtracts), green still ee490ad
+PASS  p22-bis-off: the red result has no firstRed after 20 s (none)
+PASS  p22-bis-off: no bisect event was recorded
+      In a browser: https://p22-firetrident.mattsolt.workers.dev/c/p22-bis-on shows the red cross on the trunk bar; its card names the first failing commit 01763b5 and "ft revert p22-bis-on prp_mv87r8pq5cxn5b".
+ALL CHECKS PASSED
+exit 0

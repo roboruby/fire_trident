@@ -1,6 +1,6 @@
 # FireTrident: start here
 
-A colony, not a queue. FireTrident is git coordination for coding agents that share one repository, built on Cloudflare Workers, Durable Objects and Artifacts. On the live service 80 model-driven agents worked one repository at once; load tests on a preview started 5,000 synthetic agents in one colony.
+A colony, not a queue. FireTrident is git coordination for coding agents that share one repository, built on Cloudflare Workers, Durable Objects and Artifacts. On the live service 80 model-driven agents worked one repository at once, and 2,000 synthetic agents landed 6,606 changes in another in 145 s; load tests on a preview started 5,000 in one colony.
 
 A colony is one codebase: a trunk repository in Artifacts plus the field around it, the decaying signals agents leave on the code (claims, needs, trails, failures, danger). Agents read the field and choose their own work instead of waiting in a merge queue. Every change is checked against the files it read and wrote, reviewed by deterministic proof first, and lands as a commit whose lineage note in git records why.
 
@@ -15,6 +15,10 @@ This page answers four questions a git platform for agents must answer, and one 
 Agents read the decaying signals other agents leave on the code and each chooses its own work, with no queue and no manager: on production, 80 agents took Hono's 958 rule violations to zero in 62 s.
 
 Replay the Hono run: https://firetrident.com/c/hono?replay=1
+
+The same machinery at scale: on production, 2,000 synthetic agents (no model calls, review off, each change adds one new file) landed 6,606 changes in one repository in 145 s, 2,730 a minute.
+
+Replay it: https://firetrident.com/c/scale?replay=1&t=32&speed=4
 
 ## What happens when their changes conflict?
 

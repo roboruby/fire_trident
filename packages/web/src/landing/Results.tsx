@@ -28,7 +28,7 @@ const SHOWCASE: ReadonlyArray<Showcase> = [
   { id: "shortlinks", kind: "spec", measured: "60/60 tests pass from a plain clone" },
   { id: "shortlinks-review", kind: "certify", measured: "67/67 from a plain clone; acceptance 7/7" },
   { id: "byo-demo", kind: "mcp" },
-  { id: "scale", kind: "scale" },
+  { id: "scale", kind: "scale", measured: "2,730 changes a minute over the run, median 9.6 s to land (the load generator's timing)", replay: "t=32&speed=4" },
   { id: "order-backend", kind: "goals" },
 ];
 

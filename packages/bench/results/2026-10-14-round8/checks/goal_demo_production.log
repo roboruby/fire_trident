@@ -1,0 +1,26 @@
+
+Goal-conflict demo: order-backend
+PASS  order-backend: created (201)
+PASS  order-backend: review off for the seed
+PASS  order-backend: declared "Start the order backend" (201)
+PASS  order-backend: src/backend.ts seeded in Python (landed)
+PASS  order-backend: declared "Move the order backend to Rust" (201)
+PASS  order-backend: declared "Move the order backend to Go" (201)
+PASS  order-backend: declared "Move the order backend to TypeScript" (201)
+PASS  order-backend: review on, so the decide stage runs the check
+PASS  the first change (rust-port: Move the order backend to Rust) landed: lnd_mv87vkxzl28lcb
+PASS  go-port's change (Move the order backend to Go) waits for a person (escalated): escalated by deterministic: would undo 5 lines in src/backend.ts that landing lnd_mv87vkxzl28lcb wrote 5 seconds ago for intent "Move the order backend to Rust" (Ship the order backend as one static binary with no runtime to install, and keep its latency predi
+PASS    its record names the landing it would undo ([{"landingId":"lnd_mv87vkxzl28lcb","intentId":"int_mv87vcfdmcm7gp","path":"src/backend.ts","lines":5}])
+PASS  typescript-port's change (Move the order backend to TypeScript) waits for a person (escalated): escalated by deterministic: would undo 5 lines in src/backend.ts that landing lnd_mv87vkxzl28lcb wrote 9 seconds ago for intent "Move the order backend to Rust" (Ship the order backend as one static binary with no runtime to install, and keep its latency predi
+PASS    its record names the landing it would undo ([{"landingId":"lnd_mv87vkxzl28lcb","intentId":"int_mv87vcfdmcm7gp","path":"src/backend.ts","lines":5}])
+PASS  both wait in the review queue (2 of 2)
+PASS  trunk holds the first change: src/backend.ts is the rust version (landing lnd_mv87vkxzl28lcb)
+
+Colony: https://firetrident.mattsolt.workers.dev/c/order-backend
+Replay: https://firetrident.mattsolt.workers.dev/c/order-backend?replay=1
+Review queue: 2 changes wait for a person (https://firetrident.mattsolt.workers.dev/api/colonies/order-backend/review)
+  prp_mv87vot455isdi  go-port: escalated by deterministic: would undo 5 lines in src/backend.ts that landing lnd_mv87vkxzl28lcb wrote 5 seconds ago for intent "Move the order backend to Rust" (Ship the order backend as one static binary with no runtime to install, and ke
+  prp_mv87vsgw1mfsjl  typescript-port: escalated by deterministic: would undo 5 lines in src/backend.ts that landing lnd_mv87vkxzl28lcb wrote 9 seconds ago for intent "Move the order backend to Rust" (Ship the order backend as one static binary with no runtime to install, and ke
+A person decides in the colony page's Review tab, or with: ft review order-backend <proposalId> approve|return|reject --reason <text>
+DEMO READY: two changes wait for a person
+exit 0
