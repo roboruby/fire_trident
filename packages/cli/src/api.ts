@@ -149,6 +149,9 @@ export function planRequest(cmd: Command, by: string): ApiRequest | null {
       };
     case "colonies":
       return { method: "GET", path: `/api/colonies${cmd.scan ? "?scan=1" : ""}` };
+    case "megafile":
+      if (!cmd.path) return { method: "GET", path: colonyPath(cmd.colony, "/megafile") };
+      return { method: "POST", path: colonyPath(cmd.colony, "/megafile"), body: { path: cmd.path, action: cmd.release ? "release" : "hold", by: cmd.by ?? by } };
     case "agents": {
       const q = new URLSearchParams();
       if (cmd.all) q.set("all", "1");

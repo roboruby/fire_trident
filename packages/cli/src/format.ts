@@ -23,6 +23,7 @@ import type {
 import type { StuckAction, StuckItem, StuckReport } from "@fire_trident/core";
 import { changeSize, dangerLines, lookHereFirst, parseHunks, reviewOf, visible, type DiffLine, type ReviewFile, type ReviewView } from "./review.ts";
 import { whySummary } from "./spec.ts";
+import { megafileLines } from "./megafile.ts";
 
 /** ANSI styling functions; identity functions when color is off. */
 export interface Colors {
@@ -334,6 +335,8 @@ export function formatStatus(s: SnapshotLike, c: Colors, now: number): string {
     row("last 30m", `${total > 0 ? `${sparkline(series.landings)} ${num(total)} landing${total === 1 ? "" : "s"}` : c.dim("no landings")}${trend}`);
   }
   if (s.stuck) out.push(...stuckLines(s.stuck, col.id, c, now));
+  // The megafile alarm's held files (megafile.ts); a server without the alarm on for the colony sends none.
+  if (s.megafiles) out.push(...megafileLines(s.megafiles, col.id, c, now));
   return out.join("\n");
 }
 

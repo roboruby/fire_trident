@@ -64,6 +64,13 @@ export interface Env {
    */
   FT_GOAL_CONFLICT?: string;
   /**
+   * Optional: the megafile alarm, "on", or a comma-separated list of colony ids; absent or "off" is off. A script file
+   * that grew fast while many agents wrote it, or that changes keep colliding on, turns hot (core/hotness.ts): the
+   * colony declares an intent to split it and holds the file (no other change may write it, no other intent covering
+   * it is offered) until the split lands, is withdrawn or reported, or an hour passes (colony/megafile.ts).
+   */
+  FT_MEGAFILE?: string;
+  /**
    * Optional: inline changes from outside, "on", or a comma-separated list of colony ids; absent or "off" is off. A
    * proposal may then carry the text of the files it writes (`contents` on POST /proposals, `files` on MCP propose)
    * instead of a commit pushed to its workspace, and the MCP server offers `files` and says so in its instructions.

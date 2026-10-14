@@ -151,6 +151,8 @@ import type { CheckResult } from "@fire_trident/core";
 import { INLINE_FETCH_BYTES, InlineContents, inlineRefusal, isInlineChange, migrateContents } from "./inline.ts";
 import { FieldGuide, guideEnabled, type GuideView } from "./guide.ts";
 import type { GuideLesson, GuideTake, LessonReceipt } from "@fire_trident/core";
+import { MegafileAlarm, megafileEnabled, type MegafileHost } from "./megafile.ts";
+import type { MegafileHold, MegafileReport } from "@fire_trident/core";
 
 /**
  * Result of ColonyDO.take: an assignment, or advice to wait and retry. `review`: what review will
@@ -735,6 +737,8 @@ export class ColonyDO extends DurableObject<Env> {
     const violations = this.violationTotals();
     const certification = this.certifier.latestCertification();
     const stuck = this.stuckReport(now);
+    // Megafile alarm (colony/megafile.ts): the files held for their split, while FT_MEGAFILE covers the colony.
+    const megafiles = this.megafileReportSafe();
     return {
       colony: certification || publish ? { ...colony, ...(certification ? { certification } : {}), ...(publish ? { publish } : {}) } : colony,
       files,
@@ -748,6 +752,7 @@ export class ColonyDO extends DurableObject<Env> {
       series: this.seriesReport(now),
       convergence: this.convergence(violations.total),
       ...(stuck ? { stuck } : {}),
+      ...(megafiles ? { megafiles } : {}),
     };
   }
 
@@ -1783,8 +1788,10 @@ export class ColonyDO extends DurableObject<Env> {
     if (seated) return seated;
 
     // Only the columns self-assignment needs; the winner is loaded in full. Contest intents with a free seat join them.
-    const rows = this.contestRows(agentId, this.openCandidates(now));
-    if (rows.length === 0) return this.waitFor(agentId, IDLE_RETRY_MS, "no open intents", now);
+    // Megafile alarm (colony/megafile.ts, FT_MEGAFILE): an intent whose footprint covers a file held for its split waits until the hold lifts.
+    const offered = this.megafiles().offerable(this.contestRows(agentId, this.openCandidates(now)), (r) => this.footprintOf(r.id, r.footprint));
+    const rows = offered.rows;
+    if (rows.length === 0) return this.waitFor(agentId, IDLE_RETRY_MS, offered.reason ?? "no open intents", now);
     const depth = colony.regionDepth;
     const intents = rows.map(
       (r) => ({ id: r.id, colonyId: colony.id, footprint: this.footprintOf(r.id, r.footprint), priority: r.priority, createdAt: r.created_at }) as Intent,
@@ -2002,6 +2009,10 @@ export class ColonyDO extends DurableObject<Env> {
       notVerified: typeof ev.notVerified === "string" && ev.notVerified.trim() ? ev.notVerified.trim() : DEFAULT_NOT_VERIFIED,
     };
     if (typeof ev.previewUrl === "string" && ev.previewUrl) evidence.previewUrl = ev.previewUrl;
+    // Megafile alarm (colony/megafile.ts, FT_MEGAFILE): a split's change records the held file's lines before and after
+    // it in its evidence, which the landing's lineage note keeps.
+    const splitCheck = this.megafiles().splitCheck(intentRow.id, writeSet, contents);
+    if (splitCheck) evidence.checks = [...evidence.checks, splitCheck];
     const draft: Proposal = {
       id: newId("prp_"),
       colonyId: colony.id,
@@ -2027,8 +2038,12 @@ export class ColonyDO extends DurableObject<Env> {
     // A change to a protected path (the colony policy) needs a person even with review off: it takes the decide path,
     // where rule P3 escalates it before any model is asked.
     const touchesProtected = protectedHits(writeSet.map((w) => w.path), engine.store.policy().protectedPaths ?? []).length > 0;
-    const deciding = engine.enabled() || engine.store.vaccineByIntent(intentRow.id) !== null || touchesProtected;
-    const proposal: Proposal = { ...draft, status: deciding ? "checking" : OPEN_LIKE.has(draft.status) ? "ready" : draft.status };
+    // Megafile alarm (colony/megafile.ts, FT_MEGAFILE): a change that writes a file held for another intent's split goes
+    // back here, the earliest point that knows what it writes, before any review (a sealed vaccine is left to its meter).
+    const held = this.megafiles().heldBack(writeSet, intentRow.id);
+    const heldBack = held !== null && engine.store.vaccineByIntent(intentRow.id) === null ? held : null;
+    const deciding = !heldBack && (engine.enabled() || engine.store.vaccineByIntent(intentRow.id) !== null || touchesProtected);
+    const proposal: Proposal = heldBack ? { ...draft, status: "returned", reason: heldBack } : { ...draft, status: deciding ? "checking" : OPEN_LIKE.has(draft.status) ? "ready" : draft.status };
 
     const fresh = this.intentRow(proposal.intentId);
     if (!fresh) throw ftError(404, `unknown intent ${proposal.intentId}`);
@@ -2047,8 +2062,8 @@ export class ColonyDO extends DurableObject<Env> {
       now,
       JSON.stringify(proposal),
     );
-    // The contents go in their own table, written with the row (no await between them), never into it.
-    if (contents !== null) {
+    // The contents go in their own table, written with the row (no await between them), never into it (a held-back change's nowhere).
+    if (contents !== null && !heldBack) {
       this.inline().put(proposal.id, contents);
       this.inline().sweep(now);
     }
@@ -2203,6 +2218,9 @@ export class ColonyDO extends DurableObject<Env> {
       this.sql.exec("UPDATE colony SET trunk_sha = ?, last_landing_at = ?", l.trunkSha, l.at ?? now);
       this.colonyCache = null;
     }
+    // Megafile alarm (colony/megafile.ts, FT_MEGAFILE): who wrote each script file and how long it is now, read before
+    // the proposals settle below (an inline change's texts go then); a split that landed lifts its file's hold.
+    this.megafiles().landed(l);
 
     const fx = this.effects(colony.regionDepth);
     const writtenPaths: Path[] = [];
@@ -2387,6 +2405,78 @@ export class ColonyDO extends DurableObject<Env> {
   }
 
   // =========================================================================
+  // Megafile alarm (colony/megafile.ts, FT_MEGAFILE): hot files get a split intent and a hold
+  // =========================================================================
+
+  private megafileAlarm: MegafileAlarm | null = null;
+
+  /**
+   * A person holds a file for its split, or releases it (POST /api/colonies/:id/megafile). A hold declares the file's
+   * split intent unless one is live, and sends back the changes on their way that write it; a release lifts the hold
+   * and leaves the intent. 409 while FT_MEGAFILE does not cover the colony; 404 to release a file that is not held.
+   */
+  async megafile(p: { path: string; action: "hold" | "release"; by?: string }): Promise<{ hold: MegafileHold; already: boolean } | { released: MegafileHold }> {
+    this.requireColony();
+    const alarm = this.megafiles();
+    if (p?.action === "release") {
+      const released = alarm.release(p.path, p.by);
+      if (!released) throw ftError(404, `${String(p.path).slice(0, 200)} is not held, so there is nothing to release`);
+      return { released };
+    }
+    if (p?.action !== "hold") throw ftError(400, 'action must be "hold" or "release"');
+    return alarm.holdByHand(p.path, p.by);
+  }
+
+  /** The files held for their split now and the holds lifted lately; null while FT_MEGAFILE does not cover the colony. */
+  async megafileReport(): Promise<MegafileReport | null> {
+    this.requireColony();
+    return this.megafiles().report();
+  }
+
+  /** The megafile report for the snapshot: undefined when the alarm is off or its state cannot be read (the rest of the answer stands). */
+  private megafileReportSafe(): MegafileReport | undefined {
+    try {
+      return this.megafiles().report() ?? undefined;
+    } catch (err) {
+      console.warn(`megafile report failed: ${errorText(err)}`);
+      return undefined;
+    }
+  }
+
+  /** The megafile alarm, with this colony as its host (made on first use; FT_MEGAFILE switches it on and off). */
+  private megafiles(): MegafileAlarm {
+    if (this.megafileAlarm) return this.megafileAlarm;
+    const host: MegafileHost = {
+      sql: this.sql,
+      enabled: () => megafileEnabled(this.env.FT_MEGAFILE, this.loadColony()?.colony.id ?? ""),
+      now: () => Date.now(),
+      proposal: (id) => this.getProposalSync(id),
+      contents: (id) => this.inline().get(id),
+      intent: (id) => {
+        const r = this.intentRow(id);
+        return r ? { status: r.status, reported: r.escalation_open === 1 } : null;
+      },
+      declare: (input) => this.addIntent({ ...input, colonyId: this.requireColony().id }),
+      readFile: (path) => this.trunkStub().readFile(path),
+      inFlight: (path, intentId) =>
+        this.sql
+          .exec<{ id: string }>(
+            `SELECT DISTINCT p.id AS id FROM proposals p JOIN json_each(p.data, '$.writeSet') w
+              WHERE p.status IN ('pending', 'checking', 'ready', 'escalated') AND p.intent_id != ? AND json_extract(w.value, '$.path') = ?
+                AND NOT EXISTS (SELECT 1 FROM intents i WHERE i.id = p.intent_id AND i.created_by = 'vaccine')`,
+            intentId,
+            path,
+          )
+          .toArray()
+          .map((r) => r.id),
+      sendBack: (items) => this.updateProposals(items.map((i) => ({ id: i.id, patch: { status: "returned" as const, reason: i.reason } }))),
+      waitUntil: (p) => this.ctx.waitUntil(p.catch((err) => console.warn(`megafile: ${errorText(err)}`))),
+    };
+    this.megafileAlarm = new MegafileAlarm(host);
+    return this.megafileAlarm;
+  }
+
+  // =========================================================================
   // Decide prong: reflex arc, immune review, vaccination meter (decide/engine.ts)
   // =========================================================================
 
@@ -2495,8 +2585,8 @@ export class ColonyDO extends DurableObject<Env> {
     return this.decideEngine;
   }
 
-  /** Returns that leave a retry of the same commit welcome (nothing was judged wrong with it). */
-  private static readonly TRANSIENT_RETURN = /lane unavailable|landing failed|decide pipeline failed|head commit changed|second opinion unavailable|trunk kept moving/i;
+  /** Returns that leave a retry of the same commit welcome (nothing was judged wrong with it; a megafile hold lifts in time). */
+  private static readonly TRANSIENT_RETURN = /lane unavailable|landing failed|decide pipeline failed|head commit changed|second opinion unavailable|trunk kept moving|is being split by intent/i;
 
   /**
    * The proposal this agent already made for this intent at this head commit, if any (agents retry
@@ -3916,6 +4006,8 @@ export class ColonyDO extends DurableObject<Env> {
     this.decideEngine = null;
     // So did the field guide's.
     this.guideStore = null;
+    // So did the megafile alarm's.
+    this.megafileAlarm = null;
     await this.ctx.storage.deleteAlarm();
     await this.ctx.storage.deleteAll();
     this.colonyCache = null;
@@ -4869,6 +4961,8 @@ export class ColonyDO extends DurableObject<Env> {
    * that misses a push finds the outcome on its next (slow) poll.
    */
   private async deliverOutcomes(list: Proposal[]): Promise<void> {
+    // Megafile alarm (colony/megafile.ts, FT_MEGAFILE): changes that went back colliding on a script file count toward its alarm.
+    this.megafiles().returned(list);
     const ns = (this.env as unknown as { AGENT?: DurableObjectNamespace }).AGENT;
     const byId = new Map(list.map((p) => [p.id, p]));
     const watched = this.sql
@@ -5263,7 +5357,7 @@ export class ColonyDO extends DurableObject<Env> {
       if (!title) throw ftError(400, "intent title is required");
       if (d.assignedTo !== undefined && d.assignedTo !== null && !this.agentRow(d.assignedTo)) throw ftError(404, `unknown agent ${d.assignedTo}`);
       if (d.parentId && !this.intentRow(d.parentId)) throw ftError(404, `unknown parent intent ${d.parentId}`);
-      const source: IntentSource = d.source === "rule" || d.source === "agent" || d.source === "certify" ? d.source : "human";
+      const source: IntentSource = d.source === "rule" || d.source === "agent" || d.source === "certify" || d.source === "system" ? d.source : "human";
       const priority = typeof d.priority === "number" && Number.isFinite(d.priority) ? Math.max(0, d.priority) : 1;
       const seats = contestSeats(d.contest);
       if (seats === null) throw ftError(400, "contest must be 2 to 4 agents (1 or absent: one holder)");
