@@ -96,6 +96,15 @@ export interface Env {
    */
   FT_GOAL_CONFLICT?: string;
   /**
+   * Optional: twin intents caught at declare, "on", or a comma-separated list of colony ids; absent or "off" is off. An
+   * intent a person or an agent declares (POST /intents, MCP declare) whose normalized title words score at least 0.8
+   * (Jaccard) against an intent open, claimed, proposed or landed in the last 30 minutes, and whose footprint overlaps
+   * it, is not created: the answer is that intent with `duplicateOf`, `similar` and a note (REST 200 instead of 201),
+   * unless the declare says `force: true` (core/twins.ts, colony/twins.ts). Rule intents, certification repairs, spec
+   * imports (`ft new` declares with force) and the colony's own intents are never checked.
+   */
+  FT_TWINS?: string;
+  /**
    * Optional: the megafile alarm, "on", or a comma-separated list of colony ids; absent or "off" is off. A script file
    * that grew fast while many agents wrote it, or that changes keep colliding on, turns hot (core/hotness.ts): the
    * colony declares an intent to split it and holds the file (no other change may write it, no other intent covering

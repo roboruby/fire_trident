@@ -70,8 +70,11 @@ export interface ProjectSpec {
   intents: SpecIntent[];
 }
 
-/** Body for POST /intents (ColonyDO.addIntent input). */
-export type IntentBody = Omit<Intent, "id" | "status" | "createdAt">;
+/**
+ * Body for POST /intents (ColonyDO.addIntent input). `force`: declare it even when the colony finds it a twin of an
+ * intent it has (FT_TWINS); a server that predates twins ignores it.
+ */
+export type IntentBody = Omit<Intent, "id" | "status" | "createdAt"> & { force?: boolean };
 
 /** One planned intent: its request, plus which planned intent becomes its parent once created. */
 export interface PlannedIntent extends ApiRequest {
@@ -573,6 +576,8 @@ export function planNew(
         footprint: i.footprint,
         priority: deps.priority[idx]!,
         createdBy: by,
+        // A spec's intents are one plan a person wrote, never twins of each other: the twin check skips them.
+        force: true,
       };
       if (i.acceptance) body.acceptance = i.acceptance;
       if (i.contest) body.contest = i.contest;

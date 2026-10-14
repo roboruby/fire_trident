@@ -160,6 +160,7 @@ import { impactReport } from "./impact.ts";
 import type { ImporterWalk } from "../trunk/impact.ts";
 import type { ImpactReport } from "@fire_trident/core";
 import { modelHintFor, stepupEnabled, type ModelHint } from "./stepup.ts";
+import { findTwin, twinChecked, twinsEnabled, type DeclareAnswer, type TwinAnswer } from "./twins.ts";
 import { REVIEW_MOVED, cleanMovedBy, movedCollision, movedReturn, type StalePath } from "./movedby.ts";
 import { PROTECT_META, isProtectStop, parseProtectRecord, protectChanged, protectLandedText, type ProtectHost, type ProtectOutcome, type ProtectRecord } from "./protect.ts";
 import { SpendBook, modelOfClass, resolverClient, spendCounters } from "./spend.ts";
@@ -785,6 +786,32 @@ export class ColonyDO extends DurableObject<Env> {
     const [intent] = await this.createIntents([i]);
     if (!intent) throw ftError(500, "intent was not created");
     return intent;
+  }
+
+  /**
+   * Declare an intent through a door a person or an agent uses (POST /intents, MCP declare). Where FT_TWINS covers the
+   * colony, an intent whose title and footprint match one the colony has open, claimed, proposed or landed in the last
+   * 30 minutes is not created: the answer is that intent with `duplicateOf`, `similar` and `note` (colony/twins.ts),
+   * unless `force`. Otherwise, and for rule, certification and the colony's own intents, it is addIntent.
+   */
+  async declareIntent(i: IntentInput, opts: { force?: boolean } = {}): Promise<DeclareAnswer> {
+    const twin = opts?.force === true ? null : this.twinOf(i);
+    return twin ?? { intent: await this.addIntent(i) };
+  }
+
+  /** The intent a declaration would duplicate, where FT_TWINS covers the colony (colony/twins.ts); else null. Fails open. */
+  private twinOf(i: IntentInput): TwinAnswer | null {
+    const colony = this.requireColony();
+    if (!twinsEnabled(this.env.FT_TWINS, colony.id) || !twinChecked(i)) return null;
+    try {
+      return findTwin(this.sql, i, Date.now(), (id) => {
+        const row = this.intentRow(id);
+        return row ? this.toIntent(row, colony.id) : null;
+      });
+    } catch (err) {
+      console.warn(`twin check in ${colony.id} failed: ${errorText(err)}`);
+      return null;
+    }
   }
 
   /** One intent by id. */

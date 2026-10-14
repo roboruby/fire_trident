@@ -35,6 +35,8 @@ export const IntentBody = z.object({
   createdBy: z.string().trim().min(1).max(200).optional(),
   /** Contest mode: 2 to 4 agents each build the intent and the colony lands one change (1: one holder, as usual). */
   contest: z.number().int().min(1).max(4).optional(),
+  /** Twin intents (FT_TWINS): declare it even when it matches an intent the colony has (colony/twins.ts). */
+  force: z.boolean().optional(),
 });
 
 /** POST /api/colonies/:id/rules */
