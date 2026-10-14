@@ -192,3 +192,67 @@ export function errorMessage(err: unknown, max = 400): string {
   const text = rawMessage(err).replace(STATUS_TAG, "").trim() || "error";
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
+
+/** What kind of failure a call met: the `kind` of an error envelope. */
+export type ErrorKind = "validation" | "auth" | "not_found" | "conflict" | "too_large" | "rate_limit" | "server" | "unavailable";
+
+/**
+ * A failure in a form a program can act on: its kind, the sentence that explains it, whether the same call may
+ * succeed later and after how long, the status it carried (`[ft:NNN]`), and the next call when that is clear.
+ */
+export interface ErrorEnvelope {
+  kind: ErrorKind;
+  message: string;
+  retryable: boolean;
+  retryAfterMs?: number;
+  status?: number;
+  next?: string;
+}
+
+/** Shortest and longest wait before retrying a platform failure; each envelope picks a time between them. */
+export const RETRY_MIN_MS = 1_000;
+export const RETRY_MAX_MS = 5_000;
+/** Wait before retrying a call that reached an object still on the previous deployment (the API's Retry-After). */
+const UPGRADE_RETRY_MS = 30_000;
+/** Failures of the platform itself, which carry no status: the same call usually succeeds a moment later. */
+const PLATFORM_FAILURE =
+  /Durable Object is overloaded|Network connection lost|internal error.*reference|Durable Object reset because|Cannot resolve Durable Object due to transient issue|exceeded timeout which caused object to be reset|code has been updated|exceeded its memory limit and was reset/i;
+/** An object still on the previous class lacks a newer method for a while (deploys roll out gradually). */
+const UPGRADING = /RPC receiver does not implement the method/i;
+
+function kindOf(status: number): ErrorKind {
+  if (status === 401 || status === 403) return "auth";
+  if (status === 404) return "not_found";
+  if (status === 409) return "conflict";
+  if (status === 413) return "too_large";
+  if (status === 429) return "rate_limit";
+  return status >= 500 ? "server" : "validation";
+}
+
+/** True for a failure of the platform (the runtime marks some itself as retryable or overloaded), never for one of ours. */
+function platformFailure(err: unknown): boolean {
+  const marks = err && typeof err === "object" ? (err as { retryable?: unknown; overloaded?: unknown }) : {};
+  return marks.retryable === true || marks.overloaded === true || PLATFORM_FAILURE.test(rawMessage(err));
+}
+
+/**
+ * The envelope of anything thrown. A `[ft:NNN]` status maps to its kind (400 validation, 401 and 403 auth, 404
+ * not_found, 409 conflict, 413 too_large, 429 rate_limit, 5xx server); only rate limits are retryable. An error
+ * with no status is a platform failure (an overloaded or reset object, a lost connection, an internal error
+ * reference: `unavailable`, retryable after 1 to 5 s, jittered so callers do not retry in step; 30 s for an object
+ * still on the previous deployment) or else a `server` failure. `random` picks the jitter (tests inject it).
+ * The message is today's sentence without the tag; `next` is left to the caller, which knows its tools.
+ */
+export function errorEnvelope(err: unknown, random: () => number = Math.random): ErrorEnvelope {
+  const message = errorMessage(err);
+  const after = (min: number, max: number): number => Math.round(min + Math.min(1, Math.max(0, random())) * (max - min));
+  const status = errorStatus(err);
+  if (status !== null) {
+    const kind = kindOf(status);
+    if (kind === "rate_limit") return { kind, message, retryable: true, retryAfterMs: after(RETRY_MIN_MS, RETRY_MAX_MS), status };
+    return { kind, message, retryable: false, status };
+  }
+  if (UPGRADING.test(rawMessage(err))) return { kind: "unavailable", message, retryable: true, retryAfterMs: after(UPGRADE_RETRY_MS, UPGRADE_RETRY_MS + RETRY_MAX_MS) };
+  if (platformFailure(err)) return { kind: "unavailable", message, retryable: true, retryAfterMs: after(RETRY_MIN_MS, RETRY_MAX_MS) };
+  return { kind: "server", message, retryable: false };
+}

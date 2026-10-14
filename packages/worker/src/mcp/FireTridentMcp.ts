@@ -5,10 +5,11 @@ import { z } from "zod";
 import { INLINE_LIMITS } from "@fire_trident/core";
 import type { RepoRef } from "@fire_trident/core";
 import type { Env } from "../env.ts";
-import { artifactsFor, colonyStub, errorMessage, errorStatus, regionStub, trunkStub } from "../agents/rpc.ts";
+import { artifactsFor, colonyStub, regionStub, trunkStub } from "../agents/rpc.ts";
 import { withArtifactsRetry } from "../artifacts/git.ts";
 import { ESCALATION_KINDS, MAX_REPORT_CHARS } from "../colony/direction.ts";
 import { inlineEnabled, inlineOffered } from "../colony/inline.ts";
+import { structuredToolErrors, toolError } from "./errors.ts";
 import { serverInstructions } from "./instructions.ts";
 import { FireTridentTools, MAX_WAIT_S } from "./tools.ts";
 import type { McpColonyRpc, McpTrunkRpc, RepoReader, Session, ToolContext } from "./tools.ts";
@@ -33,9 +34,9 @@ function ok(data: unknown): CallToolResult {
   return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
 }
 
+/** A failed call: `isError` with the machine-readable envelope (kind, message, retryable, ...) as structured content and text (mcp/errors.ts). */
 function failed(e: unknown): CallToolResult {
-  const status = errorStatus(e);
-  return { isError: true, content: [{ type: "text", text: status ? `${errorMessage(e)} (${status})` : errorMessage(e) }] };
+  return toolError(e);
 }
 
 async function run(fn: () => Promise<unknown>): Promise<CallToolResult> {
@@ -56,8 +57,9 @@ const wait = z.number().min(0).max(MAX_WAIT_S).optional();
  * propose, inbox, release, escalate, why. Served over Streamable HTTP at /mcp and legacy SSE at /sse.
  */
 export class FireTridentMcp extends McpAgent<Env, Record<string, never>, Record<string, unknown>> {
-  // Where FT_INLINE turns inline changes on, agents are told they may propose without git.
-  server = new McpServer({ name: "firetrident", version: "0.0.1" }, { instructions: serverInstructions(inlineOffered(this.env?.FT_INLINE)) });
+  // Where FT_INLINE turns inline changes on, agents are told they may propose without git. The SDK's own failures
+  // (an unknown tool, arguments that fail a schema) get the tools' error envelope too.
+  server = structuredToolErrors(new McpServer({ name: "firetrident", version: "0.0.1" }, { instructions: serverInstructions(inlineOffered(this.env?.FT_INLINE)) }));
 
   private context(): ToolContext {
     const env = this.env;
@@ -138,7 +140,8 @@ export class FireTridentMcp extends McpAgent<Env, Record<string, never>, Record<
         description:
           "Self-assign an intent. Returns the intent (what to change, why, footprint), its rule if any, review when there is something to say (the questions review will ask of your change, learned from changes a person rejected, and the colony's rules for these paths), a workspace lease with a trunk read token and a workspace write token, and self-contained git commands that use them. When there is no work it returns wait; pass wait (seconds) to let the server keep trying for you.",
         inputSchema: { wait: wait.describe(`Seconds to keep trying while there is no work for you (at most ${MAX_WAIT_S})`) },
-        annotations: { openWorldHint: false },
+        // Idempotent: while the agent holds an assignment, the colony hands the same one back.
+        annotations: { idempotentHint: true, openWorldHint: false },
       },
       async (a) => run(() => this.tools().take(a)),
     );
@@ -158,7 +161,8 @@ export class FireTridentMcp extends McpAgent<Env, Record<string, never>, Record<
       "declare",
       {
         title: "Declare an intent",
-        description: "Declare a new intent with a predicted footprint before writing code. By default it becomes a child of the intent you hold.",
+        description:
+          "Declare a new intent with a predicted footprint before writing code. By default it becomes a child of the intent you hold. Repeating a declare with the same title, why, footprint, acceptance, priority and parent within ten minutes in this session returns the intent it declared (replayed: true) instead of a duplicate.",
         inputSchema: {
           title: z.string().min(1).max(500),
           why: z.string().max(20_000),
@@ -167,7 +171,7 @@ export class FireTridentMcp extends McpAgent<Env, Record<string, never>, Record<
           priority: z.number().min(0).max(1_000).optional(),
           parentId: z.string().max(100).optional(),
         },
-        annotations: { openWorldHint: false },
+        annotations: { idempotentHint: true, openWorldHint: false },
       },
       async (a) => run(() => this.tools().declare(a)),
     );
@@ -204,7 +208,8 @@ export class FireTridentMcp extends McpAgent<Env, Record<string, never>, Record<
             summary,
             notVerified,
           },
-          annotations: { openWorldHint: false },
+          // Idempotent: a repeat of the same change (head commit, or files) gets the proposal the colony already has.
+          annotations: { idempotentHint: true, openWorldHint: false },
         },
         async (a) => run(() => this.tools().propose(a)),
       );
@@ -216,7 +221,7 @@ export class FireTridentMcp extends McpAgent<Env, Record<string, never>, Record<
           description:
             "Propose the commit you pushed to refs/heads/main of your workspace. The server computes the files you wrote by diffing your commit against the lease base; your read set comes from read calls in this session. Say what you did not verify in notVerified: reviewers see it.",
           inputSchema: { headSha, summary, notVerified },
-          annotations: { openWorldHint: false },
+          annotations: { idempotentHint: true, openWorldHint: false },
         },
         async (a) => run(() => this.tools().propose(a)),
       );
@@ -244,7 +249,8 @@ export class FireTridentMcp extends McpAgent<Env, Record<string, never>, Record<
         title: "Give work back",
         description: "Give back the intent you hold without proposing (you cannot finish it): it reopens for other agents and your workspace lease ends.",
         inputSchema: { reason: z.string().max(500).optional().describe("Why you are giving it back") },
-        annotations: { destructiveHint: false, openWorldHint: false },
+        // Idempotent: a second release finds nothing held to give back.
+        annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
       },
       async (a) => run(() => this.tools().release(a)),
     );
@@ -260,7 +266,8 @@ export class FireTridentMcp extends McpAgent<Env, Record<string, never>, Record<
           kind: z.enum(["broken-test", "contradictory-spec", "impossible", "other"]).describe(ESCALATION_KINDS.join(", ")),
           report: z.string().min(1).max(MAX_REPORT_CHARS).describe("What is wrong and why, quoting the test or spec line, and what you tried"),
         },
-        annotations: { destructiveHint: false, openWorldHint: false },
+        // Idempotent: while a report on the intent waits for a person, another one is refused.
+        annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
       },
       async (a) => run(() => this.tools().escalate(a)),
     );

@@ -4,6 +4,7 @@ import { api } from "./api/routes.ts";
 import { gitProxy } from "./api/git-proxy.ts";
 import { FireTridentMcp } from "./mcp/FireTridentMcp.ts";
 import { mcpRefusal } from "./mcp/gate.ts";
+import { publicMcp } from "./mcp/public.ts";
 
 export { ColonyDO } from "./colony/ColonyDO.ts";
 export { RegionDO } from "./region/RegionDO.ts";
@@ -35,6 +36,8 @@ app.all("/sse", mcpGate(mcpSse));
 app.all("/sse/*", mcpGate(mcpSse));
 // Read-only plain git (upload-pack only) for the colonies in FT_PUBLIC_GIT.
 app.all("/git/*", (c) => gitProxy(c.req.raw, c.env));
+// Read-only, stateless MCP with no token for the colonies in FT_PUBLIC_MCP (status, why, intent, sense); 404 when none are listed.
+app.all("/public/mcp", (c) => publicMcp(c.req.raw, c.env));
 // Static UI falls through to ASSETS.
 app.all("*", (c) => c.env.ASSETS.fetch(c.req.raw));
 
