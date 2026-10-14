@@ -22,7 +22,7 @@ Replay it: https://firetrident.com/c/scale?replay=1&t=32&speed=4
 
 ## What happens when their changes conflict?
 
-A change whose files moved under it goes back naming them, unless its edits merge line by line or, with import-name revalidation, every name it imports still exists: when a shared Hono file changed under 30 changes, revalidation landed all 30 on their first proposal, and without it all 30 went back (on a preview; it is off in production).
+A change whose files moved under it goes back naming them, unless its edits merge line by line or, with import-name revalidation, every name it imports still exists and the files it read only gained new declarations: when a shared Hono file changed under 30 changes, revalidation landed all 30 on their first proposal, and without it all 30 went back (on a preview; it is off in production).
 
 The cascade results: https://github.com/roboruby/fire_trident/tree/main/packages/bench/results/2026-10-13-round2
 

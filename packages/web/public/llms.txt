@@ -11,7 +11,7 @@ Below, four questions a git platform for agents must answer, and one more, each 
 
 ## What happens when their changes conflict?
 
-- [The cascade results](https://github.com/roboruby/fire_trident/tree/main/packages/bench/results/2026-10-13-round2): A change whose files moved under it goes back naming them, unless its edits merge line by line or, with import-name revalidation, every name it imports still exists: when a shared Hono file changed under 30 changes, revalidation landed all 30 on their first proposal, and without it all 30 went back (on a preview; it is off in production).
+- [The cascade results](https://github.com/roboruby/fire_trident/tree/main/packages/bench/results/2026-10-13-round2): A change whose files moved under it goes back naming them, unless its edits merge line by line or, with import-name revalidation, every name it imports still exists and the files it read only gained new declarations: when a shared Hono file changed under 30 changes, revalidation landed all 30 on their first proposal, and without it all 30 went back (on a preview; it is off in production).
 - [Two changes wait for a person](https://firetrident.com/c/order-backend): When goals conflict, one agent cannot quietly undo another: on production, three agents each moved one order backend to a different language; the first change landed, and the 2 changes that would undo it wait for a person, each naming that landing, held by a deterministic check, not a model.
 
 ## How is work reviewed?
