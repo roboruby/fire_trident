@@ -51,6 +51,15 @@ export interface Env {
    */
   FT_TEXT_MERGE?: string;
   /**
+   * Optional: the conflict resolver, "on", or a comma-separated list of colony ids; absent or "off" is off. A change that
+   * text merge sent back for overlapping hunks is merged by the platform (colony/resolver.ts): one model call writes each
+   * conflicting file keeping both changes, deterministic checks validate it, and it goes through the decide stage as a new
+   * proposal for the same intent. When that fails, the return stands and the intent reopens as before.
+   */
+  FT_RESOLVER?: string;
+  /** Optional: the model the conflict resolver calls; FT_DEFAULT_MODEL when absent ("default" and "bulk" name the server's models). */
+  FT_RESOLVER_MODEL?: string;
+  /**
    * Optional: the deletion guard, "on", or a comma-separated list of colony ids; absent or "off" is off. In a trunk
    * cycle that deletes files, a change goes back while a trunk file's import of a file it deletes would resolve to nothing.
    */

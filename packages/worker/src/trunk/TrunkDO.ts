@@ -1,6 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 import { blobId, landingMessage, mergeContentProblem, newId, regionOf, revalidationCandidate, revalidationEnabled, serializeNote, textMergeCandidate, validateProposal } from "@fire_trident/core";
-import type { AgentKind, ColonyEvent, ColonySnapshot, Decision, ExportSurface, FileVersion, Id, Landing, LineageNote, NotesVerification, OccResult, Path, Proposal, RepoRef, Revalidated, Sha, TextMerged, TrunkPublish } from "@fire_trident/core";
+import type { AgentKind, ColonyEvent, ColonySnapshot, Decision, ExportSurface, FileVersion, Id, Landing, LineageNote, NoteResolves, NotesVerification, OccResult, Path, Proposal, RepoRef, Revalidated, Sha, TextMerged, TrunkPublish } from "@fire_trident/core";
 import type { TreeEntry } from "isomorphic-git";
 import type { Env } from "../env.ts";
 import {
@@ -76,6 +76,7 @@ import { noteAlternatives, type ContestAlternative } from "../decide/contest.ts"
 import type { DirectionInfo } from "../colony/direction.ts";
 import { ftError } from "../colony/errors.ts";
 import { INLINE_FETCH_BYTES, isInlineChange } from "../colony/inline.ts";
+import { noteResolves } from "../colony/resolver-merge.ts";
 import { DIRECTION_TABLE, FENCE_WAIT_MS, directionReturns, fenceAnswer, mergeDirection, parseDirection, pushDelayMs, settlesWithin, type FenceAnswer } from "./direction.ts";
 import { PUBLISH_BOUND, addedObjects, asyncPublishEnabled, publishBackoffMs, publishChain, settlePublish, withinBound, type PublishBound, type RecordedCommit } from "./publish.ts";
 
@@ -133,6 +134,8 @@ export interface LandContext {
   decisions?: Record<Id, Array<Pick<Decision, "kind" | "layer" | "p" | "action">>>;
   /** Contest mode: the other attempts at a winner's intent and why each lost (keyed by the winner's proposal id). */
   alternatives?: Record<Id, ContestAlternative[]>;
+  /** Conflict resolver: what each change the platform's resolver wrote resolves (keyed by its proposal id; colony/resolver.ts). */
+  resolves?: Record<Id, NoteResolves>;
 }
 
 type IntentInfo = { title: string; why: string; ruleId?: Id; parentId?: Id };
@@ -1218,6 +1221,9 @@ export class TrunkDO extends DurableObject<Env> {
     // Text merge (FT_TEXT_MERGE): a change stale only on files it writes lands when each of them merges cleanly, line by
     // line, with the version it would land on (core/textmerge.ts). Off: stale means back.
     const merging = textMergeEnabled((this.env as unknown as { FT_TEXT_MERGE?: string } | undefined)?.FT_TEXT_MERGE, st.colonyId);
+    // Conflict resolver (FT_RESOLVER, colony/resolver.ts): a change sent back for overlapping hunks carries them to its
+    // colony (paths, blobs, lines), so the resolver never parses a reason. Off: returns carry only their reasons.
+    const resolving = revalidationEnabled((this.env as unknown as { FT_RESOLVER?: string } | undefined)?.FT_RESOLVER, st.colonyId);
     const batches = reqs.map((r) => r.batch);
     const outcome = new Map<Id, Outcome>();
     const own: Array<Landing | undefined> = reqs.map(() => undefined);
@@ -1328,7 +1334,7 @@ export class TrunkDO extends DurableObject<Env> {
         mergedSizes = new Map();
       }
       const back = (): void => {
-        for (const r of plan.returned.flat()) outcome.set(r.proposalId, { kind: "returned", reason: r.reason });
+        for (const r of plan.returned.flat()) outcome.set(r.proposalId, { kind: "returned", reason: r.reason, ...(resolving && r.conflicts ? { conflicts: r.conflicts } : {}) });
       };
       lap("plan");
       const chain = await this.buildChain(reqs, plan.accepted, sizes, stat, plan.revalidated, { merged: plan.merged, sizes: mergedSizes });
@@ -2734,7 +2740,8 @@ export class TrunkDO extends DurableObject<Env> {
 * how its author and model are known, from the colony's record of the agent (trunk/provenance.ts); a
 * proposal whose agent the writer does not know gets none. The note names the landing, never its commit,
 * so it is final before the commit is built (the commit carries its digest). Notes are public, so the free
-* text agents and people wrote is masked where it looks like a secret (mask.ts).
+* text agents and people wrote is masked where it looks like a secret (mask.ts). A change the conflict
+* resolver wrote records under `resolves` the change it resolves, from the colony's record (the land context).
  */
 function buildNote(
   landing: Pick<Landing, "id" | "colonyId">,
@@ -2765,6 +2772,8 @@ function buildNote(
         ...(revalidated.has(p.id) ? { revalidated: revalidated.get(p.id) } : {}),
         ...(merged.has(p.id) ? { merged: merged.get(p.id) } : {}),
         ...noteAlternatives(ctx.alternatives, p.id),
+        // Conflict resolver: the returned change this one resolves, from the colony's record (colony/resolver.ts).
+        ...noteResolves(ctx.resolves, p.id),
         ...(provenance ? { provenance } : {}),
       };
     }),
@@ -2809,12 +2818,13 @@ function staleDetail(stale: OccResult["stale"]): string {
 
 /** The lineage context of every batch in a cycle, merged. */
 function mergeContexts(list: LandContext[]): Required<LandContext> {
-  const out: Required<LandContext> = { intents: {}, agents: {}, decisions: {}, alternatives: {} };
+  const out: Required<LandContext> = { intents: {}, agents: {}, decisions: {}, alternatives: {}, resolves: {} };
   for (const c of list) {
     Object.assign(out.intents, c?.intents ?? {});
     Object.assign(out.agents, c?.agents ?? {});
     Object.assign(out.decisions, c?.decisions ?? {});
     Object.assign(out.alternatives, c?.alternatives ?? {});
+    Object.assign(out.resolves, c?.resolves ?? {});
   }
   return out;
 }

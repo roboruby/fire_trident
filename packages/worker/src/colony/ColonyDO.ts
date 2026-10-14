@@ -149,6 +149,8 @@ import { CallLimiter } from "../decide/limiter.ts";
 import type { AiRunner } from "../decide/reflex.ts";
 import type { CheckResult } from "@fire_trident/core";
 import { INLINE_FETCH_BYTES, InlineContents, inlineRefusal, isInlineChange, migrateContents } from "./inline.ts";
+import { RESOLVER_AGENT, Resolver, migrateResolver, type ResolverTrunk } from "./resolver.ts";
+import type { NoteResolves } from "@fire_trident/core";
 
 /**
  * Result of ColonyDO.take: an assignment, or advice to wait and retry. `review`: what review will
@@ -607,6 +609,7 @@ export class ColonyDO extends DurableObject<Env> {
     migrateDirection(this.sql);
     migrateContest(this.sql);
     migrateContents(this.sql);
+    migrateResolver(this.sql);
     this.backfillSeries();
     this.hub = new EventHub(() => this.ctx.getWebSockets());
     this.certifier = new Certifier(this.certifyHost());
@@ -637,6 +640,12 @@ export class ColonyDO extends DurableObject<Env> {
         this.certifier.resume();
       } catch (err) {
         console.warn(`certification not resumed: ${errorText(err)}`);
+      }
+      try {
+        // A conflict resolution cut off by an eviction: its return stands and its intent reopens (colony/resolver.ts).
+        if (this.loadColony()) this.resolver().resume();
+      } catch (err) {
+        console.warn(`conflict resolutions not resumed: ${errorText(err)}`);
       }
     });
   }
@@ -1677,6 +1686,7 @@ export class ColonyDO extends DurableObject<Env> {
     agents: Record<Id, { kind: AgentKind; model?: string; resumeKey?: boolean }>;
     decisions: Record<Id, NoteDecision[]>;
     alternatives?: Record<Id, ContestAlternative[]>;
+    resolves?: Record<Id, NoteResolves>;
   }> {
     const colonyId = this.requireColony().id;
     const intents: Record<Id, { title: string; why: string; ruleId?: Id; parentId?: Id } & DirectionInfo> = {};
@@ -1718,7 +1728,9 @@ export class ColonyDO extends DurableObject<Env> {
           )
         : {};
     const alternatives = this.contestAlternatives(wanted);
-    return { intents, agents, decisions, ...(alternatives ? { alternatives } : {}) };
+    // Conflict resolver: what each change its agent wrote resolves (the lineage note's `resolves`, colony/resolver.ts).
+    const resolves = this.resolver().records(wanted);
+    return { intents, agents, decisions, ...(alternatives ? { alternatives } : {}), ...(Object.keys(resolves).length > 0 ? { resolves } : {}) };
   }
 
   /**
@@ -4803,6 +4815,8 @@ export class ColonyDO extends DurableObject<Env> {
    * that misses a push finds the outcome on its next (slow) poll.
    */
   private async deliverOutcomes(list: Proposal[]): Promise<void> {
+    // Conflict resolver (colony/resolver.ts): a change its agent wrote that settled finishes its resolution.
+    this.resolver().settled(list);
     const ns = (this.env as unknown as { AGENT?: DurableObjectNamespace }).AGENT;
     const byId = new Map(list.map((p) => [p.id, p]));
     const watched = this.sql
@@ -4824,6 +4838,90 @@ export class ColonyDO extends DurableObject<Env> {
         }
       }),
     );
+  }
+
+  // =========================================================================
+  // Conflict resolver (colony/resolver.ts, FT_RESOLVER)
+  // =========================================================================
+
+  /** The conflict resolver, on this colony's tables (made on first use; its tables exist from the constructor on). */
+  private resolverRun: Resolver | null = null;
+
+  /** The resolver with this colony as its host: the reads, writes and calls it makes go through here. */
+  private resolver(): Resolver {
+    return (this.resolverRun ??= new Resolver({
+      sql: this.sql,
+      env: () => this.env,
+      colonyId: () => this.requireColony().id,
+      now: () => Date.now(),
+      waitUntil: (p) => this.ctx.waitUntil(p),
+      limiter: () => this.decider().limiter,
+      // An in-platform agent named "resolver", registered on first use (synchronously: a return is being settled).
+      agent: (known, model) => {
+        const now = Date.now();
+        if (known && this.agentRow(known)) {
+          this.sql.exec("UPDATE agents SET last_seen = ?, state = CASE WHEN state = 'dead' THEN 'idle' ELSE state END WHERE id = ?", now, known);
+          return known;
+        }
+        const id = newId("agt_");
+        this.sql.exec(
+          "INSERT INTO agents (id, kind, name, model, thresholds, state, intent_id, workspace, last_seen, created_at) VALUES (?, 'internal', ?, ?, '{}', 'idle', NULL, NULL, ?, ?)",
+          id,
+          RESOLVER_AGENT,
+          model,
+          now,
+          now,
+        );
+        this.bump("agents", 1, now);
+        this.publish({ t: "agent", at: now, agentId: id, kind: "internal", state: "idle" });
+        return id;
+      },
+      intent: (id) => {
+        const row = this.intentRow(id);
+        return row ? { title: row.title, why: row.why, status: row.status, assignedTo: row.assigned_to, contest: row.contest ?? null } : null;
+      },
+      hold: (intentId, agentId, events) => {
+        const now = Date.now();
+        this.sql.exec("UPDATE intents SET status = 'proposed', assigned_to = ?, updated_at = ? WHERE id = ?", agentId, now, intentId);
+        this.sql.exec("UPDATE agents SET state = 'working', intent_id = ?, last_seen = ? WHERE id = ?", intentId, now, agentId);
+        events.push({ t: "agent", at: now, agentId, kind: "internal", state: "working", intentId });
+      },
+      release: (intentId, agentId) => {
+        const now = Date.now();
+        if (this.sql.exec("UPDATE agents SET state = 'idle', intent_id = NULL WHERE id = ? AND intent_id = ? RETURNING id", agentId, intentId).toArray().length > 0) {
+          this.publish({ t: "agent", at: now, agentId, kind: "internal", state: "idle" });
+        }
+        const row = this.intentRow(intentId);
+        if (!row) return null;
+        if ((row.status !== "proposed" && row.status !== "claimed") || row.assigned_to !== agentId) return row.status;
+        this.sql.exec("UPDATE intents SET status = 'open', assigned_to = NULL, updated_at = ? WHERE id = ?", now, intentId);
+        this.publish({ t: "intent", at: now, intentId, status: "open", title: row.title, footprint: this.footprintOf(row.id, row.footprint) });
+        return "open";
+      },
+      proposal: (id) => this.getProposalSync(id),
+      inlineContents: (id) => this.inline().get(id),
+      trunkSha: () => this.requireColony().trunkSha,
+      trunk: () => this.trunkStub() as unknown as ResolverTrunk,
+      // The landings that changed these paths after the base commit landed, from the why-context path index.
+      landedSince: (paths, baseSha) => {
+        this.backfillLandedIndex();
+        const base = this.sql.exec<{ id: string; at: number }>("SELECT id, at FROM landings WHERE trunk_sha = ? LIMIT 1", baseSha).toArray()[0];
+        return paths.slice(0, 8).flatMap((path) =>
+          this.sql
+            .exec<LandedIndexRow>("SELECT path, at, landing_id, intent_id FROM landing_paths WHERE path = ? AND at >= ? AND landing_id != ? ORDER BY at DESC LIMIT ?", path, base?.at ?? 0, base?.id ?? "", WHY_PER_PATH)
+            .toArray()
+            .map((r) => ({ path: r.path, landingId: r.landing_id, intentId: r.intent_id })),
+        );
+      },
+      propose: (input) => this.propose(input),
+      notice: (agentId, intentId, message) => {
+        const now = Date.now();
+        const d = this.insertDirective({ agentId, kind: "resolution", intentId, message: oneLine(message, MAX_DIRECTIVE_CHARS), by: "resolver", at: now });
+        return { t: "directive", at: now, directiveId: d.id, agentId, intentId, message: d.message, by: d.by, kind: "resolution" };
+      },
+      publish: (events) => void this.publish(events),
+      bump: (name) => void this.bump(name, 1, Date.now()),
+    }));
   }
 
   // =========================================================================
@@ -4879,7 +4977,10 @@ export class ColonyDO extends DurableObject<Env> {
           break;
         }
         const fp = intent ? this.footprintOf(intent.id, intent.footprint) : p.declared.footprint;
-        if (intent && (intent.status === "proposed" || intent.status === "claimed") && (intent.assigned_to === p.agentId || intent.assigned_to === null)) {
+        // Conflict resolver (FT_RESOLVER, colony/resolver.ts): a change back for overlapping hunks that the resolver takes
+        // on keeps its intent, held for the resolver, instead of reopening it; everything else of the return happens.
+        const resolving = p.status === "returned" && this.resolver().hold(p, intent ?? null, fx.events);
+        if (!resolving && intent && (intent.status === "proposed" || intent.status === "claimed") && (intent.assigned_to === p.agentId || intent.assigned_to === null)) {
           this.sql.exec("UPDATE intents SET status = 'open', assigned_to = NULL, updated_at = ? WHERE id = ?", now, intent.id);
           fx.events.push({ t: "intent", at: now, intentId: intent.id, status: "open", title: intent.title, footprint: fp });
         }

@@ -84,7 +84,12 @@ describe("planCycle: text merge (FT_TEXT_MERGE)", () => {
     const plan = planCycle([[entry(p, { [F]: base })]], (path) => (path === F ? onTrunk : null), undefined, undefined, t.input);
     expect(plan.accepted).toEqual([[]]);
     expect(plan.returned[0]).toEqual([
-      { proposalId: "p", reason: `stale: ${F} (expected ${base}, trunk has ${onTrunk}); text merge of ${F}: 2 conflicting hunks, at lines 2 and 5 of its base` },
+      {
+        proposalId: "p",
+        reason: `stale: ${F} (expected ${base}, trunk has ${onTrunk}); text merge of ${F}: 2 conflicting hunks, at lines 2 and 5 of its base`,
+        // The conflict travels with the return, for the conflict resolver (FT_RESOLVER).
+        conflicts: [{ path: F, base, trunk: onTrunk, theirs: mine, lines: [2, 5] }],
+      },
     ]);
     expect(plan.merged.size).toBe(0);
     // Edits side by side conflict too.
