@@ -18,6 +18,7 @@ export const COLONY_FLAGS: readonly string[] = [
   "FT_BISECT",
   "FT_CULPRITS",
   "FT_DELETION_GUARD",
+  "FT_EXPORT_GUARD",
   "FT_FIELD_GUIDE",
   "FT_GOAL_CONFLICT",
   "FT_INLINE",
