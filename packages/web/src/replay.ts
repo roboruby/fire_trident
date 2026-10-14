@@ -160,6 +160,307 @@ export class Timeline {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Moments (named points of a run, found in its own events)
+// ---------------------------------------------------------------------------
+
+/** A named moment of a run: when it happened, the event that marks it, and what it is about. */
+export interface Moment {
+  name: string;
+  /** The timeline's time of the event that marks it (what seek takes). */
+  at: number;
+  /** That event's index in the timeline. */
+  index: number;
+  /** The files it is about: a landing's, a return's, a notice's, the hottest file. */
+  paths: string[];
+  /** The proposals it is about: a landing's, a return's. */
+  proposalIds: string[];
+  /** A return's reason. */
+  reason?: string;
+  /**
+   * What it counts: the violations a rule found (@rule), changes in flight at once (@calm), returns naming the
+   * hottest file (@hot), landings on the busiest file (@busiest), changes in one commit (@batch), notices (@first-notice).
+   */
+  count?: number;
+  /** Distinct agents: told by the notices (@first-notice), with a proposal for an intent whose footprint holds the file (@hot), or whose changes landed on it (@busiest). */
+  agents?: number;
+}
+
+/** The moments findMoment knows. */
+export const MOMENT_NAMES: readonly string[] = [
+  "@start",
+  "@rule",
+  "@first-claim",
+  "@first-landing",
+  "@first-proof",
+  "@first-stale",
+  "@first-notice",
+  "@first-return",
+  "@calm",
+  "@hot",
+  "@busiest",
+  "@batch",
+  "@converged",
+  "@last-landing",
+  "@end",
+];
+
+/** Where to look for a moment. */
+export interface MomentOptions {
+  /** Only events at or after this time count (the tour passes when the rule was declared). @rule ignores it. */
+  since?: number;
+  /** Paths a return's reason may name besides the ones the record shows (the colony's files). */
+  known?: ReadonlySet<string>;
+}
+
+/** A change sent back because a file it read or wrote moved on trunk (the worker's collisionReason). */
+const COLLISION = /^(stale\b|conflicts? )/i;
+const IN_FLIGHT_STATES: ReadonlySet<string> = new Set(["pending", "checking", "ready", "escalated"]);
+const DECIDING_LAYERS: ReadonlySet<string> = new Set(["reflex", "llm", "human"]);
+const isRedirect = (reason: string | undefined): boolean => REDIRECT.test(reason ?? "");
+
+/** The known paths a reason names, in the order it names them, each once. */
+export function reasonPaths(reason: string | undefined, known: ReadonlySet<string>): string[] {
+  const out: string[] = [];
+  for (const token of (reason ?? "").match(/[^\s,;()"'`]+/g) ?? []) {
+    const path = token.replace(/[:.]+$/, "");
+    if (known.has(path) && !out.includes(path)) out.push(path);
+  }
+  return out;
+}
+
+/** Index of the first event at or after time `t`. */
+function firstAtOrAfter(timeline: Timeline, t: number): number {
+  let lo = 0;
+  let hi = timeline.times.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if ((timeline.times[mid] ?? 0) < t) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
+/**
+ * Find a named moment in a run's events (null when the record holds none):
+ * - `@start`, `@end`: the first and the last event.
+ * - `@rule`: a rule found violations: the first violations total above the one before it (the needs appear).
+ * The moments below count only events from `since` on (the run a rule started), else from the start:
+ * - `@first-claim`: the first intent claimed.
+ * - `@first-landing`: the first landing that carries a proposal.
+ * - `@first-proof`: the first landing none of whose proposals had a decision from the reflex, a model or a person
+ *   before it landed, in a record whose funnel counts the deterministic proof (funnel.proof above 0).
+ * - `@first-stale`: the first change sent back because a file it read or wrote moved on trunk (its reason starts
+ *   "stale" or "conflicts with"); `@first-return`: the first sent back for any reason but a change of direction.
+ * - `@first-notice`: the first landing notice (a directive of kind landing), counting every notice of its landing.
+ * - `@calm`: in a record where no change came back or was rejected, the first time the most were in flight at once.
+ * - `@hot`: the last return naming the hottest file: the path the most returns name (the known paths in their reasons,
+ *   else their intent's footprint), ties to the first in path order.
+ * - `@busiest`: when no return names a path, the last landing on the path the most landings changed (at least two).
+ * - `@batch`: the landing that carried the most proposals (at least two), the first of equals.
+ * - `@converged`: the first violations total of 0 after `@rule`.
+ * - `@last-landing`: the last landing that carries a proposal.
+ */
+export function findMoment(timeline: Timeline, name: string, opts: MomentOptions = {}): Moment | null {
+  const ev = timeline.events;
+  const n = ev.length;
+  if (!n) return null;
+  const moment = (i: number, extra: Partial<Moment> = {}): Moment => ({ name, at: timeline.times[i] ?? 0, index: i, paths: [], proposalIds: [], ...extra });
+  const from = opts.since === undefined ? 0 : firstAtOrAfter(timeline, opts.since);
+  switch (name) {
+    case "@start":
+      return moment(0);
+    case "@end":
+      return moment(n - 1);
+    case "@rule": {
+      let prev = 0;
+      for (let i = 0; i < n; i++) {
+        const e = ev[i];
+        if (e?.t !== "violations") continue;
+        const total = finite(e.total, prev);
+        if (total > prev) return moment(i, { count: total });
+        prev = total;
+      }
+      return null;
+    }
+    case "@converged": {
+      const rule = findMoment(timeline, "@rule");
+      if (!rule) return null;
+      for (let i = rule.index + 1; i < n; i++) {
+        const e = ev[i];
+        if (e?.t === "violations" && finite(e.total, 1) === 0) return moment(i);
+      }
+      return null;
+    }
+    case "@first-claim":
+      for (let i = from; i < n; i++) {
+        const e = ev[i];
+        if (e?.t === "intent" && e.status === "claimed") return moment(i, { paths: Array.isArray(e.footprint) ? e.footprint : [] });
+      }
+      return null;
+    case "@first-landing":
+    case "@last-landing": {
+      const last = name === "@last-landing";
+      for (let k = 0; k < n - from; k++) {
+        const i = last ? n - 1 - k : from + k;
+        const e = ev[i];
+        if (e?.t === "landing" && Array.isArray(e.proposalIds) && e.proposalIds.length) return moment(i, { paths: e.paths ?? [], proposalIds: e.proposalIds });
+      }
+      return null;
+    }
+    case "@first-proof": {
+      let proof = false;
+      for (const e of ev) if (e.t === "metric" && e.name === "funnel.proof" && finite(e.value) > 0) proof = true;
+      if (!proof) return null;
+      const decided = new Set<string>();
+      for (let i = 0; i < n; i++) {
+        const e = ev[i];
+        if (e?.t === "decision" && DECIDING_LAYERS.has(e.layer) && typeof e.subject === "string") decided.add(e.subject);
+        if (i < from || e?.t !== "landing" || !Array.isArray(e.proposalIds) || !e.proposalIds.length) continue;
+        if (e.proposalIds.every((p) => !decided.has(p))) return moment(i, { paths: e.paths ?? [], proposalIds: e.proposalIds });
+      }
+      return null;
+    }
+    case "@first-stale":
+    case "@first-return": {
+      const footprints = new Map<string, string[]>();
+      for (let i = 0; i < n; i++) {
+        const e = ev[i];
+        if (e?.t === "intent" && Array.isArray(e.footprint) && e.footprint.length) footprints.set(e.intentId, e.footprint);
+        if (i < from || e?.t !== "proposal" || e.status !== "returned" || isRedirect(e.reason)) continue;
+        if (name === "@first-stale" && !COLLISION.test((e.reason ?? "").trim())) continue;
+        const named = reasonPaths(e.reason, knownPaths(timeline, opts.known));
+        return moment(i, { paths: named.length ? named : (footprints.get(e.intentId) ?? []), proposalIds: [e.proposalId], ...(e.reason ? { reason: e.reason } : {}) });
+      }
+      return null;
+    }
+    case "@first-notice": {
+      for (let i = from; i < n; i++) {
+        const e = ev[i];
+        if (e?.t !== "directive" || e.kind !== "landing") continue;
+        // Every notice the same landing sent (by its id, else the ones sent within a few seconds of the first).
+        const agents = new Set<string>();
+        const paths: string[] = [];
+        let count = 0;
+        for (let j = i; j < n; j++) {
+          const d = ev[j];
+          if (d?.t !== "directive" || d.kind !== "landing") continue;
+          const same = e.landingId ? d.landingId === e.landingId : (timeline.times[j] ?? 0) - (timeline.times[i] ?? 0) <= 15_000;
+          if (!same) continue;
+          count++;
+          if (typeof d.agentId === "string") agents.add(d.agentId);
+          for (const p of d.paths ?? []) if (!paths.includes(p)) paths.push(p);
+        }
+        return moment(i, { paths, count, agents: agents.size });
+      }
+      return null;
+    }
+    case "@calm": {
+      const status = new Map<string, string>();
+      let inFlight = 0;
+      let best = 0;
+      let at = -1;
+      for (let i = 0; i < n; i++) {
+        const e = ev[i];
+        if (e?.t !== "proposal") continue;
+        if (i >= from && ((e.status === "returned" && !isRedirect(e.reason)) || e.status === "rejected")) return null;
+        const was = status.get(e.proposalId);
+        if (was !== undefined && IN_FLIGHT_STATES.has(was)) inFlight--;
+        if (IN_FLIGHT_STATES.has(e.status)) inFlight++;
+        status.set(e.proposalId, e.status);
+        if (i >= from && inFlight > best) {
+          best = inFlight;
+          at = i;
+        }
+      }
+      return at >= 0 ? moment(at, { count: best }) : null;
+    }
+    case "@hot":
+    case "@busiest":
+      return hottest(timeline, name, from, opts.known);
+    case "@batch": {
+      let at = -1;
+      let most = 1;
+      for (let i = from; i < n; i++) {
+        const e = ev[i];
+        if (e?.t === "landing" && Array.isArray(e.proposalIds) && e.proposalIds.length > most) {
+          most = e.proposalIds.length;
+          at = i;
+        }
+      }
+      const e = ev[at];
+      return e?.t === "landing" ? moment(at, { paths: e.paths ?? [], proposalIds: e.proposalIds, count: most }) : null;
+    }
+    default:
+      return null;
+  }
+}
+
+/** Every path the record shows (footprints, landings, notices), plus `extra`. */
+function knownPaths(timeline: Timeline, extra?: ReadonlySet<string>): Set<string> {
+  const out = new Set<string>(extra ?? []);
+  for (const e of timeline.events) {
+    if (e.t === "intent" && Array.isArray(e.footprint)) for (const p of e.footprint) out.add(p);
+    else if ((e.t === "landing" || e.t === "directive") && Array.isArray(e.paths)) for (const p of e.paths) out.add(p);
+  }
+  return out;
+}
+
+/** `@hot` (the file the most returns name) or `@busiest` (the file the most landings changed, when no return names one). */
+function hottest(timeline: Timeline, name: string, from: number, extra?: ReadonlySet<string>): Moment | null {
+  const ev = timeline.events;
+  const known = knownPaths(timeline, extra);
+  const footprints = new Map<string, string[]>();
+  const agentOf = new Map<string, string>();
+  const proposalsOf = new Map<string, Set<string>>();
+  const returns = new Map<string, number[]>();
+  const landings = new Map<string, number[]>();
+  const note = (tally: Map<string, number[]>, path: string, i: number) => {
+    const list = tally.get(path);
+    if (list) list.push(i);
+    else tally.set(path, [i]);
+  };
+  ev.forEach((e, i) => {
+    if (e.t === "intent" && Array.isArray(e.footprint) && e.footprint.length) footprints.set(e.intentId, e.footprint);
+    if (e.t === "proposal") agentOf.set(e.proposalId, e.agentId);
+    if (i < from) return;
+    if (e.t === "proposal") {
+      let s = proposalsOf.get(e.intentId);
+      if (!s) proposalsOf.set(e.intentId, (s = new Set()));
+      s.add(e.proposalId);
+      if (e.status !== "returned" || isRedirect(e.reason)) return;
+      const named = reasonPaths(e.reason, known);
+      for (const p of named.length ? named : (footprints.get(e.intentId) ?? [])) note(returns, p, i);
+    } else if (e.t === "landing" && Array.isArray(e.proposalIds) && e.proposalIds.length) {
+      for (const p of e.paths ?? []) note(landings, p, i);
+    }
+  });
+  const tally = name === "@hot" ? returns : returns.size ? new Map<string, number[]>() : landings;
+  let path: string | null = null;
+  for (const [p, list] of tally) {
+    const best = path === null ? undefined : tally.get(path);
+    if (!best || list.length > best.length || (list.length === best.length && p < (path ?? ""))) path = p;
+  }
+  const list = path === null ? undefined : tally.get(path);
+  if (path === null || !list || (name === "@busiest" && list.length < 2)) return null;
+  // @hot: the agents with a proposal for an intent whose footprint holds the file; @busiest: the agents whose changes landed on it.
+  const agents = new Set<string>();
+  const add = (id: string) => {
+    const a = agentOf.get(id);
+    if (a) agents.add(a);
+  };
+  if (name === "@busiest") {
+    for (const i of list) {
+      const e = ev[i];
+      if (e?.t === "landing") for (const id of e.proposalIds) add(id);
+    }
+  } else {
+    for (const [intentId, ids] of proposalsOf) if ((footprints.get(intentId) ?? []).includes(path)) for (const id of ids) add(id);
+  }
+  const i = list[list.length - 1] ?? 0;
+  return { name, at: timeline.times[i] ?? 0, index: i, paths: [path], proposalIds: [], count: list.length, agents: agents.size };
+}
+
 /**
  * What the replay starts from: the colony as it was before its first event. The finished colony's
  * snapshot gives the record (name, rules, files); what happened during the run is taken out. Files
@@ -237,6 +538,7 @@ export class ReplayEngine {
     s.reset();
     s.startedAt = this.start;
     s.autoMergeFiles = false;
+    s.baselineFromRules = true;
     s.applySnapshot(this.initial);
   }
 
@@ -352,6 +654,8 @@ export class ReplayBackend implements Backend {
   private timer = 0;
   private lastWall = 0;
   private holdUntil = 0;
+  /** A play that stops by itself at a virtual time (playTo), until anything else moves the replay. */
+  private until: { at: number; speed: number; done: () => void } | null = null;
   private readonly listeners = new Set<() => void>();
   state: ReplayState;
 
@@ -465,6 +769,18 @@ export class ReplayBackend implements Backend {
     const dtWall = Math.min(1_000, Math.max(0, wall - this.lastWall));
     this.lastWall = wall;
     if (!engine || !this.state.playing || wall < this.holdUntil) return;
+    const until = this.until;
+    if (until) {
+      engine.advanceTo(Math.min(engine.stepTarget(dtWall * until.speed), until.at));
+      if (engine.vt < until.at) {
+        if (Math.floor(wall / 100) !== Math.floor((wall - dtWall) / 100)) this.emit({ at: engine.vt });
+        return;
+      }
+      this.until = null;
+      this.emit({ at: engine.vt, playing: false, ended: engine.vt >= engine.end });
+      until.done();
+      return;
+    }
     engine.advanceTo(engine.stepTarget(dtWall * this.state.speed));
     const ended = engine.vt >= engine.end;
     // At most ten control updates a second.
@@ -476,10 +792,37 @@ export class ReplayBackend implements Backend {
     this.setPaused(this.state.playing);
   }
 
+  /** The run's events once loaded (the tour finds its moments in them), else null. */
+  get timeline(): Timeline | null {
+    return this.engine?.timeline ?? null;
+  }
+
+  /**
+   * Play forward to virtual time `at` at `speed` (any number, not only SPEEDS), then pause there and call `done`: the
+   * tour moving from one moment to the next. A time not ahead of now is a seek, and `done` is called at once. Pausing,
+   * seeking or another playTo cancels it, without `done`.
+   */
+  playTo(at: number, speed: number, done: () => void): void {
+    const engine = this.engine;
+    if (!engine) return;
+    const target = Math.max(engine.start, Math.min(at, engine.end));
+    if (target <= engine.vt) {
+      this.seek(target);
+      this.setPaused(true);
+      done();
+      return;
+    }
+    this.until = { at: target, speed: Math.max(0.1, finite(speed, 1)), done };
+    this.lastWall = performance.now();
+    this.holdUntil = 0;
+    this.emit({ playing: true, ended: false });
+  }
+
   /** Pause or resume (the director's space key). */
   setPaused(paused: boolean): void {
     const engine = this.engine;
     if (!engine) return;
+    this.until = null;
     if (!paused && this.state.ended) {
       engine.begin();
       this.emit({ ended: false, at: engine.vt });
@@ -498,20 +841,22 @@ export class ReplayBackend implements Backend {
   seek(at: number): void {
     const engine = this.engine;
     if (!engine) return;
+    this.until = null;
     engine.seek(at);
     this.emit({ at: engine.vt, ended: engine.vt >= engine.end, ...(engine.vt >= engine.end ? { playing: false } : {}) });
   }
 
   stop(): void {
     this.stopped = true;
+    this.until = null;
     cancelAnimationFrame(this.raf);
     window.clearTimeout(this.timer);
     if (this.store) this.store.now = () => Date.now();
   }
 
-  /** The real lineage of a file (a replay shows how the colony remembers it now). */
-  async why(path: string): Promise<WhyEntry[]> {
-    const data = await this.getJson<unknown>(`/why?path=${encodeURIComponent(path)}`);
+  /** The real lineage of a file or one of its lines (a replay shows how the colony remembers it now). */
+  async why(path: string, line?: number): Promise<WhyEntry[]> {
+    const data = await this.getJson<unknown>(`/why?path=${encodeURIComponent(path)}${line ? `&line=${line}` : ""}`);
     return Array.isArray(data) ? (data as WhyEntry[]).filter((e) => e && e.landing && e.note) : [];
   }
 

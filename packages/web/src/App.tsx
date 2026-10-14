@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { Suspense, lazy, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { HttpBackend, saveToken, type Backend } from "./api.ts";
 import { Guide } from "./components/Guide.tsx";
 import { NeedsYou } from "./components/NeedsYou.tsx";
@@ -16,6 +16,9 @@ import { ReplayBackend } from "./replay.ts";
 import { colonyHref, type Route } from "./route.ts";
 import { ColonyStore } from "./store.ts";
 import { useThrottledVersion } from "./useStore.ts";
+
+/** The tour (?tour=1) loads only when asked for, keeping it out of every other page's bundle. */
+const Tour = lazy(() => import("./tour/Tour.tsx").then((m) => ({ default: m.Tour })));
 
 /** Under 900 px the panel stacks under the map: a pick or a strip click scrolls down to it. */
 const NARROW = "(max-width: 900px)";
@@ -132,7 +135,9 @@ export function App({ route }: { route: ColonyRoute }) {
   const [renderer, setRenderer] = useState<MapRenderer | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
   const director = route.director;
-  const [guideOpen, setGuideOpen] = useState(() => guideAtStart(location.search, director, guideSeen()));
+  // A tour (?tour=1) walks the replay through its moments; leaving it keeps the replay. The first-visit guide stays shut.
+  const [touring, setTouring] = useState(() => route.tour && backend instanceof ReplayBackend);
+  const [guideOpen, setGuideOpen] = useState(() => guideAtStart(location.search, director || route.tour, guideSeen()));
   const [guideTarget, setGuideTarget] = useState<GuideTarget | null>(null);
   const [focus, setFocus] = useState<PanelFocus | null>(null);
   const side = useRef<HTMLElement>(null);
@@ -145,18 +150,30 @@ export function App({ route }: { route: ColonyRoute }) {
     return () => backend.stop();
   }, [backend, store]);
 
-  // ?path=<file> opens straight onto that file's lineage (a shareable link to why a file is the way it is).
+  // ?path=<file> (and &line=<n>) opens straight onto that file's lineage (a shareable link to why a file is the way it is).
   useEffect(() => {
-    const path = new URLSearchParams(location.search).get("path");
-    if (!path || director) return;
+    const params = new URLSearchParams(location.search);
+    const path = params.get("path");
+    if (!path || director || route.tour) return;
+    const line = Number(params.get("line"));
     const unsubscribe = store.subscribe(() => {
       if (!store.loaded) return;
       unsubscribe();
-      store.select(path);
+      store.select(path, Number.isInteger(line) && line >= 1 ? line : null);
       setTab("why");
     });
     return unsubscribe;
-  }, [store, director]);
+  }, [store, director, route.tour]);
+
+  // Leaving the tour keeps the replay; the address bar drops the tour, so a reload shows the plain replay.
+  const leaveTour = useCallback(() => {
+    setTouring(false);
+    const params = new URLSearchParams(location.search);
+    params.delete("tour");
+    params.delete("step");
+    if (!params.has("replay")) params.set("replay", "1");
+    history.replaceState(null, "", `${location.pathname}?${params.toString()}${location.hash}`);
+  }, []);
 
   const pick = useCallback(
     (path: string | null) => {
@@ -210,20 +227,25 @@ export function App({ route }: { route: ColonyRoute }) {
   const name = store.colony?.name;
   const replaying = !!route.replay;
   useEffect(() => {
-    document.title = name ? `${name}${replaying ? " · Replay" : ""} · FireTrident` : "FireTrident";
-  }, [name, replaying]);
+    document.title = name ? `${name}${touring ? " · Tour" : replaying ? " · Replay" : ""} · FireTrident` : "FireTrident";
+  }, [name, replaying, touring]);
 
   const mockHref = `/c/${encodeURIComponent(route.colonyId)}?mock=1`;
-  const showGuide = guideOpen && !director && store.loaded;
+  const showGuide = guideOpen && !director && !touring && store.loaded;
   return (
     <Stage on={director}>
       <div className={`app${director ? " is-director" : ""}`} data-guide={showGuide && guideTarget ? guideTarget : undefined}>
         <TopBar store={store} director={director} mock={route.mock} />
         <main className="main">
           <div className="map-col">
-            <ColonyMap store={store} onPick={pick} onRenderer={setRenderer} director={director} onGuide={director ? undefined : () => setGuideOpen(true)} />
+            <ColonyMap store={store} onPick={pick} onRenderer={setRenderer} director={director} onGuide={director || touring ? undefined : () => setGuideOpen(true)} />
             {director ? null : <NeedsYou store={store} onGo={go} />}
-            {backend instanceof ReplayBackend && !director ? <ReplayBar backend={backend} colonyId={route.colonyId} /> : null}
+            {backend instanceof ReplayBackend && !director && !touring ? <ReplayBar backend={backend} colonyId={route.colonyId} /> : null}
+            {backend instanceof ReplayBackend && touring ? (
+              <Suspense fallback={null}>
+                <Tour store={store} backend={backend} renderer={renderer} onTab={setTab} onClose={leaveTour} />
+              </Suspense>
+            ) : null}
             {showGuide ? <Guide onTarget={setGuideTarget} onClose={() => setGuideOpen(false)} lifted={backend instanceof ReplayBackend} /> : null}
             <StatusOverlay store={store} mockHref={mockHref} replay={!!route.replay} />
           </div>

@@ -15,6 +15,7 @@ type NoteProposal = LineageNote["proposals"][number];
 
 interface WhyState {
   path: string;
+  line: number | null;
   entries: WhyEntry[] | null;
   error: string | null;
   loading: boolean;
@@ -34,11 +35,11 @@ function commitLink(colony: Colony | null, sha: string): string | null {
   return web && /^https:\/\//.test(web) ? `${web.replace(/\.git$/, "").replace(/\/$/, "")}/commit/${sha}` : null;
 }
 
-/** Copies a link that reopens this colony on this file's lineage (?path=). */
-function CopyLink({ path }: { path: string }) {
+/** Copies a link that reopens this colony on this file's lineage (?path=, and &line= when a line is selected). */
+function CopyLink({ path, line }: { path: string; line: number | null }) {
   const [done, setDone] = useState(false);
   const copy = () => {
-    const url = `${location.origin}${location.pathname}?path=${encodeURIComponent(path)}`;
+    const url = `${location.origin}${location.pathname}?path=${encodeURIComponent(path)}${line ? `&line=${line}` : ""}`;
     navigator.clipboard
       ?.writeText(url)
       .then(() => {
@@ -58,6 +59,7 @@ function CopyLink({ path }: { path: string }) {
 export function WhyTab({ store, backend, director = false }: { store: ColonyStore; backend: Backend; director?: boolean }) {
   useThrottledVersion(store, 400);
   const path = store.selectedPath;
+  const line = path ? store.selectedLine : null;
   const [state, setState] = useState<WhyState | null>(null);
 
   // Refetch when a new landing touches this path.
@@ -66,20 +68,21 @@ export function WhyTab({ store, backend, director = false }: { store: ColonyStor
   useEffect(() => {
     if (!path) return;
     let cancelled = false;
-    setState((s) => ({ path, entries: s?.path === path ? s.entries : null, error: null, loading: true }));
+    setState((s) => ({ path, line, entries: s?.path === path && s.line === line ? s.entries : null, error: null, loading: true }));
     backend
-      .why(path)
+      .why(path, line ?? undefined)
       .then((entries) => {
-        const sorted = [...entries].sort((a, b) => (b.landing?.at ?? 0) - (a.landing?.at ?? 0));
-        if (!cancelled) setState({ path, entries: sorted, error: null, loading: false });
+        // For a line, the server puts the landing that wrote it first when it finds one: keep its order.
+        const sorted = line ? [...entries] : [...entries].sort((a, b) => (b.landing?.at ?? 0) - (a.landing?.at ?? 0));
+        if (!cancelled) setState({ path, line, entries: sorted, error: null, loading: false });
       })
       .catch((err: unknown) => {
-        if (!cancelled) setState({ path, entries: null, error: err instanceof Error ? err.message : "lineage unavailable", loading: false });
+        if (!cancelled) setState({ path, line, entries: null, error: err instanceof Error ? err.message : "lineage unavailable", loading: false });
       });
     return () => {
       cancelled = true;
     };
-  }, [path, backend, touchedBy]);
+  }, [path, line, backend, touchedBy]);
 
   if (!path) {
     return (
@@ -93,8 +96,11 @@ export function WhyTab({ store, backend, director = false }: { store: ColonyStor
   }
 
   const values = store.fieldValues(path);
-  const current = state?.path === path ? state : null;
+  const current = state?.path === path && state.line === line ? state : null;
   const here = agentsOn(store, path, 3);
+  // As `ft why` reads it: the server only moves the line's landing ahead of newer ones, so a newer one after the first means it did.
+  const first = current?.entries?.[0]?.landing?.at ?? 0;
+  const owner = !!line && !!current?.entries?.slice(1).some((e) => (e.landing?.at ?? 0) > first);
   return (
     <div className="why">
       <div className="why-head">
@@ -102,7 +108,11 @@ export function WhyTab({ store, backend, director = false }: { store: ColonyStor
         <div className="why-path mono">
           <span className="why-dir">{dirname(path)}</span>
           {basename(path)}
+          {line ? <span className="why-line">:{line}</span> : null}
         </div>
+        {line && current?.entries?.length ? (
+          <div className="why-order">{owner ? `The landing that wrote line ${line} comes first, then the newest.` : `Line ${line}: the landings that changed this file, newest first.`}</div>
+        ) : null}
         <div className="why-field">
           {KINDS.map((kind) => (
             <div className={`wf${values[kind] > 0.005 ? "" : " zero"}`} key={kind} title={`${kind} ${fmtFixed(values[kind])}`}>
@@ -136,7 +146,7 @@ export function WhyTab({ store, backend, director = false }: { store: ColonyStor
             <button type="button" className="link" onClick={() => store.select(null)}>
               Clear selection
             </button>
-            <CopyLink path={path} />
+            <CopyLink path={path} line={line} />
           </div>
         )}
       </div>
