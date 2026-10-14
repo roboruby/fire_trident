@@ -126,6 +126,18 @@ export interface Env {
    */
   FT_QUOTED_ACCEPTANCE?: string;
   /**
+   * Optional: the contest jury, "on", or a comma-separated list of colony ids; absent or "off" is off. Where it covers a
+   * colony, contest mode compares two tied changes with a jury of two or three small models from different families (the
+   * decide policy's `juryModels`, outside the contestants' families) instead of one judge model: each member is asked in
+   * both orders at once, within the judge's deadline; a member whose answers agree casts a vote, one whose answers flip
+   * with the order, times out or answers nothing usable counts for nobody; the side with more votes wins, and a split or
+   * no vote is a tie broken as today (decide/jury.ts). The verdict names each member's vote in the loser's reason and
+   * the winner's `contest` check, so the lineage note and `ft why` show it; members' tokens count in the judge layer of
+   * the colony's spend, per model, and `contest.jury.majority`, `contest.jury.ties`, `contest.jury.consistent` and
+   * `contest.jury.inconsistent` count the verdicts and votes.
+   */
+  FT_CONTEST_JURY?: string;
+  /**
    * Optional: twin intents caught at declare, "on", or a comma-separated list of colony ids; absent or "off" is off. An
    * intent a person or an agent declares (POST /intents, MCP declare) whose normalized title words score at least 0.8
    * (Jaccard) against an intent open, claimed, proposed or landed in the last 30 minutes, and whose footprint overlaps

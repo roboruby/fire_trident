@@ -144,7 +144,8 @@ import { reviewPreview, type ReviewPreview } from "../agents/preview.ts";
 import { RETURN_PATHS, extractUsage, returnReason, type LastReturn } from "../agents/prompt.ts";
 import { MAX_RESUME_KEY, MIN_RESUME_KEY, resumeDigest, resumeKeyMatches } from "../mcp/resume.ts";
 import { CONTEST_LOOK_MS, CONTEST_MIN, CONTEST_RETRY_MS, CONTEST_WAIT_MS, cleanAlternatives, contestEvidence, contestSeats, judgeModels, loadDiffs, migrateContest, pairJudge, selectWinner, supersededReason } from "../decide/contest.ts";
-import type { ContestAlternative, ContestCandidate, ContestOutcome, ContestRound, PairJudge } from "../decide/contest.ts";
+import type { ContestAlternative, ContestCandidate, ContestOutcome, ContestRound, JudgeIntent, PairJudge, PairVerdict } from "../decide/contest.ts";
+import { juryEnabled, juryMembers, pairJury, type JuryMember } from "../decide/jury.ts";
 import { whyAuthor } from "../decide/danger.ts";
 import { protectedHits } from "../decide/signals.ts";
 import type { FileDiff } from "../decide/diff.ts";
@@ -3334,13 +3335,34 @@ export class ColonyDO extends DurableObject<Env> {
     const policy = this.decider().store.policy();
     const limiter = this.contestLimiter();
     limiter.configure(policy.llmConcurrency, policy.llmPerMinute);
+    const judged: JudgeIntent = { title: intent.title, why: intent.why, whyBy: whyAuthor(intent.source), ...(intent.acceptance ? { acceptance: intent.acceptance } : {}) };
+    // The contest jury (FT_CONTEST_JURY, decide/jury.ts): two or three small models from different families in place of the one judge.
+    if (juryEnabled(this.env.FT_CONTEST_JURY, this.requireColony().id)) {
+      return pairJury({
+        ai: this.judgeSpend(ai),
+        models: juryMembers(authors, policy.juryModels),
+        limiter,
+        intent: judged,
+        onCall: () => this.bump("contest.judge.calls", 1, Date.now()),
+        onVerdict: (members, better) => this.juryCount(members, better),
+      });
+    }
     return pairJudge({
       ai: this.judgeSpend(ai),
       models: judgeModels(authors, policy.secondOpinionModels),
       limiter,
-      intent: { title: intent.title, why: intent.why, whyBy: whyAuthor(intent.source), ...(intent.acceptance ? { acceptance: intent.acceptance } : {}) },
+      intent: judged,
       onCall: () => this.bump("contest.judge.calls", 1, Date.now()),
     });
+  }
+
+  /** The jury's verdict on one pair, counted: a majority or a tie, and how many members voted consistently or not. */
+  private juryCount(members: readonly JuryMember[], better: PairVerdict["better"]): void {
+    const now = Date.now();
+    this.bump(better === "tie" ? "contest.jury.ties" : "contest.jury.majority", 1, now);
+    const inconsistent = members.filter((m) => m.vote === "inconsistent").length;
+    if (inconsistent > 0) this.bump("contest.jury.inconsistent", inconsistent, now);
+    if (members.length - inconsistent > 0) this.bump("contest.jury.consistent", members.length - inconsistent, now);
   }
 
   /**
