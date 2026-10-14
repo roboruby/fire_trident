@@ -14,8 +14,16 @@ import { loadGoalsCard, loadScaleCard } from "./showcase.ts";
 
 type Kind = "rule" | "spec" | "mcp" | "certify" | "scale" | "goals";
 
+/** A showcase run: its colony, its kind of card, a fact measured outside the colony, and where its replay starts (`t=<s>&speed=<n>`, for a record that opens on setup). */
+interface Showcase {
+  id: string;
+  kind: Kind;
+  measured?: string;
+  replay?: string;
+}
+
 /** The showcase runs, and the facts measured outside the colony (tests run on a plain clone, the load generator's timing). */
-const SHOWCASE: ReadonlyArray<{ id: string; kind: Kind; measured?: string }> = [
+const SHOWCASE: ReadonlyArray<Showcase> = [
   { id: "hono", kind: "rule" },
   { id: "shortlinks", kind: "spec", measured: "60/60 tests pass from a plain clone" },
   { id: "shortlinks-review", kind: "certify", measured: "67/67 from a plain clone; acceptance 7/7" },
@@ -31,6 +39,8 @@ interface Result {
   source?: string;
   /** Where a colony with no source came from (scale, goals); without either the card says it started from a spec. */
   origin?: string;
+  /** Where the replay link starts (Showcase.replay). */
+  replay?: string;
   headline: string;
   lede: string;
   details: string[];
@@ -55,7 +65,7 @@ function runTime(ms: number): string {
   return ms < 180_000 ? fmtDuration(ms) : `${fmtInt(Math.round(ms / 60_000))} min`;
 }
 
-async function loadResult(s: (typeof SHOWCASE)[number], listing: Json[], signal: AbortSignal): Promise<Result | null> {
+async function loadResult(s: Showcase, listing: Json[], signal: AbortSignal): Promise<Result | null> {
   const base = `/api/colonies/${encodeURIComponent(s.id)}`;
   const row = listing.find((r) => r.id === s.id);
   const m = await getJson(`${base}/metrics`, signal).catch(() => null);
@@ -72,7 +82,7 @@ async function loadResult(s: (typeof SHOWCASE)[number], listing: Json[], signal:
   const settled = k("funnel.proof") + k("funnel.reflex") + k("funnel.llm") + k("funnel.human");
   const proofLine = settled ? `${fmtInt(k("funnel.proof"))} of ${fmtInt(settled)} settled by proof` : null;
   const details: string[] = [];
-  const out: Result = { id: s.id, kind: s.kind, name, ...(src ? { source: src } : {}), headline: "", lede: "", details };
+  const out: Result = { id: s.id, kind: s.kind, name, ...(src ? { source: src } : {}), ...(s.replay ? { replay: s.replay } : {}), headline: "", lede: "", details };
 
   if (s.kind === "rule") {
     const c = isObj(m.convergence) ? m.convergence : null;
@@ -160,7 +170,7 @@ function Card({ r }: { r: Result }) {
         ))}
       </ul>
       <div className="rs-links">
-        <a className="rs-replay" href={colonyHref(r.id, { replay: true })}>
+        <a className="rs-replay" href={`${colonyHref(r.id, { replay: true })}${r.replay ? `&${r.replay}` : ""}`}>
           <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
             <path d="M4 2.5v11l9.5-5.5z" fill="currentColor" />
           </svg>
@@ -175,7 +185,7 @@ function Card({ r }: { r: Result }) {
 }
 
 /** The showcase, or ?results=id:kind,id:kind (rule, spec, mcp, certify, scale or goals) for a deployment without the production colonies. */
-function showcase(): ReadonlyArray<{ id: string; kind: Kind; measured?: string }> {
+function showcase(): ReadonlyArray<Showcase> {
   const raw = new URLSearchParams(location.search).get("results");
   if (!raw) return SHOWCASE;
   const kinds: ReadonlySet<string> = new Set(["rule", "spec", "mcp", "certify", "scale", "goals"]);
