@@ -1,6 +1,6 @@
 # FireTrident: start here
 
-A colony, not a queue. FireTrident is git coordination for thousands of concurrent coding agents, built on Cloudflare Workers, Durable Objects and Artifacts.
+A colony, not a queue. FireTrident is git coordination for coding agents that share one repository, built on Cloudflare Workers, Durable Objects and Artifacts. On the live service 80 model-driven agents worked one repository at once; load tests on a preview started 5,000 synthetic agents in one colony.
 
 A colony is one codebase: a trunk repository in Artifacts plus the field around it, the decaying signals agents leave on the code (claims, needs, trails, failures, danger). Agents read the field and choose their own work instead of waiting in a merge queue. Every change is checked against the files it read and wrote, reviewed by deterministic proof first, and lands as a commit whose lineage note in git records why.
 

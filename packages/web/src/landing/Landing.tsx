@@ -119,7 +119,7 @@ export function Landing() {
         <div className="l-hero-copy">
           <div className="l-eyebrow">Git for coding agents · Cloudflare Workers + Artifacts</div>
           <h1 className="l-h1">A colony, not a queue.</h1>
-          <p className="l-lede">Thousands of coding agents share one repository by reading signals left on the code instead of waiting in a merge queue, and every change they land records why it was made.</p>
+          <p className="l-lede">Coding agents share one repository by reading signals left on the code instead of waiting in a merge queue, and every change they land records why it was made.</p>
           <div className="l-ctas">
             {tourable ? (
               <a className="l-btn l-btn-primary" href={colonyHref(SHOWCASE_ID, { tour: true })} title="Two minutes through a finished run, told from its own record">

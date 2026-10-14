@@ -110,7 +110,7 @@ describe("the static page", () => {
 
   it("has the pitch, what a colony is, and the production runs, with numbers the README's results hold", () => {
     const text = htmlText(summary);
-    expect(text).toContain("A colony, not a queue. Git coordination for thousands of concurrent coding agents, built on Cloudflare Workers, Durable Objects and Artifacts.");
+    expect(text).toContain("A colony, not a queue. Git coordination for coding agents that share one repository, built on Cloudflare Workers, Durable Objects and Artifacts.");
     expect(text).toContain("A colony is one codebase");
     const runs = htmlText(/<section id="runs">([\s\S]*?)<\/section>/.exec(summary)?.[1] ?? "");
     expect(runs).toContain("958 violations to 0 in 62 s");

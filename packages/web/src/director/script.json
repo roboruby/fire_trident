@@ -6,7 +6,7 @@
       "title": true,
       "kicker": "FireTrident",
       "caption": "A colony, not a queue.",
-      "sub": "Git coordination for thousands of coding agents, built on Cloudflare Workers, Durable Objects and Artifacts."
+      "sub": "Git coordination for coding agents that share one repository, built on Cloudflare Workers, Durable Objects and Artifacts."
     },
     {
       "id": "map",
