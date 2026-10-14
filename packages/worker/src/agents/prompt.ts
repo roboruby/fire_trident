@@ -8,6 +8,7 @@ import { WHY_LANDINGS, type LandedWhy } from "./landed.ts";
 import { PREVIEW_ANTIBODIES, type AntibodyQuestion } from "./preview.ts";
 import type { MovedBy } from "@fire_trident/core";
 import { cleanMovedBy, movedLine } from "../colony/movedby.ts";
+import { declaredByLine, type DeclaredBy } from "../colony/chain.ts";
 
 /** One chat message in the provider-neutral shape both model paths accept. */
 export interface ChatMessage {
@@ -254,6 +255,8 @@ export interface EditRequest {
   lastReturn?: LastReturn;
   /** The colony's field guide from the take (FT_FIELD_GUIDE): its lessons are shown, and the model may leave one. */
   guide?: GuideTake;
+  /** Who declared the intent (colony/chain.ts): for an agent-declared intent, a line beside the why says so. */
+  declaredBy?: DeclaredBy;
   rule?: Rule | null;
   path: Path;
   /** Current file content; null when the file does not exist yet. */
@@ -301,12 +304,14 @@ export function buildEditMessages(req: EditRequest): ChatMessage[] {
   const landed = historyLines(req.history);
   const returned = returnLines(req.lastReturn);
   const guided = guideLines(req.guide);
+  const declared = declaredByLine(req.declaredBy);
   while (
     (req.content !== null && req.content.includes(nonce)) ||
     questions.some((q) => q.includes(nonce)) ||
     landed.some((l) => l.includes(nonce)) ||
     returned.some((l) => l.includes(nonce)) ||
-    guided.some((l) => l.includes(nonce))
+    guided.some((l) => l.includes(nonce)) ||
+    (declared !== null && declared.includes(nonce))
   ) {
     nonce = newNonce();
   }
@@ -315,6 +320,8 @@ export function buildEditMessages(req: EditRequest): ChatMessage[] {
   if (why) task.push(`Why: ${why}`);
   const acceptance = (req.intent.acceptance ?? []).map(oneLine).filter(Boolean);
   if (acceptance.length > 0) task.push(`Acceptance:\n${acceptance.map((a) => `- ${a}`).join("\n")}`);
+  // Who declared the intent (colony/chain.ts): an agent's intent says so beside the why.
+  if (declared) task.push(declared);
   const directives = directiveBlock(req.directives);
   if (directives) task.push(directives);
   const back = returnBlock(req.lastReturn, nonce);
@@ -370,6 +377,8 @@ export interface WriteRequest {
   lastReturn?: LastReturn;
   /** The colony's field guide from the take (FT_FIELD_GUIDE): its lessons are shown, and the model may leave one. */
   guide?: GuideTake;
+  /** Who declared the intent (colony/chain.ts): for an agent-declared intent, a line beside the why says so. */
+  declaredBy?: DeclaredBy;
   path: Path;
   /** Current content at the base; null when the file does not exist yet. */
   content: string | null;
@@ -410,6 +419,7 @@ export function buildWriteMessages(req: WriteRequest): ChatMessage[] {
   const landed = historyLines(req.history);
   const returned = returnLines(req.lastReturn);
   const guided = guideLines(req.guide);
+  const declared = declaredByLine(req.declaredBy);
   let nonce = req.nonce ?? newNonce();
   while (
     fenced.some((f) => f.content.includes(nonce)) ||
@@ -417,7 +427,8 @@ export function buildWriteMessages(req: WriteRequest): ChatMessage[] {
     questions.some((q) => q.includes(nonce)) ||
     landed.some((l) => l.includes(nonce)) ||
     returned.some((l) => l.includes(nonce)) ||
-    guided.some((l) => l.includes(nonce))
+    guided.some((l) => l.includes(nonce)) ||
+    (declared !== null && declared.includes(nonce))
   ) {
     nonce = newNonce();
   }
@@ -435,6 +446,8 @@ export function buildWriteMessages(req: WriteRequest): ChatMessage[] {
   if (spec.why) task.push(`Why: ${spec.why}`);
   const acceptance = (req.intent.acceptance ?? []).map(oneLine).filter(Boolean);
   if (acceptance.length > 0) task.push(`Acceptance:\n${acceptance.map((a) => `- ${a}`).join("\n")}`);
+  // Who declared the intent (colony/chain.ts): an agent's intent says so beside the why.
+  if (declared) task.push(declared);
   task.push(`Path: ${req.path} (${req.content === null ? "a new file: write all of it" : "it exists: rewrite it so it satisfies the intent, keeping what still fits"})`);
   const siblings = req.siblings.filter((p) => p !== req.path);
   if (siblings.length > 0) task.push(`This change also writes: ${siblings.join(", ")} (each in its own step; write only ${req.path} now).`);
@@ -505,6 +518,8 @@ export interface SpecifierRequest {
   lastReturn?: LastReturn;
   /** The colony's field guide from the take (FT_FIELD_GUIDE): its lessons are shown (the edits reply leaves none). */
   guide?: GuideTake;
+  /** Who declared the intent (colony/chain.ts): for an agent-declared intent, a line beside the why says so. */
+  declaredBy?: DeclaredBy;
   rule: Rule;
   path: Path;
   content: string;
@@ -545,10 +560,21 @@ export function buildSpecifierMessages(req: SpecifierRequest): ChatMessage[] {
   const questions = questionLines(req.antibodies);
   const returned = returnLines(req.lastReturn);
   const guided = guideLines(req.guide);
-  while (req.content.includes(nonce) || questions.some((q) => q.includes(nonce)) || returned.some((l) => l.includes(nonce)) || guided.some((l) => l.includes(nonce))) nonce = newNonce();
+  const declared = declaredByLine(req.declaredBy);
+  while (
+    req.content.includes(nonce) ||
+    questions.some((q) => q.includes(nonce)) ||
+    returned.some((l) => l.includes(nonce)) ||
+    guided.some((l) => l.includes(nonce)) ||
+    (declared !== null && declared.includes(nonce))
+  ) {
+    nonce = newNonce();
+  }
   const task: string[] = [`Intent: ${oneLine(req.intent.title)}`, `Rule: ${oneLine(req.rule.description)}`];
   const hint = ruleHint(req.rule);
   if (hint) task.push(`Hint: ${hint}`);
+  // Who declared the intent (colony/chain.ts): an agent's intent says so beside its title.
+  if (declared) task.push(declared);
   const directives = directiveBlock(req.directives);
   if (directives) task.push(directives);
   const back = returnBlock(req.lastReturn, nonce);

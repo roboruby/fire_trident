@@ -51,6 +51,7 @@ const REPORTED: Readonly<Record<EscalationKind, string>> = {
   "contradictory-spec": "a contradictory spec",
   impossible: "an impossible ask",
   other: "a problem",
+  chain: "a chain of agent-declared intents to check",
 };
 
 /** Untrusted text as one line: control and invisible characters and runs of whitespace become one space, cut to `max`. */

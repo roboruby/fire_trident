@@ -164,6 +164,7 @@ import type { ImporterWalk } from "../trunk/impact.ts";
 import type { ImpactReport } from "@fire_trident/core";
 import { modelHintFor, stepupEnabled, type ModelHint } from "./stepup.ts";
 import { findTwin, twinChecked, twinsEnabled, type DeclareAnswer, type TwinAnswer } from "./twins.ts";
+import { chainGateEnabled, chainHold, declaredBy, type DeclaredBy } from "./chain.ts";
 import { a2aTasks, type A2APage, type A2AQuery } from "./a2a.ts";
 import { REVIEW_MOVED, cleanMovedBy, movedCollision, movedReturn, type StalePath } from "./movedby.ts";
 import { PROTECT_META, isProtectStop, parseProtectRecord, protectChanged, protectLandedText, type ProtectHost, type ProtectOutcome, type ProtectRecord } from "./protect.ts";
@@ -815,6 +816,31 @@ export class ColonyDO extends DurableObject<Env> {
     } catch (err) {
       console.warn(`twin check in ${colony.id} failed: ${errorText(err)}`);
       return null;
+    }
+  }
+
+  /**
+   * The hold for an intent being declared (colony/chain.ts) where FT_INTENT_CHAIN_GATE covers the colony, at the decide
+   * policy's intentChainDepth and intentFanout; null elsewhere. Fails open: its own failure declares the intent as before.
+   */
+  private chainHold(intent: Intent, now: number): IntentEscalation | null {
+    if (!chainGateEnabled(this.env.FT_INTENT_CHAIN_GATE, intent.colonyId)) return null;
+    try {
+      const policy = this.decider().store.policy();
+      return chainHold(this.sql, intent, { depth: policy.intentChainDepth, fanout: policy.intentFanout }, now);
+    } catch (err) {
+      console.warn(`chain gate for intent ${intent.id} failed: ${errorText(err)}`);
+      return null;
+    }
+  }
+
+  /** Who declared an intent, for its take (colony/chain.ts): its source, the declarer and its model, the chain depth. Best effort: a take never fails over it. */
+  private declaredBy(intent: Intent): DeclaredBy | undefined {
+    try {
+      return declaredBy(this.sql, intent);
+    } catch (err) {
+      console.warn(`declarer of intent ${intent.id} failed: ${errorText(err)}`);
+      return undefined;
     }
   }
 
@@ -4675,7 +4701,9 @@ export class ColonyDO extends DurableObject<Env> {
     const guide = this.guide()?.take();
     // Model step-up (FT_MODEL_STEPUP, colony/stepup.ts): the stronger model class after two returns; absent where it is off.
     const model = this.modelStepup(intent);
-    return { intent, lease, ...(rule ? { rule: this.toRule(rule, intent.colonyId) } : {}), ...(review ? { review } : {}), ...(context ? { context } : {}), ...(lastReturn ? { lastReturn } : {}), ...(guide ? { guide } : {}), ...(model ? { model } : {}) };
+    // Who declared the intent (colony/chain.ts): its source, the declarer and its model, and the chain depth.
+    const declared = this.declaredBy(intent);
+    return { intent, lease, ...(rule ? { rule: this.toRule(rule, intent.colonyId) } : {}), ...(review ? { review } : {}), ...(context ? { context } : {}), ...(lastReturn ? { lastReturn } : {}), ...(guide ? { guide } : {}), ...(model ? { model } : {}), ...(declared ? { declaredBy: declared } : {}) };
   }
 
   /**
@@ -5739,6 +5767,9 @@ export class ColonyDO extends DurableObject<Env> {
       if (d.parentId) intent.parentId = d.parentId;
       if (Array.isArray(d.acceptance) && d.acceptance.length > 0) intent.acceptance = d.acceptance;
       if (assignedTo) intent.assignedTo = assignedTo;
+      // Intent chains (FT_INTENT_CHAIN_GATE, colony/chain.ts): read before the row exists, so the declaring agent's earlier
+      // intents are counted without this one.
+      const hold = this.chainHold(intent, now);
       this.sql.exec(
         `INSERT INTO intents (id, title, why, source, rule_id, parent_id, footprint, acceptance, priority, status, created_at, created_by, assigned_to, violations, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -5759,6 +5790,13 @@ export class ColonyDO extends DurableObject<Env> {
         now,
       );
       this.footprintCache.set(intent.id, footprint);
+      // An intent the gate holds waits for a person as an open report, as a reported intent does, before any agent can take it.
+      if (hold) {
+        this.sql.exec("UPDATE intents SET escalation = ?, escalation_open = 1 WHERE id = ?", JSON.stringify(hold), intent.id);
+        this.sql.exec("INSERT OR REPLACE INTO intent_escalations (intent_id, at, agent_id, kind, report, resolved) VALUES (?, ?, ?, ?, ?, NULL)", intent.id, now, hold.by, hold.kind, hold.report);
+        intent.escalation = hold;
+        events.push({ t: "escalation", at: now, intentId: intent.id, agentId: hold.by, kind: hold.kind, report: hold.report, title });
+      }
       if (seats >= CONTEST_MIN) this.contestRecord(intent, seats, now);
       batch.deposit("need", footprint, priority, now, { intentId: intent.id });
       if (assignedTo) {

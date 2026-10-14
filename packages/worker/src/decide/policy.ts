@@ -67,6 +67,17 @@ export interface DecidePolicy {
    */
   goalConflictMinutes: number;
   goalConflictLandings: number;
+  /**
+   * Intent chains (FT_INTENT_CHAIN_GATE, colony/chain.ts): an agent-declared intent with this many agent-declared
+   * intents in its ancestry (parent by parent) waits for a person before any agent takes it; 2 holds the third
+   * agent-declared intent in a row. With the flag off the number is kept and nothing is held.
+   */
+  intentChainDepth: number;
+  /**
+   * The same gate's fan-out: agent-declared intents one agent may declare in an hour before the rest of its
+   * declarations wait for a person the same way, however shallow (one agent's intents reach as many agents).
+   */
+  intentFanout: number;
 }
 
 /**
@@ -96,6 +107,8 @@ export const DEFAULT_POLICY: DecidePolicy = {
   protectedPaths: [],
   goalConflictMinutes: GOAL_CONFLICT_WINDOW_MS / 60_000,
   goalConflictLandings: GOAL_CONFLICT_LANDINGS,
+  intentChainDepth: 2,
+  intentFanout: 5,
 };
 
 const DANGER_CLASSES: readonly DangerClass[] = ["auth", "secret", "capability", "crypto", "ci", "dependency", "test-weakening"];
@@ -233,6 +246,8 @@ export function mergePolicy(base: DecidePolicy, patch: unknown): DecidePolicy {
     protectedPaths: protectedGlobs(p.protectedPaths, base.protectedPaths),
     goalConflictMinutes: Math.floor(num(p.goalConflictMinutes, 1, 24 * 60, base.goalConflictMinutes)),
     goalConflictLandings: Math.floor(num(p.goalConflictLandings, 1, 10_000, base.goalConflictLandings)),
+    intentChainDepth: Math.floor(num(p.intentChainDepth, 1, 50, base.intentChainDepth)),
+    intentFanout: Math.floor(num(p.intentFanout, 1, 1_000, base.intentFanout)),
   };
 }
 
