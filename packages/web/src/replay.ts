@@ -408,6 +408,9 @@ export class ReplayBackend implements Backend {
       if (a.name) store.agentNames.set(a.id, a.name);
       if (a.kind) store.agentKinds.set(a.id, a.kind);
     }
+    // The record's intent events carry no origin; the finished colony's snapshot names it for the intents it
+    // lists (the Intents tab places the rest by the titles the colony writes for its own intents).
+    store.learnIntents(snap.intents ?? []);
     const events: RecordedEvent[] = [];
     let after = 0;
     let src: "recorded" | "reconstructed" = "recorded";

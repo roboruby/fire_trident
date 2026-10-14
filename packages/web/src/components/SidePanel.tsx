@@ -11,7 +11,7 @@ import { WhyTab } from "./WhyTab.tsx";
 export type Tab = "events" | "intents" | "review" | "why";
 export const TABS: readonly Tab[] = ["events", "intents", "review", "why"];
 
-/** Where the needs-you strip sent the panel: a tab, and the Events chip or Intents segment to open it on. */
+/** Where the needs-you strip sent the panel: a tab, and the Events chip or what the Intents tab opens (see Need.focus). */
 export interface PanelFocus {
   tab: Tab;
   chip?: string;

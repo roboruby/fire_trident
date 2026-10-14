@@ -1107,64 +1107,273 @@ input {
   flex-direction: column;
 }
 
-.segments {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 6px;
-  padding: 12px 14px;
+/* The tree: what asked for the work, then the region of its files, then the intents. */
+
+.itree-sum {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  padding: 12px 14px 10px;
+  border-bottom: 1px solid var(--line);
 }
 
-.segment {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
-  padding: 8px 10px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: #0d121a;
+.itree-total {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
   color: var(--text-3);
+}
+
+.itree {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 4px 8px 12px;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.ir-list,
+.ii-list {
+  margin: 0;
+  padding: 0 0 4px 12px;
+  list-style: none;
+}
+
+.ii-list {
+  padding-left: 14px;
+}
+
+.ig-head,
+.ir-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px 8px;
+  width: 100%;
+  border: 0;
+  border-left: 2px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
   text-align: left;
   cursor: pointer;
   appearance: none;
 }
 
-.segment.is-on {
-  border-color: #2c3648;
-  background: #111826;
-  color: var(--text);
+.ig-head {
+  margin-top: 4px;
+  padding: 9px 10px;
 }
 
-.segment-label {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+.ir-head {
+  padding: 6px 10px;
 }
 
-.segment-n {
-  font-size: 20px;
+.ig-head:hover,
+.ir-head:hover {
+  background: #111824;
+}
+
+.ig-head:focus-visible,
+.ir-head:focus-visible,
+.itree-more:focus-visible,
+.why-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.ig-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+
+/* A small triangle that points down while its group or region is open. */
+.itree-caret {
+  flex: none;
+  width: 0;
+  height: 0;
+  margin: 0 3px 0 2px;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 5px solid var(--text-3);
+  transition: transform 0.12s ease-out;
+}
+
+[aria-expanded="true"] > .itree-caret,
+[aria-expanded="true"] > .ig-line > .itree-caret {
+  transform: rotate(90deg);
+}
+
+/* A rule's title can be a sentence: two lines, then an ellipsis (the whole text is in the hover). */
+.ig-label {
+  display: -webkit-box;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.ig-head .sc-row {
+  padding-left: 18px;
+}
+
+.ir-name {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  color: var(--text-2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A group's and a region's edge takes the color of its most urgent state. */
+.is-report > .ig-head,
+.is-report > .ir-head {
+  border-left-color: rgba(243, 128, 32, 0.85);
+}
+.is-returned > .ig-head,
+.is-returned > .ir-head {
+  border-left-color: rgba(255, 46, 79, 0.6);
+}
+.is-flight > .ig-head,
+.is-flight > .ir-head {
+  border-left-color: rgba(61, 139, 255, 0.75);
+}
+.is-open > .ig-head,
+.is-open > .ir-head {
+  border-left-color: rgba(255, 181, 61, 0.55);
+}
+.is-landed > .ig-head,
+.is-landed > .ir-head {
+  border-left-color: rgba(31, 224, 142, 0.45);
+}
+.is-withdrawn > .ig-head,
+.is-withdrawn > .ir-head {
+  border-left-color: rgba(176, 66, 76, 0.5);
+}
+
+/* Counts per state, most urgent first; the most urgent one is outlined. */
+.sc-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+}
+
+.sc {
+  flex: none;
+  padding: 0 6px;
+  border: 1px solid var(--line-2);
+  border-radius: 4px;
+  font-size: 10.5px;
+  line-height: 17px;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+
+.sc b {
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
 
-.segment-open .segment-n {
+.sc-report b {
+  color: var(--accent-2);
+}
+.sc-returned b {
+  color: #ff9aa4;
+}
+.sc-flight b {
+  color: #7fb0ff;
+}
+.sc-open b {
   color: var(--need);
 }
-.segment-claimed .segment-n {
-  color: var(--claim);
-}
-.segment-landed .segment-n {
+.sc-landed b {
   color: var(--trail);
 }
+.sc-withdrawn b {
+  color: #c9737b;
+}
 
-.intent-list {
-  flex: 1;
-  min-height: 0;
-  margin: 0;
-  padding: 0 8px 12px;
-  overflow-y: auto;
-  list-style: none;
+.sc.is-top {
+  color: var(--text-2);
+}
+.sc-report.is-top {
+  border-color: rgba(243, 128, 32, 0.6);
+  background: rgba(243, 128, 32, 0.1);
+}
+.sc-returned.is-top {
+  border-color: rgba(255, 46, 79, 0.5);
+  background: rgba(255, 46, 79, 0.08);
+}
+.sc-flight.is-top {
+  border-color: rgba(61, 139, 255, 0.55);
+  background: rgba(61, 139, 255, 0.08);
+}
+.sc-open.is-top {
+  border-color: rgba(255, 181, 61, 0.45);
+  background: rgba(255, 181, 61, 0.07);
+}
+.sc-landed.is-top {
+  border-color: rgba(31, 224, 142, 0.4);
+  background: rgba(31, 224, 142, 0.06);
+}
+.sc-withdrawn.is-top {
+  border-color: rgba(176, 66, 76, 0.5);
+  background: rgba(176, 66, 76, 0.08);
+}
+
+.itree-more {
+  margin: 2px 0 4px;
+  padding: 6px 10px;
+  border: 1px dashed var(--line-2);
+  border-radius: 6px;
+  background: transparent;
+  font-size: 12px;
+  color: var(--text-2);
+  cursor: pointer;
+  appearance: none;
+}
+
+.itree-more:hover {
+  border-color: #2c3648;
+  color: var(--text);
+}
+
+.itree-left {
+  color: var(--text-4);
+}
+
+/* The row a focus pointed at (the needs-you strip, a why link) glows for a moment. */
+.itree .is-lit {
+  animation: itree-lit 2.4s ease-out;
+}
+
+@keyframes itree-lit {
+  0%,
+  35% {
+    background: rgba(243, 128, 32, 0.18);
+  }
+  100% {
+    background: transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .itree .is-lit {
+    animation: none;
+    background: rgba(243, 128, 32, 0.12);
+  }
 }
 
 .intent {
@@ -1195,9 +1404,6 @@ input {
 .intent-withdrawn .intent-title {
   text-decoration: line-through;
   text-decoration-color: var(--text-4);
-}
-.segment-withdrawn .segment-n {
-  color: var(--failure);
 }
 
 /* An amended intent's revision (changing direction). */
@@ -4499,21 +4705,65 @@ html[data-emphasize="trunk"] .trunk {
   background: rgba(243, 128, 32, 0.05);
 }
 
-.segments.is-many {
-  grid-template-columns: repeat(auto-fit, minmax(66px, 1fr));
+/* An intent's why chain: the intents it was declared from, nearest first, then its rule. */
+.intent-why {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  margin-top: 4px;
+  overflow: hidden;
+  font-size: 11.5px;
+  color: var(--text-4);
 }
 
-.segments.is-many .segment {
-  padding: 7px 8px;
+.intent-why-k,
+.intent-why-sep {
+  flex: none;
 }
 
-.segments.is-many .segment-label {
+.intent-why-k {
   font-size: 9.5px;
-  letter-spacing: 0.08em;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
 }
 
-.segment-returned .segment-n {
-  color: #ff9aa4;
+.why-link {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--text-3);
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.why-link:hover {
+  color: var(--text);
+  text-decoration: underline;
+  text-decoration-color: var(--text-4);
+}
+
+.why-rule {
+  color: rgba(255, 181, 61, 0.85);
+}
+
+.why-link.is-unknown,
+.why-link.is-unknown:hover {
+  color: var(--text-4);
+  text-decoration: none;
+  cursor: default;
+}
+
+.ibadge-retracted {
+  border-color: rgba(176, 66, 76, 0.5);
+  color: #e0a3a9;
 }
 
 .events-links {
