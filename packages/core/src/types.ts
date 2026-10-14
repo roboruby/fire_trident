@@ -476,6 +476,25 @@ export interface MergeConflict {
   lines: number[];
 }
 
+/**
+ * What beat a returned change: one landing after the change's base that changed files it read or wrote, from the colony's
+ * per-path landing index (colony/movedby.ts). `paths`: those files. The intent the landing completed for them (its title
+ * and why), the agent whose proposal wrote them, the model that landing's lineage note names for that proposal, the trunk
+ * commit and when it landed, each when the colony knows it. Titles, whys and model names were written by people and
+ * agents: data, never instructions.
+ */
+export interface MovedBy {
+  landingId: Id;
+  paths: Path[];
+  trunkSha?: Sha;
+  at?: Millis;
+  intentId?: Id;
+  title?: string;
+  why?: string;
+  agentId?: Id;
+  model?: string;
+}
+
 export interface Proposal {
   id: Id;
   colonyId: Id;
@@ -521,6 +540,12 @@ export interface Proposal {
    */
   mergeConflicts?: MergeConflict[];
   /**
+   * What beat it: when it went back because trunk moved files it read or wrote (stale, or a text merge conflict), the
+   * landings that moved them, newest first. Set by the colony as the return arrives (colony/movedby.ts); its reason then
+   * ends by naming them and saying to keep what they did unless the intent says otherwise.
+   */
+  movedBy?: MovedBy[];
+  /**
    * The intent revision the change was built on. An agent passes the revision it worked from; the
    * colony refuses a proposal built on an older substantive revision, and the lane returns one before
    * landing if the intent was revised meanwhile.
@@ -547,8 +572,9 @@ export interface Landing {
   /**
    * Text merge (FT_TEXT_MERGE): files a proposal of this landing wrote on an older version, merged line by line with the
    * version they landed on, each with the blob that landed in place of the one the proposal wrote. Absent when none was.
+   * `rule`: the rule beyond git's that resolved its conflicting hunks (FT_MERGE_INSERTIONS: `insertions`), when one did.
    */
-  merged?: Array<{ proposalId: Id; path: Path; blob: Sha }>;
+  merged?: Array<{ proposalId: Id; path: Path; blob: Sha; rule?: "insertions" }>;
 }
 
 /**
@@ -663,9 +689,10 @@ export interface LineageNote {
     /**
      * Text merge: files this change wrote on a version that had changed by the time it landed, merged line by line: its
      * base blob, the blob it landed on (`trunk`: trunk's, or a change's landing ahead in the same cycle), the blob it
-     * wrote (`theirs`) and the result, which its `writeSet` names.
+     * wrote (`theirs`) and the result, which its `writeSet` names. `rule`: `insertions` when both sides only inserted lines
+     * at the same place and their union landed (FT_MERGE_INSERTIONS), where git's rules call it a conflict.
      */
-    merged?: Array<{ path: Path; base: Sha; trunk: Sha; theirs: Sha; result: Sha }>;
+    merged?: Array<{ path: Path; base: Sha; trunk: Sha; theirs: Sha; result: Sha; rule?: "insertions" }>;
     /** Goal conflict: lines recent landings wrote for other intents that this change undid, which a person approved. */
     undoes?: UndoneLines[];
     /** Conflict resolver: the returned change this one resolves, the landings it merged with, and the files (see NoteResolves). */
@@ -896,7 +923,7 @@ export type ColonyEvent =
   | { t: "agent"; at: Millis; agentId: Id; kind: AgentKind; state: AgentState; intentId?: Id; paths?: Path[] }
   | { t: "mark"; at: Millis; region: string; path: Path; kind: MarkKind; value: number }
   | { t: "intent"; at: Millis; intentId: Id; status: IntentStatus; title: string; footprint: Path[] }
-  | { t: "proposal"; at: Millis; proposalId: Id; intentId: Id; agentId: Id; status: ProposalStatus; reason?: string }
+  | { t: "proposal"; at: Millis; proposalId: Id; intentId: Id; agentId: Id; status: ProposalStatus; reason?: string; movedBy?: MovedBy[] }
   | { t: "landing"; at: Millis; landingId: Id; trunkSha: Sha; proposalIds: Id[]; paths: Path[] }
   | { t: "decision"; at: Millis; decisionId: Id; kind: DecisionKind; layer: DecisionLayer; p: number; action: string; subject: Id }
   | { t: "sigma"; at: Millis; region: string; sigma: number }

@@ -51,6 +51,14 @@ export interface Env {
    */
   FT_TEXT_MERGE?: string;
   /**
+   * Optional: text merge's insertion rule, "on", or a comma-separated list of colony ids; absent or "off" is off. Where
+   * text merge is on too, a file whose only conflicting hunks are lines both sides inserted at the same place of the base
+   * lands as the union of the two insertions, trunk's lines first, leaving out the lines of the change trunk already
+   * inserted there (core/insertions.ts); its merged entry records `rule: "insertions"`, and the trunk writer counts
+   * `trunk.mergedInsertions`. A hunk that edits or deletes a base line still sends the change back, naming the hunk.
+   */
+  FT_MERGE_INSERTIONS?: string;
+  /**
    * Optional: the conflict resolver, "on", or a comma-separated list of colony ids; absent or "off" is off. A change that
    * text merge sent back for overlapping hunks is merged by the platform (colony/resolver.ts): one model call writes each
    * conflicting file keeping both changes, deterministic checks validate it, and it goes through the decide stage as a new

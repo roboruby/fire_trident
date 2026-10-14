@@ -71,6 +71,26 @@ export function staleReason(stale: OccResult["stale"], max = 25): string {
   return `stale: ${paths.length} path${paths.length === 1 ? "" : "s"} changed on trunk since read: ${shown.join("; ")}${more}`;
 }
 
+/** Stale paths a return carries to the colony at most (it names the landings that moved them). */
+export const STALE_PATHS_SENT = 64;
+
+/**
+ * The structured stale paths a return carries beside its reason (each path once, its blobs as read and on trunk, at
+ * most `max`), so the colony can name the landings that moved them; null without any.
+ */
+export function stalePaths(stale: OccResult["stale"] | null | undefined, max = STALE_PATHS_SENT): OccResult["stale"] | null {
+  if (!Array.isArray(stale) || stale.length === 0) return null;
+  const seen = new Set<Path>();
+  const out: OccResult["stale"] = [];
+  for (const s of stale) {
+    if (!s || typeof s.path !== "string" || seen.has(s.path)) continue;
+    seen.add(s.path);
+    out.push({ path: s.path, expected: s.expected ?? null, actual: s.actual ?? null });
+    if (out.length >= max) break;
+  }
+  return out.length > 0 ? out : null;
+}
+
 /** The paths a proposal read or wrote (each once). */
 export function proposalPaths(p: Pick<Proposal, "readSet" | "writeSet">): Path[] {
   const out = new Set<Path>();

@@ -1373,6 +1373,19 @@ input {
   color: var(--need);
 }
 
+/* What beat the intent's last change: the landings that moved its files (movedBy). */
+.moved {
+  margin: 10px 0;
+}
+
+.moved-line {
+  padding: 3px 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+
 .checks {
   display: flex;
   flex-wrap: wrap;
@@ -4577,6 +4590,16 @@ html[data-emphasize="trunk"] .trunk {
 .ibadge-returned {
   border-color: rgba(255, 46, 79, 0.42);
   color: #ff9aa4;
+}
+
+.ibadge-moved {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-color: rgba(243, 128, 32, 0.4);
+  color: #f5b27a;
+  text-transform: none;
+  letter-spacing: 0.02em;
 }
 
 .card-badge {

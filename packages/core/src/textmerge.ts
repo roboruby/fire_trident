@@ -1,3 +1,4 @@
+import { insertionUnion } from "./insertions.ts";
 import type { Path, Sha } from "./types.ts";
 
 /**
@@ -17,9 +18,25 @@ export const MERGE_SNIFF_BYTES = 8_000;
 /** Lines one side may insert plus delete against the base, past what both sides share, before a merge gives up. */
 export const MERGE_MAX_EDITS = 1_000;
 
+/**
+ * A rule beyond git's default merge that resolved what git's rules call conflicts: `insertions` (FT_MERGE_INSERTIONS),
+ * where both sides only inserted lines at the same place of the base and their union landed (core/insertions.ts).
+ */
+export type MergeRule = "insertions";
+
+/** How mergeText merges beyond git's default rules: `insertions` applies the insertion rule (see mergeText). */
+export interface MergeOptions {
+  insertions?: boolean;
+}
+
 /** What a three-way merge of one file gives: the merged text, or the conflicts that stop it. */
 export type TextMergeResult =
-  | { clean: true; text: string }
+  | {
+      clean: true;
+      text: string;
+      /** The rule that resolved the hunks git's rules would have called conflicts; absent when there were none. */
+      rule?: MergeRule;
+    }
   | {
       clean: false;
       /** Conflicting hunks: regions of the base that both sides changed differently, or changed side by side. */
@@ -33,6 +50,7 @@ export type TextMergeResult =
 /**
  * One file a change landed merged, as its lineage note records it: the change's base blob, the blob it merged with
  * (trunk's, or that of a change landing ahead of it in the same cycle), the blob the change wrote, and the result.
+ * `rule`: the rule beyond git's that resolved its conflicting hunks (the insertion rule), when one did.
  */
 export interface TextMerged {
   path: Path;
@@ -40,6 +58,7 @@ export interface TextMerged {
   trunk: Sha;
   theirs: Sha;
   result: Sha;
+  rule?: MergeRule;
 }
 
 /** One hunk of a line diff: lines [a0, a1) of the first sequence became lines [b0, b1) of the second. */
@@ -205,8 +224,14 @@ function pushRange(out: string[], items: readonly string[], from: number, to: nu
  * applied, and hunks of the two sides that overlap or touch form one region: the same lines on both sides land once,
  * anything else is a conflict. Clean: the merged text. Otherwise the conflicting hunks, or `limited` when a side
  * changed more than `maxEdits` lines.
+ *
+ * With `options.insertions` (the insertion rule): when every conflicting region is a pure insertion on both sides at
+ * the same base line (neither side deletes or changes a base line there), each lands as the union of the two
+ * insertions, ours first (core/insertions.ts insertionUnion), and the result says `rule: "insertions"`. One region that
+ * edits or deletes base lines, or a union that would join two lines into one, leaves every conflict as git's rules
+ * name it.
  */
-export function mergeText(base: string, ours: string, theirs: string, maxEdits = MERGE_MAX_EDITS): TextMergeResult {
+export function mergeText(base: string, ours: string, theirs: string, maxEdits = MERGE_MAX_EDITS, options: MergeOptions = {}): TextMergeResult {
   if (ours === theirs || theirs === base) return { clean: true, text: ours };
   if (ours === base) return { clean: true, text: theirs };
   const ids = new Map<string, number>();
@@ -243,6 +268,9 @@ export function mergeText(base: string, ours: string, theirs: string, maxEdits =
   };
   const out: string[] = [];
   const conflicts: number[] = [];
+  // The insertion rule: conflicting regions it resolved, and whether one was left that it could not.
+  let unioned = 0;
+  let stuck = false;
   let pos = 0;
   let i = 0;
   let j = 0;
@@ -269,10 +297,30 @@ export function mergeText(base: string, ours: string, theirs: string, maxEdits =
     const right = side(theirLines, otherIn, start, end);
     if (otherIn.length === 0 || (left.length === right.length && left.every((line, q) => line === right[q]))) pushRange(out, left, 0, left.length);
     else if (ownIn.length === 0) pushRange(out, right, 0, right.length);
-    else conflicts.push(start + 1);
+    else {
+      conflicts.push(start + 1);
+      const union = options.insertions ? insertedUnion(ownIn, otherIn, ourLines, theirLines, start, end, baseLines.length) : null;
+      if (union) {
+        pushRange(out, union, 0, union.length);
+        unioned++;
+      } else stuck = true;
+    }
     pos = end;
   }
-  if (conflicts.length > 0) return { clean: false, conflicts: conflicts.length, lines: conflicts };
+  if (conflicts.length > 0 && (stuck || unioned === 0)) return { clean: false, conflicts: conflicts.length, lines: conflicts };
   pushRange(out, baseLines, pos, baseLines.length);
-  return { clean: true, text: out.join("") };
+  return unioned > 0 ? { clean: true, text: out.join(""), rule: "insertions" } : { clean: true, text: out.join("") };
+}
+
+/**
+ * The insertion rule for one conflicting region of mergeText: when each side has one hunk there, each a pure insertion
+ * (it removes no base line) at the same base line, the union of the two insertions (insertionUnion, ours first); else
+ * null.
+ */
+function insertedUnion(ownIn: LineHunk[], otherIn: LineHunk[], ourLines: string[], theirLines: string[], start: number, end: number, baseLength: number): string[] | null {
+  const mine = ownIn.length === 1 ? ownIn[0]! : null;
+  const other = otherIn.length === 1 ? otherIn[0]! : null;
+  if (!mine || !other || start !== end) return null;
+  if (mine.a0 !== start || mine.a1 !== start || other.a0 !== start || other.a1 !== start) return null;
+  return insertionUnion(ourLines.slice(mine.b0, mine.b1), theirLines.slice(other.b0, other.b1), start === baseLength);
 }

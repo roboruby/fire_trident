@@ -117,7 +117,10 @@ describe("take → propose → lane → landing", () => {
 
     const back = await proposal(c.id, p.id);
     expect(back.status).toBe("returned");
-    expect(back.reason).toMatch(/^stale: 1 path changed on trunk since read: src\/lib\/util\.ts \(expected [0-9a-f]{10}, trunk [0-9a-f]{10}\)$/);
+    // It ends naming the landing that moved the file, and what to do (colony/movedby.ts).
+    expect(back.reason).toMatch(
+      /^stale: 1 path changed on trunk since read: src\/lib\/util\.ts \(expected [0-9a-f]{10}, trunk [0-9a-f]{10}\)\. Landing lnd_external_\w+ \(commit [0-9a-f]{7}\) moved it\. Keep what that landing did unless your intent says otherwise, and escalate if both cannot hold\.$/,
+    );
     const reopened = await intent(c.id, i.id);
     expect(reopened.status).toBe("open");
     expect(reopened.assignedTo).toBeUndefined();

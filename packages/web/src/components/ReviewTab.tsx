@@ -11,6 +11,8 @@ import { EscalationCard } from "./EscalationCard.tsx";
 import { ReviewChange } from "./ReviewChange.tsx";
 import { TokenForm } from "./TokenForm.tsx";
 import { VaccineMeter } from "./VaccineMeter.tsx";
+import { MovedByList } from "./MovedBy.tsx";
+import { cleanMoved } from "../moved.ts";
 
 const NONE: readonly string[] = [];
 
@@ -223,6 +225,8 @@ export function ReviewTab({ store, backend, director = false }: { store: ColonyS
           const antibodies = matchedAntibodies(p);
           const view = views.get(p.id) ?? null;
           const winner = typeof p.supersededBy === "string" && p.supersededBy ? p.supersededBy : store.superseded.get(p.id);
+          // What beat the intent's last change (the queue's lastReturn, else a return this page saw): the landings this one was redone on.
+          const moved = cleanMoved((p as Proposal & { lastReturn?: { movedBy?: unknown } }).lastReturn?.movedBy) ?? store.returns.get(p.intentId)?.movedBy ?? null;
           return (
             <article key={p.id} className="card" onMouseEnter={() => store.setHighlight(paths)} onMouseLeave={() => store.setHighlight([])}>
               <header className="card-head">
@@ -244,6 +248,7 @@ export function ReviewTab({ store, backend, director = false }: { store: ColonyS
               <div className="card-meta">
                 by <span className="mono">{store.agentName(p.agentId)}</span> · wrote {fmtInt(p.writeSet?.length ?? 0)} · read {fmtInt(p.readSet?.length ?? 0)}
               </div>
+              {moved ? <MovedByList moved={moved} agentName={(id) => store.agentName(id)} /> : null}
               {view ? (
                 <>
                   <ReviewChange view={view} declared={p.declared?.footprint ?? NONE} />

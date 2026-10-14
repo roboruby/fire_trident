@@ -72,6 +72,11 @@ export interface PlanResult {
 export interface TextMergeInput {
   text(blob: Sha): string | null;
   blobOf(text: string): Sha;
+  /**
+   * The insertion rule (FT_MERGE_INSERTIONS): where both sides only inserted lines at the same place of the base, their
+   * union lands, trunk's lines first (core mergeText with `insertions`); the merged file records `rule: "insertions"`.
+   */
+  insertions?: boolean;
 }
 
 /**
@@ -79,6 +84,15 @@ export interface TextMergeInput {
  * comma-separated list of colony ids, or absent / empty / "off" (no colony).
  */
 export function textMergeEnabled(setting: string | undefined, colonyId: Id): boolean {
+  return revalidationEnabled(setting, colonyId);
+}
+
+/**
+ * Is text merge's insertion rule on for this colony? `setting` is FT_MERGE_INSERTIONS, read like FT_REVALIDATE: "on"
+ * (every colony), a comma-separated list of colony ids, or absent / empty / "off" (no colony). It applies only where
+ * text merge (FT_TEXT_MERGE) is on too.
+ */
+export function mergeInsertionsEnabled(setting: string | undefined, colonyId: Id): boolean {
   return revalidationEnabled(setting, colonyId);
 }
 
@@ -142,8 +156,9 @@ function short(blob: Sha | null): string {
  *   replaced by the results, every other rule still applying, and later batches see the results (they
  *   may merge against them in turn). A conflict, a text the trunk writer did not load, or a file that is
  *   never merged (binary, over 512 KB, a lockfile) leaves it to the rules above, and a conflict is named
- *   in the reason and carried in the return's `conflicts` (for the conflict resolver). Without `merge`,
- *   stale means back as before.
+ *   in the reason and carried in the return's `conflicts` (for the conflict resolver). With `merge.insertions`
+ *   (FT_MERGE_INSERTIONS), a file whose only conflicts are insertions by both sides at one place merges as their
+ *   union, recorded with `rule: "insertions"`. Without `merge`, stale means back as before.
  *
  * Proposal ids must be unique across the cycle (the caller dedupes); a repeated id is skipped.
  */
@@ -231,7 +246,7 @@ export function planCycle(
       let kept: Revalidated[] | null = null;
       let files: TextMerged[] | null = null;
       if (!occ.eligible) {
-        const tried = merge ? mergeWrites(p, occ.stale, base, virtual, textOf, merge.blobOf) : null;
+        const tried = merge ? mergeWrites(p, occ.stale, base, virtual, textOf, merge.blobOf, merge.insertions === true) : null;
         const rv = tried?.ok || !exportedOf ? null : revalidate(p, occ.stale, exportedOf);
         if (tried?.ok) {
           // The change goes on with its merged files: what it lands, and what later batches see.
@@ -307,7 +322,8 @@ type MergeTry = { ok: true; files: TextMerged[]; texts: Map<Sha, string> } | { o
  * stale file must be one whose base the virtual trunk moved past, with its three versions loaded (`textOf`) and
  * mergeable (core mergeProblem), or nothing is merged and no conflict is named; then each file is merged (core
  * mergeText): its base, the virtual trunk's version (ours) and the proposal's (theirs). `conflicts` lists the files
- * whose merge conflicted, with their three blobs and where each conflicting hunk starts in the base.
+ * whose merge conflicted, with their three blobs and where each conflicting hunk starts in the base. `insertions`: the
+ * insertion rule (FT_MERGE_INSERTIONS) applies, and a file it merged records `rule: "insertions"`.
  */
 function mergeWrites(
   p: Proposal,
@@ -316,6 +332,7 @@ function mergeWrites(
   virtual: (path: Path) => Sha | null,
   textOf: (blob: Sha) => string | null,
   blobOf: (text: string) => Sha,
+  insertions = false,
 ): MergeTry | null {
   if (!textMergeCandidate(p, stale)) return null;
   const started = new Map(base.map((f) => [f.path, f.blob ?? null]));
@@ -336,7 +353,7 @@ function mergeWrites(
   const conflicts: MergeConflict[] = [];
   let limited = false;
   for (const f of todo) {
-    const r = mergeText(...f.texts);
+    const r = mergeText(...f.texts, undefined, { insertions });
     if (!r.clean) {
       if (r.conflicts > 0) conflicts.push({ path: f.path, base: f.base, trunk: f.trunk, theirs: f.theirs, lines: r.lines });
       else limited = true;
@@ -344,7 +361,7 @@ function mergeWrites(
     }
     const result = blobOf(r.text);
     texts.set(result, r.text);
-    files.push({ path: f.path, base: f.base, trunk: f.trunk, theirs: f.theirs, result });
+    files.push({ path: f.path, base: f.base, trunk: f.trunk, theirs: f.theirs, result, ...(r.rule ? { rule: r.rule } : {}) });
   }
   if (conflicts.length > 0 || limited) return { ok: false, conflicts };
   return { ok: true, files, texts };
