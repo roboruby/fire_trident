@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { blobId } from "@fire_trident/core";
 import type { ExportSurface, ExportedNames, FileVersion, NameAssumption, Path, Proposal, Sha } from "@fire_trident/core";
-import { mergeBlobs, planCycle, textMergeEnabled, type DeletionImports, type PlanProposal, type TextMergeInput } from "../../src/trunk/plan.ts";
+import { exportSurface, mergeBlobs, planCycle, textMergeEnabled, type DeletionImports, type PlanProposal, type TextMergeInput } from "../../src/trunk/plan.ts";
 
 /**
  * Text merge in the cycle plan (FT_TEXT_MERGE): a change stale only on files it writes lands when each of them merges
@@ -209,20 +209,37 @@ describe("planCycle: text merge (FT_TEXT_MERGE)", () => {
     expect(plan.mergedTexts.size).toBe(0);
   });
 
-  it("revalidates a later reader against the merged version's exports (assumption revalidation)", () => {
+  /** A later reader of S, and what the trunk writer read: the exports and statements of every version it loaded, never the merged one. */
+  function laterReader(t: ReturnType<typeof loaded>, S: string): { reader: Proposal; exported: ExportedNames } {
+    const names: NameAssumption[] = [{ path: S, names: ["config"] }];
+    const enc = new TextEncoder();
+    return {
+      reader: prop("r", { "src/core/r.ts": t.blob("r\n") }, { [S]: t.blob(lines()) }, { nameAssumptions: names }),
+      exported: (path, blob) => {
+        const text = t.texts.get(blob);
+        return text === undefined ? null : exportSurface(enc.encode(text), path);
+      },
+    };
+  }
+
+  it("revalidates a later reader against the merged version's exports and statements (import-name revalidation)", () => {
     const t = loaded();
     const S = "src/core/config.ts";
     const text = (changes: Record<number, string>): string =>
       ["export const config = 1;", "export const a = 1;", "export const b = 1;", "export const c = 1;"].map((l, i) => `${changes[i + 1] ?? l}\n`).join("");
     const base = t.blob(text({}));
-    const w1 = t.blob(text({ 2: "export const a = 2;" }));
-    const w2 = t.blob(text({ 4: "export const c = 2;" }));
-    const merged = blobId(text({ 2: "export const a = 2;", 4: "export const c = 2;" }));
+    // One writer adds a declaration after the first line, the other appends one: the merged version only grew.
+    const w1 = t.blob(text({ 1: "export const config = 1;\nexport const z = 1;" }));
+    const w2 = t.blob(text({ 4: "export const c = 1;\nexport const d = 1;" }));
+    const merged = blobId(text({ 1: "export const config = 1;\nexport const z = 1;", 4: "export const c = 1;\nexport const d = 1;" }));
     const names: NameAssumption[] = [{ path: S, names: ["config"] }];
     const reader = prop("r", { "src/core/r.ts": t.blob("r\n") }, { [S]: base }, { nameAssumptions: names });
-    // The trunk writer read the exports of trunk's version and of each version a change writes, never the merged one.
-    const surface: ExportSurface = { names: new Set(["config", "a", "b", "c"]), open: false };
-    const exported: ExportedNames = (_path, blob) => (blob === base || blob === w1 || blob === w2 ? surface : null);
+    const enc = new TextEncoder();
+    // The trunk writer read the exports and statements of trunk's version and of each version a change writes, never the merged one.
+    const exported: ExportedNames = (path, blob) => {
+      const known = t.texts.get(blob);
+      return known === undefined ? null : exportSurface(enc.encode(known), path);
+    };
     const plan = planCycle(
       [[entry(prop("w1", { [S]: w1 }), { [S]: base })], [entry(prop("w2", { [S]: w2 }), { [S]: base })], [entry(reader, { "src/core/r.ts": null })]],
       (path) => (path === S ? base : null),
@@ -231,7 +248,28 @@ describe("planCycle: text merge (FT_TEXT_MERGE)", () => {
       t.input,
     );
     expect(plan.accepted.map((batch) => batch.map((x) => x.id))).toEqual([["w1"], ["w2"], ["r"]]);
-    expect(plan.revalidated.get("r")).toEqual([{ path: S, read: base, landedOn: merged, names: ["config"] }]);
+    expect(plan.revalidated.get("r")).toEqual([{ path: S, read: base, landedOn: merged, names: ["config"], grew: true }]);
+
+    // The writers edit statements the reader read instead: the merged version did more than grow, and the reader goes back naming the line.
+    const u = loaded();
+    const ubase = u.blob(text({}));
+    const e1 = u.blob(text({ 2: "export const a = 2;" }));
+    const e2 = u.blob(text({ 4: "export const c = 2;" }));
+    const ureader = prop("r", { "src/core/r.ts": u.blob("r\n") }, { [S]: ubase }, { nameAssumptions: names });
+    const uexported: ExportedNames = (path, blob) => {
+      const known = u.texts.get(blob);
+      return known === undefined ? null : exportSurface(enc.encode(known), path);
+    };
+    const back = planCycle(
+      [[entry(prop("w1", { [S]: e1 }), { [S]: ubase })], [entry(prop("w2", { [S]: e2 }), { [S]: ubase })], [entry(ureader, { "src/core/r.ts": null })]],
+      (path) => (path === S ? ubase : null),
+      uexported,
+      undefined,
+      u.input,
+    );
+    expect(back.accepted.map((batch) => batch.map((x) => x.id))).toEqual([["w1"], ["w2"], []]);
+    expect(back.returned[2]![0]!.reason).toContain(`${S} changed after this change read it: the statement at line 2 of the version it read is no longer there as it was`);
+    expect(back.revalidated.size).toBe(0);
   });
 
   it("guards a deletion against a merged importer's imports, read from its merged text (deletion guard)", () => {

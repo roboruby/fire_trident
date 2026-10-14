@@ -37,7 +37,7 @@ export function validateProposal(p: Pick<Proposal, "readSet" | "writeSet">, trun
 }
 
 // ---------------------------------------------------------------------------
-// Assumption revalidation: decision conflicts, not version conflicts
+// Import-name revalidation: decision conflicts, not version conflicts
 // ---------------------------------------------------------------------------
 
 /**
@@ -51,28 +51,63 @@ export interface Revalidated {
   /** The blob it landed on. */
   landedOn: Sha | null;
   names: string[];
+  /** The file only grew between the two (see onlyGrew): new top-level declarations, every statement read unchanged and in order. */
+  grew: true;
 }
 
 /**
  * The names one version of a file exports. `open`: it also re-exports whole modules (`export * from`),
  * which are not followed, so a name missing from `names` may still be exported (and is not relied on).
+ * `statements`: its top-level statements, for the growth check (absent when not read; null when they
+ * cannot be read for sure, so a change that read another version of the file goes back).
  */
 export interface ExportSurface {
   names: ReadonlySet<string>;
   open: boolean;
+  statements?: TopStatements | null;
 }
+
+/**
+ * The top-level statements of one version of a script file, in order (the worker reads them). For each:
+ * a hash of its code (its tokens and where line breaks fall between them; comments and white space do
+ * not count), the line it starts on, and whether it only declares (an import, an export, a function,
+ * class, variable, type or similar) rather than running a statement. `prologue`: how many statements at
+ * the start are directives ("use strict", "use client"), which count only while nothing comes before
+ * them. `mode` says how the file was read: versions read in different modes are never compared.
+ */
+export interface TopStatements {
+  mode: string;
+  hashes: readonly string[];
+  lines: readonly number[];
+  declares: readonly boolean[];
+  prologue: number;
+}
+
+/**
+ * Did a file only grow from the version a change read to the version it would land on (see onlyGrew)?
+ * Otherwise `line` says where it did more: `edited`, the first statement of the version read that is not
+ * there unchanged and in order (its line in the version read); `added`, the first new statement that is
+ * not a declaration (its line in the version it would land on). Null when that cannot be known for sure.
+ */
+export type Growth = { grew: true } | { grew: false; line: number; why: "edited" | "added" } | null;
+
+/** The growth check of one file a change read: `read` is the blob it read, `landedOn` the one it would land on. */
+export type GrewOnly = (path: Path, read: Sha, landedOn: Sha) => Growth;
 
 /** The export surface of one version (blob) of a file, or null when it cannot be known for sure. */
 export type ExportedNames = (path: Path, blob: Sha) => ExportSurface | null;
 
 /**
- * What assumption revalidation decided for a stale proposal: it lands over the files listed, or it goes
- * back. `broken` names the file and the imported names it no longer exports when that is why.
+ * What import-name revalidation decided for a stale proposal: it lands over the files listed, or it goes
+ * back. `broken` names the file and the imported names it no longer exports when that is why; `changed`
+ * names the file and where it did more than grow when that is why.
  */
-export type Revalidation = { ok: true; revalidated: Revalidated[] } | { ok: false; broken?: { path: Path; names: string[] } };
+export type Revalidation =
+  | { ok: true; revalidated: Revalidated[] }
+  | { ok: false; broken?: { path: Path; names: string[] }; changed?: { path: Path; line: number; why: "edited" | "added" } };
 
 /**
- * Is assumption revalidation on for this colony? `setting` is FT_REVALIDATE: "on" (every colony), a
+ * Is import-name revalidation on for this colony? `setting` is FT_REVALIDATE: "on" (every colony), a
  * comma-separated list of colony ids, or absent / empty / "off" (no colony).
  */
 export function revalidationEnabled(setting: string | undefined, colonyId: Id): boolean {
@@ -105,7 +140,7 @@ function assumptionNames(p: Pick<Proposal, "nameAssumptions">): Map<Path, string
 }
 
 /**
- * The part of assumption revalidation that needs no file contents (the lane's pre-check): the proposal is
+ * The part of import-name revalidation that needs no file contents (the lane's pre-check): the proposal is
  * stale only through files it read (none it writes), each read as present, still on trunk, and covered
  * by a name assumption. Anything else goes back as usual.
  */
@@ -131,12 +166,14 @@ export function textMergeCandidate(p: Pick<Proposal, "writeSet">, stale: OccResu
 }
 
 /**
- * Assumption revalidation (the trunk writer, with file contents): a proposal stale only through files it
- * read lands when every name it imports from each of them is still exported by the version it would
- * land on (`stale[].actual`). When the exported names of a version are unknown, or a name is gone, it
- * goes back. `stale` is the OCC result against the trunk the proposal would land on.
+ * Import-name revalidation (the trunk writer, with file contents): a proposal stale only through files it
+ * read lands when, for each of them, every name it imports is still exported by the version it would land
+ * on (`stale[].actual`) and the file only grew since the version it read (`grewOnly`: new top-level
+ * declarations, every statement it read still there unchanged and in order). When the exported names or
+ * the statements of a version are unknown, a name is gone, or the file did more than grow, it goes back.
+ * `stale` is the OCC result against the trunk the proposal would land on.
  */
-export function revalidate(p: Pick<Proposal, "readSet" | "writeSet" | "nameAssumptions">, stale: OccResult["stale"], exported: ExportedNames): Revalidation {
+export function revalidate(p: Pick<Proposal, "readSet" | "writeSet" | "nameAssumptions">, stale: OccResult["stale"], exported: ExportedNames, grewOnly: GrewOnly): Revalidation {
   if (!revalidationCandidate(p, stale)) return { ok: false };
   const assumptions = assumptionNames(p);
   const revalidated: Revalidated[] = [];
@@ -146,7 +183,47 @@ export function revalidate(p: Pick<Proposal, "readSet" | "writeSet" | "nameAssum
     if (surface === null) return { ok: false };
     const missing = names.filter((n) => !surface.names.has(n));
     if (missing.length > 0) return surface.open ? { ok: false } : { ok: false, broken: { path: s.path, names: missing } };
-    revalidated.push({ path: s.path, read: s.expected, landedOn: s.actual, names });
+    const growth = grewOnly(s.path, s.expected!, s.actual!);
+    if (growth === null) return { ok: false };
+    if (!growth.grew) return { ok: false, changed: { path: s.path, line: growth.line, why: growth.why } };
+    revalidated.push({ path: s.path, read: s.expected, landedOn: s.actual, names, grew: true });
   }
   return { ok: true, revalidated };
+}
+
+/**
+ * The growth check of import-name revalidation: did a file only grow from the version a change read
+ * (`read`) to the version it would land on (`landed`)? Yes when every top-level statement of `read` is in
+ * `landed` with the same hash and in the same order, its leading directives still first, and every other
+ * statement of `landed` only declares: new declarations may appear anywhere between the old statements.
+ * Otherwise it names the first statement of `read` that is not there that way (`edited`: edited, moved or
+ * removed), or else the first new statement that is not a declaration (`added`). Null when the two were
+ * read in different modes or a list is malformed.
+ */
+export function onlyGrew(read: TopStatements, landed: TopStatements): Growth {
+  if (read.mode !== landed.mode || !wellFormed(read) || !wellFormed(landed)) return null;
+  const matched = new Set<number>();
+  let j = 0;
+  for (let i = 0; i < read.hashes.length; i++) {
+    // A directive of the version read counts only at the same place: nothing new may come before it.
+    if (i < read.prologue) {
+      if (landed.hashes[i] !== read.hashes[i]) return { grew: false, line: read.lines[i]!, why: "edited" };
+      matched.add(i);
+      j = i + 1;
+      continue;
+    }
+    while (j < landed.hashes.length && landed.hashes[j] !== read.hashes[i]) j++;
+    if (j === landed.hashes.length) return { grew: false, line: read.lines[i]!, why: "edited" };
+    matched.add(j++);
+  }
+  for (let k = 0; k < landed.hashes.length; k++) {
+    if (!matched.has(k) && !landed.declares[k]) return { grew: false, line: landed.lines[k]!, why: "added" };
+  }
+  return { grew: true };
+}
+
+/** A statement list whose per-statement arrays line up and whose prologue fits in it. */
+function wellFormed(s: TopStatements): boolean {
+  const n = s.hashes.length;
+  return s.lines.length === n && s.declares.length === n && Number.isInteger(s.prologue) && s.prologue >= 0 && s.prologue <= n;
 }

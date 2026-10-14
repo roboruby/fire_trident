@@ -55,8 +55,11 @@ export interface CodeToken {
   nl: boolean;
 }
 
-/** A file read as code tokens and comments, or why it cannot be read exactly. */
-export type ScriptReading = { ok: true; tokens: CodeToken[]; comments: string[] } | { ok: false; why: string };
+/**
+ * A file read as code tokens and comments, or why it cannot be read exactly. `lines`: the line each token starts on
+ * (1-based, same order as `tokens`).
+ */
+export type ScriptReading = { ok: true; tokens: CodeToken[]; comments: string[]; lines: number[] } | { ok: false; why: string };
 
 type Kind = "name" | "private" | "num" | "str" | "tpl" | "tplOpen" | "re" | "punc" | "hashbang";
 
@@ -145,14 +148,15 @@ function breaks(text: string): number {
 }
 
 /**
- * Read JavaScript or TypeScript source as code tokens and comments, exactly, or say why it cannot be
- * read exactly (see the module comment). Never throws.
+ * Read JavaScript or TypeScript source as code tokens and comments, exactly, with the line each token
+ * starts on, or say why it cannot be read exactly (see the module comment). Never throws.
  */
 export function readScript(path: Path, src: string): ScriptReading {
   const jsx = JSX_FILE.test(path);
   const ts = TS_FILE.test(path);
   const tokens: Token[] = [];
   const comments: string[] = [];
+  const lines: number[] = [];
   const open: Array<{ bracket: string; head: boolean }> = [];
   const n = src.length;
   let i = 0;
@@ -162,6 +166,7 @@ export function readScript(path: Path, src: string): ScriptReading {
   const refuse = (why: string): ScriptReading => ({ ok: false, why: `line ${line}: ${why}` });
   const push = (kind: Kind, text: string, head = false): void => {
     tokens.push(head ? { kind, text, nl, head } : { kind, text, nl });
+    lines.push(line);
     nl = false;
     line += breaks(text);
   };
@@ -373,7 +378,7 @@ export function readScript(path: Path, src: string): ScriptReading {
     i += text.length;
   }
   if (open.length > 0) return refuse("unbalanced brackets");
-  return { ok: true, tokens: tokens.map((t) => ({ text: t.text, nl: t.nl })), comments };
+  return { ok: true, tokens: tokens.map((t) => ({ text: t.text, nl: t.nl })), comments, lines };
 }
 
 /** Same code: the same tokens, with a line break before the same ones (the first token's does not matter). */

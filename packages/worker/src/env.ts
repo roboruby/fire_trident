@@ -57,8 +57,9 @@ export interface Env {
   /** Optional: import-aware repulsion weight in take() (imports and importers of claimed files); absent or 0 is off. */
   FT_IMPORT_WEIGHT?: string;
   /**
-   * Optional: assumption revalidation, "on", or a comma-separated list of colony ids; absent or "off" is off. A change
-   * stale only on files it read lands when the names it imports from them are still exported.
+   * Optional: import-name revalidation, "on", or a comma-separated list of colony ids; absent or "off" is off. A change
+   * stale only on files it read lands when the names it imports from them are still exported and each of those files only
+   * gained top-level declarations since the version it read; otherwise it goes back naming the file and the line.
    */
   FT_REVALIDATE?: string;
   /**
