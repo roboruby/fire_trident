@@ -1,0 +1,97 @@
+[   0.0s] creating colony protect-race-1014132325 on https://p21-firetrident.mattsolt.workers.dev
+[  16.3s] colony protect-race-1014132325, review off, agent agt_mv854ymjilzxzy
+[  32.6s] round 1 (protected 0.0 s after ready, answered in 8062 ms): landed and named: lnd_mv8553pt0ic1m7 (848feea): landed before the protection of guard-1/secret.txt (protected by guard-1/**) reached the trunk writer; ft revert undoes it
+[  46.0s] round 2 (protected 2.0 s after ready, answered in 6525 ms): landed and named: lnd_mv855e60q9gyv3 (4a0b424): landed before the protection of guard-2/secret.txt (protected by guard-2/**) reached the trunk writer; ft revert undoes it
+[  59.8s] round 3 (protected 4.0 s after ready, answered in 4162 ms): landed and named: lnd_mv855oycmprhu0 (68202e4): landed before the protection of guard-3/secret.txt (protected by guard-3/**) reached the trunk writer; ft revert undoes it
+[  79.5s] queued round (answered in - ms): inconclusive: change A had already landed, so B was not queued behind it; raise FT_TEST_PUSH_DELAY_MS
+[  89.2s] deleted colony protect-race-1014132325 (200)
+[  89.2s] SUMMARY {
+  "url": "https://p21-firetrident.mattsolt.workers.dev",
+  "colony": "protect-race-1014132325",
+  "kept": false,
+  "rounds": [
+    {
+      "round": 1,
+      "path": "guard-1/secret.txt",
+      "glob": "guard-1/**",
+      "proposal": "prp_mv8553hb6ts1vy",
+      "after_s": 0.0,
+      "protect_ms": 8062,
+      "answer": {
+        "stopped": [],
+        "landed": [
+          {
+            "proposalId": "prp_mv8553hb6ts1vy",
+            "landingId": "lnd_mv8553pt0ic1m7",
+            "trunkSha": "848feeab157c876f7d0da95f6920c1c6b3a6156b",
+            "intentId": "int_mv854z46on4fs9",
+            "path": "guard-1/secret.txt",
+            "glob": "guard-1/**"
+          }
+        ],
+        "confirmed": true
+      },
+      "outcome": "landed and named",
+      "detail": "lnd_mv8553pt0ic1m7 (848feea): landed before the protection of guard-1/secret.txt (protected by guard-1/**) reached the trunk writer; ft revert undoes it"
+    },
+    {
+      "round": 2,
+      "path": "guard-2/secret.txt",
+      "glob": "guard-2/**",
+      "proposal": "prp_mv855dsc7y4asy",
+      "after_s": 2.0,
+      "protect_ms": 6525,
+      "answer": {
+        "stopped": [],
+        "landed": [
+          {
+            "proposalId": "prp_mv855dsc7y4asy",
+            "landingId": "lnd_mv855e60q9gyv3",
+            "trunkSha": "4a0b424540ccebca3aa2f60983755203b0672c50",
+            "intentId": "int_mv855bbht615ib",
+            "path": "guard-2/secret.txt",
+            "glob": "guard-2/**"
+          }
+        ],
+        "confirmed": true
+      },
+      "outcome": "landed and named",
+      "detail": "lnd_mv855e60q9gyv3 (4a0b424): landed before the protection of guard-2/secret.txt (protected by guard-2/**) reached the trunk writer; ft revert undoes it"
+    },
+    {
+      "round": 3,
+      "path": "guard-3/secret.txt",
+      "glob": "guard-3/**",
+      "proposal": "prp_mv855otrhxox14",
+      "after_s": 4.0,
+      "protect_ms": 4162,
+      "answer": {
+        "stopped": [],
+        "landed": [
+          {
+            "proposalId": "prp_mv855otrhxox14",
+            "landingId": "lnd_mv855oycmprhu0",
+            "trunkSha": "68202e4a1674fd2d2d7c518788f1a6554182dd05",
+            "intentId": "int_mv855lqkv8pu1d",
+            "path": "guard-3/secret.txt",
+            "glob": "guard-3/**"
+          }
+        ],
+        "confirmed": true
+      },
+      "outcome": "landed and named",
+      "detail": "lnd_mv855oycmprhu0 (68202e4): landed before the protection of guard-3/secret.txt (protected by guard-3/**) reached the trunk writer; ft revert undoes it"
+    },
+    {
+      "round": "queued",
+      "outcome": "inconclusive",
+      "detail": "change A had already landed, so B was not queued behind it; raise FT_TEST_PUSH_DELAY_MS"
+    }
+  ],
+  "counts": {
+    "landed and named": 3,
+    "inconclusive": 1
+  }
+}
+[  89.2s] PASS: every answer matched trunk (3 landed and named, 1 inconclusive)
+exit 0

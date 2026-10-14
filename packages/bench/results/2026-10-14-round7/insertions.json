@@ -1,0 +1,86 @@
+{
+  "kind": "insertions",
+  "label": "MEASURED",
+  "at": "2026-10-14T13:20:29.435Z",
+  "note": "synthetic agents with inline changes; in each colony two agents take intents on one file from the same trunk, each appends one export line, the second proposes after the first landed",
+  "on": {
+    "colony": "p21-ins-on",
+    "path": "insertions/inmv84ywy2/values.ts",
+    "a": {
+      "id": "prp_mv84zf7wvtcuu4",
+      "status": "landed",
+      "landingId": "lnd_mv84zn7n4ksbtv"
+    },
+    "b": {
+      "id": "prp_mv84znsaad2zyl",
+      "status": "landed",
+      "landingId": "lnd_mv84zuxcx7zwyy"
+    },
+    "merged": [
+      {
+        "base": "6c64fbe6a5f39d78fad3b03db74e34fbcb62d962",
+        "path": "insertions/inmv84ywy2/values.ts",
+        "result": "452f4aab4ff05fb8916c044c1dd4d48849511da9",
+        "rule": "insertions",
+        "theirs": "3173f6989231511d20ebefbdfdec7cb7f9fce795",
+        "trunk": "47dd3d04068a333d5707b9c887632b6ada7ce1cc"
+      }
+    ],
+    "resultIsBothAppends": true
+  },
+  "off": {
+    "colony": "p21-ins-off",
+    "path": "insertions/inmv84ywy2/values.ts",
+    "a": {
+      "id": "prp_mv850bqjcf8hbq",
+      "status": "landed",
+      "landingId": "lnd_mv850k1jc7sfts"
+    },
+    "b": {
+      "id": "prp_mv850lsrae1mo7",
+      "status": "returned",
+      "reason": "stale: insertions/inmv84ywy2/values.ts (expected 6c64fbe6a5f39d78fad3b03db74e34fbcb62d962, trunk has 47dd3d04068a333d5707b9c887632b6ada7ce1cc); text merge of insertions/inmv84ywy2/values.ts: 1 conflicting hunk, at line 13 of its base. Landing lnd_mv850k1jc7sfts (commit d9697e8, intent int_mv850aip2sa6tx, agent agt_mv850adgkf5jrc) moved it. Keep what that landing did unless your intent says otherwise, and escalate if both cannot hold.",
+      "movedBy": [
+        {
+          "landingId": "lnd_mv850k1jc7sfts",
+          "paths": [
+            "insertions/inmv84ywy2/values.ts"
+          ],
+          "at": 1791984015991,
+          "trunkSha": "d9697e81c25c8b38d29cc950d8b6816c6bbb034e",
+          "intentId": "int_mv850aip2sa6tx",
+          "title": "insertions inmv84ywy2: export a",
+          "why": "Callers need a.",
+          "agentId": "agt_mv850adgkf5jrc",
+          "model": "insertions-check-a"
+        }
+      ]
+    },
+    "nextTakeLastReturn": {
+      "proposalId": "prp_mv850lsrae1mo7",
+      "status": "returned",
+      "at": 1791984026053,
+      "reason": "stale: insertions/inmv84ywy2/values.ts (expected 6c64fbe6a5f39d78fad3b03db74e34fbcb62d962, trunk has 47dd3d04068a333d5707b9c887632b6ada7ce1cc); text merge of insertions/inmv84ywy2/values.ts: 1 conflicting hunk, at line 13 of its base. Landing lnd_mv850k1jc7sfts (commit d9697e8, intent int_mv850aip2sa6tx, agent agt_mv850adgkf5jrc) moved it. Keep what that landing did unless your intent says otherwise, and escalate if both cannot hold.",
+      "paths": [
+        "insertions/inmv84ywy2/values.ts"
+      ],
+      "movedBy": [
+        {
+          "landingId": "lnd_mv850k1jc7sfts",
+          "paths": [
+            "insertions/inmv84ywy2/values.ts"
+          ],
+          "trunkSha": "d9697e81c25c8b38d29cc950d8b6816c6bbb034e",
+          "at": 1791984015991,
+          "intentId": "int_mv850aip2sa6tx",
+          "title": "insertions inmv84ywy2: export a",
+          "why": "Callers need a.",
+          "agentId": "agt_mv850adgkf5jrc",
+          "model": "insertions-check-a"
+        }
+      ]
+    }
+  },
+  "errors": [],
+  "passed": true
+}

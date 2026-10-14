@@ -1,0 +1,22 @@
+resolver check rsmv84ywwj on https://p21-firetrident.mattsolt.workers.dev (on: p21-rs-on, off: p21-rs-off, review off)
+PASS  p21-rs-on: colony ready (201)
+PASS  p21-rs-on: review off for these checks
+PASS  p21-rs-on: the rename landed first (landed)
+PASS  p21-rs-on: the second change came back with its conflict (returned, {"path":"resolver/rsmv84ywwj/values.ts","base":"c68b54f7f65a2ed3c36be5f78dc8b13a9e5353ea","trunk":"45bd9ace1e2202208dad98daeb4cd291d73922c9","theirs":"7f9c8576e)
+PASS  p21-rs-on: the second agent's inbox says the resolver is merging it (Your change prp_mv84zo41doimkc came back because text merge found overlapping hunks (resolver/rsmv84ywwj/values.ts at li)
+PASS  p21-rs-on: the intent landed through the resolver (landed)
+PASS  p21-rs-on: the second agent's inbox says the merge landed (The conflict resolver merged your change prp_mv84zo41doimkc with the change that landed first (lnd_mv84zmpcvxhnvg), and the merge landed (prp_mv850905v86a6m in )
+PASS  p21-rs-on: the merge's lineage note records what it resolves ({"landingIds":["lnd_mv84zmpcvxhnvg"],"paths":["resolver/rsmv84ywwj/values.ts"],"proposalId":"prp_mv84zo41doimkc"})
+PASS  p21-rs-on: written by the platform, its model observed ({"auth":"platform","author":"platform","model":{"evidence":"observed","name":"@cf/moonshotai/kimi-k2.7-code","observed":[{"calls":1,"inputTokens":1017,"model":")
+PASS  p21-rs-on: the merged file keeps both edits (line 6 is "export const six = 66;")
+PASS  p21-rs-on: line 6's newest landing is the merge (lnd_mv8509g8rt7rde)
+PASS  p21-rs-on: metrics count it (attempted 1, landed 1, failed 0)
+PASS  p21-rs-off: colony ready (201)
+PASS  p21-rs-off: review off for these checks
+PASS  p21-rs-off: the rename landed first (landed)
+PASS  p21-rs-off: the second change came back as today, naming the hunk (stale: resolver/rsmv84ywwj/values.ts (expected c68b54f7f65a2ed3c36be5f78dc8b13a9e5353ea, trunk has 45bd9ace1e2202208dad98daeb4cd291d73922c9); text merge of resolver/rsmv84ywwj/values.ts: 1 conflicting)
+PASS  p21-rs-off: no conflict record travels with it
+PASS  p21-rs-off: its intent reopened for the next agent (open)
+PASS  p21-rs-off: no resolution notice
+ALL CHECKS PASSED
+exit 0

@@ -1,0 +1,33 @@
+PASS  created p21-pub (201)
+PASS  p21-pub: review off for these checks
+PASS  p21-pub: joined (agt_mv84zaxxr2181p)
+PASS  p21-pub: declared "Add notes/diff.md" (int_mv84zb4dp2tuva)
+PASS  p21-pub: took "Add notes/diff.md"
+PASS  p21-pub: "Add notes/diff.md" landed (landed, lnd_mv84zea3bumbmp)
+PASS  p21-pub: declared "Change the second line of notes/diff.md" (int_mv84zgs7984nyr)
+PASS  p21-pub: took "Change the second line of notes/diff.md"
+PASS  p21-pub: "Change the second line of notes/diff.md" landed (landed, lnd_mv84zpugx4yt9j)
+PASS  created p21-priv (201)
+PASS  p21-priv: review off for these checks
+PASS  p21-priv: joined (agt_mv8505a4zsq3ut)
+PASS  p21-priv: declared "Add notes/diff.md" (int_mv8505u143c2ir)
+PASS  p21-priv: took "Add notes/diff.md"
+PASS  p21-priv: "Add notes/diff.md" landed (landed, lnd_mv8508v0kfw9xu)
+PASS  p21-priv: declared "Change the second line of notes/diff.md" (int_mv850b8zhjqjie)
+PASS  p21-priv: took "Change the second line of notes/diff.md"
+PASS  p21-priv: "Change the second line of notes/diff.md" landed (landed, lnd_mv850kebv65h2k)
+PASS  p21-pub: the first landing's change is an added file (200, added, +3)
+PASS  p21-pub: the second landing's change replaces line 2 (200, modified, +1 -1)
+PASS  p21-pub: it diffs against the first landing's blob (4cb29ea38f70)
+PASS  p21-pub: the same change by the commit's prefix 7211b27 (200)
+PASS  p21-pub: a file the landing did not change answers 404 (404: landing lnd_mv84zpugx4yt9j did not change notes/other.md: ask for a file it wrote)
+PASS  p21-priv: the diff route answers 404 (404: colony p21-priv does not show file contents here: only colonies listed in FT_PUBLIC_GIT or FT_PUBLIC_MCP do; list it the)
+PASS  p21-pub: the note check answers for that landing alone and finds it intact ([{"landingId":"lnd_mv84zpugx4yt9j","trunkSha":"7211b2759ff7d49afcb1b4f270da84c93207dfe1","at":1791983976856,"trailer":"a11634b74f5c329bcfae7b293f8410a00aea8d814)
+PASS  p21-pub: and by its commit (200, lnd_mv84zpugx4yt9j)
+PASS  p21-pub: an unknown landing answers 404 (404)
+PASS  the landing page answers with ?note=p21-pub (200, text/html)
+      In a browser: https://p21-firetrident.mattsolt.workers.dev/?note=p21-pub#how shows the Remember card with "Note intact", commit 7211b27
+      and the intent "Change the second line of notes/diff.md"; https://p21-firetrident.mattsolt.workers.dev/c/p21-pub?path=notes%2Fdiff.md shows each landing's badge,
+      and "Show the change" on the newest shows -two +2 (on https://p21-firetrident.mattsolt.workers.dev/c/p21-priv?path=notes%2Fdiff.md it says the colony does not show file contents).
+ALL CHECKS PASSED
+exit 0

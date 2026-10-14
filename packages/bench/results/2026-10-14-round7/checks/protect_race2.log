@@ -1,0 +1,92 @@
+[   0.0s] creating colony protect-race-1014132517 on https://p21-firetrident.mattsolt.workers.dev
+[  17.0s] colony protect-race-1014132517, review off, agent agt_mv857e5npuo5pp
+[  38.3s] round 1 (protected 0.0 s after ready, answered in 16068 ms): FAIL: unconfirmed: the trunk writer did not answer
+[  64.6s] round 2 (protected 2.0 s after ready, answered in 15179 ms): FAIL: unconfirmed: the trunk writer did not answer
+[  93.2s] round 3 (protected 4.0 s after ready, answered in 15358 ms): FAIL: unconfirmed: the trunk writer did not answer
+[ 165.7s] queued round (answered in 11599 ms): stopped while queued: B waited for a person and landed on approval; A landed in lnd_mv85951c96al6o
+[ 173.9s] deleted colony protect-race-1014132517 (200)
+[ 173.9s] SUMMARY {
+  "url": "https://p21-firetrident.mattsolt.workers.dev",
+  "colony": "protect-race-1014132517",
+  "kept": false,
+  "rounds": [
+    {
+      "round": 1,
+      "path": "guard-1/secret.txt",
+      "glob": "guard-1/**",
+      "proposal": "prp_mv857hzmpm2van",
+      "after_s": 0.0,
+      "protect_ms": 16068,
+      "answer": {
+        "stopped": [],
+        "landed": [],
+        "confirmed": false,
+        "unconfirmed": [
+          "prp_mv857hzmpm2van"
+        ]
+      },
+      "outcome": "FAIL",
+      "detail": "unconfirmed: the trunk writer did not answer"
+    },
+    {
+      "round": 2,
+      "path": "guard-2/secret.txt",
+      "glob": "guard-2/**",
+      "proposal": "prp_mv8581f1duypd2",
+      "after_s": 2.0,
+      "protect_ms": 15179,
+      "answer": {
+        "stopped": [],
+        "landed": [],
+        "confirmed": false,
+        "unconfirmed": [
+          "prp_mv8581f1duypd2"
+        ]
+      },
+      "outcome": "FAIL",
+      "detail": "unconfirmed: the trunk writer did not answer"
+    },
+    {
+      "round": 3,
+      "path": "guard-3/secret.txt",
+      "glob": "guard-3/**",
+      "proposal": "prp_mv858l9ubbzx1j",
+      "after_s": 4.0,
+      "protect_ms": 15358,
+      "answer": {
+        "stopped": [],
+        "landed": [],
+        "confirmed": false,
+        "unconfirmed": [
+          "prp_mv858l9ubbzx1j"
+        ]
+      },
+      "outcome": "FAIL",
+      "detail": "unconfirmed: the trunk writer did not answer"
+    },
+    {
+      "round": "queued",
+      "protect_ms": 11599,
+      "answer": {
+        "stopped": [
+          {
+            "proposalId": "prp_mv8599czr8kqyb",
+            "intentId": "int_mv8595xkwni5te",
+            "path": "guard-qb/secret.txt",
+            "glob": "guard-qb/**"
+          }
+        ],
+        "landed": [],
+        "confirmed": true
+      },
+      "outcome": "stopped while queued",
+      "detail": "B waited for a person and landed on approval; A landed in lnd_mv85951c96al6o"
+    }
+  ],
+  "counts": {
+    "FAIL": 3,
+    "stopped while queued": 1
+  }
+}
+[ 173.9s] FAIL: an answer disagreed with trunk
+exit 1

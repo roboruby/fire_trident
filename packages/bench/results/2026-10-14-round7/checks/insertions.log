@@ -1,0 +1,16 @@
+insertion rule check inmv84ywy2 on https://p21-firetrident.mattsolt.workers.dev (on: p21-ins-on, off: p21-ins-off, review off)
+PASS  p21-ins-on: review off for this check
+PASS  p21-ins-on: the first append landed (landed)
+PASS  p21-ins-on: the second append landed too (landed)
+PASS  p21-ins-on: its lineage note records the merge by the insertion rule ([{"base":"6c64fbe6a5f39d78fad3b03db74e34fbcb62d962","path":"insertions/inmv84ywy2/values.ts","result":"452f4aab4ff05fb8916c044c1dd4d48849511da9","rule":"inserti)
+PASS  p21-ins-on: the merged file is the seed with both appends, the first landing's line first
+PASS  p21-ins-on: the landing's merged entry names the rule ([{"proposalId":"prp_mv84znsaad2zyl","path":"insertions/inmv84ywy2/values.ts","blob":"452f4aab4ff05fb8916c044c1dd4d48849511da9","rule":"insertions"}])
+PASS  p21-ins-off: review off for this check
+PASS  p21-ins-off: the first append landed (landed)
+PASS  p21-ins-off: the second append went back naming the hunk (stale: insertions/inmv84ywy2/values.ts (expected 6c64fbe6a5f39d78fad3b03db74e34fbcb62d962, trunk has 47dd3d04068a333d5707b9c887632b6ada7ce1cc); text merge of insertions/inmv84ywy2/values.ts: 1 conflic)
+PASS  p21-ins-off: the return names the landing that beat it, with its intent, agent, model and commit ([{"landingId":"lnd_mv850k1jc7sfts","paths":["insertions/inmv84ywy2/values.ts"],"at":1791984015991,"trunkSha":"d9697e81c25c8b38d29cc950d8b6816c6bbb034e","intentId":"int_mv850aip2sa6tx","title":"insertions inmv84ywy2: export a","why":"Callers need a.","agentId":"agt_mv850adgkf5jrc","model":"insertions)
+PASS  p21-ins-off: its reason names that landing and ends with what to do
+PASS  p21-ins-off: the next take of the reopened intent hands back lastReturn with movedBy ([{"landingId":"lnd_mv850k1jc7sfts","paths":["insertions/inmv84ywy2/values.ts"],"trunkSha":"d9697e81c25c8b38d29cc950d8b6816c6bbb034e","at":1791984015991,"intentId":"int_mv850aip2sa6tx","title":"inserti)
+wrote <scratch>/r7-live/insertions.json
+ALL CHECKS PASSED
+exit 0

@@ -1,0 +1,110 @@
+[   0.0s] creating colony protect-race-1014132846 on https://p21-firetrident.mattsolt.workers.dev
+[  18.6s] colony protect-race-1014132846, review off, agent agt_mv85bw4cg1gdgb
+[  39.9s] round 1 (protected 0.0 s after ready, answered in 12052 ms): landed and named: lnd_mv85c25q7zj795 (f65e6ba): landed before the protection of guard-1/secret.txt (protected by guard-1/**) reached the trunk writer; ft revert undoes it
+[  57.1s] round 2 (protected 2.0 s after ready, answered in 9842 ms): landed and named: lnd_mv85cfr45f4cyd (b1994c9): landed before the protection of guard-2/secret.txt (protected by guard-2/**) reached the trunk writer; ft revert undoes it
+[  76.8s] round 3 (protected 4.0 s after ready, answered in 9262 ms): landed and named: lnd_mv85ctpjk99cap (7f46075): landed before the protection of guard-3/secret.txt (protected by guard-3/**) reached the trunk writer; ft revert undoes it
+[ 133.7s] queued round (answered in 3383 ms): stopped while queued: B waited for a person and landed on approval; A landed in lnd_mv85d8rd340vxq
+[ 144.4s] deleted colony protect-race-1014132846 (200)
+[ 144.4s] SUMMARY {
+  "url": "https://p21-firetrident.mattsolt.workers.dev",
+  "colony": "protect-race-1014132846",
+  "kept": false,
+  "rounds": [
+    {
+      "round": 1,
+      "path": "guard-1/secret.txt",
+      "glob": "guard-1/**",
+      "proposal": "prp_mv85c1umr02vqb",
+      "after_s": 0.0,
+      "protect_ms": 12052,
+      "answer": {
+        "stopped": [],
+        "landed": [
+          {
+            "proposalId": "prp_mv85c1umr02vqb",
+            "landingId": "lnd_mv85c25q7zj795",
+            "trunkSha": "f65e6ba056347bbf35ff91db31f0778726ef932a",
+            "intentId": "int_mv85bwntvplgiz",
+            "path": "guard-1/secret.txt",
+            "glob": "guard-1/**"
+          }
+        ],
+        "confirmed": true
+      },
+      "outcome": "landed and named",
+      "detail": "lnd_mv85c25q7zj795 (f65e6ba): landed before the protection of guard-1/secret.txt (protected by guard-1/**) reached the trunk writer; ft revert undoes it"
+    },
+    {
+      "round": 2,
+      "path": "guard-2/secret.txt",
+      "glob": "guard-2/**",
+      "proposal": "prp_mv85cfejurzxep",
+      "after_s": 2.0,
+      "protect_ms": 9842,
+      "answer": {
+        "stopped": [],
+        "landed": [
+          {
+            "proposalId": "prp_mv85cfejurzxep",
+            "landingId": "lnd_mv85cfr45f4cyd",
+            "trunkSha": "b1994c932b20aa93dcc35856325c6e3d93d28875",
+            "intentId": "int_mv85cd4trsmigd",
+            "path": "guard-2/secret.txt",
+            "glob": "guard-2/**"
+          }
+        ],
+        "confirmed": true
+      },
+      "outcome": "landed and named",
+      "detail": "lnd_mv85cfr45f4cyd (b1994c9): landed before the protection of guard-2/secret.txt (protected by guard-2/**) reached the trunk writer; ft revert undoes it"
+    },
+    {
+      "round": 3,
+      "path": "guard-3/secret.txt",
+      "glob": "guard-3/**",
+      "proposal": "prp_mv85ctctn292yl",
+      "after_s": 4.0,
+      "protect_ms": 9262,
+      "answer": {
+        "stopped": [],
+        "landed": [
+          {
+            "proposalId": "prp_mv85ctctn292yl",
+            "landingId": "lnd_mv85ctpjk99cap",
+            "trunkSha": "7f46075447aa396e7e157b32855a09b9b36f9c0b",
+            "intentId": "int_mv85cqawf0uu5v",
+            "path": "guard-3/secret.txt",
+            "glob": "guard-3/**"
+          }
+        ],
+        "confirmed": true
+      },
+      "outcome": "landed and named",
+      "detail": "lnd_mv85ctpjk99cap (7f46075): landed before the protection of guard-3/secret.txt (protected by guard-3/**) reached the trunk writer; ft revert undoes it"
+    },
+    {
+      "round": "queued",
+      "protect_ms": 3383,
+      "answer": {
+        "stopped": [
+          {
+            "proposalId": "prp_mv85ddmv3jxevz",
+            "intentId": "int_mv85d8pcofq4k3",
+            "path": "guard-qb/secret.txt",
+            "glob": "guard-qb/**"
+          }
+        ],
+        "landed": [],
+        "confirmed": true
+      },
+      "outcome": "stopped while queued",
+      "detail": "B waited for a person and landed on approval; A landed in lnd_mv85d8rd340vxq"
+    }
+  ],
+  "counts": {
+    "landed and named": 3,
+    "stopped while queued": 1
+  }
+}
+[ 144.4s] PASS: every answer matched trunk (3 landed and named, 1 stopped while queued)
+exit 0

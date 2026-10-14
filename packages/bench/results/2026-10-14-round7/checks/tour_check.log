@@ -1,0 +1,37 @@
+Tour of p21-hono (recorded record, 5,092 events, rule 2026-10-14T13:20:07.018Z)
+
+1/7 The rule (@rule, 31.0 s into the record)
+  A person declared one rule that found 958 violations in 282 files: each became a need in the field, and no one assigns the work.
+
+2/7 Sense (@first-claim, 37.2 s into the record)
+  10 agents were at work 10.5 s after the rule, each on an intent it chose from the field, and each claim keeps the other agents off its files.
+
+3/7 Land (@first-proof, 37.3 s into the record)
+  The first change settled by a deterministic proof landed 10.7 s after the rule, in src/adapter/cloudflare-workers/index.ts: no model was consulted.
+
+4/7 No collisions (@calm, 42.4 s into the record)
+  At the busiest moment, 15.7 s after the rule, 20 changes were in flight at once, and in the whole run not one change came back to its agent.
+
+5/7 Group commit (@batch, 91.3 s into the record)
+  A lane landed 5 non-conflicting changes in one commit 64.6 s after the rule: src/jsx/dom/context.ts, src/jsx/dom/hooks/index.ts and 3 more.
+
+6/7 Converge (@converged, 152.6 s into the record)
+  958 violations fixed in 125.9 s: 282 intents landed in 192 commits after the rule, and a deterministic proof settled 282 of the 282 changes reviewed (100%), with no model consulted.
+
+7/7 Remember (@end, 202.9 s into the record)
+  Line 17 of src/index.ts remembers why it changed: its intent, agent, model and checks ride with the commit as a git note, which any git clone can read.
+
+Against GET /metrics:
+  ok   violations the rule found: tour 958, metrics 958
+  ok   violations fixed: tour 958, metrics 958
+  ok   time to zero: tour 125.9 s, metrics 125.9 s (0 ms apart)
+  ok   violations at the end: tour 0, metrics 0
+  ok   funnel proof at the end: tour 282, metrics 282
+  ok   funnel reflex at the end: tour 0, metrics 0
+  ok   funnel llm at the end: tour 1, metrics 1
+  ok   funnel human at the end: tour 0, metrics 0
+  ok   landings at the end: tour 193, metrics 193
+  ok   intents landed at the end: tour 283, metrics 283
+
+All 10 numbers agree.
+exit 0
