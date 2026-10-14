@@ -26,6 +26,7 @@ import { whySummary } from "./spec.ts";
 import { megafileLines } from "./megafile.ts";
 import { signatureLines } from "./signatures.ts";
 import { spendLine } from "./spend.ts";
+import { acceptanceRows } from "./acceptance.ts";
 
 /** ANSI styling functions; identity functions when color is off. */
 export interface Colors {
@@ -780,6 +781,8 @@ export function formatWhy(
         out.push(`  ${label("decided")}${steps.map((s) => s.head).join(c.dim(" · "))}`);
         for (const s of steps) if (s.detail) out.push(`  ${label("")}${c.dim(s.detail)}`);
       }
+      // Quoted acceptance (FT_QUOTED_ACCEPTANCE): the changed line quoted for each acceptance line (acceptance.ts).
+      for (const row of acceptanceRows(p.decisions, c)) out.push(`  ${label(row.k)}${row.v}`);
       out.push(`  ${label("checks")}${checkLine(p.evidence?.checks, c)}`);
       if (p.evidence?.residual?.length) out.push(`  ${label("residual")}${c.yellow(paths(p.evidence.residual, 4))} ${c.dim("(outside the declared footprint)")}`);
       if (p.evidence?.notVerified) out.push(`  ${label("unproven")}${p.evidence.notVerified}`);

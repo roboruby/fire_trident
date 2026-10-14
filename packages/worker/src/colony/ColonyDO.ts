@@ -61,6 +61,7 @@ import type { Antibody } from "@fire_trident/core";
 import type { DetectorState } from "../decide/policy.ts";
 import type { DecideStore, StoredAntibody } from "../decide/store.ts";
 import { ANTIBODY_DIR, antibodyAllows, parseAntibodyFile, type AllowingAntibody } from "../decide/antibodies.ts";
+import { keepSource } from "../decide/quotes.ts";
 import { DEFAULT_NOT_VERIFIED, FieldBatch, groupByRegion, jitter, normalizePath, normalizePaths, overlapCount, primaryRegion, violationIntents } from "./logic.ts";
 import { EmitPacer, Gate, WaitPacer, fastRepulsion, fieldIndex, unseenByRegion, type FieldIndex, type RecentClaim } from "./views.ts";
 import { LagProbe } from "./lag.ts";
@@ -2691,6 +2692,13 @@ export class ColonyDO extends DurableObject<Env> {
       sealedIntent: (i) => this.sealedIntent(i),
       propose: (input) => this.propose(input),
       seal: (id, reason, evidence) => this.sealProposal(id, reason, evidence),
+      // Quoted acceptance's keep lines (FT_QUOTED_ACCEPTANCE, decide/quotes.ts): the newest landing by another intent on
+      // these paths, from the why-context index, with that intent's acceptance list.
+      keepAcceptance: (intentId, paths) =>
+        keepSource(this.whyContext({ id: intentId, footprint: paths } as Intent), intentId, (id) => {
+          const row = this.intentRow(id);
+          return row ? this.toIntent(row, this.requireColony().id) : null;
+        }),
     };
     this.decideEngine = new DecideEngine(host);
     return this.decideEngine;

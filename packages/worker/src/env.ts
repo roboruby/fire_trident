@@ -114,6 +114,17 @@ export interface Env {
    */
   FT_GOAL_CONFLICT?: string;
   /**
+   * Optional: quoted acceptance, "on", or a comma-separated list of colony ids; absent or "off" is off. For a change whose
+   * intent carries an acceptance list (and was not written by trunk certification or the colony itself), the second
+   * opinion answers each line as met, not met or unclear, and each "met" names a file and quotes a line of the diff it
+   * was shown; the platform looks for each quote in the added and unchanged lines (decide/quotes.ts). Its approval counts
+   * only when every line is met with a quote found there: a line not met returns the change naming it, an unclear one
+   * sends it to a person. The acceptance list of the newest landing by another intent on the files the change modifies
+   * is asked too, as keep lines: one not met returns the change naming it. The decision and the lineage note keep each
+   * line with its verdict and quote.
+   */
+  FT_QUOTED_ACCEPTANCE?: string;
+  /**
    * Optional: twin intents caught at declare, "on", or a comma-separated list of colony ids; absent or "off" is off. An
    * intent a person or an agent declares (POST /intents, MCP declare) whose normalized title words score at least 0.8
    * (Jaccard) against an intent open, claimed, proposed or landed in the last 30 minutes, and whose footprint overlaps

@@ -25,6 +25,7 @@ export const COLONY_FLAGS: readonly string[] = [
   "FT_MEGAFILE",
   "FT_MERGE_INSERTIONS",
   "FT_MODEL_STEPUP",
+  "FT_QUOTED_ACCEPTANCE",
   "FT_RESOLVER",
   "FT_REVALIDATE",
   "FT_TEXT_MERGE",

@@ -1,0 +1,39 @@
+import type { AcceptanceRow } from "../acceptance.ts";
+import { shortId } from "../format.ts";
+import { FIELD_COLOR } from "../theme.ts";
+
+/** The color of each verdict's chip: met as a trail, not met as a failure, unclear as a need. */
+const VERDICT_COLOR: Readonly<Record<AcceptanceRow["verdict"], string>> = {
+  met: FIELD_COLOR.trail,
+  "not met": FIELD_COLOR.danger,
+  unclear: FIELD_COLOR.need,
+};
+
+/**
+ * Under a second opinion's decision (FT_QUOTED_ACCEPTANCE): each acceptance line with what counted for it and the
+ * changed line quoted for it, so a person can check which line meets which criterion. Nothing when there are none.
+ */
+export function AcceptanceLines({ rows }: { rows: AcceptanceRow[] }) {
+  if (rows.length === 0) return null;
+  return (
+    <div className="dec-answer">
+      {rows.map((r, i) => (
+        <div className="lin-dir-row" key={`${r.place}-${i}`}>
+          <span className="lin-chip" style={{ color: VERDICT_COLOR[r.verdict] }}>
+            {r.verdict}
+          </span>
+          <b>{r.place}</b> {r.line}
+          {r.landingId ? <span className="lin-dir-when"> · from landing {shortId(r.landingId)}</span> : null}
+          {r.verdict === "met" && r.quote ? (
+            <span className="lin-dir-why mono" title={r.path}>
+              {r.path ? `${r.path}: ` : ""}
+              {r.quote}
+            </span>
+          ) : r.why ? (
+            <span className="lin-dir-why">{r.why}</span>
+          ) : null}
+        </div>
+      ))}
+    </div>
+  );
+}

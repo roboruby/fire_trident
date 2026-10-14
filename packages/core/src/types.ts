@@ -608,6 +608,37 @@ export interface NoteDecision extends Pick<Decision, "kind" | "layer" | "p" | "a
   by?: string;
   /** The answer in one line: the reflex probabilities, the reviewer's reason, the human's reason. */
   answer?: string;
+  /** The second opinion's answer for each acceptance line, its quote checked by the platform (FT_QUOTED_ACCEPTANCE); absent elsewhere. */
+  acceptance?: NoteAcceptance[];
+}
+
+/** What counts for one acceptance line: met (with a quote the platform found), not met, or unclear. */
+export type AcceptanceVerdict = "met" | "not met" | "unclear";
+
+/**
+ * One acceptance line as the second opinion answered it, and what the platform counts (FT_QUOTED_ACCEPTANCE,
+ * decide/quotes.ts). `intent`: a line of the change's own intent; `keep`: a line of the intent of the newest landing by
+ * another intent on the files the change modifies, which the change must not break.
+ */
+export interface NoteAcceptance {
+  kind: "intent" | "keep";
+  /** The line as its intent states it. */
+  line: string;
+  /**
+   * What the platform counts: `met` only when the model answered met and named a file and a quote of at least 8
+   * characters that the platform found in the added or unchanged lines of the diff the model was shown.
+   */
+  verdict: AcceptanceVerdict;
+  /** The model's own answer, when the platform counts another (a "met" whose quote it could not find). */
+  said?: AcceptanceVerdict;
+  /** The file the model named for it. */
+  path?: Path;
+  /** The line the model quoted, whitespace collapsed. */
+  quote?: string;
+  /** Why a "met" was not counted, in words. */
+  problem?: string;
+  /** Keep lines: the landing whose intent's acceptance list this line comes from. */
+  landingId?: Id;
 }
 
 /**

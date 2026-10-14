@@ -17,6 +17,7 @@ import type {
   Proposal,
   RedirectOutcome,
 } from "@fire_trident/core";
+import { noteAcceptance } from "../decide/quotes.ts";
 
 /**
  * Changing direction: intent revisions, withdrawals, retracted rules, human directives, and agents'
@@ -546,6 +547,9 @@ export function noteDecision(r: DecisionRow): NoteDecision {
     const v = a.verdict as Record<string, unknown> | undefined;
     const answer = v ? `${text(v.verdict)}: ${text(v.reason)}` : typeof a.error === "string" ? `unavailable: ${a.error}` : text(a.reasons);
     d.answer = oneLine(answer, ANSWER_CHARS);
+    // Quoted acceptance (FT_QUOTED_ACCEPTANCE): each acceptance line with what counted and the line quoted for it.
+    const acceptance = noteAcceptance(a.acceptance);
+    if (acceptance) d.acceptance = acceptance;
   } else if (r.layer === "human") {
     d.question = "human review";
     if (typeof a.by === "string") d.by = a.by;

@@ -1,6 +1,7 @@
-import type { DecisionLayer, Id } from "@fire_trident/core";
+import type { DecisionLayer, Id, NoteAcceptance } from "@fire_trident/core";
 import type { WhyAuthor } from "./danger.ts";
 import type { DecidePolicy, DetectorState } from "./policy.ts";
+import { acceptanceGate, type AcceptanceAnswer } from "./quotes.ts";
 import type { DamageSignals, ProtectedHit } from "./signals.ts";
 import { damageLabels } from "./signals.ts";
 
@@ -45,6 +46,10 @@ import { damageLabels } from "./signals.ts";
  * - L3 System 2 approves, no detector, p(needs_human) < threshold, every changed line in its view → land (llm)
  * - L5 that approval on a view that was cut     → escalate: too large for model review (llm; the
  *                                                 alert budget cannot bounce it)
+ * - L6 that approval with an acceptance line (or a keep line) answered not met (FT_QUOTED_ACCEPTANCE)
+ *                                               → return, naming the line (llm)
+ * - L7 that approval with a line of the intent not met with a quote found in the diff (answered
+ *      unclear, or a quote the platform could not find) → escalate (llm; the alert budget cannot bounce it)
  * - L4 anything else (one signal only)          → return to the agent with the reason
  * An escalation over the hourly alert budget goes back to its agent unless its risk is at or
  * above the budget's risk floor.
@@ -82,6 +87,8 @@ export interface SecondOpinion {
   confidence: number;
   reason: string;
   model: string;
+  /** Quoted acceptance (FT_QUOTED_ACCEPTANCE): its answer for each numbered acceptance line, as it gave them (decide/quotes.ts). */
+  acceptance?: AcceptanceAnswer[];
 }
 
 /** The deterministic stage's conclusion (decide/mechanical.ts). */
@@ -117,6 +124,12 @@ export interface GateInput {
   whyBy?: WhyAuthor;
   /** What each model layer saw: an approval counts only when its layer saw every changed line. Absent: all of it. */
   coverage?: { reflex?: LayerView; llm?: LayerView };
+  /**
+   * Quoted acceptance (FT_QUOTED_ACCEPTANCE, decide/quotes.ts): the intent's acceptance lines and the keep lines as the
+   * second opinion answered them, each "met" counted only with a quote found in the diff it was shown (L6, L7). Absent:
+   * no acceptance list, or the flag is off, and the approval counts as it always has.
+   */
+  acceptance?: NoteAcceptance[];
   /** An earlier proposal for this intent had a security finding (these classes): this one goes to a person, not a model. */
   probation?: { classes: string[] } | null;
   /** Human escalations in the last hour, and the budget. */
@@ -462,13 +475,23 @@ export function gate(input: GateInput): GateVerdict {
       risk = Math.max(risk, policy.budgetRiskFloor);
       return escalate("llm", "L5 too large", 1, [`too large for model review: ${view.seen}, so its approval does not count and a person decides`], ["review:too-large"], []);
     }
-    return verdict("land", "llm", "L3 innate+llm", 1 - needsHuman, [`${llm.model} approves: ${llm.reason}`], [], ["innate", "llm"]);
+    // L6, L7 (FT_QUOTED_ACCEPTANCE): the approval counts only when every acceptance line is met with a quote found in the diff.
+    const accepted = acceptanceGate(input.acceptance);
+    if (accepted?.notMet) return verdict("return", "llm", "L6 acceptance not met", llm.confidence, [accepted.notMet, `${llm.model} approves otherwise: ${llm.reason}`], ["acceptance:not-met"]);
+    if (accepted?.unclear) {
+      risk = Math.max(risk, policy.budgetRiskFloor);
+      return escalate("llm", "L7 acceptance unclear", 1, [accepted.unclear, `${llm.model} approves: ${llm.reason}`], ["acceptance:unclear"], []);
+    }
+    return verdict("land", "llm", "L3 innate+llm", 1 - needsHuman, [`${llm.model} approves: ${llm.reason}`, ...(accepted?.met ? [accepted.met] : [])], [], ["innate", "llm"]);
   }
   const reasons: string[] = [];
   if (!llm) reasons.push("second opinion unavailable; one confirmation only");
   else if (llm.verdict === "approve" && detectors.length > 0) reasons.push(`reviewers disagree: ${labels.join(", ")} vs ${llm.model} approve`);
   else if (llm.verdict === "approve") reasons.push(`${llm.model} approves but p(needs_human) ${r2(needsHuman)} ≥ ${policy.needsHuman}`);
   else reasons.push(`${llm.model}: ${llm.verdict} (${llm.reason})`);
+  // Quoted acceptance: a change going back names the acceptance lines the second opinion found not met.
+  const unmet = llm ? acceptanceGate(input.acceptance)?.notMet : undefined;
+  if (unmet) reasons.push(unmet);
   if (detectors.length > 0 && damage.length === 0) reasons.push("detector without damage: one signal only, no human paged");
   if (detectors.length === 0 && damage.length > 0) reasons.push(`damage without a detector: ${damage.join("; ")}`);
   const p = llm ? (llm.verdict === "approve" ? needsHuman : Math.max(needsHuman, llm.confidence)) : 1;

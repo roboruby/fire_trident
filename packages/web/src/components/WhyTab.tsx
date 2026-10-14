@@ -10,6 +10,8 @@ import { alternativesOf, provenanceOf, revalidatedOf, type Alternative, type Pro
 import { useThrottledVersion } from "../useStore.ts";
 import { certCounts, certTitle } from "../certs.ts";
 import { NoteBar } from "./NoteSeal.tsx";
+import { acceptanceOf } from "../acceptance.ts";
+import { AcceptanceLines } from "./AcceptanceLines.tsx";
 
 type NoteProposal = LineageNote["proposals"][number];
 
@@ -538,6 +540,7 @@ function ProposalChain({ p, path, store }: { p: NoteProposal; path: string; stor
                     <span className="mono dec-p">{has ? `p ${pv.toFixed(2)}` : ""}</span>
                   </div>
                   {note.answer ? <div className="dec-answer">{note.answer}</div> : null}
+                  <AcceptanceLines rows={acceptanceOf(note)} />
                 </div>
               );
             })

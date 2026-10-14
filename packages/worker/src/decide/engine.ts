@@ -22,6 +22,7 @@ import type { Env } from "../env.ts";
 import { runInnateChecks, type InnateResult } from "../colony/innate.ts";
 import { errorText, ftError } from "../colony/errors.ts";
 import { meteredAi, spendCounters } from "../colony/spend.ts";
+import { acceptanceCheck, acceptanceFor } from "./acceptance.ts";
 import { ANTIBODY_DIR, antibodyFile, antibodyPath, calibrateThreshold, cleanQuestion, deriveMatcher, fallbackQuestion, parseAntibodyFile, securityAntibody } from "./antibodies.ts";
 import { addedFromHunks, fileDiff, type FileDiff } from "./diff.ts";
 import { agentReason, gate, type GateVerdict, type ReflexSignals, type SecondOpinion } from "./gate.ts";
@@ -31,6 +32,7 @@ import { CallLimiter } from "./limiter.ts";
 import { candidatePaths, mechanicalCheck, nameAssumptionCandidates, nameAssumptions, proofAssumptions, type MechanicalResult } from "./mechanical.ts";
 import { pickSecondOpinion, secondOpinionCandidates, type DecidePolicy } from "./policy.ts";
 import { pushQuarantine } from "./quarantine.ts";
+import { askedLines, checkAcceptance, type KeepSource } from "./quotes.ts";
 import {
   askClef,
   askSecondOpinion,
@@ -113,6 +115,11 @@ export interface DecideHost {
   propose(input: ProposeInput): Promise<Proposal>;
   /** Finish a vaccine: rejected with the reason, its intent abandoned, no lane, no field effects. */
   seal(proposalId: Id, reason: string, evidence: Proposal["evidence"]): void;
+  /**
+   * Quoted acceptance's keep lines (FT_QUOTED_ACCEPTANCE, decide/acceptance.ts): the newest landing by an intent other
+   * than `intentId` on these paths, with that intent's acceptance list; null when there is none. A host without it adds none.
+   */
+  keepAcceptance?(intentId: Id, paths: Path[]): KeepSource | null;
 }
 
 /** Decide runs in flight per colony. Most finish in the deterministic stage without a model call. */
@@ -323,6 +330,9 @@ export class DecideEngine {
     let state: Record<string, unknown> | null = null;
 
     if (final.action === "screen") {
+      // Quoted acceptance (FT_QUOTED_ACCEPTANCE, decide/acceptance.ts): the intent's acceptance lines and the keep lines
+      // the second opinion answers one by one; null keeps today's rule.
+      const acceptance = acceptanceFor(this.host, intent, innate.files, Boolean(vaccine));
       // System 1, given the deterministic facts.
       const input: ReflexInput = {
         intent: { title: intent?.title ?? (p.declared.summary || p.intentId), why: intent?.why ?? "", whyBy },
@@ -332,6 +342,7 @@ export class DecideEngine {
         diffs,
         antibodies: matching.map((s) => s.antibody),
         ...((mech ? mech.result.facts : []).length + dangerFacts.length > 0 ? { facts: [...(mech ? mech.result.facts : []), ...dangerFacts] } : {}),
+        ...(acceptance ? { acceptance } : {}),
       };
       state = reflexState(input);
       const skip = new Set(Object.entries(clefStates).filter(([, s]) => s === "off").map(([k]) => k));
@@ -386,13 +397,16 @@ export class DecideEngine {
       if (v1.action === "consult") {
         const so = await this.secondOpinion(p, input, policy);
         llm = so.opinion;
-        final = gate({ ...base, reflex, llm });
+        // Quoted acceptance: each line as the second opinion answered it, its quote looked for in the diff it was shown.
+        const accepted = acceptance && llm ? checkAcceptance(acceptance, llm.acceptance, secondOpinionDiff(diffs).shown) : undefined;
+        final = gate({ ...base, reflex, llm, ...(accepted ? { acceptance: accepted } : {}) });
         checks.push({
           name: `llm: ${so.model}`,
           ok: llm?.verdict === "approve",
           ms: so.ms,
           detail: llm ? `${llm.verdict}, needs_human ${llm.needsHuman}: ${llm.reason}; ${coverageText(seen.llm)}` : `unavailable: ${so.error}`,
         });
+        if (accepted) checks.push(acceptanceCheck(accepted));
         await this.host.recordDecision({
           kind: "triage",
           subject: p.id,
@@ -405,6 +419,7 @@ export class DecideEngine {
             reasons: final.reasons,
             damage: final.damage,
             coverage: seen.llm,
+            ...(accepted ? { acceptance: accepted } : {}),
             ...(vaccine ? { vaccine: true } : {}),
           },
           p: final.p,
@@ -542,7 +557,8 @@ export class DecideEngine {
         const release = await this.limiter.acquire(model, deadline);
         if (!release) return { opinion: null, model, ms: Date.now() - t0, error: `no ${model} slot within ${LLM_DEADLINE_MS / 1000} s (rate limits)` };
         try {
-          const r = await askSecondOpinion(this.ai(), model, messages);
+          // Quoted acceptance asks for one answer per acceptance line (FT_QUOTED_ACCEPTANCE).
+          const r = await askSecondOpinion(this.ai(), model, messages, undefined, askedLines(input.acceptance ?? []).length);
           this.host.bump("decide.llm.tokensIn", r.tokens.in);
           this.host.bump("decide.llm.tokensOut", r.tokens.out);
           // Per model too, for the colony's spend (colony/spend.ts).
