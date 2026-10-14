@@ -1,7 +1,7 @@
 import { useState } from "react";
 
 /** The deployed server the CLI and MCP snippets point at. */
-export const SERVER = "https://firetrident.mattsolt.workers.dev";
+export const SERVER = "https://firetrident.com";
 
 const CLI = `# Read any colony here, no token needed
 npx fire_trident colonies

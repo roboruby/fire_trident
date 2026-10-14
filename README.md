@@ -76,16 +76,16 @@ The benchmark compares FireTrident with the common design (exclusive file locks 
 
 ## Watch a finished run
 
-Any colony replays from its first event: open [`/c/hono?replay=1`](https://firetrident.mattsolt.workers.dev/c/hono?replay=1) for play, pause, 1× to 16× and a scrubber. Colonies record their events as they work; the showcase colonies ran before recording existed, so their replays are rebuilt from what each colony stores (intents, proposals, decisions and landings with their times) and labeled "reconstructed", with claim times estimated.
+Any colony replays from its first event: open [`/c/hono?replay=1`](https://firetrident.com/c/hono?replay=1) for play, pause, 1× to 16× and a scrubber. Colonies record their events as they work; the showcase colonies ran before recording existed, so their replays are rebuilt from what each colony stores (intents, proposals, decisions and landings with their times) and labeled "reconstructed", with claim times estimated.
 
-Runs since then replay from their own record. [`/c/shortlinks-review?replay=1`](https://firetrident.mattsolt.workers.dev/c/shortlinks-review?replay=1) shows a new project growing, its authentication route waiting for a person, and, later, trunk certification finding five failing tests and the colony repairing them until the trunk bar reads 67/67.
+Runs since then replay from their own record. [`/c/shortlinks-review?replay=1`](https://firetrident.com/c/shortlinks-review?replay=1) shows a new project growing, its authentication route waiting for a person, and, later, trunk certification finding five failing tests and the colony repairing them until the trunk bar reads 67/67.
 
 ## Verify it with plain git
 
 The showcase colonies (`hono`, `shortlinks`, `byo-demo`) can be read with stock git. You need no account and no token. The server holds a read-only token for each trunk, and pushes are refused.
 
 ```sh
-git clone https://firetrident.mattsolt.workers.dev/git/hono.git
+git clone https://firetrident.com/git/hono.git
 cd hono
 git fetch origin refs/notes/firetrident:refs/notes/firetrident
 git log --notes=firetrident -3
@@ -100,7 +100,7 @@ Each landed commit shows its `FT-*` trailers and, under `Notes (firetrident):`, 
 The same colonies answer any MCP client, read only and with no token:
 
 ```sh
-claude mcp add --transport http firetrident-public https://firetrident.mattsolt.workers.dev/public/mcp
+claude mcp add --transport http firetrident-public https://firetrident.com/public/mcp
 ```
 
 Then ask, for example, "In colony hono, why does line 17 of src/index.ts exist? Which agent and model wrote it, and what checked it?" or "Is shortlinks certified, and is anything stuck?" The tools are `status`, `why`, `intent` and `sense` ([docs/agents](docs/agents/README.md#ask-a-showcase-colony-no-token)).
