@@ -1175,6 +1175,19 @@ a.lc:hover .lc-open {
   letter-spacing: -0.02em;
 }
 
+.rs-scale .rs-headline {
+  color: var(--calm);
+  text-shadow: 0 0 26px rgba(95, 208, 255, 0.28);
+}
+
+/* A sentence, not a number: the size of the MCP card's name. */
+.rs-goals .rs-headline {
+  color: var(--need);
+  text-shadow: 0 0 26px rgba(255, 181, 61, 0.26);
+  font-size: clamp(26px, 2.4vw, 34px);
+  letter-spacing: -0.02em;
+}
+
 .rs-lede {
   margin-top: 8px;
   font-size: 15px;

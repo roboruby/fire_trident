@@ -12,6 +12,13 @@ const RAIL_X0 = 160;
 const PAD = 10;
 const GLOW_SCALE = 0.5;
 const MAX_DOTS = 16_000;
+/**
+ * A map of more files than this is laid out again at most once every RELAYOUT_MS while files keep arriving (a run or a
+ * replay that adds a file with each landing): a layout of thousands of tiles takes tens of milliseconds, and each one
+ * clears the sparks in flight. Smaller maps take every new file at once.
+ */
+const RELAYOUT_THROTTLE_FILES = 2_000;
+const RELAYOUT_MS = 1_000;
 /** Field opacity is quantized into this many levels so each level draws as one path. */
 const LEVELS = 12;
 const SANS = 'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
@@ -159,6 +166,8 @@ export class MapRenderer {
   /** Left end of the trunk rail: after the TRUNK label, or near the edge when a narrow layout hides it. */
   private railX0 = RAIL_X0;
   private filesVersion = -1;
+  /** When the map was last laid out (performance.now()), for RELAYOUT_MS. */
+  private laidOutAt = Number.NEGATIVE_INFINITY;
   private raf = 0;
   private lastTs = 0;
   private lastField = 0;
@@ -347,6 +356,7 @@ export class MapRenderer {
   private relayout(): void {
     const s = this.store;
     this.filesVersion = s.filesVersion;
+    this.laidOutAt = performance.now();
     const area = { x: PAD, y: TRUNK_H + 6, w: Math.max(0, this.W - PAD * 2), h: Math.max(0, this.H - TRUNK_H - 6 - this.opts.legendH) };
     this.A = area;
     this.L = layoutTreemap(s.files, area);
@@ -788,7 +798,7 @@ export class MapRenderer {
     if (this.sizeDirty) {
       this.sizeDirty = false;
       this.resize();
-    } else if (s.filesVersion !== this.filesVersion) {
+    } else if (s.filesVersion !== this.filesVersion && (s.files.length <= RELAYOUT_THROTTLE_FILES || performance.now() - this.laidOutAt >= RELAYOUT_MS)) {
       this.relayout();
     }
     this.stepCamera(performance.now());

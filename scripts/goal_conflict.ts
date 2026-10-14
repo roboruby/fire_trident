@@ -11,8 +11,17 @@
  * the decide stage, so the flagged colony's review is on once the file is seeded, and its first change goes through
  * model review too: this script approves a model's escalation of it as a person would, and proposes again after a return.
  *
+ * With --demo <colony> (and no --colony or --off) it leaves a showcase instead: one colony with the same setup, and three
+ * scripted agents named for what they do (rust-port, go-port, typescript-port, model "scripted"), each joined before the
+ * goals are declared and declared as its goal's holder, so no other agent can take them (the colony starts no agent of
+ * its own; poolTarget only sizes its warm pool of workspace repositories). They propose in turn: the first lands, and the
+ * second and third wait for a person, each naming the landing it would undo. The demo never approves, returns, rejects
+ * or retracts anything: the two waiting changes stay for a person to decide. If a model sends the first change to a
+ * person, the demo says so, leaves it there and exits 3. It ends by printing the colony, its replay and the review queue.
+ *
  * Usage:
  *   FT_MCP_TOKEN=... FT_ADMIN_TOKEN=... node scripts/goal_conflict.ts --url https://<deployment> --colony <flag-on colony> --off <flag-off colony>
+ *   FT_MCP_TOKEN=... FT_ADMIN_TOKEN=... node scripts/goal_conflict.ts --url https://<deployment> --demo <colony>
  */
 import { createHash } from "node:crypto";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -26,10 +35,14 @@ function arg(name: string, fallback?: string): string | undefined {
 const URL_BASE = (arg("url", process.env.FT_URL) ?? "").replace(/\/+$/, "");
 const ON = arg("colony") ?? "";
 const OFF = arg("off") ?? "";
+const DEMO = arg("demo") ?? "";
 const MCP_TOKEN = process.env.FT_MCP_TOKEN ?? "";
 const ADMIN_TOKEN = process.env.FT_ADMIN_TOKEN ?? "";
-if (!URL_BASE || !ON || !OFF || ON === OFF || !MCP_TOKEN || !ADMIN_TOKEN) {
+const checkMode = !DEMO && !!ON && !!OFF && ON !== OFF;
+const demoMode = !!DEMO && !ON && !OFF;
+if (!URL_BASE || !MCP_TOKEN || !ADMIN_TOKEN || (!checkMode && !demoMode)) {
   console.error("usage: FT_MCP_TOKEN=... FT_ADMIN_TOKEN=... node scripts/goal_conflict.ts --url <deployment> --colony <flag-on colony> --off <flag-off colony>");
+  console.error("   or: FT_MCP_TOKEN=... FT_ADMIN_TOKEN=... node scripts/goal_conflict.ts --url <deployment> --demo <colony>");
   process.exit(2);
 }
 
@@ -137,8 +150,9 @@ async function agent(name: string, colony: string): Promise<Agent> {
   return { name, agentId: joined.data.agentId, call };
 }
 
-async function declare(colony: string, title: string, why: string): Promise<string> {
-  const r = await rest("POST", `/colonies/${colony}/intents`, { title, why, footprint: [FILE], priority: 5, createdBy: "goal-conflict-check" });
+/** Declare an intent on the file; `opts.assignedTo` declares it for that agent (claimed by it, so no other agent takes it). */
+async function declare(colony: string, title: string, why: string, opts: { assignedTo?: string; createdBy?: string } = {}): Promise<string> {
+  const r = await rest("POST", `/colonies/${colony}/intents`, { title, why, footprint: [FILE], priority: 5, createdBy: opts.createdBy ?? "goal-conflict-check", ...(opts.assignedTo ? { assignedTo: opts.assignedTo } : {}) });
   check(`${colony}: declared "${title}" (${r.status})`, r.status === 201 && typeof r.data?.id === "string");
   return r.data?.id ?? "";
 }
@@ -307,6 +321,136 @@ async function flagOff(): Promise<void> {
   }
   const top = await newest(OFF);
   check(`all three landed, and the last one wins: ${FILE} is the ${last ?? "?"} version`, landed === 3 && last !== null && writtenBlob(top) === gitBlob(backend(last)));
+}
+
+// ---------------------------------------------------------------------------
+// Demo mode (--demo): a showcase colony left with two changes waiting for a person.
+// ---------------------------------------------------------------------------
+
+/** Who the demo's intents say declared them. */
+const DEMO_BY = "goal-conflict-demo";
+/** The demo's agents, named for what they do, in the order they propose: each holds the goal of its language. */
+const PORTS = GOALS.map((g) => ({ name: `${g.lang}-port`, goal: g }));
+/** Exit code when a model sent the first change to a person: the demo leaves it there and stops. */
+const EXIT_MODEL_ESCALATED = 3;
+
+/** The colony's page, its replay and its review queue, with how a person decides; this script decides nothing. */
+async function demoSummary(colony: string, names: Map<string, string>): Promise<void> {
+  const queue = await rest("GET", `/colonies/${colony}/review`);
+  const waiting: any[] = Array.isArray(queue.data) ? queue.data : [];
+  console.log(`\nColony: ${URL_BASE}/c/${encodeURIComponent(colony)}`);
+  console.log(`Replay: ${URL_BASE}/c/${encodeURIComponent(colony)}?replay=1`);
+  console.log(`Review queue: ${waiting.length} ${waiting.length === 1 ? "change waits" : "changes wait"} for a person (${URL_BASE}/api/colonies/${colony}/review)`);
+  for (const p of waiting) console.log(`  ${p.id}  ${names.get(p.agentId) ?? p.agentId}: ${short(p.reason, 240)}`);
+  if (waiting.length > 0) console.log(`A person decides in the colony page's Review tab, or with: ft review ${colony} <proposalId> approve|return|reject --reason <text>`);
+}
+
+/**
+ * The demo: the check's setup in one colony (Python seed with review off, the three goals, review on), with the goals
+ * declared for three named agents. The first change lands; the second and third wait for a person. Returns the exit code.
+ */
+async function demo(): Promise<number> {
+  console.log(`\nGoal-conflict demo: ${DEMO}`);
+  // Without the check the second change would land, and without inline changes MCP cannot propose a file's text.
+  const about = await rest("GET", "/about");
+  const flags: unknown = about.data?.flags;
+  if (Array.isArray(flags)) {
+    const missing = ["FT_GOAL_CONFLICT", "FT_INLINE"].filter((f) => !flags.includes(f));
+    if (missing.length > 0) {
+      console.error(`${missing.join(" and ")} ${missing.length === 1 ? "is" : "are"} not on at ${URL_BASE}: the demo needs both, so it did not start.`);
+      return 2;
+    }
+  } else {
+    console.log(`  (GET /api/about did not list the flags (${about.status}); going on)`);
+  }
+
+  const made = await rest("POST", "/colonies", { name: DEMO, poolTarget: 4 });
+  check(`${DEMO}: created (${made.status})`, made.status === 201);
+  if (made.status !== 201) {
+    console.error(`${DEMO} could not be created: ${short(made.data)}. The demo needs a colony that does not exist yet.`);
+    return 1;
+  }
+  const names = new Map<string, string>();
+  check(`${DEMO}: review off for the seed`, (await rest("POST", `/colonies/${DEMO}/decide/policy`, { enabled: false })).status === 200);
+  const seeder = await agent("python-seed", DEMO);
+  names.set(seeder.agentId, seeder.name);
+  const seedIntent = await declare(DEMO, "Start the order backend", "A small order backend, in Python to begin with.", { assignedTo: seeder.agentId, createdBy: DEMO_BY });
+  const seeded = await work(seeder, new Map([[seedIntent, "python" as Lang]]));
+  const s = seeded ? await settle(DEMO, seeded.pid) : null;
+  check(`${DEMO}: ${FILE} seeded in Python (${s?.status ?? "no answer"})`, s?.status === "landed");
+  if (s?.status !== "landed") return 1;
+
+  // Each agent joins first, so its goal is declared for it: no other agent can take it, and each takes its own.
+  const ports: Array<{ name: string; goal: (typeof GOALS)[number]; agent: Agent; intentId: string }> = [];
+  for (const p of PORTS) {
+    const a = await agent(p.name, DEMO);
+    names.set(a.agentId, a.name);
+    const intentId = await declare(DEMO, p.goal.title, p.goal.why, { assignedTo: a.agentId, createdBy: DEMO_BY });
+    if (!intentId) return 1;
+    ports.push({ ...p, agent: a, intentId });
+  }
+  check(`${DEMO}: review on, so the decide stage runs the check`, (await rest("POST", `/colonies/${DEMO}/decide/policy`, { enabled: true })).status === 200);
+
+  // The first change: nothing recent of another intent to undo, so it goes through review like any change.
+  const [first, ...others] = ports;
+  if (!first) return 1;
+  const w1 = await work(first.agent, new Map([[first.intentId, first.goal.lang]]));
+  if (!w1) {
+    check(`${first.name} proposed its change`, false);
+    return 1;
+  }
+  const p1 = await settle(DEMO, w1.pid);
+  const reason1 = String(p1?.reason ?? "");
+  if (p1?.status === "escalated" && !/would undo/.test(reason1)) {
+    console.log(`\nA model sent the first change (${first.name}, "${first.goal.title}", ${w1.pid}) to a person: ${short(reason1, 300)}`);
+    console.log("The demo approves nothing, so that change waits in the review queue for a person, and the demo stops here.");
+    await demoSummary(DEMO, names);
+    return EXIT_MODEL_ESCALATED;
+  }
+  const landing: string = p1?.status === "landed" ? (p1.landingId ?? "") : "";
+  check(`the first change (${first.name}: ${first.goal.title}) landed: ${landing || `${p1?.status ?? "no answer"}: ${short(reason1, 200)}`}`, landing !== "");
+  if (!landing) {
+    await demoSummary(DEMO, names);
+    return 1;
+  }
+
+  // The second and third: each would undo the first's five lines, so each waits for a person, naming that landing.
+  const waiting: string[] = [];
+  for (const port of others) {
+    const w = await work(port.agent, new Map([[port.intentId, port.goal.lang]]));
+    if (!w) {
+      check(`${port.name} proposed its change`, false);
+      continue;
+    }
+    const p = await settle(DEMO, w.pid);
+    const reason = String(p?.reason ?? "");
+    const held = p?.status === "escalated" && reason.includes("would undo") && reason.includes(landing);
+    check(`${port.name}'s change (${port.goal.title}) waits for a person (${p?.status ?? "no answer"}): ${short(reason, 260)}`, held);
+    if (p?.status === "landed") console.log(`  (it landed: FT_GOAL_CONFLICT may not cover ${DEMO})`);
+    check(`  its record names the landing it would undo (${short(p?.undoes)})`, Array.isArray(p?.undoes) && p.undoes.some((u: { landingId?: string; intentId?: string }) => u.landingId === landing && u.intentId === first.intentId));
+    if (held) waiting.push(w.pid);
+  }
+  const queue = await rest("GET", `/colonies/${DEMO}/review`);
+  const queued = new Set((Array.isArray(queue.data) ? queue.data : []).map((x: { id?: string }) => x.id));
+  check(`both wait in the review queue (${waiting.filter((pid) => queued.has(pid)).length} of ${others.length})`, waiting.length === others.length && waiting.every((pid) => queued.has(pid)));
+  const top = await newest(DEMO);
+  check(`trunk holds the first change: ${FILE} is the ${first.goal.lang} version (landing ${top?.landing?.id})`, top?.landing?.id === landing && writtenBlob(top) === gitBlob(backend(first.goal.lang)));
+  await demoSummary(DEMO, names);
+  return failed ? 1 : 0;
+}
+
+if (demoMode) {
+  let code = 1;
+  try {
+    code = await demo();
+  } catch (e) {
+    check(`the demo ran to the end (${e instanceof Error ? e.message : String(e)})`, false);
+    code = 1;
+  } finally {
+    for (const c of clients) await c.close().catch(() => undefined);
+  }
+  console.log(code === 0 ? "DEMO READY: two changes wait for a person" : code === EXIT_MODEL_ESCALATED ? "DEMO STOPPED: a model sent the first change to a person" : "DEMO FAILED");
+  process.exit(code);
 }
 
 try {

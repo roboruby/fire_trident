@@ -17,6 +17,13 @@
  * needs no git. The colony must take inline changes (FT_INLINE on for it):
  *
  *   node packages/bench/src/live.ts --colony bench-inline --agents 50 --duration 60 --inline --out run.json
+ *
+ * A run never deletes or resets its colony: the colony, its trunk and its event record stay as the run left them (a
+ * showcase run is replayed and cloned afterwards). At the end it only retires its own agents (POST /swarm/stop), so their
+ * claims never hold the next run back; --keep-agents leaves them. The report's `run` block has the headline numbers:
+ * agents joined, landings, changes and intents landed, landings a minute from the first landing to the last, and time to
+ * land p50 and p95. Synthetic agents call the REST API with the admin token; the per-session call budget
+ * (FT_AGENT_CALL_BUDGET) meters MCP sessions only, so it never limits them.
  */
 import { execFile } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -29,6 +36,7 @@ import type { ColonyEvent, ColonySnapshot, FileVersion, Intent, Proposal, TrunkP
 import { liveConfig, redact, type LiveConfig } from "./env.ts";
 import { Recorder, summarize, type Summary } from "./stats.ts";
 import { fakeSha } from "./swarm.ts";
+import { runSummary, type RunSummary } from "./runsummary.ts";
 
 const run = promisify(execFile);
 
@@ -60,6 +68,8 @@ export interface LiveOptions {
   inline?: boolean;
   /** Refuse to run unless the colony's trunk publishing is this (FT_ASYNC_PUBLISH lists the colony: "async"; otherwise "sync"). */
   expectPublish?: PublishMode;
+  /** Intents created at once while topping up (default 24); more makes a large setup quicker. */
+  intentWorkers?: number;
 }
 
 /** How a colony's trunk writer publishes: asynchronously (FT_ASYNC_PUBLISH on for it) or in every landing cycle. */
@@ -349,7 +359,7 @@ export async function setup(cfg: LiveConfig, colony: string, stateDir: string, l
 }
 
 /** Make sure at least `target` open bench intents exist, spread over `regions` directories. */
-export async function ensureIntents(client: Client, target: number, regions: number, tag: string, log: (s: string) => void): Promise<number> {
+export async function ensureIntents(client: Client, target: number, regions: number, tag: string, log: (s: string) => void, workers = 24): Promise<number> {
   // The metrics report counts every open intent (a snapshot lists 5,000 at most); bench colonies hold only bench intents.
   const m = await client.call<{ metrics?: Record<string, number> }>("metrics", "GET", "/metrics");
   const open = m?.metrics?.["intentsOpen"] ?? 0;
@@ -367,7 +377,7 @@ export async function ensureIntents(client: Client, target: number, regions: num
       if (res) made++;
     }
   };
-  await Promise.all(Array.from({ length: 24 }, worker));
+  await Promise.all(Array.from({ length: Math.max(1, Math.floor(workers)) }, worker));
   return open + made;
 }
 
@@ -487,6 +497,8 @@ export interface LiveReport {
   window: { fromS: number; toS: number; commits: number; landedProposals: number; landedPerMin: number; commitsPerMin: number; source: string };
   snapshotDelta: Record<string, number>;
   timeToLandMs: Summary;
+  /** The headline numbers over the whole run (runsummary.ts): what a showcase card and the README quote. */
+  run?: RunSummary;
   batchSize: Summary;
   commitGapMs: Summary;
   feed: { connected: boolean; events: number; sigmaMax: number; sigmaEvents: number; reconnects: number };
@@ -556,7 +568,7 @@ export async function runLive(cfg: LiveConfig, opts: LiveOptions, state: LiveSta
   const rec = new Recorder();
   const client = new Client(cfg, opts.colony, rec, opts.timeoutMs);
   const tag = `${opts.label}-${Date.now().toString(36)}`;
-  await ensureIntents(client, opts.intents, opts.regions, tag, log);
+  await ensureIntents(client, opts.intents, opts.regions, tag, log, opts.intentWorkers);
   const before = await client.call<{ metrics?: Record<string, number> }>("metrics", "GET", "/metrics");
   // Trunk publishing: asynchronous when the colony's trunk writer says so (FT_ASYNC_PUBLISH lists the colony and the
   // trunk writer runs on a deployment that has it).
@@ -706,7 +718,7 @@ export async function runLive(cfg: LiveConfig, opts: LiveOptions, state: LiveSta
   const gaps: number[] = [];
   for (let i = 1; i < ordered.length; i++) gaps.push(ordered[i]!.at - ordered[i - 1]!.at);
   const delta: Record<string, number> = {};
-  for (const k of ["landings", "landedProposals", "proposals", "returned", "rejected", "takes"]) {
+  for (const k of ["landings", "landedProposals", "landedIntents", "proposals", "returned", "rejected", "takes"]) {
     const a = after?.metrics?.[k];
     const b = before?.metrics?.[k];
     if (typeof a === "number") delta[k] = a - (typeof b === "number" ? b : 0);
@@ -735,6 +747,7 @@ export async function runLive(cfg: LiveConfig, opts: LiveOptions, state: LiveSta
     window: { fromS, toS, commits, landedProposals, landedPerMin: (landedProposals / span) * 60, commitsPerMin: (commits / span) * 60, source: feed.open ? "live WebSocket landing events" : "feed not connected" },
     snapshotDelta: delta,
     timeToLandMs: summarize(timeToLand),
+    run: runSummary({ registered: counts.registered, landings: feed.landings, timeToLand, delta }),
     batchSize: summarize(feed.landings.map((l) => l.proposalIds.length)),
     commitGapMs: summarize(gaps),
     feed: { connected: feed.open, events: feed.events, sigmaMax, sigmaEvents: feed.sigma.length, reconnects: feed.reconnects },
@@ -782,6 +795,7 @@ async function main(): Promise<void> {
       "setup-only": { type: "boolean" },
       "keep-agents": { type: "boolean" },
       inline: { type: "boolean" },
+      "intent-workers": { type: "string" },
     },
     strict: true,
   });
@@ -805,6 +819,7 @@ async function main(): Promise<void> {
     stopAgents: values["keep-agents"] !== true,
     ...(values.inline ? { inline: true } : {}),
     ...(expectPublish ? { expectPublish } : {}),
+    ...(values["intent-workers"] !== undefined ? { intentWorkers: Math.floor(num(values["intent-workers"], "intent-workers", 24, 1, 256)) } : {}),
   };
   const cfg = liveConfig();
   const log = (s: string) => console.error(`[${new Date().toISOString().slice(11, 19)}] ${s}`);
@@ -825,6 +840,13 @@ async function main(): Promise<void> {
       `errors ${s.ops.reduce((n, o) => n + o.errors, 0)}, outcomes feed ${s.outcomes.feed} poll ${s.outcomes.poll}${s.stoppedEarly ? `, STOPPED EARLY: ${s.stoppedEarly}` : ""}` +
       `, publish ${s.publish?.mode ?? "?"}${s.publish?.mode === "async" ? ` (push p50 ${s.publishes?.metrics.ms?.p50?.toFixed(0) ?? "?"} ms, lag p90 ${s.trunkCycles?.metrics.publishLagMs?.p90?.toFixed(0) ?? "?"} ms, drained ${s.publish.drainMs ?? "NO"})` : ""}`,
   );
+  const r = s.run;
+  if (r) {
+    log(
+      `run: ${r.agentsJoined} agents joined; ${r.landings ?? "?"} landings, ${r.landedProposals ?? "?"} changes and ${r.landedIntents ?? "?"} intents landed in ${r.spanS?.toFixed(0) ?? "?"} s ` +
+        `(first landing to last: ${r.landingsPerMin?.toFixed(0) ?? "?"} landings and ${r.landedPerMin?.toFixed(0) ?? "?"} changes a minute); time to land p50 ${r.timeToLandP50Ms ?? "?"} ms, p95 ${r.timeToLandP95Ms ?? "?"} ms`,
+    );
+  }
 }
 
 function isEntry(): boolean {
