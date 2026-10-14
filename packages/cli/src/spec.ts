@@ -34,6 +34,24 @@ export interface SpecIntent {
   contest?: number;
 }
 
+/**
+ * Governance a spec declares up front: the colony's decide policy, set before any rule or intent
+ * exists (POST /decide/policy), so no agent can change a protected path before the policy holds.
+ */
+export interface SpecPolicy {
+  /**
+   * Paths only a person may change: globs as rules write them (at most 50), kept as the server keeps
+   * them. A change that writes, deletes or renames a path one covers goes to a person, even with
+   * review off; a glob naming a directory covers everything under it.
+   */
+  protectedPaths?: string[];
+  /**
+   * Whether a change to existing script files that only edits comments and whitespace lands on the
+   * deterministic proof, without a model (the server's default: true).
+   */
+  commentProof?: boolean;
+}
+
 /** The machine-readable part of a project spec (`spec/v1`). */
 export interface ProjectSpec {
   firetrident: "spec/v1";
@@ -46,6 +64,8 @@ export interface ProjectSpec {
    * (default: every `##` section except the one holding this block).
    */
   context?: string[];
+  /** Governance set before the rules and intents (absent, or setting nothing: the server's defaults). */
+  policy?: SpecPolicy;
   rules: SpecRule[];
   intents: SpecIntent[];
 }
@@ -133,6 +153,10 @@ export function validateSpec(raw: unknown): ProjectSpec {
     if (!isStringArray(o.context) || o.context.some((h) => !h.trim())) bad("context must be an array of section headings");
     spec.context = o.context.map((h) => h.trim());
   }
+  if (o.policy !== undefined) {
+    const policy = specPolicy(o.policy);
+    if (Object.keys(policy).length > 0) spec.policy = policy;
+  }
 
   if (!Array.isArray(o.rules)) bad("rules must be an array");
   o.rules.forEach((r: unknown, i: number) => {
@@ -184,6 +208,141 @@ export function validateSpec(raw: unknown): ProjectSpec {
   });
   dependencyPlan(spec.intents);
   return spec;
+}
+
+/** The fields a spec's `policy` block may set. */
+const POLICY_FIELDS = ["protectedPaths", "commentProof"];
+/** The most protected paths a colony keeps (POST /decide/policy refuses more). */
+const MAX_PROTECTED_PATHS = 50;
+/** The longest protected path the server keeps. */
+const MAX_GLOB_CHARS = 300;
+/** {a,b} alternatives the server's glob matcher expands one glob into; past this the glob matches nothing. */
+const MAX_EXPANSIONS = 256;
+
+/**
+ * Check a spec's `policy` block as POST /decide/policy checks it (policyProblems in
+ * packages/worker/src/decide/policy.ts), so `ft new` does not stop at the policy after creating
+ * the colony. Globs come back as the server keeps them: normalized, each once. A field the block
+ * does not take is refused rather than dropped: a misspelled one would leave paths unprotected
+ * while the spec's author believes them protected.
+ */
+function specPolicy(v: unknown): SpecPolicy {
+  if (!v || typeof v !== "object" || Array.isArray(v)) bad(`policy must be an object with ${POLICY_FIELDS.join(" and/or ")}`);
+  const p = v as Record<string, unknown>;
+  for (const k of Object.keys(p)) if (!POLICY_FIELDS.includes(k)) bad(`policy.${k} is not a policy field (${POLICY_FIELDS.join(", ")})`);
+  const policy: SpecPolicy = {};
+  if (p.protectedPaths !== undefined) {
+    const globs = p.protectedPaths;
+    if (!Array.isArray(globs)) bad("policy.protectedPaths must be an array of globs");
+    if (globs.length > MAX_PROTECTED_PATHS) bad(`policy.protectedPaths has ${globs.length} globs; a colony keeps at most ${MAX_PROTECTED_PATHS}`);
+    globs.forEach((g: unknown, k: number) => {
+      if (typeof g !== "string") bad(`policy.protectedPaths[${k}] must be a string`);
+      const why = protectedGlobProblem(g);
+      if (why) bad(`policy.protectedPaths[${k}]: ${why}`);
+    });
+    policy.protectedPaths = [...new Set((globs as string[]).map(protectedGlob))];
+  }
+  if (p.commentProof !== undefined) {
+    if (typeof p.commentProof !== "boolean") bad("policy.commentProof must be true or false");
+    policy.commentProof = p.commentProof;
+  }
+  return policy;
+}
+
+/** A protected-path glob as the server keeps it: trimmed, without a leading "./" or "/" or a trailing "/". */
+function protectedGlob(glob: string): string {
+  return glob.trim().replace(/^(?:\.\/|\/)+/, "").replace(/\/+$/, "");
+}
+
+/**
+ * Why the server would refuse `glob` as a protected path, in its words, or null: it is empty, longer
+ * than 300 characters, not one line, or the glob matcher would not match even the path built from
+ * its first {a,b} alternative (it gives up past 256 alternatives). The published CLI runs without
+ * @fire_trident/core, so this repeats globProblem (packages/worker/src/decide/policy.ts) and the
+ * parts of globMatch (packages/core/src/morph.ts) it relies on; test/spec-policy.test.ts holds the
+ * two in step.
+ */
+function protectedGlobProblem(glob: string): string | null {
+  const g = protectedGlob(glob);
+  if (g === "") return "a protected path cannot be empty";
+  if (g.length > MAX_GLOB_CHARS) return `a protected path has at most ${MAX_GLOB_CHARS} characters`;
+  if (/[\x00-\x1f\x7f]/.test(g)) return "a protected path is one line of text";
+  const alternatives = expandBraces(g);
+  const sample = (alternatives?.[0] ?? "").replace(/[*?]/g, "a").split("/");
+  const matched = alternatives?.some((alt) => segmentsMatch(alt.replace(/^(?:\.\/|\/)+/, "").split("/"), sample)) ?? false;
+  return matched ? null : "a protected path with this many {a,b} alternatives would match nothing";
+}
+
+/** A glob's {a,b} alternatives as the server's matcher expands them (nested; a group without a comma is literal), or null past 256. */
+function expandBraces(glob: string): string[] | null {
+  for (let open = glob.indexOf("{"); open !== -1; open = glob.indexOf("{", open + 1)) {
+    let depth = 0;
+    let close = -1;
+    const commas: number[] = [];
+    for (let i = open; i < glob.length && close === -1; i++) {
+      const c = glob[i];
+      if (c === "{") depth++;
+      else if (c === "}" && --depth === 0) close = i;
+      else if (c === "," && depth === 1) commas.push(i);
+    }
+    if (close === -1 || commas.length === 0) continue;
+    const tails = expandBraces(glob.slice(close + 1));
+    if (tails === null) return null;
+    const cuts = [open, ...commas, close];
+    const out: string[] = [];
+    for (let k = 0; k + 1 < cuts.length; k++) {
+      const options = expandBraces(glob.slice(cuts[k]! + 1, cuts[k + 1]!));
+      if (options === null) return null;
+      for (const option of options) {
+        for (const tail of tails) if (out.push(glob.slice(0, open) + option + tail) > MAX_EXPANSIONS) return null;
+      }
+    }
+    return out;
+  }
+  return [glob];
+}
+
+/** Match path segments against glob segments as the server's matcher does; a "**" segment takes zero or more path segments. */
+function segmentsMatch(glob: string[], path: string[]): boolean {
+  const memo = new Map<number, boolean>();
+  const go = (gi: number, pi: number): boolean => {
+    const key = gi * (path.length + 1) + pi;
+    const known = memo.get(key);
+    if (known !== undefined) return known;
+    const g = glob[gi];
+    let result: boolean;
+    if (g === undefined) result = pi === path.length;
+    else if (g === "**") result = go(gi + 1, pi) || (pi < path.length && go(gi, pi + 1));
+    else result = pi < path.length && segmentMatch(g, path[pi]!) && go(gi + 1, pi + 1);
+    memo.set(key, result);
+    return result;
+  };
+  return go(0, 0);
+}
+
+/** Wildcard match inside one segment (`*` any run, `?` one character), backtracking to the last `*`. */
+function segmentMatch(pattern: string, text: string): boolean {
+  let p = 0;
+  let t = 0;
+  let star = -1;
+  let resume = 0;
+  while (t < text.length) {
+    const c = pattern[p];
+    if (c === "*") {
+      star = p++;
+      resume = t;
+    } else if (c !== undefined && (c === "?" || c === text[t])) {
+      p++;
+      t++;
+    } else if (star !== -1) {
+      p = star + 1;
+      t = ++resume;
+    } else {
+      return false;
+    }
+  }
+  while (pattern[p] === "*") p++;
+  return p === pattern.length;
 }
 
 /** How `ft new` orders and links a spec's intents (see dependencyPlan). */
@@ -383,10 +542,11 @@ export function whySummary(why: string): string {
 }
 
 /**
- * Plan `ft new`: create an empty colony, then one POST per rule and per intent.
- * Rules go first so the morphology check is live before any code lands. Intents follow
- * in dependency order (each after the intents it uses), so a parent exists before its child.
- * With `markdown`, every intent carries the spec's context sections in its `why`.
+ * Plan `ft new`: create an empty colony, set the spec's policy when it declares one, then one POST
+ * per rule and per intent. The policy goes first, so a protected path needs a person before any
+ * agent has work to take; rules go next so the morphology check is live before any code lands.
+ * Intents follow in dependency order (each after the intents it uses), so a parent exists before
+ * its child. With `markdown`, every intent carries the spec's context sections in its `why`.
  */
 export function planNew(
   spec: ProjectSpec,
@@ -394,11 +554,14 @@ export function planNew(
   by: string,
   name?: string,
   opts: { markdown?: string; source?: string } = {},
-): { create: ApiRequest; rules: ApiRequest[]; intents: PlannedIntent[] } {
+): { create: ApiRequest; policy?: ApiRequest; rules: ApiRequest[]; intents: PlannedIntent[] } {
   const deps = dependencyPlan(spec.intents);
   const position = new Map<number, number>(deps.order.map((idx, pos) => [idx, pos]));
+  // A spec without a policy plans the same calls as before policies existed.
+  const policy = spec.policy ? { policy: { method: "POST" as const, path: colonyPath(colony, "/decide/policy"), body: { ...spec.policy } } } : {};
   return {
     create: { method: "POST", path: "/api/colonies", body: spec.regionDepth ? { name: name ?? spec.name, regionDepth: spec.regionDepth } : { name: name ?? spec.name } },
+    ...policy,
     rules: spec.rules.map((r) => ({ method: "POST", path: colonyPath(colony, "/rules"), body: ruleBody(colony, r.kind, r.spec, r.description, by) })),
     intents: deps.order.map((idx) => {
       const i = spec.intents[idx]!;

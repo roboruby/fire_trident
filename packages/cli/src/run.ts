@@ -48,7 +48,7 @@ import type {
   WithdrawResult,
 } from "./format.ts";
 import { extractSpec, planNew } from "./spec.ts";
-import type { IntentBody } from "./spec.ts";
+import type { IntentBody, SpecPolicy } from "./spec.ts";
 import type { Intent, Landing, LineageNote, Proposal, Rule } from "@fire_trident/core";
 
 /** Everything the CLI touches outside itself, injectable for tests. */
@@ -463,6 +463,27 @@ async function policy(cmd: Extract<Command, { name: "policy" }>, ctx: Ctx): Prom
   return 0;
 }
 
+/**
+ * Set a spec's policy on the colony `ft new` just created and check that the server kept every field.
+ * A failed call, or a server that predates a field, stops `ft new` here, before any rule or intent.
+ */
+async function newColonyPolicy(ctx: Ctx, req: ApiRequest, declared: SpecPolicy, colony: string): Promise<DecidePolicyView | null> {
+  let kept: DecidePolicyView | null = null;
+  let problem = "";
+  try {
+    kept = await send<DecidePolicyView | null>(ctx.http, req);
+    const paths = Array.isArray(kept?.protectedPaths) ? kept.protectedPaths : null;
+    const missing = (declared.protectedPaths ?? []).filter((g) => !paths?.includes(g));
+    if (declared.protectedPaths && paths === null) problem = "the server does not keep protected paths: it predates them";
+    else if (missing.length > 0) problem = `the server did not keep the protected paths ${missing.join(", ")}`;
+    else if (declared.commentProof !== undefined && kept?.commentProof !== declared.commentProof) problem = "the server did not set the comment-only proof: it predates it";
+  } catch (e) {
+    problem = (e as Error).message;
+  }
+  if (problem) throw new Error(`${problem}. Colony ${colony} was created; its rules and intents were not declared (ft delete ${colony} --yes removes it)`);
+  return kept;
+}
+
 async function newColony(cmd: Extract<Command, { name: "new" }>, ctx: Ctx): Promise<number> {
   const { io, c } = ctx;
   const by = cmd.by ?? ctx.by;
@@ -474,7 +495,7 @@ async function newColony(cmd: Extract<Command, { name: "new" }>, ctx: Ctx): Prom
     const plan = planNew(spec, "<colony>", by, name, opts);
     // Parents are only known once created; the dry run names them by position.
     const intents = plan.intents.map(({ parentIndex, ...req }) => (parentIndex === undefined ? req : { ...req, body: { ...(req.body as object), parentId: `<intent ${parentIndex + 1}>` } }));
-    return dryRun(ctx, [plan.create, ...plan.rules, ...intents]);
+    return dryRun(ctx, [plan.create, ...(plan.policy ? [plan.policy] : []), ...plan.rules, ...intents]);
   }
 
   const created = await send<unknown>(ctx.http, planNew(spec, "<colony>", by, name, opts).create, 120_000);
@@ -482,6 +503,19 @@ async function newColony(cmd: Extract<Command, { name: "new" }>, ctx: Ctx): Prom
   if (!colony) throw new Error(`the server did not return a colony id: ${JSON.stringify(created)}`);
   const plan = planNew(spec, colony.id, by, name, opts);
   if (!ctx.flags.json) io.stdout(`${c.green("✓")} Colony ${c.bold(name)} ${c.dim(colony.id)} created from ${cmd.specPath}`);
+
+  // The policy holds before any rule or intent exists, so no agent can change a protected path without a person.
+  let policy: DecidePolicyView | null = null;
+  if (plan.policy && spec.policy) {
+    const declared = spec.policy;
+    policy = await newColonyPolicy(ctx, plan.policy, declared, colony.id);
+    if (!ctx.flags.json) {
+      const parts: string[] = [];
+      if (declared.protectedPaths) parts.push(declared.protectedPaths.length > 0 ? `protects ${declared.protectedPaths.join(", ")} ${c.dim("(a person decides every change to them)")}` : "protects no paths");
+      if (declared.commentProof !== undefined) parts.push(`comment-only proof ${declared.commentProof ? "on" : c.yellow("off")}`);
+      io.stdout(`  ${c.green("✓")} policy ${parts.join(c.dim(" · "))}`);
+    }
+  }
 
   const rules: unknown[] = [];
   for (const req of plan.rules) {
@@ -503,7 +537,7 @@ async function newColony(cmd: Extract<Command, { name: "new" }>, ctx: Ctx): Prom
     }
   }
   if (ctx.flags.json) {
-    printJson(ctx, { colony: created, rules, intents });
+    printJson(ctx, plan.policy ? { colony: created, policy, rules, intents } : { colony: created, rules, intents });
     return 0;
   }
   const waves = new Map<number, number>();

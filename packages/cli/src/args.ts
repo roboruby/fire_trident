@@ -703,10 +703,21 @@ ft new --spec <file> [--name <name>] [--by <name>]
 
 Start a colony from a spec. The file is Markdown with one fenced block tagged
 \`\`\`json firetrident holding {"firetrident":"spec/v1", name, goal, rules[], intents[]}.
-ft creates an empty colony, adds each rule, then declares each intent.
+ft creates an empty colony, sets the spec's policy if it has one, adds each
+rule, then declares each intent, so no agent has work before the policy holds.
 
   context[]          ## sections every intent carries as its spec context
                      (default: every section but the machine-readable one)
+  policy.protectedPaths
+                     paths only a person may change, as globs written as for
+                     rules (**, *, ?, {a,b}; one naming a directory covers
+                     everything under it; at most 50), such as
+                     ["src/auth/**", "db/migrations"]: a change that writes,
+                     deletes or renames one goes to a person, even with review off
+  policy.commentProof
+                     false: changes that only edit comments in existing script
+                     files need review like any other (default true: they land
+                     on the deterministic proof). ft policy shows or changes both
   intents[].uses     files the intent builds on (other intents create them): it is
                      declared after them, they become its parent, and its agent
                      waits for them to land and reads them before writing
