@@ -9,6 +9,7 @@ import { artifactsFor, colonyStub, regionStub, trunkStub } from "../agents/rpc.t
 import { withArtifactsRetry } from "../artifacts/git.ts";
 import { ESCALATION_KINDS, MAX_REPORT_CHARS } from "../colony/direction.ts";
 import { inlineEnabled, inlineOffered } from "../colony/inline.ts";
+import { budgetTools, callBudget } from "./budget.ts";
 import { structuredToolErrors, toolError } from "./errors.ts";
 import { serverInstructions } from "./instructions.ts";
 import { FireTridentTools, MAX_WAIT_S } from "./tools.ts";
@@ -98,6 +99,10 @@ export class FireTridentMcp extends McpAgent<Env, Record<string, never>, Record<
   }
 
   async init(): Promise<void> {
+    // Per-session call budget (FT_AGENT_CALL_BUDGET, mcp/budget.ts): every tool registered below first takes a token
+    // from this session's bucket, and a call that finds it empty answers rate_limit without reaching the colony.
+    budgetTools(this.server, callBudget(this.env.FT_AGENT_CALL_BUDGET));
+
     const readOnly = { readOnlyHint: true, openWorldHint: false };
 
     this.server.registerTool(

@@ -99,6 +99,15 @@ export interface Env {
   FT_OPEN_WRITES?: string;
   /** Secret (optional): token MCP clients must present at /mcp and /sse. */
   FT_MCP_TOKEN?: string;
+  /**
+   * Optional: a call budget for each MCP session at /mcp and /sse, "on" (4 tool calls a second, 20 at once after a
+   * pause) or "<calls per second>,<burst>" such as "8,40"; absent, "off" or anything else is off. Global, since a
+   * session may not have joined a colony yet. A call that finds its session's bucket empty answers rate_limit (429,
+   * retryable after retryAfterMs, the time until a token is back) without running, so it never reaches the colony
+   * (mcp/budget.ts). The bucket lives in the session object's memory: a new session starts with a full one. The
+   * public read-only MCP (/public/mcp) keeps its own caps.
+   */
+  FT_AGENT_CALL_BUDGET?: string;
   /** Secret (optional): enables Claude agents via AI Gateway / Anthropic. */
   ANTHROPIC_API_KEY?: string;
   /** Dynamic Workers (Worker Loader): trunk certification runs each colony's own tests in one. */
