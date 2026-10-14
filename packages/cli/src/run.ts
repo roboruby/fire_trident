@@ -55,6 +55,7 @@ import { formatGuide, formatLessonDecision, type GuideViewLike } from "./guide.t
 import { extractSpec, planNew } from "./spec.ts";
 import { formatMegafile } from "./megafile.ts";
 import { formatImpact } from "./impact.ts";
+import { signatureFailed } from "./signatures.ts";
 import type { IntentBody, SpecPolicy } from "./spec.ts";
 import type { GuideLesson, Intent, Landing, LineageNote, Proposal, Rule } from "@fire_trident/core";
 
@@ -259,7 +260,8 @@ async function execute(cmd: Command, ctx: Ctx): Promise<number> {
       const res = await send<unknown>(ctx.http, req, 60_000);
       if (ctx.flags.json) printJson(ctx, res);
       else io.stdout(formatVerify(cmd.colony, res, c, io.now()));
-      return verifyFailed(res) ? 1 : 0;
+      // A bad signature (signatures.ts) fails it too.
+      return verifyFailed(res) || signatureFailed(res) ? 1 : 0;
     }
     case "review-list": {
       const snapReq = planRequest({ name: "status", colony: cmd.colony }, ctx.by) as ApiRequest;

@@ -24,6 +24,7 @@ import type { StuckAction, StuckItem, StuckReport } from "@fire_trident/core";
 import { changeSize, dangerLines, lookHereFirst, parseHunks, reviewOf, visible, type DiffLine, type ReviewFile, type ReviewView } from "./review.ts";
 import { whySummary } from "./spec.ts";
 import { megafileLines } from "./megafile.ts";
+import { signatureLines } from "./signatures.ts";
 import { spendLine } from "./spend.ts";
 
 /** ANSI styling functions; identity functions when color is off. */
@@ -914,6 +915,8 @@ export function formatVerify(colony: string, res: unknown, c: Colors, now: numbe
     if (list.length > VERIFY_LISTED) out.push(c.dim(`    +${num(list.length - VERIFY_LISTED)} more`));
   }
   if (verifyFailed(r)) out.push(c.dim("  A commit's trailer cannot change without changing the commit: the note on the repository is what changed."));
+  // Signed lineage notes (signatures.ts): where the server signs, whether each commit is signed by its published key.
+  out.push(...signatureLines(notes, c, now));
   return out.join("\n");
 }
 

@@ -1,4 +1,5 @@
 import type { LandingDiff, NoteCheck } from "@fire_trident/core";
+import { signedSeal } from "./signed.ts";
 
 /**
  * A lineage note's integrity badge and a landing's change, as the web app reads them: the note check of one landing
@@ -48,7 +49,8 @@ export function sealOf(check: unknown): NoteSeal {
   const own = c.ownCopy === true ? " FireTrident's own copy still matches the trailer, so it can be put back." : "";
   switch (c.status) {
     case "intact":
-      return { state: "intact", label: "Note intact", detail: "The note on refs/notes/firetrident hashes to the FT-Note trailer its commit carries: nobody rewrote it after it landed." };
+      // Signed lineage notes (signed.ts): where the server checked the commit's signature, the badge says so.
+      return signedSeal(check) ?? { state: "intact", label: "Note intact", detail: "The note on refs/notes/firetrident hashes to the FT-Note trailer its commit carries: nobody rewrote it after it landed." };
     case "altered":
       return { state: "altered", label: "Note altered", detail: `${sentence(`the note on the trunk repository does not match its commit's FT-Note trailer${detail ? `: ${detail}` : ""}`)}${own}` };
     case "no-trailer":

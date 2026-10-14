@@ -2,6 +2,7 @@ import git from "isomorphic-git";
 import type { Id, Millis, NoteCheck, NoteCheckStatus, NotesVerification, Sha } from "@fire_trident/core";
 import type { GitRepo } from "../artifacts/git.ts";
 import { checkNote, trailerDigest } from "./digest.ts";
+import { checkSignature, type PublishedKey } from "./signature.ts";
 
 /**
  * `ft verify`: the newest landings' lineage notes on the trunk repository, checked against the FT-Note trailer of the
@@ -33,9 +34,9 @@ export interface SourceEntry {
   type: string;
 }
 
-/** Git objects by id from one place; null when that place does not have the object. */
+/** Git objects by id from one place; null when that place does not have the object. `parents`: where the place says. */
 export interface ObjectSource {
-  commit(oid: string): Promise<{ tree: string; message: string } | null>;
+  commit(oid: string): Promise<{ tree: string; message: string; parents?: string[] } | null>;
   tree(oid: string): Promise<SourceEntry[] | null>;
   blob(oid: string): Promise<Uint8Array | null>;
 }
@@ -54,7 +55,7 @@ export function localSource(repo: GitRepo): ObjectSource {
   };
   const at = { fs: repo.fs, dir: repo.dir, cache: repo.cache };
   return {
-    commit: (oid) => git.readCommit({ ...at, oid }).then((r) => ({ tree: r.commit.tree, message: r.commit.message }), absent),
+    commit: (oid) => git.readCommit({ ...at, oid }).then((r) => ({ tree: r.commit.tree, message: r.commit.message, parents: r.commit.parent }), absent),
     tree: (oid) => git.readTree({ ...at, oid }).then((r) => r.tree.map((e) => ({ name: e.path, oid: e.oid, type: e.type })), absent),
     blob: (oid) => git.readBlob({ ...at, oid }).then((r) => r.blob, absent),
   };
@@ -65,7 +66,7 @@ export function bindingSource(open: () => Promise<ArtifactsRepo>): ObjectSource 
   return {
     async commit(oid) {
       const c = await (await open()).readCommit(oid);
-      return c ? { tree: c.treeHash, message: c.message } : null;
+      return c ? { tree: c.treeHash, message: c.message, ...(Array.isArray(c.parents) ? { parents: c.parents } : {}) } : null;
     },
     async tree(oid) {
       const t = await (await open()).readTree(oid);
@@ -118,8 +119,11 @@ export async function noteAt(src: ObjectSource, root: string, oid: Sha, trees: M
   }
 }
 
-/** Each landing's note under notes commit `tip` (null: the repository has no notes) against its commit's trailer, in input order. */
-export async function checkLandings(rows: LandingRow[], p: { src: ObjectSource; tip: Sha | null }): Promise<NoteCheck[]> {
+/**
+ * Each landing's note under notes commit `tip` (null: the repository has no notes) against its commit's trailer, in input
+ * order. With `keys` (the deployment signs notes, trunk/signature.ts), each check also says whether its commit is signed.
+ */
+export async function checkLandings(rows: LandingRow[], p: { src: ObjectSource; tip: Sha | null; keys?: readonly PublishedKey[] }): Promise<NoteCheck[]> {
   const trees = new Map<string, Promise<SourceEntry[] | null>>();
   let root: Promise<string | null> | null = null;
   const rootTree = (): Promise<string | null> =>
@@ -129,17 +133,21 @@ export async function checkLandings(rows: LandingRow[], p: { src: ObjectSource; 
     }));
   return mapLimit(rows, CONCURRENCY, async (r): Promise<NoteCheck> => {
     const base = { landingId: r.landingId, trunkSha: r.trunkSha, at: r.at };
-    let message: string | null;
+    let commit: Awaited<ReturnType<ObjectSource["commit"]>>;
     try {
-      message = (await p.src.commit(r.trunkSha))?.message ?? null;
+      commit = await p.src.commit(r.trunkSha);
     } catch (e) {
       return { ...base, status: "unreadable", detail: `the commit could not be read: ${errorText(e)}` };
     }
-    if (message === null) return { ...base, status: "unreadable", detail: "the commit could not be read" };
+    const message = commit?.message ?? null;
+    if (commit === null || message === null) return { ...base, status: "unreadable", detail: "the commit could not be read" };
+    // Signed lineage notes (trunk/signature.ts): where the deployment signs, whether this commit is signed by its key.
+    const signature = p.keys && p.keys.length > 0 ? await checkSignature(commit, p.keys) : null;
+    const read = signature ? { ...base, signature } : base;
     const trailer = trailerDigest(message);
-    if (trailer === null) return { ...base, status: "no-trailer", detail: "the commit carries no FT-Note trailer (it landed before notes were sealed)" };
+    if (trailer === null) return { ...read, status: "no-trailer", detail: "the commit carries no FT-Note trailer (it landed before notes were sealed)" };
     const ownCopy = r.note !== null && (await checkNote(r.note, trailer)).status === "intact";
-    const sealed = { ...base, trailer, ownCopy };
+    const sealed = { ...read, trailer, ownCopy };
     let bytes: Uint8Array | null;
     try {
       const tree = await rootTree();

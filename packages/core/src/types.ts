@@ -710,6 +710,23 @@ export interface LineageNote {
  */
 export type NoteCheckStatus = "intact" | "altered" | "missing" | "pending" | "no-trailer" | "unreadable";
 
+/**
+ * A landing commit's FT-Note-Signature trailer (signed lineage notes, FT_NOTE_KEY) against the trunk writer's published
+ * key: `signed` (the signature over the commit's note digest, tree and parent verifies), `bad-signature` (it does not,
+ * it names a key that is not published, or it is not in the form the trunk writer writes), `unsigned` (the commit carries
+ * none: it landed before signing).
+ */
+export type NoteSignatureStatus = "signed" | "bad-signature" | "unsigned";
+
+/** The signature check of one landing commit. */
+export interface NoteSignatureCheck {
+  status: NoteSignatureStatus;
+  /** The key the signature names (16 hex digits of the SHA-256 of the raw public key). */
+  keyId?: string;
+  /** `bad-signature`: why, in words. */
+  detail?: string;
+}
+
 /** The check of one landing's lineage note (`ft verify`, GET /api/colonies/:id/notes/verify). */
 export interface NoteCheck {
   landingId: Id;
@@ -724,6 +741,8 @@ export interface NoteCheck {
   ownCopy?: boolean;
   /** Why the note is not intact, in words. */
   detail?: string;
+  /** Whether the commit is signed by the trunk writer's published key; present where the deployment signs notes (FT_NOTE_KEY) and the commit could be read. */
+  signature?: NoteSignatureCheck;
 }
 
 /** The newest landings' lineage notes on the trunk repository, checked against their commits. */

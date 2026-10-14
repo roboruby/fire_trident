@@ -44,6 +44,7 @@ import { mapLine } from "./blame.ts";
 import { maskNote } from "./mask.ts";
 import { addNotes } from "./notes.ts";
 import { sealNote, withNoteDigest } from "./digest.ts";
+import { noteSigner, publishedKeys, withSignature } from "./signature.ts";
 import { noteProvenance } from "./provenance.ts";
 import { bindingSource, checkLandings, layered, localSource, summarize, verifyLimit } from "./verify.ts";
 import { findLanding, landingOf, landingRow, storedNote, verifyOne } from "./landing-note.ts";
@@ -603,7 +604,7 @@ export class TrunkDO extends DurableObject<Env> {
     try {
       const notes = await checkLandings(
         rows.map((r) => ({ landingId: r.id, trunkSha: r.trunk_sha, at: r.at, note: r.note, waiting: due.has(r.id) })),
-        { src: layered(localSource(this.repo()), remote), tip },
+        { src: layered(localSource(this.repo()), remote), tip, keys: await publishedKeys(this.env.FT_NOTE_KEY) },
       );
       return summarize(st.colonyId, tip, notes, Date.now());
     } finally {
@@ -623,7 +624,7 @@ export class TrunkDO extends DurableObject<Env> {
     const opened: { repo?: Promise<ArtifactsRepo> } = {};
     const remote = bindingSource(() => (opened.repo ??= this.trunkBinding(st.trunk).get(st.trunk.name)));
     try {
-      return await verifyOne(landingRow(this.sql, found), { colonyId: st.colonyId, tip: () => this.remoteNotesTip(), src: layered(localSource(this.repo()), remote) });
+      return await verifyOne(landingRow(this.sql, found), { colonyId: st.colonyId, tip: () => this.remoteNotesTip(), src: layered(localSource(this.repo()), remote), keys: await publishedKeys(this.env.FT_NOTE_KEY) });
     } finally {
       if (opened.repo) dispose(await opened.repo.catch(() => null));
     }
@@ -1537,6 +1538,8 @@ export class TrunkDO extends DurableObject<Env> {
     const pending = new Map<string, PendingObject & { entries?: TreeEntry[] }>();
     // What the chain's earlier commits left at the paths they changed (null: deleted).
     const chained = new Map<Path, { blob: Sha; mode: string } | null>();
+    // Signed lineage notes (trunk/signature.ts): FT_NOTE_KEY's signer, or null, and the commits are built as before.
+    const signer = await noteSigner(this.env.FT_NOTE_KEY);
     for (let i = 0; i < accepted.length; i++) {
       const proposals = accepted[i]!;
       if (proposals.length === 0) continue;
@@ -1570,7 +1573,7 @@ export class TrunkDO extends DurableObject<Env> {
       // FT-Note trailer (trunk/digest.ts); certification, added after landing, is left out of the digest.
       const note = await sealNote(buildNote({ id, colonyId: st.colonyId }, proposals, info, ctx, revalidated, merges.merged));
       lap("note");
-      const message = withNoteDigest(landingMessage({ id, intentIds }, proposals, info.titles), note.digest);
+      const message = withNoteDigest(await withSignature(landingMessage({ id, intentIds }, proposals, info.titles), signer, { digest: note.digest, tree, parents: [parent] }), note.digest);
       const content = commitContent({ tree, parents: [parent], message, name: LANDING_IDENTITY.name, email: LANDING_IDENTITY.email, timestamp: Math.floor(at / 1000) });
       const commit = objectId("commit", content);
       pending.set(commit, { type: "commit", content });
@@ -1926,7 +1929,9 @@ export class TrunkDO extends DurableObject<Env> {
       const id = newId("lnd_");
       // Sealed like a landing's note: the commit's last trailer is the note's digest (trunk/digest.ts).
       const note = await sealNote({ ...p.note, landingId: id, colonyId: st.colonyId });
-      const message = withNoteDigest(`${p.message.replace(/\s+$/, "")}\nFT-Landing: ${id}`, note.digest);
+      // Signed like a landing too, when FT_NOTE_KEY holds a key (trunk/signature.ts).
+      const signer = await noteSigner(this.env.FT_NOTE_KEY);
+      const message = withNoteDigest(await withSignature(`${p.message.replace(/\s+$/, "")}\nFT-Landing: ${id}`, signer, { digest: note.digest, tree, parents: [parent] }), note.digest);
       const commit = await writeCommitObject(g, { tree, parents: [parent], message, at });
       const paths = [...changes.keys()].sort();
       const landing: Landing = {

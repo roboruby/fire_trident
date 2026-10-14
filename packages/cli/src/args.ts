@@ -887,8 +887,11 @@ FireTrident wrote it (without the certification added later). Anyone who can
 write to the repository could rewrite a note, but not the commit that carries
 its digest. Each note is intact, altered, missing, not pushed yet, or from a
 commit that predates the trailer; for an altered or missing note, ft verify
-says whether FireTrident's own copy still matches. Exits 1 when a note is
-altered or missing.
+says whether FireTrident's own copy still matches. Where the deployment signs
+notes, each commit is also signed by the key it publishes at
+/.well-known/firetrident-keys.json, unsigned (it landed before signing), or
+has a bad signature. Exits 1 when a note is altered or missing, or a
+signature is bad.
 
   --limit <n>    Landings to check, newest first (default 20, at most 200)
 
