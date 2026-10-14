@@ -55,6 +55,7 @@ import { formatGuide, formatLessonDecision, type GuideViewLike } from "./guide.t
 import { extractSpec, planNew } from "./spec.ts";
 import { formatMegafile } from "./megafile.ts";
 import { formatImpact } from "./impact.ts";
+import { autonomyLine, formatImmune } from "./immune.ts";
 import type { IntentBody, SpecPolicy } from "./spec.ts";
 import type { GuideLesson, Intent, Landing, LineageNote, Proposal, Rule } from "@fire_trident/core";
 
@@ -200,6 +201,9 @@ async function execute(cmd: Command, ctx: Ctx): Promise<number> {
         // The paths only a person may change, read after the summary (a server that predates them shows none).
         const rows = policyRows(await tryGet<DecidePolicyView>(ctx, { method: "GET", path: colonyPath(cmd.colony, "/decide/policy") }), c);
         if (rows.length > 0) io.stdout(rows.join("\n"));
+        // Earned autonomy in one line (immune.ts); a server that predates the immune report shows none.
+        const autonomy = autonomyLine(await tryGet<unknown>(ctx, { method: "GET", path: colonyPath(cmd.colony, "/immune") }), cmd.colony, c);
+        if (autonomy) io.stdout(autonomy);
         // The build the server runs, last (about.ts); a server that predates GET /api/about shows none.
         const build = buildRow(await tryGet<AboutLike>(ctx, ABOUT_REQUEST), ctx.http.baseUrl, c, io.now());
         if (build) io.stdout(build);
@@ -307,6 +311,12 @@ async function execute(cmd: Command, ctx: Ctx): Promise<number> {
       const res = await send<unknown>(ctx.http, req, 120_000);
       if (ctx.flags.json) printJson(ctx, res);
       else io.stdout(formatVaccinate(cmd.colony, cmd.count, res, c));
+      return 0;
+    }
+    case "immune": {
+      const res = await send<unknown>(ctx.http, req, 60_000);
+      if (ctx.flags.json) printJson(ctx, res);
+      else io.stdout(formatImmune(cmd.colony, res, c, io.now()));
       return 0;
     }
     case "certify": {

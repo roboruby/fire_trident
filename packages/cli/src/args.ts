@@ -50,6 +50,7 @@ export type Command =
   | { name: "stop"; colony: string; agentId?: string; all: boolean; reason?: string }
   | { name: "delete"; colony: string }
   | { name: "vaccinate"; colony: string; count: number }
+  | { name: "immune"; colony: string }
   | { name: "certify"; colony: string; action: "show" | "now" | "on" | "off" }
   | { name: "policy"; colony: string; protect: string[]; unprotect: string[]; commentProof?: boolean }
   | { name: "intent-amend"; colony: string; intentId: string; title?: string; why?: string; footprint?: string[]; priority?: number; reason: string; by?: string }
@@ -126,6 +127,7 @@ const COMMAND_OPTIONS: Record<string, Record<string, OptionSpec>> = {
   stop: { all: { type: "boolean" }, reason: { type: "string" } },
   delete: { yes: { type: "boolean" } },
   vaccinate: { count: { type: "string" } },
+  immune: {},
   certify: { now: { type: "boolean" }, on: { type: "boolean" }, off: { type: "boolean" } },
   policy: { protect: { type: "string", multiple: true }, unprotect: { type: "string", multiple: true }, "comment-proof": { type: "string" } },
   help: {},
@@ -438,6 +440,12 @@ function build(word: string, v: Record<string, unknown>, p: string[]): Command {
       const colony = colonyArg(p[0], usage);
       return { name: "vaccinate", colony, count: positiveInt(required(v.count, "count"), "--count", 64) };
     }
+    case "immune": {
+      // Earned autonomy per region, with the antibodies, detectors and alert budget (immune.ts).
+      const usage = "ft immune <colony>";
+      noExtras(p, 1, usage);
+      return { name: "immune", colony: colonyArg(p[0], usage) };
+    }
     case "certify": {
       const usage = "ft certify <colony> [--now | --on | --off]";
       noExtras(p, 1, usage);
@@ -722,6 +730,7 @@ Commands
   agents <colony>                  List agents: state, intent, step, what each says it is doing
   stop <colony> <agentId>|--all    Stop one agent, or every in-platform agent
   vaccinate <colony> --count <n>   Inject planted bad changes to test the immune layer
+  immune <colony>                  Earned autonomy per region: what earned it, what revoked it
   certify <colony>                 Trunk certification: results, --now, --on/--off
   policy <colony>                  Paths only a person may change; the comment-only proof
   why <colony> <path[:line]>       Show the lineage behind a file or line
@@ -807,7 +816,8 @@ ft status <colony>
 
 Print a compact summary: source, trunk and green commits, files and regions,
 intents by status, agents by state, violations left, the decision funnel,
-recent landings, the paths only a person may change (ft policy), and stuck work:
+recent landings, the paths only a person may change (ft policy), how many
+regions earned autonomy and how many lost it (ft immune), and stuck work:
 intents claimed for 10 minutes with no change, intents whose changes came back
 3 or more times, a trunk red for 15 minutes, reports and changes waiting 10
 minutes for a person, and agents alive but not moving for 10 minutes, each with
@@ -1094,6 +1104,21 @@ Examples
   ft policy web --protect "src/auth/**" --protect db/migrations
   ft policy web --unprotect db/migrations
   ft policy web --comment-proof off
+`,
+  immune: `
+ft immune <colony>
+
+Where review relaxed and what took it back. A region earns autonomy once 3 of
+its changes (the policy's autonomyAfter) land approved by a deterministic proof,
+a second model or a person; then the reflex alone may land a change there when
+a person or a rule wrote its intent. An escalation to a person or a rejection
+there takes it back until as many land approved again. Lists each region, the
+latest to move first: earned, revoked or not yet, its approved landings, and
+what earned it, what revoked it and what earns it back. Then the antibodies,
+the detectors on probation and the alert budget. A public read: no token needed.
+
+Example
+  ft immune web
 `,
   vaccinate: `
 ft vaccinate <colony> --count <n>

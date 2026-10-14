@@ -91,6 +91,32 @@ describe("review views", () => {
   });
 });
 
+describe("earned autonomy", () => {
+  it("lists each region's approved landings, its revocation, and when it last moved", () => {
+    const { sql, db } = sqlStorage();
+    const store = new DecideStore(sql);
+    const landed = (id: string, region: string, layer: string, at: number, vaccine = false) => {
+      store.recordOutcome({ proposalId: id, region, head: "h", layer, action: "land", risk: 0, detectors: [], vaccine, state: null, at });
+      db.prepare("INSERT INTO proposals (id, status) VALUES (?, 'landed')").all(id);
+    };
+    for (const [i, at] of [10, 20, 30].entries()) landed(`prp_a${i}`, "src/api", "llm", at);
+    landed("prp_b0", "src/store", "deterministic", 40);
+    // An escalation revokes src/auth; a person's later approval of that change counts toward earning it back.
+    landed("prp_c0", "src/auth", "llm", 5);
+    store.recordOutcome({ proposalId: "prp_c1", region: "src/auth", head: "h", layer: "reflex", action: "escalate", risk: 1, detectors: [], vaccine: false, state: null, at: 50 });
+    store.revokeAutonomy("src/auth", "escalated prp_c1", 50);
+    store.recordHuman("prp_c1", "src/auth", "h", "approve", 70);
+    db.prepare("INSERT INTO proposals (id, status) VALUES ('prp_c1', 'landed')").all();
+    // A vaccine moves nothing.
+    landed("prp_v0", "src/store", "llm", 90, true);
+    expect(store.autonomyTable(3)).toEqual([
+      { region: "src/api", approved: 3, earned: true, revokedAt: null, reason: null, lastAt: 30 },
+      { region: "src/auth", approved: 1, earned: false, revokedAt: 50, reason: "escalated prp_c1", lastAt: 70 },
+      { region: "src/store", approved: 1, earned: false, revokedAt: null, reason: null, lastAt: 40 },
+    ]);
+  });
+});
+
 describe("intents on probation", () => {
   it("records security findings per intent, merging their classes", () => {
     const store = new DecideStore(sqlStorage().sql);
