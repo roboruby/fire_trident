@@ -1,0 +1,13 @@
+[21:52:20] setup: 583 trunk blobs; using LICENSE bd174facca
+[21:52:29] feed {"connected":true,"region":"src","shared":"src/hono.ts"}
+[21:52:32] readers took work {"readers":17,"of":30}
+[21:52:49] readers pushed their modules {"readers":17,"imports":"Hono","from":"src/hono.ts"}
+[21:52:51] writer pushed its workspace {"oldBlob":"c9472202a7","newBlob":"e826138801","edited":"class Hono","line":16}
+[21:52:51] writer proposed {"proposal":"prp_mv8nbri9k6vi8y"}
+[21:52:55] writer landed {"landing":"lnd_mv8nbu3wophdu7"}
+[21:52:56] readers proposed {"proposals":17}
+[21:53:14] reader name assumptions {"recorded":17,"of":17,"landedFirstTry":0}
+[21:53:14] readers returned {"returned":17,"landedInstead":0,"namedLine":17,"reasons":["stale: src/hono.ts (expected c9472202a710231b8151e06cc812290bf53bd3ab, trunk has e8261388011163f5f91
+[21:53:40] readers re-proposed after rework {"proposals":17}
+[21:54:26] sigma max 17.00; above 1 from 43554 to 87024 ms; inhibition events 11; re-landing commits 6; wrote <scratch>/r10-live/rv-edit.json
+exit 0
