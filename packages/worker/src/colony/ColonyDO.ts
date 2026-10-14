@@ -136,6 +136,7 @@ import {
 import type { AgentListEntry, ColonySeries, ColonySummary, RegistryEntry, SnapshotWithSeries } from "./metrics.ts";
 import { Certifier, type CertifyHost, type CertifyTrunk } from "../certify/certifier.ts";
 import { culpritsEnabled, type LandedOn } from "../certify/culprit.ts";
+import { bisectEnabled } from "../certify/bisect.ts";
 import type { CertifyPolicy } from "../certify/repair.ts";
 import { reviewPreview, type ReviewPreview } from "../agents/preview.ts";
 import { RETURN_PATHS, extractUsage, returnReason, type LastReturn } from "../agents/prompt.ts";
@@ -3547,6 +3548,16 @@ export class ColonyDO extends DurableObject<Env> {
       landingOf: (sha) => {
         const r = this.sql.exec<{ id: string; at: number }>("SELECT id, at FROM landings WHERE trunk_sha = ? ORDER BY at DESC LIMIT 1", sha).toArray()[0];
         return r ? { landingId: r.id, at: r.at } : null;
+      },
+      // First red search (certify/bisect.ts): off unless FT_BISECT names this colony. A found commit is added to the
+      // open repair intent's why, without a revision: it adds context and sends back no change in flight.
+      bisect: () => bisectEnabled(this.env.FT_BISECT, this.loadColony()?.colony.id ?? ""),
+      repairWhy: (intentId, edit) => {
+        const row = this.sql.exec<{ why: string }>("SELECT why FROM intents WHERE id = ? AND source = 'certify' AND status IN ('open', 'claimed', 'proposed')", intentId).toArray()[0];
+        const why = row ? edit(row.why) : null;
+        if (!row || why === null || why === row.why) return false;
+        this.sql.exec("UPDATE intents SET why = ? WHERE id = ?", why, intentId);
+        return true;
       },
     };
   }

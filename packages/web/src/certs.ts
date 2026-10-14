@@ -1,7 +1,7 @@
 import { fmtInt, shortSha } from "./format.ts";
 import type { CertView } from "./store.ts";
 
-/** Trunk certification as the UI words it (the trunk bar, the Why tab, the event log), with a red result's suspects. */
+/** Trunk certification as the UI words it (the trunk bar, the Why tab, the event log), with a red result's suspects and its first failing commit. */
 
 /** Tests that did not run: "2 skipped · 1 todo", or "" when every test ran. */
 export function certNotRun(c: Pick<CertView, "counts">): string {
@@ -68,6 +68,40 @@ export function certSuspects(c: Pick<CertView, "suspects">, colonyId: string, ma
   return out;
 }
 
+/** A red result's first failing commit (FT_BISECT) as the card words it: one sentence, and the commands that undo the proposals it names. */
+export interface FirstRedView {
+  text: string;
+  /** `ft revert <colony> <prp>` for the proposals that changed what the failing tests load (at most two). */
+  undo: string[];
+}
+
+/**
+ * The first red search's answer in plain words: "The failing tests first failed at commit 1a2b3c4 (landing lnd_4,
+ * intent “Speed up subtraction”), found in 3 test runs; its change to src/math.ts is the likely cause." When it named
+ * no commit, why. Null without an answer; malformed entries (older or odd data) are left out.
+ */
+export function certFirstRed(c: Pick<CertView, "firstRed">, colonyId: string): FirstRedView | null {
+  const f = c.firstRed as Partial<NonNullable<CertView["firstRed"]>> | undefined;
+  if (!f || typeof f !== "object") return null;
+  const runs = typeof f.probes === "number" ? `${fmtInt(f.probes)} test run${f.probes === 1 ? "" : "s"}` : "";
+  if (f.status !== "found" || typeof f.trunkSha !== "string") {
+    const reason = typeof f.reason === "string" && f.reason ? ` ${f.reason}` : "";
+    return f.status === "inconclusive" ? { text: `The search for the first failing commit was inconclusive.${reason}`, undo: [] } : null;
+  }
+  const intents = (Array.isArray(f.intents) ? f.intents : []).filter((i) => i && typeof i.id === "string");
+  const proposals = (Array.isArray(f.proposals) ? f.proposals : []).filter((p) => p && typeof p.id === "string" && Array.isArray(p.paths));
+  const titled = intents.map((i) => (typeof i.title === "string" && i.title ? `“${i.title}”` : i.id));
+  const who =
+    titled.length === 0 ? "a commit FireTrident made itself" : titled.length === 1 ? `intent ${titled[0]}` : titled.length === 2 ? `intents ${titled[0]} and ${titled[1]}` : `intents ${titled[0]} and ${fmtInt(titled.length - 1)} more`;
+  const where = [typeof f.landingId === "string" && f.landingId ? `landing ${f.landingId}` : "", who].filter(Boolean).join(", ");
+  const paths = [...new Set(proposals.flatMap((p) => p.paths.filter((x): x is string => typeof x === "string")))].sort();
+  const cause = paths.length > 0 ? `its change to ${names(paths, 3)} is the likely cause.` : "none of its proposals changed a file the failing tests load.";
+  return {
+    text: `The failing tests first failed at commit ${shortSha(f.trunkSha)} (${where})${runs ? `, found in ${runs}` : ""}; ${cause}`,
+    undo: proposals.slice(0, 2).map((p) => `ft revert ${colonyId || "<colony>"} ${p.id}`),
+  };
+}
+
 /** The hover text of a certification: what ran and, when red, which tests failed and why. */
 export function certTitle(c: CertView): string {
   const k = c.counts;
@@ -85,5 +119,6 @@ export function certTitle(c: CertView): string {
   const more = k ? k.fail + k.cancelled - lines.length : 0;
   const suspects = certSuspects(c, "");
   const suspected = suspects.length > 0 ? `\nSuspects, newest first:\n${suspects.map((s) => `• ${s.ref}${s.title ? ` “${s.title}”` : ""}${s.paths ? ` changed ${s.paths}` : ""}`).join("\n")}` : "";
-  return `${shortSha(c.trunkSha)}: ${fmtInt(k ? k.fail + k.cancelled : lines.length)} of ${fmtInt(k?.tests ?? 0)} tests failing${notRun ? ` (${notRun})` : ""}${took}\n${lines.join("\n")}${more > 0 ? `\n… and ${more} more` : ""}${suspected}${reused}`;
+  const firstRed = certFirstRed(c, "");
+  return `${shortSha(c.trunkSha)}: ${fmtInt(k ? k.fail + k.cancelled : lines.length)} of ${fmtInt(k?.tests ?? 0)} tests failing${notRun ? ` (${notRun})` : ""}${took}\n${lines.join("\n")}${more > 0 ? `\n… and ${more} more` : ""}${suspected}${firstRed ? `\n${firstRed.text}` : ""}${reused}`;
 }

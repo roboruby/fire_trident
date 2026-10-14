@@ -175,6 +175,14 @@ export interface Env {
    * its repair intent's why names them too.
    */
   FT_CULPRITS?: string;
+  /**
+   * Optional: the first red search, "on", or a comma-separated list of colony ids; absent or "off" is off. After a red
+   * certification is recorded, its failing test files and what they load run alone on the commits since the last green
+   * certification (from the trunk writer's landing log), halving the range each run, at most 8 runs and 60 s in all; the
+   * result gains `firstRed` (the commit, its landing and intents, the proposals that changed what the tests load), a
+   * `bisect` event says so, and the open repair intent's why names it (certify/bisect.ts). Never on a landing's path.
+   */
+  FT_BISECT?: string;
 }
 
 export const WORKSPACE_SHARDS = 4;

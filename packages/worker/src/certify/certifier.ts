@@ -1,9 +1,11 @@
-import type { Certification, CertificationStatus, ColonyEvent, FailingTest, FileVersion, Id, Landing, NoteCertification, Path, Sha } from "@fire_trident/core";
+import type { Certification, CertificationStatus, ColonyEvent, FailingTest, FileVersion, FirstRed, Id, Landing, LineageNote, NoteCertification, Path, Sha } from "@fire_trident/core";
+import { FirstRedSearch } from "./bisect.ts";
 import { TEST_FILE } from "./compile.ts";
 import { SUSPECT_MS, findSuspects, publicSuspect, type FoundSuspect, type LandedOn } from "./culprit.ts";
 import { DEFAULT_CAPS, load, testFiles, type CompileMemo, type IndexedFile, type Loaded } from "./load.ts";
 import { RUNNER_FAILED, RUNNER_VERSION, buildPlan, closureOf, type Plan } from "./plan.ts";
 import { DEFAULT_POLICY, isOpen, mergePolicy, repairAction, repairIntent, type CertifyPolicy, type RepairIntentInput, type RepairRow } from "./repair.ts";
+import type { LandingRange, RangeQuery } from "./range.ts";
 import { countsLine, isReport, readBounded, summarize, type RunReport } from "./report.ts";
 import { fileKeyText, mergeResults, splitReport, type FileResult } from "./cache.ts";
 import { CertifySchedule } from "./schedule.ts";
@@ -55,6 +57,9 @@ export interface CertifyTrunk {
   markCertified(sha: Sha): Promise<boolean>;
   /** Blob of each path at a commit (null when absent; all null for an unknown commit): culprit finding reads the last green commit. */
   baseBlobs?(baseSha: Sha, paths: Path[]): Promise<FileVersion[]>;
+  /** The first red search (bisect.ts): the landings between the last green commit and the red one, and a landing's lineage note. */
+  landingRange?(q: RangeQuery): Promise<LandingRange>;
+  landingNote?(ref: string): Promise<{ landing: Landing; note: LineageNote | null } | null>;
 }
 
 /** What the colony gives the certifier. */
@@ -85,6 +90,10 @@ export interface CertifyHost {
   landedOn?(paths: Path[]): Promise<LandedOn[]>;
   /** The colony's landing that made commit `sha`, or null (a commit FireTrident made itself, or one no longer kept). */
   landingOf?(sha: Sha): { landingId: Id; at: number } | null;
+  /** The first red search is on for this colony (FT_BISECT); absent means off. */
+  bisect?(): boolean;
+  /** Rewrite an open repair intent's why (`edit` gives the new text, or null to leave it); false when nothing changed. */
+  repairWhy?(intentId: Id, edit: (why: string) => string | null): boolean;
 }
 
 /**
@@ -220,10 +229,20 @@ export class Certifier {
   private readonly memo: CompileMemo = new Map();
   /** The latest result said there is nothing to run (no test files, or none for node:test); null otherwise or unknown. */
   private nothingToRun: boolean | null = null;
+  /** The first red search (FT_BISECT, bisect.ts): after a red result is recorded, the first commit its failing tests fail on. */
+  private readonly firstRed: FirstRedSearch;
 
   constructor(private readonly host: CertifyHost) {
     this.ensureSchema();
     this.schedule = new CertifySchedule(DEFAULT_POLICY.minIntervalMs);
+    this.firstRed = new FirstRedSearch({
+      trunk: () => this.host.trunk(),
+      run: (plan, timeoutMs) => this.run(plan, { ...this.policy(), timeoutMs }),
+      limits: () => ({ testTimeoutMs: this.policy().testTimeoutMs, timeoutMs: this.policy().timeoutMs }),
+      record: (sha, firstRed) => this.recordFirstRed(sha, firstRed),
+      publish: (e) => this.host.publish(e),
+      repairWhy: (intentId, edit) => this.host.repairWhy?.(intentId, edit) ?? false,
+    });
   }
 
   private ensureSchema(): void {
@@ -339,6 +358,7 @@ export class Certifier {
     this.policyCache = null;
     this.nothingToRun = null;
     this.memo.clear();
+    this.firstRed.reset();
     this.ensureSchema();
   }
 
@@ -589,6 +609,12 @@ export class Certifier {
     }
     this.store({ cert, inputs: cert.status === "error" ? null : inputs, testKey });
     this.host.publish(this.event(cert));
+    // First red search (FT_BISECT): once the red result is recorded, find the first commit its failing tests fail on, in the background (bisect.ts).
+    try {
+      if (cert.status === "red" && judged && this.host.bisect?.()) this.firstRed.request({ cert, failing: judged.failing, ...(judged.suspects ? { suspects: judged.suspects } : {}) });
+    } catch (err) {
+      console.warn(`certification: first red search not started: ${errorText(err)}`);
+    }
     if (cert.landingId && (cert.status === "green" || cert.status === "red")) {
       const note: NoteCertification = { runner: "node:test in a Dynamic Worker (trunk certification)", status: cert.status, finishedAt: cert.finishedAt };
       if (cert.counts) note.counts = cert.counts;
@@ -698,6 +724,15 @@ export class Certifier {
       console.warn(`certification: no suspects for ${cert.trunkSha.slice(0, 7)}: ${errorText(err)}`);
       return [];
     }
+  }
+
+  /** The first red search's answer (bisect.ts) on the stored red result of `sha`: the result as stored, or null when it is gone or no longer red. */
+  private recordFirstRed(sha: Sha, firstRed: FirstRed): Certification | null {
+    const s = this.stored(sha);
+    if (!s || s.cert.status !== "red") return null;
+    s.cert.firstRed = firstRed;
+    this.store(s);
+    return s.cert;
   }
 
   // -------------------------------------------------------------------------
