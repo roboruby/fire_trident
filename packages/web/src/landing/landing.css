@@ -1188,6 +1188,14 @@ a.lc:hover .lc-open {
   letter-spacing: -0.02em;
 }
 
+/* A sentence too, in a lighter tint of --danger (the red of a failing certification) that reads as a headline on the dark ground. */
+.rs-firstred .rs-headline {
+  color: #ff8d98;
+  text-shadow: 0 0 26px rgba(255, 46, 79, 0.26);
+  font-size: clamp(26px, 2.4vw, 34px);
+  letter-spacing: -0.02em;
+}
+
 .rs-lede {
   margin-top: 8px;
   font-size: 15px;
