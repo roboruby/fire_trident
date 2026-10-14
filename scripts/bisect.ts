@@ -1,18 +1,19 @@
 /**
  * Live check of the first red search (FT_BISECT) on a deployment, through the admin API with synthetic agents and inline
  * changes. In each of two new colonies a tiny node:test project lands (bisect/<tag>/src/math.js and its test) and trunk
- * certification turns green on it. With certification held, six changes then land one by one, each its own commit:
- * three good, one that breaks sub(), two good. Certification runs again on the head and goes red.
+ * certification turns green on it. With certification held, changes then land one by one, each its own commit: six when
+ * --landings is absent, the fourth of them breaking sub() when --break-at is absent, the rest each adding a note file.
+ * Certification runs again on the head and goes red.
  * - On a colony FT_BISECT lists (--on): the red result gains `firstRed`, found, naming the landing that holds the breaking
- *   change, with its proposal (and the file it changed) and its intent, in at most four test runs over the six landings;
- *   a `bisect` event is recorded after the red result; the repair intent the red result declared names the commit and
- *   the proposal.
+ *   change, with its proposal (and the file it changed) and its intent, in at most 1 + ceil(log2 n) test runs over the n
+ *   landings (four over six); a `bisect` event is recorded after the red result; the repair intent the red result
+ *   declared names the commit and the proposal.
  * - On a colony it does not list (--off): the red result never gains `firstRed` and no `bisect` event is recorded.
  * Both colonies must not exist yet. The deployment needs FT_TRUNK_TESTS on (with the LOADER binding), FT_INLINE on for
  * both colonies, and FT_BISECT listing --on and not --off.
  *
  * With --demo <colony> (and no --on or --off) it leaves a showcase on one new colony instead: the same project at the
- * colony's root, made by synthetic agents named scripted-*, then the same six landings and the red head, checked as the
+ * colony's root, made by synthetic agents named scripted-*, then the same landings and the red head, checked as the
  * --on colony is. It prints what the search found. Then the repair: a scripted agent (synthetic, named scripted-repair,
  * no model) takes the repair intent the red result declared from the field, as any agent takes work, and proposes the
  * fix as an inline change: sub() subtracts again. The demo ends when certification is green on the new head, and prints
@@ -26,12 +27,22 @@
  * it was started with, and could take minutes or give the work back. A scripted change lands in seconds and calls no
  * model, like the search itself.
  *
+ * A long history shows what the search is for: 40 landings since green take about 6 test runs, not 40. --landings <n>
+ * lands n since green and --break-at <k> puts the breaking change at position k (scripts/bisect_history.ts); in the
+ * check the --off colony lands the default six, since the flag's absence is what it checks there. The landings land one
+ * at a time because a lane lands every change waiting at once as one commit, and each must be its own: at a few
+ * seconds each, 40 take a few minutes. After the checks the output gives the landings since green, the runs the search
+ * used and its time, whether it named the right landing, and the fewest runs any search over n landings can take,
+ * ceil(log2(n + 1)): one run proves the red commit red, then each run halves the landings left. The search is bounded
+ * (8 runs, 20 s a run, 60 s in all, a landing log of 512); the script refuses a history those bounds cannot settle.
+ *
  * Usage:
- *   FT_ADMIN_TOKEN=... node scripts/bisect.ts --url https://<deployment> --on <new colony id FT_BISECT lists> --off <another new colony id>
- *   FT_ADMIN_TOKEN=... node scripts/bisect.ts --url https://<deployment> --demo <new colony id>
+ *   FT_ADMIN_TOKEN=... node scripts/bisect.ts --url https://<deployment> --on <new colony id FT_BISECT lists> --off <another new colony id> [--landings <n>] [--break-at <k>]
+ *   FT_ADMIN_TOKEN=... node scripts/bisect.ts --url https://<deployment> --demo <new colony id> [--landings <n>] [--break-at <k>]
  */
 import { createHash } from "node:crypto";
-import { USAGE, parseArgs } from "./bisect_args.ts";
+import { USAGE, parseArgs, type HistoryArgs } from "./bisect_args.ts";
+import { DEFAULT_LANDINGS, defaultBreakAt, history, minimumRuns, mostRuns, predictRuns } from "./bisect_history.ts";
 
 const ARGS = parseArgs(process.argv.slice(2), process.env);
 if ("error" in ARGS) {
@@ -43,6 +54,12 @@ const URL_BASE = ARGS.url;
 const ON = ARGS.mode === "check" ? ARGS.on : "";
 const OFF = ARGS.mode === "check" ? ARGS.off : "";
 const ADMIN_TOKEN = process.env.FT_ADMIN_TOKEN ?? "";
+/** The history to land and search: --landings and --break-at, or six with the break at the fourth. */
+const HISTORY: HistoryArgs = { landings: ARGS.landings, breakAt: ARGS.breakAt };
+/** The history the check's --off colony lands whatever the options: the flag's absence is what it checks there. */
+const DEFAULT_HISTORY: HistoryArgs = { landings: DEFAULT_LANDINGS, breakAt: defaultBreakAt(DEFAULT_LANDINGS) };
+/** How often a change is read while it lands (the certification waits poll every 2 s): a landing takes a few seconds, and a long history has many. */
+const LAND_POLL_MS = 500;
 
 let failed = false;
 function check(label: string, ok: boolean): void {
@@ -51,6 +68,8 @@ function check(label: string, ok: boolean): void {
 }
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const short = (x: unknown, n = 160): string => String(typeof x === "string" ? x : JSON.stringify(x ?? null)).replace(/\s+/g, " ").slice(0, n);
+/** "1st", "2nd", "3rd", "4th", "11th", "21st". */
+const ordinal = (n: number): string => `${n}${n % 100 >= 11 && n % 100 <= 13 ? "th" : (["th", "st", "nd", "rd"][n % 10] ?? "th")}`;
 
 /** The git blob id of a UTF-8 text (what `git hash-object` gives). */
 function blobId(text: string): string {
@@ -92,12 +111,12 @@ const MATH_OK = "export function sub(a, b) {\n  return a - b;\n}\n";
 const MATH_BUG = "export function sub(a, b) {\n  return a + b;\n}\n";
 const MATH_TEST = 'import { test } from "node:test";\nimport assert from "node:assert/strict";\nimport { sub } from "../src/math.js";\n\ntest("subtracts", () => {\n  assert.equal(sub(5, 3), 2);\n});\n';
 
-/** Poll `read` every 2 s until `ok` holds or `ms` pass; the last value read. */
-async function until<T>(read: () => Promise<T>, ok: (v: T) => boolean, ms: number): Promise<T> {
+/** Poll `read` every `everyMs` (2 s) until `ok` holds or `ms` pass; the last value read. */
+async function until<T>(read: () => Promise<T>, ok: (v: T) => boolean, ms: number, everyMs = 2_000): Promise<T> {
   const end = Date.now() + ms;
   let v = await read();
   while (!ok(v) && Date.now() < end) {
-    await sleep(2_000);
+    await sleep(everyMs);
     v = await read();
   }
   return v;
@@ -125,8 +144,8 @@ function checkSetup(tag: string): Setup {
 /** The demo: the project at its colony's root, its agents named for what they do and marked as scripted. */
 const DEMO_SETUP: Setup = { root: "", name: "first red demo", tag: "", createdBy: "first-red-demo", agent: (slug) => `scripted-${slug}`, demo: true };
 
-/** One colony: the project certified green, six landings with certification held (the fourth breaks sub()), then the red head. */
-async function scenario(colony: string, setup: Setup) {
+/** One colony: the project certified green, `plan.landings` landings with certification held (the one at `plan.breakAt` breaks sub()), then the red head. */
+async function scenario(colony: string, setup: Setup, plan: HistoryArgs) {
   const base = `/api/colonies/${colony}`;
   const math = `${setup.root}src/math.js`;
   const testFile = `${setup.root}test/math.test.js`;
@@ -177,7 +196,7 @@ async function scenario(colony: string, setup: Setup) {
     });
     const pid = p.data?.id as string;
     if (!pid) throw new Error(`propose in ${colony} failed (${p.status}): ${short(p.data)}`);
-    const settled = await until(async () => (await rest("GET", `${base}/proposals/${pid}`)).data ?? {}, (d: any) => TERMINAL.has(d?.status), 120_000);
+    const settled = await until(async () => (await rest("GET", `${base}/proposals/${pid}`)).data ?? {}, (d: any) => TERMINAL.has(d?.status), 120_000, LAND_POLL_MS);
     check(`${colony}: "${label}" landed (${settled?.status}, ${short(settled?.landingId)})`, settled?.status === "landed" && typeof settled?.landingId === "string");
     if (settled?.status !== "landed") throw new Error(`${colony}: "${label}" did not land: ${short(settled?.reason)}`);
     for (const path of paths) texts.set(path, files[path]!);
@@ -207,13 +226,17 @@ async function scenario(colony: string, setup: Setup) {
   const green = await until(() => result(greenSha), (r) => r !== null && r.status !== "running", 90_000);
   check(`${colony}: certification is green on ${greenSha.slice(0, 7)} (${short(green?.status)}, ${short(green?.counts)})`, green?.status === "green");
 
-  // Six landings while certification waits.
+  // The landings while certification waits, one at a time: a lane lands every change waiting at once as one commit, and each must be its own.
   check(`${colony}: certification held`, (await rest("POST", `${base}/certify/policy`, { enabled: false })).status === 200);
   const held: Landed[] = [];
-  for (let n = 1; n <= 3; n++) held.push(await change(`Add note ${n}`, { [`${setup.root}src/note${n}.js`]: `export const note${n} = ${n};\n` }));
-  const broke = await change("Speed up subtraction", { [math]: MATH_BUG });
-  held.push(broke);
-  for (let n = 4; n <= 5; n++) held.push(await change(`Add note ${n}`, { [`${setup.root}src/note${n}.js`]: `export const note${n} = ${n};\n` }));
+  const landingStart = Date.now();
+  for (const step of history(plan.landings, plan.breakAt)) {
+    if (step.kind === "break") held.push(await change(step.title, { [math]: MATH_BUG }));
+    else held.push(await change(step.title, { [`${setup.root}src/note${step.note}.js`]: `export const note${step.note} = ${step.note};\n` }));
+  }
+  const landedMs = Date.now() - landingStart;
+  const broke = held[plan.breakAt - 1]!;
+  console.log(`      ${plan.landings} landing${plan.landings === 1 ? "" : "s"} since green landed in ${(landedMs / 1000).toFixed(1)} s, the break at position ${plan.breakAt}.`);
   const redSha = await head();
   // Turning certification on certifies the current trunk at once.
   check(`${colony}: certification on again`, (await rest("POST", `${base}/certify/policy`, { enabled: true })).status === 200);
@@ -222,7 +245,7 @@ async function scenario(colony: string, setup: Setup) {
 
   /** The demo's repair: a new scripted agent takes the repair intent from the field (nothing else is open) and puts sub() back. */
   const repair = async (intentId: string) => work(await join(setup.agent("repair")), "Make sub() subtract again", { [math]: MATH_OK }, intentId);
-  return { base, math, broke, held, greenSha, redSha, head, result, repair };
+  return { base, math, broke, held, plan, landedMs, greenSha, redSha, head, result, repair };
 }
 
 type Run = Awaited<ReturnType<typeof scenario>>;
@@ -242,9 +265,11 @@ async function events(base: string): Promise<any[]> {
 
 /**
  * The search's answer on a colony FT_BISECT covers, checked: found, naming the landing that holds the breaking change,
- * its commit, its proposal (and the file it changed) and its intent, in at most four test runs over the six landings;
- * a `bisect` event after the red result; the repair intent the red result declared names the commit and the proposal.
- * Returns the red result as last read.
+ * its commit, its proposal (and the file it changed) and its intent, in at most 1 + ceil(log2 n) test runs over the n
+ * landings (the search tries the red commit, then halves what is left); a `bisect` event after the red result; the
+ * repair intent the red result declared names the commit and the proposal. Then one line with what a results table
+ * needs: the landings since green, the runs and their time, whether the landing is the right one, and the fewest runs
+ * possible. Returns the red result as last read.
  */
 async function firstRedFound(colony: string, run: Run): Promise<any> {
   const done = await until(() => run.result(run.redSha), (r) => r?.firstRed !== undefined, 90_000);
@@ -258,7 +283,9 @@ async function firstRedFound(colony: string, run: Run): Promise<any> {
   const named = (Array.isArray(fr?.proposals) ? fr.proposals : []).find((p: any) => p?.id === run.broke.proposalId);
   check(`${colony}: and the breaking proposal with the file it changed (${short(fr?.proposals, 200)})`, !!named && Array.isArray(named.paths) && named.paths.includes(run.math));
   check(`${colony}: and its intent with its title (${short(fr?.intents, 200)})`, (fr?.intents ?? []).some((i: any) => i?.id === run.broke.intentId && i?.title === "Speed up subtraction"));
-  check(`${colony}: in at most 4 test runs over the 6 landings since green (${short(fr?.probes)} runs, ${short(fr?.ms)} ms, ${short(fr?.landings)} landings)`, typeof fr?.probes === "number" && fr.probes >= 1 && fr.probes <= 4 && fr?.landings === 6 && fr?.greenSha === run.greenSha);
+  const n = run.plan.landings;
+  const most = mostRuns(n);
+  check(`${colony}: in at most ${most} test runs over the ${n} landings since green (${short(fr?.probes)} runs, ${short(fr?.ms)} ms, ${short(fr?.landings)} landings)`, typeof fr?.probes === "number" && fr.probes >= 1 && fr.probes <= most && fr?.landings === n && fr?.greenSha === run.greenSha);
   const record = await until(() => events(run.base), (list) => list.some((e) => e?.t === "bisect"), 20_000);
   const redAt = record.findIndex((e) => e?.t === "certify" && e?.trunkSha === run.redSha && e?.status === "red");
   const bisectAt = record.findIndex((e) => e?.t === "bisect" && e?.trunkSha === run.redSha);
@@ -266,19 +293,23 @@ async function firstRedFound(colony: string, run: Run): Promise<any> {
   const snap = await rest("GET", run.base);
   const repair = (snap.data?.intents ?? []).find((i: any) => i?.source === "certify" && i?.id === done?.repairIntentId);
   check(`${colony}: the repair intent ${short(done?.repairIntentId)} names the commit and the proposal in its why`, typeof repair?.why === "string" && repair.why.includes("First failing commit") && repair.why.includes(run.broke.proposalId));
+  const right = fr?.status === "found" && fr?.landingId === run.broke.landingId;
+  console.log(
+    `      Search: ${short(fr?.landings)} landings since green (landed in ${(run.landedMs / 1000).toFixed(1)} s), ${short(fr?.probes)} test runs in ${short(fr?.ms)} ms, the right landing: ${right ? "yes" : "no"}. The fewest runs for ${n} landings is ${minimumRuns(n)} (ceil(log2(n + 1))) and the most ${most}; this history, the break at position ${run.plan.breakAt}, takes ${predictRuns(n, run.plan.breakAt).runs}.`,
+  );
   return done;
 }
 
 async function main(): Promise<void> {
   const tag = `fr${Date.now().toString(36)}`;
-  console.log(`first red check ${tag} on ${URL_BASE} (on: ${ON}, off: ${OFF})`);
+  console.log(`first red check ${tag} on ${URL_BASE} (on: ${ON}, off: ${OFF}; ${HISTORY.landings} landings since green with the break at position ${HISTORY.breakAt}; the off colony lands the default ${DEFAULT_HISTORY.landings})`);
 
   // On: the red result names the landing that broke the test, and its proposal.
-  const on = await scenario(ON, checkSetup(tag));
+  const on = await scenario(ON, checkSetup(tag), HISTORY);
   const fr = (await firstRedFound(ON, on))?.firstRed;
 
-  // Off: as today.
-  const off = await scenario(OFF, checkSetup(tag));
+  // Off: as today, on the default history (the flag's absence is what this colony checks).
+  const off = await scenario(OFF, checkSetup(tag), DEFAULT_HISTORY);
   await sleep(20_000);
   const offResult = await off.result(off.redSha);
   check(`${OFF}: the red result has no firstRed after 20 s (${short(offResult?.firstRed ?? "none")})`, offResult?.status === "red" && offResult?.firstRed === undefined);
@@ -291,7 +322,7 @@ async function main(): Promise<void> {
 
 /** The flags the demo needs on the deployment: certification after landing, inline changes, and the first red search. */
 const DEMO_FLAGS = ["FT_TRUNK_TESTS", "FT_INLINE", "FT_BISECT"];
-/** The replay's speed: the run, from the first of the six landings to green again, plays in well under a minute. */
+/** The replay's speed: the run, from the first landing to green again, plays in well under a minute on the default six landings. */
 const REPLAY_SPEED = 2;
 
 /**
@@ -301,7 +332,8 @@ const REPLAY_SPEED = 2;
  */
 async function demo(colony: string): Promise<number> {
   console.log(`first red demo on ${URL_BASE}: colony ${colony}`);
-  console.log("      A node:test project lands and certifies green; six changes land while certification is held, the fourth breaking sub(); certification goes red; the first red search names the landing; a scripted agent takes the repair intent; certification goes green.");
+  const changes = HISTORY.landings === 1 ? "1 change lands" : `${HISTORY.landings} changes land`;
+  console.log(`      A node:test project lands and certifies green; ${changes} while certification is held, the ${ordinal(HISTORY.breakAt)} breaking sub(); certification goes red; the first red search names the landing; a scripted agent takes the repair intent; certification goes green.`);
   // Without these the colony would never go red, or the search would never run: say so before making a public colony.
   const about = await rest("GET", "/api/about");
   const flags: unknown = about.data?.flags;
@@ -319,7 +351,7 @@ async function demo(colony: string): Promise<number> {
     return 2;
   }
 
-  const run = await scenario(colony, DEMO_SETUP);
+  const run = await scenario(colony, DEMO_SETUP, HISTORY);
   const red = await firstRedFound(colony, run);
   const fr = red?.firstRed;
   if (fr?.status !== "found") return 1;
@@ -346,14 +378,14 @@ async function demo(colony: string): Promise<number> {
     console.log(`      Trunk was red for ${((green.finishedAt - red.finishedAt) / 1000).toFixed(1)} s, from the red result to the green one.`);
   }
 
-  // The replay starts at the first of the six landings: the green certification before it is already on the trunk bar.
+  // The replay starts at the first of the landings: the green certification before it is already on the trunk bar.
   const record = await events(run.base);
   const first = record[0]?.at;
   const start = record.find((e) => e?.t === "intent" && e?.intentId === run.held[0]?.intentId)?.at;
   const t = typeof first === "number" && typeof start === "number" ? Math.max(0, Math.floor((start - first) / 1000)) : 0;
   const page = `${URL_BASE}/c/${encodeURIComponent(colony)}`;
   console.log(`\nColony: ${page}`);
-  console.log(`Replay: ${page}?replay=1&t=${t}&speed=${REPLAY_SPEED} (from the first of the six landings)`);
+  console.log(`Replay: ${page}?replay=1&t=${t}&speed=${REPLAY_SPEED} (from the first of the ${HISTORY.landings} landings)`);
   console.log(`Card:   ${URL_BASE}/?results=${colony}:firstred (the landing page's showcase entry for this colony can carry replay: "t=${t}&speed=${REPLAY_SPEED}")`);
   return failed ? 1 : 0;
 }
