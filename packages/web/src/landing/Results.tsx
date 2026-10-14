@@ -4,7 +4,7 @@ import { parseSpend } from "../spend.ts";
 import { metricKey } from "../store.ts";
 import { fmtDuration, fmtInt, prettyUrl } from "../format.ts";
 import { colonyHref } from "../route.ts";
-import { loadGoalsCard, loadScaleCard } from "./showcase.ts";
+import { loadGoalsCard, loadScaleCard, specBuild } from "./showcase.ts";
 
 /**
  * The results strip: what the production showcase colonies did, read from their own API (the
@@ -102,11 +102,15 @@ async function loadResult(s: Showcase, listing: Json[], signal: AbortSignal): Pr
     const spent = spendLine(parseSpend(m.spend));
     if (spent) details.push(spent);
   } else if (s.kind === "spec") {
+    // Timed to the last landing of the spec's own intents (showcase.ts specBuild): a later documentation pass by an
+    // outside agent is not part of the build from the spec.
     const created = num(row?.createdAt);
-    const last = num(row?.lastLandingAt);
-    out.headline = created !== null && last !== null && last > created ? runTime(last - created) : `${fmtInt(landed)}`;
-    out.lede = created !== null && last !== null && last > created ? `from a spec to a working project: ${fmtInt(landed)} of ${fmtInt(intents)} intents landed` : "intents landed from a spec";
-    details.push(`${fmtInt(agents)} agents, ${fmtInt(landings)} commits`);
+    const build = specBuild(created, await getJson(base, signal).catch(() => null));
+    const last = build?.lastLandingAt ?? null;
+    const timed = created !== null && last !== null && last > created;
+    out.headline = timed ? runTime(last - created) : `${fmtInt(landed)}`;
+    out.lede = timed && build ? `from a spec to a working project: ${fmtInt(build.landed)} of ${fmtInt(build.intents)} intents landed` : "intents landed from a spec";
+    details.push(`${fmtInt(agents)} agents, ${fmtInt(build && build.landings > 0 ? build.landings : landings)} commits`);
 } else if (s.kind === "certify") {
   // Results come newest first: the oldest red one is where the repair began, the newest green one after it is where it ended.
   const [c, snap] = await Promise.all([getJson(`${base}/certifications?limit=50`, signal).catch(() => null), getJson(base, signal).catch(() => null)]);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SCALE_CONDITIONS, SCALE_MIN_LANDINGS, goalsCard, loadGoalsCard, loadScaleCard, scaleCard, versionOf, type GetJson, type HeldChange } from "../src/landing/showcase.ts";
+import { SCALE_CONDITIONS, SCALE_MIN_LANDINGS, SPEC_WINDOW_MS, specBuild, goalsCard, loadGoalsCard, loadScaleCard, scaleCard, versionOf, type GetJson, type HeldChange } from "../src/landing/showcase.ts";
 
 /** The scale and goals cards of the results strip: what they say, read from the routes that answer without a token. */
 
@@ -134,5 +134,31 @@ describe("goals card", () => {
     const quiet = api({ "/api/colonies/order-backend/events?after=0&limit=5000": { events: record(false).slice(0, 6), next: null } });
     expect(await loadGoalsCard("order-backend", quiet.get)).toBeNull();
     await expect(loadGoalsCard("order-backend", api({}).get)).rejects.toThrow("404");
+  });
+});
+
+describe("spec build", () => {
+  // The production shortlinks colony's shape: 13 intents declared with the colony, then a documentation intent two days on.
+  const created = 1_000_000;
+  const snapshot = {
+    intents: [
+      ...Array.from({ length: 13 }, (_, n) => ({ id: `int_${n}`, status: "landed", createdAt: created + 30_000 + n * 1_000 })),
+      { id: "int_doc", status: "landed", createdAt: created + 2 * 86_400_000 },
+    ],
+    recentLandings: [
+      ...Array.from({ length: 13 }, (_, n) => ({ id: `lnd_${n}`, intentIds: [`int_${n}`], at: created + 60_000 + n * 30_000 })),
+      { id: "lnd_doc", intentIds: ["int_doc"], at: created + 2 * 86_400_000 + 60_000 },
+    ],
+  };
+
+  it("times the build to the last landing of the spec's own intents", () => {
+    expect(specBuild(created, snapshot)).toEqual({ intents: 13, landed: 13, landings: 13, lastLandingAt: created + 60_000 + 12 * 30_000 });
+  });
+
+  it("counts an intent declared within the window as the spec's, and gives nothing without a creation time", () => {
+    const late = { ...snapshot, intents: [...snapshot.intents, { id: "int_late", status: "open", createdAt: created + SPEC_WINDOW_MS }] };
+    expect(specBuild(created, late)?.intents).toBe(14);
+    expect(specBuild(null, snapshot)).toBeNull();
+    expect(specBuild(created, null)).toBeNull();
   });
 });

@@ -31,6 +31,43 @@ function words(n: number): string {
 }
 
 // ---------------------------------------------------------------------------
+// spec: a new project built from a written spec
+// ---------------------------------------------------------------------------
+
+/** Intents declared within this long of the colony's creation are the spec's own; later ones (a documentation pass) are not. */
+export const SPEC_WINDOW_MS = 10 * 60_000;
+
+/** The build from the spec: its intents, how many landed, and when the last of their landings came. */
+export interface SpecBuild {
+  intents: number;
+  landed: number;
+  /** Landings that carried a spec intent. */
+  landings: number;
+  lastLandingAt: number | null;
+}
+
+/**
+ * The spec's build from the colony's snapshot (its intents and its recent landings): the intents declared within
+ * SPEC_WINDOW_MS of `createdAt`, and the latest landing that carried one of them. Null without a creation time.
+ */
+export function specBuild(createdAt: number | null, snapshot: unknown): SpecBuild | null {
+  if (createdAt === null || !isObj(snapshot)) return null;
+  const intents = Array.isArray(snapshot.intents) ? snapshot.intents.filter(isObj) : [];
+  const spec = intents.filter((i) => (num(i.createdAt) ?? Number.POSITIVE_INFINITY) <= createdAt + SPEC_WINDOW_MS);
+  const ids = new Set(spec.map((i) => i.id));
+  const lands = (Array.isArray(snapshot.recentLandings) ? snapshot.recentLandings.filter(isObj) : []).filter(
+    (l) => Array.isArray(l.intentIds) && l.intentIds.some((id) => ids.has(id)),
+  );
+  let last: number | null = null;
+  for (const l of lands) {
+    const at = num(l.at);
+    if (at !== null && (last === null || at > last)) last = at;
+  }
+  return { intents: spec.length, landed: spec.filter((i) => i.status === "landed").length, landings: lands.length, lastLandingAt: last };
+}
+
+
+// ---------------------------------------------------------------------------
 // scale: thousands of synthetic agents in one repository
 // ---------------------------------------------------------------------------
 
