@@ -1090,6 +1090,41 @@ export interface MegafileReport {
   lifted: MegafileHold[];
 }
 
+/**
+ * Where a colony's model calls come from: its in-platform agents, review (the decide stage's reflex and second
+ * opinion), contest judging, the conflict resolver, and the rest (antibody minting).
+ */
+export type SpendLayer = "agents" | "review" | "judge" | "resolver" | "other";
+
+/** One model's tokens across a colony's layers, and their price (null: the model has no listed price). */
+export interface ModelSpend {
+  input: number;
+  output: number;
+  usd: number | null;
+}
+
+/**
+ * What a colony's model calls cost: the tokens the colony counted, priced at Workers AI list prices on `priceDate`
+ * (core/pricing.ts). A model with no listed price is never guessed: its tokens are in `unpriced` and in no dollar sum.
+ */
+export interface ColonySpend {
+  /** USD of every priced call. */
+  usd: number;
+  byLayer: Record<SpendLayer, number>;
+  /** `usd` over the intents landed; null when none landed. */
+  perLandedIntent: number | null;
+  landedIntents: number;
+  /** Every token counted, priced or not. */
+  tokens: { input: number; output: number };
+  byModel: Record<string, ModelSpend>;
+  /** Tokens of models with no listed price, by model. */
+  unpriced: Record<string, { input: number; output: number }>;
+  /** The day of the list prices (YYYY-MM-DD). */
+  priceDate: string;
+  /** In-platform agents whose journals the colony has not read yet: their calls are missing from `byLayer.agents`. */
+  agentsUnread?: number;
+}
+
 /** Snapshot the UI loads before applying live events. */
 export interface ColonySnapshot {
   colony: Colony;
@@ -1114,6 +1149,8 @@ export interface ColonySnapshot {
   stuck?: StuckReport;
   /** Files held for their split (the megafile alarm; served when FT_MEGAFILE covers the colony). */
   megafiles?: MegafileReport;
+  /** What the colony's model calls cost so far (served by GET /api/colonies/:id and /metrics; absent in mocks). */
+  spend?: ColonySpend;
 }
 
 // ---------------------------------------------------------------------------

@@ -24,6 +24,7 @@ import type { StuckAction, StuckItem, StuckReport } from "@fire_trident/core";
 import { changeSize, dangerLines, lookHereFirst, parseHunks, reviewOf, visible, type DiffLine, type ReviewFile, type ReviewView } from "./review.ts";
 import { whySummary } from "./spec.ts";
 import { megafileLines } from "./megafile.ts";
+import { spendLine } from "./spend.ts";
 
 /** ANSI styling functions; identity functions when color is off. */
 export interface Colors {
@@ -325,6 +326,9 @@ export function formatStatus(s: SnapshotLike, c: Colors, now: number): string {
     const rate = typeof m.landingsPerMin === "number" ? c.dim(` · ${num(m.landingsPerMin)} landings/min`) : "";
     row("in flight", `${num(m.proposalsInFlight)} proposal${m.proposalsInFlight === 1 ? "" : "s"}${review}${rate}`);
   }
+  // Model spend as the colony prices it from the tokens it counted (spend.ts); a server that predates it sends none.
+  const spent = spendLine(s.spend);
+  if (spent) row("spend", `${spent}${s.spend?.priceDate ? c.dim(` (Workers AI list prices on ${plainLine(s.spend.priceDate)})`) : ""}`);
   const series = s.series;
   if (series && Array.isArray(series.landings) && series.landings.length > 0) {
     const total = series.landings.reduce((a, b) => a + (Number.isFinite(b) ? b : 0), 0);

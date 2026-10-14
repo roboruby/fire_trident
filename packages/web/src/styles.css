@@ -473,6 +473,26 @@ a.build-tag:hover {
   font-variant-numeric: tabular-nums;
 }
 
+/* Model spend beside the funnel (components/Spend.tsx): the title gives it by layer. */
+.spend {
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+.spend-line {
+  margin: 5px 0 2px;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 1460px) {
+  .top:not(.is-director) .spend {
+    display: none;
+  }
+}
+
 /* -------------------------------------------------------------------- map */
 
 .map {

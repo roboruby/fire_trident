@@ -23,9 +23,11 @@ import type {
 } from "@fire_trident/core";
 import type { StuckAction, StuckItem, StuckKind, StuckRepairState } from "@fire_trident/core";
 import type { MovedBy } from "@fire_trident/core";
+import type { ColonySpend } from "@fire_trident/core";
 import { finite } from "./format.ts";
 import { movedByOf } from "./moved.ts";
 import { parseSeries, type Series } from "./series.ts";
+import { parseSpend } from "./spend.ts";
 import { KIND_INDEX, KINDS, decayed } from "./theme.ts";
 
 /** Connection state shown in the top bar. */
@@ -579,6 +581,8 @@ export class ColonyStore {
   readonly metrics = new Map<string, number>();
   /** Per-minute history from the server (null for the simulator and older servers). */
   series: Series | null = null;
+  /** What the colony's model calls cost so far (spend.ts; null for the simulator, replays and older servers). */
+  spend: ColonySpend | null = null;
   readonly sigma = new Map<string, { sigma: number; at: number }>();
 
   private ring: Array<LoggedEvent | undefined> = new Array<LoggedEvent | undefined>(LOG_CAP);
@@ -766,6 +770,7 @@ export class ColonyStore {
     this.metrics.clear();
     for (const [k, v] of Object.entries(s.metrics ?? {})) if (typeof v === "number" && Number.isFinite(v)) this.metrics.set(metricKey(k), v);
     this.series = parseSeries((s as { series?: unknown }).series);
+    this.spend = parseSpend((s as { spend?: unknown }).spend);
     // A server without the stuck-work detector sends no report: nothing is stuck as far as this page knows.
     this.stuck.clear();
     this.stuckMore = 0;
@@ -810,6 +815,14 @@ export class ColonyStore {
   /** Replace the stuck work with the server's report (a periodic /metrics refresh); a reply without one changes nothing. */
   applyStuck(raw: unknown): void {
     if (!this.setStuck(raw)) return;
+    this.bump();
+  }
+
+  /** Replace the model spend with the server's (a periodic /metrics refresh); a reply without one changes nothing. */
+  applySpend(raw: unknown): void {
+    const next = parseSpend(raw);
+    if (!next) return;
+    this.spend = next;
     this.bump();
   }
 

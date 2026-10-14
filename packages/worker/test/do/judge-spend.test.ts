@@ -57,6 +57,9 @@ describe("contest judge spend", () => {
     expect(after["contest.judge.calls"]).toBe(2);
     expect(after["decide.llm.tokensIn"]).toBe(240);
     expect(after["decide.llm.tokensOut"]).toBe(60);
+    // And per model, as the judge's own layer of the colony's spend (colony/spend.ts).
+    const judged = (dir: string) => Object.entries(after).filter(([k]) => k.startsWith(`contest.judge.tokens${dir}:`)).reduce((a, [, v]) => a + v, 0);
+    expect([judged("In"), judged("Out")]).toEqual([240, 60]);
     expect((await proposal(c.id, pb.id)).status).toBe("ready");
     expect(await proposal(c.id, pa.id)).toMatchObject({ status: "returned", supersededBy: pb.id });
   });

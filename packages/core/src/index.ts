@@ -14,3 +14,4 @@ export * from "./cochange.ts";
 export * from "./changeset.ts";
 export * from "./goalconflict.ts";
 export * from "./hotness.ts";
+export * from "./pricing.ts";

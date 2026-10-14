@@ -21,6 +21,7 @@ import { newId, revalidationEnabled } from "@fire_trident/core";
 import type { Env } from "../env.ts";
 import { runInnateChecks, type InnateResult } from "../colony/innate.ts";
 import { errorText, ftError } from "../colony/errors.ts";
+import { meteredAi, spendCounters } from "../colony/spend.ts";
 import { ANTIBODY_DIR, antibodyFile, antibodyPath, calibrateThreshold, cleanQuestion, deriveMatcher, fallbackQuestion, parseAntibodyFile, securityAntibody } from "./antibodies.ts";
 import { addedFromHunks, fileDiff, type FileDiff } from "./diff.ts";
 import { agentReason, gate, type GateVerdict, type ReflexSignals, type SecondOpinion } from "./gate.ts";
@@ -344,6 +345,8 @@ export class DecideEngine {
         );
         clefMs = r.ms;
         this.host.bump("decide.clef.tokens", r.tokens);
+        // Per model too, for the colony's spend (colony/spend.ts).
+        for (const [name, delta] of spendCounters("decide.clef", policy.reflexModel, { input: r.tokens })) this.host.bump(name, delta);
       } catch (err) {
         reflex = null;
         clefError = errorText(err);
@@ -542,6 +545,8 @@ export class DecideEngine {
           const r = await askSecondOpinion(this.ai(), model, messages);
           this.host.bump("decide.llm.tokensIn", r.tokens.in);
           this.host.bump("decide.llm.tokensOut", r.tokens.out);
+          // Per model too, for the colony's spend (colony/spend.ts).
+          for (const [name, delta] of spendCounters("decide.llm", model, { input: r.tokens.in, output: r.tokens.out })) this.host.bump(name, delta);
           return { opinion: r.opinion, model, ms: Date.now() - t0, error: "" };
         } catch (err) {
           error = errorText(err);
@@ -628,7 +633,8 @@ export class DecideEngine {
     const policy = this.store.policy();
     const colony = this.host.colony();
     const intent = this.host.intent(p.intentId);
-    const ai = this.ai();
+    // Minting's calls (the rephrasing and the self-check) count in the colony's spend, per model (colony/spend.ts).
+    const ai = meteredAi(this.ai(), "decide.antibody", (name, delta) => this.host.bump(name, delta));
     let state = parseState(this.store.outcome(p.id)?.state);
     let added: string[];
     if (state) {

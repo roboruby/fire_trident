@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { spendLine } from "@fire_trident/core";
+import { parseSpend } from "../spend.ts";
 import { metricKey } from "../store.ts";
 import { fmtDuration, fmtInt, prettyUrl } from "../format.ts";
 import { colonyHref } from "../route.ts";
@@ -81,6 +83,9 @@ async function loadResult(s: (typeof SHOWCASE)[number], listing: Json[], signal:
     }
     details.push(`${fmtInt(landed)} intents in ${fmtInt(landings)} commits`);
     if (proofLine) details.push(proofLine);
+    // Model spend as the colony prices it from the tokens it counted (core/pricing.ts); none from an older server.
+    const spent = spendLine(parseSpend(m.spend));
+    if (spent) details.push(spent);
   } else if (s.kind === "spec") {
     const created = num(row?.createdAt);
     const last = num(row?.lastLandingAt);

@@ -271,6 +271,9 @@ describe("the colony's conflict resolver", () => {
     expect(m["resolver.attempted"]).toBe(1);
     expect(m["resolver.landed"]).toBe(1);
     expect(m["resolver.failed"] ?? 0).toBe(0);
+    // Its one call counts in the colony's spend, per model (colony/spend.ts).
+    expect(m["resolver.tokensIn:test-model"]).toBe(100);
+    expect(m["resolver.tokensOut:test-model"]).toBe(20);
   });
 
   it("off: the same return reopens the intent as today, and no model is called", async () => {

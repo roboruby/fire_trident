@@ -161,6 +161,8 @@ import type { ImpactReport } from "@fire_trident/core";
 import { modelHintFor, stepupEnabled, type ModelHint } from "./stepup.ts";
 import { REVIEW_MOVED, cleanMovedBy, movedCollision, movedReturn, type StalePath } from "./movedby.ts";
 import { PROTECT_META, isProtectStop, parseProtectRecord, protectChanged, protectLandedText, type ProtectHost, type ProtectOutcome, type ProtectRecord } from "./protect.ts";
+import { SpendBook, modelOfClass, resolverClient, spendCounters } from "./spend.ts";
+import type { ColonySpend } from "@fire_trident/core";
 
 /**
  * Result of ColonyDO.take: an assignment, or advice to wait and retry. `review`: what review will
@@ -3306,6 +3308,8 @@ export class ColonyDO extends DurableObject<Env> {
         const now = Date.now();
         if (usage && usage.input > 0) this.bump("decide.llm.tokensIn", usage.input, now);
         if (usage && usage.output > 0) this.bump("decide.llm.tokensOut", usage.output, now);
+        // Per model too, as the contest judge's own layer of the colony's spend (colony/spend.ts).
+        for (const [name, delta] of spendCounters("contest.judge", model, usage)) this.bump(name, delta, now);
         return res;
       },
     };
@@ -3942,7 +3946,7 @@ export class ColonyDO extends DurableObject<Env> {
     return summaryOf(loaded.colony, loaded.lastLandingAt, this.currentMetrics(Date.now()));
   }
 
-  /** Metrics, funnel, violations, the per-minute series and stuck work, without the snapshot's lists (GET /api/colonies/:id/metrics). */
+  /** Metrics, funnel, violations, the per-minute series, stuck work and model spend, without the snapshot's lists (GET /api/colonies/:id/metrics). */
   async metricsReport(): Promise<{
     colonyId: Id;
     at: number;
@@ -3952,22 +3956,59 @@ export class ColonyDO extends DurableObject<Env> {
     series: ColonySeries;
     convergence: Convergence;
     stuck?: StuckReport;
+    spend?: ColonySpend;
   }> {
     const colony = this.requireColony();
     const now = Date.now();
     this.maybeReap(now);
     const violations = this.violationTotals();
     const stuck = this.stuckReport(now);
-    return {
+    const metrics = this.currentMetrics(now);
+    const report = {
       colonyId: colony.id,
       at: now,
-      metrics: this.currentMetrics(now),
+      metrics,
       funnel: this.funnelCounts(),
       violations,
       series: this.seriesReport(now),
       convergence: this.convergence(violations.total),
       ...(stuck ? { stuck } : {}),
     };
+    // Model spend (colony/spend.ts): left out when it cannot be computed; the rest of the report stands.
+    const spend = await this.spendReport(now, metrics);
+    return spend ? { ...report, spend } : report;
+  }
+
+  /** What the colony's model calls cost so far (colony/spend.ts), for the status GET /api/colonies/:id serves; null before init. */
+  async spend(): Promise<ColonySpend | null> {
+    if (!this.loadColony()) return null;
+    const now = Date.now();
+    return (await this.spendReport(now, this.currentMetrics(now, true))) ?? null;
+  }
+
+  /** The spend book (colony/spend.ts), made on first use: it reads the in-platform agents' journals into this colony's tables. */
+  private spendRun: SpendBook | null = null;
+
+  private spendBook(): SpendBook {
+    const ns = this.env.AGENT as DurableObjectNamespace | undefined;
+    return (this.spendRun ??= new SpendBook({
+      sql: this.sql,
+      ...(ns ? { readAgent: (id: Id) => (ns.get(ns.idFromName(id)) as unknown as { status(): Promise<unknown> }).status() } : {}),
+      platformAgents: () => [this.resolver().agentId(), this.decider().store.meta("vaccineAgent")].filter((id): id is Id => typeof id === "string" && id !== ""),
+      resolveModel: (model) => modelOfClass(this.env, model),
+      waitUntil: (p) => this.ctx.waitUntil(p),
+    }));
+  }
+
+  /** The spend report, or undefined when it cannot be computed (logged). */
+  private async spendReport(now: number, metrics: Record<string, number>): Promise<ColonySpend | undefined> {
+    try {
+      const policy = this.decider().store.policy();
+      return await this.spendBook().report(now, { metrics, review: { reflexModel: policy.reflexModel, secondOpinionModels: policy.secondOpinionModels } });
+    } catch (err) {
+      console.warn(`spend report failed: ${errorText(err)}`);
+      return undefined;
+    }
   }
 
   /**
@@ -5130,6 +5171,8 @@ export class ColonyDO extends DurableObject<Env> {
       now: () => Date.now(),
       waitUntil: (p) => this.ctx.waitUntil(p),
       limiter: () => this.decider().limiter,
+      // The client agents use, with each call's tokens counted per model for the colony's spend (colony/spend.ts).
+      model: () => resolverClient(this.env, (name, delta) => void this.bump(name, delta, Date.now())),
       // An in-platform agent named "resolver", registered on first use (synchronously: a return is being settled).
       agent: (known, model) => {
         const now = Date.now();

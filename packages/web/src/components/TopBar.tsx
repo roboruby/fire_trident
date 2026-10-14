@@ -8,6 +8,7 @@ import { useThrottledVersion } from "../useStore.ts";
 import { AnimatedNumber } from "./AnimatedNumber.tsx";
 import { BuildTag } from "./BuildTag.tsx";
 import { ColonyPicker } from "./ColonyPicker.tsx";
+import { SpendNote } from "./Spend.tsx";
 import { VaccineMeter } from "./VaccineMeter.tsx";
 
 const fmtSigma = (n: number): string => n.toFixed(2);
@@ -186,7 +187,7 @@ function Funnel({ funnel, last, settled }: { funnel: Record<FunnelStage, number>
   );
 }
 
-/** The top bar: brand and colony, the hero violations counter, live stats, sigma, vaccination, and the reflex funnel. */
+/** The top bar: brand and colony, the hero violations counter, live stats, sigma, vaccination, the reflex funnel and model spend. */
 export function TopBar({ store, director = false, mock = false }: { store: ColonyStore; director?: boolean; mock?: boolean }) {
   useThrottledVersion(store, 200);
   // The build serving the page, after the product name (left out of director recordings).
@@ -253,6 +254,7 @@ export function TopBar({ store, director = false, mock = false }: { store: Colon
       <SigmaGauge value={sigma.value} region={sigma.region} />
       {vaccine ? <VaccineMeter v={vaccine} /> : null}
       <Funnel funnel={store.funnel} last={store.lastDecisionAt} settled={store.settledFunnel} />
+      <SpendNote spend={store.spend} />
     </header>
   );
 }

@@ -258,7 +258,12 @@ export function createApi(deps: ApiDeps): Hono<ApiEnv> {
     return json(created, 201);
   });
 
-  app.get("/colonies/:id", async (c) => json(await colonyStub(c.env, colonyParam(c)).snapshot()));
+  app.get("/colonies/:id", async (c) => {
+    const colony = colonyStub(c.env, colonyParam(c));
+    // The colony's model spend beside its snapshot (colony/spend.ts); an object still on older code has none to give.
+    const [snap, spend] = await Promise.all([colony.snapshot(), colony.spend().catch(() => null)]);
+    return json(spend ? { ...(snap as object), spend } : snap);
+  });
 
   app.delete("/colonies/:id", requireAdminStrict, async (c) => {
     const report = await deleteColony(c.env, colonyParam(c));
