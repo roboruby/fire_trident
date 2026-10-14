@@ -31,6 +31,7 @@ import { inlineEnabled } from "../colony/inline.ts";
 import { certifyRoutes } from "./certify.ts";
 import { guideRoutes } from "./guide.ts";
 import { megafileRoutes } from "./megafile.ts";
+import { landingRoutes, verifyLanding } from "./landing.ts";
 
 /** Hono environment of the API. */
 export type ApiEnv = { Bindings: Env };
@@ -198,7 +199,8 @@ async function requireColony(env: Env, colonyId: Id): Promise<void> {
  *   POST   /colonies/:id/proposals          propose a change
  *   GET    /colonies/:id/proposals/:pid     one proposal (poll its outcome)
  *   GET    /colonies/:id/why                ?path=&line=
- *   GET    /colonies/:id/notes/verify       the newest landings' git notes against their commits' FT-Note trailers (?limit=)
+ *   GET    /colonies/:id/notes/verify       the newest landings' git notes against their commits' FT-Note trailers (?limit=; ?landing= checks one, api/landing.ts)
+ *   GET    /colonies/:id/landings/:ref/diff the change a landing made to one file (?path=; public colonies only, api/landing.ts)
  *   GET    /colonies/:id/review             review queue
  *   POST   /colonies/:id/review/:pid        approve | reject | return
  *   POST   /colonies/:id/swarm              spawn in-platform agents
@@ -517,6 +519,9 @@ export function createApi(deps: ApiDeps): Hono<ApiEnv> {
   // Tamper evidence: each of the newest landings' notes on the trunk repository against the digest its commit carries.
   app.get("/colonies/:id/notes/verify", async (c) => {
     const colonyId = colonyParam(c);
+    // ?landing=<landing id or trunk commit>: that landing's note alone, the badge on each note in the web app (api/landing.ts).
+    const landing = c.req.query("landing");
+    if (landing !== undefined) return json(await verifyLanding(c.env, colonyId, landing));
     const raw = c.req.query("limit");
     if (raw !== undefined && !/^\d{1,4}$/.test(raw)) throw ftError(400, "limit must be a whole number");
     await requireColony(c.env, colonyId);
@@ -554,6 +559,7 @@ export function createApi(deps: ApiDeps): Hono<ApiEnv> {
   certifyRoutes(app, requireAdmin); // Trunk certification: results, certify now, policy (api/certify.ts)
   guideRoutes(app, requireAdmin, isAdminRequest); // Field guide: lessons agents left, and a person's approval or rejection (api/guide.ts)
   megafileRoutes(app, requireAdmin); // Megafile alarm: held files, a person's hold or release (api/megafile.ts)
+  landingRoutes(app); // One landing's change to a file, for public colonies (api/landing.ts)
 
   // Unknown API paths answer JSON here instead of falling through to the static UI.
   app.all("*", (c) => json({ error: `no route for ${c.req.method} ${c.req.path}` }, 404));

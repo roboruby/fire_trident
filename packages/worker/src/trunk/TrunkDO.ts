@@ -46,6 +46,7 @@ import { addNotes } from "./notes.ts";
 import { sealNote, withNoteDigest } from "./digest.ts";
 import { noteProvenance } from "./provenance.ts";
 import { bindingSource, checkLandings, layered, localSource, summarize, verifyLimit } from "./verify.ts";
+import { findLanding, landingOf, landingRow, storedNote, verifyOne } from "./landing-note.ts";
 import { BoundedMap, applyTreeChangesDeferred, writePending, type PendingObject } from "./surgery.ts";
 import { commitContent, objectId } from "./objects.ts";
 import { pushPack } from "./push.ts";
@@ -587,6 +588,31 @@ export class TrunkDO extends DurableObject<Env> {
     } finally {
       if (opened.repo) dispose(await opened.repo.catch(() => null));
     }
+  }
+
+  /**
+   * One landing's lineage note checked as verifyNotes checks the newest (trunk/landing-note.ts): `ref` is a landing id or
+   * the trunk commit it produced (40 hex, or a unique prefix of 7+); null when no landing matches. A method of its own, so
+   * a trunk writer still on older code refuses the call instead of answering for the newest landings. Read only.
+   */
+  async verifyLanding(ref: string): Promise<NotesVerification | null> {
+    const st = this.state();
+    const found = findLanding(this.sql, String(ref ?? ""));
+    if (!found) return null;
+    const opened: { repo?: Promise<ArtifactsRepo> } = {};
+    const remote = bindingSource(() => (opened.repo ??= this.trunkBinding(st.trunk).get(st.trunk.name)));
+    try {
+      return await verifyOne(landingRow(this.sql, found), { colonyId: st.colonyId, tip: () => this.remoteNotesTip(), src: layered(localSource(this.repo()), remote) });
+    } finally {
+      if (opened.repo) dispose(await opened.repo.catch(() => null));
+    }
+  }
+
+  /** A landing (by id or trunk commit, as verifyLanding takes it) with the writer's copy of its lineage note, null when it has none (the public diff route, api/landing.ts). Read only. */
+  async landingNote(ref: string): Promise<{ landing: Landing; note: LineageNote | null } | null> {
+    const st = this.state();
+    const found = findLanding(this.sql, String(ref ?? ""));
+    return found ? { landing: landingOf(found, st.colonyId), note: storedNote(this.sql, found.id) } : null;
   }
 
   /**

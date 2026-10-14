@@ -9,6 +9,7 @@ import { decisionsFromChecks, type DecisionStep } from "../decisions.ts";
 import { alternativesOf, provenanceOf, revalidatedOf, type Alternative, type ProvenanceView, type Revalidation } from "../lineage.ts";
 import { useThrottledVersion } from "../useStore.ts";
 import { certCounts, certTitle } from "../certs.ts";
+import { NoteBar } from "./NoteSeal.tsx";
 
 type NoteProposal = LineageNote["proposals"][number];
 
@@ -155,14 +156,14 @@ export function WhyTab({ store, backend, director = false }: { store: ColonyStor
       ) : null}
       <div className="lineage">
         {current?.entries?.map((e, i) => (
-          <LineageEntry key={e.landing.id} entry={e} path={path} store={store} newest={i === 0} />
+          <LineageEntry key={e.landing.id} entry={e} path={path} store={store} newest={i === 0} backend={backend} />
         ))}
       </div>
     </div>
   );
 }
 
-function LineageEntry({ entry, path, store, newest }: { entry: WhyEntry; path: string; store: ColonyStore; newest: boolean }) {
+function LineageEntry({ entry, path, store, newest, backend }: { entry: WhyEntry; path: string; store: ColonyStore; newest: boolean; backend: Backend }) {
   const { landing, note } = entry;
   const proposals = note?.proposals ?? [];
   const relevant = proposals.filter((p) => p.writeSet?.some((w) => w.path === path));
@@ -208,6 +209,8 @@ function LineageEntry({ entry, path, store, newest }: { entry: WhyEntry; path: s
           {plural(paths.length, "file")} · {plural(landing.proposalIds?.length ?? proposals.length, "proposal")}
         </button>
       </div>
+      {/* The note's integrity badge and this landing's change to the file (NoteSeal.tsx); keyed so another file starts closed. */}
+      <NoteBar key={path} backend={backend} landingId={landing.id} path={path} />
       {shown.map((p) => (
         <ProposalChain key={p.id} p={p} path={path} store={store} />
       ))}

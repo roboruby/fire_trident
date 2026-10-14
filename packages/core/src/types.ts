@@ -628,6 +628,32 @@ export interface NotesVerification {
   at: Millis;
 }
 
+/**
+ * The change one landing made to one file (GET /api/colonies/:id/landings/:ref/diff?path=, served for the colonies listed in
+ * FT_PUBLIC_GIT or FT_PUBLIC_MCP): the file's blob in the landing's lineage note write set against its blob in the parent
+ * commit, as unified hunks cut on a line boundary so the answer stays within 64 KB. `before` and `after` are null where the
+ * file is absent.
+ */
+export interface LandingDiff {
+  colonyId: Id;
+  landingId: Id;
+  trunkSha: Sha;
+  parentSha: Sha;
+  path: Path;
+  before: Sha | null;
+  after: Sha | null;
+  /** `binary`, `too-large` (a version over 512 KB) and `unreadable` carry no hunks; `unchanged`: the landing left the file as it was. */
+  status: "added" | "deleted" | "modified" | "unchanged" | "binary" | "too-large" | "unreadable";
+  /** Lines added and removed by the whole change, also when the hunks were cut. */
+  added: number;
+  removed: number;
+  /** Unified hunks ("@@ -a,b +c,d @@", two lines of context), ending in "… (truncated)" when `truncated`. */
+  hunks: string;
+  truncated: boolean;
+  /** Why no lines are shown, as a sentence, when none are. */
+  detail?: string;
+}
+
 // ---------------------------------------------------------------------------
 // Trunk certification (the project's own tests, run after landings)
 // ---------------------------------------------------------------------------

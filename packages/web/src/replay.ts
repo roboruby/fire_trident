@@ -1,8 +1,9 @@
-import type { AgentKind, ColonyEvent, ColonySnapshot, EventsPage, Id, IntentStatus, Proposal, RecordedEvent, Rule } from "@fire_trident/core";
+import type { AgentKind, ColonyEvent, ColonySnapshot, EventsPage, Id, IntentStatus, LandingDiff, NoteCheck, Proposal, RecordedEvent, Rule } from "@fire_trident/core";
 import { HttpError, type Backend, type EscalationDecision, type ReviewDecision, type WhyEntry } from "./api.ts";
 import { finite } from "./format.ts";
 import { isColonyEvent, type ColonyStore } from "./store.ts";
 import { TAU_MS } from "./theme.ts";
+import { fetchLandingDiff, fetchNoteCheck } from "./verified.ts";
 
 /**
  * Replays of finished runs (/c/:id?replay=1). The colony's record (GET /api/colonies/:id/events) is
@@ -509,6 +510,16 @@ export class ReplayBackend implements Backend {
   async why(path: string): Promise<WhyEntry[]> {
     const data = await this.getJson<unknown>(`/why?path=${encodeURIComponent(path)}`);
     return Array.isArray(data) ? (data as WhyEntry[]).filter((e) => e && e.landing && e.note) : [];
+  }
+
+  /** The note check of one landing as the trunk repository holds it now, like the lineage above. */
+  verifyNote(landingId: string): Promise<NoteCheck | null> {
+    return fetchNoteCheck(this.colonyId, landingId);
+  }
+
+  /** The change a landing made to one file (public colonies only). */
+  landingDiff(landingId: string, path: string): Promise<LandingDiff> {
+    return fetchLandingDiff(this.colonyId, landingId, path);
   }
 
   /** A replay has no review queue to act on: what waited for a person is history. */

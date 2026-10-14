@@ -1,5 +1,6 @@
-import type { ColonyEvent, ColonySnapshot, FieldReading, Landing, LineageNote, Proposal } from "@fire_trident/core";
+import type { ColonyEvent, ColonySnapshot, FieldReading, Landing, LandingDiff, LineageNote, NoteCheck, Proposal } from "@fire_trident/core";
 import { isColonyEvent, type ColonyStore } from "./store.ts";
+import { fetchLandingDiff, fetchNoteCheck } from "./verified.ts";
 
 /** One entry of GET /api/colonies/:id/why. */
 export interface WhyEntry {
@@ -32,6 +33,10 @@ export interface Backend {
   resolveEscalation(intentId: string, decision: EscalationDecision, note: string, by?: string, amend?: IntentAmend): Promise<void>;
   /** Freeze the colony's clock (the simulator and replays; a live colony keeps running). */
   setPaused?(paused: boolean): void;
+  /** One landing's lineage note against its commit's FT-Note trailer (verified.ts); absent where there is no trunk repository to check (the simulator). */
+  verifyNote?(landingId: string): Promise<NoteCheck | null>;
+  /** The change a landing made to one file (verified.ts; the server shows it for public colonies only); absent in the simulator. */
+  landingDiff?(landingId: string, path: string): Promise<LandingDiff>;
 }
 
 /** An HTTP failure with its status code. */
@@ -275,6 +280,14 @@ export class HttpBackend implements Backend {
   async why(path: string): Promise<WhyEntry[]> {
     const data = await this.getJson<unknown>(`/why?path=${encodeURIComponent(path)}`);
     return Array.isArray(data) ? (data as WhyEntry[]).filter((e) => e && e.landing && e.note) : [];
+  }
+
+  verifyNote(landingId: string): Promise<NoteCheck | null> {
+    return fetchNoteCheck(this.colonyId, landingId);
+  }
+
+  landingDiff(landingId: string, path: string): Promise<LandingDiff> {
+    return fetchLandingDiff(this.colonyId, landingId, path);
   }
 
   async review(): Promise<Proposal[]> {

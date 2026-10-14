@@ -1,4 +1,5 @@
 import { FIELD_COLOR, LAYER_COLOR, STAGE_COLOR } from "../theme.ts";
+import { LiveNote } from "./LiveNote.tsx";
 
 const TILE = "#131b28";
 const EDGE = "rgba(150,170,200,0.16)";
@@ -154,42 +155,6 @@ function LandDiagram() {
   );
 }
 
-/** Remember: the newest commit unfolds its lineage note. */
-function RememberDiagram() {
-  const rows: Array<[string, string]> = [
-    ["intent", "relative imports name their file"],
-    ["rule", "approved by a person"],
-    ["agent", "model and kind"],
-    ["decisions", "reflex · collision · p 0.97"],
-    ["checks", "✓ rule recheck · not verified: tests"],
-  ];
-  return (
-    <svg viewBox="0 0 320 150" role="img" aria-label="Each commit carries a git note with its intent, rule, agent, decisions and checks.">
-      <line x1="20" y1="22" x2="132" y2="22" stroke="#f38020" strokeOpacity="0.35" strokeWidth="1.5" />
-      {[30, 62, 94].map((x) => (
-        <circle key={x} cx={x} cy="22" r="4.5" fill="#05070b" stroke="#f38020" strokeOpacity="0.6" strokeWidth="1.5" />
-      ))}
-      <circle cx="126" cy="22" r="7" fill="#f38020" />
-      <path d="M126 29 L126 40" stroke="#f38020" strokeOpacity="0.5" />
-      <rect x="18" y="40" width="288" height="102" rx="7" fill="#0d131d" stroke="rgba(150,170,200,0.22)" />
-      <text x="30" y="56" className="pd-mono pd-accent">
-        refs/notes/firetrident
-      </text>
-      {rows.map(([k, v], i) => (
-        <g key={k} opacity="0">
-          <animate attributeName="opacity" values="0;0;1;1;0" keyTimes={`0;${(0.08 + i * 0.1).toFixed(2)};${(0.14 + i * 0.1).toFixed(2)};0.92;1`} dur="7s" repeatCount="indefinite" />
-          <text x="30" y={74 + i * 15} className="pd-mono pd-key">
-            {k}
-          </text>
-          <text x="96" y={74 + i * 15} className="pd-mono">
-            {v}
-          </text>
-        </g>
-      ))}
-    </svg>
-  );
-}
-
 interface Prong {
   n: string;
   name: string;
@@ -197,6 +162,8 @@ interface Prong {
   body: string;
   how: string;
   Diagram: () => React.JSX.Element;
+  /** Spans the grid, its text beside a diagram too large for a column (Remember's live note). */
+  wide?: boolean;
 }
 
 const PRONGS: readonly Prong[] = [
@@ -228,30 +195,51 @@ const PRONGS: readonly Prong[] = [
     n: "04",
     name: "Remember",
     head: "Every commit carries its why.",
-    body: "Each landing writes a git note with the intent, the rule and who approved it, the agent and model, every decision with its probability, the checks that ran, and what was not verified. Any git client can read it, long after the agents are gone.",
-    how: "refs/notes/firetrident plus FT-* commit trailers, in Artifacts repos.",
-    Diagram: RememberDiagram,
+    body: "Each landing writes a git note with the intent, the rule and who approved it, the agent and how its model is known, every decision with its probability, the checks, what was not verified, and the files read and written. Its commit carries the note's SHA-256, so anyone can check with plain git that nobody rewrote it, long after the agents are gone.",
+    how: "refs/notes/firetrident plus FT-* commit trailers; the last one, FT-Note, is the note's SHA-256.",
+    Diagram: LiveNote,
+    wide: true,
   },
 ];
 
-/** The four prongs, each with a small live diagram. */
+/** The prong's name, headline and text. */
+function ProngText({ p }: { p: Prong }) {
+  return (
+    <>
+      <div className="pr-k">
+        <span className="mono">{p.n}</span>
+        {p.name}
+      </div>
+      <h3 className="pr-head">{p.head}</h3>
+      <p className="pr-body">{p.body}</p>
+      <p className="pr-how">{p.how}</p>
+    </>
+  );
+}
+
+/** The four prongs, each with a small live diagram; Remember spans the grid with a real note beside its text. */
 export function Prongs() {
   return (
     <div className="pr-grid">
-      {PRONGS.map((p) => (
-        <article className="pr" key={p.name}>
-          <div className="pr-diagram">
-            <p.Diagram />
-          </div>
-          <div className="pr-k">
-            <span className="mono">{p.n}</span>
-            {p.name}
-          </div>
-          <h3 className="pr-head">{p.head}</h3>
-          <p className="pr-body">{p.body}</p>
-          <p className="pr-how">{p.how}</p>
-        </article>
-      ))}
+      {PRONGS.map((p) =>
+        p.wide ? (
+          <article className="pr pr-wide" key={p.name}>
+            <div className="pr-text">
+              <ProngText p={p} />
+            </div>
+            <div className="pr-diagram">
+              <p.Diagram />
+            </div>
+          </article>
+        ) : (
+          <article className="pr" key={p.name}>
+            <div className="pr-diagram">
+              <p.Diagram />
+            </div>
+            <ProngText p={p} />
+          </article>
+        ),
+      )}
     </div>
   );
 }
