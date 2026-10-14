@@ -114,8 +114,10 @@ describe("stuck work in the needs-you strip", () => {
     expect(stuckTarget(s, { ...answer, seenAt: NOW })).toEqual({ tab: "review" });
     expect(stuckTarget(s, { ...red, seenAt: NOW })).toEqual({ tab: "review" });
     expect(stuckTarget(s, { ...red, action: "tests", seenAt: NOW })).toEqual({ tab: "events", focus: "certify" });
-    expect(stuckTarget(s, { ...item({ key: "returns:i4", kind: "returns", action: "intent", intentId: "i4" }), seenAt: NOW })).toEqual({ tab: "intents", focus: "open" });
-    expect(stuckTarget(s, { ...item({ key: "returns:i1", kind: "returns", action: "intent", intentId: "i1" }), seenAt: NOW })).toEqual({ tab: "intents", focus: "claimed" });
+    // Amend or withdraw it: the Intents tab opens the intent's group and region and lights its row.
+    expect(stuckTarget(s, { ...item({ key: "returns:i4", kind: "returns", action: "intent", intentId: "i4" }), seenAt: NOW })).toEqual({ tab: "intents", focus: "intent:i4" });
+    expect(stuckTarget(s, { ...item({ key: "returns:i1", kind: "returns", action: "intent", intentId: "i1" }), seenAt: NOW })).toEqual({ tab: "intents", focus: "intent:i1" });
+    expect(stuckTarget(s, { ...item({ key: "returns:i9", kind: "returns", action: "intent", intentId: "i9" }), seenAt: NOW })).toEqual({ tab: "intents", focus: "open" });
     // Look at the agent: the Why tab on a file it holds says who is there, their state and their last note.
     expect(stuckTarget(s, { ...claimed, seenAt: NOW })).toEqual({ tab: "why", path: "src/i1.ts" });
     expect(stuckTarget(s, { ...claimed, agentId: "gone", intentId: "unknown", seenAt: NOW })).toEqual({ tab: "intents", focus: "claimed" });

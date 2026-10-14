@@ -583,7 +583,19 @@ export class ColonySim {
     const i = si.intent;
     const ev: ColonyEvent = { t: "intent", at: this.now, intentId: i.id, status: i.status, title: i.title, footprint: i.footprint };
     // Contest intents say so on their events too (the UI also reads it from the snapshot and the contest event).
-    this.emit(i.contest ? ({ ...ev, contest: i.contest } as ColonyEvent) : ev);
+    // Each event also names where its intent came from, which the colony leaves to its snapshot (the store reads both).
+    const origin = { source: i.source, priority: i.priority, ...(i.ruleId ? { ruleId: i.ruleId } : {}), ...(i.parentId ? { parentId: i.parentId } : {}) };
+    this.emit({ ...ev, ...origin, ...(i.contest ? { contest: i.contest } : {}) } as ColonyEvent);
+  }
+
+  /** The rules declared so far (a rule declared while the simulator runs reaches the page through MockBackend). */
+  ruleList(): Rule[] {
+    return this.rules.map((r) => ({ ...r }));
+  }
+
+  /** How many rules are declared. */
+  get ruleCount(): number {
+    return this.rules.length;
   }
 
   private violationsEvent(): void {
@@ -1626,6 +1638,7 @@ export class MockBackend implements Backend {
   private paused = false;
   private readonly stress: number;
   private debt = 0;
+  private rulesSent = 0;
 
   constructor(colonyId: string, opts: MockOptions) {
     this.sim = new ColonySim(colonyId, opts);
@@ -1636,6 +1649,7 @@ export class MockBackend implements Backend {
     store.applySnapshot(this.sim.snapshot());
     store.applyField(this.sim.fieldReadings());
     store.setConn("mock", null);
+    this.rulesSent = this.sim.ruleCount;
     window.clearInterval(this.timer);
     this.timer = window.setInterval(() => {
       if (this.paused) return;
@@ -1645,6 +1659,11 @@ export class MockBackend implements Backend {
         const n = Math.floor(this.debt);
         this.debt -= n;
         if (n) evs.push(...this.sim.noise(n));
+      }
+      // A rule the simulator declares while it runs: no event carries a rule, so the page learns it here.
+      if (this.sim.ruleCount !== this.rulesSent) {
+        this.rulesSent = this.sim.ruleCount;
+        store.learnRules(this.sim.ruleList());
       }
       if (evs.length) store.applyEvents(evs);
     }, 50);

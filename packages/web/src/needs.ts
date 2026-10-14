@@ -18,7 +18,10 @@ export interface Need {
   /** Hover text: what it is and what a person can do about it. */
   title: string;
   tab: "review" | "events" | "intents" | "why";
-  /** The Events filter chip or the Intents segment to open the tab on. */
+  /**
+   * The Events filter chip to open the tab on, or what the Intents tab opens: a state's groups and
+   * regions ("returned", "report", "claimed" for in flight, "open"), or one intent's ("intent:<id>").
+   */
   focus?: string;
   /** `stuck`: the items, the kinds most in need of a person first (the strip lists them with what to do). */
   items?: StuckView[];
@@ -83,24 +86,24 @@ export function stuckNow(store: ColonyStore): StuckView[] {
 
 /**
  * Where a stuck item's action leads: the Review tab (answer the report, review the change), the
- * Events tab on its tests, the Intents tab where the intent is, or the Why tab on a file the agent
- * holds (it says who is on the file, their state and their last note).
+ * Events tab on its tests, the Intents tab open on the intent's group and region with its row lit, or
+ * the Why tab on a file the agent holds (it says who is on the file, their state and their last note).
  */
 export function stuckTarget(store: ColonyStore, s: StuckView): { tab: Need["tab"]; focus?: string; path?: string } {
+  const intent = s.intentId ? store.intents.get(s.intentId) : undefined;
   switch (s.action) {
     case "answer":
     case "review":
       return { tab: "review" };
     case "tests":
       return { tab: "events", focus: "certify" };
-    case "intent": {
-      const status = s.intentId ? store.intents.get(s.intentId)?.status : undefined;
-      return { tab: "intents", focus: status === "claimed" || status === "proposed" ? "claimed" : "open" };
-    }
+    case "intent":
+      return { tab: "intents", focus: intent ? `intent:${intent.id}` : "open" };
     default: {
       const agent = s.agentId ? store.agents.get(s.agentId) : undefined;
-      const path = agent?.paths[0] ?? (s.intentId ? store.intents.get(s.intentId)?.footprint[0] : undefined);
-      return path ? { tab: "why", path } : { tab: "intents", focus: "claimed" };
+      const path = agent?.paths[0] ?? intent?.footprint[0];
+      if (path) return { tab: "why", path };
+      return { tab: "intents", focus: intent ? `intent:${intent.id}` : "claimed" };
     }
   }
 }
@@ -149,6 +152,7 @@ export function needsYou(store: ColonyStore): Need[] {
       label: `${returned === 1 ? "intent" : "intents"} returned ${fmtInt(REPEATED_RETURNS)}+ times`,
       title: `Changes for ${returned === 1 ? "this intent" : "these intents"} came back ${fmtInt(REPEATED_RETURNS)} or more times while you watched. Amending or withdrawing may help more than another attempt.`,
       tab: "intents",
+      // The Intents tab opens every group and region that holds one.
       focus: "returned",
     });
   }

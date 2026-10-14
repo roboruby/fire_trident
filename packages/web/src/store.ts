@@ -124,6 +124,8 @@ export interface IntentView {
   updatedAt: number;
   assignedTo?: Id;
   ruleId?: Id;
+  /** The intent it was declared from (its why chain), when the colony recorded one. */
+  parentId?: Id;
   /** 1 until the intent is amended. */
   revision: number;
   withdrawnReason?: string;
@@ -155,6 +157,18 @@ export interface EscalationView {
   agentId: Id;
   at: number;
   resolved?: NonNullable<IntentEscalation["resolved"]>;
+}
+
+/**
+ * Where an intent came from, as the colony records it: its snapshot says, its live events do not. A
+ * replay learns the finished colony's, and a live page learns those of intents declared after it loaded.
+ */
+export interface IntentOrigin {
+  source: IntentSource;
+  ruleId?: Id;
+  parentId?: Id;
+  priority?: number;
+  why?: string;
 }
 
 /** An intent whose changes keep coming back: how many returns this page saw, and the latest reason. */
@@ -286,6 +300,9 @@ const NOTICE_WINDOW_MS = 15_000;
 /** Resolved reports kept for the review tab and lineage (open ones are always kept). */
 const RESOLVED_KEEP = 200;
 const INTENT_STATUSES: ReadonlySet<string> = new Set<IntentStatus>(["open", "claimed", "proposed", "landed", "abandoned", "withdrawn"]);
+const INTENT_SOURCES: ReadonlySet<string> = new Set<IntentSource>(["human", "rule", "agent", "certify", "system"]);
+/** Learned intent origins kept at most (a replay's finished snapshot lists up to 5,200 intents). */
+const ORIGINS_KEEP = 50_000;
 const LAYERS: ReadonlySet<string> = new Set<DecisionLayer>(["reflex", "llm", "human"]);
 const IN_FLIGHT: ReadonlySet<ProposalStatus> = new Set<ProposalStatus>(["pending", "checking", "ready", "escalated"]);
 const FINAL: ReadonlySet<ProposalStatus> = new Set<ProposalStatus>(["landed", "returned", "rejected"]);
@@ -383,6 +400,31 @@ export function stuckOf(raw: unknown, seenAt: number): StuckView | null {
   return view;
 }
 
+/**
+ * An intent's origin from a record that may carry one: a snapshot's intent, or an intent event from a
+ * server or simulator that sends it (the colony's own events do not). Null without a known source.
+ */
+export function intentOriginOf(raw: unknown): IntentOrigin | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as { source?: unknown; ruleId?: unknown; parentId?: unknown; priority?: unknown; why?: unknown };
+  if (typeof r.source !== "string" || !INTENT_SOURCES.has(r.source)) return null;
+  const o: IntentOrigin = { source: r.source as IntentSource };
+  if (typeof r.ruleId === "string" && r.ruleId) o.ruleId = r.ruleId;
+  if (typeof r.parentId === "string" && r.parentId) o.parentId = r.parentId;
+  if (typeof r.priority === "number" && Number.isFinite(r.priority)) o.priority = r.priority;
+  if (typeof r.why === "string") o.why = r.why;
+  return o;
+}
+
+/** Give an intent placed without an origin what its origin says. */
+function fillOrigin(view: IntentView, o: IntentOrigin): void {
+  view.source = o.source;
+  if (o.ruleId) view.ruleId = o.ruleId;
+  if (o.parentId) view.parentId = o.parentId;
+  if (o.priority !== undefined) view.priority = o.priority;
+  if (o.why !== undefined && view.why === undefined) view.why = o.why;
+}
+
 /** The landing a notice names, when its event carries one (`landingId`, or a `landing` with its id). */
 function noticeLanding(ev: Extract<ColonyEvent, { t: "directive" }>): string | null {
   const x = ev as { landingId?: unknown; landing?: { landingId?: unknown } | null };
@@ -466,6 +508,10 @@ export class ColonyStore {
   readonly intents = new Map<Id, IntentView>();
   readonly intentsByStatus: Record<IntentStatus, number> = { open: 0, claimed: 0, proposed: 0, landed: 0, abandoned: 0, withdrawn: 0 };
   intentsVersion = 0;
+  /** Origins learned for intents this page may not have placed yet (learnIntents); a replay's restarts keep them. */
+  private readonly origins = new Map<Id, IntentOrigin>();
+  /** Intents placed from events that carried no origin (the live backend learns theirs from a snapshot). */
+  unsourcedBorn = 0;
   readonly proposals = new Map<Id, ProposalView>();
   readonly rules = new Map<Id, Rule>();
   inFlight = 0;
@@ -630,6 +676,7 @@ export class ColonyStore {
         updatedAt: finite(i.createdAt, now),
         assignedTo: i.assignedTo,
         ruleId: i.ruleId,
+        parentId: i.parentId,
         revision: Math.max(1, finite(i.revision, 1)),
         withdrawnReason: i.withdrawnReason,
       };
@@ -757,6 +804,53 @@ export class ColonyStore {
   applyStuck(raw: unknown): void {
     if (!this.setStuck(raw)) return;
     this.bump();
+  }
+
+  /**
+   * Learn where intents came from (a snapshot's intents). Intents placed without an origin take it now,
+   * and intents not placed yet take it when their first event arrives: a replay learns the finished
+   * colony's this way, and a live page those declared after it loaded. Returns how many it filled.
+   */
+  learnIntents(list: readonly unknown[]): number {
+    let filled = 0;
+    for (const raw of list) {
+      const id = raw && typeof raw === "object" ? (raw as { id?: unknown }).id : undefined;
+      const origin = intentOriginOf(raw);
+      if (typeof id !== "string" || !id || !origin) continue;
+      this.origins.delete(id);
+      this.origins.set(id, origin);
+      const view = this.intents.get(id);
+      if (view && view.source === undefined) {
+        fillOrigin(view, origin);
+        filled++;
+      }
+    }
+    while (this.origins.size > ORIGINS_KEEP) {
+      const oldest = this.origins.keys().next().value;
+      if (oldest === undefined) break;
+      this.origins.delete(oldest);
+    }
+    if (filled) {
+      this.intentsVersion++;
+      this.bump();
+    }
+    return filled;
+  }
+
+  /** Learn rules this page has not seen (no event carries a rule: one added after the page loaded). Returns how many. */
+  learnRules(list: readonly unknown[]): number {
+    let added = 0;
+    for (const raw of list) {
+      const r = raw as Rule | null;
+      if (!r || typeof r !== "object" || typeof r.id !== "string" || !r.id || this.rules.has(r.id)) continue;
+      this.rules.set(r.id, r);
+      added++;
+    }
+    if (added) {
+      this.intentsVersion++;
+      this.bump();
+    }
+    return added;
   }
 
   /** Load a stuck-work report (StuckReport) in place of the items kept; false when `raw` is not one. */
@@ -1083,6 +1177,10 @@ export class ColonyStore {
     let it = this.intents.get(ev.intentId);
     if (!it) {
       it = { id: ev.intentId, title: ev.title ?? ev.intentId, status: ev.status, footprint: Array.isArray(ev.footprint) ? ev.footprint : [], priority: 1, createdAt: finite(ev.at, now), updatedAt: now, revision: 1 };
+      // Where it came from: the event's own origin fields when it has them, else what this page learned.
+      const origin = intentOriginOf(ev) ?? this.origins.get(ev.intentId);
+      if (origin) fillOrigin(it, origin);
+      else this.unsourcedBorn++;
       this.intents.set(it.id, it);
       tally(this.intentsByStatus, ev.status, 1, INTENT_STATUSES);
     } else {
@@ -1267,7 +1365,7 @@ export class ColonyStore {
   /**
    * Forget everything that happened (a replay seeking back rebuilds the colony from its start): the
    * field, agents, intents, proposals, landings, decisions, the event log and every counter. The colony
-   * record, rules and file list come back with the next applySnapshot.
+   * record, rules and file list come back with the next applySnapshot; learned intent origins stay.
    */
   reset(): void {
     for (const id of this.agents.keys()) this.agentChanges.add(id);

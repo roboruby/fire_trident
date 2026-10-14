@@ -110,6 +110,11 @@ export function parseEvents(data: unknown): ColonyEvent[] {
   return Array.isArray(nested) ? nested.filter(isColonyEvent) : [];
 }
 
+/** How long after the first intent placed without an origin the page re-reads the snapshot to learn it. */
+const LEARN_DELAY_MS = 2_000;
+/** The page re-reads the snapshot for origins at most this often. */
+const LEARN_EVERY_MS = 30_000;
+
 /**
  * The Worker API: GET snapshot, then a WebSocket of ColonyEvent with reconnect
  * and exponential backoff. Every (re)connect re-reads the snapshot and replays
@@ -128,6 +133,9 @@ export class HttpBackend implements Backend {
   private keepalive = 0;
   private lastMessageAt = 0;
   private seriesTimer = 0;
+  private learnTimer = 0;
+  private learnedTo = 0;
+  private learnedAt = 0;
 
   constructor(readonly colonyId: string) {}
 
@@ -159,7 +167,44 @@ export class HttpBackend implements Backend {
     this.gen++;
     window.clearTimeout(this.timer);
     window.clearInterval(this.seriesTimer);
+    window.clearTimeout(this.learnTimer);
+    this.learnTimer = 0;
     this.closeSocket();
+  }
+
+  /**
+   * Intents placed from events carry no origin (rule, source, parent): once some arrive, re-read the
+   * snapshot, LEARN_DELAY_MS after the first and at most every LEARN_EVERY_MS, and learn their origins
+   * and any rule added since the page loaded. The Intents tab places them by their titles meanwhile.
+   */
+  private maybeLearn(): void {
+    const store = this.store;
+    if (!store || this.stopped || this.learnTimer || store.unsourcedBorn <= this.learnedTo) return;
+    const wait = Math.max(LEARN_DELAY_MS, this.learnedAt + LEARN_EVERY_MS - Date.now());
+    this.learnTimer = window.setTimeout(() => void this.learn(), wait);
+  }
+
+  private async learn(): Promise<void> {
+    this.learnTimer = 0;
+    const store = this.store;
+    // A reconnect since this was scheduled re-read the snapshot already.
+    if (!store || this.stopped || store.unsourcedBorn <= this.learnedTo) return;
+    if (document.hidden) {
+      this.learnTimer = window.setTimeout(() => void this.learn(), LEARN_EVERY_MS);
+      return;
+    }
+    const upTo = store.unsourcedBorn;
+    this.learnedAt = Date.now();
+    try {
+      const snap = await this.getJson<ColonySnapshot>("");
+      if (this.stopped || this.store !== store || !snap || typeof snap !== "object") return;
+      store.learnRules(Array.isArray(snap.rules) ? snap.rules : []);
+      store.learnIntents(Array.isArray(snap.intents) ? snap.intents : []);
+      this.learnedTo = Math.max(this.learnedTo, upTo);
+    } catch {
+      // A failed read is tried again LEARN_EVERY_MS after this one.
+    }
+    this.maybeLearn();
   }
 
   private async cycle(): Promise<void> {
@@ -173,9 +218,12 @@ export class HttpBackend implements Backend {
       if (gen !== this.gen) return;
       if (!snap || typeof snap !== "object" || !snap.colony) throw new Error("malformed snapshot");
       store.applySnapshot(snap);
+      // The snapshot names the origin of every intent it lists; only intents placed from events after it need learning.
+      this.learnedTo = store.unsourcedBorn;
       const buffered = this.buffer ?? [];
       this.buffer = null;
       if (buffered.length) store.applyEvents(buffered);
+      this.maybeLearn();
       store.setConn(this.ws?.readyState === WebSocket.OPEN ? "live" : "connecting", null);
       this.getJson<FieldReading[]>("/field")
         .then((readings) => {
@@ -231,6 +279,7 @@ export class HttpBackend implements Backend {
         if (this.buffer.length < 50_000) this.buffer.push(...evs);
       } else {
         this.store?.applyEvents(evs);
+        this.maybeLearn();
       }
     };
     ws.onclose = () => {
