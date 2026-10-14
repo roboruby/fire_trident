@@ -3371,7 +3371,7 @@ export class ColonyDO extends DurableObject<Env> {
     // The contest jury (FT_CONTEST_JURY, decide/jury.ts): two or three small models from different families in place of the one judge.
     if (juryEnabled(this.env.FT_CONTEST_JURY, this.requireColony().id)) {
       return pairJury({
-        ai: this.judgeSpend(ai),
+        ai: this.judgeSpend(ai, intent.id),
         models: juryMembers(authors, policy.juryModels),
         limiter,
         intent: judged,
