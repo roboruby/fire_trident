@@ -1,0 +1,69 @@
+{
+  "$comment": "The tour of the order-backend colony (/c/order-backend?tour=1), on its replay; the same keys and fields as tour.json. Its moments (tour/orderBackend.ts, found in the record's intent, proposal and landing events): @seed (the first landing: the file in its first language), @goals (the last of the conflicting goals declared), @first-port (the first landing after the seed), @held-1, @held-2, @held-3 (the changes the goal-conflict check sent to a person, in order), @start, @end. Captions are filled once, at the moment: {seedAgent} {seedFile} {seedTitle} {seedWhy} {seedSettledBy} {goals} {goalTargets} {firstAgent} {firstVersion} {firstTitle} {firstLanding} {firstSettledBy} {firstAfterGoals} {heldAgent} {heldVersion} {heldTitle} {heldReason} {heldAfter} {heldLines} {heldNames} {undoneVersion} {waiting} {queueLine} {colony}; commands also take {server}.",
+  "steps": [
+    {
+      "id": "seed",
+      "kicker": "Seed",
+      "at": "@seed",
+      "caption": "{seedAgent} landed {seedFile} for “{seedTitle}”{seedWhy}, settled by {seedSettledBy}: the order backend began in one language.",
+      "duration": 10,
+      "tab": "events",
+      "highlight": "@moment",
+      "focus": "@moment"
+    },
+    {
+      "id": "goals",
+      "kicker": "Three goals",
+      "at": "@goals",
+      "caption": "{goals} were then declared for {seedFile}, one per agent and each with its own why: {goalTargets}.",
+      "duration": 10,
+      "tab": "intents",
+      "highlight": "@moment"
+    },
+    {
+      "id": "first",
+      "kicker": "The first lands",
+      "at": "@first-port",
+      "caption": "{firstAgent}'s change landed first, {firstAfterGoals} after the goals: {firstVersion} of {seedFile}, settled by {firstSettledBy}, with nothing recent of another intent to undo.",
+      "duration": 10,
+      "tab": "events",
+      "highlight": "@moment",
+      "focus": "@moment",
+      "emphasize": "funnel"
+    },
+    {
+      "id": "held-1",
+      "kicker": "Held for a person",
+      "at": "@held-1",
+      "caption": "{heldAgent}'s change came {heldAfter} later and waits for a person: it “{heldReason}”, says the deterministic goal-conflict check, and a person decides which goal stands.",
+      "duration": 13,
+      "tab": "events",
+      "highlight": "@moment",
+      "emphasize": "funnel"
+    },
+    {
+      "id": "held-2",
+      "kicker": "Held too",
+      "at": "@held-2",
+      "caption": "{heldAgent}'s change waits too, {heldNames}: it “{heldReason}”. Neither agent could quietly undo {undoneVersion}, and no model decided this.",
+      "duration": 13,
+      "tab": "review",
+      "highlight": "@moment"
+    },
+    {
+      "id": "queue",
+      "kicker": "The queue",
+      "at": "@end",
+      "caption": "{queueLine}",
+      "duration": 14,
+      "tab": "review",
+      "commands": [
+        "# The review queue, no token needed",
+        "curl -s {server}/api/colonies/{colony}/review",
+        "",
+        "# A person decides (the deployment's admin token)",
+        "npx fire_trident review {colony} <proposalId> approve|return|reject --reason <text>"
+      ]
+    }
+  ]
+}

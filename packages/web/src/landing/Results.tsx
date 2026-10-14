@@ -5,6 +5,7 @@ import { metricKey } from "../store.ts";
 import { fmtDuration, fmtInt, prettyUrl } from "../format.ts";
 import { colonyHref } from "../route.ts";
 import { serverOrigin } from "./LiveNote.tsx";
+import { TOUR_ABOUT, hasTour } from "../tour/catalog.ts";
 import { loadFirstRedCard, loadGoalsCard, loadScaleCard, loadSignedCard, specBuild } from "./showcase.ts";
 
 /**
@@ -199,6 +200,12 @@ function Card({ r }: { r: Result }) {
           </svg>
           Replay
         </a>
+        {/* The colonies with a tour of their own (tour/catalog.ts): the run told from its record, step by step. */}
+        {hasTour(r.id) ? (
+          <a className="rs-tour" href={colonyHref(r.id, { tour: true })} title={TOUR_ABOUT[r.id]}>
+            Take the tour
+          </a>
+        ) : null}
         <a className="rs-open" href={colonyHref(r.id)}>
           Open
         </a>

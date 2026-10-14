@@ -1,14 +1,13 @@
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { Tab } from "../components/SidePanel.tsx";
 import { EMPHASIS } from "../director/Director.tsx";
 import { SERVER } from "../landing/RunIt.tsx";
 import type { MapRenderer } from "../map/renderer.ts";
 import type { ReplayBackend } from "../replay.ts";
 import type { ColonyStore } from "../store.ts";
-import { fillTour, loadTourSteps, planTour, tourSelection, tourValues, travelSpeed, type TourPlan, type TourStop } from "./tour.ts";
-import raw from "./tour.json";
+import { fillTour, tourSelection, travelSpeed, type TourData, type TourPlan, type TourStop } from "./tour.ts";
+import { loadTourData, tourFor } from "./tours.ts";
 
-const STEPS = loadTourSteps(raw);
 /** The source repository (as on the landing page): the verify script's home. */
 const REPO = "https://github.com/roboruby/fire_trident";
 /** Files outlined at most (more dims the rest of the map). */
@@ -95,20 +94,26 @@ interface Props {
   onTab: (t: Tab) => void;
   /** Leave the tour for the plain replay. */
   onClose: () => void;
+  /** ?tour=<id>: another colony's tour script to play on this one (tours.ts); null for the colony's own. */
+  script?: string | null;
 }
 
 /**
  * The tour of a finished run (?tour=1): a card over the map that walks the replay through about seven moments found in
- * the colony's own events (tour.json), each told in one sentence filled from the record at that moment. Back, Next and
- * Play (← → space); playing holds each step, then plays the run on to the next moment, faster over long stretches. The
- * map and the side panel stay live: hover, click a file, switch tabs.
+ * the colony's own events (tours.ts: tour.json for a run a rule started, and a tour of its own for first-red and
+ * order-backend), each told in one sentence filled from the record at that moment. Back, Next and Play (← → space);
+ * playing holds each step, then plays the run on to the next moment, faster over long stretches. The map and the side
+ * panel stay live: hover, click a file, switch tabs.
  */
-export function Tour({ store, backend, renderer, onTab, onClose }: Props) {
+export function Tour({ store, backend, renderer, onTab, onClose, script = null }: Props) {
   const replay = useSyncExternalStore(
     (notify) => backend.subscribe(notify),
     () => backend.state,
   );
+  const tour = useMemo(() => tourFor(store.colonyId, script), [store, script]);
   const [plan, setPlan] = useState<TourPlan | null>(null);
+  /** What the tour read from the public API besides the record (its reads), once planned. */
+  const data = useRef<TourData>({});
   const [shown, setShown] = useState<Shown | null>(null);
   const [playing, setPlaying] = useState(true);
   const [travel, setTravel] = useState<{ from: number; to: number; speed: number } | null>(null);
@@ -116,12 +121,22 @@ export function Tour({ store, backend, renderer, onTab, onClose }: Props) {
   const hold = useRef({ gen: 0, left: 0, total: 1, startedAt: 0 });
   const card = useRef<HTMLElement>(null);
 
-  // The plan, once the record is loaded: each step on its moment, in the order the run went.
+  // The plan, once the record is loaded: the tour's public reads first, then each step on its moment, in the order the run went.
   useEffect(() => {
     const timeline = backend.timeline;
     if (!replay.ready || plan || !timeline) return;
-    setPlan(planTour(STEPS, timeline, { rules: [...store.rules.values()], known: new Set(store.files.map((f) => f.path)), source: replay.source }));
-  }, [replay.ready, replay.source, plan, backend, store]);
+    let gone = false;
+    const get = (suffix: string): Promise<unknown> =>
+      fetch(`/api/colonies/${encodeURIComponent(store.colonyId)}${suffix}`, { headers: { accept: "application/json" } }).then((res) => (res.ok ? res.json() : Promise.reject(new Error(String(res.status)))));
+    void loadTourData(tour, get).then((read) => {
+      if (gone) return;
+      data.current = read;
+      setPlan(tour.plan(timeline, store, read, replay.source));
+    });
+    return () => {
+      gone = true;
+    };
+  }, [replay.ready, replay.source, plan, backend, store, tour]);
 
   /** Show step `i`: the replay at its moment (paused), the view it asks for, and its sentence filled from there. */
   const go = useCallback(
@@ -138,12 +153,12 @@ export function Tour({ store, backend, renderer, onTab, onClose }: Props) {
         store.select(sel?.path ?? null, sel?.line ?? null);
       }
       store.setHighlight(highlightFor(stop, store));
-      const values = tourValues(stop, store, plan);
+      const values = tour.values(stop, store, plan, data.current);
       const gen = hold.current.gen + 1;
       hold.current = { gen, left: stop.step.duration * 1000, total: stop.step.duration * 1000, startedAt: performance.now() };
       setShown({ index, gen, text: fillTour(stop.caption, values), commands: (stop.step.commands ?? []).map((l) => fillTour(l, { ...values, server: SERVER, repo: REPO })) });
     },
-    [plan, backend, store, onTab],
+    [plan, backend, store, onTab, tour],
   );
 
   // Start on the first step (or ?step=) once planned.

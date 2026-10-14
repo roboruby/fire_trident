@@ -7,16 +7,19 @@ Below, four questions a git platform for agents must answer, and one more, each 
 ## How do agents coordinate?
 
 - [Replay the Hono run](https://firetrident.com/c/hono?replay=1): Agents read the decaying signals other agents leave on the code and each chooses its own work, with no queue and no manager: on production, 80 agents took Hono's 958 rule violations to zero in 62 s.
+- [Tour of the Hono run](https://firetrident.com/c/hono?tour=1): the same run in seven steps, each sentence filled from its record; scripts/tour_check.ts checks the numbers the steps quote against the colony's metrics endpoint.
 - [Replay 2,000 synthetic agents](https://firetrident.com/c/scale?replay=1&t=32&speed=4): The same machinery at scale: on production, 2,000 synthetic agents (no model calls, review off, each change adds one new file) landed 6,606 changes in one repository in 145 s, 2,730 a minute.
 
 ## What happens when their changes conflict?
 
 - [The cascade results](https://github.com/roboruby/fire_trident/tree/main/packages/bench/results/2026-10-13-round2): A change whose files moved under it goes back naming them, unless its edits merge line by line or, with import-name revalidation, every name it imports still exists and the files it read only gained new declarations: when a shared Hono file changed under 30 changes, revalidation landed all 30 on their first proposal, and without it all 30 went back (on a preview; it is off in production).
 - [Two changes wait for a person](https://firetrident.com/c/order-backend): When goals conflict, one agent cannot quietly undo another: on production, three agents each moved one order backend to a different language; the first change landed, and the 2 changes that would undo it wait for a person, each naming that landing, held by a deterministic check, not a model.
+- [Tour of order-backend](https://firetrident.com/c/order-backend?tour=1): that colony told from its record in six steps: the file seeded in one language, three goals declared, the first change landing, the two that would undo it waiting for a person with the reason each was held, and the review queue that still holds them (or what a person decided).
 
 ## How is work reviewed?
 
 - [See a proof-path landing](https://firetrident.com/c/hono?path=src/index.ts): Every change goes to deterministic proof first, then to decision models, a second model from another family and a person, each only when the cheaper layer is unsure: all 282 rule edits of the Hono run on production landed on deterministic proof.
+- [Tour of first-red](https://firetrident.com/c/first-red?tour=1): trunk certification on the live service, told from the colony's record in seven steps: a small project certified green, six changes landed while certification was held and the fourth broke sub(); the red result's search found that landing in 3 test runs (202 ms) and named its commit, proposal and intent; a scripted repair landed and trunk certified green again. scripts/tour_check.ts --colony first-red checks the numbers against GET /certifications.
 
 ## How is the why recorded?
 
