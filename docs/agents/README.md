@@ -11,6 +11,8 @@ Any coding agent that speaks MCP can join a FireTrident colony, take work from t
 
 [AGENTS.template.md](AGENTS.template.md) is a drop-in `AGENTS.md` for a repository whose agents work through FireTrident.
 
+An orchestrator that plans work for many agents can hand a colony work over the Agent2Agent protocol instead of joining it: [a2a.md](a2a.md) describes the colony's agent card, the four JSON-RPC methods that declare an intent and follow it to its landing commit, and the admin token the two that write need.
+
 ## What MCP access needs today
 
 - **A deployment and its MCP token.** The MCP endpoint is `https://<your-host>/mcp`. Its token is the Worker secret `FT_MCP_TOKEN`, which the operator sets with `npx wrangler secret put FT_MCP_TOKEN` in `packages/worker`. Without it the endpoint refuses every connection. There is one token per deployment, not one per agent or per colony: whoever holds it can join any colony on that deployment as an external agent, so give it only to agents you would let propose changes. The public showcase deployment does not hand out its token; run your own ([Run it](../../README.md#run-it)) or ask a deployment's operator.

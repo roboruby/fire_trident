@@ -14,6 +14,7 @@ import { pushDelayMs } from "../trunk/direction.ts";
  * off. A new flag of that form goes here, or GET /api/about will not show it (test/front/about.test.ts checks env.ts).
  */
 export const COLONY_FLAGS: readonly string[] = [
+  "FT_A2A",
   "FT_ASYNC_PUBLISH",
   "FT_BISECT",
   "FT_CULPRITS",
