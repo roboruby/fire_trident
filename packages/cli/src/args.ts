@@ -58,7 +58,8 @@ export type Command =
   | { name: "revert"; colony: string; ref: string; reason: string; by?: string; redo: boolean }
   | { name: "direct"; colony: string; agentId: string; message: string; intentId?: string; by?: string }
   | { name: "escalations"; colony: string }
-  | { name: "escalation"; colony: string; intentId: string; decision: EscalationDecision; note: string; title?: string; why?: string; footprint?: string[]; by?: string };
+  | { name: "escalation"; colony: string; intentId: string; decision: EscalationDecision; note: string; title?: string; why?: string; footprint?: string[]; by?: string }
+  | { name: "megafile"; colony: string; path?: string; release: boolean; by?: string };
 
 /** Options every command accepts. */
 export interface GlobalFlags {
@@ -107,6 +108,7 @@ const COMMAND_OPTIONS: Record<string, Record<string, OptionSpec>> = {
   direct: { intent: { type: "string" }, by: { type: "string" } },
   escalations: {},
   escalation: { note: { type: "string" }, title: { type: "string" }, why: { type: "string" }, footprint: { type: "string", multiple: true }, by: { type: "string" } },
+  megafile: { release: { type: "boolean" }, by: { type: "string" } },
   swarm: { agents: { type: "string" }, model: { type: "string" }, kind: { type: "string" } },
   why: {},
   verify: { limit: { type: "string" } },
@@ -474,6 +476,19 @@ function build(word: string, v: Record<string, unknown>, p: string[]): Command {
     }
     case "escalation":
       return buildEscalation(v, p);
+    case "megafile": {
+      // The megafile alarm: list the held files, or hold (or --release) one.
+      const usage = "ft megafile <colony> [<path> [--release]] [--by <name>]";
+      noExtras(p, 2, usage);
+      const colony = colonyArg(p[0], usage);
+      const path = p[1]?.trim().replace(/^(\.\/)+/, "").replace(/^\/+/, "");
+      if (!path && (v.release === true || v.by !== undefined)) fail(`name the file to ${v.release === true ? "release" : "hold"}. Usage: ${usage}`);
+      const cmd: Extract<Command, { name: "megafile" }> = { name: "megafile", colony, release: v.release === true };
+      if (path) cmd.path = path;
+      const by = str(v.by)?.trim();
+      if (by) cmd.by = by;
+      return cmd;
+    }
     default:
       return fail(`unknown command "${word}"`);
   }
@@ -659,6 +674,7 @@ Commands
   direct <colony> <agent> "text"   Send one agent free-text guidance mid-flight
   escalations <colony>             Agents' reports that an intent cannot be done as written
   escalation <colony> <intent>     Answer a report: amend, withdraw or dismiss
+  megafile <colony> [path]         Files held for their split; hold or release one
   swarm <colony> --agents <n>      Spawn in-platform agents
   agents <colony>                  List agents: state, intent, step, what each says it is doing
   stop <colony> <agentId>|--all    Stop one agent, or every in-platform agent
@@ -889,6 +905,24 @@ that whoever takes it next reads. The report keeps the answer.
 Examples
   ft escalation web int_42 dismiss --note "The test is right: 405 is the spec"
   ft escalation web int_42 amend --why "Return 404 for unknown slugs" --note "spec changed"
+`,
+  megafile: `
+ft megafile <colony>
+ft megafile <colony> <path> [--release] [--by <name>]
+
+The megafile alarm (FT_MEGAFILE on the server). A script file that grew fast
+while many agents wrote it, or that changes keep colliding on, gets an intent
+to split it, and the file is held: no other intent that covers it is offered,
+and a change that writes it goes back, until the split lands, is withdrawn or
+reported, or an hour passes. With no path, list the held files with their
+numbers and the holds lifted lately. With a path, hold that file for its split
+(its split intent is declared unless one is open); --release lifts its hold and
+leaves the intent.
+
+Examples
+  ft megafile web
+  ft megafile web src/router.ts
+  ft megafile web src/router.ts --release
 `,
   watch: `
 ft watch <colony> [--only <type,...>]

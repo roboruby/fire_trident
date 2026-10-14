@@ -50,6 +50,7 @@ import type {
   WithdrawResult,
 } from "./format.ts";
 import { extractSpec, planNew } from "./spec.ts";
+import { formatMegafile } from "./megafile.ts";
 import type { IntentBody, SpecPolicy } from "./spec.ts";
 import type { Intent, Landing, LineageNote, Proposal, Rule } from "@fire_trident/core";
 
@@ -340,6 +341,12 @@ async function execute(cmd: Command, ctx: Ctx): Promise<number> {
       const res = await send<EscalationResult>(ctx.http, req, 60_000);
       if (ctx.flags.json) printJson(ctx, res);
       else io.stdout(formatEscalationAnswer(cmd.intentId, cmd.decision, res ?? {}, c));
+      return 0;
+    }
+    case "megafile": {
+      const res = await send<unknown>(ctx.http, req, 60_000);
+      if (ctx.flags.json) printJson(ctx, res);
+      else io.stdout(formatMegafile(cmd, res, c, io.now()));
       return 0;
     }
     default:

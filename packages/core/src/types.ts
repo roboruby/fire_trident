@@ -108,8 +108,11 @@ export interface FieldReading {
 // Intents, rules, morphology
 // ---------------------------------------------------------------------------
 
-/** `certify`: declared by trunk certification to repair failing tests (see Certification). */
-export type IntentSource = "human" | "rule" | "agent" | "certify";
+/**
+ * `certify`: declared by trunk certification to repair failing tests (see Certification). `system`: declared by the
+ * colony itself (the megafile alarm's split intents, FT_MEGAFILE); its why is the colony's own numbers.
+ */
+export type IntentSource = "human" | "rule" | "agent" | "certify" | "system";
 /** `withdrawn`: a human (or a retracted rule) called it off before it landed; it stays in history. */
 export type IntentStatus = "open" | "claimed" | "proposed" | "landed" | "abandoned" | "withdrawn";
 
@@ -863,6 +866,44 @@ export interface StuckReport {
   total: number;
 }
 
+/**
+ * A file the megafile alarm held (FT_MEGAFILE): while held, no change but its split intent's may write it and no
+ * other intent whose footprint covers it is offered. The hold lifts when the split lands, is withdrawn or reported
+ * (escalated), when a person releases it, or at `until`. The numbers are the file's when it was held.
+ */
+export interface MegafileHold {
+  path: Path;
+  /** The split intent the hold waits for. */
+  intentId: Id;
+  /** "colony" when the alarm held it, else the person who did. */
+  by: string;
+  at: Millis;
+  /** When the hold lifts by itself. */
+  until: Millis;
+  /** What made the file hot: its growth among many writers, changes colliding on it, or a person. */
+  signal: "growth" | "returns" | "person";
+  /** Lines when held, lines when the window opened, and the growth between them as a fraction (null when not known). */
+  lines: number | null;
+  baseline: number | null;
+  growth: number | null;
+  /** Distinct agents whose changes to the file landed in the window, and changes that went back naming it. */
+  agents: number;
+  returns: number;
+  windowMs: number;
+  /** Once lifted: when, and why ("landed", "withdrawn", "escalated", "expired", "released by <name>"). */
+  liftedAt?: Millis;
+  lifted?: string;
+  /** The file's lines after its split landed, when known. */
+  linesAfter?: number;
+}
+
+/** The megafile alarm's state for a colony: the files held now, and the holds lifted lately (newest first). */
+export interface MegafileReport {
+  at: Millis;
+  held: MegafileHold[];
+  lifted: MegafileHold[];
+}
+
 /** Snapshot the UI loads before applying live events. */
 export interface ColonySnapshot {
   colony: Colony;
@@ -885,6 +926,8 @@ export interface ColonySnapshot {
   convergence?: Convergence;
   /** Work that stopped moving (the stuck-work detector, computed on demand; served by the Worker). */
   stuck?: StuckReport;
+  /** Files held for their split (the megafile alarm; served when FT_MEGAFILE covers the colony). */
+  megafiles?: MegafileReport;
 }
 
 // ---------------------------------------------------------------------------
