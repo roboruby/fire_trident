@@ -73,6 +73,7 @@ import { runRevert, sqlRevertTrunk, type RevertResult, type RevertTrunk } from "
 import { durableFs } from "../artifacts/workspace.ts";
 import { TRUNK_NAMESPACE, bindingFor } from "../artifacts/shards.ts";
 import { noteAlternatives, type ContestAlternative } from "../decide/contest.ts";
+import { noteUndoes, removedLineOwners, sqlLineageSource, type RemovedLinesAnswer, type RemovedLinesQuery } from "../decide/undone.ts";
 import type { DirectionInfo } from "../colony/direction.ts";
 import { ftError } from "../colony/errors.ts";
 import { INLINE_FETCH_BYTES, isInlineChange } from "../colony/inline.ts";
@@ -523,6 +524,16 @@ export class TrunkDO extends DurableObject<Env> {
     });
     if (ownerAt > 0) out.unshift(...out.splice(ownerAt, 1));
     return out;
+  }
+
+  /**
+   * Goal conflicts (FT_GOAL_CONFLICT; decide/undone.ts): for each file a change modifies or deletes, the recent landings
+   * that wrote the lines it removes from the version at its base, with how many of their lines that version holds and
+   * the intent each wrote them for. Read only, like `why` per line: the landing log, lineage notes and blobs; bounded.
+   */
+  async removedLineOwners(q: RemovedLinesQuery): Promise<RemovedLinesAnswer> {
+    this.state();
+    return removedLineOwners(sqlLineageSource(this.sql, (blob) => this.blobBytes(blob)), q);
   }
 
   /** The most recent landings, newest first (default 50). */
@@ -2730,7 +2741,8 @@ export class TrunkDO extends DurableObject<Env> {
  * The lineage note for a landing. A proposal that landed over files it read that changed records each
 * of them under `revalidated`: the blob it read, the blob it landed on, and the names that held. One
 * whose files were merged line by line records each under `merged` (its base blob, the blob it landed
-* on, the blob it wrote, the result); its write set names the results. Each proposal's `provenance` says
+* on, the blob it wrote, the result); its write set names the results. One a person approved over a goal conflict
+* records the lines of other intents' recent landings it undid under `undoes`. Each proposal's `provenance` says
 * how its author and model are known, from the colony's record of the agent (trunk/provenance.ts); a
 * proposal whose agent the writer does not know gets none. The note names the landing, never its commit,
 * so it is final before the commit is built (the commit carries its digest). Notes are public, so the free
@@ -2764,6 +2776,7 @@ function buildNote(
         evidence: p.evidence ?? { checks: [] },
         ...(revalidated.has(p.id) ? { revalidated: revalidated.get(p.id) } : {}),
         ...(merged.has(p.id) ? { merged: merged.get(p.id) } : {}),
+        ...noteUndoes(p.undoes),
         ...noteAlternatives(ctx.alternatives, p.id),
         ...(provenance ? { provenance } : {}),
       };

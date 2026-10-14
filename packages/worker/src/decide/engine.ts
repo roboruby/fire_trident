@@ -24,6 +24,7 @@ import { errorText, ftError } from "../colony/errors.ts";
 import { ANTIBODY_DIR, antibodyFile, antibodyPath, calibrateThreshold, cleanQuestion, deriveMatcher, fallbackQuestion, parseAntibodyFile, securityAntibody } from "./antibodies.ts";
 import { addedFromHunks, fileDiff, type FileDiff } from "./diff.ts";
 import { agentReason, gate, type GateVerdict, type ReflexSignals, type SecondOpinion } from "./gate.ts";
+import { checkGoalConflict, type RemovedLineOwners } from "./goalconflict.ts";
 import { applyAllowances, dangerLabels, scanDanger, triageDanger, whyAuthor, type DangerAllowance } from "./danger.ts";
 import { CallLimiter } from "./limiter.ts";
 import { candidatePaths, mechanicalCheck, nameAssumptionCandidates, nameAssumptions, proofAssumptions, type MechanicalResult } from "./mechanical.ts";
@@ -75,6 +76,8 @@ export interface TrunkRpc {
   readFile(path: Path): Promise<string | null>;
   files(): Promise<Array<{ path: Path; size: number; blob: Sha }>>;
   systemCommit(p: { files: Array<{ path: Path; content: string | null }>; message: string; note: LineageNote & Record<string, unknown> }): Promise<Landing>;
+  /** Goal conflicts (decide/undone.ts): the recent landings that wrote the lines a change removes. */
+  removedLineOwners?: RemovedLineOwners;
 }
 
 /** What the pipeline needs from its colony (implemented by ColonyDO). */
@@ -272,6 +275,10 @@ export class DecideEngine {
     const dangerSignals = dangerLabels(danger.signals.filter((h) => h.cls !== "ci" && h.cls !== "dependency"));
     const dangerFacts = [...dangerLabels(danger.signals), ...dangerLabels(danger.recorded)].map((l) => `danger pattern (deterministic): ${l}`);
 
+    // Goal conflict (FT_GOAL_CONFLICT, decide/goalconflict.ts): a change that undoes lines a recent landing wrote for
+    // another intent waits for a person (rule P4). It fails open: the check's own failure never holds a change.
+    const goal = vaccine ? null : await checkGoalConflict(this.host, p, innate.files, policy);
+
     // Deterministic stage: import resolution against the trunk tree and the mechanical proof. No model.
     // With policy.deterministic off the facts are still recorded (observed only), but nothing uses them.
     const observed = await this.mechanical(p, innate, rule, policy.commentProof);
@@ -289,6 +296,7 @@ export class DecideEngine {
       ...(mech ? { mechanical: { verdict: mech.result.verdict, reasons: mech.result.reasons } } : {}),
       danger: { mustHuman: dangerLabels(danger.mustHuman), signals: dangerSignals },
       protected: protectedHits(paths, policy.protectedPaths),
+      ...(goal?.conflict ? { goalConflict: { reason: goal.conflict.reason } } : {}),
       antibodies: matching.length,
       autonomy: !vaccine && this.store.approvedLandings(region) >= policy.autonomyAfter,
       whyBy,
@@ -305,6 +313,7 @@ export class DecideEngine {
       ...innate.checks,
       ...observed.result.checks.map((c, i) => ({ ...c, ms: i === 0 ? observed.ms : c.ms, ...(mech ? {} : { detail: `(observed only: policy.deterministic is off) ${c.detail ?? ""}`.slice(0, 1_000) }) })),
       dangerCheck,
+      ...(goal?.check ? [goal.check] : []),
     ];
     let final: GateVerdict = gate(base);
     let v1: GateVerdict | null = null;
@@ -470,8 +479,9 @@ export class DecideEngine {
       } catch (err) {
         console.error(`review view of ${p.id} not stored: ${errorText(err)}`);
       }
-      // A person's approval later lands the same proposal, so it keeps the assumptions too.
-      await this.host.updateProposals([{ id: p.id, patch: { status: "escalated", reason: `escalated by ${final.layer}: ${reason}`, evidence, ...relied } }]);
+      // A person's approval later lands the same proposal, so it keeps the assumptions too, and what it undoes for its lineage note.
+      const undoes = goal?.conflict ? { undoes: goal.conflict.undoes } : {};
+      await this.host.updateProposals([{ id: p.id, patch: { status: "escalated", reason: `escalated by ${final.layer}: ${reason}`, evidence, ...relied, ...undoes } }]);
     } else {
       // A security return tells its agent only the class; people read the full reasons in the
       // evidence and the decisions.

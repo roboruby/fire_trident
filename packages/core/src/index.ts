@@ -12,3 +12,4 @@ export * from "./lineage.ts";
 export * from "./guide.ts";
 export * from "./cochange.ts";
 export * from "./changeset.ts";
+export * from "./goalconflict.ts";

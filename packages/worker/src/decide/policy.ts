@@ -1,4 +1,4 @@
-import { globMatch } from "@fire_trident/core";
+import { GOAL_CONFLICT_LANDINGS, GOAL_CONFLICT_WINDOW_MS, globMatch } from "@fire_trident/core";
 import type { DangerClass } from "./danger.ts";
 
 /**
@@ -55,6 +55,13 @@ export interface DecidePolicy {
    * policy say. A glob also covers everything under a directory it matches.
    */
   protectedPaths: string[];
+  /**
+   * Goal conflicts (FT_GOAL_CONFLICT, decide/goalconflict.ts): a landing is recent, so that undoing its lines for another
+   * intent waits for a person, for this many minutes after it landed and while it is among the colony's newest
+   * `goalConflictLandings` landings.
+   */
+  goalConflictMinutes: number;
+  goalConflictLandings: number;
 }
 
 /**
@@ -81,6 +88,8 @@ export const DEFAULT_POLICY: DecidePolicy = {
   llmPerMinute: 120,
   dangerAllow: [],
   protectedPaths: [],
+  goalConflictMinutes: GOAL_CONFLICT_WINDOW_MS / 60_000,
+  goalConflictLandings: GOAL_CONFLICT_LANDINGS,
 };
 
 const DANGER_CLASSES: readonly DangerClass[] = ["auth", "secret", "capability", "crypto", "ci", "dependency", "test-weakening"];
@@ -214,6 +223,8 @@ export function mergePolicy(base: DecidePolicy, patch: unknown): DecidePolicy {
     llmPerMinute: Math.floor(num(p.llmPerMinute, 1, 3_000, base.llmPerMinute)),
     dangerAllow: allowances(p.dangerAllow, base.dangerAllow),
     protectedPaths: protectedGlobs(p.protectedPaths, base.protectedPaths),
+    goalConflictMinutes: Math.floor(num(p.goalConflictMinutes, 1, 24 * 60, base.goalConflictMinutes)),
+    goalConflictLandings: Math.floor(num(p.goalConflictLandings, 1, 10_000, base.goalConflictLandings)),
   };
 }
 

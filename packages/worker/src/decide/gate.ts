@@ -25,6 +25,9 @@ import { damageLabels } from "./signals.ts";
  * - P3 the change writes, deletes or renames a path the colony's policy protects → escalate
  *      (deterministic; in every phase; no intent text, antibody, proof or policy entry waives it, and
  *      the alert budget cannot bounce it), or return a change failing its checks first
+ * - P4 the change would undo lines a recent landing wrote for another intent (decide/goalconflict.ts,
+ *      FT_GOAL_CONFLICT) → escalate (deterministic; in every phase; no proof or approval lands it, and the
+ *      alert budget cannot bounce it), or return a change failing its checks first
  * - D2 innate checks fail and there is no damage               → return (deterministic)
  * - D3 mechanical proof and no antibody to screen               → land (deterministic)
  * - P2 an earlier proposal for this intent had a security finding → a person instead of a model:
@@ -100,6 +103,8 @@ export interface GateInput {
   danger?: { mustHuman: string[]; signals: string[] };
   /** Paths the change writes, deletes or renames that the colony's policy protects (signals.ts protectedHits): a person decides. */
   protected?: ProtectedHit[];
+  /** The change would undo lines a recent landing wrote for another intent (decide/goalconflict.ts): a person decides which goal stands. */
+  goalConflict?: { reason: string } | null;
   /** Matching antibodies that only System 1 can answer. */
   antibodies?: number;
   /** System 1 answers: undefined before it is asked (deterministic stage), null when Clef was unavailable. */
@@ -317,6 +322,8 @@ export function gate(input: GateInput): GateVerdict {
   const guarded = input.protected ?? [];
   const guardedText =
     guarded.length === 0 ? "" : `protected paths need a person: ${guarded.slice(0, 5).map((h) => `${h.path} (protected by ${h.glob})`).join(", ")}${guarded.length > 5 ? ` and ${guarded.length - 5} more` : ""}`;
+  // A goal conflict is named wherever a person is asked (P1 and P3 escalations name it too).
+  const conflictReasons = input.goalConflict?.reason ? [input.goalConflict.reason] : [];
 
   /**
    * P0/P1: a recognized danger pattern (auth, secret, unrequested capability, governance, a repair's
@@ -333,7 +340,7 @@ export function gate(input: GateInput): GateVerdict {
       return back;
     }
     risk = 3;
-    return escalate("deterministic", "P1 danger pattern", 1, [`danger patterns need a human: ${mustHuman.join("; ")}`, ...(guardedText ? [guardedText] : [])], mustHuman.map((m) => `danger:${m.split(" ")[0]}`), classes(mustHuman.map(labelClass)));
+    return escalate("deterministic", "P1 danger pattern", 1, [`danger patterns need a human: ${mustHuman.join("; ")}`, ...(guardedText ? [guardedText] : []), ...conflictReasons], mustHuman.map((m) => `danger:${m.split(" ")[0]}`), classes(mustHuman.map(labelClass)));
   };
 
   /**
@@ -345,13 +352,26 @@ export function gate(input: GateInput): GateVerdict {
     if (guarded.length === 0) return null;
     if (!input.innate.ok) return verdict("return", "deterministic", "P3 protected+innate", 1, [...input.innate.failures.map((f) => `innate: ${f}`), `${guardedText}; a person reviews it once its checks pass`], []);
     risk = 3;
-    return escalate("deterministic", "P3 protected path", 1, [guardedText], ["policy:protected-path"], []);
+    return escalate("deterministic", "P3 protected path", 1, [guardedText, ...conflictReasons], ["policy:protected-path"], []);
+  };
+
+  /**
+   * P4: a change that would undo lines a recent landing wrote for another intent reaches a person, whatever proves or
+   * approves it: no merge settles a disagreement between goals, so a person decides which goal stands. Like P3, a
+   * change failing its checks goes back first, told what it would undo.
+   */
+  const conflict = (): GateVerdict | null => {
+    const reason = input.goalConflict?.reason;
+    if (!reason) return null;
+    if (!input.innate.ok) return verdict("return", "deterministic", "P4 goal conflict+innate", 1, [...input.innate.failures.map((f) => `innate: ${f}`), `${reason} once its checks pass`], []);
+    risk = Math.max(risk, policy.budgetRiskFloor);
+    return escalate("deterministic", "P4 goal conflict", 1, [reason], ["policy:goal-conflict"], []);
   };
 
   // Deterministic stage: facts first, no model.
   if (!asked) {
     if (mech === "fail") return verdict("return", "deterministic", "D1 resolution", 1, (input.mechanical?.reasons ?? []).map((x) => `deterministic: ${x}`), []);
-    const gated = danger() ?? guard();
+    const gated = danger() ?? guard() ?? conflict();
     if (gated) return gated;
     if (!input.innate.ok && facts.length === 0) return verdict("return", "deterministic", "D2 innate", 1, input.innate.failures.map((f) => `innate: ${f}`), []);
     if (mech === "pass" && facts.length === 0 && (input.antibodies ?? 0) === 0) return verdict("land", "deterministic", "D3 innate+proof", 1, [`deterministic proof: ${proof}`], [], ["innate", "deterministic"]);
@@ -367,7 +387,7 @@ export function gate(input: GateInput): GateVerdict {
 
   if (!consulted) {
     if (mech !== "fail") {
-      const gated = danger() ?? guard();
+      const gated = danger() ?? guard() ?? conflict();
       if (gated) return gated;
     }
     // M1: a proven change only answers to antibodies (learned from humans); Clef's other alarms are advisory.
@@ -418,7 +438,7 @@ export function gate(input: GateInput): GateVerdict {
 
   // After System 2: a danger pattern or a protected path still needs a human, whatever the second opinion said.
   if (mech !== "fail") {
-    const gated = danger() ?? guard();
+    const gated = danger() ?? guard() ?? conflict();
     if (gated) return gated;
   }
   // Unconfident System 1 alarms give way to the second opinion.
