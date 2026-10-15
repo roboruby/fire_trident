@@ -1,6 +1,6 @@
-# FireTrident video — narration draft v1
+# FireTrident video — narration v3
 
-Target 7:30–8:30. About 145 words a minute. Every number was checked against the production colonies and the result files on 2026-10-12 (video/README.md names the sources); a {braced} value is one still to check.
+Target 7:30–9:30. About 145 words a minute. Every number was checked against the production colonies and the result files on 2026-10-12 and 2026-10-15 (video/README.md names the sources); a {braced} value is one still to check.
 
 ## 0:00 Cold open (replay of the hono colony: 80 agents converging, violation counter falling)
 
@@ -32,7 +32,9 @@ The colony also learns from history. Files that changed together in the past pus
 
 ## 3:00 Land (map: lanes flash, landing counter climbs)
 
-Every region of the code has a lane. Every few seconds the lane picks the largest set of proposals that don't conflict, checks that everything each agent read is still current, and hands them to a single trunk writer. The writer lands every lane's batch in one commit, with compare and swap. If something an agent read has changed, its proposal goes back with the exact difference instead of a merge conflict.
+Every region of the code has a lane. Every few seconds the lane picks the largest set of proposals that don't conflict, checks that everything each agent read is still current, and hands them to a single trunk writer. The writer lands every lane's batch in one commit, with compare and swap. If a file an agent read has changed, its proposal goes back naming that file, with the version it read and the version on trunk.
+
+Some of those returns don't need to happen. With text merge on, two edits to different lines of one file both land, merged line by line. With import-name revalidation, a change that is stale only because a file it imports grew still lands, as long as every name it imports is still there. On a preview, when a shared Hono file changed under 30 waiting changes, all 30 landed on their first try. Without it, all 30 went back.
 
 Sometimes one change sends a wave of proposals back. FireTrident watches for that the way neurologists watch for seizures. It measures how many returns each return causes. When that number climbs above one, the region slows down until the wave dies out.
 
@@ -42,11 +44,13 @@ Every proposal passes through a reflex arc. Proof comes first. For this rule the
 
 When proof isn't possible, Cloudflare's Clef decision model answers typed questions in a fraction of a second. If it is unsure, a model from a different family gives a second opinion. Some changes never land on a model's word. Code that touches authentication, secrets, or new network access always goes to a person, with the intent, the rule and the agent's own account of what it did not verify.
 
-When a person rejects a change, the colony learns. The rejection becomes an antibody, a check committed to the repository that screens every later proposal. And the immune system is measurable. The vaccination meter sends known bad changes through the normal path. It caught 28 of 28, and none of them landed.
+When a person rejects a change, the colony learns. The rejection becomes an antibody, a check committed to the repository that screens every later proposal. And the immune system is measurable. The vaccination meter sends known bad changes through the normal path. It sent 28 through. The second opinion turned back 7, the other 21 went to a person, and none of them landed.
 
 ## 5:00 Remember (Why panel; then a plain git clone and `git log --notes` in a terminal)
 
 Ask why any line exists. Every landed commit carries trailers and a git note with the intent, the rule, the agent and its model, every decision, and the exact files the agent read and wrote. It's plain git. Clone the trunk with any git client, no account needed, and the history explains itself.
+
+Every note is also sealed into its commit by its hash, and the trunk writer signs each commit it builds with a key it publishes. On a stock clone, a short script checks that the note is intact and names who signed it.
 
 ## 5:30 Change direction (map and events tab: a rule retracted, an intent amended, a directive)
 
@@ -68,10 +72,14 @@ Agents don't have to live inside the platform. Any MCP client can join a colony,
 
 ## 7:30 Scale (benchmark chart, measured vs. simulated labels)
 
-How far does it go? On a preview deployment, five thousand concurrent agents landed about 2,800 changes a minute. Of fifty thousand calls, 78 failed, all while the load was ramping up. Those were synthetic agents, to load the coordination layer itself. With language models, the model's rate limit is reached long before the colony's. Optimism has a cost and we measure it. Agents redo some work when trunk moves under them, and inhibition and co-change learning cut that rework to 31 percent.
+How far does it go? On the live service, two thousand agents landed 6,606 changes in one repository in 145 seconds, about 2,700 a minute, and none went back. On a preview, five thousand started at once. These agents make no model calls and each adds its own file, so they load the coordination layer alone. With language models, the model's rate limit is reached long before the colony's.
+
+With model-driven agents on the Hono rule, a preview took the 958 problems to zero in about three minutes with ten agents, and in under one with eighty. Counted at Workers AI list prices, the eighty-agent run on the live service cost six and a half cents in model calls.
+
+Optimism has a cost, and we measure it. When trunk moves under an agent, it redoes some work. In simulation on Hono's history, inhibition and co-change learning cut that rework from 46 to about 30 percent, below exclusive locks, while landing more than three times as many changes a minute.
 
 ## 8:00 Close (title card)
 
-FireTrident runs entirely on Cloudflare. Artifacts holds every repository. Durable Objects run the colony, its regions, the trunk writer and every agent. Workers AI powers the reflexes and the agents. Every run can be replayed, and it's open source under the MIT license.
+FireTrident runs entirely on Cloudflare. Artifacts holds every repository. Durable Objects run the colony, its regions, the trunk writer and every agent. Workers AI powers the reflexes and the agents. Every run can be replayed, the showcase colonies answer plain git and MCP with no account, and it's open source under the MIT license.
 
 A colony, not a queue.

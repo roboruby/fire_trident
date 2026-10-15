@@ -1,0 +1,20 @@
+# title: git · signed-notes trunk, no account
+# note: Real output · git 2.55 with no account and no token, on the production signed-notes trunk, 2026-10-15 · verify_note.mjs is the repository's scripts/verify_note.mjs
+$ git clone https://firetrident.com/git/signed-notes.git
+Cloning into 'signed-notes'...
+$ cd signed-notes && git fetch origin refs/notes/firetrident:refs/notes/firetrident
+From https://firetrident.com/git/signed-notes
+ * [new ref]         refs/notes/firetrident -> refs/notes/firetrident
+$ git log -1 --format=%B
+Land 1 change: Add notes/signed.md
+
+- Add notes/signed.md
+
+FT-Landing: lnd_mv8aqveoja4el5
+FT-Intent: int_mv8aqthjk1t3xo
+FT-Proposal: prp_mv8aqv3rwegwwy
+FT-Agent: agt_mv8aqtc7wfbsln
+FT-Note-Signature: ed25519 7980151ea697807b oG1FQGdmroNv_h746maauLhr2HpiaT5_bwH4wixmuQnGUyPxWGSG-xCdV4IrUgd4823wgAOc8E_ao6mpfbbaCw
+FT-Note: sha256:c8346183b984cc374baa7b1f2a49a0346b0947241e107decaeb40ce00cb65f3c
+$ node ../verify_note.mjs HEAD --keys https://firetrident.com/.well-known/firetrident-keys.json
+intact, signed by 7980151ea697807b

@@ -157,9 +157,24 @@ export const SCENES = {
 
   land: {
     shots: [
-      // Mid-run: landings spark into trunk.
-      { at: 0, kind: "page", url: rep("hono", "land"), sync: { at: 0, run: RUN.hono.mid }, badge: HONO() },
+      // Mid-run: landings spark into trunk. The director's sub-caption (a stale read goes back "with the exact delta")
+      // claims more than a return carries, the files that changed with their versions, so it stays hidden.
+      { at: 0, kind: "page", url: rep("hono", "land"), sync: { at: 0, run: RUN.hono.mid }, hideSub: true, badge: HONO() },
       { at: "The writer lands every", kind: "terminal", t: "git-land", cues: [0.3] },
+      {
+        at: "Some of those returns",
+        kind: "card",
+        card: "stat",
+        kicker: "Land · fewer returns",
+        title: "Not every stale change has to go back.",
+        items: [
+          { value: "2<small>/2</small>", label: "edits to lines 2 and 11 of one file landed", sub: "with text merge, the second as a line-by-line merge holding both; with it off, the second went back" },
+          { value: "30<small>/30</small>", label: "changes landed on their first proposal", sub: "after a shared hono file changed under them, with import-name revalidation; with it off, 30 of 30 went back", tone: "green" },
+        ],
+        beats: [0.6, "a change that is stale only"],
+        tag: { kind: "measured", text: "Measured · preview deployments, 2026-10-13 and 2026-10-14 (revalidation is off in production)" },
+        source: "packages/bench/results/2026-10-14-round5/ · 2026-10-13-round2/",
+      },
       { at: "Sometimes one change", kind: "page", url: BENCH, local: true, ready: "complete", scroll: { keys: [{ at: 0, to: "text:The seizure detector", offset: -70 }, { at: "When that number climbs", to: "text:The seizure detector", offset: 60, dur: 2.4 }] } },
     ],
   },
@@ -195,17 +210,22 @@ export const SCENES = {
         camera: { on: ".side", scale: [1.32, 1.35], move: 0.001, alignRight: true, y: 430 },
         badge: prod("shortlinks-review, 2026-10-12, finished · approved by ms"),
       },
-      { at: "When a person rejects", kind: "page", url: dir("openspec-w1", "review"), badge: prod("OpenSpec run, 2026-10-12"), actions: [{ at: "And the immune system", key: "ArrowRight" }] },
+      // The director's sub-caption calls the vaccination result recall; it measures routing (7 returned, 21 sent to a person), so it stays hidden.
+      { at: "When a person rejects", kind: "page", url: dir("openspec-w1", "review"), hideSub: true, badge: prod("OpenSpec run, 2026-10-12"), actions: [{ at: "And the immune system", key: "ArrowRight" }] },
     ],
   },
 
   remember: {
+    // The clone's output gets the moment it had as the scene's tail, before the sealed and signed notes.
+    gaps: { 1: 2.6 },
     tail: 2.6,
     shots: [
       { at: 0, kind: "page", url: `${PROD}/c/hono?path=src/index.ts`, ready: "why", badge: { ...prod("hono run, 2026-10-12"), pos: "tc" }, scroll: { el: "auto:.side", keys: [{ at: 0, y: 0 }, { at: 2.2, y: 260, dur: 2.5 }] } },
       { at: "carries trailers", kind: "terminal", t: "git-notes", cues: [0.2, "the agent and its model"], maxType: 2.6 },
       // A plain clone of the production trunk, no account: the full output of `git log --notes=firetrident -3` scrolls by and ends on a note's intent, rule, model and files.
       { at: "It's plain git", kind: "terminal", t: "git-clone", cues: [0.15, "with any git client"], maxType: 1.1, blockLps: [10, 10, 200], mark: ['"ruleId": "rul_mv51663hu2jmz8"', '"model": "@cf/google/gemma-4-26b-a4b-it"'] },
+      // A stock clone of the production signed-notes trunk (2026-10-15): the commit's FT-Note trailer seals its note, and the published key names the signer.
+      { at: "Every note is also sealed", kind: "terminal", t: "verify-signed", cues: [0.15, "On a stock clone"], maxType: 1.4, mark: ["FT-Note: sha256:c8346183b984cc374baa7b1f2a49a0346b0947241e107decaeb40ce00cb65f3c", "intact, signed by 7980151ea697807b"] },
     ],
   },
 
@@ -288,21 +308,35 @@ export const SCENES = {
 
   scale: {
     shots: [
-      { at: 0, kind: "page", url: BENCH, local: true, ready: "complete", scroll: { keys: [{ at: 0, y: 0 }, { at: "five thousand", to: "text:Scale: 1,000 to 5,000 agents", offset: -30, dur: 1.8 }] } },
       {
-        at: "Those were synthetic agents",
+        at: 0,
         kind: "card",
         card: "stat",
-        kicker: "Scale · 1,000 to 5,000 agents on one colony",
-        title: "Synthetic agents, no model calls: the coordination layer alone.",
+        kicker: "Scale · synthetic agents, one repository",
+        title: "No model calls: the coordination layer alone.",
         items: [
-          { value: "2,924<small>/min</small>", label: "1,000 synthetic agents", sub: "landed changes a minute; 0 of 31,308 calls failed" },
-          { value: "2,714<small>/min</small>", label: "2,000 synthetic agents", sub: "landed changes a minute; 0 of 45,034 calls failed" },
-          { value: "2,778<small>/min</small>", label: "5,000 synthetic agents", sub: "landed changes a minute; 78 of 50,368 calls failed (0.15%), all in the ramp: bench-client connections and one deploy reset", tone: "accent" },
+          { value: "6,606", label: "changes landed in 145 s on the live service", sub: "2,000 synthetic agents, 1,350 trunk commits, 0 returned; time to land p50 9.6 s, p95 15.2 s" },
+          { value: "2,730<small>/min</small>", label: "landed a minute on the live service", sub: "each change adds one new file, so none can conflict", tone: "green" },
+          { value: "5,000", label: "agents started at once on a preview", sub: "2,778 landed a minute (2026-10-12)", tone: "accent" },
         ],
-        beats: [0.6, 1.0, 1.4],
-        tag: { kind: "measured", text: "Measured · preview deployment (production code, its own Durable Objects), 2026-10-12" },
-        source: "packages/bench/results/2026-10-12-scale/",
+        beats: [0.6, "and none went back", "five thousand started"],
+        tag: { kind: "measured", text: "Measured · live service, 2026-10-14; preview deployment, 2026-10-12" },
+        source: "packages/bench/results/2026-10-14-round8/scale-production.json · 2026-10-12-scale/",
+      },
+      {
+        at: "With model-driven agents",
+        kind: "card",
+        card: "stat",
+        kicker: "Scale · model-driven agents on the hono rule",
+        title: "958 problems to zero, with every intent landed.",
+        items: [
+          { value: "188<small> s</small>", label: "10 agents", sub: "on a preview; 283 of 283 intents landed, 0 returned" },
+          { value: "56<small> s</small>", label: "80 agents", sub: "on a preview; 20 and 40 agents took 118 s and 77 s", tone: "green" },
+          { value: "$0.065", label: "model calls for the 80-agent run on the live service", sub: "Workers AI list prices, from the tokens the colony counted", tone: "accent" },
+        ],
+        beats: [0.6, "in under one with eighty", "Counted at Workers AI"],
+        tag: { kind: "measured", text: "Measured · preview deployment, 2026-10-14 (Gemma agents); live service, 2026-10-12" },
+        source: "packages/bench/results/2026-10-14-round6/sweep/ · 2026-10-12-prod/",
       },
       {
         at: "Optimism has a cost",
@@ -311,12 +345,12 @@ export const SCENES = {
         kicker: "Scale · the cost of optimism",
         title: "Agents redo some work when trunk moves under them.",
         items: [
-          { value: "42.5%<span class='to'>→</span>31.2%", label: "rework with inhibition and co-change learning", sub: "1,000 agents on hono's history; 85.6 → 86.4 landed per minute", tone: "accent" },
-          { value: "21.7%", label: "rework with file locks and one merge queue", sub: "the same workload at 51.9 landed per minute", tone: "blue" },
+          { value: "45.9%<span class='to'>→</span>30.5%", label: "rework with inhibition and co-change learning", sub: "1,000 agents on hono's history; 175.2 landed a minute", tone: "accent" },
+          { value: "34.8%", label: "rework with exclusive locks", sub: "the same workload at 51.9 landed a minute", tone: "blue" },
         ],
-        beats: [0.6, "cut that rework"],
-        tag: { kind: "simulated", text: "Simulated · calibrated on live runs, mean of 3 seeds" },
-        source: "packages/bench/results/2026-10-12-inhibition/summary.json",
+        beats: [0.6, "below exclusive locks"],
+        tag: { kind: "simulated", text: "Simulated · hono's history, every returned change redone in full, mean of 10 seeds" },
+        source: "packages/bench/results/2026-10-13-papers/summary.json",
       },
     ],
   },
@@ -336,7 +370,7 @@ export const SCENES = {
           { name: "Artifacts", text: "holds every repository <span>· trunk, agent workspaces, git notes</span>" },
           { name: "Durable Objects", text: "run the colony, its regions, the trunk writer <span>and every agent</span>" },
           { name: "Workers AI", text: "powers the reflexes <span>and the agents</span>" },
-          { name: "Replay", text: "every run can be replayed <span>from its record</span>" },
+          { name: "Replay", text: "every run can be replayed <span>· plain git and MCP, no account</span>" },
           { name: "Open source", text: "MIT license" },
         ],
         beats: ["Artifacts holds", "Durable Objects run", "Workers AI powers", "Every run can be replayed", "open source"],
