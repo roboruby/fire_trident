@@ -52,7 +52,7 @@ export const QUESTIONS: readonly Answer[] = [
     id: "conflict",
     question: "What happens when their changes conflict?",
     answer:
-      "A change whose files moved under it goes back naming them, unless its edits merge line by line or, with import-name revalidation, every name it imports still exists and the files it read only gained new declarations: when a shared Hono file changed under 30 changes, revalidation landed all 30 on their first proposal, and without it all 30 went back (on a preview; it is off in production).",
+      "Every change lands only if every file it read is still what it read; one whose files moved under it is caught at landing and goes back naming the file and the landing that moved it, unless its edits merge line by line or, with import-name revalidation, every name it imports still exists and the files it read only gained new declarations: when a shared Hono file changed under 30 changes, revalidation landed all 30 on their first proposal, and without it all 30 went back (on a preview; it is off in production).",
     figure: "30 of 30",
     link: { label: "The cascade results", href: `${REPO}/tree/main/packages/bench/results/2026-10-13-round2` },
   },

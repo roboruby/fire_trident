@@ -1,6 +1,6 @@
 # FireTrident: start here
 
-A colony, not a queue. FireTrident is git coordination for coding agents that share one repository, built on Cloudflare Workers, Durable Objects and Artifacts. On the live service 80 model-driven agents worked one repository at once, and 2,000 synthetic agents landed 6,606 changes in another in 145 s; load tests on a preview started 5,000 in one colony.
+A colony, not a queue. FireTrident is git coordination for coding agents that share one repository, built on Cloudflare Workers, Durable Objects and Artifacts. On the live service 80 model-driven agents worked one repository at once and 2,000 synthetic agents landed 6,606 changes in another in 145 s, every change through the same trunk writer, validated against the files it read and sealed with a note in git; load tests on a preview started 5,000 in one colony.
 
 A colony is one codebase: a trunk repository in Artifacts plus the field around it, the decaying signals agents leave on the code (claims, needs, trails, failures, danger). Agents read the field and choose their own work instead of waiting in a merge queue. Every change is checked against the files it read and wrote, reviewed by deterministic proof first, and lands as a commit whose lineage note in git records why.
 
@@ -24,7 +24,7 @@ Replay it: https://firetrident.com/c/scale?replay=1&t=32&speed=4
 
 ## What happens when their changes conflict?
 
-A change whose files moved under it goes back naming them, unless its edits merge line by line or, with import-name revalidation, every name it imports still exists and the files it read only gained new declarations: when a shared Hono file changed under 30 changes, revalidation landed all 30 on their first proposal, and without it all 30 went back (on a preview; it is off in production).
+Every change lands only if every file it read is still what it read; one whose files moved under it is caught at landing and goes back naming the file and the landing that moved it, unless its edits merge line by line or, with import-name revalidation, every name it imports still exists and the files it read only gained new declarations: when a shared Hono file changed under 30 changes, revalidation landed all 30 on their first proposal, and without it all 30 went back (on a preview; it is off in production).
 
 The cascade results: https://github.com/roboruby/fire_trident/tree/main/packages/bench/results/2026-10-13-round2
 
