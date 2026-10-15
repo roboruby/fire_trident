@@ -95,7 +95,7 @@ export const COMPARED: readonly Comparison[] = [
     metric: "Of 30 changes importing a file that then changed, how many went back",
     off: "30 of 30",
     on: "0 of 30",
-    note: "All 30 landed on their first proposal. It checks that the imported names still exist, not what they do, and is off in production.",
+    note: "All 30 landed on their first proposal. It checks that the imported names still exist and that the files read only grew, not what new code does; off in production.",
     verdict: "earns",
     label: "preview",
     folder: "2026-10-13-round2",
