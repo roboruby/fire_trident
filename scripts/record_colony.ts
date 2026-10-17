@@ -228,11 +228,13 @@ export async function recordColony(opts: RecordOptions): Promise<RecordResult> {
   }
   keep(colony, snapOut);
   const snap = snapOut.body as unknown as ColonySnapshot;
-  const [about, agents, policy] = await Promise.all([get("/api/about"), get(`${colony}/agents?all=1&journal=0&limit=10000`), get(`${colony}/decide/policy`)]);
+  const [about, agents, policy, decides] = await Promise.all([get("/api/about"), get(`${colony}/agents?all=1&journal=0&limit=10000`), get(`${colony}/decide/policy`), get(`${colony}/decides`)]);
   keep("/api/about", about);
   keep(`${colony}/agents?all=1&journal=0&limit=10000`, agents);
   // The first screen's protected paths (packages/web/src/target.ts).
   keep(`${colony}/decide/policy`, policy);
+  // The How this colony decides card (packages/web/src/decides.ts).
+  keep(`${colony}/decides`, decides);
 
   const pageSize = Math.max(1, Math.min(PAGE, opts.pageSize ?? PAGE));
   const source = opts.source && opts.source !== "auto" ? `&source=${opts.source}` : "";
