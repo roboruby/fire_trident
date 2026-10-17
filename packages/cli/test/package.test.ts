@@ -12,7 +12,7 @@ import { proposal, removeAll, trunkRepo } from "./trunk-repo.ts";
  * the registry. What it ships (dist, which tsconfig.build.json compiles from src, plus the other `files`) may import
  * only its own files and Node's built-in modules, and core only for types, through a top-level `import type` or
  * `export type` that the build erases (under verbatimModuleSyntax, `import { type X }` still loads the module). What the
- * CLI needs from core at run time is copied: src/answerable.ts is core's answerable.ts, and src/connect.ts is core's connect.ts. The last test builds the package
+ * CLI needs from core at run time is copied by scripts/vendor_cli.rb: src/answerable.ts, connect.ts, pricing.ts and testdelta.ts. The last test builds the package
  * as `npm pack` does and runs it from a directory with no workspace.
  */
 
@@ -90,18 +90,15 @@ describe("the published package", () => {
     ]);
   });
 
-  it("carries core's answerable.ts as it is: src/answerable.ts differs only in naming core for its types", () => {
-    const core = readFileSync(join(PKG, "../core/src/answerable.ts"), "utf8");
-    const copy = readFileSync(join(PKG, "src/answerable.ts"), "utf8");
-    const body = copy.slice(copy.indexOf("import type "));
-    expect(body.replace(`from "${CORE}";`, 'from "./types.ts";'), "packages/core/src/answerable.ts changed: copy it to packages/cli/src/answerable.ts again (first import from @fire_trident/core)").toBe(core);
-  });
-
-  it("carries core's connect.ts as it is: src/connect.ts adds only its first comment line", () => {
-    const core = readFileSync(join(PKG, "../core/src/connect.ts"), "utf8");
-    const copy = readFileSync(join(PKG, "src/connect.ts"), "utf8");
-    expect(copy.slice(copy.indexOf("\n") + 1), "packages/core/src/connect.ts changed: copy it to packages/cli/src/connect.ts again, below its first comment line").toBe(core);
-  });
+  // scripts/vendor_cli.rb writes these copies: a first comment line, then core's module with its type imports naming core.
+  for (const name of ["answerable", "connect", "pricing", "testdelta"]) {
+    it(`carries core's ${name}.ts as it is`, () => {
+      const core = readFileSync(join(PKG, `../core/src/${name}.ts`), "utf8");
+      const copy = readFileSync(join(PKG, `src/${name}.ts`), "utf8");
+      const body = copy.slice(copy.indexOf("\n") + 1).replaceAll(`from "${CORE}";`, 'from "./types.ts";');
+      expect(body, `packages/core/src/${name}.ts changed: run ruby scripts/vendor_cli.rb`).toBe(core);
+    });
+  }
 
   it("builds as npm pack builds it and runs from a directory with no workspace: --version, and ft verify on a clone", async () => {
     const out = mkdtempSync(join(tmpdir(), "ft-pack-"));

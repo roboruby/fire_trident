@@ -142,6 +142,8 @@ import { landedSince } from "../certify/since.ts";
 import { bisectEnabled } from "../certify/bisect.ts";
 import { prelandEnabled, prelandReader } from "../certify/preland.ts";
 import type { CertifyPolicy } from "../certify/repair.ts";
+import { LandingTestsReader, certificationOff, landingSpend, type LandingTestsTrunk } from "../certify/landingtests.ts";
+import type { LandingTests } from "@fire_trident/core";
 import { reviewPreview, type ReviewPreview } from "../agents/preview.ts";
 import { RETURN_PATHS, extractUsage, returnReason, type LastReturn } from "../agents/prompt.ts";
 import { MAX_RESUME_KEY, MIN_RESUME_KEY, resumeDigest, resumeKeyMatches } from "../mcp/resume.ts";
@@ -3748,6 +3750,33 @@ export class ColonyDO extends DurableObject<Env> {
   async certification(sha: string): Promise<Certification | null> {
     this.requireColony();
     return this.certifier.get(sha);
+  }
+
+  /**
+   * A landing's test row (GET /api/colonies/:id/landings/:ref/tests; certify/landingtests.ts): its tests at its base
+   * against the first green certification that includes it, the tests lost, whose tests they are, whether an earlier
+   * test reaches its files, what landed it and its intents' model spend. Computed when asked, cached per certified commit;
+   * null when the trunk writer knows no such landing.
+   */
+  async landingTests(ref: string): Promise<LandingTests | null> {
+    this.requireColony();
+    return this.testRows().read(ref);
+  }
+
+  /** The reader of landings' test rows (certify/landingtests.ts), made on first use. */
+  private testRowsRun: LandingTestsReader | null = null;
+
+  private testRows(): LandingTestsReader {
+    return (this.testRowsRun ??= new LandingTestsReader({
+      sql: this.sql,
+      colonyId: () => this.requireColony().id,
+      trunk: () => this.trunkStub() as unknown as LandingTestsTrunk,
+      memo: () => this.certifier.compileMemo(),
+      testTimeoutMs: () => this.certifier.policy().testTimeoutMs,
+      off: () => certificationOff(this.certifier.state()),
+      // The model calls counted for the landing's intents (colony/intentspend.ts), summed.
+      spend: (ids) => landingSpend(ids, (id) => this.intentSpends().report(id)),
+    }));
   }
 
   /** Certify the current trunk now (an operator asked), even when it was certified before. */

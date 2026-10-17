@@ -92,13 +92,13 @@ const line = (v: unknown): string => (typeof v === "string" ? v.replace(/\s+/g, 
 const capital = (s: string): string => (s === "" ? s : `${s.charAt(0).toUpperCase()}${s.slice(1)}`);
 
 /** A recorded name on one line, or null when it names nobody in particular (empty, or an API default such as "api"). */
-function personName(raw: unknown): string | null {
+export function personName(raw: unknown): string | null {
   const name = line(raw).slice(0, NAME_CHARS);
   return UNNAMED.has(name.toLowerCase()) ? null : name;
 }
 
 /** What the platform's gate check says landed a change: its action, its layer and its confirmations; null without one. */
-function gateOf(checks: readonly unknown[]): { action: string; layer: string; confirmations: string[] } | null {
+export function gateOf(checks: readonly unknown[]): { action: string; layer: string; confirmations: string[] } | null {
   // The decide stage appends its gate check after the agent's own checks: the last one that is not the agent's is it.
   for (let i = checks.length - 1; i >= 0; i--) {
     const c = checks[i];
@@ -112,7 +112,7 @@ function gateOf(checks: readonly unknown[]): { action: string; layer: string; co
 }
 
 /** The model a layer's landing decision names, else the one its evidence check names (`llm: <model>`), or "". */
-function modelOf(layer: string, decisions: readonly unknown[], checks: readonly unknown[]): string {
+export function modelOf(layer: string, decisions: readonly unknown[], checks: readonly unknown[]): string {
   for (let i = decisions.length - 1; i >= 0; i--) {
     const d = decisions[i];
     if (isObj(d) && d.layer === layer && d.action === "land" && line(d.by) !== "") return line(d.by);

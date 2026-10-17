@@ -21,9 +21,10 @@ import type {
   Rule,
 } from "@fire_trident/core";
 import type { StuckAction, StuckItem, StuckReport } from "@fire_trident/core";
-import type { Evidence } from "@fire_trident/core";
+import type { Evidence, LandingTests } from "@fire_trident/core";
 // The published CLI ships without @fire_trident/core: answerable.ts is the CLI's copy of core's (test/package.test.ts).
 import { bySpeaker, evidenceLines, landingAnswerable, notVerifiedSpeaker, notVerifiedWords } from "./answerable.ts";
+import { testsRows } from "./tests.ts";
 import type { IntentSpend } from "@fire_trident/core";
 import { changeSize, dangerLines, lookHereFirst, parseHunks, reviewOf, visible, type DiffLine, type ReviewFile, type ReviewView } from "./review.ts";
 import { whySummary } from "./spec.ts";
@@ -757,6 +758,8 @@ function ms(n: number): string {
 export interface WhyContext {
   intents?: Intent[];
   rules?: Rule[];
+  /** Each landing's test row, by landing id, where the colony gave one (tests.ts). */
+  tests?: Record<string, LandingTests>;
 }
 
 /**
@@ -793,6 +796,9 @@ export function formatWhy(
     // Who answers for this landing, from its whole note (core/answerable.ts), as the Why tab says it.
     const answer = landingAnswerable(note);
     out.push(`  ${label("answer")}${answer.answer === "person" ? answer.text : c.yellow(answer.text)}`);
+    // Its tests at its base against the certified commit (tests.ts), where the colony gave its row.
+    const row = ctx.tests && Object.hasOwn(ctx.tests, landing.id) ? ctx.tests[landing.id] : undefined;
+    if (row) for (const r of testsRows(row, c)) out.push(`  ${label(r.k)}${r.v}`);
     const proposals = (note?.proposals ?? []).map((p) => ({
       ...p,
       writeSet: p.writeSet ?? [],

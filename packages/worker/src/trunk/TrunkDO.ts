@@ -97,6 +97,7 @@ import { PROTECT_TABLE, keepProtect, protectReturns } from "./protect.ts";
 import { keepHolds, mergeLocks } from "./mergelock.ts";
 import { cyclePause, keepPause } from "./pause.ts";
 import { landingRange as rangeOfLandings, type LandingRange, type RangeQuery } from "../certify/range.ts";
+import { commitOrder as commitOrderOf, testLineage as testLineageOf, type TestFileLineage, type TestLineageQuery } from "../certify/testlineage.ts";
 import { FoldedIndex, cycleCollisions, structureProblem, submoduleProblems, type SubmoduleOutcome } from "./structure.ts";
 import { readTreeCached } from "./surgery.ts";
 import { foldPath } from "../decide/pathfold.ts";
@@ -766,6 +767,21 @@ export class TrunkDO extends DurableObject<Env> {
   async landingRange(q: RangeQuery): Promise<LandingRange> {
     this.state();
     return rangeOfLandings(this.sql, q);
+  }
+
+  /**
+   * A landing's test row (certify/landingtests.ts): each asked commit's place on trunk's chain, its sequence number in the
+   * landing log (0 for the commit the log starts from; unknown commits left out; certify/testlineage.ts). Read only.
+   */
+  async commitOrder(shas: Sha[]): Promise<Record<Sha, number>> {
+    this.state();
+    return commitOrderOf(this.sql, shas);
+  }
+
+  /** A landing's test row: who changed each test file on trunk up to a commit, from the landing log and its notes (certify/testlineage.ts). Read only. */
+  async testLineage(q: TestLineageQuery): Promise<Record<Path, TestFileLineage>> {
+    this.state();
+    return testLineageOf(this.sql, q);
   }
 
   /**

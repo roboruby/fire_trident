@@ -1,4 +1,4 @@
-// A copy of packages/core/src/connect.ts: the published CLI ships without @fire_trident/core (test/package.test.ts keeps the two the same).
+// A copy of packages/core/src/connect.ts: the published CLI ships without @fire_trident/core (scripts/vendor_cli.rb writes it; test/package.test.ts keeps the two the same).
 /**
  * Connect your agent: for a deployment and, optionally, one colony, the MCP add command and the configuration of each
  * client FireTrident documents (Claude Code, Claude, Codex CLI, Cursor, VS Code, and plain HTTP), the read-only public
