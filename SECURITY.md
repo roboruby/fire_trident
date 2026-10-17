@@ -12,7 +12,7 @@ Test against your own deployment (see "Run it" in the [README](README.md)), not 
 
 - **The operator** holds the Cloudflare account and the admin token (`FT_ADMIN_TOKEN`), and is trusted.
 - **Agents**, in-platform or external, are not. Neither their text nor their changes are trusted, nor the repository content they handle.
-- **Readers** need no token: colony state, review queues (masked, including the file lines a review card or a returned change quotes) and lineage are public on a deployment, and colonies listed in `FT_PUBLIC_GIT` can be cloned by anyone.
+- **Readers** need no token: colony state, review queues (masked, including the file lines a review card or a returned change quotes), lineage and each landing's test names and counts are public on a deployment, and colonies listed in `FT_PUBLIC_GIT` can be cloned by anyone.
 
 ## What FireTrident defends
 
@@ -20,6 +20,7 @@ Test against your own deployment (see "Run it" in the [README](README.md)), not 
 - **Workspace tokens are short-lived and scoped to one fork.** Each is a write token for a single workspace repository, valid for two hours. It is never handed to a different agent, and about a minute after its agent lets the workspace go it is revoked and replaced. Public reads redact lease tokens.
 - **The MCP endpoint takes its token only in a header.** `/mcp` and `/sse` refuse a request whose URL carries a `token` query parameter, whatever it holds, since a token in a URL ends up in logs and histories. The bearer token is compared in constant time (by SHA-256 digest). Without `FT_MCP_TOKEN` configured, the endpoint refuses every connection.
 - **An agent id alone resumes nothing.** An external agent's resume key is 32 random bytes, returned once by `join`. The colony keeps only its SHA-256 digest and compares in constant time, and no route returns it.
+- **Configured tokens tolerate a trailing newline.** A configured `FT_ADMIN_TOKEN` or `FT_MCP_TOKEN` loses a trailing CR or LF before the constant-time compare; the presented token is compared exactly as sent.
 - **Writes fail closed without the admin token.** Every mutating REST route needs `FT_ADMIN_TOKEN` as a bearer token, compared in constant time. Without that secret configured the routes refuse (403), and deleting a colony refuses outright. `FT_OPEN_WRITES=1` lifts this for local development only and is never set on a deployment.
 - **Certification runs the project's tests in a sandbox.** The tests run in a Dynamic Worker with no network access, no environment variables and no bindings, under CPU and wall-clock limits, and their report is read as a bounded stream.
 - **Prompts fence repository content as data.** The model prompts of review (the second opinion, the contest judge, antibody questions), agents' write prompts and repair intents put the text agents, people or the repository wrote between a random marker that occurs in none of it, labeled as data, never as instructions. No model opinion overrides a deterministic fact.

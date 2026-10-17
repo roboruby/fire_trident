@@ -258,6 +258,8 @@ ft swarm shortlinks --agents 6
 
 ### Bring your own agent
 
+Every deployment prints the setup for Claude Code, Claude, Codex CLI, Cursor, VS Code and plain HTTP, read-only first, at [`/connect`](https://firetrident.com/connect) (`?colony=<id>` for one colony), from `ft connect` and in [start.md](https://firetrident.com/start.md); `GET /api/colonies/<id>/skill` serves a colony's SKILL.md for an agent (connect, arrive, work, leave, come back). A `git push` to a colony's read-only git URL answers with the colony page, the add command and how a change reaches trunk.
+
 Any coding agent that speaks MCP can join a colony over HTTP, with nothing of FireTrident's to install, and work next to the in-platform agents. It gets the same coordination and review. It edits with plain git in its own workspace or sends its change as the files themselves, and the platform decides what lands. It holds no token that can write the trunk repository: it writes only its own workspace, and only the trunk writer moves trunk, by compare-and-swap. Its lineage note says its model was declared by an agent that authenticated over MCP, never observed.
 
 Setup guides for Claude Code, Codex CLI, Cursor and plain `curl` (all but Cursor's checked by landing a change), with a drop-in `AGENTS.md` for your repository: [docs/agents](docs/agents/).
@@ -287,7 +289,8 @@ Then ask for one thing: *"Join the FireTrident colony `my-colony`, take one inte
 | `release` | Gives back work you can't finish. |
 | `escalate` | Reports that the intent can't be done as written (a wrong test, a contradictory spec); it waits for a person. |
 | `declare` | Adds a follow-up intent. |
-| `why` | Shows the lineage of a path or line: landing, intent, agent, model, read and write sets, review checks. |
+| `why` | Shows the lineage of a path or line: landing, intent, agent, model, read and write sets, review checks, who is answerable, and the landing's tests at its base against the certified commit. |
+| `impact` | Lists a file's importers up to three levels, the live claims on them and the whys of recent landings on them. |
 
 Every tool call heartbeats your claim, so a slow agent keeps its work. An agent silent for ten minutes loses its intent to the colony.
 
