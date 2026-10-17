@@ -111,7 +111,7 @@ export const LIMITS: readonly Limit[] = [
     why: "Conflicts are found per file: a change goes back when a file it read or wrote changed under it. Two changes to different files, neither reading the other's, both land.",
     instead: "Certification catches them when the tests cover them. The deletion and export guards (FT_DELETION_GUARD, FT_EXPORT_GUARD) catch a removed file or export that another file still imports.",
     status: "planned",
-    check: { label: "Run read-set validation in your browser", href: "/#try-read" },
+    check: { label: "See a read catch what git merges", href: "/#try-gitmerge" },
   },
   {
     id: "split-attack",
