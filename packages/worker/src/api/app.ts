@@ -41,6 +41,7 @@ import { pauseRoutes } from "./pause.ts";
 import { spendCapRoutes } from "./spendcap.ts";
 import { skillRoutes } from "./skill.ts";
 import { silentTtlRoutes } from "./closure.ts";
+import { headsUpRoutes } from "./headsup.ts";
 import { refuseWhilePaused } from "../colony/pause.ts";
 import { bearerMatches } from "./token.ts";
 
@@ -200,6 +201,7 @@ async function requireColony(env: Env, colonyId: Id): Promise<void> {
  *   POST   /colonies/:id/agents/:aid/directive  free-text guidance (pushed in-platform, inbox otherwise)
  *   POST   /colonies/:id/agents/:aid/status the agent's one-line "what I am doing now"
  *   GET    /colonies/:id/agents/:aid/inbox  the agent's proposals and directives, newest first
+ *   GET    /colonies/:id/agents/:aid/headsup  what the agent's held intent should know before it proposes (?path=; MCP token or resume key, api/headsup.ts)
  *   POST   /colonies/:id/proposals          propose a change
  *   GET    /colonies/:id/proposals/:pid     one proposal (poll its outcome)
  *   GET    /colonies/:id/why                ?path=&line=
@@ -599,6 +601,7 @@ export function createApi(deps: ApiDeps): Hono<ApiEnv> {
   spendCapRoutes(app, requireAdmin); // Spend cap: a person caps what this platform's model calls for a colony may cost (api/spendcap.ts)
   skillRoutes(app); // The colony's SKILL.md: how an agent connects and works there, its rules and protected paths (api/skill.ts)
   silentTtlRoutes(app, requireAdmin); // Silent-agent limit: how long an outside agent may be silent before the colony takes its intents back (api/closure.ts)
+  headsUpRoutes(app); // Heads-up for the Claude Code hook: what moved under an agent's files and what waits to land on them (api/headsup.ts)
 
   // Unknown API paths answer JSON here instead of falling through to the static UI.
   app.all("*", (c) => json({ error: `no route for ${c.req.method} ${c.req.path}` }, 404));

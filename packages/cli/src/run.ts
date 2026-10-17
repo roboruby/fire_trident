@@ -66,6 +66,7 @@ import { firstLandings, readRows, testsRequest } from "./tests.ts";
 import type { IntentBody, SpecPolicy } from "./spec.ts";
 import type { GuideLesson, Intent, Landing, LandingTests, LineageNote, Proposal, Rule } from "@fire_trident/core";
 import { connectInfo, connectText } from "./connect.ts";
+import { readStdin, runHook, type HookCommand } from "./hook.ts";
 
 /** Everything the CLI touches outside itself, injectable for tests. */
 export interface Io {
@@ -82,6 +83,10 @@ export interface Io {
   WebSocket: typeof WebSocket;
   /** Register a Ctrl-C handler. */
   onInterrupt: (fn: () => void) => void;
+  /** `ft hook check`: the hook's input, which Claude Code writes to stdin (hook.ts); the process's stdin when absent. */
+  stdin?: () => Promise<string>;
+  /** The working directory `ft hook` resolves paths against; the process's when absent. */
+  cwd?: () => string;
 }
 
 /** The real process I/O. */
@@ -123,6 +128,8 @@ function resolveUser(env: Record<string, string | undefined>): string {
 /** Run `ft` with these arguments. Returns the exit code: 0 ok, 1 failure, 2 usage error. */
 export async function main(argv: readonly string[], io: Io = nodeIo()): Promise<number> {
   const parsed = parseCommand(argv);
+  // The Claude Code hook's check (hook.ts) answers 0 whatever its arguments: it never stands in the way of an edit.
+  if (!parsed.ok && argv.includes("hook") && argv[argv.indexOf("hook") + 1] === "check") return 0;
   if (!parsed.ok) {
     io.stderr(`ft: ${parsed.error}`);
     if (parsed.topic) io.stderr(`\n${helpText(parsed.topic)}`);
@@ -137,6 +144,7 @@ export async function main(argv: readonly string[], io: Io = nodeIo()): Promise<
     io.stdout(VERSION);
     return 0;
   }
+  if (command.name === "hook") return hook(command, flags.url, io);
   try {
     const env = await loadEnv(io, flags.url);
     const token = env.FT_TOKEN?.trim();
@@ -168,6 +176,21 @@ async function loadEnv(io: Io, flagUrl: string | undefined): Promise<Record<stri
     return io.env;
   }
   return withConfig(io.env, parseEnvFile(text), flagUrl);
+}
+
+/**
+ * `ft hook` (hook.ts): local settings, and for check one read with the agent's own credentials (FT_MCP_TOKEN or
+ * FT_RESUME_KEY), never FT_TOKEN. Check answers 0 whatever happens.
+ */
+async function hook(cmd: HookCommand, url: string | undefined, io: Io): Promise<number> {
+  try {
+    const env = await loadEnv(io, url);
+    return await runHook(cmd, url, { env, stdout: io.stdout, stderr: io.stderr, fetch: io.fetch, stdin: io.stdin ?? (() => readStdin()), cwd: io.cwd ?? (() => process.cwd()) });
+  } catch (e) {
+    if (cmd.action === "check") return 0;
+    io.stderr(`ft: ${(e as Error).message ?? String(e)}`);
+    return 1;
+  }
 }
 
 function printJson(ctx: Ctx, value: unknown): void {

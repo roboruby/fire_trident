@@ -126,6 +126,12 @@
 #    the intents taken back from silent agents (reaped_silent), with the median and largest gap; and the closes recorded
 #    before the ledger (an intent event that moves an intent from claimed or proposed to open, landed or withdrawn with
 #    no cause), counted apart and in no share. Vaccine agents are left out.
+#
+# 11. Heads-up before returns (FT_HEADS_UP, packages/worker/src/colony/headsup.ts). Returns (as in 1: redirects apart)
+#    whose reason ends with the heads-up's sentence: warned and proposed anyway ("You were told of <landing> at
+#    <hh:mm:ss> UTC, <gap> before you proposed.") or could not have known (a sentence ending "you could not have
+#    known."); the other returns carry none (another kind of return, or an agent the heads-up never served). With them,
+#    the colony's own counters headsUp.warned and headsUp.unwarned from GET /api/colonies/<id> (a cross-check).
 require "fileutils"
 require "json"
 require "net/http"
@@ -149,6 +155,9 @@ module Coordination
   RULE = /\bviolations? of rule /
   TEXT_MERGE = /\btext merge of \S.*?: \d+ conflicting hunks?\b/
   STALE = /\A(?:stale:|conflicts with )/
+  # Definition 11: the heads-up's sentences at the end of a return's reason.
+  WARNED = /You were told of \S+ at \d\d:\d\d:\d\d UTC, [^.]{1,40} before you proposed\.\s*\z/
+  UNWARNED = /\byou could not have known\.\s*\z/
   IN_FLIGHT = %w[pending checking ready escalated].freeze
   # Definition 10: the closure ledger's causes, and the moves an intent event makes that close or reopen a held intent.
   CLOSURE_CAUSES = %w[landed released escalated withdrawn gave_up reaped_silent returned stopped].freeze
@@ -908,6 +917,7 @@ module Coordination
         answerable: answerable(lineage),
         timeSplit: record && Coordination.time_split(record),
         closures: record && Coordination.closures(record, agents),
+        headsUp: record && Coordination.heads_up(record, snapshot),
         agents: agent_table(agents, record, lineage, attribution),
         missing: @missing,
         warnings: @warnings
@@ -1000,7 +1010,7 @@ module Coordination
       { source: record.source, events: record.total, proposals: record.proposals.size, intents: record.intents.size,
         vaccineProposalsLeftOut: record.vaccine_proposals,
         colonyCounters: (snapshot&.dig("metrics") || {}).slice("proposals", "landedProposals", "returned", "rejected", "escalated",
-                                                                 "intents", "intentsLanded", "landings", "agents") }
+                                                                 "intents", "intentsLanded", "landings", "agents", "headsUp.warned", "headsUp.unwarned") }
     end
 
     # Definition 1.
@@ -1270,6 +1280,29 @@ module Coordination
       beforeLedger: record.uncaused_closures }
   end
 
+  # Definition 11: returns by what the heads-up had told their agent, from the sentence their reason ends with.
+  def heads_up(record, snapshot = nil)
+    returns = record.proposals.values.select { |p| p[:status] == "returned" && !redirect?(p[:reason]) }
+    verdicts = returns.map do |p|
+      reason = p[:return_reason].to_s
+      if WARNED.match?(reason) then "warned"
+      elsif UNWARNED.match?(reason) then "unwarned"
+      else "none"
+      end
+    end.tally
+    counters = snapshot&.dig("metrics") || {}
+    { returns: returns.size, warned: verdicts.fetch("warned", 0), unwarned: verdicts.fetch("unwarned", 0), none: verdicts.fetch("none", 0),
+      colonyCounters: { warned: counters["headsUp.warned"], unwarned: counters["headsUp.unwarned"] } }
+  end
+
+  # The markdown row of definition 11, or nil when no return carries the heads-up's sentence.
+  def heads_up_row(h)
+    return nil if h.nil? || (h[:warned] + h[:unwarned]).zero?
+
+    "| Heads-up before returns | #{num(h[:warned])} warned and proposed anyway, #{num(h[:unwarned])} could not have known " \
+      "(of #{many(h[:returns], 'return')}; #{num(h[:none])} with no heads-up) |"
+  end
+
   def specialization(landed, shuffles: SHUFFLES, seed: SEED)
     agents = landed.map(&:first)
     labels = landed.map(&:last)
@@ -1537,6 +1570,8 @@ module Coordination
     end
     out.concat(r[:timeSplit] ? time_rows(r[:timeSplit]) : ["| Where the time went | not computed: no event record |"])
     out << closure_row(r[:closures]) if r[:closures]
+    heads_up = heads_up_row(r[:headsUp])
+    out << heads_up if heads_up
     notes = r[:missing] + r[:warnings].first(5).map { |w| "warning: #{w}" }
     notes << "#{r[:warnings].size - 5} more warnings in the JSON" if r[:warnings].size > 5
     out += [""] + notes.map { |x| "- #{x}" } unless notes.empty?

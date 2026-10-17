@@ -111,6 +111,19 @@ export interface Env {
    */
   FT_RETURN_HUNKS?: string;
   /**
+   * Optional: heads-up, "on", or a comma-separated list of colony ids; absent or "off" is off. Every MCP tool reply to an
+   * agent that holds an intent carries, when there is something to say, `headsUp` (mcp/headsup.ts, colony/headsup.ts):
+   * the landings since its lease base that changed files it read or will write (path, landing, intent title), and the
+   * changes waiting to land whose write sets meet its read or write set (proposal, intent title), with `deliveredThrough`,
+   * the newest landing it has been told of. The colony reads its landing path index and the in-flight proposals (kept for
+   * two seconds); the session keeps an answer for three seconds and waits at most 50 ms for one (past that the reply goes
+   * out without it). Its take and checkout add a git command that records the colony and agent in the clone's local git
+   * config, which `ft hook check` reads. Its proposals carry what it was told (Proposal.toldOf); when one goes back because
+   * trunk moved, its reason ends by saying whether and when the agent was told of the landing that beat it, and
+   * /metrics counts the return as `headsUp.warned` (warned and proposed anyway) or `headsUp.unwarned` (could not have known).
+   */
+  FT_HEADS_UP?: string;
+  /**
    * Optional: model step-up, "on", or a comma-separated list of colony ids; absent or "off" is off. When an intent's
    * changes have come back twice since it last changed course (a landing or a substantive amendment), its next take asks
    * for the stronger model class ("default", FT_DEFAULT_MODEL) and says why (colony/stepup.ts): in-platform agents write

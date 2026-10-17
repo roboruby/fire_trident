@@ -815,6 +815,8 @@ export class FireTridentTools {
       // An agent that stated nothing gets FireTrident's sentence, marked as FireTrident's (notVerifiedBy), never as the agent's.
       evidence: stated === "" ? { notVerified: EXTERNAL_NOT_VERIFIED, notVerifiedBy: "platform" } : { notVerified: /^not verified/i.test(stated) ? stated : `Not verified: ${stated}` },
       ...(lesson ? { lesson } : {}),
+      // Heads-up (FT_HEADS_UP, mcp/headsup.ts): what this session told the agent of landings under its files.
+      ...(await this.proposalExtras(s)),
     });
     const at = this.ctx.now();
     await this.update((x) => {
@@ -831,6 +833,14 @@ export class FireTridentTools {
       readSet: readSet.length,
       next: `Call inbox with wait: ${MAX_WAIT_S} to wait for the outcome (repeat until it settles), then take for more work.`,
     };
+  }
+
+  /**
+   * Fields a proposal of this session carries beyond the change itself: none here. The heads-up (mcp/headsup.ts) adds
+   * what the session told the agent of landings under its files (Proposal.toldOf).
+   */
+  protected async proposalExtras(_s: Session & { colonyId: Id; agentId: Id; intent: Intent; lease: WorkspaceLease }): Promise<Pick<Proposal, "toldOf">> {
+    return {};
   }
 
   /**
