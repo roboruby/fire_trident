@@ -1,4 +1,4 @@
-import type { ColonySpend, Id, IntentSpend, IntentSpendBrief, ModelSpend, SpendLayer } from "./types.ts";
+import type { ColonySpend, Id, IntentSpend, IntentSpendBrief, ModelSpend, SpendCap, SpendLayer } from "./types.ts";
 
 /**
  * Model prices. A colony counts the tokens of the model calls it makes (its in-platform agents, review, contest judging,
@@ -137,18 +137,34 @@ export function spentAny(spend: ColonySpend | null | undefined): spend is Colony
   return !!spend && typeof spend.usd === "number" && !!spend.tokens && wholeCount(spend.tokens.input) + wholeCount(spend.tokens.output) > 0;
 }
 
+/** What every spend figure names: only the platform's own calls count, never what external agents spend on their own models. */
+export const SPEND_SCOPE = "model calls this platform made";
+
 /**
- * The spend line's two halves: what the colony's model calls cost ("$0.042 of model calls") and that over each landed
- * intent ("$0.0001 a landed intent", null when none landed). Null when the colony made no model calls.
+ * The spend line's two halves: what the colony's model calls cost ("$0.042 of model calls this platform made") and that
+ * over each landed intent ("$0.0001 a landed intent", null when none landed). Null when the colony made no model calls.
  */
 export function spendParts(spend: ColonySpend | null | undefined): { total: string; perIntent: string | null } | null {
   if (!spentAny(spend)) return null;
   const some = Object.keys(spend.unpriced ?? {}).length > 0 ? " (some unpriced)" : "";
   const per = typeof spend.perLandedIntent === "number" && Number.isFinite(spend.perLandedIntent) ? `${usdText(spend.perLandedIntent)} a landed intent` : null;
-  return { total: `${usdText(spend.usd)} of model calls${some}`, perIntent: per };
+  return { total: `${usdText(spend.usd)} of ${SPEND_SCOPE}${some}`, perIntent: per };
 }
 
-/** "$0.042 of model calls · $0.0001 a landed intent" (without the second half when no intent landed), or null when the colony made no model calls. */
+/**
+ * Where the colony stands against its spend cap, in one line: "cap $5.00: $1.20 spent, agents stop at $4.50 and review
+ * keeps $0.50", or that agents stopped at it, or that review's reserve is spent too. Null when no cap is set.
+ */
+export function spendCapLine(cap: SpendCap | null | undefined): string | null {
+  if (!cap || typeof cap.usd !== "number" || !(cap.usd > 0)) return null;
+  const reserve = typeof cap.reviewReserveUsd === "number" && cap.reviewReserveUsd > 0 ? cap.reviewReserveUsd : 0;
+  const spent = usdText(typeof cap.spentUsd === "number" ? cap.spentUsd : 0);
+  if (cap.state === "spent") return `cap ${usdText(cap.usd)} spent (${spent}): review makes no model call, changes wait for a person`;
+  if (cap.state === "review-only") return `cap ${usdText(cap.usd)}: ${spent} spent, agents stopped at ${usdText(cap.usd - reserve)}; review spends its ${usdText(reserve)} reserve`;
+  return `cap ${usdText(cap.usd)}: ${spent} spent, agents stop at ${usdText(cap.usd - reserve)} and review keeps ${usdText(reserve)}`;
+}
+
+/** "$0.042 of model calls this platform made · $0.0001 a landed intent" (without the second half when no intent landed), or null when the colony made no model calls. */
 export function spendLine(spend: ColonySpend | null | undefined): string | null {
   const parts = spendParts(spend);
   if (!parts) return null;
@@ -170,6 +186,9 @@ export function spendDetail(spend: ColonySpend | null | undefined): string {
   }
   if (wholeCount(spend.agentsUnread) > 0) lines.push(`${n(spend.agentsUnread ?? 0)} in-platform agents not read yet: their calls are not in this sum.`);
   lines.push(`Priced at Workers AI list prices on ${spend.priceDate || PRICE_DATE}, from the ${n(spend.tokens.input)} input and ${n(spend.tokens.output)} output tokens the colony counted.`);
+  lines.push("Only the model calls this platform made count: what external agents spend on their own models is not seen here.");
+  const cap = spendCapLine(spend.cap);
+  if (cap) lines.push(`Spend cap: ${cap}.`);
   return lines.join("\n");
 }
 
@@ -221,10 +240,10 @@ function intentUnpriced(spend: IntentSpend | IntentSpendBrief): boolean {
   return "calls" in spend ? Object.keys(spend.unpriced ?? {}).length > 0 : spend.unpriced === true;
 }
 
-/** "$0.0004 of model calls" (with " (some unpriced)" when a model had no list price), or null when nothing was counted for the intent. */
+/** "$0.0004 of model calls this platform made" (with " (some unpriced)" when a model had no list price), or null when nothing was counted for the intent. */
 export function intentSpendLine(spend: IntentSpend | IntentSpendBrief | null | undefined): string | null {
   if (!spentOnIntent(spend)) return null;
-  return `${usdText(spend.usd)} of model calls${intentUnpriced(spend) ? " (some unpriced)" : ""}`;
+  return `${usdText(spend.usd)} of ${SPEND_SCOPE}${intentUnpriced(spend) ? " (some unpriced)" : ""}`;
 }
 
 /** Each layer that called, with its calls: "agents $0.0003 in 2 calls, review $0.0001 in 1 call". */

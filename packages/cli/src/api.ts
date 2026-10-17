@@ -1,6 +1,7 @@
 import type { Colony, Rule } from "@fire_trident/core";
 import type { Command } from "./args.ts";
 import { pauseRequest } from "./pause.ts";
+import { spendCapRequest } from "./spendcap.ts";
 
 /**
  * HTTP contract the CLI assumes (routes in packages/worker/src/api/routes.ts).
@@ -37,7 +38,9 @@ import { pauseRequest } from "./pause.ts";
  *   GET    /api/colonies/:id/proposals/:pid         -> Proposal (with landingId once it landed)
  *   GET    /api/colonies/:id/guide                  -> the field guide: { on, gate, active, chars, candidates?, ended? } (the last two with the token)
  *   POST   /api/colonies/:id/guide/:lessonId        { action: approve|reject, by, reason? } -> the lesson
- *   POST   /api/colonies/:id/pause | /resume        { reason, by } | { by, reason? } -> { pause, already } | { resumed, pauses }; /api/pause and /api/resume for the deployment
+ *   POST   /api/colonies/:id/pause | /resume        { reason, by } | { by, reason? } -> { pause, already } | { resumed, pauses, spendCap? }; /api/pause and /api/resume for the deployment
+ *   GET    /api/colonies/:id/spend-cap              -> { colonyId, cap: SpendCap | null }
+ *   POST   /api/colonies/:id/spend-cap              { usd, reviewReserveUsd?, by } | { usd: null, by } -> { colonyId, cap, lifted, tripped, note }
  *
  * Every request carries `Authorization: Bearer $FT_TOKEN` when the token is set.
  */
@@ -178,6 +181,9 @@ export function planRequest(cmd: Command, by: string): ApiRequest | null {
     case "resume":
       // The pause switch (pause.ts): the colony's route, or the deployment's when no colony is named.
       return pauseRequest(cmd, by, colonyPath);
+    case "spend-cap":
+      // The spend cap (spendcap.ts): read it, set it, or remove it.
+      return spendCapRequest(cmd, by, colonyPath);
     case "megafile":
       if (!cmd.path) return { method: "GET", path: colonyPath(cmd.colony, "/megafile") };
       return { method: "POST", path: colonyPath(cmd.colony, "/megafile"), body: { path: cmd.path, action: cmd.release ? "release" : "hold", by: cmd.by ?? by } };

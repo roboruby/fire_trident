@@ -1,5 +1,5 @@
 import { PRICE_DATE, SPEND_LAYERS } from "@fire_trident/core";
-import type { ColonySpend, Id, IntentSpendBrief, ModelSpend, SpendLayer } from "@fire_trident/core";
+import type { ColonySpend, Id, IntentSpendBrief, ModelSpend, SpendCap, SpendLayer } from "@fire_trident/core";
 
 /**
  * A colony's model spend as the server reports it (`spend` on GET /api/colonies/:id and /metrics), read defensively:
@@ -19,6 +19,21 @@ function tokensByModel(raw: unknown): Record<string, { input: number; output: nu
   );
 }
 
+/** The colony's spend cap in `raw` (`spend.cap`, colony/spendcap.ts), or null when there is none or it does not read as one. */
+export function parseSpendCap(raw: unknown): SpendCap | null {
+  if (!isObj(raw) || typeof raw.usd !== "number" || !Number.isFinite(raw.usd) || !(raw.usd > 0)) return null;
+  const state = raw.state === "review-only" || raw.state === "spent" ? raw.state : "open";
+  return {
+    usd: raw.usd,
+    reviewReserveUsd: num(raw.reviewReserveUsd),
+    spentUsd: num(raw.spentUsd),
+    inFlightUsd: num(raw.inFlightUsd),
+    state,
+    setBy: typeof raw.setBy === "string" ? raw.setBy.slice(0, 100) : "",
+    setAt: num(raw.setAt),
+  };
+}
+
 /** The spend report in `raw`, or null when there is none (an older server, a mock or a replay). */
 export function parseSpend(raw: unknown): ColonySpend | null {
   if (!isObj(raw) || typeof raw.usd !== "number" || !Number.isFinite(raw.usd) || !isObj(raw.tokens)) return null;
@@ -32,6 +47,7 @@ export function parseSpend(raw: unknown): ColonySpend | null {
   );
   const per = raw.perLandedIntent;
   const unread = num(raw.agentsUnread);
+  const cap = parseSpendCap(raw.cap);
   return {
     usd: num(raw.usd),
     byLayer,
@@ -42,6 +58,7 @@ export function parseSpend(raw: unknown): ColonySpend | null {
     unpriced: tokensByModel(raw.unpriced),
     priceDate: typeof raw.priceDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(raw.priceDate) ? raw.priceDate : PRICE_DATE,
     ...(unread > 0 ? { agentsUnread: unread } : {}),
+    ...(cap ? { cap } : {}),
   };
 }
 

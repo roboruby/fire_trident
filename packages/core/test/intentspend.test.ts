@@ -45,7 +45,7 @@ describe("intentSpend", () => {
     expect(s.usd).toBeCloseTo(0.002443, 10);
     expect(s.unpriced).toEqual({ "@cf/x/unlisted": { input: 50, output: 5 } });
     expect(s.calls.agents).toBe(3);
-    expect(intentSpendLine(s)).toBe("$0.0024 of model calls (some unpriced)");
+    expect(intentSpendLine(s)).toBe("$0.0024 of model calls this platform made (some unpriced)");
   });
 });
 
@@ -53,7 +53,7 @@ describe("how an intent's spend reads", () => {
   const full = intentSpend("int_7", COUNTED);
 
   it("is one line like the colony's, with the layers, calls, tokens and prices behind it", () => {
-    expect(intentSpendLine(full)).toBe("$0.0024 of model calls");
+    expect(intentSpendLine(full)).toBe("$0.0024 of model calls this platform made");
     expect(intentSpendDetail(full)).toBe(
       `agents $0.0001 in 2 calls, review $0.0011 in 2 calls, contest judge $0.0012 in 2 calls; 7,400 input and 360 output tokens at Workers AI list prices on ${PRICE_DATE}.`,
     );

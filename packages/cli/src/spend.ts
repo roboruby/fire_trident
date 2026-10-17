@@ -17,11 +17,14 @@ export function usdText(usd: number): string {
   return `$${v.toFixed(v < 0.01 ? 4 : v < 1 ? 3 : 2)}`;
 }
 
-/** "$0.042 of model calls · $0.0001 a landed intent" (without the second half when no intent landed), or null when the colony made no model calls or reports no spend. */
+/** What every spend figure names, as core/pricing.ts SPEND_SCOPE: external agents' own model spend is never in it. */
+const SPEND_SCOPE = "model calls this platform made";
+
+/** "$0.042 of model calls this platform made · $0.0001 a landed intent" (without the second half when no intent landed), or null when the colony made no model calls or reports no spend. */
 export function spendLine(spend: ColonySpend | null | undefined): string | null {
   if (!spend || typeof spend.usd !== "number" || !spend.tokens || tokens(spend.tokens.input) + tokens(spend.tokens.output) === 0) return null;
   const some = Object.keys(spend.unpriced ?? {}).length > 0 ? " (some unpriced)" : "";
-  const total = `${usdText(spend.usd)} of model calls${some}`;
+  const total = `${usdText(spend.usd)} of ${SPEND_SCOPE}${some}`;
   const per = spend.perLandedIntent;
   return typeof per === "number" && Number.isFinite(per) ? `${total} · ${usdText(per)} a landed intent` : total;
 }
@@ -31,11 +34,11 @@ function spentOnIntent(spend: IntentSpend | null | undefined): spend is IntentSp
   return !!spend && typeof spend.usd === "number" && !!spend.tokens && tokens(spend.tokens.input) + tokens(spend.tokens.output) > 0;
 }
 
-/** "$0.0004 of model calls" (with " (some unpriced)" when a model had no list price), or null when nothing was counted for the intent. */
+/** "$0.0004 of model calls this platform made" (with " (some unpriced)" when a model had no list price), or null when nothing was counted for the intent. */
 export function intentSpendLine(spend: IntentSpend | null | undefined): string | null {
   if (!spentOnIntent(spend)) return null;
   const some = Object.keys(spend.unpriced ?? {}).length > 0 ? " (some unpriced)" : "";
-  return `${usdText(spend.usd)} of model calls${some}`;
+  return `${usdText(spend.usd)} of ${SPEND_SCOPE}${some}`;
 }
 
 /** The layers in the order every report lists them, as core/pricing.ts reads them in a sentence. */

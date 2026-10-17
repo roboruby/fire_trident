@@ -29,6 +29,7 @@ import { megafileLines } from "./megafile.ts";
 import { pauseLines } from "./pause.ts";
 import { signatureLines } from "./signatures.ts";
 import { intentSpendDetail, intentSpendLine, spendLine } from "./spend.ts";
+import { spendCapStatus } from "./spendcap.ts";
 import { acceptanceRows } from "./acceptance.ts";
 import { contestLines } from "./contest.ts";
 import { prelandLine } from "./preland.ts";
@@ -391,6 +392,9 @@ export function formatStatus(s: SnapshotLike, c: Colors, now: number): string {
   // Model spend as the colony prices it from the tokens it counted (spend.ts); a server that predates it sends none.
   const spent = spendLine(s.spend);
   if (spent) row("spend", `${spent}${s.spend?.priceDate ? c.dim(` (Workers AI list prices on ${plainLine(s.spend.priceDate)})`) : ""}`);
+  // The spend cap (spendcap.ts), when a person set one.
+  const capped = spendCapStatus(s.spend?.cap, c);
+  if (capped) row("spend cap", capped);
   const series = s.series;
   if (series && Array.isArray(series.landings) && series.landings.length > 0) {
     const total = series.landings.reduce((a, b) => a + (Number.isFinite(b) ? b : 0), 0);

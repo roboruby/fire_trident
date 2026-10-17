@@ -503,9 +503,42 @@ a.signed-by:hover {
   font-variant-numeric: tabular-nums;
 }
 
+/* The spend cap under the spend (colony/spendcap.ts): amber once agents stopped at it, red once review's reserve is spent too. */
+.spend-cap {
+  white-space: nowrap;
+}
+
+.spend-cap-review-only .spend-cap {
+  color: var(--need);
+}
+
+.spend-cap-spent .spend-cap {
+  color: var(--danger);
+}
+
+/* Below 1900 px the bar has no room for the words after the figure: the title keeps them (the director's stage keeps them too). */
+@media (max-width: 1899px) {
+  .top:not(.is-director) .spend-scope {
+    display: none;
+  }
+}
+
 @media (max-width: 1460px) {
   .top:not(.is-director) .spend {
     display: none;
+  }
+  /* With a spend cap the spend stays, as the cap's short line only: the sentences are in its title. */
+  .top:not(.is-director) .spend.has-cap {
+    display: block;
+  }
+  .top:not(.is-director) .spend.has-cap .spend-total,
+  .top:not(.is-director) .spend.has-cap .spend-per {
+    display: none;
+  }
+  .top:not(.is-director) .spend.has-cap .spend-cap {
+    margin-top: 5px;
+    font-size: 13px;
+    font-weight: 600;
   }
 }
 

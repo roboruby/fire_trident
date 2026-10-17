@@ -36,6 +36,8 @@ import { damageLabels } from "./signals.ts";
  *      escalate (deterministic; the alert budget cannot bounce it), or return a change failing its checks
  * - D4 anything else                                            → screen with System 1
  * - M1 mechanical proof, not destructive: an antibody hit returns it (reflex); otherwise it lands (deterministic)
+ * - M2 that proof with matching antibodies the reflex could not answer (refused by the spend cap, failed, timed out)
+ *                                               → escalate: a person decides (reflex; the alert budget cannot bounce it)
  * - R1 confident detector hit + damage          → escalate to a human (reflex)
  * - R2 innate checks fail                       → return to the agent (reflex)
  * - R3 confidently clear + no damage + earned autonomy + p(needs_human) < threshold, for an intent
@@ -52,6 +54,8 @@ import { damageLabels } from "./signals.ts";
  *                                               → return, naming the line (llm)
  * - L7 that approval with a line of the intent not met with a quote found in the diff (answered
  *      unclear, or a quote the platform could not find) → escalate (llm; the alert budget cannot bounce it)
+ * - L8 no second opinion because the colony's spend cap refused its model call (colony/spendcap.ts)
+ *                                               → escalate: a person decides (llm; the alert budget cannot bounce it)
  * - L4 anything else (one signal only)          → return to the agent with the reason
  * An escalation over the hourly alert budget goes back to its agent unless its risk is at or
  * above the budget's risk floor.
@@ -120,8 +124,15 @@ export interface GateInput {
   antibodies?: number;
   /** System 1 answers: undefined before it is asked (deterministic stage), null when Clef was unavailable. */
   reflex?: ReflexSignals | null;
+  /** Why Clef was unavailable (`reflex` null), in a few words for a person (M2); absent: not known. */
+  reflexError?: string;
   /** System 2: undefined before it is consulted, null when it failed. */
   llm?: SecondOpinion | null;
+  /**
+   * The spend cap refused the second opinion's model call (colony/spendcap.ts): its refusal. With `llm` null the change
+   * waits for a person (L8) instead of going back; it never lands. Absent: no cap refused anything.
+   */
+  spendCap?: string;
   /** The region earned autonomy (enough approved landings, no rejection since). */
   autonomy: boolean;
   /** Who wrote the intent's why. Earned autonomy covers only an intent a person or a rule wrote; absent counts as unknown (no R3). */
@@ -424,7 +435,13 @@ export function gate(input: GateInput): GateVerdict {
         if (ab.some((h) => h.security)) back.security = ["antibody"];
         return back;
       }
-      const advisory = [...s1.map((h) => h.label), ...(r === null && (input.antibodies ?? 0) > 0 ? ["antibodies not screened (System 1 unavailable)"] : [])];
+      // M2: matching antibodies were the only reason to screen it, and the reflex could not answer them: a person decides.
+      if (r === null && (input.antibodies ?? 0) > 0) {
+        risk = Math.max(risk, policy.budgetRiskFloor);
+        const cause = input.reflexError?.trim() || "no answer";
+        return escalate("reflex", "M2 antibodies unscreened", 1, [`Matching antibodies could not be checked because the reflex model was unavailable (${cause}); a person decides.`], ["reflex:unavailable"], []);
+      }
+      const advisory = s1.map((h) => h.label);
       const landed = verdict("land", "deterministic", "M1 innate+proof", 1, [`deterministic proof: ${proof}`, ...(advisory.length > 0 ? [`advisory only (facts win over model opinions): ${advisory.join(", ")}`] : [])], [], ["innate", "deterministic"]);
       if (s1.length > 0) landed.overruled = s1.map((h) => h.id);
       return landed;
@@ -500,6 +517,11 @@ export function gate(input: GateInput): GateVerdict {
       return escalate("llm", "L7 acceptance unclear", 1, [accepted.unclear, `${llm.model} approves: ${llm.reason}`], ["acceptance:unclear"], []);
     }
     return verdict("land", "llm", "L3 innate+llm", 1 - needsHuman, [`${llm.model} approves: ${llm.reason}`, ...(accepted?.met ? [accepted.met] : [])], [], ["innate", "llm"]);
+  }
+  // L8: the spend cap left review no model call, so nothing approved the change: a person decides (the budget cannot bounce it).
+  if (!llm && input.spendCap) {
+    risk = Math.max(risk, policy.budgetRiskFloor);
+    return escalate("llm", "L8 spend cap", 1, [input.spendCap, ...(detectors.length > 0 ? [`detectors: ${labels.join(", ")}`] : [])], ["review:spend-cap"], []);
   }
   const reasons: string[] = [];
   if (!llm) reasons.push("second opinion unavailable; one confirmation only");

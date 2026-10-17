@@ -28,6 +28,7 @@ import type { ReviewPreview } from "./preview.ts";
 import type { ModelHint } from "../colony/stepup.ts";
 import type { DeclaredBy } from "../colony/chain.ts";
 import type { PauseView } from "../colony/pause.ts";
+import type { AgentCapAsk, CapSettle } from "../colony/spendcap.ts";
 
 /**
  * The RPC surfaces the agents and the MCP server call, typed from the contracts in
@@ -97,6 +98,10 @@ export interface ColonyRpc {
   escalate?(agentId: Id, p: { intentId?: Id; kind: EscalationKind; report: string }): Promise<{ intent: Intent; escalation: IntentEscalation }>;
   /** The pauses in force and the sentence a write meets (colony/pause.ts); a colony on the previous version has none. */
   pauseState?(): Promise<PauseView>;
+  /** Reserve a model call against the colony's spend cap (colony/spendcap.ts): a hold to settle, or null with no cap; refused with the pause's sentence. */
+  spendReserve?(a: AgentCapAsk): Promise<{ hold: Id | null; capped?: boolean }>;
+  /** Settle a reserved model call at the tokens it reported. */
+  spendSettle?(s: CapSettle): Promise<unknown>;
 }
 
 /** RegionDO methods used for sensing. */

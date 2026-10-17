@@ -176,8 +176,9 @@ import { eventMovedBy, fetchReturnHunks, quoteHunks, returnHunksEnabled, type Qu
 import { PROTECT_META, isProtectStop, parseProtectRecord, protectChanged, protectLandedText, type ProtectHost, type ProtectOutcome, type ProtectRecord } from "./protect.ts";
 import { SpendBook, modelOfClass, resolverClient, spendCounters } from "./spend.ts";
 import { hedgeFor } from "./hedge.ts";
-import type { ColonySpend, IntentSpendBrief } from "@fire_trident/core";
+import type { ColonySpend, IntentSpendBrief, SpendCap } from "@fire_trident/core";
 import { IntentSpendBook, intentSpendEnabled, type IntentSpendAnswer } from "./intentspend.ts";
+import { SPEND_CAP_ACTOR, SpendCapBook, agentReserve, agentSettle, bookUsd, cappedAi, cappedClient, localGate, type AgentCapAsk, type CapSettle, type CapUse, type SpendCapAnswer } from "./spendcap.ts";
 
 /**
  * Result of ColonyDO.take: an assignment, or advice to wait and retry. `review`: what review will
@@ -2611,9 +2612,12 @@ export class ColonyDO extends DurableObject<Env> {
   }
 
   /** Resume the colony's agents (POST /api/colonies/:id/resume); a deployment pause in force still holds them. */
-  async resume(p: { by?: string; reason?: string } = {}): Promise<ResumeAnswer> {
-    this.requireColony();
-    return this.pauses().resume({ by: p?.by ?? "api", reason: p?.reason });
+  async resume(p: { by?: string; reason?: string } = {}): Promise<ResumeAnswer & { spendCap?: string }> {
+    const colony = this.requireColony();
+    const res = await this.pauses().resume({ by: p?.by ?? "api", reason: p?.reason });
+    // Spend cap (colony/spendcap.ts): resumed while the spend is still at the cap, the next model call pauses again.
+    const note = res.resumed ? this.spendCaps().resumeNote(colony.id) : null;
+    return note ? { ...res, spendCap: note } : res;
   }
 
   /** The pauses in force (the colony's own first) and the sentence an agent's write meets: lanes, MCP and agents ask. */
@@ -2840,6 +2844,8 @@ export class ColonyDO extends DurableObject<Env> {
       bump: (name, delta) => void this.bump(name, delta, Date.now()),
       // Spend per intent (FT_INTENT_SPEND, colony/intentspend.ts): the stage's calls, counted for the proposal's intent.
       countIntentCall: (intentId, layer, model, usage) => this.intentSpends().count(intentId, layer, model, usage, Date.now()),
+      // Spend cap (colony/spendcap.ts): each of the stage's model calls reserved against the cap; as before with none.
+      capAi: (ai, use) => this.capped(ai, use),
       setMetric: (name, value) => this.setMetric(name, value, Date.now()),
       emit: (events) => void this.publish(events),
       trunk: () => this.trunkStub() as unknown as TrunkRpc,
@@ -3489,8 +3495,10 @@ export class ColonyDO extends DurableObject<Env> {
    * families, on the decide engine's call limiter.
    */
   private contestJudge(intent: Intent, authors: Array<string | undefined>): PairJudge | null {
-    const ai = (this.env as unknown as { AI?: AiRunner }).AI;
-    if (!ai) return null;
+    const bound = (this.env as unknown as { AI?: AiRunner }).AI;
+    if (!bound) return null;
+    // Spend cap (colony/spendcap.ts): each judge call reserved against the cap; a refused one reads as the judge unavailable (a tie).
+    const ai = this.capped(bound, "judge");
     const policy = this.decider().store.policy();
     const limiter = this.contestLimiter();
     limiter.configure(policy.llmConcurrency, policy.llmPerMinute);
@@ -4256,13 +4264,76 @@ export class ColonyDO extends DurableObject<Env> {
 
   /** The spend report, or undefined when it cannot be computed (logged). */
   private async spendReport(now: number, metrics: Record<string, number>): Promise<ColonySpend | undefined> {
+    let spend: ColonySpend;
     try {
       const policy = this.decider().store.policy();
-      return await this.spendBook().report(now, { metrics, review: { reflexModel: policy.reflexModel, secondOpinionModels: policy.secondOpinionModels } });
+      spend = await this.spendBook().report(now, { metrics, review: { reflexModel: policy.reflexModel, secondOpinionModels: policy.secondOpinionModels } });
     } catch (err) {
       console.warn(`spend report failed: ${errorText(err)}`);
       return undefined;
     }
+    // The spend cap (colony/spendcap.ts), when a person set one; the report stands without it if it cannot be read.
+    try {
+      const cap = this.spendCaps().state();
+      return cap ? { ...spend, cap } : spend;
+    } catch (err) {
+      console.warn(`spend cap state failed: ${errorText(err)}`);
+      return spend;
+    }
+  }
+
+  // =========================================================================
+  // Spend cap (colony/spendcap.ts): a person caps what this platform's model calls for the colony may cost
+  // =========================================================================
+
+  private spendCapRun: SpendCapBook | null = null;
+
+  /** The spend cap's book, with this colony as its host (made on first use). */
+  private spendCaps(): SpendCapBook {
+    return (this.spendCapRun ??= new SpendCapBook({
+      sql: this.sql,
+      now: () => Date.now(),
+      bookUsd: () => {
+        const policy = this.decider().store.policy();
+        return bookUsd(this.spendBook().agentUsage(), this.metricsRecord(), { reflexModel: policy.reflexModel, secondOpinionModels: policy.secondOpinionModels });
+      },
+      refreshBook: () => void this.spendBook().refresh(Date.now()),
+      ownPause: () => this.pauses().own(),
+      trip: (reason) => this.pauses().pause({ by: SPEND_CAP_ACTOR, reason }),
+      lift: (by, reason) => this.pauses().resume({ by, reason }),
+      waitUntil: (p) => this.ctx.waitUntil(p),
+    }));
+  }
+
+  /** Set or change the colony's spend cap, or remove it with `usd: null` (POST /api/colonies/:id/spend-cap). */
+  async setSpendCap(p: { usd: number | null; reviewReserveUsd?: number; by?: string }): Promise<SpendCapAnswer> {
+    this.requireColony();
+    const by = p?.by ?? "api";
+    return p?.usd === null ? this.spendCaps().clear({ by }) : this.spendCaps().set({ usd: p?.usd, reviewReserveUsd: p?.reviewReserveUsd, by });
+  }
+
+  /** The spend cap as it stands, or null when none is set (GET /api/colonies/:id/spend-cap). */
+  async spendCap(): Promise<SpendCap | null> {
+    this.requireColony();
+    return this.spendCaps().state();
+  }
+
+  /** An in-platform agent's reservation before a model call (agentCapGate); refused with the pause's sentence as the cap trips it. */
+  async spendReserve(a: AgentCapAsk): Promise<{ hold: Id | null; capped: boolean }> {
+    this.requireColony();
+    return agentReserve(this.spendCaps(), a, (m) => modelOfClass(this.env, m));
+  }
+
+  /** An in-platform agent's settle after a model call: the hold is released and what the call cost counts. */
+  async spendSettle(s: CapSettle): Promise<{ settled: true }> {
+    this.requireColony();
+    agentSettle(this.spendCaps(), s, (m) => modelOfClass(this.env, m));
+    return { settled: true };
+  }
+
+  /** The Workers AI binding with each run reserved against the spend cap; with no cap each run goes as before. */
+  private capped(ai: AiRunner, use: CapUse): AiRunner {
+    return cappedAi(ai, this.spendCaps(), use);
   }
 
   /** The per-intent book (colony/intentspend.ts), made on first use; it counts only where FT_INTENT_SPEND covers the colony. */
@@ -4422,6 +4493,8 @@ export class ColonyDO extends DurableObject<Env> {
     this.megafileAlarm = null;
     // And the pause switch's (a deployment pause in force is read again from the registry).
     this.pauseSwitch = null;
+    // And the spend cap's.
+    this.spendCapRun = null;
     await this.ctx.storage.deleteAlarm();
     await this.ctx.storage.deleteAll();
     this.colonyCache = null;
@@ -5484,12 +5557,11 @@ export class ColonyDO extends DurableObject<Env> {
       limiter: () => this.decider().limiter,
       // The client agents use, with each call's tokens counted per model for the colony's spend (colony/spend.ts).
       // Hedged calls (FT_HEDGE, colony/hedge.ts): the copy goes to the same model, through the decide limiter.
-      model: () =>
-        resolverClient(
-          this.env,
-          (name, delta) => void this.bump(name, delta, Date.now()),
-          hedgeFor(this.env, this.requireColony().id, "resolver", { admit: (m) => this.decider().limiter.acquire(m, 0), bump: (name, delta) => void this.bump(name, delta, Date.now()) }),
-        ),
+      model: () => {
+        const hedge = hedgeFor(this.env, this.requireColony().id, "resolver", { admit: (m) => this.decider().limiter.acquire(m, 0), bump: (name, delta) => void this.bump(name, delta, Date.now()) });
+        // Spend cap (colony/spendcap.ts): the call reserved against the cap (twice with a hedge); a refused one fails the resolution.
+        return cappedClient(resolverClient(this.env, (name, delta) => void this.bump(name, delta, Date.now()), hedge), localGate(this.spendCaps(), "resolver", (m) => modelOfClass(this.env, m)), hedge ? 2 : 1);
+      },
       // An in-platform agent named "resolver", registered on first use (synchronously: a return is being settled).
       agent: (known, model) => {
         const now = Date.now();
