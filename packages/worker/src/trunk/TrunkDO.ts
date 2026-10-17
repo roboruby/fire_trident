@@ -89,6 +89,9 @@ import { DIRECTION_TABLE, FENCE_WAIT_MS, directionReturns, fenceAnswer, mergeDir
 import { PUBLISH_BOUND, addedObjects, asyncPublishEnabled, publishBackoffMs, publishChain, settlePublish, withinBound, type PublishBound, type RecordedCommit } from "./publish.ts";
 import { PROTECT_TABLE, keepProtect, protectReturns } from "./protect.ts";
 import { landingRange as rangeOfLandings, type LandingRange, type RangeQuery } from "../certify/range.ts";
+import { FoldedIndex, cycleCollisions, structureProblem, submoduleProblems, type SubmoduleOutcome } from "./structure.ts";
+import { readTreeCached } from "./surgery.ts";
+import { foldPath } from "../decide/pathfold.ts";
 
 export type { LandResult, Returned } from "./plan.ts";
 
@@ -274,6 +277,8 @@ export class TrunkDO extends DurableObject<Env> {
   private readonly surfaces = new BoundedMap<Sha, ExportSurface | null>(SURFACE_CACHE);
   /** Export guard (FT_EXPORT_GUARD): the exports of versions it read, by blob id, and its pause after a stalled read. */
   private readonly exportMemo = new ExportMemo();
+  /** Trunk's paths by folded form, for the case-collision check at landing (trunk/structure.ts); rebuilt when trunk moves. */
+  private readonly foldedIndex = new FoldedIndex();
   /**
    * Asynchronous publishing (FT_ASYNC_PUBLISH, trunk/publish.ts): the publish attempt in flight (single-flight), the loop
    * that drives attempts beside the cycles and whether it should go round again, whether everything recorded before this
@@ -1394,6 +1399,19 @@ export class TrunkDO extends DurableObject<Env> {
       if (o) outcome.set(e.p.id, o);
       return !o;
     });
+    // 3b. Submodules (trunk/structure.ts): a change that writes or deletes a submodule, or a path inside one, goes back.
+    const submodules = await this.submoduleProblems(live.map((e) => e.p));
+    if (submodules.size > 0) {
+      for (const [id, o] of submodules) outcome.set(id, o);
+      live = live.filter((e) => !submodules.has(e.p.id));
+    }
+    // 3c. Second spellings inside the cycle (trunk/structure.ts): of two changes adding paths that are one file on a
+    //     case-insensitive file system, the later waits for the next cycle, where the first is trunk.
+    const spelled = cycleCollisions(live.map((e) => e.p), (path) => this.indexBlob(path) !== null);
+    if (spelled.size > 0) {
+      for (const [id, reason] of spelled) outcome.set(id, { kind: "deferred", reason });
+      live = live.filter((e) => !spelled.has(e.p.id));
+    }
     lap("screen");
 
     // 4. Pull the new blobs: an inline change's from its contents (pullInline: no workspace read, one call to the
@@ -1428,6 +1446,12 @@ export class TrunkDO extends DurableObject<Env> {
           if (s) outcome.set(e.p.id, { kind: "returned", reason: s });
           return !s;
         });
+        // Submodules too, in the tree trunk moved to (trunk/structure.ts).
+        const moved = await this.submoduleProblems(live.map((e) => e.p));
+        if (moved.size > 0) {
+          for (const [id, o] of moved) outcome.set(id, o);
+          live = live.filter((e) => !moved.has(e.p.id));
+        }
       }
       const input: PlanProposal[][] = reqs.map(() => []);
       for (const e of live) input[e.request]!.push({ p: e.p, base: bases.get(e.p.id) ?? [] });
@@ -1793,7 +1817,7 @@ export class TrunkDO extends DurableObject<Env> {
     return this.lastLandingAt;
   }
 
-  /** A file where a directory is needed (or the reverse), or a write into a submodule. */
+  /** A file where a directory is needed (or the reverse), a write into a submodule, a symbolic link retargeted, or a second spelling of a trunk file. */
   private structuralProblem(p: Proposal): string | null {
     for (const w of p.writeSet) {
       if (w.blob === null) continue;
@@ -1806,7 +1830,30 @@ export class TrunkDO extends DurableObject<Env> {
       if (child.length > 0) return `${w.path} is a directory in trunk`;
       if (this.indexMode(w.path) === "160000") return `${w.path} is a submodule in trunk`;
     }
-    return null;
+    // A symbolic link retargeted, or a second spelling of a trunk file (trunk/structure.ts).
+    return structureProblem(p.writeSet, {
+      file: (path) => this.sql.exec<{ blob: string; mode: string }>(`SELECT blob, mode FROM ft_files WHERE path = ?`, path).toArray()[0] ?? null,
+      folded: () => this.foldedIndex.get(this.meta("trunk_sha") ?? "", () => this.sql.exec<{ path: string }>(`SELECT path FROM ft_files`).toArray().map((r) => r.path)),
+    });
+  }
+
+  /**
+   * The proposals that write or delete a submodule of trunk, or a path inside one, read from trunk's current tree (the
+   * index lists no submodules): each returned with its reason, or deferred when the tree cannot be read (trunk/structure.ts).
+   */
+  private async submoduleProblems(proposals: Proposal[]): Promise<Map<Id, SubmoduleOutcome>> {
+    if (proposals.length === 0) return new Map();
+    const g = this.repo();
+    const sha = this.state().trunkSha;
+    let root: string | null;
+    try {
+      root = this.commitTrees.get(sha) ?? (await commitTree(g, sha));
+    } catch (err) {
+      root = null;
+      console.error(`submodule check: trunk commit ${sha} unreadable: ${errorText(err)}`);
+    }
+    if (root === null) return new Map(proposals.map((p) => [p.id, { kind: "deferred", reason: `trunk commit ${sha} is missing locally, so submodules could not be checked` }]));
+    return submoduleProblems(proposals, root, (oid) => readTreeCached(g, this.trees, oid));
   }
 
   /** Read every new blob of `p` from its workspace repo, verify its id, and write it locally. Returns each pulled blob's size by path. */
@@ -2952,7 +2999,7 @@ function pathProblem(path: unknown): string | null {
   if (path.startsWith("/") || path.endsWith("/") || path.includes("\\") || path.includes("\0")) return `invalid path ${JSON.stringify(path)}`;
   for (const seg of path.split("/")) {
     if (seg === "" || seg === "." || seg === "..") return `invalid path ${JSON.stringify(path)}`;
-    if (seg.toLowerCase() === ".git") return `path ${JSON.stringify(path)} touches .git`;
+    if (foldPath(seg) === ".git") return `path ${JSON.stringify(path)} touches .git`;
   }
   return null;
 }

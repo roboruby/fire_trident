@@ -53,7 +53,7 @@ export interface DangerSpot {
   what: string[];
   /** The labels as the server wrote them. */
   labels: string[];
-  /** A class that sends a change to a person (governance, secret, auth, capability) is among them. */
+  /** A class that sends a change to a person (governance, handoff, secret, auth, capability) is among them. */
   severe: boolean;
   /** The line with a little context, from the kept diff; empty when the diff does not show it. */
   lines: DiffLine[];
@@ -66,7 +66,7 @@ export interface ResidualSpot {
 }
 
 /** Danger classes that send a change to a person: their lines are listed first. */
-const SEVERE: ReadonlySet<string> = new Set(["governance", "secret", "auth", "capability"]);
+const SEVERE: ReadonlySet<string> = new Set(["governance", "handoff", "secret", "auth", "capability"]);
 
 /** Notes a danger label can end with ("[allowed by policy]", "[asked for by the intent]"). */
 const NOTES = /(?:\s\[(?:allowed by [^\]]*|asked for by the intent)\])+$/;

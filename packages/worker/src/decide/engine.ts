@@ -268,7 +268,7 @@ export class DecideEngine {
     ];
     const dangerHits = applyAllowances(
       scanDanger(
-        innate.files.map((f) => ({ path: f.path, before: f.before, after: f.afterBlob === null ? null : (f.after ?? ""), deleted: f.afterBlob === null })),
+        innate.files.map((f) => ({ path: f.path, before: f.before, after: f.afterBlob === null ? null : (f.after ?? ""), deleted: f.afterBlob === null, opaque: f.afterBlob !== null && f.after === null })),
         intent && source ? { title: intent.title, why: intent.why, acceptance: intent.acceptance, source } : null,
       ),
       allowances,
@@ -936,7 +936,7 @@ export class DecideEngine {
     const intent = this.host.intent(p.intentId);
     const innate = await runInnateChecks(p, { env: this.host.env, colony: this.host.colony(), intent, rules: this.host.rules(), baseBlobs: (sha, paths) => this.host.trunk().baseBlobs(sha, paths) });
     const hits = scanDanger(
-      innate.files.map((f) => ({ path: f.path, before: f.before, after: f.afterBlob === null ? null : (f.after ?? ""), deleted: f.afterBlob === null })),
+      innate.files.map((f) => ({ path: f.path, before: f.before, after: f.afterBlob === null ? null : (f.after ?? ""), deleted: f.afterBlob === null, opaque: f.afterBlob !== null && f.after === null })),
       intent ? { title: intent.title, why: intent.why, acceptance: intent.acceptance, source: intent.source } : null,
     );
     this.store.putReview(p.id, buildReviewView({ files: innate.files, danger: hits, residual: innate.residual }), Date.now());

@@ -1,5 +1,6 @@
 import type { Path } from "@fire_trident/core";
 import { globMatch, importsOf } from "@fire_trident/core";
+import { foldPath } from "./pathfold.ts";
 
 /**
  * Damage and capability signals: deterministic facts about what a change could do if it landed.
@@ -34,17 +35,18 @@ const SENSITIVE: Array<{ re: RegExp; why: string }> = [
   { re: /(^|\/)(secrets?|credentials?)(\/|\.|$)/i, why: "secrets" },
   { re: /(^|\/)(auth|authn|authz|oauth|sso)(\/|\.|-|_)/i, why: "authentication" },
   { re: /(^|\/)(\.github|\.circleci|\.buildkite|\.gitlab)\//, why: "CI configuration" },
-  { re: /(^|\/)(\.gitlab-ci\.yml|azure-pipelines\.ya?ml|Jenkinsfile|\.travis\.yml|bitbucket-pipelines\.yml)$/, why: "CI configuration" },
+  { re: /(^|\/)(\.gitlab-ci\.yml|azure-pipelines\.ya?ml|Jenkinsfile|\.travis\.yml|bitbucket-pipelines\.yml)$/i, why: "CI configuration" },
   {
-    re: /(^|\/)(package\.json|package-lock\.json|npm-shrinkwrap\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|yarn\.lock|bun\.lockb?|deno\.jsonc?|jsr\.json|Gemfile(\.lock)?|requirements[^/]*\.txt|pyproject\.toml|poetry\.lock|go\.(mod|sum)|Cargo\.(toml|lock))$/,
+    re: /(^|\/)(package\.json|package-lock\.json|npm-shrinkwrap\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|yarn\.lock|bun\.lockb?|deno\.jsonc?|jsr\.json|Gemfile(\.lock)?|requirements[^/]*\.txt|pyproject\.toml|poetry\.lock|go\.(mod|sum)|Cargo\.(toml|lock))$/i,
     why: "dependency manifest",
   },
-  { re: /(^|\/)(\.husky\/|Dockerfile$|wrangler\.(jsonc?|toml)$|\.gitattributes$|CODEOWNERS$)/, why: "build or platform configuration" },
+  { re: /(^|\/)(\.husky\/|Dockerfile$|wrangler\.(jsonc?|toml)$|\.gitattributes$|CODEOWNERS$)/i, why: "build or platform configuration" },
 ];
 
-/** Why writing `path` is sensitive, or null. */
+/** Why writing `path` is sensitive, or null. Tested on the folded path (decide/pathfold.ts), so `Package.JSON` is a manifest too. */
 export function sensitiveReason(path: Path): string | null {
-  for (const s of SENSITIVE) if (s.re.test(path)) return s.why;
+  const folded = foldPath(path);
+  for (const s of SENSITIVE) if (s.re.test(folded)) return s.why;
   return null;
 }
 
@@ -54,7 +56,7 @@ export interface ProtectedHit {
   glob: string;
 }
 
-/** Does `glob` cover `path`: match it, or match a directory it is under ("src/auth" covers src/auth/login.ts)? */
+/** Does `glob` cover `path` (both folded): match it, or match a directory it is under ("src/auth" covers src/auth/login.ts)? */
 function covers(glob: string, path: Path): boolean {
   if (globMatch(glob, path)) return true;
   for (let k = path.indexOf("/"); k !== -1; k = path.indexOf("/", k + 1)) if (globMatch(glob, path.slice(0, k))) return true;
@@ -64,14 +66,17 @@ function covers(glob: string, path: Path): boolean {
 /**
  * The paths of a change that the colony's protected globs (DecidePolicy.protectedPaths) cover, each once
  * with the first glob that covers it. A proposal's write set lists deleted paths too, and a rename is a
- * deletion plus a write, so writing, deleting or renaming into or out of a protected path all count.
+ * deletion plus a write, so writing, deleting or renaming into or out of a protected path all count. Globs and paths
+ * match in their folded form (decide/pathfold.ts): `SRC/Auth/x.ts` is under `src/auth` on a case-insensitive checkout.
  */
 export function protectedHits(paths: readonly Path[], globs: readonly string[]): ProtectedHit[] {
   if (globs.length === 0) return [];
+  const folded = globs.map((g) => foldPath(g));
   const out: ProtectedHit[] = [];
   for (const path of new Set(paths)) {
-    const glob = globs.find((g) => covers(g, path));
-    if (glob !== undefined) out.push({ path, glob });
+    const p = foldPath(path);
+    const k = folded.findIndex((g) => covers(g, p));
+    if (k !== -1) out.push({ path, glob: globs[k]! });
   }
   return out;
 }
