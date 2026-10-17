@@ -292,23 +292,46 @@ function suspectsOf(cert: Pick<Certification, "suspects">): Suspect[] {
     if (typeof s.intentId === "string" && s.intentId) out.intentId = s.intentId;
     if (typeof s.title === "string" && s.title) out.title = s.title;
     if (typeof s.trunkSha === "string" && s.trunkSha) out.trunkSha = s.trunkSha;
+    const labels = strings(s.labels).filter((l): l is SuspectLabel => Object.hasOwn(LABEL_WORDS, l));
+    if (labels.length > 0) out.labels = labels;
     return [out];
   });
 }
 
+/** Why culprit finding lists a suspect (core's SuspectLabel). */
+type SuspectLabel = NonNullable<Suspect["labels"]>[number];
+
+/** The labels in words, in the order `ft certify` prints them. */
+const LABEL_WORDS: Record<SuspectLabel, string> = { "first-red": "first red", "first-since-green": "first since green", latest: "latest" };
+
+/** At most `n` suspects in their order (newest first), the first red and first since green ones kept before newer ones. */
+function shownSuspects(list: Suspect[], n: number): Suspect[] {
+  const rank = (s: Suspect): number => (s.labels?.includes("first-red") ? 0 : s.labels?.includes("first-since-green") ? 1 : 2);
+  const kept = new Set(
+    list
+      .map((s, i) => ({ r: rank(s), i }))
+      .sort((a, b) => a.r - b.r || a.i - b.i)
+      .slice(0, n)
+      .map((x) => x.i),
+  );
+  return list.filter((_, i) => kept.has(i));
+}
+
 /**
- * A red result's suspects for `ft certify`, newest first: the proposal (or landing) that changed what
- * the failing tests load, its intent's title, the files it changed, and the command that undoes it.
+ * A red result's suspects for `ft certify`, newest first: why each is listed (its labels, when the
+ * server recorded them), the proposal (or landing) that changed what the failing tests load, its
+ * intent's title, the files it changed, and the command that undoes it.
  */
 function suspectLines(colony: string, suspects: Suspect[], c: Colors): string[] {
   const out: string[] = [];
   const names = (list: string[], max: number): string => (list.length > max ? `${list.slice(0, max).join(", ")} +${list.length - max}` : list.join(", "));
-  for (const s of suspects.slice(0, SUSPECTS_SHOWN)) {
+  for (const s of shownSuspects(suspects, SUSPECTS_SHOWN)) {
     const ref = s.proposalId ?? s.landingId;
+    const labels = (Object.keys(LABEL_WORDS) as SuspectLabel[]).filter((l) => s.labels?.includes(l)).map((l) => LABEL_WORDS[l]);
     const where = [s.proposalId ? `landing ${s.landingId}` : "", s.trunkSha ? shortSha(s.trunkSha) : ""].filter(Boolean).join(", ");
     const changed = s.paths.length > 0 ? ` changed ${names(s.paths, 3)}` : "";
     const files = s.files.length > 0 ? ` for ${names(s.files, 2)}` : "";
-    out.push(`    ${c.yellow("suspect")} ${c.bold(ref)}${s.title ? ` ${quote(s.title, 60)}` : ""}${changed}${c.dim(`${where ? ` (${where})` : ""}${files}`)}`);
+    out.push(`    ${c.yellow("suspect")} ${labels.length > 0 ? `${c.yellow(`[${labels.join(", ")}]`)} ` : ""}${c.bold(ref)}${s.title ? ` ${quote(s.title, 60)}` : ""}${changed}${c.dim(`${where ? ` (${where})` : ""}${files}`)}`);
     out.push(`      ${c.dim("undo:")} ft revert ${colony} ${ref}`);
   }
   if (suspects.length > SUSPECTS_SHOWN) out.push(c.dim(`    and ${suspects.length - SUSPECTS_SHOWN} more (--json lists them)`));

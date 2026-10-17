@@ -84,6 +84,8 @@ describe("culprit finding (FT_CULPRITS)", () => {
         paths: ["src/math.ts"],
         files: ["test/math.test.ts"],
         at: expect.any(Number),
+        // The only landing since green: the first since then, and the latest.
+        labels: ["first-since-green", "latest"],
       },
     ]);
     // The snapshot's latest result carries them too (the web card shows them from there).
@@ -95,15 +97,35 @@ describe("culprit finding (FT_CULPRITS)", () => {
     expect(declared).toHaveLength(1);
     expect(declared[0]!.footprint).toEqual(["src/math.ts"]);
     expect(declared[0]!.why).toContain(
-      `- proposal ${broke.proposal.id} (landing ${broke.proposal.landingId}, commit ${broke.sha.slice(0, 7)}) for intent ${broke.intent.id} "Speed up subtraction" changed src/math.ts; a suspect for test/math.test.ts. Why it was written: Why: speed up subtraction.`,
+      `- [first since green, latest] proposal ${broke.proposal.id} (landing ${broke.proposal.landingId}, commit ${broke.sha.slice(0, 7)}) for intent ${broke.intent.id} "Speed up subtraction" changed src/math.ts; a suspect for test/math.test.ts. Why it was written: Why: speed up subtraction.`,
     );
-    expect(declared[0]!.why).toMatch(/\n<<<SUSPECTS ([0-9a-f]{12})>>>\n- proposal [^\n]+\n<<<END SUSPECTS \1>>>\n/);
+    expect(declared[0]!.why).toMatch(/\n<<<SUSPECTS ([0-9a-f]{12})>>>\n- \[first since green, latest\] proposal [^\n]+\n<<<END SUSPECTS \1>>>\n/);
 
     // A landing that changes nothing the tests load is never a suspect: the next red run names the same one.
     const docs = await landChange(c.id, "Document subtraction", { "src/README.md": "# math\n" });
     const again = await settled(c.id, docs.sha);
     expect(again.status).toBe("red");
     expect(again.suspects?.map((s) => s.proposalId)).toEqual([broke.proposal.id]);
+  });
+
+  it("keeps the first landing since green beside the newest two when five changed what the failing test loads", async () => {
+    const c = await newColony();
+    await culpritsOn(c.id);
+    const sha1 = await externalLanding(c.id, { "src/math.ts": MATH_OK, "test/math.test.ts": MATH_TEST });
+    expect(await settled(c.id, sha1)).toMatchObject({ status: "green" });
+    // The first breaks the test; the four after it land on a red trunk. The colony's path index keeps only the newest three.
+    const broke = await landChange(c.id, "Speed up subtraction", { "src/math.ts": MATH_BUG });
+    const later: Array<Awaited<ReturnType<typeof landChange>>> = [];
+    for (let i = 2; i <= 5; i++) later.push(await landChange(c.id, `Tidy subtraction ${i}`, { "src/math.ts": `${MATH_BUG}// pass ${i}\n` }));
+    const head = later.at(-1)!;
+    const red = await settled(c.id, head.sha);
+    expect(red.status).toBe("red");
+    expect(red.suspects?.map((s) => [s.proposalId, s.labels])).toEqual([
+      [later[3]!.proposal.id, ["latest"]],
+      [later[2]!.proposal.id, ["latest"]],
+      [broke.proposal.id, ["first-since-green"]],
+    ]);
+    expect(red.suspects?.[2]).toMatchObject({ landingId: broke.proposal.landingId, intentId: broke.intent.id, title: "Speed up subtraction", paths: ["src/math.ts"], files: ["test/math.test.ts"] });
   });
 
   it("is off unless FT_CULPRITS names the colony", async () => {

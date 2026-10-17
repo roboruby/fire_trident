@@ -136,7 +136,8 @@ import {
 } from "./metrics.ts";
 import type { AgentListEntry, ColonySeries, ColonySummary, RegistryEntry, SnapshotWithSeries } from "./metrics.ts";
 import { Certifier, type CertifyHost, type CertifyTrunk } from "../certify/certifier.ts";
-import { culpritsEnabled, type LandedOn } from "../certify/culprit.ts";
+import { culpritsEnabled, type LandedOn, type SinceGreen } from "../certify/culprit.ts";
+import { landedSince } from "../certify/since.ts";
 import { bisectEnabled } from "../certify/bisect.ts";
 import { prelandEnabled, prelandReader } from "../certify/preland.ts";
 import type { CertifyPolicy } from "../certify/repair.ts";
@@ -3658,7 +3659,7 @@ export class ColonyDO extends DurableObject<Env> {
       specFor: (paths) => this.specContextFor(paths),
       // Culprit finding (certify/culprit.ts): off unless FT_CULPRITS names this colony.
       culprits: () => culpritsEnabled(this.env.FT_CULPRITS, this.loadColony()?.colony.id ?? ""),
-      landedOn: (paths) => this.suspectLandings(paths),
+      landedOn: (paths, since) => this.suspectLandings(paths, since),
       landingOf: (sha) => {
         const r = this.sql.exec<{ id: string; at: number }>("SELECT id, at FROM landings WHERE trunk_sha = ? ORDER BY at DESC LIMIT 1", sha).toArray()[0];
         return r ? { landingId: r.id, at: r.at } : null;
@@ -3682,11 +3683,12 @@ export class ColonyDO extends DurableObject<Env> {
    * Culprit finding: the latest landings that changed any of `paths` (at most three, newest first),
    * read from the per-path landing index through whyContext, each with the proposal of its intent in
    * that landing and the blobs that proposal landed for those paths (one query for all of them; a file
-   * the trunk writer merged, the merged blob).
+   * the trunk writer merged, the merged blob). With `since`: the oldest landings since the last green
+   * commit that changed them, oldest first, from the landing log (certify/since.ts).
    */
-  private async suspectLandings(paths: Path[]): Promise<LandedOn[]> {
+  private async suspectLandings(paths: Path[], since?: SinceGreen): Promise<LandedOn[]> {
     // whyContext reads only the footprint, and the id for its log line.
-    const found = (await this.whyContext({ id: "certify-suspects", footprint: paths } as Intent)) ?? [];
+    const found = since ? landedSince(this.sql, paths, since, LANDINGS_KEEP) : ((await this.whyContext({ id: "certify-suspects", footprint: paths } as Intent)) ?? []);
     if (found.length === 0) return [];
     const writes = this.sql
       .exec<{ landing_id: string; proposal_id: string; intent_id: string; path: string | null; blob: string | null }>(
