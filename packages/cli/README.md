@@ -12,6 +12,7 @@ npx fire_trident status hono                 # trunk, intents, agents and violat
 npx fire_trident why hono src/hono.ts:42     # the landing, agent, intent and review behind a line
 npx fire_trident certify shortlinks          # the test results behind the certified branch
 npx fire_trident review openspec-w1 --diff   # a change waiting for a person, code first
+npx fire_trident connect hono                # connect your agent: each MCP client, read only first
 ```
 
 Colonies are plain git too. The `certified` branch only moves to commits whose tests passed, and the lineage notes travel with the repository:

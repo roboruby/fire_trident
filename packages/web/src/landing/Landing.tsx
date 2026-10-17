@@ -109,6 +109,7 @@ export function Landing() {
           <a href="#colonies">Colonies</a>
           <a href="#how">How it works</a>
           <a href="#run">Run it</a>
+          <a href="/connect">Connect</a>
           <a href={DOCS} target="_blank" rel="noreferrer">
             Docs
           </a>

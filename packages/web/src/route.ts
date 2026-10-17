@@ -1,6 +1,8 @@
 /** Which page to show, from the address bar. */
 export type Route =
   | { kind: "landing" }
+  /** /connect: connect your agent, for one colony with ?colony=<id> (null without one; the page checks the id). */
+  | { kind: "connect"; colonyId: string | null }
   | {
       kind: "colony";
       colonyId: string;
@@ -33,11 +35,12 @@ function flag(params: URLSearchParams, key: string): boolean {
 }
 
 /**
- * "/" is the landing page; "/c/:colonyId" is one colony. The old shortcuts "/?mock=1"
- * and "/?director=1" still open the simulator colony.
+ * "/" is the landing page; "/c/:colonyId" is one colony; "/connect" connects an agent (?colony=<id>). The old
+ * shortcuts "/?mock=1" and "/?director=1" still open the simulator colony.
  */
 export function parseRoute(pathname: string, search: string): Route {
   const params = new URLSearchParams(search);
+  if (/^\/connect\/?$/.test(pathname)) return { kind: "connect", colonyId: params.get("colony")?.trim() || null };
   const mock = flag(params, "mock");
   const director = flag(params, "director");
   const debug = flag(params, "debug");

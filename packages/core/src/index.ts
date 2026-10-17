@@ -10,6 +10,7 @@ export * from "./morph.ts";
 export * from "./residual.ts";
 export * from "./lineage.ts";
 export * from "./guide.ts";
+export * from "./connect.ts";
 export * from "./cochange.ts";
 export * from "./changeset.ts";
 export * from "./goalconflict.ts";

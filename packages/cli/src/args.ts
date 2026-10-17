@@ -1,5 +1,6 @@
 import { parseArgs } from "node:util";
 import type { AgentKind, ColonyEvent } from "@fire_trident/core";
+import { isConnectColony } from "@fire_trident/core";
 
 /** Event types `ft watch --only` accepts. */
 export const EVENT_TYPES: ReadonlyArray<ColonyEvent["t"]> = [
@@ -48,6 +49,8 @@ export type Command =
   | { name: "watch"; colony: string; only: string[] }
   | { name: "new"; specPath: string; colonyName?: string; by?: string }
   | { name: "colonies"; scan: boolean }
+  // Connect your agent: each MCP client's command and configuration for this server, for one colony when named.
+  | { name: "connect"; colony?: string }
   | { name: "agents"; colony: string; all: boolean; journal: boolean }
   | { name: "stop"; colony: string; agentId?: string; all: boolean; reason?: string }
   | { name: "delete"; colony: string }
@@ -130,6 +133,7 @@ const COMMAND_OPTIONS: Record<string, Record<string, OptionSpec>> = {
   watch: { only: { type: "string", multiple: true } },
   new: { spec: { type: "string" }, name: { type: "string" }, by: { type: "string" } },
   colonies: { scan: { type: "boolean" } },
+  connect: {},
   agents: { all: { type: "boolean" }, "no-journal": { type: "boolean" } },
   stop: { all: { type: "boolean" }, reason: { type: "string" } },
   delete: { yes: { type: "boolean" } },
@@ -412,6 +416,15 @@ function build(word: string, v: Record<string, unknown>, p: string[]): Command {
     case "colonies": {
       noExtras(p, 0, "ft colonies [--scan]");
       return { name: "colonies", scan: v.scan === true };
+    }
+    case "connect": {
+      // Nothing is sent: the commands are built here from the server URL (core/connect.ts).
+      const usage = "ft connect [<colony>]";
+      noExtras(p, 1, usage);
+      const colony = p[0]?.trim();
+      if (colony === undefined || colony === "") return { name: "connect" };
+      if (!isConnectColony(colony)) fail(`"${colony}" is not a colony id (lowercase letters, digits and single hyphens). Usage: ${usage}`);
+      return { name: "connect", colony };
     }
     case "agents": {
       const usage = "ft agents <colony> [--all] [--no-journal]";
@@ -737,6 +750,7 @@ Usage
 
 Commands
   colonies                         List every colony with live counters
+  connect [<colony>]               Connect an agent: each MCP client's command and config
   import <git-url>                 Import a public repository as a new colony
   new --spec <file>                Start a colony from a spec: empty trunk, rules, intents
   status <colony>                  Summarize trunk, intents, agents, and violations
@@ -1081,6 +1095,22 @@ directive, escalation, stuck, status. --json prints raw events. Reconnects autom
 
 Example
   ft watch web --only landing,proposal,violations
+`,
+  connect: `
+ft connect [<colony>]
+
+Connect an agent to this server: for Claude Code, Claude, Codex CLI, Cursor,
+VS Code and plain HTTP, the command and configuration of the read-only server
+first (/public/mcp: no token, changes nothing), then of the server that joins
+a colony and proposes (/mcp, with the deployment's MCP token in FT_MCP_TOKEN).
+No snippet holds a token. With a colony, also what to ask it first and the
+colony's SKILL.md. Sends nothing; --json prints the same as JSON. The same
+text is on the server's /connect page.
+
+Examples
+  ft connect
+  ft connect hono
+  ft connect hono --url https://<your-worker>.workers.dev
 `,
   colonies: `
 ft colonies [--scan]

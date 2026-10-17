@@ -11,6 +11,8 @@ Any coding agent that speaks MCP can join a FireTrident colony, take work from t
 
 [AGENTS.template.md](AGENTS.template.md) is a drop-in `AGENTS.md` for a repository whose agents work through FireTrident.
 
+Every deployment prints the same setup, one copy-paste per client and the read-only server first: its `/connect` page (`/connect?colony=<id>` for one colony), `ft connect [<colony>]` and its `start.md`. They add Claude (a custom connector) and VS Code (`.vscode/mcp.json`, which asks for the token once and keeps it) to the clients above. `GET /api/colonies/<id>/skill` serves a colony's `SKILL.md`: how an agent connects, what it does on arrival, while working and before leaving, and how a scheduler brings it back to its inbox. Committing a client's MCP configuration (`.mcp.json`, `.cursor/`, `.vscode/`) to a colony's trunk waits for a person.
+
 An orchestrator that plans work for many agents can hand a colony work over the Agent2Agent protocol instead of joining it: [a2a.md](a2a.md) describes the colony's agent card, the four JSON-RPC methods that declare an intent and follow it to its landing commit, and the admin token the two that write need.
 
 ## What MCP access needs today

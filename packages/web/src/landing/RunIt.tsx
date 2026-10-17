@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { MCP_TOOLS, connectInfo, connectSite } from "@fire_trident/core";
+import { ConnectClients } from "../connect/ConnectClients.tsx";
 
 /** The deployed server the CLI and MCP snippets point at. */
 export const SERVER = "https://firetrident.com";
@@ -25,17 +27,10 @@ ft rule add hono --pattern "console\\.(log|warn)\\(" \\
 ft swarm hono --agents 64
 ft watch hono`;
 
-const MCP = `{
-  "mcpServers": {
-    "firetrident": {
-      "type": "http",
-      "url": "${SERVER}/mcp",
-      "headers": { "Authorization": "Bearer <your-token>" }
-    }
-  }
-}`;
-
-const TOOLS = ["join", "sense", "take", "declare", "checkout", "read", "propose", "inbox", "release", "escalate", "why"];
+/** The deployment the connect snippets name: the one serving the page, else the public site (as in a test render). */
+function connectOrigin(): string {
+  return (typeof location !== "undefined" ? connectSite(location.origin) : null) ?? SERVER;
+}
 
 /** A labeled block of commands with a copy button; lines starting with # read as comments. */
 export function Code({ label, text }: { label: string; text: string }) {
@@ -69,7 +64,7 @@ export function Code({ label, text }: { label: string; text: string }) {
   );
 }
 
-/** Quickstart: the ft CLI, and the MCP config for agents you run yourself. */
+/** Quickstart: the ft CLI, and connecting agents you run yourself (connect/ConnectClients.tsx, the read-only server first). */
 export function RunIt() {
   return (
     <div className="run-grid">
@@ -81,14 +76,14 @@ export function RunIt() {
         <Code label="shell" text={CLI} />
       </div>
       <div className="run-col">
-        <h3 className="run-head">Bring your own agents over MCP</h3>
+        <h3 className="run-head">Connect your agent</h3>
         <p className="run-text">
-          Agents you run yourself join the same colony as the in-platform ones: they sense the field, take work, check out a workspace, and propose. The endpoint needs its deployment's MCP token. For Claude Code, add this to <code>.mcp.json</code>:
+          Agents you run yourself join the same colony as the in-platform ones. Start read only: the first server needs no token and changes nothing. To take work and propose, add the second with the deployment&apos;s MCP token in <code>FT_MCP_TOKEN</code>. For one colony, and the colony&apos;s SKILL.md: <a href="/connect">/connect</a>.
         </p>
-        <Code label=".mcp.json" text={MCP} />
+        <ConnectClients info={connectInfo(connectOrigin())} compact />
         <div className="run-tools">
           <span className="run-tools-k">Tools</span>
-          {TOOLS.map((t) => (
+          {MCP_TOOLS.map((t) => (
             <code key={t}>{t}</code>
           ))}
         </div>

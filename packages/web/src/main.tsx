@@ -1,5 +1,8 @@
 import { createRoot } from "react-dom/client";
+import { connectSite } from "@fire_trident/core";
 import { App } from "./App.tsx";
+import { ConnectPage } from "./connect/Connect.tsx";
+import { SITE } from "./landing/questions.ts";
 import { Landing } from "./landing/Landing.tsx";
 import { Playback } from "./playback/Playback.tsx";
 import { parseRoute } from "./route.ts";
@@ -8,4 +11,15 @@ import "./styles.css";
 const route = parseRoute(location.pathname, location.search);
 const root = document.getElementById("root");
 // ?recording=: the colony from a recorded run, its reads answered by the recording with no network (playback/Playback.tsx).
-if (root) createRoot(root).render(route.kind === "landing" ? <Landing /> : route.recording !== null ? <Playback route={route} /> : <App route={route} />);
+// /connect: the commands name the deployment serving the page (the public site when its origin is not one a command can carry).
+const page =
+  route.kind === "landing" ? (
+    <Landing />
+  ) : route.kind === "connect" ? (
+    <ConnectPage site={connectSite(location.origin) ?? SITE} colony={route.colonyId} />
+  ) : route.recording !== null ? (
+    <Playback route={route} />
+  ) : (
+    <App route={route} />
+  );
+if (root) createRoot(root).render(page);

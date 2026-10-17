@@ -8,6 +8,7 @@ import { useThrottledVersion } from "../useStore.ts";
 import { AnimatedNumber } from "./AnimatedNumber.tsx";
 import { BuildTag } from "./BuildTag.tsx";
 import { ColonyPicker } from "./ColonyPicker.tsx";
+import { ConnectLinks } from "../connect/ConnectLinks.tsx";
 import { SignedBy } from "./SignedBy.tsx";
 import { SpendNote } from "./Spend.tsx";
 import { VaccineMeter } from "./VaccineMeter.tsx";
@@ -225,6 +226,8 @@ export function TopBar({ store, director = false, mock = false }: { store: Colon
             <ConnPill conn={store.conn} replay={store.replay} idle={store.loaded && store.agentsActive() === 0} />
           </div>
           {director ? null : <SignedBy store={store} about={about} mock={mock} />}
+          {/* Connect your agent (connect/ConnectLinks.tsx): this colony's connect page and its SKILL.md. */}
+          {director || mock ? null : <ConnectLinks colonyId={store.colonyId} />}
         </div>
       </div>
       <div className={`hero${clean ? " is-clean" : ""}`} title={byRule || undefined}>

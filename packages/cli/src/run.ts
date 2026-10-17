@@ -60,6 +60,7 @@ import { autonomyLine, formatImmune } from "./immune.ts";
 import { signatureFailed } from "./signatures.ts";
 import type { IntentBody, SpecPolicy } from "./spec.ts";
 import type { GuideLesson, Intent, Landing, LineageNote, Proposal, Rule } from "@fire_trident/core";
+import { connectInfo, connectText } from "@fire_trident/core";
 
 /** Everything the CLI touches outside itself, injectable for tests. */
 export interface Io {
@@ -188,6 +189,8 @@ async function execute(cmd: Command, ctx: Ctx): Promise<number> {
   if (cmd.name === "new") return newColony(cmd, ctx);
   if (cmd.name === "revert") return revert(cmd, ctx);
   if (cmd.name === "policy") return policy(cmd, ctx);
+  // Connect your agent (core/connect.ts): built from the server URL, nothing sent.
+  if (cmd.name === "connect") return connect(cmd, ctx);
   const req = planRequest(cmd, ctx.by);
   if (!req) throw new Error(`nothing to do for ${cmd.name}`);
   if (ctx.flags.dryRun) return dryRun(ctx, [req]);
@@ -487,6 +490,17 @@ async function revert(cmd: Extract<Command, { name: "revert" }>, ctx: Ctx): Prom
     io.stderr(`ft: the server undid all of ${landing}, not only ${cmd.ref}: it predates reverting one proposal. To put ${landing} back: ft revert ${cmd.colony} ${res?.landing?.id ?? "<the revert's landing>"} --reason "<why>"`);
     return 1;
   }
+  return 0;
+}
+
+/**
+ * `ft connect [<colony>]`: each MCP client's command and configuration for the server ft talks to, the read-only
+ * server first (core/connect.ts, the same source as the /connect page). Sends nothing.
+ */
+function connect(cmd: Extract<Command, { name: "connect" }>, ctx: Ctx): number {
+  const info = connectInfo(ctx.http.baseUrl, cmd.colony ?? null);
+  if (ctx.flags.json) printJson(ctx, info);
+  else ctx.io.stdout(connectText(info));
   return 0;
 }
 
