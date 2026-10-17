@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Certification, ColonyEvent, Path, Sha } from "@fire_trident/core";
 import { Certifier, RUNNER_COMPAT_DATE, type CertifyHost, type CertifyTrunk } from "../../src/certify/certifier.ts";
-import type { LandedOn } from "../../src/certify/culprit.ts";
+import type { LandedOn, SinceGreen } from "../../src/certify/culprit.ts";
 import { MAIN_MODULE, RUNNER_FAILED, RUNNER_VERSION, SHIM_MODULE, type Plan } from "../../src/certify/plan.ts";
 import type { RepairIntentInput } from "../../src/certify/repair.ts";
 import type { RunReport } from "../../src/certify/report.ts";
@@ -402,7 +402,7 @@ describe("culprit finding in a red run", () => {
   it("names the landings since green that changed what a failing test loads: on the result, its event and its repair intent", async () => {
     const trunk = new Trunk();
     const sha1 = trunk.commit({ "src/math.ts": SUB("-"), "test/math.test.ts": SUB_TEST, "README.md": "# x\n" });
-    const asked: Path[][] = [];
+    const asked: Array<[Path[], SinceGreen | null]> = [];
     const events: ColonyEvent[] = [];
     let found: LandedOn[] = [];
     const { certifier, declared } = setup(
@@ -411,8 +411,9 @@ describe("culprit finding in a red run", () => {
       { repair: true },
       {
         culprits: () => true,
-        landedOn: async (paths) => {
-          asked.push(paths);
+        // The index and the landing log answer alike here: lnd_2 is the only landing since green.
+        landedOn: async (paths, since) => {
+          asked.push([paths, since ?? null]);
           return found;
         },
         landingOf: (sha) => (sha === sha1 ? { landingId: "lnd_1", at: 100 } : null),
@@ -430,10 +431,13 @@ describe("culprit finding in a red run", () => {
     ];
     const red = await land(certifier, trunk, ["src/math.ts"]);
     expect(red).toMatchObject({ status: "red", greenSha: sha1, repairIntentId: "int_1" });
-    // One read of the green commit, one index lookup with what changed under the failing file.
+    // One read of the green commit, one index lookup with what changed under the failing file, one landing log lookup from the green landing.
     expect(trunk.blobReads).toBe(1);
-    expect(asked).toEqual([["src/math.ts"]]);
-    const suspect = { landingId: "lnd_2", at: 200, trunkSha: sha2, proposalId: "prp_2", intentId: "int_2", title: "Speed up sub", paths: ["src/math.ts"], files: ["test/math.test.ts"] };
+    expect(asked).toEqual([
+      [["src/math.ts"], null],
+      [["src/math.ts"], { at: 100, landingId: "lnd_1" }],
+    ]);
+    const suspect = { landingId: "lnd_2", at: 200, trunkSha: sha2, proposalId: "prp_2", intentId: "int_2", title: "Speed up sub", paths: ["src/math.ts"], files: ["test/math.test.ts"], labels: ["first-since-green", "latest"] };
     expect(red.suspects).toEqual([suspect]);
     expect(certifier.state().latest?.suspects).toEqual([suspect]);
     const published = events.filter((e): e is Extract<ColonyEvent, { t: "certify" }> => e.t === "certify" && e.status === "red");
@@ -442,7 +446,7 @@ describe("culprit finding in a red run", () => {
     expect(declared).toHaveLength(1);
     expect(declared[0]!.footprint).toEqual(["src/math.ts"]);
     expect(declared[0]!.why).toMatch(
-      /\n<<<SUSPECTS ([0-9a-f]{12})>>>\n- proposal prp_2 \(landing lnd_2, commit 0000000\) for intent int_2 "Speed up sub" changed src\/math\.ts; a suspect for test\/math\.test\.ts\. Why it was written: It was slow\.\n<<<END SUSPECTS \1>>>\n/,
+      /\n<<<SUSPECTS ([0-9a-f]{12})>>>\n- \[first since green, latest\] proposal prp_2 \(landing lnd_2, commit 0000000\) for intent int_2 "Speed up sub" changed src\/math\.ts; a suspect for test\/math\.test\.ts\. Why it was written: It was slow\.\n<<<END SUSPECTS \1>>>\n/,
     );
   }, 60_000);
 

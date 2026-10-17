@@ -211,6 +211,16 @@ describe("public MCP: tools", () => {
     expect(data.trunk).toMatchObject({ head: sha("a"), certified: sha("9"), clone: `${URL_BASE}/git/hono.git` });
     expect(data.trunk.certification).toMatchObject({ status: "red", onHead: true, tests: 60, pass: 57, fail: 3, repairIntentId: "int_fix", failing: [{ name: "router matches params", file: "test/router.test.ts" }] });
     expect(data.trunk.certification.suspects).toEqual([{ landingId: "lnd_2", proposalId: "prp_int_2", title: "Rewrite the router" }]);
+// Culprit finding's labels: the first landing since green keeps its place among the three shown, with why each is listed.
+const labeled = (n: number, labels: Array<"first-since-green" | "latest">) => ({ landingId: `lnd_${n}`, proposalId: `prp_${n}`, paths: ["src/router.ts"], files: ["test/router.test.ts"], at: n, labels });
+const suspects = [labeled(9, ["latest"]), labeled(8, ["latest"]), labeled(7, ["latest"]), labeled(1, ["first-since-green"])];
+const relabeled = fakeReads({ snapshot: async () => ({ ...snapshot, colony: { ...snapshot.colony, certification: { ...snapshot.colony.certification!, suspects } } }) });
+const later = await call(await connect(served(relabeled.reads)), "status", { colony: "hono" });
+expect(later.data.trunk.certification.suspects).toEqual([
+  { landingId: "lnd_9", proposalId: "prp_9", title: null, labels: ["latest"] },
+  { landingId: "lnd_8", proposalId: "prp_8", title: null, labels: ["latest"] },
+  { landingId: "lnd_1", proposalId: "prp_1", title: null, labels: ["first-since-green"] },
+]);
     expect(data.intents).toEqual({ total: 286, byStatus: { open: 2, landed: 283, withdrawn: 1 } });
     expect(data.work).toEqual({ proposalsInFlight: 2, waitingForPerson: 1, landingsPerMin: 4 });
     expect(data.decisions).toEqual({ proof: 5, reflex: 2, llm: 1, human: 1 });

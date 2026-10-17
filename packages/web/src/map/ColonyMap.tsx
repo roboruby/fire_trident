@@ -149,7 +149,7 @@ function CertBadge({ store }: { store: ColonyStore }) {
         {suspects.map((s) => (
           <span className="trunk-cert-fail trunk-cert-suspect" key={s.key}>
             <b>{s.title || s.ref}</b>
-            <span className="mono">{[s.title ? s.ref : "", s.paths ? `changed ${s.paths}` : "", s.commit, s.files ? `for ${s.files}` : ""].filter(Boolean).join(" · ")}</span>
+            <span className="mono">{[s.label ?? "", s.title ? s.ref : "", s.paths ? `changed ${s.paths}` : "", s.commit, s.files ? `for ${s.files}` : ""].filter(Boolean).join(" · ")}</span>
             <code className="trunk-cert-undo">{s.undo}</code>
           </span>
         ))}

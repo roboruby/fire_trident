@@ -913,7 +913,20 @@ export interface Suspect {
   files: Path[];
   /** When it landed. */
   at: Millis;
+  /**
+   * Why it is listed, for at least one of its failing test files (see SuspectLabel). Absent on suspects recorded before
+   * labels existed, which read as before.
+   */
+  labels?: SuspectLabel[];
 }
+
+/**
+ * Why culprit finding lists a suspect. `first-since-green`: the oldest landing since the last green commit that changed
+ * what a failing test file loads (every later suspect landed on a trunk that may already have been red); `latest`: one of
+ * the newest landings that did; `first-red`: the landing of the first commit the failing tests fail on (FT_BISECT),
+ * marked once that search ends. A landing can carry several.
+ */
+export type SuspectLabel = "first-since-green" | "latest" | "first-red";
 
 /**
  * The first trunk commit at which a red result's failing tests fail (FT_BISECT), searched after the result is recorded:

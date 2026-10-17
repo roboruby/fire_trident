@@ -29,6 +29,7 @@ import { RETRY_RULE } from "./instructions.ts";
 import { compactReading, whyAnswer } from "./tools.ts";
 import { IMPACT_DESCRIPTION } from "./impact.ts";
 import { IMPACT_DEPTH, IMPACT_ENTRIES } from "../trunk/impact.ts";
+import { capSuspects } from "../certify/culprit.ts";
 import type { ImpactReport } from "@fire_trident/core";
 
 /**
@@ -148,7 +149,10 @@ function certificationView(c: Certification, head: string): Record<string, unkno
     ...(failing.length > 0 ? { failing: failing.slice(0, STATUS_FAILING).map((f) => ({ name: f.name, file: f.file })), ...(failing.length > STATUS_FAILING ? { moreFailing: failing.length - STATUS_FAILING } : {}) } : {}),
     ...(c.finishedAt !== undefined ? { finishedAt: iso(c.finishedAt) } : {}),
     ...(c.repairIntentId ? { repairIntentId: c.repairIntentId } : {}),
-    ...(suspects.length > 0 ? { suspects: suspects.slice(0, 3).map((s) => ({ landingId: s.landingId, proposalId: s.proposalId ?? null, title: s.title ?? null })) } : {}),
+    // Culprit finding: the first landing since green (and the first red one) keep their place, with why each is listed.
+    ...(suspects.length > 0
+      ? { suspects: capSuspects(suspects, 3).map((s) => ({ landingId: s.landingId, proposalId: s.proposalId ?? null, title: s.title ?? null, ...(Array.isArray(s.labels) && s.labels.length > 0 ? { labels: s.labels } : {}) })) }
+      : {}),
     ...(c.detail ? { detail: c.detail } : {}),
   };
 }

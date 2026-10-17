@@ -153,7 +153,21 @@ describe("ft certify", () => {
     expect(oddText.split("\n").slice(-2)).toEqual(["    suspect lnd_3", "      undo: ft revert web lnd_3"]);
   });
 
-  it("says in its help what the certified branch holds and to deploy from it", async () => {
+it("tags each suspect with why it is listed, keeping the first since green when there are more than it shows", async () => {
+  const { formatCertify } = await import("../src/format.ts");
+  const failing = [{ name: "subtracts", file: "test/math.test.ts" }];
+  const s = (n: number, labels?: Array<"first-since-green" | "latest" | "first-red">) => ({ landingId: `lnd_${n}`, proposalId: `prp_${n}`, paths: [`src/${n}.ts`], files: ["test/math.test.ts"], at: n, ...(labels ? { labels } : {}) });
+  const suspects = [s(5, ["latest"]), s(4, ["latest"]), s(3), s(1, ["first-since-green", "first-red", "odd" as "latest"])];
+  const text = formatCertify("web", "show", { on: true, results: [cert({ status: "red", counts: counts(1, 1), failing, suspects })] }, plain, 0);
+  expect(text.split("\n").filter((l) => l.includes("suspect "))).toEqual([
+    "    suspect [latest] prp_5 changed src/5.ts (landing lnd_5) for test/math.test.ts",
+    "    suspect [latest] prp_4 changed src/4.ts (landing lnd_4) for test/math.test.ts",
+    "    suspect [first red, first since green] prp_1 changed src/1.ts (landing lnd_1) for test/math.test.ts",
+  ]);
+  expect(text).toContain("and 1 more (--json lists them)");
+});
+
+it("says in its help what the certified branch holds and to deploy from it", async () => {
     const { helpText } = await import("../src/args.ts");
     const help = helpText("certify").replace(/\s+/g, " ");
     expect(help).toContain("A green run moves the trunk's certified branch to that commit: every test file it could run passed and no test that passed before was lost.");
