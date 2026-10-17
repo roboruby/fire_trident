@@ -111,7 +111,7 @@ function publicRows(text: string): Array<{ tool: string; args: string[] }> {
  */
 async function serverTools(): Promise<Map<string, Set<string>>> {
   const all = new Map<string, Set<string>>();
-  const envs: Array<Record<string, string>> = [{}, { FT_INLINE: "on" }, { FT_FIELD_GUIDE: "on" }, { FT_TWINS: "on" }];
+  const envs: Array<Record<string, string>> = [{}, { FT_INLINE: "on" }, { FT_FIELD_GUIDE: "on" }, { FT_TWINS: "on" }, { FT_REPRODUCE: "on" }];
   for (const env of envs) {
     for (const [name, args] of await listed(env)) all.set(name, new Set([...(all.get(name) ?? []), ...args]));
   }
