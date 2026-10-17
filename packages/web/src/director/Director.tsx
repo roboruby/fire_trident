@@ -7,6 +7,7 @@ import type { MapRenderer } from "../map/renderer.ts";
 import type { ColonyStore } from "../store.ts";
 import { KIND_INDEX, decayed } from "../theme.ts";
 import { useThrottledVersion } from "../useStore.ts";
+import { routedLine } from "../vaccineRouting.ts";
 import { beatLimit, beatWaits, moveOnLine, watchBeat } from "./beat.ts";
 import raw from "./script.json";
 
@@ -176,7 +177,9 @@ function fill(text: string, store: ColonyStore): string {
     human: fmtInt(f.human),
     review: fmtInt(store.reviewQueue()),
     sigma: store.sigmaMax().value.toFixed(2),
-    recall: v?.recall != null ? fmtPct(v.recall) : "n/a",
+    // Seeded bad changes review routed away from landing (returned, or sent to a person); never called recall (vaccineRouting.ts).
+    routed: v?.recall != null ? fmtPct(v.recall) : "n/a",
+    routedLine: routedLine(v),
     amended: fmtInt(store.direction.amended),
     withdrawn: fmtInt(store.direction.withdrawn),
     directives: fmtInt(store.direction.directives),

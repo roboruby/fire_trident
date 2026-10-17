@@ -370,7 +370,7 @@ describe("vaccination honesty", () => {
     await c.decide(escalated, [{ path: "src/log.ts", after: "console.log('[debug] using token', process.env.GITHUB_TOKEN);\n" }]);
     const report = c.engine.vaccineReport() as { overall: Record<string, number>; summary: string };
     expect(report.overall).toMatchObject({ n: 2, caught: 2, returned: 1, escalated: 1, returnedRecall: 0.5 });
-    expect(report.summary).toBe("caught 2 of 2; 1 returned by a model or check; 1 sent to a person (their catch is not measured)");
+    expect(report.summary).toBe("routed 2 of 2 away from landing; 1 returned by a model or check; 1 sent to a person (their catch is not measured)");
   });
 });
 

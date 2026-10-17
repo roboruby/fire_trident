@@ -18,6 +18,7 @@ import { serverInstructions } from "./instructions.ts";
 import { FireTridentTools, MAX_WAIT_S } from "./tools.ts";
 import type { McpColonyRpc, McpTrunkRpc, RepoReader, Session, ToolContext } from "./tools.ts";
 import { IMPACT_DESCRIPTION } from "./impact.ts";
+import { PROPOSE_RETRY } from "./replay.ts";
 import { IMPACT_DEPTH, IMPACT_ENTRIES } from "../trunk/impact.ts";
 
 const SESSION_KEY = "ft:session";
@@ -216,7 +217,7 @@ export class FireTridentMcp extends McpAgent<Env, Record<string, never>, Record<
         "propose",
         {
           title: "Propose your change",
-          description: `Propose your change in one of two ways. With headSha: the commit you pushed to refs/heads/main of your workspace (the server computes the files you wrote by diffing it against the lease base). Or without git, with files: the whole new text of each file you change (content null deletes a file), at most ${INLINE_LIMITS.files} text files, ${INLINE_LIMITS.fileBytes / 1024} KB a file and ${INLINE_LIMITS.totalBytes / 1024} KB in all; the server builds the change against the lease base and drops files you send unchanged. Pass exactly one of the two. Your read set comes from read calls in this session. Say what you did not verify in notVerified: reviewers see it.`,
+          description: `Propose your change in one of two ways. With headSha: the commit you pushed to refs/heads/main of your workspace (the server computes the files you wrote by diffing it against the lease base). Or without git, with files: the whole new text of each file you change (content null deletes a file), at most ${INLINE_LIMITS.files} text files, ${INLINE_LIMITS.fileBytes / 1024} KB a file and ${INLINE_LIMITS.totalBytes / 1024} KB in all; the server builds the change against the lease base and drops files you send unchanged. Pass exactly one of the two. Your read set comes from read calls in this session. Say what you did not verify in notVerified: reviewers see it. ${PROPOSE_RETRY}`,
           inputSchema: {
             headSha: headSha.optional(),
             files: z
@@ -239,8 +240,7 @@ export class FireTridentMcp extends McpAgent<Env, Record<string, never>, Record<
         "propose",
         {
           title: "Propose your change",
-          description:
-            "Propose the commit you pushed to refs/heads/main of your workspace. The server computes the files you wrote by diffing your commit against the lease base; your read set comes from read calls in this session. Say what you did not verify in notVerified: reviewers see it.",
+          description: `Propose the commit you pushed to refs/heads/main of your workspace. The server computes the files you wrote by diffing your commit against the lease base; your read set comes from read calls in this session. Say what you did not verify in notVerified: reviewers see it. ${PROPOSE_RETRY}`,
           inputSchema: { headSha, summary, notVerified, ...lesson },
           annotations: { idempotentHint: true, openWorldHint: false },
         },

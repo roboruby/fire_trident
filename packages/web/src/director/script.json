@@ -1,5 +1,5 @@
 {
-  "$comment": "Director script for ?director=1 (start at a scene with &scene=<n or id>; add &replay=1 to film a finished run, with &speed=, &t= and &delay=; add &recording=<name> to play that run from a recording bundled with the page, with no network). Keys: → or PageDown next, ← or PageUp previous, space pause (a replay pauses too), z zoom, c captions, Home first scene. Scene fields: id, caption (required); kicker, sub; title (full-screen card); code (caption in the code font); focus (a directory or file path, a list tried in order, or @hot / @sigma / @landing / @selected; null or absent shows the whole map); highlight (paths or directories to outline, or @landing / @needs; more than 40 files dims the rest); emphasize (hero, stats, sigma, vaccine, funnel, trunk); requires (vaccine, landing, review, sigma, direction, mcp: the scene is skipped while the colony has none); tab (events, intents, review, why: opens the side panel); select (a file for the Why tab, or @landing / @hot / @mcp); duration (seconds, auto-advance); maxMs (the longest the beat waits for what it shows, a file to select, a camera target, a read on screen or what requires names, before the director moves on by itself and says why in the console; milliseconds, default 30000; space holds a beat). Captions fill {colony} {files} {violations} {fixed} {fixedLine} {fixedIn} {agents} {working} {landings} {perMin} {decisions} {proof} {proofPct} {reflex} {llm} {human} {review} {sigma} {recall} {amended} {withdrawn} {directives} {direction} {mcpAgent} {mcpFile} {mcpLanded}.",
+  "$comment": "Director script for ?director=1 (start at a scene with &scene=<n or id>; add &replay=1 to film a finished run, with &speed=, &t= and &delay=; add &recording=<name> to play that run from a recording bundled with the page, with no network). Keys: → or PageDown next, ← or PageUp previous, space pause (a replay pauses too), z zoom, c captions, Home first scene. Scene fields: id, caption (required); kicker, sub; title (full-screen card); code (caption in the code font); focus (a directory or file path, a list tried in order, or @hot / @sigma / @landing / @selected; null or absent shows the whole map); highlight (paths or directories to outline, or @landing / @needs; more than 40 files dims the rest); emphasize (hero, stats, sigma, vaccine, funnel, trunk); requires (vaccine, landing, review, sigma, direction, mcp: the scene is skipped while the colony has none); tab (events, intents, review, why: opens the side panel); select (a file for the Why tab, or @landing / @hot / @mcp); duration (seconds, auto-advance); maxMs (the longest the beat waits for what it shows, a file to select, a camera target, a read on screen or what requires names, before the director moves on by itself and says why in the console; milliseconds, default 30000; space holds a beat). Captions fill {colony} {files} {violations} {fixed} {fixedLine} {fixedIn} {agents} {working} {landings} {perMin} {decisions} {proof} {proofPct} {reflex} {llm} {human} {review} {sigma} {routed} {routedLine} {amended} {withdrawn} {directives} {direction} {mcpAgent} {mcpFile} {mcpLanded}.",
   "scenes": [
     {
       "id": "open",
@@ -49,7 +49,7 @@
       "id": "land",
       "kicker": "Land",
       "caption": "Lanes land non-conflicting changes together.",
-      "sub": "Every read is validated against trunk. A stale read goes back with the exact delta. {perMin} landings a minute.",
+      "sub": "Every read is validated against trunk. A stale read goes back quoting the diff of the landing that beat it. {perMin} landings a minute.",
       "emphasize": "trunk",
       "focus": null
     },
@@ -86,7 +86,7 @@
       "id": "vaccine",
       "kicker": "Vaccine",
       "caption": "Review is tested with sealed bad changes.",
-      "sub": "The colony seeds deliberately broken changes and measures how many review catches: recall {recall}.",
+      "sub": "The colony seeds deliberately broken changes and counts where review routes them: {routedLine}.",
       "tab": "review",
       "emphasize": "vaccine",
       "requires": "vaccine",

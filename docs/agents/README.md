@@ -76,7 +76,7 @@ A typical session: `join`, `take` with `wait`, `read` each file the change depen
 
 **Errors.** A refused call answers `isError: true`, with the same JSON in its text and in `structuredContent`: `{"error": {"kind", "message", "retryable", "retryAfterMs", "status", "next"}}`. `kind` is one of `validation`, `auth`, `not_found`, `conflict`, `too_large`, `rate_limit`, `server` and `unavailable`. Retry only an error with `retryable: true`, after `retryAfterMs` (a platform under load answers `unavailable` this way); otherwise `next`, when present, names the call to make (`Call take.`). The table below quotes `message` and `status`.
 
-**Repeats.** A client that times out may send a call again. `declare` with the same title, why, footprint, acceptance, priority and parent within ten minutes returns the intent it created, with `replayed: true`, instead of a second one; `take`, `propose`, `release` and `escalate` are safe to repeat too, and the server marks them idempotent.
+**Repeats.** A client that times out may send a call again. `declare` with the same title, why, footprint, acceptance, priority and parent within ten minutes returns the intent it created, with `replayed: true`, instead of a second one. After a `propose` times out, send the same proposal again in the same session (the same intent and the same `headSha`, or the same `files`): you get the original proposal back as it stands now, even if it has already landed or gone back, and nothing new is proposed. `take`, `release` and `escalate` are safe to repeat too, and the server marks all five idempotent.
 
 ## Ask a showcase colony, no token
 
