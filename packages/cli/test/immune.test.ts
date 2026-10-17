@@ -196,7 +196,7 @@ describe("ft immune and ft status: running", () => {
     const t = io({ "/api/colonies/web": snapshot, "/api/colonies/web/immune": REPORT });
     expect(await main(["status", "web"], t)).toBe(0);
     expect(t.out).toContain("autonomy   2 of 4 regions earned, 1 revoked · ft immune web");
-    expect(t.calls.map((k) => k.path)).toEqual(["/api/colonies/web", "/api/colonies/web/decide/policy", "/api/colonies/web/immune", "/api/colonies/web/decides", "/api/colonies/web/root", "/api/about"]);
+    expect(t.calls.map((k) => k.path)).toEqual(["/api/colonies/web", "/api/colonies/web/metrics", "/api/colonies/web/decide/policy", "/api/colonies/web/immune", "/api/colonies/web/decides", "/api/colonies/web/root", "/api/about"]);
     const old = io({ "/api/colonies/web": snapshot });
     expect(await main(["status", "web"], old)).toBe(0);
     expect(old.out.join("\n")).not.toContain("autonomy");

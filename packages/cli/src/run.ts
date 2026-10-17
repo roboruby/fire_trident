@@ -61,6 +61,7 @@ import { formatSilentTtl, type SilentTtlView } from "./closure.ts";
 import { formatImpact } from "./impact.ts";
 import { autonomyLine, formatImmune } from "./immune.ts";
 import { decidesLines, decidesRequest } from "./gateline.ts";
+import { trunkHealthLines } from "./trunkhealth.ts";
 import { signatureFailed } from "./signatures.ts";
 import { checkClone, colorLines, keysReader, nodeGit, rootRow, type CloneVerify } from "./clonecheck.ts";
 import { runCensus } from "./censusgit.ts";
@@ -257,6 +258,8 @@ async function execute(cmd: Command, ctx: Ctx): Promise<number> {
       if (ctx.flags.json || !snap?.colony?.id) printJson(ctx, snap);
       else {
         io.stdout(formatStatus(snap, c, io.now()));
+        // What certifying after landing cost (trunkhealth.ts): red episodes, time to green, landings built on red; none from an older server.
+        for (const line of trunkHealthLines(await tryGet<unknown>(ctx, { method: "GET", path: colonyPath(cmd.colony, "/metrics") }), c)) io.stdout(line);
         // The paths only a person may change, read after the summary (a server that predates them shows none).
         const rows = policyRows(await tryGet<DecidePolicyView>(ctx, { method: "GET", path: colonyPath(cmd.colony, "/decide/policy") }), c);
         if (rows.length > 0) io.stdout(rows.join("\n"));
