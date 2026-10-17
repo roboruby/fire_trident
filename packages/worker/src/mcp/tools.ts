@@ -16,6 +16,7 @@ import type { ImpactReport } from "@fire_trident/core";
 import { cleanModelHint, stepupAdvice, type ModelHint } from "../colony/stepup.ts";
 import { movedView } from "../colony/movedby.ts";
 import { isTwinAnswer, type DeclareAnswer } from "../colony/twins.ts";
+import { priorityAnswer } from "../colony/priority.ts";
 import { cleanDeclaredBy, heldNote, type DeclaredBy } from "../colony/chain.ts";
 
 /** What one MCP session remembers (stored in the session's Durable Object). */
@@ -652,14 +653,17 @@ export class FireTridentTools {
     if (earlier) {
       // The same content, so the same title, footprint and parent; the status as declared, unless the colony says more.
       let intent = declaredView({ id: earlier.intentId, title: input.title, status: earlier.status, footprint: input.footprint, ...(input.parentId ? { parentId: input.parentId } : {}) });
+      // The priority it was granted, when the cap lowered it (colony/priority.ts): a client that missed the first answer learns it here.
+      let granted: ReturnType<typeof priorityAnswer> = null;
       try {
         // Its status now (taken, landed, ...); called as a method (a detached stub function would name a remote property).
         const current = colony.getIntent ? await colony.getIntent(earlier.intentId) : null;
         if (current) intent = declaredView(current);
+        if (current) granted = priorityAnswer(current);
       } catch {
         // Best effort: the intent as declared stands.
       }
-      return { intent, replayed: true, declaredAt: new Date(earlier.at).toISOString(), note: REPLAY_NOTE };
+      return { intent, replayed: true, declaredAt: new Date(earlier.at).toISOString(), note: REPLAY_NOTE, ...(granted ?? {}) };
     }
     // Twin intents (FT_TWINS, colony/twins.ts): a twin creates nothing, so the session has nothing to replay. Called as a
     // method (a detached stub function would name a remote property).
@@ -672,7 +676,9 @@ export class FireTridentTools {
     });
     // The chain gate (FT_INTENT_CHAIN_GATE, colony/chain.ts): a held intent waits for a person, and the answer says so.
     const held = heldNote(answer.intent);
-    return held ? { intent, held } : { intent };
+    // An agent's intent takes at most the priority of a parent it holds or declared, else 1: the answer says what it got (colony/priority.ts).
+    const granted = priorityAnswer(answer.intent);
+    return held ? { intent, held, ...(granted ?? {}) } : { intent, ...(granted ?? {}) };
   }
 
   /** A trunk file at the lease base; records (path, blob) in this session's read set. */

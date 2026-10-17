@@ -178,7 +178,7 @@ export class FireTridentMcp extends McpAgent<Env, Record<string, never>, Record<
       {
         title: "Declare an intent",
         description:
-          "Declare a new intent with a predicted footprint before writing code. By default it becomes a child of the intent you hold. Repeating a declare with the same title, why, footprint, acceptance, priority and parent within ten minutes in this session returns the intent it declared (replayed: true) instead of a duplicate." +
+          "Declare a new intent with a predicted footprint before writing code. By default it becomes a child of the intent you hold. Repeating a declare with the same title, why, footprint, acceptance, priority and parent within ten minutes in this session returns the intent it declared (replayed: true) instead of a duplicate. An intent you declare takes at most the priority of a parent you hold or declared, and 1 otherwise; the answer says when it was lowered, and a person can raise it." +
           (twins ? ` ${TWIN_DESCRIPTION}` : ""),
         inputSchema: {
           title: z.string().min(1).max(500),

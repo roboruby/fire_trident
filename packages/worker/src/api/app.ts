@@ -29,6 +29,7 @@ import {
 import { decideApi } from "./vaccinate.ts";
 import { inlineEnabled } from "../colony/inline.ts";
 import { isTwinAnswer } from "../colony/twins.ts";
+import { priorityNote } from "../colony/priority.ts";
 import { certifyRoutes } from "./certify.ts";
 import { guideRoutes } from "./guide.ts";
 import { megafileRoutes } from "./megafile.ts";
@@ -377,7 +378,9 @@ export function createApi(deps: ApiDeps): Hono<ApiEnv> {
       ...(b.contest !== undefined ? { contest: b.contest } : {}),
     }, b.force === true ? { force: true } : {});
     if (isTwinAnswer(res)) return json({ ...res.intent, duplicateOf: res.duplicateOf, similar: res.similar, note: res.note }, 200);
-    return json(res.intent, 201);
+    // An agent's intent takes at most the priority of a parent it holds or declared, else 1: the answer says what it got (colony/priority.ts).
+    const priority = priorityNote(res.intent);
+    return json(priority ? { ...res.intent, priorityNote: priority } : res.intent, 201);
   });
 
   app.post("/colonies/:id/rules", requireAdmin, async (c) => {

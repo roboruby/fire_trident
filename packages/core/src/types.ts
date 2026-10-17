@@ -195,6 +195,12 @@ export interface ImpactReport {
  * colony itself (the megafile alarm's split intents, FT_MEGAFILE); its why is the colony's own numbers.
  */
 export type IntentSource = "human" | "rule" | "agent" | "certify" | "system";
+/**
+ * The cap that lowered an agent's priority: its parent's (`parent`: a parent it holds or declared, or one whose priority
+ * is below the default), the default with no parent (`no-parent`), or the default under a parent that is not its own
+ * (`other-parent`).
+ */
+export type PriorityCap = "parent" | "no-parent" | "other-parent";
 /** `withdrawn`: a human (or a retracted rule) called it off before it landed; it stays in history. */
 export type IntentStatus = "open" | "claimed" | "proposed" | "landed" | "abandoned" | "withdrawn";
 
@@ -211,6 +217,13 @@ export interface Intent {
   footprint: Path[];
   acceptance?: string[];
   priority: number;
+  /**
+   * What an agent asked for when its priority was capped: an agent's intent takes at most its parent's priority when it
+   * holds or declared the parent, else 1 (worker colony/priority.ts). Absent when the intent got what was asked.
+   */
+  requestedPriority?: number;
+  /** Which cap lowered it, with requestedPriority. */
+  priorityCap?: PriorityCap;
   status: IntentStatus;
   createdAt: Millis;
   createdBy: string;
@@ -749,7 +762,8 @@ export interface LineageNote {
     agentId: Id;
     agentKind: AgentKind;
     model?: string;
-    intent: { id: Id; title: string; why: string; ruleId?: Id; parentId?: Id };
+    /** `priority` and `requestedPriority` only when an agent asked for more than its intent was granted (worker colony/priority.ts). */
+    intent: { id: Id; title: string; why: string; ruleId?: Id; parentId?: Id; priority?: number; requestedPriority?: number };
     writeSet: FileVersion[];
     readSet: FileVersion[];
     decisions: NoteDecision[];

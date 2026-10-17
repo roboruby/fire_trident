@@ -85,6 +85,7 @@ import type { DirectionInfo } from "../colony/direction.ts";
 import { ftError } from "../colony/errors.ts";
 import { INLINE_FETCH_BYTES, isInlineChange } from "../colony/inline.ts";
 import { noteResolves } from "../colony/resolver-merge.ts";
+import { notePriority } from "../colony/priority.ts";
 import { DIRECTION_TABLE, FENCE_WAIT_MS, directionReturns, fenceAnswer, mergeDirection, parseDirection, pushDelayMs, settlesWithin, type FenceAnswer } from "./direction.ts";
 import { PUBLISH_BOUND, addedObjects, asyncPublishEnabled, publishBackoffMs, publishChain, settlePublish, withinBound, type PublishBound, type RecordedCommit } from "./publish.ts";
 import { PROTECT_TABLE, keepProtect, protectReturns } from "./protect.ts";
@@ -138,7 +139,8 @@ const PATH_HISTORY_MS = 250;
  * Missing entries are looked up from the colony's snapshot, then fall back to the proposal.
  */
 export interface LandContext {
-  intents?: Record<Id, { title: string; why?: string; ruleId?: Id; parentId?: Id }>;
+  /** `priority` and `requestedPriority`: only when an agent asked for more than its intent was granted (colony/priority.ts). */
+  intents?: Record<Id, { title: string; why?: string; ruleId?: Id; parentId?: Id; priority?: number; requestedPriority?: number }>;
   /** `resumeKey`: an external agent holds an MCP resume key (it joined over MCP), for the note's provenance. */
   agents?: Record<Id, { kind: AgentKind; model?: string; resumeKey?: boolean }>;
   decisions?: Record<Id, Array<Pick<Decision, "kind" | "layer" | "p" | "action">>>;
@@ -148,7 +150,7 @@ export interface LandContext {
   resolves?: Record<Id, NoteResolves>;
 }
 
-type IntentInfo = { title: string; why: string; ruleId?: Id; parentId?: Id };
+type IntentInfo = { title: string; why: string; ruleId?: Id; parentId?: Id; priority?: number; requestedPriority?: number };
 type AgentLite = { kind: AgentKind; model?: string; resumeKey?: boolean };
 type StagedChange = { blob: Sha; mode: string; size: number; before: Sha | null } | { blob: null; before: Sha | null };
 
@@ -2488,7 +2490,7 @@ export class TrunkDO extends DurableObject<Env> {
   // -------------------------------------------------------------------------
 
   private async lineageInfo(proposals: Proposal[], ctx: LandContext, colonyId: Id): Promise<{ titles: Record<Id, string>; intents: Map<Id, IntentInfo>; agents: Map<Id, AgentLite> }> {
-    for (const [id, i] of Object.entries(ctx.intents ?? {})) this.intentCache.set(id, { title: i.title, why: i.why ?? "", ruleId: i.ruleId, parentId: i.parentId });
+    for (const [id, i] of Object.entries(ctx.intents ?? {})) this.intentCache.set(id, { title: i.title, why: i.why ?? "", ruleId: i.ruleId, parentId: i.parentId, ...notePriority(i) });
     for (const [id, a] of Object.entries(ctx.agents ?? {})) this.agentCache.set(id, { kind: a.kind, model: a.model, ...(typeof a.resumeKey === "boolean" ? { resumeKey: a.resumeKey } : {}) });
     const missing = proposals.some((p) => !this.intentCache.has(p.intentId) || !this.agentCache.has(p.agentId));
     if (missing) await this.loadColonyContext(colonyId);
@@ -2514,7 +2516,7 @@ export class TrunkDO extends DurableObject<Env> {
       const stub = ns.get(ns.idFromName(colonyId)) as unknown as { snapshot(): Promise<ColonySnapshot> };
       const snap = await Promise.race([stub.snapshot(), sleep(2_500).then(() => null)]);
       if (!snap) return;
-      for (const i of snap.intents ?? []) this.intentCache.set(i.id, { title: i.title, why: i.why, ruleId: i.ruleId, parentId: i.parentId });
+      for (const i of snap.intents ?? []) this.intentCache.set(i.id, { title: i.title, why: i.why, ruleId: i.ruleId, parentId: i.parentId, ...notePriority(i) });
       // A snapshot does not say who holds a resume key: keep what a land context said.
       for (const a of snap.agents ?? []) this.agentCache.set(a.id, { ...this.agentCache.get(a.id), kind: a.kind, model: a.model });
     } catch {
@@ -2909,7 +2911,8 @@ function buildNote(
         agentId: p.agentId,
         agentKind: a?.kind ?? "internal",
         model: a?.model,
-        intent: { id: p.intentId, title: i.title, why: i.why, ruleId: i.ruleId, parentId: i.parentId },
+        // What an agent asked for, only when the cap lowered its intent's priority (colony/priority.ts).
+        intent: { id: p.intentId, title: i.title, why: i.why, ruleId: i.ruleId, parentId: i.parentId, ...notePriority(i) },
         writeSet: p.writeSet,
         readSet: p.readSet,
         decisions: ctx.decisions?.[p.id] ?? [],

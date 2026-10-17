@@ -4,6 +4,7 @@ import type { Colony, Id } from "@fire_trident/core";
 import { A2A_CANCEL_REASON, A2A_PAGE_DEFAULT, A2A_PAGE_MAX, a2aState, a2aTerminal, type A2ACursor, type A2APage, type A2AState, type A2ATaskFacts } from "../colony/a2a.ts";
 import { decodeError } from "../colony/errors.ts";
 import { isTwinAnswer } from "../colony/twins.ts";
+import { notePriority, priorityNote } from "../colony/priority.ts";
 import type { Env } from "../env.ts";
 import type { ApiEnv } from "./app.ts";
 import { publicColonies } from "./git-proxy.ts";
@@ -151,7 +152,7 @@ export function agentCard(colony: Pick<Colony, "id" | "name" | "source">, p: { o
         description:
           "Hand the colony a change to make. The first line of the text is the intent's title and the rest its why. A data part " +
           'carries {"footprint": [paths or globs it will touch]} (required), and optionally "acceptance" (a list of checks), ' +
-          '"priority" (a number, 1 by default) and "force" (true declares it even when it matches an intent the colony has). ' +
+          '"priority" (a number, 1 by default; an agent\'s intent takes at most 1, and a person can raise it) and "force" (true declares it even when it matches an intent the colony has). ' +
           "The task's id is the intent's id: it completes with the landing commit and links to why each file changed.",
         tags: ["git", "code-change", "intent", "coding-agents"],
         examples: ["Add rate limiting to /api/links\nAnonymous callers can flood the links endpoints; cap them at 60 requests a minute."],
@@ -410,6 +411,8 @@ export function renderTask(
     ...(i.revision !== undefined && i.revision > 1 ? { revision: i.revision } : {}),
     url: `${ctx.origin}/api/colonies/${ctx.colonyId}/intents/${i.id}`,
     ...(i.withdrawnReason ? { withdrawnReason: i.withdrawnReason } : {}),
+    // What the agent asked for and the priority it got, when the cap lowered it (colony/priority.ts).
+    ...notePriority(i),
     ...(report ? { report } : {}),
     ...(f.inReview ? { inReview: true } : {}),
     ...(opts.extra ?? {}),
@@ -635,8 +638,10 @@ async function send(env: Env, ctx: TaskContext, params: Record<string, unknown>,
   const twinLead = twin
     ? `Nothing new was declared: this message matches intent ${twin.duplicateOf} ${JSON.stringify(clip(twin.intent.title, QUOTE_CHARS))}, so this task follows that intent. To declare it anyway, send the message again with "force": true in a data part.`
     : undefined;
+  // An agent's intent takes at most the default priority with no parent: say what it got (colony/priority.ts).
+  const priorityLead = twin ? null : priorityNote(intent);
   const task = renderTask(facts, d, ctx, {
-    lead: [twinLead, lead].filter((s): s is string => !!s).join(" ") || undefined,
+    lead: [twinLead, priorityLead, lead].filter((s): s is string => !!s).join(" ") || undefined,
     ...(twin ? { extra: { duplicateOf: twin.duplicateOf, similar: twin.similar } } : {}),
   });
   return d === "1.0" ? { task } : task;
