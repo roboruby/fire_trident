@@ -12,7 +12,7 @@ import { proposal, removeAll, trunkRepo } from "./trunk-repo.ts";
  * the registry. What it ships (dist, which tsconfig.build.json compiles from src, plus the other `files`) may import
  * only its own files and Node's built-in modules, and core only for types, through a top-level `import type` or
  * `export type` that the build erases (under verbatimModuleSyntax, `import { type X }` still loads the module). What the
- * CLI needs from core at run time is copied by scripts/vendor_cli.rb: src/answerable.ts, connect.ts, pricing.ts and testdelta.ts. The last test builds the package
+ * CLI needs from core at run time is copied by scripts/vendor_cli.rb: src/answerable.ts, connect.ts, pricing.ts, testdelta.ts and decides.ts. The last test builds the package
  * as `npm pack` does and runs it from a directory with no workspace.
  */
 
@@ -91,7 +91,7 @@ describe("the published package", () => {
   });
 
   // scripts/vendor_cli.rb writes these copies: a first comment line, then core's module with its type imports naming core.
-  for (const name of ["answerable", "connect", "pricing", "testdelta"]) {
+  for (const name of ["answerable", "connect", "pricing", "testdelta", "decides"]) {
     it(`carries core's ${name}.ts as it is`, () => {
       const core = readFileSync(join(PKG, `../core/src/${name}.ts`), "utf8");
       const copy = readFileSync(join(PKG, `src/${name}.ts`), "utf8");

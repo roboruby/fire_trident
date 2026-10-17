@@ -4,7 +4,7 @@
 # packages/cli/test/package.test.ts fails when a copy differs from core. Run after changing any of these in core:
 #   ruby scripts/vendor_cli.rb
 ROOT = File.expand_path("..", __dir__)
-VENDORED = %w[answerable connect pricing testdelta].freeze
+VENDORED = %w[answerable connect pricing testdelta decides].freeze
 
 VENDORED.each do |name|
   core = File.read(File.join(ROOT, "packages/core/src/#{name}.ts"))

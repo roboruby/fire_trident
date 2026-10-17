@@ -18,6 +18,9 @@ import { bearerMatches } from "./token.ts";
  *   POST /colonies/:id/decide/policy        change the decide policy (partial; returns it). commentProof must be a
  *                                           boolean and protectedPaths a list of at most 50 usable globs (400 otherwise)
  *   POST /colonies/:id/detectors/:did       { useful } mark a detector (clef:<question> or antibody:<id>)
+ *   GET  /colonies/:id/decides              how the colony decides: the preset its policy equals (or custom and how it
+ *                                           differs), and the last 30 days of landed changes by what confirmed them
+ *                                           (decide/decides.ts)
  * POST routes require the admin bearer token when FT_ADMIN_TOKEN is set.
  */
 
@@ -90,6 +93,9 @@ decideApi.get("/colonies/:id/decide/policy", async (c) => {
   const immune = (await stub(c.env, colonyOf(c)).immune()) as { policy?: unknown };
   return json(immune.policy ?? null);
 });
+
+// How the colony decides (decide/decides.ts): a public read, like the policy itself.
+decideApi.get("/colonies/:id/decides", async (c) => json(await stub(c.env, colonyOf(c)).decides()));
 
 decideApi.post("/colonies/:id/decide/policy", adminOnly, async (c) => {
   const colonyId = colonyOf(c);

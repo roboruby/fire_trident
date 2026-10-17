@@ -1,5 +1,5 @@
 import type { CheckResult, Colony, Direction, FileVersion, LineageNote, NoteDecision, Rule } from "@fire_trident/core";
-import { decisionSpeaker, landingAnswerable, speaker } from "@fire_trident/core";
+import { decisionSpeaker, landingAnswerable, landingConfirmed, speaker } from "@fire_trident/core";
 import { useEffect, useState } from "react";
 import { agentsOn, waitingWhy } from "../agents.ts";
 import type { Backend, WhyEntry } from "../api.ts";
@@ -16,6 +16,7 @@ import { AcceptanceLines } from "./AcceptanceLines.tsx";
 import { AnswerableLine, EvidenceList, SaidBy } from "./SaidBy.tsx";
 import { LandingTestsRow } from "./TestsRow.tsx";
 import { AUTO_ROWS } from "../tests.ts";
+import { ConfirmedLine, DecidesFold, useDecides } from "./Decides.tsx";
 
 type NoteProposal = LineageNote["proposals"][number];
 
@@ -67,6 +68,8 @@ export function WhyTab({ store, backend, director = false }: { store: ColonyStor
   const path = store.selectedPath;
   const line = path ? store.selectedLine : null;
   const [state, setState] = useState<WhyState | null>(null);
+  // How the colony decides (Decides.tsx), folded above the landing cards.
+  const decides = useDecides(store.colonyId, backend.mode);
 
   // Refetch when a new landing touches this path.
   const touchedBy = path ? (store.lastLandingOn(path)?.id ?? "") : "";
@@ -156,6 +159,7 @@ export function WhyTab({ store, backend, director = false }: { store: ColonyStor
           </div>
         )}
       </div>
+      <DecidesFold d={decides} colonyId={store.colony?.id ?? store.colonyId} />
       {current?.error ? <div className="alert">Couldn't load lineage: {current.error}</div> : null}
       {!current?.entries && !current?.error ? (
         <div className="skeleton">
@@ -229,6 +233,8 @@ function LineageEntry({ entry, path, store, newest, backend, tests }: { entry: W
       <NoteBar key={path} backend={backend} landingId={landing.id} path={path} />
       {/* Who answers for this landing, from its whole note (core/answerable.ts). */}
       <AnswerableLine a={landingAnswerable(note)} />
+      {/* The rule that confirmed it, with the values it used (core/decides.ts). */}
+      <ConfirmedLine c={landingConfirmed(note)} />
       {/* Its tests at its base against the certified commit (TestsRow.tsx): read as the card opens for the newest, on a click for the rest. */}
       <LandingTestsRow backend={backend} landingId={landing.id} auto={tests} />
       {shown.map((p) => (

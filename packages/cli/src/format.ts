@@ -37,6 +37,7 @@ import { acceptanceRows } from "./acceptance.ts";
 import { contestLines } from "./contest.ts";
 import { prelandLine } from "./preland.ts";
 import { heldLines } from "./mergehold.ts";
+import { confirmedLine } from "./gateline.ts";
 
 /** ANSI styling functions; identity functions when color is off. */
 export interface Colors {
@@ -796,6 +797,8 @@ export function formatWhy(
     // Who answers for this landing, from its whole note (core/answerable.ts), as the Why tab says it.
     const answer = landingAnswerable(note);
     out.push(`  ${label("answer")}${answer.answer === "person" ? answer.text : c.yellow(answer.text)}`);
+    // The rule that confirmed it, with the values it used (gateline.ts, core/decides.ts).
+    out.push(`  ${label("gate")}${confirmedLine(note, c)}`);
     // Its tests at its base against the certified commit (tests.ts), where the colony gave its row.
     const row = ctx.tests && Object.hasOwn(ctx.tests, landing.id) ? ctx.tests[landing.id] : undefined;
     if (row) for (const r of testsRows(row, c)) out.push(`  ${label(r.k)}${r.v}`);

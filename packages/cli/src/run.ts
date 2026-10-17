@@ -58,6 +58,7 @@ import { formatPause } from "./pause.ts";
 import { formatSpendCap } from "./spendcap.ts";
 import { formatImpact } from "./impact.ts";
 import { autonomyLine, formatImmune } from "./immune.ts";
+import { decidesLines, decidesRequest } from "./gateline.ts";
 import { signatureFailed } from "./signatures.ts";
 import { checkClone, colorLines, keysReader, nodeGit, rootRow, type CloneVerify } from "./clonecheck.ts";
 import { firstLandings, readRows, testsRequest } from "./tests.ts";
@@ -232,6 +233,8 @@ async function execute(cmd: Command, ctx: Ctx): Promise<number> {
         // Earned autonomy in one line (immune.ts); a server that predates the immune report shows none.
         const autonomy = autonomyLine(await tryGet<unknown>(ctx, { method: "GET", path: colonyPath(cmd.colony, "/immune") }), cmd.colony, c);
         if (autonomy) io.stdout(autonomy);
+        // How the colony decides (gateline.ts): its preset and the last 30 days by what confirmed them; none from an older server.
+        for (const line of decidesLines(await tryGet<unknown>(ctx, decidesRequest(cmd.colony)), c)) io.stdout(line);
         // The colony's root commit, which pins a clone (clonecheck.ts); a server that predates GET /root shows none.
         const root = rootRow(await tryGet<unknown>(ctx, { method: "GET", path: colonyPath(cmd.colony, "/root") }), c);
         if (root) io.stdout(root);
