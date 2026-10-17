@@ -6,6 +6,7 @@ import { FireTridentMcp } from "./mcp/FireTridentMcp.ts";
 import { mcpRefusal } from "./mcp/gate.ts";
 import { publicMcp } from "./mcp/public.ts";
 import { aboutResponse } from "./front/about.ts";
+import { deploymentPause } from "./api/pause.ts";
 import { frontDoor } from "./front/door.ts";
 import { responseHeaders } from "./front/headers.ts";
 import { KEYS_PATH, keysResponse, noteKeyId } from "./trunk/signature.ts";
@@ -25,7 +26,7 @@ const app = new Hono<{ Bindings: Env }>();
 app.use("*", responseHeaders);
 // Which build is serving (commit, Worker version, deploy time), which flags are on, by name only (front/about.ts), and
 // the id of the key that signs lineage notes (trunk/signature.ts).
-app.get("/api/about", async (c) => aboutResponse(c.env, await noteKeyId(c.env.FT_NOTE_KEY)));
+app.get("/api/about", async (c) => aboutResponse(c.env, await noteKeyId(c.env.FT_NOTE_KEY), await deploymentPause(c.env)));
 app.route("/api", api);
 app.get("/healthz", (c) => c.json({ ok: true, service: "firetrident" }));
 // The public key that signs lineage notes, for any git client to check a commit's FT-Note-Signature (in run_worker_first).
