@@ -1,0 +1,336 @@
+# frozen_string_literal: true
+
+# Tests for scripts/beat_two_agents.rb, run as a command against a fake colony API on 127.0.0.1 that keeps a trunk of
+# texts, takes inline changes, merges a stale one line by line as text merge does (or sends it back naming the
+# conflicting hunk), and answers why per line with the line's writer first.
+#
+#   ruby scripts/test/beat_two_agents_test.rb
+require "minitest/autorun"
+require "digest"
+require "fileutils"
+require "tmpdir"
+require_relative "fake_deployment"
+require_relative "../stage"
+
+# The colony API the beat calls, in memory.
+class FakeColony
+  attr_reader :created
+
+  def initialize(flags: %w[FT_INLINE FT_RESOLVER FT_TEXT_MERGE], text_merge: true, settle_after: 0, settle_limit: nil, leak: false)
+    @flags = flags
+    @text_merge = text_merge
+    @settle_after = settle_after
+    @settle_limit = settle_limit
+    @leak = leak
+    @n = 0
+    @lock = Mutex.new
+    @created = []
+    @agents = {}
+    @intents = {}
+    @proposals = {}
+    @polls = Hash.new(0)
+    @took = Hash.new(0)
+    @landings = []
+    @notes = {}
+    root = Digest::SHA1.hexdigest("root")
+    @head = root
+    @trees = { root => {} }
+    @settled = 0
+  end
+
+  def call(req) = @lock.synchronize { route(req) }
+
+  private
+
+  def id(prefix) = "#{prefix}_#{@n += 1}"
+  def json(status, body) = FakeDeployment.json(status, body)
+
+  def route(req)
+    m = req.path.match(%r{\A/api/colonies/([^/]+)(/.*)?\z})
+    colony = m && m[1]
+    rest = m && m[2].to_s
+    return json(200, { service: "firetrident", commit: "abc1234", flags: @flags, noteKey: nil }) if req.path == "/api/about"
+    return create(req) if req.method == "POST" && req.path == "/api/colonies"
+    return json(404, { error: "no route for #{req.method} #{req.path}" }) unless colony && @created.include?(colony)
+
+    case [req.method, rest]
+    in ["GET", ""] then json(200, { colony: { id: colony, trunkSha: @head } })
+    in ["DELETE", ""] then json(200, { ok: true })
+    in ["POST", "/decide/policy"] then json(200, { enabled: req.json["enabled"] })
+    in ["POST", "/agents"]
+      a = { "id" => id("agt"), "name" => req.json["name"], "kind" => req.json["kind"], "model" => req.json["model"] }
+      @agents[a["id"]] = a
+      json(201, a)
+    in ["POST", "/intents"]
+      b = req.json
+      i = { "id" => id("int"), "title" => b["title"], "why" => b["why"], "footprint" => b["footprint"], "assignedTo" => b["assignedTo"], "revision" => 1, "status" => "open" }
+      @intents[i["id"]] = i
+      json(201, i)
+    in ["POST", %r{\A/agents/([^/]+)/take\z}] then take(Regexp.last_match(1))
+    in ["POST", "/proposals"] then propose(req.json)
+    in ["GET", %r{\A/proposals/([^/]+)\z}] then poll(Regexp.last_match(1))
+    in ["GET", "/why"] then why(req.params["path"], req.params["line"].to_i)
+    else json(404, { error: "no route" })
+    end
+  end
+
+  def create(req)
+    name = req.json["name"]
+    return json(409, { error: "colony #{name} already exists" }) if @created.include?(name)
+
+    @created << name
+    json(201, { id: name, name: name, trunkSha: @head })
+  end
+
+  # The first take of each agent waits, as a new colony's pool does while it forks.
+  def take(agent)
+    @took[agent] += 1
+    reason = @leak ? "pool busy (lease art_v1_leakedtoken99 for #{FakeDeployment::ACCESS_SECRET})" : "the workspace pool is forking"
+    return json(200, { wait: true, retryInMs: 50, reason: reason }) if @took[agent] == 1 || @leak
+
+    intent = @intents.values.find { |i| i["assignedTo"] == agent && i["status"] == "open" }
+    return json(200, { wait: true, retryInMs: 50, reason: "no open intents" }) unless intent
+
+    intent["status"] = "claimed"
+    lease = { repo: { namespace: "ft-ws-0", name: "ws-#{agent}", remote: "https://example.invalid/git/ws.git" }, token: "art_v1_leasetoken#{agent}",
+              tokenExpiresAt: 0, baseSha: @head, leasedAt: 0, trunk: { remote: "https://example.invalid/git/trunk.git", token: "art_v1_trunktoken", sha: @head } }
+    json(200, { intent: intent, lease: lease })
+  end
+
+  def propose(b)
+    blob = b["writeSet"][0]["blob"]
+    text = b.dig("contents", blob)
+    return json(400, { error: "contents do not hash to the write set's blob" }) unless text && Stage.blob_id(text) == blob
+    return json(400, { error: "headSha is not the changeset id" }) unless b["headSha"] == Stage.changeset_id(b["baseSha"], b["writeSet"].map { |w| { path: w["path"], blob: w["blob"] } })
+
+    p = { "id" => id("prp"), "intentId" => b["intentId"], "agentId" => b["agentId"], "status" => "checking", "baseSha" => b["baseSha"],
+          "path" => b["writeSet"][0]["path"], "text" => text, "readSet" => b["readSet"] }
+    @proposals[p["id"]] = p
+    json(201, view(p))
+  end
+
+  def view(p) = p.except("text", "path", "baseSha")
+
+  def poll(pid)
+    p = @proposals[pid]
+    return json(404, { error: "proposal not found" }) unless p
+
+    @polls[pid] += 1
+    settle(p) if p["status"] == "checking" && @polls[pid] > @settle_after && (@settle_limit.nil? || @settled < @settle_limit)
+    json(200, view(p))
+  end
+
+  def settle(p)
+    @settled += 1
+    path = p["path"]
+    base = @trees.fetch(p["baseSha"])[path]
+    trunk = @trees.fetch(@head)[path]
+    return land(p, p["text"], nil) if base == trunk
+
+    blob = ->(t) { t ? Stage.blob_id(t) : "0" * 40 }
+    stale = "stale: #{path} (expected #{blob.(base)}, trunk has #{blob.(trunk)})"
+    return back(p, stale) unless @text_merge
+
+    b, t, o = [base, trunk, p["text"]].map(&:lines)
+    conflict = nil
+    merged = b.each_index.map do |i|
+      if o[i] == b[i] then t[i]
+      elsif t[i] == b[i] || t[i] == o[i] then o[i]
+      else
+        conflict ||= i + 1
+        o[i]
+      end
+    end.join
+    return back(p, "#{stale}; text merge of #{path}: 1 conflicting hunk, at line #{conflict} of its base", [{ path: path, base: blob.(base), trunk: blob.(trunk), theirs: blob.(p["text"]), lines: [conflict] }]) if conflict
+
+    land(p, merged, { "path" => path, "base" => blob.(base), "trunk" => blob.(trunk), "theirs" => blob.(p["text"]), "result" => blob.(merged) })
+  end
+
+  def back(p, reason, conflicts = nil)
+    p["status"] = "returned"
+    p["reason"] = reason
+    p["mergeConflicts"] = conflicts if conflicts
+  end
+
+  def land(p, text, merged)
+    parent = @head
+    @head = Digest::SHA1.hexdigest("#{parent}#{text}")
+    @trees[@head] = @trees[parent].merge(p["path"] => text)
+    landing = { "id" => id("lnd"), "trunkSha" => @head, "parentSha" => parent, "proposalIds" => [p["id"]], "paths" => [p["path"]], "at" => 0 }
+    landing["merged"] = [{ "proposalId" => p["id"], "path" => p["path"], "blob" => merged["result"] }] if merged
+    intent = @intents[p["intentId"]]
+    prop = { "id" => p["id"], "agentId" => p["agentId"], "agentKind" => "synthetic", "model" => "scripted",
+             "intent" => { "id" => intent["id"], "title" => intent["title"], "why" => intent["why"] },
+             "writeSet" => [{ "path" => p["path"], "blob" => Stage.blob_id(text) }], "readSet" => p["readSet"], "decisions" => [], "evidence" => { "checks" => [] } }
+    prop["merged"] = [merged] if merged
+    @landings << landing
+    @notes[landing["id"]] = { "schema" => "firetrident.lineage/v1", "landingId" => landing["id"], "proposals" => [prop] }
+    p["status"] = "landed"
+    p["landingId"] = landing["id"]
+  end
+
+  # The landings that changed `path`, newest first, with the one that last changed `line` moved to the front.
+  def why(path, line)
+    entries = @landings.reverse.select { |l| l["paths"].include?(path) }.map { |l| { landing: l, note: @notes[l["id"]] } }
+    owner = entries.find do |e|
+      after = @trees[e[:landing]["trunkSha"]][path].to_s.lines[line - 1]
+      before = @trees[e[:landing]["parentSha"]][path].to_s.lines[line - 1]
+      after != before
+    end
+    json(200, owner ? [owner, *(entries - [owner])] : entries)
+  end
+end
+
+class BeatTwoAgentsTest < Minitest::Test
+  SCRIPT = File.expand_path("../beat_two_agents.rb", __dir__)
+
+  def run_beat(colony, *args, token: true, access: true, env: {})
+    server = FakeDeployment.new { |req| colony.call(req) }
+    Dir.mktmpdir("beat-config") do |config|
+      out, err, status = Open3.capture3(FakeDeployment.env(config, token: token, access: access).merge(env), "ruby", SCRIPT, "--base", server.url, *args)
+      [out, err, status.exitstatus, server.requests]
+    end
+  ensure
+    server&.stop
+  end
+
+  def assert_no_secrets(text)
+    [FakeDeployment::TOKEN, FakeDeployment::ACCESS_SECRET, FakeDeployment::ACCESS_ID, "art_v1_"].each { |s| refute_includes text, s }
+  end
+
+  def test_both_changes_land_the_second_as_a_line_by_line_merge
+    out, err, code, reqs = run_beat(FakeColony.new)
+    assert_equal 0, code, out + err
+    order = ["beat: two agents edit one file; text merge lands both", "text merge (FT_TEXT_MERGE) and inline changes (FT_INLINE) are on here",
+             "created colony beat-", "review is off", "seeded src/values.ts, 12 lines, in lnd_", "agents A (agt_", ") and B (agt_", ") each hold an intent on src/values.ts and took work from the same trunk",
+             "agent A changed line 2: landed in lnd_", "agent B changed line 11 on ", ", the trunk before A landed: landed in lnd_", "landings", "src/values.ts after both landings",
+             "    2  export const v2 = 20;", "<- agent A", "   11  export const v11 = 110;", "<- agent B", "$ ft why beat-", "src/values.ts:2", "src/values.ts:11",
+             "merged   line by line: base ", "PASS both changes landed; agent B's as a line-by-line merge that holds both edits", "deleted colony beat-"]
+    at = 0
+    order.each do |piece|
+      found = out.index(piece, at)
+      assert found, "expected #{piece.inspect} after position #{at} in:\n#{out}"
+      at = found
+    end
+    assert_match(/^\[\s*\d+\.\ds\] /, out)
+    # Every request carries the Access headers; every API call but /api/about the admin token.
+    assert reqs.all? { |r| FakeDeployment.accessed?(r) }
+    assert reqs.reject { |r| r.path == "/api/about" }.all? { |r| r.headers["authorization"] == "Bearer #{FakeDeployment::TOKEN}" }
+    assert_nil reqs.find { |r| r.path == "/api/about" }.headers["authorization"]
+    calls = reqs.map { |r| "#{r.method} #{r.path.sub(%r{/(agt|int|prp)_\d+}, '/\1')}" }.reject { |c| c.include?("/proposals/prp") || c.end_with?("/take") }
+    colony = reqs.find { |r| r.method == "POST" && r.path == "/api/colonies" }.json["name"]
+    c = "/api/colonies/#{colony}"
+    assert_equal ["GET /api/about", "POST /api/colonies", "POST #{c}/decide/policy", "POST #{c}/agents", "POST #{c}/intents", "POST #{c}/proposals",
+                  "POST #{c}/agents", "POST #{c}/agents", "POST #{c}/intents", "POST #{c}/intents", "POST #{c}/proposals", "POST #{c}/proposals",
+                  "GET #{c}/why", "GET #{c}/why", "DELETE #{c}"], calls
+    assert_no_secrets(out + err)
+  end
+
+  def test_conflict_mode_shows_one_landing_and_one_return_naming_the_hunk
+    out, err, code, = run_beat(FakeColony.new, "--conflict")
+    assert_equal 0, code, out + err
+    assert_includes out, "beat: two agents change the same line of one file"
+    assert_includes out, "agent A changed line 6: landed in lnd_"
+    assert_match(/agent B changed line 6 on \h{7}, the trunk before A landed: went back \(/, out)
+    assert_match(/agent B's change prp_\d+ \(line 6: export const v6 = 66;\) went back: stale: src\/values.ts .*1 conflicting hunk, at line 6 of its base/, out)
+    assert_includes out, "    6  export const v6 = 60;"
+    assert_includes out, "FT_RESOLVER, is on here"
+    assert_includes out, "PASS one landing and one return naming the conflicting hunk at line 6"
+    assert_includes out, "deleted colony beat-"
+  end
+
+  def test_a_second_change_sent_back_stale_fails_the_beat_and_still_deletes_the_colony
+    out, err, code, reqs = run_beat(FakeColony.new(text_merge: false))
+    assert_equal 1, code, out + err
+    assert_match(/FAIL agent B's change went back \(returned: stale: src\/values.ts/, out)
+    assert(reqs.any? { |r| r.method == "DELETE" })
+  end
+
+  def test_a_deployment_without_text_merge_fails_before_creating_anything
+    out, _err, code, reqs = run_beat(FakeColony.new(flags: %w[FT_INLINE]))
+    assert_equal 1, code
+    assert_includes out, "FAIL text merge is off on this deployment (FT_TEXT_MERGE is not on in /api/about)"
+    assert_equal ["/api/about"], reqs.map(&:path)
+  end
+
+  def test_a_step_that_runs_out_of_time_says_what_it_waited_for_and_exits_3
+    out, err, code, reqs = run_beat(FakeColony.new(settle_limit: 1), "--step-timeout", "1.5")
+    assert_equal 3, code, out + err
+    assert_match(/TIMEOUT timed out after 1.5 s waiting for agent A's change prp_\d+ to land or go back \(it is checking\)/, out)
+    assert(reqs.any? { |r| r.method == "DELETE" }, "the colony is deleted after a timeout too")
+  end
+
+  def test_keep_leaves_the_colony_and_name_names_it
+    out, _err, code, reqs = run_beat(FakeColony.new, "--keep", "--name", "signed-notes")
+    assert_equal 0, code
+    assert_includes out, "created colony signed-notes"
+    assert_match(%r{kept colony signed-notes: http://127\.0\.0\.1:\d+/c/signed-notes}, out)
+    refute(reqs.any? { |r| r.method == "DELETE" })
+    out, _err, code, = run_beat(FakeColony.new.tap { |c| c.created << "signed-notes" }, "--name", "signed-notes")
+    assert_equal 1, code
+    assert_includes out, "FAIL colony signed-notes already exists: pass another --name, or --colony signed-notes to run the beat on it"
+  end
+
+  def test_an_existing_colony_gets_a_new_file_and_is_neither_reconfigured_nor_deleted
+    colony = FakeColony.new.tap { |c| c.created << "hono" }
+    out, err, code, reqs = run_beat(colony, "--colony", "hono")
+    assert_equal 0, code, out + err
+    assert_match(%r{on colony hono, as it is \(review as its policy says\); the beat writes a new file, beat/beat-\d{4}-\d{6}/values\.ts}, out)
+    assert_includes out, "left colony hono as it was"
+    refute(reqs.any? { |r| r.method == "DELETE" || r.path.end_with?("/decide/policy") || r.path == "/api/colonies" })
+  end
+
+  def test_no_access_headers_when_the_variables_are_unset
+    out, _err, code, reqs = run_beat(FakeColony.new, access: false)
+    assert_equal 0, code, out
+    assert(reqs.none? { |r| r.headers.key?("cf-access-client-id") || r.headers.key?("cf-access-client-secret") })
+  end
+
+  def test_secrets_the_server_echoes_are_redacted
+    out, err, code, = run_beat(FakeColony.new(leak: true), "--step-timeout", "0.5")
+    assert_equal 3, code, out + err
+    assert_includes out, "TIMEOUT timed out after 0.5 s waiting for the seed agent to be handed its intent (the colony said: pool busy (lease <redacted> for <redacted>))"
+    assert_no_secrets(out + err)
+  end
+
+  def test_settings_problems_exit_2_before_any_request
+    out, err, code, reqs = run_beat(FakeColony.new, token: false)
+    assert_equal 2, code
+    assert_includes err, "FT_TOKEN is not set"
+    assert_empty reqs
+    _, err, code, reqs = run_beat(FakeColony.new, env: { "CF_ACCESS_CLIENT_SECRET" => nil })
+    assert_equal 2, code
+    assert_includes err, "set both CF_ACCESS_CLIENT_ID and CF_ACCESS_CLIENT_SECRET"
+    assert_empty reqs
+    assert_no_secrets(out + err)
+  end
+
+  # The config file's token goes only to the deployment the file names, as the ft CLI decides.
+  def test_the_config_file_token_is_used_only_for_its_own_deployment
+    Dir.mktmpdir("beat-config") do |dir|
+      FileUtils.mkdir_p(File.join(dir, "firetrident"))
+      File.write(File.join(dir, "firetrident", "env"), "FT_URL=https://staging.example.invalid\nexport FT_TOKEN='from-file-token'\n")
+      env = { "XDG_CONFIG_HOME" => dir }
+      assert_equal "from-file-token", Stage.token("https://staging.example.invalid/", env)
+      assert_nil Stage.token("https://firetrident.com", env)
+      assert_equal "env-token", Stage.token("https://firetrident.com", env.merge("FT_TOKEN" => "env-token"))
+      File.write(File.join(dir, "firetrident", "env"), "FT_TOKEN=default-token # the production token\n")
+      assert_equal "default-token", Stage.token("https://firetrident.com", env)
+      assert_nil Stage.token("https://staging.firetrident.com", env)
+    end
+  end
+
+  # The script's ids are the ones core computes (packages/core/src/changeset.ts) and git computes.
+  def test_blob_and_changeset_ids_match_core_and_git
+    text = "export const v1 = 1;\nüñí €\n"
+    write = [{ path: "src/b.ts", blob: Stage.blob_id(text) }, { path: "src/a.ts", blob: nil }]
+    git, = Open3.capture2("git", "hash-object", "--stdin", stdin_data: text)
+    assert_equal git.strip, Stage.blob_id(text)
+    core = File.expand_path("../../packages/core/src/changeset.ts", __dir__)
+    js = "import { blobId, changesetId } from #{JSON.generate(core)}; const [t, w] = JSON.parse(process.argv[1]); " \
+         "console.log(blobId(t), changesetId(#{JSON.generate('f' * 40)}, w));"
+    out, status = Open3.capture2("node", "--input-type=module", "-e", js, JSON.generate([text, write]))
+    assert status.success?
+    assert_equal [Stage.blob_id(text), Stage.changeset_id("f" * 40, write)], out.split
+  end
+end
