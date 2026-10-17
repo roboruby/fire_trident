@@ -102,6 +102,31 @@ import { commitOrder as commitOrderOf, testLineage as testLineageOf, type TestFi
 import { FoldedIndex, cycleCollisions, structureProblem, submoduleProblems, type SubmoduleOutcome } from "./structure.ts";
 import { readTreeCached } from "./surgery.ts";
 import { foldPath } from "../decide/pathfold.ts";
+import {
+  RECIPE_CALL_MS,
+  RECIPE_FILE_BYTES,
+  RECIPE_TEXT_BYTES,
+  RECIPE_TEXT_READS,
+  approveRecipe,
+  driveRecipes,
+  migrateRecipes,
+  recipeBlobs,
+  recipeRecord,
+  recipeRecords,
+  recipeResidue,
+  recipeReverted,
+  recipeRunning,
+  recipeTextOf,
+  recipesFor,
+  recordRecipe,
+  type LiveRecipe,
+  type RecipeDriver,
+  type RecipeHost,
+  type RecipeInput,
+} from "./recipes.ts";
+import { sealedRecipeRunner, type RecipeLoader } from "./reciperunner.ts";
+import { parseRecipe } from "@fire_trident/core";
+import type { Recipe, RecipeRecord, RecipeRefusal } from "@fire_trident/core";
 
 export type { LandResult, Returned } from "./plan.ts";
 
@@ -217,6 +242,8 @@ export interface CycleStat {
   revalidated?: number;
   /** Proposals that landed with files they wrote on an older version merged line by line with the newer one (text merge). */
   merged?: number;
+  /** Proposals built before a recipe landed whose written files the recipe rewrote as they landed (trunk/recipes.ts). */
+  commuted?: number;
   /** Of those, the ones with a file merged by the insertion rule (FT_MERGE_INSERTIONS: both sides only inserted lines at one place). */
   insertions?: number;
   /**
@@ -336,6 +363,8 @@ export class TrunkDO extends DurableObject<Env> {
     this.sql.exec(PROTECT_TABLE);
     // Derived indexes (trunk/derived.ts): their tables are created here, outside any landing transaction.
     this.derivedSet();
+    // Recipes (trunk/recipes.ts): declared recipes, their batches, and the landings commutation reads.
+    migrateRecipes(this.sql);
   }
 
   // -------------------------------------------------------------------------
@@ -559,7 +588,12 @@ export class TrunkDO extends DurableObject<Env> {
       serial: (fn) => this.serial(fn),
       commitNow: async (commit) => {
         try {
-          return { landing: await this.systemCommitNow(commit) };
+          const landing = await this.systemCommitNow(commit);
+          // Recipes (trunk/recipes.ts): reverting one of a recipe's batches stops the recipe.
+          const of = (commit.note as { revert?: { of?: unknown } }).revert?.of;
+          const stopped = typeof of === "string" ? recipeReverted(this.sql, of, Date.now()) : null;
+          if (stopped) this.ctx.waitUntil(this.tellRecipe(stopped).catch(() => undefined));
+          return { landing };
         } catch (e) {
           if (e instanceof StaleSystemCommit) return { stale: e.message };
           throw e;
@@ -1032,6 +1066,8 @@ export class TrunkDO extends DurableObject<Env> {
   /** Publishes recorded commits left waiting (asynchronous publishing; the loop's safety net), then retries a failed notes push. */
   async alarm(): Promise<void> {
     if (this.meta("trunk_sha") === null) return;
+    // Recipes (trunk/recipes.ts): a recipe whose scope a declaring call did not finish lands its next batches here.
+    if (recipeRunning(this.sql)) await driveRecipes(this.recipeDriver(), Date.now() + RECIPE_CALL_MS).catch((e: unknown) => console.error(`recipes from the alarm failed: ${errorText(e)}`));
     if (this.hasBacklog()) {
       try {
         await this.publishNow();
@@ -1042,6 +1078,146 @@ export class TrunkDO extends DurableObject<Env> {
       }
     }
     await this.notesFlush().catch(() => undefined);
+  }
+
+  // -------------------------------------------------------------------------
+  // Recipes (trunk/recipes.ts)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Land a recipe a person declared (the colony parsed it and made its intent). Recorded once per id; then its batches
+   * land on the serial chain, landing cycles running between them, for up to RECIPE_CALL_MS, and the alarm lands the
+   * rest. The colony hears of each batch and of the end (ColonyDO.recipeNews). Answers the recipe as it stands.
+   */
+  async recipe(p: { id: Id; intentId: Id; recipe: Recipe; why: string; by: string }): Promise<RecipeRecord> {
+    const st = this.state();
+    const parsed = parseRecipe(p?.recipe, { modules: this.recipeModules(st.colonyId) });
+    if (!parsed.ok) throw ftError(400, parsed.error);
+    const id = String(p.id ?? "");
+    if (!/^rcp_[\w-]{1,64}$/.test(id) || typeof p.intentId !== "string" || p.intentId === "") throw ftError(400, "a recipe needs its id (rcp_...) and its intent's id");
+    recordRecipe(this.sql, { id, colonyId: st.colonyId, intentId: p.intentId, recipe: parsed.recipe, why: String(p.why ?? ""), by: String(p.by ?? "unknown") }, Date.now());
+    await driveRecipes(this.recipeDriver(), Date.now() + RECIPE_CALL_MS);
+    return recipeRecord(this.sql, id)!;
+  }
+
+  /** The colony's recipes, newest first (at most `limit`, default 50). */
+  async recipes(limit?: number): Promise<RecipeRecord[]> {
+    this.state();
+    return recipeRecords(this.sql, limit);
+  }
+
+  /**
+   * One recipe, and what it would still change on trunk now (its residue: the scope files it would rewrite and the ones
+   * it would leave as they were, and for a rename the files whose text still has the old name as a word, reading at most
+   * 2,000 files). Null when there is no such recipe. Read only.
+   */
+  async recipeResidue(id: Id): Promise<{ record: RecipeRecord; residue: { examined: number; rewrite: Path[]; untransformed: Array<{ path: Path; reason: RecipeRefusal }>; truncated: boolean; grep?: Path[] } } | null> {
+    this.state();
+    const record = recipeRecord(this.sql, String(id ?? ""));
+    if (!record) return null;
+    return { record, residue: await recipeResidue(this.recipeHost(), record) };
+  }
+
+  /** A person approves a held recipe's next output: exactly that output lands, and the recipe goes on. Null when unknown. */
+  async recipeApprove(id: Id, by: string): Promise<RecipeRecord | null> {
+    this.state();
+    const r = approveRecipe(this.sql, String(id ?? ""), String(by ?? "unknown"), Date.now());
+    if (r?.state === "running") await driveRecipes(this.recipeDriver(), Date.now() + RECIPE_CALL_MS);
+    return recipeRecord(this.sql, String(id ?? ""));
+  }
+
+  /**
+   * The lane's question before it sends stale changes back: of these, the ones a recipe brings through (trunk/recipes.ts
+   * recipesFor), which go on to the trunk writer instead. Each with its base and the paths it reads or writes. Read only.
+   */
+  async recipeCandidates(items: Array<{ id: Id; baseSha: Sha; paths: Path[] }>): Promise<Id[]> {
+    this.state();
+    const list = (Array.isArray(items) ? items : []).filter((x) => x && typeof x.id === "string" && typeof x.baseSha === "string" && Array.isArray(x.paths)).slice(0, 1_000);
+    if (list.length === 0) return [];
+    const changes = list.map((x) => ({ id: x.id, baseSha: x.baseSha, writeSet: x.paths.filter((p) => typeof p === "string").map((path) => ({ path, blob: null })), readSet: [] }));
+    return [...this.commuting(changes).keys()];
+  }
+
+  /** Module recipes (FT_RECIPE_MODULES): on for this colony, with a Worker Loader to run them in. */
+  private recipeModules(colonyId: Id): boolean {
+    return revalidationEnabled((this.env as unknown as { FT_RECIPE_MODULES?: string } | undefined)?.FT_RECIPE_MODULES, colonyId) && this.env.LOADER !== undefined;
+  }
+
+  /** How recipes are driven here: the serial chain, the notes flush, the colony told, the alarm. */
+  private recipeDriver(): RecipeDriver {
+    return {
+      host: () => this.recipeHost(),
+      serial: (fn) => this.serial(fn),
+      landed: () => this.notesSoon(),
+      tell: (step) => this.tellColony(step.record, step.kind === "landed" ? step.landing : undefined),
+      later: (ms) => this.armAlarm(ms),
+      now: () => Date.now(),
+      paused: () => cyclePause(this.sql, []),
+    };
+  }
+
+  /** What a recipe's landing step reads and writes here: the index, blobs, system commits and the landing log. */
+  private recipeHost(): RecipeHost {
+    const st = this.state();
+    return {
+      sql: this.sql,
+      now: () => Date.now(),
+      files: () => this.sql.exec<{ path: string; blob: string; size: number }>(`SELECT path, blob, size FROM ft_files`).toArray(),
+      read: (blob) => this.blobBytes(blob),
+      commit: async (c) => {
+        try {
+          return { landing: await this.systemCommitNow(c) };
+        } catch (e) {
+          if (e instanceof StaleSystemCommit) return { stale: e.message };
+          throw e;
+        }
+      },
+      landingSeq: (id) => this.sql.exec<{ seq: number }>(`SELECT seq FROM ft_landings WHERE id = ?`, id).toArray()[0]?.seq ?? null,
+      headSeq: () => this.sql.exec<{ seq: number | null }>(`SELECT MAX(seq) AS seq FROM ft_landings`).toArray()[0]?.seq ?? 0,
+      ...(this.recipeModules(st.colonyId) ? { runner: sealedRecipeRunner(this.env.LOADER as unknown as RecipeLoader) } : {}),
+    };
+  }
+
+  /** Tell the colony what became of a recipe, with the batch that just landed (ColonyDO.recipeNews). */
+  private async tellColony(record: RecipeRecord, landing?: Landing): Promise<void> {
+    const colonyId = this.meta("colony_id");
+    const ns = this.env.COLONY as DurableObjectNamespace | undefined;
+    if (colonyId === null || !ns) return;
+    const stub = ns.get(ns.idFromName(colonyId)) as unknown as { recipeNews(p: unknown): Promise<unknown> };
+    await stub.recipeNews({ record, ...(landing ? { landing } : {}) });
+  }
+
+  /** Tell the colony of one recipe as it stands now. */
+  private async tellRecipe(id: Id): Promise<void> {
+    const record = recipeRecord(this.sql, id);
+    if (record) await this.tellColony(record);
+  }
+
+  /** Recipes: the ones each change gets applied (recipesFor). None when they cannot be read: changes are planned as before. */
+  private commuting(changes: Array<Pick<Proposal, "id" | "baseSha" | "writeSet" | "readSet">>): Map<Id, LiveRecipe[]> {
+    try {
+      return recipesFor(this.sql, changes);
+    } catch (e) {
+      console.error(`recipes not read; this cycle applies none: ${errorText(e)}`);
+      return new Map();
+    }
+  }
+
+  /**
+   * Recipes: the texts commutation needs (recipes.ts recipeBlobs: in scope, each change's written, base and read versions
+   * other than trunk's), kept in `load` for the cycle's rebuilds, at most RECIPE_TEXT_READS blobs and RECIPE_TEXT_BYTES.
+   * A blob past the budget, larger than RECIPE_FILE_BYTES, binary or unreadable has no text: the file keeps its version.
+   */
+  private async recipeTexts(entries: PlanProposal[], commuting: Map<Id, LiveRecipe[]>, load: MergeLoad): Promise<RecipeInput> {
+    for (const blob of recipeBlobs(entries, commuting, (path) => this.indexBlob(path))) {
+      if (load.texts.has(blob)) continue;
+      if (load.reads >= RECIPE_TEXT_READS || load.bytes > RECIPE_TEXT_BYTES) break;
+      load.reads++;
+      const data = await this.blobBytes(blob).catch(() => null);
+      if (data !== null) load.bytes += data.length;
+      load.texts.set(blob, data === null || data.length > RECIPE_FILE_BYTES ? null : recipeTextOf(data));
+    }
+    return { later: (p) => commuting.get(p.id), text: (blob) => load.texts.get(blob) ?? null, blobOf: blobId };
   }
 
   // -------------------------------------------------------------------------
@@ -1442,6 +1618,9 @@ export class TrunkDO extends DurableObject<Env> {
       live = [];
     }
 
+    // Recipes (trunk/recipes.ts): the recipes each change built before them gets applied; such a change goes to the plan.
+    const commuting = this.commuting(live.map((e) => e.p));
+
     // 3. Screen against current trunk with local reads (base blobs, OCC, structure); stale ones never pull.
     const caches: BaseCaches = { commits: new Map(), trees: new Map(), remote: new Map() };
     const bases = new Map<Id, FileVersion[]>();
@@ -1455,7 +1634,7 @@ export class TrunkDO extends DurableObject<Env> {
         const occ = validateProposal(e.p, (path) => this.indexBlob(path), fv);
         // A revalidation candidate (stale only through files it read, each covered by a name assumption), or a
         // text merge candidate (stale only on files it writes), is decided by the plan, which reads those files.
-        if (!occ.eligible && !(revalidating && revalidationCandidate(e.p, occ.stale)) && !(merging && textMergeCandidate(e.p, occ.stale))) {
+        if (!occ.eligible && !(revalidating && revalidationCandidate(e.p, occ.stale)) && !(merging && textMergeCandidate(e.p, occ.stale)) && !commuting.has(e.p.id)) {
           return { kind: "returned", reason: `stale: ${staleDetail(occ.stale)}` };
         }
         const structural = this.structuralProblem(e.p);
@@ -1508,9 +1687,11 @@ export class TrunkDO extends DurableObject<Env> {
 
     // 5. Plan over the virtual trunk, build one chained commit per batch, push the tip once.
     const mergeLoad: MergeLoad = { texts: new Map(), reads: 0, bytes: 0 };
+    const recipeLoad: MergeLoad = { texts: new Map(), reads: 0, bytes: 0 };
     // Merge locks (trunk/mergelock.ts): a change a person approved, or one with a danger pattern a person must see or a
     // protected write, lands merged with a newer trunk only once a person approved that merge. Unreadable: no merges.
-    const locks = merging ? mergeLocks(this.sql, live.map((e) => ({ p: e.p, ctx: reqs[e.request]?.ctx }))) : null;
+    // Recipes read them too: a change a person decided on is never rewritten by a recipe without that person (trunk/recipes.ts).
+    const locks = merging || commuting.size > 0 ? mergeLocks(this.sql, live.map((e) => ({ p: e.p, ctx: reqs[e.request]?.ctx }))) : null;
     for (let attempt = 0; ; attempt++) {
       if (attempt > 0) {
         // Trunk moved underneath: the plan re-validates against the new index, structure too.
@@ -1540,7 +1721,11 @@ export class TrunkDO extends DurableObject<Env> {
       if (merge && mergeInsertionsEnabled((this.env as unknown as { FT_MERGE_INSERTIONS?: string } | undefined)?.FT_MERGE_INSERTIONS, st.colonyId)) merge.insertions = true;
       const trunkBlob = (path: Path): Sha | null => this.indexBlob(path);
       const exported = surfaces ? (_path: Path, blob: Sha) => surfaces.get(blob) ?? null : undefined;
-      let plan = planCycle(input, trunkBlob, exported, deletions, merge, exportInput);
+      // Recipes (trunk/recipes.ts): the texts the recipes need to bring the changes built before them through.
+      // Unreadable locks: no recipe is applied, and a change stale through one goes back as before (fail closed).
+      const recipeInput = commuting.size > 0 && locks !== null ? await this.recipeTexts(input.flat(), commuting, recipeLoad) : undefined;
+      if (recipeInput) lap("recipes");
+      let plan = planCycle(input, trunkBlob, exported, deletions, merge, exportInput, recipeInput);
       // Merged files go to the local store before a commit names them. One that cannot be stored there: the cycle plans
       // again without merging, and the changes it would have merged go back as stale.
       let mergedSizes = plan.mergedTexts.size > 0 ? await this.storeMerged(plan.mergedTexts) : new Map<Sha, number>();
@@ -1555,7 +1740,7 @@ export class TrunkDO extends DurableObject<Env> {
       };
       lap("plan");
       if (exportInput !== undefined) stat.exportsUncovered = plan.exportsUncovered ?? 0;
-      const chain = await this.buildChain(reqs, plan.accepted, sizes, stat, plan.revalidated, { merged: plan.merged, sizes: mergedSizes });
+      const chain = await this.buildChain(reqs, plan.accepted, sizes, stat, plan.revalidated, { merged: plan.merged, sizes: mergedSizes }, plan.recipes);
       lap("build");
       if (chain === null) {
         back();
@@ -1589,6 +1774,7 @@ export class TrunkDO extends DurableObject<Env> {
           void this.emitRevalidated(plan.accepted.flat(), plan.revalidated).catch(() => undefined);
         }
         if (plan.merged.size > 0) stat.merged = plan.merged.size;
+        if (plan.recipes) stat.commuted = plan.recipes.size;
         const byInsertions = [...plan.merged.values()].filter((files) => files.some((f) => f.rule === "insertions")).length;
         if (byInsertions > 0) stat.insertions = byInsertions;
         back();
@@ -1633,6 +1819,7 @@ export class TrunkDO extends DurableObject<Env> {
     stat?: CycleStat,
     revalidated: Map<Id, Revalidated[]> = new Map(),
     merges: { merged: Map<Id, TextMerged[]>; sizes: Map<Sha, number> } = { merged: new Map(), sizes: new Map() },
+    recipes?: Map<Id, Array<{ recipe: Id; landing: Id; paths: Path[] }>>,
   ): Promise<{ parent: Sha; tip: Sha; items: Array<{ request: number; data: JournalData }>; objects: string[] } | null> {
     if (accepted.every((a) => a.length === 0)) return null;
     const st = this.state();
@@ -1692,7 +1879,7 @@ export class TrunkDO extends DurableObject<Env> {
       const intentIds = unique(proposals.map((p) => p.intentId));
       // The note names the landing, never the commit, so it is final here and the commit carries its digest as the
       // FT-Note trailer (trunk/digest.ts); certification, added after landing, is left out of the digest.
-      const built = buildNote({ id, colonyId: st.colonyId }, proposals, info, ctx, revalidated, merges.merged);
+      const built = buildNote({ id, colonyId: st.colonyId }, proposals, info, ctx, revalidated, merges.merged, recipes);
       const note = await sealNote(built);
       lap("note");
       const titled = landingMessage({ id, intentIds }, proposals, info.titles);
@@ -2042,7 +2229,7 @@ export class TrunkDO extends DurableObject<Env> {
    * asynchronous publishing it is built on the recorded head (unpublished commits included) and recorded like a
    * landing; the publish loop pushes it after every commit recorded before it.
    */
-  private async systemCommitNow(p: { files: Array<{ path: Path; content: string | null; expect?: Sha | null }>; message: string; note: LineageNote & Record<string, unknown> }): Promise<Landing> {
+  private async systemCommitNow(p: { files: Array<{ path: Path; content: string | null; expect?: Sha | null }>; message: string; note: LineageNote & Record<string, unknown>; intentIds?: Id[] }): Promise<Landing> {
     const asyncPublish = this.asyncPublish(this.state().colonyId);
     await this.recoverJournal();
     await this.publishFirst(asyncPublish);
@@ -2091,7 +2278,8 @@ export class TrunkDO extends DurableObject<Env> {
         trunkSha: commit,
         parentSha: parent,
         proposalIds: [],
-        intentIds: [],
+        // A recipe's batch names the recipe's intent (trunk/recipes.ts); other system commits name none.
+        intentIds: p.intentIds ?? [],
         paths,
         regions: unique(paths.map((path) => regionOf(path, st.regionDepth))).sort(),
         at,
@@ -2960,6 +3148,8 @@ export class TrunkDO extends DurableObject<Env> {
   private reset(): void {
     this.ctx.storage.transactionSync(() => {
       for (const t of ["ft_files", "ft_landings", "ft_landing_paths", "ft_notes", "ft_landed", "ft_journal", "ft_meta"]) this.sql.exec(`DELETE FROM ${t}`);
+      // Recipes (trunk/recipes.ts) belong to the trunk being reset: none is applied to the new one.
+      for (const t of ["ft_recipes", "ft_recipe_landings"]) this.sql.exec(`DELETE FROM ${t}`);
       // Every derived index (the co-change map, the import index, path history) and its cursor.
       this.derivedSet().reset();
       this.setMeta("dir", `/trunk-${Date.now().toString(36)}`);
@@ -2993,6 +3183,7 @@ function buildNote(
   ctx: LandContext,
   revalidated: Map<Id, Revalidated[]> = new Map(),
   merged: Map<Id, TextMerged[]> = new Map(),
+  recipes?: Map<Id, Array<{ recipe: Id; landing: Id; paths: Path[] }>>,
 ): LineageNote {
   return maskNote({
     schema: "firetrident.lineage/v1",
@@ -3016,6 +3207,8 @@ function buildNote(
         evidence: p.evidence ?? { checks: [] },
         ...(revalidated.has(p.id) ? { revalidated: revalidated.get(p.id) } : {}),
         ...(merged.has(p.id) ? { merged: merged.get(p.id) } : {}),
+        // Recipes (trunk/recipes.ts): the recipes that rewrote its files as it landed.
+        ...(recipes?.has(p.id) ? { recipes: recipes.get(p.id) } : {}),
         ...noteUndoes(p.undoes),
         ...noteAlternatives(ctx.alternatives, p.id),
         // Conflict resolver: the returned change this one resolves, from the colony's record (colony/resolver.ts).

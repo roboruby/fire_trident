@@ -11,6 +11,8 @@ export * from "./lifecycle.ts";
 // Why per line, about today: whether each landing still holds, and the walk past reformatting and moved code (whyholds.ts, reformat.ts).
 export * from "./whyholds.ts";
 export * from "./reformat.ts";
+// Recipes: the transforms the trunk writer runs at landing and over changes in flight, and how a recipe is read (recipe.ts).
+export * from "./recipe.ts";
 
 const SUBJECT_MAX = 72;
 

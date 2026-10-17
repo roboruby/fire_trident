@@ -5,6 +5,7 @@ import { parseSpendCap } from "./spendcap.ts";
 import { isConnectColony } from "./connect.ts";
 import { parseSilentTtl } from "./closure.ts";
 import type { HookCommand } from "./hook.ts";
+import { RECIPE_OPTIONS, parseRecipeCommand, type RecipeCommand } from "./recipe.ts";
 
 /** Event types `ft watch --only` accepts. */
 export const EVENT_TYPES: ReadonlyArray<ColonyEvent["t"]> = [
@@ -82,7 +83,9 @@ export type Command =
   | { name: "pause"; colony?: string; reason: string; by?: string }
   | { name: "resume"; colony?: string; by?: string; reason?: string }
   // The spend cap (spendcap.ts): show it (no usd), set it, or remove it (usd null).
-  | { name: "spend-cap"; colony: string; usd?: number | null; reviewReserveUsd?: number; by?: string };
+  | { name: "spend-cap"; colony: string; usd?: number | null; reviewReserveUsd?: number; by?: string }
+  // Recipes (recipe.ts): declare one, list them, show one, approve a held one.
+  | RecipeCommand;
 
 /** Options every command accepts. */
 export interface GlobalFlags {
@@ -136,6 +139,7 @@ const COMMAND_OPTIONS: Record<string, Record<string, OptionSpec>> = {
   pause: { deployment: { type: "boolean" }, reason: { type: "string" }, by: { type: "string" } },
   resume: { deployment: { type: "boolean" }, reason: { type: "string" }, by: { type: "string" } },
   "spend-cap": { "review-reserve": { type: "string" }, by: { type: "string" } },
+  recipe: RECIPE_OPTIONS,
   swarm: { agents: { type: "string" }, model: { type: "string" }, kind: { type: "string" } },
   why: {},
   impact: { depth: { type: "string" } },
@@ -601,6 +605,11 @@ function build(word: string, v: Record<string, unknown>, p: string[]): Command {
       const cmd = parseSpendCap(v, p);
       return typeof cmd === "string" ? fail(cmd) : cmd;
     }
+    case "recipe": {
+      // Recipes (recipe.ts): declare one, list them, show one, or approve a held one.
+      const cmd = parseRecipeCommand(v, p);
+      return typeof cmd === "string" ? fail(cmd) : cmd;
+    }
     default:
       return fail(`unknown command "${word}"`);
   }
@@ -832,6 +841,7 @@ Commands
   pause <colony> --reason <text>   Pause every agent of a colony (--deployment: of the server)
   resume <colony>                  Let a paused colony's agents work again (--deployment too)
   spend-cap <colony> <usd>         Cap what the model calls the platform makes for a colony may cost
+  recipe <colony> rename <a> <b>   A mass mechanical change the trunk writer lands and applies to work in flight
   swarm <colony> --agents <n>      Spawn in-platform agents
   agents <colony>                  List agents: state, intent, step, what each says it is doing
   stop <colony> <agentId>|--all    Stop one agent, or every in-platform agent
@@ -1170,6 +1180,32 @@ round; the answer names any pause still in force.
 Examples
   ft resume web
   ft resume --deployment
+`,
+  recipe: `
+ft recipe <colony> rename <old> <new> --scope <glob>... [--why <text>] [--by <name>]
+ft recipe <colony> replace-import <from> <to> [--prefix] --scope <glob>...
+ft recipe <colony> text-replace (--find <text> | --pattern '^...$' [--ignore-case]) --replace <text> --scope <glob>...
+ft recipe <colony> [<rcp_id>]
+ft recipe <colony> approve <rcp_id> [--by <name>]
+
+A recipe is a mass mechanical change written as a small deterministic transform
+instead of a diff: rename an identifier, rewrite an import specifier, or
+replace text in config files, over the files the --scope globs cover. It
+becomes an intent no agent takes; the trunk writer runs it over trunk and
+lands what it changed as ordinary commits, a batch of files at a time between
+landing cycles. Every change still in flight that was built before it gets it
+applied as it lands, so a rename sends no agent back: its files land with the
+new name. A file the recipe cannot rewrite (unparsable, binary, a name already
+taken) is left as it was and listed. A danger pattern in the output holds the
+recipe for a person: approve lands exactly the output they were shown. With
+no action, list the colony's recipes; with an id, show one and what it would
+still change on trunk.
+
+Examples
+  ft recipe web rename compose assemble --scope 'src/**'
+  ft recipe web replace-import lodash lodash-es --scope 'src/**'
+  ft recipe web text-replace --pattern '^(\\s*)node-version: 18$' --replace '$1node-version: 20' --scope '.github/**'
+  ft recipe web rcp_abc123
 `,
   "spend-cap": `
 ft spend-cap <colony> <usd> [--review-reserve <usd>] [--by <name>]

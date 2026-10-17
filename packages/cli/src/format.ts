@@ -44,6 +44,7 @@ import { heldLines } from "./mergehold.ts";
 import { confirmedLine } from "./gateline.ts";
 import { reviewTestsLines } from "./reviewtests.ts";
 import { lifecycleLines, whyLifecycleRows } from "./strip.ts";
+import { recipeWhyRows } from "./recipe.ts";
 
 /** ANSI styling functions; identity functions when color is off. */
 export interface Colors {
@@ -857,6 +858,8 @@ export function formatWhy(
     // Whether it still holds on today's trunk, and the tests that cover it now (holds.ts).
     const holds = holdsRow(entry, row, ctx.certification, c);
     if (holds) out.push(`  ${label("holds")}${holds}`);
+    // Recipes (recipe.ts): a recipe's batch names the recipe and who declared it.
+    for (const r of recipeWhyRows(note, null)) out.push(`  ${label(r.k)}${r.v}`);
     const proposals = (note?.proposals ?? []).map((p) => ({
       ...p,
       writeSet: p.writeSet ?? [],
@@ -876,6 +879,8 @@ export function formatWhy(
       if (source) out.push(`  ${label("source")}${source}`);
       out.push(`  ${label("intent")}${p.intent.id} ${quote(p.intent.title ?? "")}`);
       if (p.intent.why) out.push(`  ${label("why")}${whySummary(p.intent.why)}`);
+      // Recipes (recipe.ts): the recipes that rewrote its files as it landed.
+      for (const r of recipeWhyRows(null, p)) out.push(`  ${label(r.k)}${r.v}`);
       // Walk the parent chain (the why behind the why), guarding against cycles.
       const seen = new Set<string>([p.intent.id]);
       let parentId = p.intent.parentId;

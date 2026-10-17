@@ -2,6 +2,7 @@ import type { Colony, Rule } from "@fire_trident/core";
 import type { Command } from "./args.ts";
 import { pauseRequest } from "./pause.ts";
 import { spendCapRequest } from "./spendcap.ts";
+import { recipeRequest } from "./recipe.ts";
 import { silentTtlRequest } from "./closure.ts";
 
 /**
@@ -43,6 +44,9 @@ import { silentTtlRequest } from "./closure.ts";
  *   POST   /api/colonies/:id/pause | /resume        { reason, by } | { by, reason? } -> { pause, already } | { resumed, pauses, spendCap? }; /api/pause and /api/resume for the deployment
  *   GET    /api/colonies/:id/spend-cap              -> { colonyId, cap: SpendCap | null }
  *   POST   /api/colonies/:id/spend-cap              { usd, reviewReserveUsd?, by } | { usd: null, by } -> { colonyId, cap, lifted, tripped, note }
+ *   GET    /api/colonies/:id/recipes[/:rid]         -> RecipeRecord[] | { record, residue }
+ *   POST   /api/colonies/:id/recipes                { kind, args, scope, why, by, title? } -> { intent, recipe } (201)
+ *   POST   /api/colonies/:id/recipes/:rid/approve   { by } -> RecipeRecord
  *
  * Every request carries `Authorization: Bearer $FT_TOKEN` when the token is set.
  */
@@ -188,6 +192,9 @@ export function planRequest(cmd: Command, by: string): ApiRequest | null {
     case "spend-cap":
       // The spend cap (spendcap.ts): read it, set it, or remove it.
       return spendCapRequest(cmd, by, colonyPath);
+    case "recipe":
+      // Recipes (recipe.ts): declare, list, show, approve.
+      return recipeRequest(cmd, by, colonyPath);
     case "megafile":
       if (!cmd.path) return { method: "GET", path: colonyPath(cmd.colony, "/megafile") };
       return { method: "POST", path: colonyPath(cmd.colony, "/megafile"), body: { path: cmd.path, action: cmd.release ? "release" : "hold", by: cmd.by ?? by } };

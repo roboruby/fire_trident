@@ -56,6 +56,7 @@ import { extractSpec, planNew } from "./spec.ts";
 import { formatMegafile } from "./megafile.ts";
 import { formatPause } from "./pause.ts";
 import { formatSpendCap } from "./spendcap.ts";
+import { formatRecipe } from "./recipe.ts";
 import { formatSilentTtl, type SilentTtlView } from "./closure.ts";
 import { formatImpact } from "./impact.ts";
 import { autonomyLine, formatImmune } from "./immune.ts";
@@ -474,6 +475,13 @@ async function execute(cmd: Command, ctx: Ctx): Promise<number> {
       const res = await send<unknown>(ctx.http, req, 60_000);
       if (ctx.flags.json) printJson(ctx, res);
       else io.stdout(formatSpendCap(cmd, res, c));
+      return 0;
+    }
+    case "recipe": {
+      // A declaration waits while the trunk writer lands batches (up to 20 s, then its alarm goes on).
+      const res = await send<unknown>(ctx.http, req, 120_000);
+      if (ctx.flags.json) printJson(ctx, res);
+      else io.stdout(formatRecipe(cmd, res, c));
       return 0;
     }
     default:

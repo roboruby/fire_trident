@@ -167,6 +167,9 @@ import { FieldGuide, guideEnabled, type GuideView } from "./guide.ts";
 import { lessonScopesEnabled } from "./lessonscope.ts";
 import type { GuideLesson, GuideTake, LessonReceipt } from "@fire_trident/core";
 import { MegafileAlarm, megafileEnabled, type MegafileHost } from "./megafile.ts";
+import { declareRecipe, intentRecipe, migrateIntentRecipes, recipeNews, type RecipeColonyHost, type RecipeDeclare } from "./recipe.ts";
+import { revalidationEnabled as flagCovers } from "@fire_trident/core";
+import type { RecipeRecord } from "@fire_trident/core";
 import { A2A_ACTOR, ColonyPause, DEPLOYMENT_PAUSE_KEY, type PauseAnswer, type PauseView, type ResumeAnswer, type WriterPause } from "./pause.ts";
 import type { MegafileHold, MegafileReport } from "@fire_trident/core";
 import { grantPriority, migratePriority, notePriority, priorityCapOf, requestedPriorityOf } from "./priority.ts";
@@ -462,6 +465,8 @@ type IntentRow = {
   priority_cap?: string | null;
   /** The intent's latest closure (IntentClosure JSON; closure.ts migrates older tables). */
   closure?: string | null;
+  /** Recipes: the intent's recipe (Recipe & { id } JSON; recipe.ts migrates older tables). */
+  recipe?: string | null;
 };
 
 type RuleRow = {
@@ -662,6 +667,8 @@ export class ColonyDO extends DurableObject<Env> {
     migrateContents(this.sql);
     migrateResolver(this.sql);
     migratePriority(this.sql);
+    // Recipes (colony/recipe.ts): the intents' recipe column.
+    migrateIntentRecipes(this.sql);
     this.backfillSeries();
     this.hub = new EventHub(() => this.ctx.getWebSockets());
     this.certifier = new Certifier(this.certifyHost());
@@ -2736,6 +2743,41 @@ export class ColonyDO extends DurableObject<Env> {
     }
     if (p?.action !== "hold") throw ftError(400, 'action must be "hold" or "release"');
     return alarm.holdByHand(p.path, p.by);
+  }
+
+  // =========================================================================
+  // Recipes (colony/recipe.ts; the trunk writer lands them, trunk/recipes.ts)
+  // =========================================================================
+
+  /**
+   * A person declares a recipe (POST /api/colonies/:id/recipes, `ft recipe`): it becomes an intent with `recipe` set, and
+   * the trunk writer lands it in batches. Answers the intent and the recipe as the trunk writer left it.
+   */
+  async declareRecipe(p: RecipeDeclare): Promise<{ intent: Intent; recipe: RecipeRecord }> {
+    return declareRecipe(this.recipeColony(), p);
+  }
+
+  /** The trunk writer tells the colony of a recipe's batch and of its end (TrunkDO.tellColony). */
+  async recipeNews(p: unknown): Promise<void> {
+    await recipeNews(this.recipeColony(), p);
+  }
+
+  private recipeColony(): RecipeColonyHost {
+    const colony = this.requireColony();
+    return {
+      sql: this.sql,
+      colonyId: colony.id,
+      now: () => Date.now(),
+      modules: flagCovers(this.env.FT_RECIPE_MODULES, colony.id) && this.env.LOADER !== undefined,
+      trunk: () => this.trunkStub(),
+      publish: (events) => this.publish(events),
+      bump: (name, delta, now) => this.bump(name, delta, now),
+      onLanding: (l) => this.onLanding(l),
+      withdraw: async (intentId, reason, by) => {
+        await this.withdrawIntent(intentId, { reason, by });
+      },
+      intentStatus: (id) => this.intentRow(id)?.status ?? null,
+    };
   }
 
   /** The files held for their split now and the holds lifted lately; null while FT_MEGAFILE does not cover the colony. */
@@ -6493,6 +6535,9 @@ export class ColonyDO extends DurableObject<Env> {
     // The closure ledger (colony/closure.ts): why it last closed or reopened while an agent held it.
     const closure = closureOf(r.closure);
     if (closure) intent.closure = closure;
+    // Recipes (colony/recipe.ts): a recipe's intent carries its recipe.
+    const recipe = intentRecipe(r.recipe);
+    if (recipe) intent.recipe = recipe;
     return intent;
   }
 
