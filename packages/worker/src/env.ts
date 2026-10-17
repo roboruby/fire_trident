@@ -306,7 +306,9 @@ export interface Env {
    * certification is recorded, its failing test files and what they load run alone on the commits since the last green
    * certification (from the trunk writer's landing log), halving the range each run, at most 8 runs and 60 s in all; the
    * result gains `firstRed` (the commit, its landing and intents, the proposals that changed what the tests load), a
-   * `bisect` event says so, and the open repair intent's why names it (certify/bisect.ts). Never on a landing's path.
+   * `bisect` event says so, and the open repair intent's why names it (certify/bisect.ts). When that landing holds several
+   * proposals, the culprit is isolated inside it, with a revert probe that proves cause (certify/isolate.ts, at most 10 runs
+   * and 60 s). Never on a landing's path.
    */
   FT_BISECT?: string;
   /**
