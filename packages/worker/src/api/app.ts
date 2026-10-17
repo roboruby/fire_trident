@@ -34,6 +34,7 @@ import { certifyRoutes } from "./certify.ts";
 import { guideRoutes } from "./guide.ts";
 import { megafileRoutes } from "./megafile.ts";
 import { reviewTestsRoutes } from "./reviewtests.ts";
+import { auditRoutes } from "./audit.ts";
 import { landingRoutes, verifyLanding } from "./landing.ts";
 import { previewRoutes } from "./preview.ts";
 import { impactRoutes } from "./impact.ts";
@@ -214,8 +215,9 @@ async function requireColony(env: Env, colonyId: Id): Promise<void> {
  *   GET    /colonies/:id/notes/verify       the newest landings' git notes against their commits' FT-Note trailers (?limit=; ?landing= checks one, api/landing.ts)
  *   GET    /colonies/:id/landings/:ref/diff the change a landing made to one file (?path=; public colonies only, api/landing.ts)
  *   GET    /colonies/:id/preview/:commit/*  a trunk file at a landing's commit, sandboxed (public colonies only, api/preview.ts)
- *   GET    /colonies/:id/review             review queue
- *   POST   /colonies/:id/review/:pid        approve | reject | return
+ *   GET    /colonies/:id/review             review queue (escalations, with audit items among them marked `audit`)
+ *   GET    /colonies/:id/audit              the audit sample and blind canaries (api/audit.ts; POST audit/:pid answers an item, POST canaries makes one)
+ *   POST   /colonies/:id/review/:pid        approve | reject | return (a blind canary answers with `canary`: what it was and how the decision scored)
  *   POST   /colonies/:id/proposals/:pid/tests  run the colony's tests on an escalated change again (api/reviewtests.ts)
  *   POST   /colonies/:id/swarm              spawn in-platform agents
  *   POST   /colonies/:id/swarm/stop         stop every running in-platform agent
@@ -576,8 +578,9 @@ export function createApi(deps: ApiDeps): Hono<ApiEnv> {
   app.post("/colonies/:id/review/:pid", requireAdmin, async (c) => {
     const colonyId = colonyParam(c);
     const b = await body(c, DecisionBody);
-    await colonyStub(c.env, colonyId).decide(c.req.param("pid"), b.decision, b.reason, b.by ?? "human");
-    return json({ ok: true });
+    const res = await colonyStub(c.env, colonyId).decide(c.req.param("pid"), b.decision, b.reason, b.by ?? "human");
+    // Blind canaries (colony/audit.ts): a decided canary is revealed in the answer.
+    return json({ ok: true, ...(res && typeof res === "object" ? res : {}) });
   });
 
   app.post("/colonies/:id/landings/:ref/revert", requireAdmin, async (c) => {
@@ -605,6 +608,7 @@ export function createApi(deps: ApiDeps): Hono<ApiEnv> {
   guideRoutes(app, requireAdmin, isAdminRequest); // Field guide: lessons agents left, and a person's approval or rejection (api/guide.ts)
   megafileRoutes(app, requireAdmin); // Megafile alarm: held files, a person's hold or release (api/megafile.ts)
   reviewTestsRoutes(app, requireAdmin); // Tests before approval: run an escalated change's tests again (api/reviewtests.ts)
+  auditRoutes(app, requireAdmin); // Audit sample and blind canaries: landings without a person put to a person, and their measures (api/audit.ts)
   landingRoutes(app); // One landing's change to a file, for public colonies (api/landing.ts)
   previewRoutes(app); // A trunk file at a landing's commit, sandboxed, for public colonies (api/preview.ts)
   impactRoutes(app); // Impact: what a change to a file reaches through imports, and who works on those files now (api/impact.ts)

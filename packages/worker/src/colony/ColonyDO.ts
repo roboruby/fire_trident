@@ -198,6 +198,7 @@ import { SPEND_CAP_ACTOR, SpendCapBook, agentReserve, agentSettle, bookUsd, capp
 import { ClosureLedger, abandonCause, closureOf, eventFields, reapCutoffs, silentTtlMs, type AbandonCause, type ClosureEventFields, type SilentTtlView } from "./closure.ts";
 import type { ClosureCause, ClosureReport, IntentClosure } from "@fire_trident/core";
 import { CoordMeter, coordTokensReport, headsUpBumps, type CoordTokensReport } from "./coordtokens.ts";
+import { ColonyAudit, type AuditAnswer, type AuditHost, type AuditReport, type CanaryAnswer } from "./audit.ts";
 
 /**
  * Result of ColonyDO.take: an assignment, or advice to wait and retry. `review`: what review will
@@ -2496,6 +2497,13 @@ export class ColonyDO extends DurableObject<Env> {
     // Intents named by the landing whose proposals this colony does not know (the ones it knows
     // settled with their proposals above).
     for (const iid of l.intentIds ?? []) if (!known.has(iid)) this.landIntent(iid, now, fx);
+    // Audit sample (colony/audit.ts): a share of the changes that landed without a person goes to a person's audit queue,
+    // after the landing (it never holds one).
+    const settled = (l.proposalIds ?? []).flatMap((pid) => {
+      const row = this.proposalRow(pid);
+      return row ? [JSON.parse(row.data) as Proposal] : [];
+    });
+    this.audits().landed(l, settled, now);
 
     const paths = normalizePaths(l.paths && l.paths.length > 0 ? l.paths : writtenPaths);
     fx.batch.deposit("trail", paths, TRAIL_STRENGTH, now);
@@ -2554,7 +2562,8 @@ export class ColonyDO extends DurableObject<Env> {
       const last = this.lastReturn(p.intentId);
       if (last?.movedBy || last?.contested) Object.assign(p, { lastReturn: last });
     }
-    return queue;
+    // The baseline stream (colony/audit.ts): landings from the audit sample among the escalations, marked `audit`.
+    return this.audits().queue(queue);
   }
 
   /**
@@ -2617,7 +2626,7 @@ export class ColonyDO extends DurableObject<Env> {
   }
 
   /** A human decision on a proposal: approve (back to its lane), reject (intent reopened) or return. */
-  async decide(proposalId: Id, d: "approve" | "reject" | "return", reason: string, by: string): Promise<void> {
+  async decide(proposalId: Id, d: "approve" | "reject" | "return", reason: string, by: string): Promise<CanaryAnswer | void> {
     const colony = this.requireColony();
     if (d !== "approve" && d !== "reject" && d !== "return") throw ftError(400, `unknown decision ${String(d)}`);
     const row = this.proposalRow(proposalId);
@@ -2626,6 +2635,9 @@ export class ColonyDO extends DurableObject<Env> {
     const p = this.withContents(JSON.parse(row.data) as Proposal);
     if (p.status === "landed" || p.status === "rejected" || p.status === "returned") throw ftError(409, `proposal is already ${p.status}`);
     const engine = this.decider();
+    // Blind canaries (colony/audit.ts): a canary is revealed and scored and stays sealed; nothing else of a decision happens.
+    const canary = this.audits().canaryDecision(p, d, reason, by);
+    if (canary) return canary;
     if (d === "approve" && engine.store.vaccineByIntent(p.intentId)) throw ftError(409, "vaccine proposals are sealed and can never land");
     const now = Date.now();
     // Tests before approval (certify/reviewtests.ts): what the colony's tests said when the person decided, for the decision and the lineage note.
@@ -2900,7 +2912,100 @@ export class ColonyDO extends DurableObject<Env> {
     const colony = this.requireColony();
     const engine = this.decider();
     const now = Date.now();
-    return decidesReport({ colonyId: colony.id, policy: engine.store.policy(), reviewing: engine.enabled(), split: cachedSplit(this.sql, now), now });
+    const report = decidesReport({ colonyId: colony.id, policy: engine.store.policy(), reviewing: engine.enabled(), split: cachedSplit(this.sql, now), now });
+    // The audit sample in one line (colony/audit.ts): what people found when they looked at landings without a person.
+    try {
+      return { ...report, audit: this.audits().summary(now) };
+    } catch (err) {
+      console.warn(`audit line left out of how the colony decides: ${errorText(err)}`);
+      return report;
+    }
+  }
+
+  // =========================================================================
+  // The audit sample, the baseline stream and blind canaries (colony/audit.ts)
+  // =========================================================================
+
+  /** The audit (GET /api/colonies/:id/audit, public): its measures, the items waiting by id and the latest answers. Waiting canaries are never named. */
+  async auditState(): Promise<ReturnType<ColonyAudit["report"]>> {
+    this.requireColony();
+    return this.audits().report();
+  }
+
+  /** A person's answer to an audit item (POST /api/colonies/:id/audit/:pid): fine, or should not have landed with a reason (and `revert`). */
+  async auditAnswer(proposalId: Id, a: { verdict: string; reason?: string; by?: string; revert?: boolean }): Promise<AuditAnswer> {
+    this.requireColony();
+    return this.audits().answer(proposalId, a ?? { verdict: "" });
+  }
+
+  /** Put one canary in the human queue now (POST /api/colonies/:id/canaries): only while the colony's canaryRate is on. */
+  async canaryNow(): Promise<{ proposalId: Id | null; sentence: string }> {
+    this.requireColony();
+    if (!(this.decider().store.policy().canaryRate > 0)) throw ftError(409, "canaries are off in this colony: set canaryRate in its decide policy first (ft audit <colony> --canary-rate 5)");
+    let proposalId: Id | null;
+    try {
+      proposalId = await this.audits().injectCanary(`now:${Date.now()}`);
+    } catch (err) {
+      throw ftError(503, `No canary was made, so nothing reached the review queue: ${errorText(err)}. Try again once that is fixed.`);
+    }
+    return proposalId
+      ? { proposalId, sentence: "A canary is on its way to the review queue; nothing on its card says so until a person decides it." }
+      : { proposalId: null, sentence: "No canary could be built from this colony's files: none of its threat classes fits a source file here." };
+  }
+
+  private auditing: ColonyAudit | null = null;
+
+  /** The audit sample and canaries of this colony (colony/audit.ts), made on first use. */
+  private audits(): ColonyAudit {
+    if (this.auditing) return this.auditing;
+    const host: AuditHost = {
+      env: this.env,
+      sql: this.sql,
+      decide: () => this.decider().store,
+      colony: () => this.requireColony(),
+      proposal: (id) => this.withContents(this.getProposalSync(id)),
+      intent: (id) => {
+        const row = this.intentRow(id);
+        return row ? this.toIntent(row, this.requireColony().id) : null;
+      },
+      rules: () => {
+        const colonyId = this.requireColony().id;
+        return this.sql.exec<RuleRow>("SELECT * FROM rules WHERE retracted_at IS NULL ORDER BY created_at").toArray().map((r) => this.toRule(r, colonyId));
+      },
+      landing: (id) => parseJson<Landing | null>(this.sql.exec<{ data: string }>("SELECT data FROM landings WHERE id = ?", id).toArray()[0]?.data, null),
+      trunk: () => this.trunkStub() as unknown as TrunkRpc,
+      waitUntil: (p) => this.ctx.waitUntil(p),
+      publish: (events) => void this.publish(events),
+      revert: (landingId, p) => this.revertProposal(landingId, p),
+      seal: (id, reason, evidence) => this.sealProposal(id, reason, evidence),
+      canaryAgent: () => this.canaryAgent(),
+      vaccineTargets: (limit) =>
+        this.sql
+          .exec<{ id: string; title: string; why: string; footprint: string; rule_id: string | null }>(
+            `SELECT id, title, why, footprint, rule_id FROM intents WHERE rule_id IS NOT NULL AND created_by != 'vaccine'
+             ORDER BY CASE status WHEN 'open' THEN 0 WHEN 'claimed' THEN 1 WHEN 'proposed' THEN 2 ELSE 3 END, created_at LIMIT ?`,
+            limit,
+          )
+          .toArray()
+          .map((r) => ({ title: r.title, why: r.why, footprint: this.footprintOf(r.id, r.footprint), ...(r.rule_id ? { ruleId: r.rule_id } : {}) })),
+      sealedIntent: (i) => this.sealedIntent(i),
+      propose: (input) => this.propose(input),
+    };
+    return (this.auditing = new ColonyAudit(host));
+  }
+
+  /** The colony's canary agent: a synthetic agent named the way the platform names its others, so a card does not give it away (registered once). */
+  private async canaryAgent(): Promise<Id> {
+    const store = this.decider().store;
+    const known = store.meta("canaryAgent");
+    if (known && this.agentRow(known)) {
+      this.sql.exec("UPDATE agents SET last_seen = ? WHERE id = ?", Date.now(), known);
+      return known;
+    }
+    const [agent] = await this.registerAgents([{ kind: "synthetic", name: `synthetic-${Date.now().toString(36).slice(-4)}-1`, model: "canary" }]);
+    if (!agent) throw ftError(500, "canary agent was not registered");
+    store.setMeta("canaryAgent", agent.id);
+    return agent.id;
   }
 
   /**
@@ -4431,6 +4536,7 @@ export class ColonyDO extends DurableObject<Env> {
     intentSpend?: Record<Id, IntentSpendBrief>;
     closures?: ClosureReport;
     coordTokens?: CoordTokensReport;
+    audit?: AuditReport;
   }> {
     const colony = this.requireColony();
     const now = Date.now();
@@ -4458,7 +4564,19 @@ export class ColonyDO extends DurableObject<Env> {
     const closures = this.closureReport();
     // Coordination tokens per take (colony/coordtokens.ts), an estimate from the counters; absent before the first counted take.
     const coordTokens = coordTokensReport(metrics);
-    return { ...report, ...(spend ? { spend } : {}), ...(intentSpend ? { intentSpend } : {}), ...(closures ? { closures } : {}), ...(coordTokens ? { coordTokens } : {}) };
+    // The audit sample, blind canaries and people's decisions over time (colony/audit.ts); absent when they cannot be read.
+    const audit = this.auditMeasures(now);
+    return { ...report, ...(spend ? { spend } : {}), ...(intentSpend ? { intentSpend } : {}), ...(closures ? { closures } : {}), ...(coordTokens ? { coordTokens } : {}), ...(audit ? { audit } : {}) };
+  }
+
+  /** The audit's measures for the metrics report, or undefined when they cannot be read (logged). */
+  private auditMeasures(now: number): AuditReport | undefined {
+    try {
+      return this.audits().measures(now);
+    } catch (err) {
+      console.warn(`audit measures failed: ${errorText(err)}`);
+      return undefined;
+    }
   }
 
   /** What the colony's model calls cost so far (colony/spend.ts), for the status GET /api/colonies/:id serves; null before init. */
@@ -6041,6 +6159,8 @@ export class ColonyDO extends DurableObject<Env> {
         if (p.status === "escalated") this.bump("escalated", 1, now);
         // Tests before approval (certify/reviewtests.ts): the colony's tests run on the change while it waits for a person.
         if (p.status === "escalated" && prev !== "escalated") this.reviewTests().escalated(p);
+        // Blind canaries (colony/audit.ts): with the colony's canaryRate on, an escalation may bring a canary into the queue.
+        if (p.status === "escalated" && prev !== "escalated") this.audits().escalated(p, now);
         break;
       }
       case "returned":

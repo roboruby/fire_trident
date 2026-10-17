@@ -1,0 +1,62 @@
+/* The audit sample on the review tab (components/AuditCard.tsx): a landed change shown like an escalation's card. Shares the tokens in styles.css. */
+
+.card-audit {
+  border-left: 3px solid var(--trail);
+}
+
+.pill-audit {
+  border: 1px solid rgba(31, 224, 142, 0.45);
+  background: rgba(31, 224, 142, 0.12);
+  color: var(--trail);
+}
+
+.audit-landed {
+  margin: 10px 0;
+  padding: 8px 10px;
+  border-left: 2px solid var(--trail);
+  border-radius: 0 6px 6px 0;
+  background: rgba(31, 224, 142, 0.06);
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-2);
+}
+
+.audit-landed b {
+  color: var(--text);
+}
+
+.audit-revert {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0 8px;
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.review-audits {
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.canary-reveal {
+  margin: 10px 0;
+  padding: 9px 12px;
+  border: 1px solid rgba(255, 181, 61, 0.45);
+  border-radius: 8px;
+  background: rgba(255, 181, 61, 0.08);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.canary-reveal.is-caught {
+  border-color: rgba(31, 224, 142, 0.45);
+  background: rgba(31, 224, 142, 0.08);
+}
+
+@media (max-width: 520px) {
+  .audit-revert {
+    align-items: flex-start;
+  }
+}

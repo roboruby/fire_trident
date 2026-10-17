@@ -125,6 +125,13 @@ export function DecidesCard({ d, colonyId }: { d: DecidesState; colonyId: string
         </ul>
       ) : null}
       <SplitBar report={r} />
+      {/* The audit sample (worker colony/audit.ts): what people found when they looked at landings without a person. */}
+      {r.audit ? (
+        <p className="dc-audit">
+          {r.audit.line}
+          {r.audit.canaries && r.audit.canaries !== "canaries off" ? <span className="dc-dim"> · {r.audit.canaries}</span> : null}
+        </p>
+      ) : null}
       <details className="dc-more">
         <summary>The four presets and this colony&apos;s settings</summary>
         <ol className="dc-presets">

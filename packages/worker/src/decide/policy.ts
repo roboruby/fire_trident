@@ -41,6 +41,17 @@ export interface DecidePolicy {
   budgetRiskFloor: number;
   /** Landings approved by a higher layer in a region before the reflex may land there alone. */
   autonomyAfter: number;
+  /**
+   * The audit sample (decide/audit.ts): the share of changes that landed without a person (a deterministic proof, a
+   * reproduction, a model's approval, earned autonomy) put in front of a person after they landed, from 0 (off) to 0.2.
+   * Stratified by what confirmed them; it never holds a landing.
+   */
+  auditRate: number;
+  /**
+   * Blind canaries (decide/canary.ts): the chance each escalation that reaches a person brings a sealed known-bad change
+   * into the human queue with it, from 0 (off, the default) to 0.2. A person turns it on.
+   */
+  canaryRate: number;
   /** Detector probation: not useful at least `advisory` of the time → advisory; more than `off` → off; after `minFires` fires. */
   probation: { advisory: number; off: number; minFires: number };
   /** Matching antibodies asked per proposal (one Clef call takes 64 questions; 4 are the standard ones). */
@@ -99,6 +110,8 @@ export const DEFAULT_POLICY: DecidePolicy = {
   alertsPerHour: 30,
   budgetRiskFloor: 2,
   autonomyAfter: 3,
+  auditRate: 0.03,
+  canaryRate: 0,
   probation: { advisory: 0.1, off: 0.25, minFires: 5 },
   maxAntibodies: 60,
   llmConcurrency: 8,
@@ -127,6 +140,11 @@ function allowances(v: unknown, fallback: DecidePolicy["dangerAllow"]): DecidePo
   }
   return out;
 }
+
+/** The largest audit sample a colony takes: a fifth of its landings without a person. */
+export const MAX_AUDIT_RATE = 0.2;
+/** The largest canary rate: one escalation in five brings a canary. */
+export const MAX_CANARY_RATE = 0.2;
 
 /** The most protected paths a colony keeps. */
 export const MAX_PROTECTED_PATHS = 50;
@@ -186,11 +204,16 @@ function protectedGlobs(v: unknown, fallback: string[]): string[] {
 /**
  * Problems with the fields of a policy patch that mergePolicy would otherwise drop without a word, so a
  * person could believe them set: commentProof that is not a boolean, protectedPaths that is not a list
- * of at most 50 usable globs. Each reads "field: problem". Empty when the patch can be applied.
+ * of at most 50 usable globs, an auditRate or a canaryRate that is not a share from 0 to 0.2 (5 meant as 5%
+ * would otherwise read as 0.2). Each reads "field: problem". Empty when the patch can be applied.
  */
 export function policyProblems(patch: Record<string, unknown>): string[] {
   const out: string[] = [];
   if (patch.commentProof !== undefined && typeof patch.commentProof !== "boolean") out.push("commentProof: must be true or false");
+  for (const [field, max] of [["auditRate", MAX_AUDIT_RATE], ["canaryRate", MAX_CANARY_RATE]] as const) {
+    const v = patch[field];
+    if (v !== undefined && (typeof v !== "number" || !Number.isFinite(v) || v < 0 || v > max)) out.push(`${field}: must be a share from 0 to ${max} (0.03 is 3%)`);
+  }
   const globs = patch.protectedPaths;
   if (globs !== undefined) {
     if (!Array.isArray(globs)) {
@@ -234,6 +257,8 @@ export function mergePolicy(base: DecidePolicy, patch: unknown): DecidePolicy {
     alertsPerHour: Math.floor(num(p.alertsPerHour, 0, 10_000, base.alertsPerHour)),
     budgetRiskFloor: num(p.budgetRiskFloor, 0, 3, base.budgetRiskFloor),
     autonomyAfter: Math.floor(num(p.autonomyAfter, 1, 1_000, base.autonomyAfter)),
+    auditRate: num(p.auditRate, 0, MAX_AUDIT_RATE, base.auditRate),
+    canaryRate: num(p.canaryRate, 0, MAX_CANARY_RATE, base.canaryRate),
     probation: {
       advisory: num(prob.advisory, 0, 1, base.probation.advisory),
       off: num(prob.off, 0, 1, base.probation.off),

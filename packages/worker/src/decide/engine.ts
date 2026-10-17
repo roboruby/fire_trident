@@ -56,6 +56,7 @@ import {
   type ReflexInput,
 } from "./reflex.ts";
 import { buildReviewView } from "./review.ts";
+import { canaryDiscarded, isCanary } from "./canary.ts";
 import { gateRecord } from "./ruleline.ts";
 import { maskNote } from "../trunk/mask.ts";
 import { damageSignals, isTestPath, protectedHits } from "./signals.ts";
@@ -254,6 +255,8 @@ export class DecideEngine {
     const rule = intent?.ruleId ? (rules.find((r) => r.id === intent.ruleId) ?? null) : null;
     const region = this.host.proposalRegion(p.id);
     const vaccine = this.store.vaccineByIntent(p.intentId);
+    // Blind canaries (decide/canary.ts): a sealed vaccine meant for the human queue.
+    const canary = isCanary(vaccine);
     // Tests before landing (certify/preland.ts, FT_PRELAND): with review off, a change that came here only for its tests
     // runs them and goes on to its lane, or back to its agent when a test that passed on trunk fails with it.
     if (!vaccine && !this.enabled() && this.host.prelandCovers?.(p) === true && protectedHits(p.writeSet.map((w) => w.path), policy.protectedPaths ?? []).length === 0) {
@@ -384,6 +387,14 @@ export class DecideEngine {
     let reflex: ReflexSignals | null | undefined;
     let llm: SecondOpinion | null | undefined;
     let state: Record<string, unknown> | null = null;
+
+    // Blind canaries: a canary reaches a person only through the deterministic stage and is never put to a model; any
+    // other verdict discards it here, sealed.
+    if (canary && final.action !== "escalate") {
+      this.store.settleVaccine(p.intentId, "error", final.layer, `canary not queued: ${final.reasons.join("; ")}`, Date.now());
+      this.host.seal(p.id, canaryDiscarded(final.reasons), { ...p.evidence, checks: [...p.evidence.checks, ...checks] });
+      return;
+    }
 
     if (final.action === "screen") {
       // Quoted acceptance (FT_QUOTED_ACCEPTANCE, decide/acceptance.ts): the intent's acceptance lines and the keep lines
@@ -538,7 +549,9 @@ export class DecideEngine {
       return;
     }
     const reason = final.reasons.join("; ").slice(0, 1_500);
-    if (vaccine) {
+    // A canary the deterministic stage escalated waits for a person like any escalation; it stays sealed, so nothing lands it.
+    if (canary) this.store.settleVaccine(p.intentId, "escalated", final.layer, reason, now);
+    if (vaccine && !canary) {
       // A vaccine stopped only because a model layer was down is not a catch: it is an error, left
       // out of recall. That is System 2 consulted and unavailable (outage, throttling, timeout), or
       // every model layer down.
@@ -559,7 +572,7 @@ export class DecideEngine {
     }
     // A security finding (a return or an escalation) puts the intent on probation: its next
     // proposals go to a person instead of a model, so its agent cannot probe the reviewers.
-    if (final.security && final.action !== "land") {
+    if (!canary && final.security && final.action !== "land") {
       this.store.markSecurityFinding(p.intentId, final.security, now);
       this.host.bump("decide.security.findings", 1);
     }
@@ -567,7 +580,8 @@ export class DecideEngine {
       await this.host.updateProposals([{ id: p.id, patch: { status: "ready", evidence, ...relied } }]);
     } else if (final.action === "escalate") {
       // A change no model could review (L8: the spend cap; M2: the reflex unavailable) says nothing against its region.
-      if (!UNREVIEWED.has(final.rule)) this.store.revokeAutonomy(region, `escalated ${p.id}`, now);
+      // A canary says nothing about its region either.
+      if (!canary && !UNREVIEWED.has(final.rule)) this.store.revokeAutonomy(region, `escalated ${p.id}`, now);
       // What the person sees: the change itself, its danger patterns and residual, secrets masked.
       try {
         this.store.putReview(p.id, buildReviewView({ files: repro?.view ?? innate.files, danger: dangerHits, residual: innate.residual, ...(repro?.review ? { reproduction: repro.review } : {}) }), now);
