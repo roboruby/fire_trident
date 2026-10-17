@@ -6,6 +6,8 @@ export * from "./answerable.ts";
 export * from "./testdelta.ts";
 // How a colony decides: the rule that confirmed each landed change, and the words for its report (decides.ts).
 export * from "./decides.ts";
+// The lifecycle strip of a change: declared to merged by a person, and where it left the path (lifecycle.ts).
+export * from "./lifecycle.ts";
 
 const SUBJECT_MAX = 72;
 

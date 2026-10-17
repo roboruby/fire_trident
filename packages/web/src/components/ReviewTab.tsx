@@ -19,6 +19,8 @@ import { AutonomyStrip } from "./AutonomyStrip.tsx";
 import { EvidenceChips } from "./SaidBy.tsx";
 import { ReviewTests } from "./ReviewTests.tsx";
 import { testsPending } from "../reviewtests.ts";
+import { LifecycleStrip } from "./Lifecycle.tsx";
+import { lifecycleHref, reviewLifecycle } from "../lifecycle.ts";
 
 const NONE: readonly string[] = [];
 
@@ -77,6 +79,13 @@ function decisionPath(p: Proposal, store: ColonyStore): DecisionView[] {
   if (list.length) return list.sort((a, b) => a.at - b.at).slice(-6);
   // Escalated before this page opened: read the chain from the evidence the reflex and LLM layers wrote.
   return decisionsFromChecks(p.evidence?.checks);
+}
+
+/** The review card's lifecycle strip, built from the queue's item. */
+function ReviewLifecycle({ store, p, mode }: { store: ColonyStore; p: Proposal; mode: Backend["mode"] }) {
+  const s = reviewLifecycle(store, p);
+  const colonyId = store.colony?.id ?? store.colonyId;
+  return <LifecycleStrip s={s} href={(l) => lifecycleHref(colonyId, s, l, mode)} now={store.now()} />;
 }
 
 const LAYER_LABEL: Record<DecisionLayer, string> = { reflex: "Reflex", llm: "LLM", human: "Human" };
@@ -268,6 +277,8 @@ export function ReviewTab({ store, backend, director = false }: { store: ColonyS
               </div>
               {/* Tests before approval: the colony's tests on the change at its base lead what a person reads. */}
               <ReviewTests item={p} backend={backend} readOnly={replay} director={director} onAsked={() => void load()} />
+              {/* Its lifecycle strip: how far it came, and that it waits for a person (Lifecycle.tsx, core/lifecycle.ts). */}
+              <ReviewLifecycle store={store} p={p} mode={backend.mode} />
               {moved || contested ? <MovedByList moved={moved ?? []} contested={contested ?? []} agentName={(id) => store.agentName(id)} /> : null}
               {/* Merge locks: the merge a person is asked to approve, read before the change itself. */}
               {held ? <MergeHold files={held} /> : null}

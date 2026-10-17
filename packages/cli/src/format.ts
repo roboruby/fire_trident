@@ -41,6 +41,7 @@ import { prelandLine } from "./preland.ts";
 import { heldLines } from "./mergehold.ts";
 import { confirmedLine } from "./gateline.ts";
 import { reviewTestsLines } from "./reviewtests.ts";
+import { lifecycleLines, whyLifecycleRows } from "./strip.ts";
 
 /** ANSI styling functions; identity functions when color is off. */
 export interface Colors {
@@ -764,6 +765,9 @@ export interface WhyContext {
   rules?: Rule[];
   /** Each landing's test row, by landing id, where the colony gave one (tests.ts). */
   tests?: Record<string, LandingTests>;
+  /** The status read's newest green commit and recent landings: the lifecycle strip places a landing without a test row by them (strip.ts). */
+  greenSha?: string;
+  landings?: Landing[];
 }
 
 /**
@@ -856,6 +860,8 @@ export function formatWhy(
       if (unproven) out.push(`  ${label("unproven")}${unproven}`);
       out.push(`  ${label("wrote")}${paths(p.writeSet.map((w) => w.path), 4)}`);
       if (p.readSet.length) out.push(`  ${label("read")}${paths(p.readSet.map((r) => r.path), 4)}`);
+      // Last, its lifecycle strip, declared to merged by a person, from its note (strip.ts, core/lifecycle.ts).
+      for (const row of whyLifecycleRows(landing, p, note?.certification, { ...ctx, intents }, c)) out.push(`  ${label(row.k)}${row.v}`);
     }
   }
   return out.join("\n");
@@ -1170,6 +1176,8 @@ export interface IntentShowResult {
   spend?: IntentSpend;
   /** Why it closed or reopened while agents held it, newest first (the closure ledger; servers before it send none). */
   closures?: IntentClosure[];
+  /** Its lifecycle strip (GET /intents/:iid/lifecycle, read beside it; servers before it have none). */
+  lifecycle?: unknown;
 }
 
 const ANSWERED: Record<string, string> = { amend: "amended", withdraw: "withdrawn", dismiss: "dismissed" };
@@ -1197,6 +1205,8 @@ export function formatIntentShow(res: IntentShowResult, c: Colors, now: number):
   const closures = res.closures && res.closures.length > 0 ? res.closures : i.closure ? [i.closure] : [];
   for (const [n, cl] of closures.slice(0, 5).entries()) out.push(`  ${c.dim((n === 0 ? "closed" : "").padEnd(10))}${closureLine(cl, c, now)}`);
   if (closures.length > 5) out.push(`  ${"".padEnd(10)}${c.dim(`${closures.length - 5} earlier (--json lists them)`)}`);
+  // Its lifecycle strip (strip.ts): a row per step with its evidence, where a change left the path, and its other changes.
+  out.push(...lifecycleLines(res.lifecycle, c, now));
   for (const r of res.revisions ?? []) {
     out.push(`  ${c.dim(`r${r.revision}`.padEnd(10))}${r.changed.join(", ")} changed by ${r.by} ${c.dim(ago(r.at, now))}: ${quote(r.reason, 80)}${r.substantive === false ? c.dim(" (priority only)") : ""}`);
     for (const f of r.changed) {

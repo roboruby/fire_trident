@@ -35,6 +35,7 @@ import { REPEATED_RETURNS, type ColonyStore } from "../store.ts";
 import { useThrottledVersion } from "../useStore.ts";
 import { MovedBadge } from "./MovedBy.tsx";
 import { closureBadge } from "../closure.ts";
+import { IntentLifecycleToggle } from "./Lifecycle.tsx";
 
 /** Groups that start open: the most urgent few, decided once when each first appears (a person's clicks win after that). */
 const OPEN_AT_FIRST = 3;
@@ -333,6 +334,8 @@ function IntentRow({ item, store, book, now, lit, setLitEl, onPick, onFollow }: 
         </span>
       </div>
       {chain.length ? <WhyChain links={chain} onFollow={onFollow} /> : null}
+      {/* Its lifecycle strip, read from the colony when a person opens it (Lifecycle.tsx). */}
+      <IntentLifecycleToggle store={store} intentId={it.id} now={now} />
     </li>
   );
 }

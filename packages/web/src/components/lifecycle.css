@@ -1,0 +1,266 @@
+/* The lifecycle strip (components/Lifecycle.tsx): a row of steps from declared to merged by a person, on the Why tab's cards, the review card and the Intents tab. Shares the tokens in styles.css. */
+
+.life {
+  display: block;
+  min-width: 0;
+  margin: 8px 0 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(10, 14, 20, 0.7);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+
+.life-why > div + div {
+  margin-top: 4px;
+}
+
+.life-for {
+  font-size: 10.5px;
+  color: var(--text-3);
+}
+
+/* The row: chips that wrap, an arrow between them. */
+.life-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.life-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.life-step + .life-step::before {
+  content: "→";
+  margin-right: 2px;
+  font-size: 10px;
+  color: var(--text-4);
+}
+
+.life-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px;
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  background: #0f151f;
+  color: var(--text-3);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-decoration: none;
+}
+
+a.life-chip:hover,
+a.life-chip:focus-visible {
+  border-color: var(--text-3);
+  color: var(--text);
+}
+
+.life-mark {
+  font-size: 10px;
+}
+
+.life-step.is-done .life-chip {
+  border-color: rgba(31, 224, 142, 0.35);
+  color: var(--text-2);
+}
+
+.life-step.is-done .life-mark {
+  color: var(--trail);
+}
+
+/* The step reached. */
+.life-step.is-reached .life-chip {
+  border-color: var(--trail);
+  background: rgba(31, 224, 142, 0.14);
+  color: var(--text);
+  box-shadow: 0 0 0 1px rgba(31, 224, 142, 0.25);
+}
+
+/* The forge's steps: never done here. */
+.life-step.is-outside .life-chip {
+  border-style: dashed;
+  color: var(--text-3);
+}
+
+.life-step.is-none .life-chip {
+  border-style: dotted;
+  color: var(--text-4);
+}
+
+/* Steps after the one a change left the path at. */
+.life-step.is-left .life-chip {
+  opacity: 0.45;
+}
+
+/* Where a change left the path: after the step it reached, in amber (returned, escalated) or red (withdrawn, reaped). */
+.life .life-step .life-chip.life-off-chip {
+  margin-left: 4px;
+  border-color: var(--need);
+  background: rgba(255, 181, 61, 0.12);
+  box-shadow: none;
+  color: var(--need);
+}
+
+.life .life-step .life-off-chip .life-mark {
+  color: inherit;
+}
+
+.life.is-reaped .life-step .life-chip.life-off-chip,
+.life.is-withdrawn .life-step .life-chip.life-off-chip {
+  border-color: var(--failure);
+  background: rgba(176, 66, 76, 0.14);
+  color: #f0a3aa;
+}
+
+.life-line {
+  margin-top: 6px;
+  color: var(--text-2);
+}
+
+.life-line b {
+  color: var(--text);
+  font-weight: 650;
+}
+
+.life-off b {
+  color: var(--need);
+}
+
+.life.is-reaped .life-off b,
+.life.is-withdrawn .life-off b {
+  color: #f0a3aa;
+}
+
+.life-next {
+  margin-top: 2px;
+  color: var(--text-3);
+}
+
+.life-ev {
+  color: inherit;
+}
+
+a.life-ev {
+  text-decoration: underline;
+  text-decoration-color: var(--text-4);
+  text-underline-offset: 3px;
+}
+
+a.life-ev:hover {
+  color: var(--text);
+}
+
+.life-at,
+.life-quote {
+  color: var(--text-3);
+}
+
+.life-caption {
+  margin: 6px 0 0;
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+.life-toggle {
+  display: inline-block;
+  margin-top: 4px;
+  font-size: 11px;
+  text-align: left;
+}
+
+/* Every step: a label column and its words, stacked under 480 px. */
+.life-list {
+  display: grid;
+  gap: 3px;
+  margin: 6px 0 2px;
+  padding: 0;
+  list-style: none;
+}
+
+.life-item {
+  display: grid;
+  grid-template-columns: 142px minmax(0, 1fr);
+  gap: 8px;
+}
+
+.life-item-k {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  color: var(--text-3);
+  font-weight: 600;
+}
+
+.life-item.is-done .life-item-k .life-mark {
+  color: var(--trail);
+}
+
+.life-item.is-reached .life-item-k {
+  color: var(--trail);
+}
+
+.life-item.is-todo .life-item-v,
+.life-item.is-outside .life-item-v,
+.life-item.is-none .life-item-v {
+  color: var(--text-3);
+}
+
+.life-item-v {
+  min-width: 0;
+}
+
+.life-cmd {
+  display: block;
+  margin-top: 2px;
+  padding: 3px 6px;
+  border-radius: 6px;
+  background: #121925;
+  color: var(--text-2);
+  font-family: var(--mono);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.life-item-off {
+  display: block;
+  color: var(--need);
+}
+
+.life-quiet,
+.life-earlier {
+  margin: 4px 0;
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+
+.life-intent {
+  margin-top: 6px;
+}
+
+.life-intent .life {
+  margin: 0;
+}
+
+@media (max-width: 480px) {
+  .life {
+    padding: 8px;
+  }
+
+  .life-item {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+}

@@ -17,6 +17,7 @@ import { AnswerableLine, EvidenceList, SaidBy } from "./SaidBy.tsx";
 import { LandingTestsRow } from "./TestsRow.tsx";
 import { AUTO_ROWS } from "../tests.ts";
 import { ConfirmedLine, DecidesFold, useDecides } from "./Decides.tsx";
+import { WhyLifecycles } from "./Lifecycle.tsx";
 
 type NoteProposal = LineageNote["proposals"][number];
 
@@ -237,6 +238,8 @@ function LineageEntry({ entry, path, store, newest, backend, tests }: { entry: W
       <ConfirmedLine c={landingConfirmed(note)} />
       {/* Its tests at its base against the certified commit (TestsRow.tsx): read as the card opens for the newest, on a click for the rest. */}
       <LandingTestsRow backend={backend} landingId={landing.id} auto={tests} />
+      {/* Each change's lifecycle strip, declared to merged by a person, from its note (Lifecycle.tsx, core/lifecycle.ts). */}
+      <WhyLifecycles store={store} backend={backend} entry={entry} proposals={shown} auto={tests} />
       {shown.map((p) => (
         <ProposalChain key={p.id} p={p} path={path} store={store} />
       ))}
