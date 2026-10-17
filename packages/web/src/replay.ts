@@ -870,9 +870,16 @@ export class ReplayBackend implements Backend {
     return fetchLandingDiff(this.colonyId, landingId, path);
   }
 
-  /** A replay has no review queue to act on: what waited for a person is history. */
+  /**
+   * What waited for a person at this point in the run, read-only: the colony's review queue (a recording's, when one
+   * plays: scripts/record_colony.ts keeps it), each card only while the replay shows its change escalated. A queue that
+   * cannot be read shows none.
+   */
   async review(): Promise<Proposal[]> {
-    return [];
+    const store = this.store;
+    if (!store) return [];
+    const list = await this.getJson<unknown>("/review").catch(() => null);
+    return Array.isArray(list) ? (list as Proposal[]).filter((p) => !!p && typeof p.id === "string" && store.proposals.get(p.id)?.status === "escalated") : [];
   }
 
   async decide(_proposalId: string, _decision: ReviewDecision, _reason: string): Promise<void> {

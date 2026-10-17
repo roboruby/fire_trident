@@ -9,6 +9,7 @@ import { KIND_INDEX, decayed } from "../theme.ts";
 import { useThrottledVersion } from "../useStore.ts";
 import { routedLine } from "../vaccineRouting.ts";
 import { beatLimit, beatWaits, moveOnLine, watchBeat } from "./beat.ts";
+import { recipeFills, sceneHref, sceneRun } from "./recipeScenes.ts";
 import raw from "./script.json";
 
 /** One scene of the director script (see script.json for the field reference). */
@@ -31,6 +32,10 @@ export interface Scene {
   requires?: string;
   /** The longest this beat waits for what it shows before the director moves on, in ms (beat.ts; BEAT_MAX_MS when absent). */
   maxMs?: number;
+  /** The recorded run the scene plays (recipeScenes.ts): the director opens it when the page plays another. */
+  recording?: string;
+  /** The replay's speed on that recording. */
+  speed?: number;
 }
 
 const TABS: ReadonlySet<string> = new Set(["events", "intents", "review", "why"]);
@@ -57,6 +62,7 @@ export function loadScenes(data: unknown): Scene[] {
       ...(s.code === true ? { code: true } : {}),
       ...(typeof s.requires === "string" ? { requires: s.requires } : {}),
       ...(typeof s.maxMs === "number" && Number.isFinite(s.maxMs) && s.maxMs > 0 ? { maxMs: s.maxMs } : {}),
+      ...sceneRun(s),
     }));
 }
 
@@ -187,6 +193,8 @@ function fill(text: string, store: ColonyStore): string {
     mcpAgent: outside ? store.agentName(outside.agentId) : "an outside agent",
     mcpFile: outside?.paths[0] ? basename(outside.paths[0]) : "a change",
     mcpLanded: fmtInt(store.outside.length),
+    // The recipe scenes' counts (recipeScenes.ts).
+    ...recipeFills(store),
   };
   return text.replace(/\{(\w+)\}/g, (m, k: string) => values[k] ?? m);
 }
@@ -313,6 +321,12 @@ export function Director({ store, backend, renderer, onTab, onPanel, panelOpen }
   // Apply a scene: panel and tab, selection, outlines, then the camera (which keeps clear of the panel and captions).
   useEffect(() => {
     awaiting.current = { select: false, focus: null, insets: { top: 0, left: 0, right: 0, bottom: 0 }, appliedAt: performance.now() };
+    // A scene that plays its own recording opens it when this page plays another run (recipeScenes.ts).
+    const elsewhere = scene ? sceneHref(scene, location) : null;
+    if (elsewhere) {
+      location.assign(elsewhere);
+      return;
+    }
     if (!scene || !loaded) return;
     const wantPanel = !!scene.tab && !scene.title;
     if (scene.tab) onTab(scene.tab);
