@@ -23,6 +23,7 @@ import { isProtectStop, splitByProtection } from "../colony/protect.ts";
 import type { ClearFilter, FieldOps } from "../colony/logic.ts";
 import { settleLane, suspects } from "../trunk/outcome.ts";
 import { textMergeEnabled, type LandResult } from "../trunk/plan.ts";
+import { isMergeHold } from "../trunk/mergelock.ts";
 import {
   accumulates,
   admissionBar,
@@ -483,6 +484,15 @@ export class RegionDO extends DurableObject<Env> {
     );
     this.log(`enq:${p.id}:${now}:${++this.enqSeq}`, "enq", now);
     await this.ensureAlarm(now, wasEmpty);
+  }
+
+  /**
+   * Merge locks (trunk/mergelock.ts): a person approved a change already waiting in this lane, so its copy here carries
+   * the approval (`approvedAt`) to the trunk writer. A change not in the lane is left alone. Returns whether it was there.
+   */
+  async stampApproval(id: Id, at: number): Promise<boolean> {
+    if (typeof id !== "string" || typeof at !== "number" || !Number.isFinite(at)) return false;
+    return this.sql.exec("UPDATE lane SET data = json_set(data, '$.approvedAt', ?) WHERE id = ? RETURNING id", at, id).toArray().length > 0;
   }
 
   /** Drop proposals from the lane (rejected or returned elsewhere). Returns how many were queued. */
@@ -998,8 +1008,9 @@ export class RegionDO extends DurableObject<Env> {
     for (const r of settled.returned) {
       remove.add(r.id);
       // Protected paths (colony/protect.ts): one the trunk writer stopped at its protection check waits for a person; no causal event.
-      if (isProtectStop(r.reason)) {
-        updates.push({ id: r.id, patch: { status: "escalated", reason: r.reason } });
+      // So does one the trunk writer held rather than merge with a newer trunk on its own (trunk/mergelock.ts).
+      if (isProtectStop(r.reason) || isMergeHold(r.reason)) {
+        updates.push({ id: r.id, patch: { status: "escalated", reason: r.reason, ...(r.held ? { mergeHold: r.held } : {}) } });
         continue;
       }
       // A text merge conflict travels with its return (FT_RESOLVER: the colony's conflict resolver reads it), and so do

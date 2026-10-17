@@ -6,7 +6,7 @@
 import { DurableObject } from "cloudflare:workers";
 import { Hono } from "hono";
 import { blobId, newId, regionOf } from "@fire_trident/core";
-import type { AgentKind, FileVersion, Id, Landing, LineageNote, MergeConflict, NoteCertification, Path, Proposal, RepoRef, Sha, TrunkPublish, WorkspaceLease } from "@fire_trident/core";
+import type { AgentKind, FileVersion, HeldMergeFile, Id, Landing, LineageNote, MergeConflict, NoteCertification, Path, Proposal, RepoRef, Sha, TrunkPublish, WorkspaceLease } from "@fire_trident/core";
 import { createApi } from "../../src/api/app.ts";
 import type { ApiDeps } from "../../src/api/app.ts";
 import type { Env } from "../../src/env.ts";
@@ -37,6 +37,8 @@ interface TrunkState {
   returnNext: Id[];
   /** The text merge conflicts a return of returnNext carries, by proposal id (as the real writer's do with FT_RESOLVER). */
   returnConflicts?: Record<Id, MergeConflict[]>;
+  /** What a return of returnNext gives instead of the conflict's reason, by proposal id (a merge hold, for example). */
+  returnAs?: Record<Id, { reason?: string; held?: HeldMergeFile[] }>;
   reportLandings: boolean;
   /** land() calls that land the batch and then throw anyway (the caller never learns). */
   loseAnswers?: number;
@@ -74,7 +76,7 @@ interface LandGate {
   opened: Promise<void>;
 }
 
-type Returned = { proposalId: Id; reason: string; conflicts?: MergeConflict[] };
+type Returned = { proposalId: Id; reason: string; conflicts?: MergeConflict[]; held?: HeldMergeFile[] };
 
 const DEFAULT_FILES: Record<Path, string> = {
   "README.md": "# demo\n",
@@ -158,11 +160,15 @@ export class TrunkDO extends DurableObject<Env> {
     await this.save(s);
   }
 
-  /** Test helper: land() returns these proposals as conflicts instead of landing them (`conflicts`: what each return carries). */
-  async returnOnLand(ids: Id[], conflicts?: Record<Id, MergeConflict[]>): Promise<void> {
+  /**
+   * Test helper: land() returns these proposals as conflicts instead of landing them (`conflicts`: what each return
+   * carries; `as`: a reason, and a held merge, in place of the conflict's reason).
+   */
+  async returnOnLand(ids: Id[], conflicts?: Record<Id, MergeConflict[]>, as?: Record<Id, { reason?: string; held?: HeldMergeFile[] }>): Promise<void> {
     const s = await this.load();
     s.returnNext = ids;
     s.returnConflicts = conflicts;
+    s.returnAs = as;
     await this.save(s);
   }
 
@@ -435,8 +441,10 @@ export class TrunkDO extends DurableObject<Env> {
       for (const p of batch) {
         const back = redirected.get(p.id) ?? guarded.get(p.id);
         if (back) returned.push({ proposalId: p.id, reason: back });
-        else if (s.returnNext.includes(p.id)) returned.push({ proposalId: p.id, reason: "conflict at land time: src/lib/util.ts", ...(s.returnConflicts?.[p.id] ? { conflicts: s.returnConflicts[p.id] } : {}) });
-        else landed.push(p);
+        else if (s.returnNext.includes(p.id)) {
+          const as = s.returnAs?.[p.id];
+          returned.push({ proposalId: p.id, reason: as?.reason ?? "conflict at land time: src/lib/util.ts", ...(s.returnConflicts?.[p.id] ? { conflicts: s.returnConflicts[p.id] } : {}), ...(as?.held ? { held: as.held } : {}) });
+        } else landed.push(p);
       }
       if (landed.length === 0) {
         await this.save(s);

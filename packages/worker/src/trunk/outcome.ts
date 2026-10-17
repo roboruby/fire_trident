@@ -8,7 +8,7 @@
  * had landed. The trunk writer's index of landed proposals (keyed by proposal id) is the source of
  * truth: a proposal it knows as landed is settled as landed, with its landing, and never returned.
  */
-import type { FileVersion, Id, Landing, MergeConflict, OccResult, Proposal, Sha } from "@fire_trident/core";
+import type { FileVersion, HeldMergeFile, Id, Landing, MergeConflict, OccResult, Proposal, Sha } from "@fire_trident/core";
 import type { LandResult } from "./plan.ts";
 
 /** What the lane does with one tick's proposals. */
@@ -21,7 +21,7 @@ export interface LaneSettlement {
    * Proposals that go back to their agents. `stale` is set for lane-side OCC returns; `conflicts` for a trunk writer
    * return whose text merge conflicted (the colony's conflict resolver reads them).
    */
-  returned: Array<{ p: Proposal | null; id: Id; reason: string; stale?: OccResult["stale"]; conflicts?: MergeConflict[] }>;
+  returned: Array<{ p: Proposal | null; id: Id; reason: string; stale?: OccResult["stale"]; conflicts?: MergeConflict[]; held?: HeldMergeFile[] }>;
   /** Proposals that stay in the lane (neither landed nor returned this tick). */
   keep: Id[];
 }
@@ -84,7 +84,14 @@ export function settleLane(p: {
       continue;
     }
     gone.add(r.proposalId);
-    returned.push({ p: byId.get(r.proposalId) ?? null, id: r.proposalId, reason: r.reason, ...(Array.isArray(r.conflicts) && r.conflicts.length > 0 ? { conflicts: r.conflicts } : {}) });
+    returned.push({
+      p: byId.get(r.proposalId) ?? null,
+      id: r.proposalId,
+      reason: r.reason,
+      ...(Array.isArray(r.conflicts) && r.conflicts.length > 0 ? { conflicts: r.conflicts } : {}),
+      // Merge locks (trunk/mergelock.ts): the merge held for a person, with its diffs.
+      ...(Array.isArray(r.held) && r.held.length > 0 ? { held: r.held } : {}),
+    });
   }
   for (const x of p.batch) if (!gone.has(x.id)) keep.add(x.id);
   for (const id of landed) keep.delete(id);
