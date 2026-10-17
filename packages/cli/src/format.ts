@@ -21,6 +21,7 @@ import type {
   Rule,
 } from "@fire_trident/core";
 import type { StuckAction, StuckItem, StuckReport } from "@fire_trident/core";
+import { bySpeaker, evidenceLines, landingAnswerable, notVerifiedSpeaker, notVerifiedWords, type Evidence } from "@fire_trident/core";
 import type { IntentSpend } from "@fire_trident/core";
 import { changeSize, dangerLines, lookHereFirst, parseHunks, reviewOf, visible, type DiffLine, type ReviewFile, type ReviewView } from "./review.ts";
 import { whySummary } from "./spec.ts";
@@ -700,9 +701,19 @@ export function policyRows(p: DecidePolicyView | undefined, c: Colors): string[]
   return out;
 }
 
-function checkLine(checks: CheckResult[] | undefined, c: Colors): string {
-  if (!checks || checks.length === 0) return c.dim("none recorded");
-  return checks.map((k) => `${k.ok ? c.green("✓") : c.red("✗")} ${k.name} ${c.dim(ms(k.ms))}`).join("  ");
+/** A change's checks in runs of who said them (core/answerable.ts): FireTrident's first, then the models', then the agent's. */
+function checkLine(evidence: Partial<Evidence> | undefined, c: Colors): string {
+  const runs = bySpeaker(evidenceLines(evidence).filter((l) => l.kind === "check"));
+  if (runs.length === 0) return c.dim("none recorded");
+  return runs.map((r) => `${c.dim(`${r.speaker.label}:`)} ${r.lines.map((k) => `${k.ok ? c.green("✓") : c.red("✗")} ${k.name} ${c.dim(ms(k.ms ?? 0))}`).join("  ")}`).join(c.dim(" · "));
+}
+
+/** The statement of what a change did not verify, with who wrote it: the agent's words quoted, FireTrident's as they are. */
+function unprovenLine(evidence: Partial<Evidence> | undefined, c: Colors): string | null {
+  const words = notVerifiedWords(evidence?.notVerified);
+  if (!words) return null;
+  const s = notVerifiedSpeaker(evidence);
+  return `${c.dim(`${s.label}:`)} ${s.kind === "platform" ? words : `"${words}"`}`;
 }
 
 function ms(n: number): string {
@@ -746,6 +757,9 @@ export function formatWhy(
     out.push("");
     const when = at(landing) ? `  ${new Date(at(landing)).toISOString().replace("T", " ").slice(0, 16)}Z ${c.dim(`(${ago(at(landing), now)})`)}` : "";
     out.push(`${c.green("●")} ${c.bold(`landing ${landing.id}`)}  ${shortSha(landing.trunkSha)} ${c.dim(`← ${shortSha(landing.parentSha)}`)}${when}`);
+    // Who answers for this landing, from its whole note (core/answerable.ts), as the Why tab says it.
+    const answer = landingAnswerable(note);
+    out.push(`  ${label("answer")}${answer.answer === "person" ? answer.text : c.yellow(answer.text)}`);
     const proposals = (note?.proposals ?? []).map((p) => ({
       ...p,
       writeSet: p.writeSet ?? [],
@@ -786,14 +800,15 @@ export function formatWhy(
       }
       // Quoted acceptance (FT_QUOTED_ACCEPTANCE): the changed line quoted for each acceptance line (acceptance.ts).
       for (const row of acceptanceRows(p.decisions, c)) out.push(`  ${label(row.k)}${row.v}`);
-      out.push(`  ${label("checks")}${checkLine(p.evidence?.checks, c)}`);
+      out.push(`  ${label("checks")}${checkLine(p.evidence, c)}`);
       // Contest mode (contest.ts): how the change won its contest, and the attempts it was chosen over.
       for (const line of contestLines(p.evidence?.checks, p.alternatives, c)) out.push(`  ${label(line.k)}${line.v}`);
       // Tests before landing (FT_PRELAND, preland.ts): what ran on its base with the change before it landed.
       const tested = prelandLine(p.evidence?.preland, c);
       if (tested) out.push(`  ${label("tested")}${tested}`);
       if (p.evidence?.residual?.length) out.push(`  ${label("residual")}${c.yellow(paths(p.evidence.residual, 4))} ${c.dim("(outside the declared footprint)")}`);
-      if (p.evidence?.notVerified) out.push(`  ${label("unproven")}${p.evidence.notVerified}`);
+      const unproven = unprovenLine(p.evidence, c);
+      if (unproven) out.push(`  ${label("unproven")}${unproven}`);
       out.push(`  ${label("wrote")}${paths(p.writeSet.map((w) => w.path), 4)}`);
       if (p.readSet.length) out.push(`  ${label("read")}${paths(p.readSet.map((r) => r.path), 4)}`);
     }
@@ -1279,7 +1294,7 @@ export function formatReview(proposals: Proposal[], intents: Intent[] | undefine
     if (view) out.push(...lookLines(view, colony, opts.diff === true, c));
     else if (p.evidence?.residual?.length) out.push(`  ${c.dim("residual")} ${c.yellow(paths(p.evidence.residual, 4))}`);
     if (p.reason) out.push(`  ${c.dim("reason  ")} ${p.reason}`);
-    out.push(`  ${c.dim("checks  ")} ${checkLine(p.evidence?.checks, c)}`);
+    out.push(`  ${c.dim("checks  ")} ${checkLine(p.evidence, c)}`);
     if (view) {
       kept++;
       const size = changeSize(view);

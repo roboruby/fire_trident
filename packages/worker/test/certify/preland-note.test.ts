@@ -98,9 +98,10 @@ describe.skipIf(!hasGit)("a lineage note with tests before landing, checked with
   it("is intact under scripts/verify_note.mjs, and altered once its run is edited", async () => {
     const dir = NODE.mkdtempSync(NODE.join(NODE.tmpdir(), "ft-preland-note-"));
     const env = { ...NODE.process.env, GIT_CONFIG_NOSYSTEM: "1", HOME: dir };
+    // The verdict is the first line (a note that checks out gets a second: who answers for it).
     const run = (...args: string[]): Promise<{ code: number; out: string }> =>
       new Promise((resolve) =>
-        NODE.execFile(NODE.process.execPath, [SCRIPT, ...args], { cwd: dir, env }, (e, stdout) => resolve({ code: e ? (typeof e.code === "number" ? e.code : -1) : 0, out: String(stdout).trim() })),
+        NODE.execFile(NODE.process.execPath, [SCRIPT, ...args], { cwd: dir, env }, (e, stdout) => resolve({ code: e ? (typeof e.code === "number" ? e.code : -1) : 0, out: String(stdout).trim().split("\n")[0] ?? "" })),
       );
     try {
       const r: GitRepo = { fs: NODE.fs as GitRepo["fs"], dir, cache: {} };

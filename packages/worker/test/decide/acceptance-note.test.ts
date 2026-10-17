@@ -143,9 +143,10 @@ describe.skipIf(!hasGit)("scripts/verify_note.mjs with stock git", () => {
   it("prints intact for a note that keeps acceptance lines, and altered when one of them is edited", async () => {
     const dir = NODE.mkdtempSync(NODE.join(NODE.tmpdir(), "ft-acceptance-"));
     const env = { ...NODE.process.env, GIT_CONFIG_NOSYSTEM: "1", HOME: dir };
+    // The verdict is the first line (a note that checks out gets a second: who answers for it).
     const run = (commit: string): Promise<{ code: number; out: string }> =>
       new Promise((resolve) =>
-        NODE.execFile(NODE.process.execPath, [SCRIPT, commit], { cwd: dir, env }, (e, stdout) => resolve({ code: e ? (typeof e.code === "number" ? e.code : -1) : 0, out: String(stdout).trim() })),
+        NODE.execFile(NODE.process.execPath, [SCRIPT, commit], { cwd: dir, env }, (e, stdout) => resolve({ code: e ? (typeof e.code === "number" ? e.code : -1) : 0, out: String(stdout).trim().split("\n")[0] ?? "" })),
       );
     try {
       const r: GitRepo = { fs: NODE.fs as GitRepo["fs"], dir, cache: {} };

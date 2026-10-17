@@ -1,4 +1,5 @@
-import type { LineageNote, NoteCheck } from "@fire_trident/core";
+import type { LandingAnswer, LineageNote, NoteCheck, Speaker } from "@fire_trident/core";
+import { evidenceLines, landingAnswerable, notVerifiedSpeaker, notVerifiedWords } from "@fire_trident/core";
 import { decisionsFromChecks } from "../decisions.ts";
 import { provenanceOf, type ProvenanceView } from "../lineage.ts";
 import { checksOf, sealOf, uncheckedSeal, type NoteSeal } from "../verified.ts";
@@ -26,11 +27,13 @@ export interface CardDecision {
   by: string | null;
 }
 
-/** One check the change landed with. */
+/** One check the change landed with, and who said it (core/answerable.ts); an agent's detail is its own words, to quote. */
 export interface CardCheck {
   name: string;
   ok: boolean;
   detail: string | null;
+  speaker: Speaker;
+  quoted: boolean;
 }
 
 /** A file the change read or wrote, with its blob (null: deleted, or absent when read). */
@@ -56,8 +59,13 @@ export interface NoteCard {
   agent: { id: string; name: string | null; kind: string; model: string | null } | null;
   provenance: ProvenanceView | null;
   decisions: CardDecision[];
+  /** FireTrident's checks first, then models', then the agent's. */
   checks: CardCheck[];
   notVerified: string | null;
+  /** Who wrote the statement of what was not verified: the agent (its words, quoted) or FireTrident. */
+  notVerifiedBy: Speaker | null;
+  /** Who answers for the landing (its whole note). */
+  answerable: { answer: LandingAnswer; text: string };
   reads: CardFile[];
   writes: CardFile[];
   /** Files beyond FILES_SHOWN in each set. */
@@ -107,10 +115,12 @@ export function cardOf(x: CardInput): NoteCard {
   const p = proposals[0] ?? null;
   const intent = p && isObj(p.intent) ? p.intent : null;
   const evidence = p && isObj(p.evidence) ? p.evidence : {};
-  const checks: CardCheck[] = (Array.isArray(evidence.checks) ? evidence.checks : [])
-    .filter(isObj)
-    .filter((c) => typeof c.name === "string" && c.name !== "")
-    .map((c) => ({ name: c.name as string, ok: c.ok === true, detail: line(c.detail) || null }));
+  // Who said each check (core/answerable.ts): the agent's words never sit in a FireTrident line.
+  const checks: CardCheck[] = evidenceLines(evidence)
+    .filter((l) => l.kind === "check")
+    .map((l) => ({ name: l.name, ok: l.ok === true, detail: line(l.text) || null, speaker: l.speaker, quoted: l.quoted }));
+  const notVerified = notVerifiedWords(evidence.notVerified) || null;
+  const answerable = landingAnswerable(x.note);
   const ruleId = intent ? line(intent.ruleId) : "";
   const rule = ruleId ? x.rules?.get(ruleId) : undefined;
   const agentId = p ? line(p.agentId) : "";
@@ -130,7 +140,9 @@ export function cardOf(x: CardInput): NoteCard {
     provenance: p ? provenanceOf(p as unknown as LineageNote["proposals"][number]) : null,
     decisions: p ? decisionsOf(p, checks) : [],
     checks,
-    notVerified: line(evidence.notVerified).replace(/^not verified:\s*/i, "") || null,
+    notVerified,
+    notVerifiedBy: notVerified ? notVerifiedSpeaker(evidence) : null,
+    answerable: { answer: answerable.answer, text: answerable.text },
     reads: reads.slice(0, FILES_SHOWN),
     writes: writes.slice(0, FILES_SHOWN),
     moreReads: Math.max(0, reads.length - FILES_SHOWN),

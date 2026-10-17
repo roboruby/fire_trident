@@ -46,6 +46,7 @@ import { addNotes } from "./notes.ts";
 import { sealNote, withNoteDigest } from "./digest.ts";
 import { noteSigner, publishedKeys, withSignature } from "./signature.ts";
 import { noteProvenance } from "./provenance.ts";
+import { intentWho, landingAnswer, noteIntentWho, type IntentWho } from "./answerable.ts";
 import { bindingSource, checkLandings, layered, localSource, summarize, verifyLimit } from "./verify.ts";
 import { findLanding, landingOf, landingRow, storedNote, verifyOne } from "./landing-note.ts";
 import { BoundedMap, applyTreeChangesDeferred, writePending, type PendingObject } from "./surgery.ts";
@@ -138,7 +139,8 @@ const PATH_HISTORY_MS = 250;
  * Missing entries are looked up from the colony's snapshot, then fall back to the proposal.
  */
 export interface LandContext {
-  intents?: Record<Id, { title: string; why?: string; ruleId?: Id; parentId?: Id }>;
+  /** Each intent's lineage fields; who declared it and who approved its rule (trunk/answerable.ts IntentWho) when the colony says. */
+  intents?: Record<Id, { title: string; why?: string; ruleId?: Id; parentId?: Id } & IntentWho>;
   /** `resumeKey`: an external agent holds an MCP resume key (it joined over MCP), for the note's provenance. */
   agents?: Record<Id, { kind: AgentKind; model?: string; resumeKey?: boolean }>;
   decisions?: Record<Id, Array<Pick<Decision, "kind" | "layer" | "p" | "action">>>;
@@ -148,7 +150,7 @@ export interface LandContext {
   resolves?: Record<Id, NoteResolves>;
 }
 
-type IntentInfo = { title: string; why: string; ruleId?: Id; parentId?: Id };
+type IntentInfo = { title: string; why: string; ruleId?: Id; parentId?: Id } & IntentWho;
 type AgentLite = { kind: AgentKind; model?: string; resumeKey?: boolean };
 type StagedChange = { blob: Sha; mode: string; size: number; before: Sha | null } | { blob: null; before: Sha | null };
 
@@ -1591,7 +1593,8 @@ export class TrunkDO extends DurableObject<Env> {
       const intentIds = unique(proposals.map((p) => p.intentId));
       // The note names the landing, never the commit, so it is final here and the commit carries its digest as the
       // FT-Note trailer (trunk/digest.ts); certification, added after landing, is left out of the digest.
-      const note = await sealNote(buildNote({ id, colonyId: st.colonyId }, proposals, info, ctx, revalidated, merges.merged));
+      const built = buildNote({ id, colonyId: st.colonyId }, proposals, info, ctx, revalidated, merges.merged);
+      const note = await sealNote(built);
       lap("note");
       const message = withNoteDigest(await withSignature(landingMessage({ id, intentIds }, proposals, info.titles), signer, { digest: note.digest, tree, parents: [parent] }), note.digest);
       const content = commitContent({ tree, parents: [parent], message, name: LANDING_IDENTITY.name, email: LANDING_IDENTITY.email, timestamp: Math.floor(at / 1000) });
@@ -1613,6 +1616,8 @@ export class TrunkDO extends DurableObject<Env> {
         regions: unique(paths.map((path) => regionOf(path, st.regionDepth))).sort(),
         at,
         ...(mergedHere.length > 0 ? { merged: mergedHere } : {}),
+        // Who answers for it, from its note (trunk/answerable.ts): the colony counts it for its metrics.
+        answerable: landingAnswer(built),
       };
       items.push({ request: i, data: { landing, note: note.text, changes: [...changes] } });
       parent = commit;
@@ -2488,7 +2493,7 @@ export class TrunkDO extends DurableObject<Env> {
   // -------------------------------------------------------------------------
 
   private async lineageInfo(proposals: Proposal[], ctx: LandContext, colonyId: Id): Promise<{ titles: Record<Id, string>; intents: Map<Id, IntentInfo>; agents: Map<Id, AgentLite> }> {
-    for (const [id, i] of Object.entries(ctx.intents ?? {})) this.intentCache.set(id, { title: i.title, why: i.why ?? "", ruleId: i.ruleId, parentId: i.parentId });
+    for (const [id, i] of Object.entries(ctx.intents ?? {})) this.intentCache.set(id, { title: i.title, why: i.why ?? "", ruleId: i.ruleId, parentId: i.parentId, ...noteIntentWho(i) });
     for (const [id, a] of Object.entries(ctx.agents ?? {})) this.agentCache.set(id, { kind: a.kind, model: a.model, ...(typeof a.resumeKey === "boolean" ? { resumeKey: a.resumeKey } : {}) });
     const missing = proposals.some((p) => !this.intentCache.has(p.intentId) || !this.agentCache.has(p.agentId));
     if (missing) await this.loadColonyContext(colonyId);
@@ -2514,7 +2519,11 @@ export class TrunkDO extends DurableObject<Env> {
       const stub = ns.get(ns.idFromName(colonyId)) as unknown as { snapshot(): Promise<ColonySnapshot> };
       const snap = await Promise.race([stub.snapshot(), sleep(2_500).then(() => null)]);
       if (!snap) return;
-      for (const i of snap.intents ?? []) this.intentCache.set(i.id, { title: i.title, why: i.why, ruleId: i.ruleId, parentId: i.parentId });
+      // Who declared each intent and who approved its rule, for the note's answerable person (trunk/answerable.ts).
+      const approvers = new Map((snap.rules ?? []).map((r) => [r.id, r.approvedBy] as const));
+      for (const i of snap.intents ?? []) {
+        this.intentCache.set(i.id, { title: i.title, why: i.why, ruleId: i.ruleId, parentId: i.parentId, ...noteIntentWho({ ...intentWho(i, (id) => approvers.get(id)), ruleId: i.ruleId }) });
+      }
       // A snapshot does not say who holds a resume key: keep what a land context said.
       for (const a of snap.agents ?? []) this.agentCache.set(a.id, { ...this.agentCache.get(a.id), kind: a.kind, model: a.model });
     } catch {
@@ -2909,7 +2918,8 @@ function buildNote(
         agentId: p.agentId,
         agentKind: a?.kind ?? "internal",
         model: a?.model,
-        intent: { id: p.intentId, title: i.title, why: i.why, ruleId: i.ruleId, parentId: i.parentId },
+        // Who declared the intent and who approved its rule, when the colony said (trunk/answerable.ts).
+        intent: { id: p.intentId, title: i.title, why: i.why, ruleId: i.ruleId, parentId: i.parentId, ...noteIntentWho(i) },
         writeSet: p.writeSet,
         readSet: p.readSet,
         decisions: ctx.decisions?.[p.id] ?? [],

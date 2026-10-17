@@ -114,6 +114,7 @@ import { DerivedSet, recordedLanding, type LandingLog } from "../trunk/derived.t
 import { NeighborCache, claimLookup, type Neighbor } from "../trunk/cochange.ts";
 import { importNeighbors, type ImportLinks } from "../trunk/imports.ts";
 import type { RevertResult } from "../trunk/revert.ts";
+import { agentClaims, answerableBumps, answerableMeter, intentWho, type AnswerableMeter, type IntentWho } from "../trunk/answerable.ts";
 import { asyncPublishEnabled } from "../trunk/publish.ts";
 import {
   BUCKET_MS,
@@ -1767,7 +1768,7 @@ export class ColonyDO extends DurableObject<Env> {
    * (`alternatives`, keyed by the winner's proposal id).
    */
   async landContext(intentIds: Id[], agentIds: Id[], proposalIds: Id[] = []): Promise<{
-    intents: Record<Id, { title: string; why: string; ruleId?: Id; parentId?: Id } & DirectionInfo>;
+    intents: Record<Id, { title: string; why: string; ruleId?: Id; parentId?: Id } & DirectionInfo & IntentWho>;
     agents: Record<Id, { kind: AgentKind; model?: string; resumeKey?: boolean }>;
     decisions: Record<Id, NoteDecision[]>;
     alternatives?: Record<Id, ContestAlternative[]>;
@@ -1775,12 +1776,14 @@ export class ColonyDO extends DurableObject<Env> {
     protect?: ProtectRecord;
   }> {
     const colonyId = this.requireColony().id;
-    const intents: Record<Id, { title: string; why: string; ruleId?: Id; parentId?: Id } & DirectionInfo> = {};
+    const intents: Record<Id, { title: string; why: string; ruleId?: Id; parentId?: Id } & DirectionInfo & IntentWho> = {};
+    // Who approved each rule, for the lineage note's answerable person (trunk/answerable.ts).
+    const approver = (ruleId: Id): string | undefined => this.sql.exec<{ approved_by: string }>("SELECT approved_by FROM rules WHERE id = ?", ruleId).toArray()[0]?.approved_by;
     for (const id of new Set(intentIds)) {
       const row = this.intentRow(id);
       if (!row) continue;
       const i = this.toIntent(row, colonyId);
-      const entry: { title: string; why: string; ruleId?: Id; parentId?: Id } & DirectionInfo = { title: i.title, why: i.why, status: i.status, revision: i.revision ?? 1 };
+      const entry: { title: string; why: string; ruleId?: Id; parentId?: Id } & DirectionInfo & IntentWho = { title: i.title, why: i.why, status: i.status, revision: i.revision ?? 1, ...intentWho(i, approver) };
       if (i.ruleId) entry.ruleId = i.ruleId;
       if (i.parentId) entry.parentId = i.parentId;
       if (i.withdrawnReason) entry.withdrawnReason = i.withdrawnReason;
@@ -2091,10 +2094,14 @@ export class ColonyDO extends DurableObject<Env> {
     const footprint = declaredFootprint.length > 0 ? declaredFootprint : this.footprintOf(intentRow.id, intentRow.footprint);
     const now = Date.now();
     const ev = input.evidence ?? {};
+    const stated = typeof ev.notVerified === "string" && ev.notVerified.trim() !== "";
     const evidence: Evidence = {
-      checks: Array.isArray(ev.checks) ? ev.checks : [],
+      // The checks it came with are the agent's own claims (trunk/answerable.ts).
+      checks: agentClaims(ev.checks),
       residual: residualPaths(footprint, writeSet),
-      notVerified: typeof ev.notVerified === "string" && ev.notVerified.trim() ? ev.notVerified.trim() : DEFAULT_NOT_VERIFIED,
+      notVerified: stated ? (ev.notVerified as string).trim() : DEFAULT_NOT_VERIFIED,
+      // Who wrote the statement: the agent, or FireTrident (this default, or the MCP server's sentence for an agent that gave none).
+      notVerifiedBy: stated && ev.notVerifiedBy !== "platform" ? "agent" : "platform",
     };
     if (typeof ev.previewUrl === "string" && ev.previewUrl) evidence.previewUrl = ev.previewUrl;
     // Megafile alarm (colony/megafile.ts, FT_MEGAFILE): a split's change records the held file's lines before and after
@@ -2284,7 +2291,7 @@ export class ColonyDO extends DurableObject<Env> {
         createdAt: prev.createdAt,
         evidence: patch.evidence ? { ...prev.evidence, ...patch.evidence } : prev.evidence,
       };
-      if (!next.evidence.notVerified) next.evidence = { ...next.evidence, notVerified: DEFAULT_NOT_VERIFIED };
+      if (!next.evidence.notVerified) next.evidence = { ...next.evidence, notVerified: DEFAULT_NOT_VERIFIED, notVerifiedBy: "platform" };
       // What beat it (colony/movedby.ts): a change back because trunk moved its files names the landings that moved them.
       if (next.status === "returned" && prev.status !== "returned") this.attributeReturn(next, stale);
       this.writeProposal(next, now);
@@ -2372,6 +2379,8 @@ export class ColonyDO extends DurableObject<Env> {
     this.guide()?.landed(l);
 
     this.bump("landings", 1, now);
+    // Who answers for it, as its note says (trunk/answerable.ts): the meter metricsReport serves as `answerable`.
+    for (const [name, delta] of answerableBumps(l)) this.bump(name, delta, now);
     const perMin = this.landingsPerMin(now);
     this.setMetric("landingsPerMin", perMin, now);
     fx.events.push({ t: "landing", at: now, landingId: l.id, trunkSha: l.trunkSha, proposalIds: l.proposalIds ?? [], paths });
@@ -4072,6 +4081,7 @@ export class ColonyDO extends DurableObject<Env> {
     series: ColonySeries;
     convergence: Convergence;
     stuck?: StuckReport;
+    answerable: AnswerableMeter;
     spend?: ColonySpend;
     intentSpend?: Record<Id, IntentSpendBrief>;
   }> {
@@ -4090,6 +4100,8 @@ export class ColonyDO extends DurableObject<Env> {
       series: this.seriesReport(now),
       convergence: this.convergence(violations.total),
       ...(stuck ? { stuck } : {}),
+      // Landings no person is answerable for, as a count and share (trunk/answerable.ts).
+      answerable: answerableMeter(metrics),
     };
     // Model spend (colony/spend.ts): left out when it cannot be computed; the rest of the report stands.
     const spend = await this.spendReport(now, metrics);

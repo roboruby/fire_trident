@@ -110,6 +110,14 @@
 #    that carries any, the one that was ready last, with its intent's declaration, claims, proposals, review, and the
 #    span from ready to landed (the lane's wait and the trunk writer's cycle together: the record does not split them).
 #    In a reconstructed record claim times are estimates, so agent work, rework and the totals are too: it says so.
+#
+# 9. Who answers for each landing (packages/core/src/answerable.ts, the same rules). For each change of a landing
+#    commit's note, first match wins: a person approved it (a decision of layer human and action approve); the person who
+#    approved the rule, when the note's last gate check that the agent did not send says "→ land by deterministic" for a
+#    rule's intent and the note records the rule's approver (else unknown); the person who asked for the intent (source
+#    human); unknown when the note does not record the intent's source (notes written before 2026-10-16); else none. A
+#    landing is none when a change of it is none, else unknown when one is unknown, else person. Reported over the
+#    landing commits read from notes: how many, and how many of each, with the share no person answers for.
 require "fileutils"
 require "json"
 require "net/http"
@@ -198,6 +206,34 @@ module Coordination
   def rounded(x, digits = 4) = x.nil? ? nil : x.round(digits)
 
   def redirect?(reason) = REDIRECT.match?(reason.to_s)
+
+  # Who answers for one change of a note (definition 9): approved, rule, asked, none or unknown.
+  def change_answer(p)
+    decisions = p["decisions"].is_a?(Array) ? p["decisions"] : []
+    return "approved" if decisions.any? { |d| d.is_a?(Hash) && d["layer"] == "human" && d["action"] == "approve" }
+
+    checks = p["evidence"].is_a?(Hash) && p["evidence"]["checks"].is_a?(Array) ? p["evidence"]["checks"] : []
+    intent = p["intent"].is_a?(Hash) ? p["intent"] : {}
+    gate = checks.reverse.find { |c| c.is_a?(Hash) && c["name"] == "gate" && c["by"] != "agent" && c["detail"].is_a?(String) }
+    landed = gate && gate["detail"].match(/→ (\S+) by (\S+)/)
+    rule = intent["ruleId"].to_s.strip
+    return intent["ruleApprovedBy"].is_a?(String) ? "rule" : "unknown" if !rule.empty? && landed && landed[2] == "deterministic" && landed[1] == "land"
+    return "unknown" unless intent["source"].is_a?(String) && !intent["source"].empty?
+
+    intent["source"].gsub(/\s+/, " ").strip == "human" ? "asked" : "none"
+  end
+
+  # Who answers for a landing commit's note (definition 9): person, none or unknown.
+  def landing_answer(note)
+    return "person" if note["revert"].is_a?(Hash) || (note["system"].is_a?(Hash) && note["system"]["kind"] == "antibody")
+    return "none" if note["system"].is_a?(Hash)
+
+    answers = (note["proposals"].is_a?(Array) ? note["proposals"] : []).select { |p| p.is_a?(Hash) }.map { |p| change_answer(p) }
+    return "unknown" if answers.empty?
+    return "none" if answers.include?("none")
+
+    answers.include?("unknown") ? "unknown" : "person"
+  end
 
   # The class of a return from its reason text (definition 4); `human` when a person's decision returned it.
   def classify(reason, human: false)
@@ -616,7 +652,7 @@ module Coordination
   # The trunk as git shows it: FireTrident commits, the proposals each landed, and how each is known.
   class Lineage
     Prop = Struct.new(:id, :agent, :kind, :model, :intent, :paths, :blobs, keyword_init: true)
-    Commit = Struct.new(:sha, :parent, :at, :landing, :kind, :source, :props, :intents, :changes, keyword_init: true)
+    Commit = Struct.new(:sha, :parent, :at, :landing, :kind, :source, :props, :intents, :changes, :answer, keyword_init: true)
 
     attr_reader :head, :commits, :ft, :base, :notes, :shallow, :changes, :warnings
 
@@ -673,7 +709,8 @@ module Coordination
         @warnings << "#{c[:sha][0, 7]}: its note lists #{props.map(&:id).join(', ')}, its trailers #{c[:proposals].join(', ')}"
       end
       Commit.new(sha: c[:sha], parent: c[:parent], at: c[:at], landing: note["landingId"] || c[:landing],
-                 kind: system ? "system" : "landing", source: "note", props: props, intents: props.map(&:intent).compact.uniq)
+                 kind: system ? "system" : "landing", source: "note", props: props, intents: props.map(&:intent).compact.uniq,
+                 answer: Coordination.landing_answer(note))
     end
 
     # A FireTrident commit with no note: a system commit without FT-Proposal trailers, else a landing whose proposals
@@ -844,6 +881,7 @@ module Coordination
         hottestFile: record && hottest_file(record, lineage, others),
         sprawl: sprawl(lineage, depth),
         linesPerIntent: lines_per_intent(lineage, attribution),
+        answerable: answerable(lineage),
         timeSplit: record && Coordination.time_split(record),
         agents: agent_table(agents, record, lineage, attribution),
         missing: @missing,
@@ -941,6 +979,15 @@ module Coordination
     end
 
     # Definition 1.
+    # Definition 9.
+    def answerable(lineage)
+      counted = lineage.landings.select { |c| c.source == "note" }
+      by = counted.map(&:answer).tally
+      none = by.fetch("none", 0)
+      { landings: counted.size, person: by.fetch("person", 0), none: none, unknown: by.fetch("unknown", 0),
+        noneShare: Coordination.rounded(Coordination.ratio(none, counted.size)) }
+    end
+
     def merged_fraction(record)
       states = record.proposals.values.map { |p| state(p) }.tally
       made = record.proposals.size
@@ -1407,6 +1454,10 @@ module Coordination
     if (l = r[:linesPerIntent])
       out << "| Lines per landed intent | #{fmt(l[:netPerIntent], 2)} (+#{num(l[:added])} −#{num(l[:removed])} over #{many(l[:landedIntents], "intent")}); " \
              "#{num(l[:linesInAgentTouchedFiles])} lines in #{many(l[:agentTouchedFiles], "agent-touched file")}, #{num(l[:agentWrittenLinesAtHead])} agent-written |"
+    end
+    if (a = r[:answerable]) && a[:landings].positive?
+      out << "| No person answerable | #{num(a[:none])} of #{many(a[:landings], "landing")} read from notes (#{fmt(a[:noneShare])}); " \
+             "#{num(a[:person])} a person answers for, #{num(a[:unknown])} unknown (notes from before who asked was recorded) |"
     end
     out.concat(r[:timeSplit] ? time_rows(r[:timeSplit]) : ["| Where the time went | not computed: no event record |"])
     notes = r[:missing] + r[:warnings].first(5).map { |w| "warning: #{w}" }

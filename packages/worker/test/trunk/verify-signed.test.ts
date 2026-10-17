@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import git from "isomorphic-git";
-import { serializeNote } from "@fire_trident/core";
+import { answerableLine, landingAnswerable, serializeNote } from "@fire_trident/core";
 import type { LineageNote } from "@fire_trident/core";
 import { buildTree, ensureRepo, memoryFs, writeCommitObject, writeLocalBlob, type GitRepo } from "../../src/artifacts/git.ts";
 import { sealNote, withNoteDigest } from "../../src/trunk/digest.ts";
@@ -164,12 +164,14 @@ describe.skipIf(!hasGit)("scripts/verify_note.mjs with stock git", () => {
     const dir = NODE.mkdtempSync(NODE.join(NODE.tmpdir(), "ft-signed-"));
     const keysDir = NODE.mkdtempSync(NODE.join(NODE.tmpdir(), "ft-keys-"));
     const env = { ...NODE.process.env, GIT_CONFIG_NOSYSTEM: "1", HOME: dir };
-    /** The script run in the clone: its exit code and what it printed. */
-    const run = (...args: string[]): Promise<{ code: number; out: string; err: string }> =>
+    /** The script run in the clone: its exit code and what it printed (the verdict, then the answerable line of a note that checks out). */
+    const run = (...args: string[]): Promise<{ code: number; out: string; answerable?: string; err: string }> =>
       new Promise((resolve) =>
-        NODE.execFile(NODE.process.execPath, [SCRIPT, ...args], { cwd: dir, env }, (e, stdout, stderr) =>
-          resolve({ code: e ? (typeof e.code === "number" ? e.code : -1) : 0, out: String(stdout).trim(), err: String(stderr).trim() }),
-        ),
+        NODE.execFile(NODE.process.execPath, [SCRIPT, ...args], { cwd: dir, env }, (e, stdout, stderr) => {
+          const [out = "", answerable, ...rest] = String(stdout).trim().split("\n");
+          expect(rest).toEqual([]);
+          resolve({ code: e ? (typeof e.code === "number" ? e.code : -1) : 0, out, ...(answerable !== undefined ? { answerable } : {}), err: String(stderr).trim() });
+        }),
       );
     try {
       const r: GitRepo = { fs: NODE.fs as GitRepo["fs"], dir, cache: {} };
@@ -190,8 +192,9 @@ describe.skipIf(!hasGit)("scripts/verify_note.mjs with stock git", () => {
       await addNotes(r, { ref: REF, notes: [unsigned, signed].map((x) => ({ oid: x.row.trunkSha, note: x.text })), at: AT, migrate: 0 });
       const [c0, c1, c2] = [init, unsigned, signed].map((x) => x.row.trunkSha) as [string, string, string];
 
-      // Without --keys, exactly as before.
-      expect(await run(c2)).toMatchObject({ code: 0, out: "intact" });
+      // Without --keys, as before; a note that checks out also says who answers for it (this one lists no change).
+      expect(await run(c2)).toMatchObject({ code: 0, out: "intact", answerable: "answerable: unknown (the note lists no change)" });
+      expect(await run(c0)).not.toHaveProperty("answerable");
       expect(await run(c1)).toMatchObject({ code: 0, out: "intact" });
       expect(await run(c0)).toMatchObject({ code: 1, out: "no FT-Note trailer" });
       // With --keys, before or after the commit.
@@ -228,6 +231,8 @@ describe.skipIf(!hasGit)("scripts/verify_note.mjs with stock git", () => {
       await addNotes(r, { ref: REF, notes: [{ oid: c2, note: forged }], at: AT + 1, migrate: 0 });
       expect(await run(c2)).toMatchObject({ code: 1, out: "altered" });
       expect(await run(c2, "--keys", keysFile)).toMatchObject({ code: 1, out: "altered" });
+      // An altered note's content is not read for who answers for it.
+      expect(await run(c2)).not.toHaveProperty("answerable");
 
       // History rewritten to match: the same tree and parent, the trailer recomputed for the forged note. The digest
       // alone is fooled; the signature is not.
@@ -237,6 +242,7 @@ describe.skipIf(!hasGit)("scripts/verify_note.mjs with stock git", () => {
       await addNotes(r, { ref: REF, notes: [{ oid: rewritten, note: forged }], at: AT + 2, migrate: 0 });
       expect(await run(rewritten)).toMatchObject({ code: 0, out: "intact" });
       expect(await run(rewritten, "--keys", keysFile)).toMatchObject({ code: 1, out: "bad signature" });
+      expect(await run(rewritten, "--keys", keysFile)).not.toHaveProperty("answerable");
 
       // Asked wrongly: says how to ask.
       expect(await run("--keys", keysFile)).toMatchObject({ code: 2, err: expect.stringMatching(/^usage: node verify_note\.mjs <commit>/) });
@@ -244,6 +250,66 @@ describe.skipIf(!hasGit)("scripts/verify_note.mjs with stock git", () => {
     } finally {
       NODE.rmSync(dir, { recursive: true, force: true });
       NODE.rmSync(keysDir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe.skipIf(!hasGit)("scripts/verify_note.mjs says who answers for a note that checks out", () => {
+  it("as core/answerable.ts says it, for each way a person answers, for none, and for an old note", async () => {
+    const dir = NODE.mkdtempSync(NODE.join(NODE.tmpdir(), "ft-answerable-"));
+    const env = { ...NODE.process.env, GIT_CONFIG_NOSYSTEM: "1", HOME: dir };
+    const run = (commit: string): Promise<string[]> =>
+      new Promise((resolve) => NODE.execFile(NODE.process.execPath, [SCRIPT, commit], { cwd: dir, env }, (_e, stdout) => resolve(String(stdout).trim().split("\n"))));
+    const gemma = "@cf/google/gemma-4-26b-a4b-it";
+    const proof = { name: "gate", ok: true, ms: 0, detail: "D3 innate+proof → land by deterministic at head ffffffffffff (confirmations: innate + deterministic): proven" };
+    const byModel = { name: "gate", ok: true, ms: 0, detail: "L1 innate+llm → land by llm at head ffffffffffff (confirmations: innate + llm): approved" };
+    const change = (id: string, intent: Record<string, unknown>, extra: { decisions?: unknown[]; checks?: unknown[] } = {}) => ({
+      id,
+      agentId: "agt_1",
+      agentKind: "external",
+      intent: { id: `int_${id}`, title: "t", why: "w", ...intent },
+      writeSet: [{ path: "a.txt", blob: "b".repeat(40) }],
+      readSet: [],
+      decisions: extra.decisions ?? [],
+      evidence: { checks: extra.checks ?? [] },
+    });
+    const approve = { kind: "triage", layer: "human", p: 1, action: "approve", by: "Matt" };
+    const llm = { kind: "triage", layer: "llm", p: 0.9, action: "land", by: gemma };
+    const notes = [
+      [change("p1", { source: "agent", createdBy: "agt_1" }, { decisions: [approve] })],
+      [change("p2", { source: "rule", createdBy: "Ana", ruleId: "rul_1", ruleApprovedBy: "Ana" }, { checks: [proof] })],
+      [change("p3", { source: "human", createdBy: "Lee" }, { decisions: [llm], checks: [byModel] })],
+      [change("p4", { source: "agent", createdBy: "agt_9" }, { decisions: [llm], checks: [byModel] })],
+      // Written before notes recorded who declared the intent.
+      [change("p5", {}, { decisions: [llm], checks: [byModel] })],
+      [change("p6", { source: "human", createdBy: "Lee" }), change("p7", { source: "certify", createdBy: "certify" }, { checks: [byModel, { ...proof, by: "agent" }] })],
+    ].map((proposals, i) => ({ schema: "firetrident.lineage/v1", landingId: `lnd_${i}`, colonyId: "c", proposals }) as unknown as LineageNote);
+    try {
+      const r: GitRepo = { fs: NODE.fs as GitRepo["fs"], dir, cache: {} };
+      await ensureRepo(r, "https://example.invalid/git/ns/repo.git");
+      const commits: string[] = [];
+      for (const note of notes) {
+        const { text, digest } = await sealNote(note);
+        const blob = await writeLocalBlob(r, new TextEncoder().encode(note.landingId));
+        const tree = await buildTree(r, new Map([[`${note.landingId}.txt`, { blob, mode: "100644" }]]));
+        const sha = await writeCommitObject(r, { tree, parents: commits.slice(-1), message: withNoteDigest(`Land 1 change\n\nFT-Landing: ${note.landingId}`, digest), at: AT });
+        await addNotes(r, { ref: REF, notes: [{ oid: sha, note: text }], at: AT, migrate: 0 });
+        commits.push(sha);
+      }
+      const lines = await Promise.all(commits.map(run));
+      expect(lines.map((l) => l[0])).toEqual(notes.map(() => "intact"));
+      // The script and the core function agree, line for line.
+      expect(lines.map((l) => l[1])).toEqual(notes.map((n) => `answerable: ${answerableLine(landingAnswerable(n))}`));
+      expect(lines.map((l) => l[1])).toEqual([
+        "answerable: Matt (approved this change)",
+        "answerable: Ana (approved rule rul_1, whose deterministic proof landed this change)",
+        "answerable: Lee (asked for this intent)",
+        `answerable: none (agent agt_9 declared the intent and model ${gemma} approved it)`,
+        "answerable: unknown (the note was written before notes recorded who asked for each intent)",
+        `answerable: none (1 of 2: Lee asked for this intent; 1 of 2: no person: trunk certification declared the intent and a model approved it)`,
+      ]);
+    } finally {
+      NODE.rmSync(dir, { recursive: true, force: true });
     }
   });
 });
