@@ -57,10 +57,12 @@ import { formatMegafile } from "./megafile.ts";
 import { formatPause } from "./pause.ts";
 import { formatSpendCap } from "./spendcap.ts";
 import { formatRecipe, ruleRecipeLines } from "./recipe.ts";
+import { canaryLines, formatAudit } from "./audit.ts";
 import { formatSilentTtl, type SilentTtlView } from "./closure.ts";
 import { formatImpact } from "./impact.ts";
 import { autonomyLine, formatImmune } from "./immune.ts";
 import { decidesLines, decidesRequest } from "./gateline.ts";
+import { trunkHealthLines } from "./trunkhealth.ts";
 import { signatureFailed } from "./signatures.ts";
 import { checkClone, colorLines, keysReader, nodeGit, rootRow, type CloneVerify } from "./clonecheck.ts";
 import { runCensus } from "./censusgit.ts";
@@ -263,6 +265,8 @@ async function execute(cmd: Command, ctx: Ctx): Promise<number> {
       if (ctx.flags.json || !snap?.colony?.id) printJson(ctx, snap);
       else {
         io.stdout(formatStatus(snap, c, io.now()));
+        // What certifying after landing cost (trunkhealth.ts): red episodes, time to green, landings built on red; none from an older server.
+        for (const line of trunkHealthLines(await tryGet<unknown>(ctx, { method: "GET", path: colonyPath(cmd.colony, "/metrics") }), c)) io.stdout(line);
         // The paths only a person may change, read after the summary (a server that predates them shows none).
         const rows = policyRows(await tryGet<DecidePolicyView>(ctx, { method: "GET", path: colonyPath(cmd.colony, "/decide/policy") }), c);
         if (rows.length > 0) io.stdout(rows.join("\n"));
@@ -361,7 +365,10 @@ async function execute(cmd: Command, ctx: Ctx): Promise<number> {
     }
     case "review-decide": {
       const res = await send<unknown>(ctx.http, req);
+      // A blind canary (audit.ts): the answer reveals what it was and how the decision scored, in place of the usual words.
+      const canary = ctx.flags.json ? [] : canaryLines(res, c);
       if (ctx.flags.json) printJson(ctx, res ?? { ok: true });
+      else if (canary.length > 0) for (const line of canary) io.stdout(line);
       else {
         const verb = { approve: c.green("Approved"), reject: c.red("Rejected"), return: c.yellow("Returned") }[cmd.decision];
         io.stdout(`${verb} ${c.bold(cmd.proposalId)}${cmd.decision === "approve" ? "" : `: ${cmd.reason}`}`);
@@ -486,6 +493,12 @@ async function execute(cmd: Command, ctx: Ctx): Promise<number> {
       const res = await send<unknown>(ctx.http, req, 60_000);
       if (ctx.flags.json) printJson(ctx, res);
       else io.stdout(formatSpendCap(cmd, res, c));
+      return 0;
+    }
+    case "audit": {
+      const res = await send<unknown>(ctx.http, req, 60_000);
+      if (ctx.flags.json) printJson(ctx, res);
+      else io.stdout(formatAudit(cmd, res, c));
       return 0;
     }
     case "recipe": {

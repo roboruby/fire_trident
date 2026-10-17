@@ -422,9 +422,9 @@ export class DecideStore {
     this.sql.exec("UPDATE vaccines SET outcome = ?, layer = ?, reason = ?, decided_at = ? WHERE intent_id = ?", outcome, layer, reason.slice(0, 1_000), now, intentId);
   }
 
-  /** Every vaccine, newest first (at most `limit`). */
+  /** Every vaccine, newest first (at most `limit`). Blind canaries (decide/canary.ts, batch "canary") are sealed here too, but the meter leaves them out. */
   vaccines(limit = 5_000): VaccineRow[] {
-    return this.sql.exec<VaccineDbRow>("SELECT * FROM vaccines ORDER BY created_at DESC LIMIT ?", limit).toArray().map(toVaccine);
+    return this.sql.exec<VaccineDbRow>("SELECT * FROM vaccines WHERE batch != 'canary' ORDER BY created_at DESC LIMIT ?", limit).toArray().map(toVaccine);
   }
 
   // -- review views ---------------------------------------------------------------------

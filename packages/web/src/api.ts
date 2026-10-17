@@ -34,9 +34,12 @@ export interface Backend {
   /** Lineage of a file; with `line`, the landing that wrote that line comes first when the server finds one. */
   why(path: string, line?: number): Promise<WhyEntry[]>;
   review(): Promise<Proposal[]>;
-  decide(proposalId: string, decision: ReviewDecision, reason: string, by?: string): Promise<void>;
+  /** A person's decision; the live server's answer reveals a blind canary (audit.ts canaryOf). */
+  decide(proposalId: string, decision: ReviewDecision, reason: string, by?: string): Promise<unknown>;
   /** Approve or reject one batch of the queue (escalation batching, batch.ts; POST /review/batches/decide): the listed changes only; absent in the simulator and replays. */
   decideBatch?(key: string, ids: string[], decision: "approve" | "reject", reason: string, by?: string): Promise<BatchAnswer>;
+  /** Answer an audit item (POST /audit/:pid, audit.ts): fine, or should not have landed with a reason (and revert); absent in the simulator and replays. */
+  auditAnswer?(proposalId: string, verdict: "fine" | "should-not-have-landed", reason: string, by?: string, revert?: boolean): Promise<unknown>;
   /** Run the colony's tests on an escalated change again (tests before approval; POST /proposals/:pid/tests); absent in the simulator and replays. */
   retestProposal?(proposalId: string, by?: string): Promise<void>;
   /** Answer an agent's report that an intent cannot be done as written. */
@@ -371,13 +374,16 @@ export class HttpBackend implements Backend {
     return Array.isArray(data) ? (data as Proposal[]) : [];
   }
 
-  async decide(proposalId: string, decision: ReviewDecision, reason: string, by?: string): Promise<void> {
-    await this.post(`/review/${encodeURIComponent(proposalId)}`, { decision, reason, ...(by ? { by } : {}) });
+  async decide(proposalId: string, decision: ReviewDecision, reason: string, by?: string): Promise<unknown> {
+    return this.post(`/review/${encodeURIComponent(proposalId)}`, { decision, reason, ...(by ? { by } : {}) });
+  }
+
+  async auditAnswer(proposalId: string, verdict: "fine" | "should-not-have-landed", reason: string, by?: string, revert?: boolean): Promise<unknown> {
+    return this.post(`/audit/${encodeURIComponent(proposalId)}`, { verdict, reason, ...(by ? { by } : {}), ...(revert ? { revert: true } : {}) });
   }
 
   async decideBatch(key: string, ids: string[], decision: "approve" | "reject", reason: string, by?: string): Promise<BatchAnswer> {
-    const res = await this.post("/review/batches/decide", { key, ids, decision, reason, ...(by ? { by } : {}) });
-    return batchAnswerOf(await res.json().catch(() => null));
+    return batchAnswerOf(await this.post("/review/batches/decide", { key, ids, decision, reason, ...(by ? { by } : {}) }));
   }
 
   async retestProposal(proposalId: string, by?: string): Promise<void> {
@@ -388,14 +394,14 @@ export class HttpBackend implements Backend {
     await this.post(`/intents/${encodeURIComponent(intentId)}/escalation`, { decision, note, ...(by ? { by } : {}), ...(decision === "amend" && amend ? { amend } : {}) });
   }
 
-  /** POST JSON to a mutating route with the bearer token this browser keeps (if any); the response, its body unread. */
-  private async post(suffix: string, body: unknown): Promise<Response> {
+  /** POST JSON to a mutating route with the bearer token this browser keeps (if any); the answer's JSON, or null. */
+  private async post(suffix: string, body: unknown): Promise<unknown> {
     const headers: Record<string, string> = { "content-type": "application/json", accept: "application/json" };
     const token = readToken();
     if (token) headers.authorization = `Bearer ${token}`;
     const res = await fetch(this.url(suffix), { method: "POST", headers, body: JSON.stringify(body) });
     if (!res.ok) throw new HttpError(res.status, await failure(res));
-    return res;
+    return res.json().catch(() => null);
   }
 }
 

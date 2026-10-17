@@ -57,6 +57,12 @@
   color: var(--text);
 }
 
+/* The audit sample's line under the split. */
+.dc-audit {
+  margin: 6px 0 0;
+  color: var(--text-2);
+}
+
 .dc-warn {
   color: var(--need);
 }

@@ -192,6 +192,16 @@ describe("the queue: one card per batch", () => {
     expect(queue[1]!.batch).toBeUndefined();
   });
 
+  it("never batches an audit item or a change the caller names (a blind canary); they keep their place in the queue", () => {
+    const { sql } = sqlStorage();
+    const b = new EscalationBatches(sql);
+    b.record("prp_early", NETWORK, 1, 1);
+    for (const id of ["prp_n1", "prp_n2", "prp_audit", "prp_canary"]) b.record(id, NETWORK, 2, 1);
+    const queue: Array<{ id: Id; audit?: unknown; batch?: { ids: Id[] } }> = [{ id: "prp_n1" }, { id: "prp_audit", audit: { layer: "proof" } }, { id: "prp_canary" }, { id: "prp_n2" }];
+    markBatches(queue, b.batchedOf(queue.map((p) => p.id)), 1, (p) => p.id === "prp_canary");
+    expect(queue.map((p) => p.batch?.ids ?? null)).toEqual([["prp_n1", "prp_n2"], null, null, ["prp_n1", "prp_n2"]]);
+  });
+
   it("reads the colony's record for the queue, and leaves the queue as it was when the record cannot be read", () => {
     const { sql } = sqlStorage();
     const b = new EscalationBatches(sql);
@@ -207,14 +217,15 @@ describe("the queue: one card per batch", () => {
 
 describe("answering a batch", () => {
   type Row = { status: string; approvedAt?: number; mergeHold?: unknown };
-  function host(rows: Record<Id, Row>, fail: Id[] = []) {
+  function host(rows: Record<Id, Row>, fail: Id[] = [], canaries: Id[] = []) {
     const { sql } = sqlStorage();
     const batches = new EscalationBatches(sql);
     for (let i = 0; i < 2; i++) batches.record(`prp_early${i}`, NETWORK, 1 + i, 2);
     const calls: Array<{ id: Id; decision: string; reason: string; by: string; mint: boolean }> = [];
     const h: BatchHost = {
       batches,
-      proposal: (id) => rows[id] ?? null,
+      proposal: (id) => (rows[id] ? { intentId: `int_${id}`, ...rows[id]! } : null),
+      excluded: (p) => canaries.includes(p.id),
       decide: async (id, decision, reason, by, mint) => {
         if (fail.includes(id)) throw new Error("proposal is already landed");
         calls.push({ id, decision, reason, by, mint });
@@ -257,6 +268,16 @@ describe("answering a batch", () => {
     const answer = await answerBatch(h, { key: AUTH.key, ids: ["prp_auth"], decision: "approve", reason: "", by: "matt" });
     expect(answer).toMatchObject({ decided: [], skipped: [{ id: "prp_auth", why: "not in this batch; decide it on its own card" }] });
     expect(calls).toEqual([]);
+  });
+
+  it("never decides a blind canary, and says so in the words it uses for any change outside the batch", async () => {
+    const rows: Record<Id, Row> = { prp_n1: { status: "escalated" }, prp_canary: { status: "escalated" } };
+    const { h, batches, calls } = host(rows, [], ["prp_canary"]);
+    for (const id of ["prp_n1", "prp_canary"]) batches.record(id, NETWORK, 10, 2);
+    const answer = await answerBatch(h, { key: NETWORK.key, ids: ["prp_n1", "prp_canary"], decision: "approve", reason: "", by: "matt" });
+    expect(answer.decided).toEqual(["prp_n1"]);
+    expect(answer.skipped).toEqual([{ id: "prp_canary", why: "not in this batch; decide it on its own card" }]);
+    expect(calls.map((c) => c.id)).toEqual(["prp_n1"]);
   });
 
   it("a rejection mints one antibody, from the first change it decides; a failed decision is listed, not thrown", async () => {

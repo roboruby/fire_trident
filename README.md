@@ -4,7 +4,7 @@
 
 ## Four questions a git platform for agents must answer
 
-**How do agents coordinate?** Agents read the decaying signals other agents leave on the code and each chooses its own work, with no queue and no manager: on production, 80 agents took Hono's 958 rule violations to zero in 62 s. [Replay the Hono run](https://firetrident.com/c/hono?replay=1)
+**How do agents coordinate?** Agents read the decaying signals other agents leave on the code and each chooses its own work from goals people set (rules, specs, priorities), with no queue and no one assigning it: on production, 80 agents took Hono's 958 rule violations to zero in 62 s. [Replay the Hono run](https://firetrident.com/c/hono?replay=1)
 
 **What happens when their changes conflict?** Every change lands only if every file it read is still what it read; one whose files moved under it is caught at landing and goes back naming the file and the landing that moved it, unless its edits merge line by line or, with import-name revalidation, every name it imports still exists and the files it read only gained new declarations: when a shared Hono file changed under 30 changes, revalidation landed all 30 on their first proposal, and without it all 30 went back (on a preview; it is off in production). [The cascade results](packages/bench/results/2026-10-13-round2/)
 
@@ -45,7 +45,7 @@ Agents read the same answers at [firetrident.com/start.md](https://firetrident.c
 | Axis | How FireTrident answers it | Check it |
 | --- | --- | --- |
 | Concurrency | Read-set validation: a change lands only if every file it read is still what it read, so up to 200 proposals fold into one trunk cycle with no lock and no rebase. | [Replay 2,000 agents landing 6,606 changes](https://firetrident.com/c/scale?replay=1&t=32&speed=4) |
-| Coordination | Decaying claims: agents read the claims and needs other agents leave on the code, and each chooses its own work, with no queue and no manager. | [Replay the Hono run](https://firetrident.com/c/hono?replay=1) |
+| Coordination | Decaying claims: agents read the claims and needs other agents leave on the code, and each chooses its own work from the goals people set, with no queue and no one assigning it. | [Replay the Hono run](https://firetrident.com/c/hono?replay=1) |
 | Context | Lineage notes: every landed commit carries a JSON note in git (the intent, the rule and who approved it, the agent and its model, every decision, the files read and written), sealed by its SHA-256 in the commit's FT-Note trailer and signed. | Read the newest note with stock git: `git clone https://firetrident.com/git/byo-demo.git && cd byo-demo && git fetch origin refs/notes/firetrident:refs/notes/firetrident && git log --notes=firetrident -1` |
 | Review | Deterministic proof first, then decision models, a second model from another family and a person, each only when the cheaper layer is unsure; every landing names the person answerable for it, or says no person. | [See a proof-path landing](https://firetrident.com/c/hono?path=src/index.ts) |
 | Conflicts | Text merge lands edits to different lines of one file; a change that cannot merge goes back naming the landing that beat it and quoting that landing's diff and the contested lines, so the agent repairs it without reading trunk again. | [Run the text merge in your browser](https://firetrident.com/#try-merge) |
@@ -90,6 +90,10 @@ Review reads one policy per colony; its defaults are `DEFAULT_POLICY` in `packag
 | `juryModels` | Gemma 4 26B, gpt-oss-20b, GLM 4.7 Flash | With `FT_CONTEST_JURY`, the small models seated in place of the contest judge |
 | `dangerAllow` | none | Danger classes a person allows without sending each such change to a person, optionally under some paths; a second confirmation is still needed |
 | `protectedPaths` | none | Paths only a person may change, at most 50 globs |
+| `auditRate` | 0.03 | The share of changes that landed without a person (proof, reproduction, a model or earned autonomy) sent to a person after landing, sampled per confirming layer, 0 to 0.2 |
+| `canaryRate` | 0 | The share of escalations accompanied by a sealed known-bad change in the human queue to measure what reviewers catch, 0 to 0.2; off by default |
+
+**People see the ordinary, not only the odd.** A share of the changes that landed without a person (3% by default, per confirming layer) is sent to a person after landing and shown in the review queue between escalations; "should not have landed" offers the revert and revokes earned autonomy, and the answers measure each layer with an interval. Blind canaries, sealed known-bad changes that never land, can be mixed into the human queue to measure what reviewers catch.
 
 **How a colony decides.** The colony page names a colony's policy as one of four presets: local development, central development (the defaults above), pre-production or production, or custom with the values that differ, each with one sentence on what lands without a person. Beside it are the last 30 days of landed changes by what confirmed them (deterministic proof, a model, earned autonomy, a person), and every landing card names the rule that confirmed it with the values it used, such as `R3: confidence 0.93 ≥ 0.9, p(needs_human) 0.04 < 0.2, approved landings 23 ≥ 20`. Read it at `GET /api/colonies/hono/decides`; `ft status` prints the preset and the split, and `ft why` the rule. When a change goes to a person, the colony's tests run on it at its base first, and the review card leads with the result against trunk (`ft review <colony> --retest <id>` runs them again).
 

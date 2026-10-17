@@ -40,6 +40,7 @@ describe("batches in the review list", () => {
   it("reads a batch defensively and finds one by its id or key", () => {
     expect(batchOf(QUEUE[0]!)).toEqual(BATCH);
     expect(batchOf(proposal("prp_x", { batch: { key: "k" } }))).toBeNull();
+    expect(batchOf(proposal("prp_x", { batch: BATCH, audit: { layer: "proof" } }))).toBeNull();
     const groups = groupBatches(QUEUE);
     expect(groups.map((g) => g.members.map((m) => m.id))).toEqual([["prp_a", "prp_b"]]);
     expect(findBatch(groups, "bat_0a1b2c3d")?.batch.key).toBe(BATCH.key);

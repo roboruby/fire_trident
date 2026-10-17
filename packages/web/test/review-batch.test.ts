@@ -21,6 +21,7 @@ describe("reading batches from the queue", () => {
     expect(batchOf(item("prp_a"))).toBeNull();
     expect(batchOf(item("prp_a", { batch: { key: "", label: "x" } }))).toBeNull();
     expect(batchOf(item("prp_a", { batch: [BATCH] }))).toBeNull();
+    expect(batchOf(item("prp_a", { batch: BATCH, audit: { layer: "proof" } }))).toBeNull();
     expect(batchOf(item("prp_a", { batch: { key: "k", label: "hit it", ids: ["prp_a", 4, ""], budget: -1 } }))).toEqual({ id: "", key: "k", rule: "", label: "hit it", budget: 0, ids: ["prp_a"] });
   });
 

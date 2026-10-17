@@ -1,0 +1,14 @@
+{
+  "name": "tally",
+  "private": true,
+  "type": "module",
+  "description": "The money core of a small shop's checkout: catalog, cart, discounts, tax, shipping, invoices and a sales report.",
+  "scripts": {
+    "test": "node --test",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2",
+    "typescript": "6.0.3"
+  }
+}

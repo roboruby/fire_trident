@@ -230,6 +230,23 @@ module Fixture
     ]
   end
 
+  # The `audit` of GET /api/colonies/<id>/metrics (definition 19), as packages/worker/src/colony/audit.ts writes it.
+  def self.audit
+    {
+      "rate" => 0.03, "every" => 5, "landed" => 400, "queued" => 13, "pending" => 1, "audited" => 12, "fine" => 12, "wrong" => 0, "wrongRate" => 0, "lo" => 0, "hi" => 0.242,
+      "line" => "audited 12 of 400 landings without a person: 0 should not have landed (0–24%); 1 waits for a person",
+      "layers" => {
+        "deterministic" => { "label" => "a deterministic proof", "landed" => 300, "queued" => 9, "audited" => 9, "wrong" => 0, "wrongRate" => 0, "lo" => 0, "hi" => 0.299 },
+        "reproduction" => { "label" => "reproduction by its recipe", "landed" => 0, "queued" => 0, "audited" => 0, "wrong" => 0, "wrongRate" => 0, "lo" => 0, "hi" => 1 },
+        "model" => { "label" => "a model's approval", "landed" => 100, "queued" => 4, "audited" => 3, "wrong" => 0, "wrongRate" => 0, "lo" => 0, "hi" => 0.562 }
+      },
+      "canaries" => { "on" => true, "rate" => 0.05, "made" => 6, "waiting" => 1, "discarded" => 0, "decided" => 5, "caught" => 4, "approved" => 1, "catchRate" => 0.8, "lo" => 0.376, "hi" => 0.964,
+                      "line" => "canaries: 4 of 5 caught (80%, 38–96%), 1 approved" },
+      "reviewers" => { "change" => 40, "line" => "approved 9 of 10 escalations (90%) in the last 2 weeks, 5 of 10 escalations (50%) in the 6 before: up 40 points",
+                       "weeks" => [{ "from" => T0, "to" => T0 + 1, "decisions" => 10, "approved" => 9, "approvalRate" => 0.9 }] }
+    }
+  end
+
   # The public API, in process: what Report asks of Coordination::Api.
   class FakeApi
     attr_reader :asked
@@ -246,6 +263,9 @@ module Fixture
     def events(_id) = { "source" => "recorded", "total" => @events.size, "events" => @events }
     def agents(_id) = AGENTS
     def certifications(_id) = Fixture.certifications
+    def certifications_page(_id) = { "colonyId" => "fx", "deployment" => true, "runner" => true, "policy" => { "enabled" => true }, "results" => Fixture.certifications }
+    def metrics(_id) = { "colonyId" => "fx", "audit" => Fixture.audit }
+    def intent_spend(_id, _iid) = nil
 
     def proposal(_id, pid)
       @asked << pid
@@ -267,6 +287,7 @@ module Fixture
       when "/api/colonies/fx" then [200, snapshot]
       when "/api/colonies/fx/agents" then [200, { "agents" => AGENTS }]
       when "/api/colonies/fx/certifications" then [200, { "colonyId" => "fx", "results" => certifications }]
+      when "/api/colonies/fx/metrics" then [200, { "colonyId" => "fx", "audit" => audit }]
       when "/api/colonies/fx/events"
         after = params["after"].to_i
         page = after.zero? ? events.first(half) : events.drop(half)
@@ -1034,6 +1055,132 @@ class CulpritPrecisionTest < Minitest::Test
   end
 end
 
+# Definition 18 on the fixtures the colony's own tests use (packages/worker/test/certify/health.test.ts): the same numbers
+# and the same line. Landing i lands at minute i; a result names its landing's commit.
+class TrunkHealthTest < Minitest::Test
+  T = 1_800_000_000_000
+  def m(x) = T + (x * 60_000).round
+  def landing(i, intents = []) = { id: "lnd_#{i}", sha: "sha#{i}", at: m(i), intents: intents }
+
+  def result(i, status, start, finish, extra = {})
+    { "trunkSha" => "sha#{i}", "landingId" => "lnd_#{i}", "status" => status, "startedAt" => m(start), "finishedAt" => m(finish) }.merge(extra)
+  end
+
+  def health(certs, landings, now:, **opts) = Coordination.trunk_health(certs.reverse, landings: landings, now: now, **opts)
+
+  def test_no_red
+    h = health([result(2, "green", 2.2, 2.5), result(5, "skipped", 5.2, 5.3, "detail" => "the run judged nothing"), result(9, "green", 9.2, 9.6)], (0..9).map { |i| landing(i) }, now: m(20))
+    assert_equal({ from: m(2), to: m(20), landings: 8, results: 2 }, h[:window])
+    assert_equal({ count: 0, open: 0, per100Landings: 0.0 }, h[:episodes])
+    assert_equal [0, 0.0, 0], [h[:red][:ms], h[:red][:share], h[:red][:toGreen][:episodes]]
+    assert_equal({ landings: 0, afterRedKnown: 0, repairs: 0 }, h[:builtOnRed])
+    assert_equal [{ minutes: 5, landings: 8, certified: 6, share: 0.75 }, { minutes: 15, landings: 8, certified: 8, share: 1.0 }, { minutes: 60, landings: 8, certified: 8, share: 1.0 }], h[:certifiedWithin]
+    assert_equal "red 0 times in 8 landings, 0 landings built on red", h[:text]
+  end
+
+  def test_one_episode_fixed_by_a_repair
+    landings = (0..4).map { |i| landing(i) } + [landing(5, ["int_r"]), landing(6)]
+    certs = [result(1, "green", 1.2, 1.5), result(3, "red", 3.2, 3.5, "repairIntentId" => "int_r", "firstRed" => { "status" => "found", "trunkSha" => "sha2", "landingId" => "lnd_2" }),
+             { "trunkSha" => "shaX", "status" => "error", "startedAt" => m(4.1), "finishedAt" => m(4.2), "detail" => "out of time" },
+             result(4, "red", 4.3, 4.5), result(5, "green", 5.2, 5.5)]
+    asked = []
+    spend = lambda do |ids|
+      asked << ids
+      { usd: 0.0123, calls: 3, intents: 1 }
+    end
+    h = health(certs, landings, now: m(10), holds: { "int_r" => { closed_ms: 90_000, since: nil } }, spend: spend)
+    assert_equal({ count: 1, open: 0, per100Landings: 16.67 }, h[:episodes])
+    assert_equal 120_000, h[:red][:ms]
+    assert_equal({ episodes: 1, p50Ms: 120_000, p90Ms: 120_000, maxMs: 120_000 }, h[:red][:toGreen])
+    assert_nil h[:red][:since]
+    assert_equal({ landings: 2, afterRedKnown: 1, repairs: 1 }, h[:builtOnRed])
+    assert_equal({ intents: 1, agentMs: 90_000, held: 0, spend: { usd: 0.0123, calls: 3, intents: 1 } }, h[:repair])
+    assert_equal [["int_r"]], asked
+    assert_equal "red 1 time in 6 landings, 2.0 min to green at p50, 2 landings built on red", h[:text]
+  end
+
+  def test_red_over_several_landings_with_landings_built_on_red
+    landings = (0..3).map { |i| landing(i) } + [landing(4, ["int_r1"]), landing(5), landing(6), landing(7, ["int_r2"])] + (8..12).map { |i| landing(i) }
+    certs = [result(1, "green", 1.2, 1.5), result(3, "red", 3.2, 3.5, "repairIntentId" => "int_r1", "firstRed" => { "status" => "found", "trunkSha" => "sha2", "landingId" => "lnd_2" }),
+             result(5, "red", 5.2, 5.5, "repairIntentId" => "int_r2"), result(8, "green", 8.2, 9.5), result(10, "red", 10.2, 10.5), result(12, "green", 12.2, 14.5)]
+    h = health(certs, landings, now: m(20))
+    assert_equal [2, 16.67, 600_000], [h[:episodes][:count], h[:episodes][:per100Landings], h[:red][:ms]]
+    g = h[:red][:toGreen]
+    assert_equal [2, 300_000, 360_000], g.values_at(:episodes, :p50Ms, :maxMs)
+    assert_in_delta 348_000, g[:p90Ms], 1e-6
+    assert_equal({ landings: 4, afterRedKnown: 3, repairs: 3 }, h[:builtOnRed])
+    assert_equal 2, h[:repair][:intents]
+    assert_equal "red 2 times in 12 landings, 5.0 min to green at p50, 4 landings built on red", h[:text]
+  end
+
+  def test_still_red_at_the_end_of_the_window
+    landings = (0..5).map { |i| landing(i) } + [landing(6, ["int_r"]), landing(7)]
+    holds = Coordination.holds({ "int_r" => [[m(3.5), "open"], [m(4), "claimed"], [m(5), "open"], [m(5.5), "claimed"], [m(6), "proposed"]] })
+    assert_equal({ "int_r" => { closed_ms: 60_000, since: m(5.5) } }, holds)
+    h = health([result(1, "green", 1.2, 1.5), result(3, "red", 3.2, 3.5, "repairIntentId" => "int_r")], landings, now: m(10), holds: holds)
+    assert_equal({ count: 1, open: 1, per100Landings: 14.29 }, h[:episodes])
+    assert_equal [m(3.5), 390_000, 0.7222], [h[:red][:since], h[:red][:ms], h[:red][:share]]
+    assert_equal({ landings: 2, afterRedKnown: 2, repairs: 1 }, h[:builtOnRed])
+    assert_equal({ intents: 1, agentMs: 330_000, held: 1 }, h[:repair])
+    assert_equal [{ minutes: 5, landings: 4, certified: 1, share: 0.25 }, { minutes: 15, landings: 1, certified: 1, share: 1.0 }], h[:certifiedWithin].first(2)
+    assert_equal "red 1 time in 7 landings, red now for 6.5 min, 2 landings built on red", h[:text]
+  end
+
+  def test_no_tests_off_and_no_verdict_say_why
+    assert_equal({ status: "no-tests", reason: "no test files (*.test.ts or *.test.js)", text: "trunk health not measured: certification found no test this platform can run" },
+                 health([result(0, "skipped", 0.2, 0.3, "detail" => "no test files (*.test.ts or *.test.js)")], [landing(0)], now: m(1)))
+    off = { "deployment" => true, "runner" => true, "policy" => { "enabled" => false } }
+    assert_equal({ status: "off", reason: "trunk certification is off for this colony", text: "trunk health not measured: trunk certification is off for this colony" },
+                 health([], [], now: m(1), state: off))
+    assert_equal "trunk health not measured yet: no certification has judged trunk", health([], [], now: m(1))[:text]
+    assert_equal "the last certification could not run (out of time)", health([result(0, "error", 0.2, 0.3, "detail" => "out of time.")], [], now: m(1))[:reason]
+    assert_equal "| Trunk health | trunk health not measured: trunk certification is off for this colony (trunk certification is off for this colony) |",
+                 Coordination.trunk_health_row(health([], [], now: m(1), state: off))
+  end
+
+  def test_words_and_the_row
+    assert_equal ["30 s", "3.4 min", "12 min", "2.5 h", "3.5 d"], [30_000, 204_000, 720_000, 9_000_000, 300_000_000].map { |ms| Coordination.span(ms) }
+    landings = (0..4).map { |i| landing(i) } + [landing(5, ["int_r"]), landing(6)]
+    h = health([result(1, "green", 1.2, 1.5), result(3, "red", 3.2, 3.5, "repairIntentId" => "int_r"), result(5, "green", 5.2, 5.5)], landings, now: m(10),
+               holds: { "int_r" => { closed_ms: 90_000, since: nil } }, spend: ->(_) { { usd: 0.0123, calls: 3, intents: 1 } })
+    assert_equal "| Trunk health | red 1 time in 6 landings, 2.0 min to green at p50, 1 landing built on red; red 22.2% of the 9.0 min measured; " \
+                 "to green p90 2.0 min, longest 2.0 min; 1 built on known red, 1 fix; 1 repair intent held 1.5 min by agents, $0.0123; " \
+                 "certified within 5 min 100.0%, 15 min 100.0%, 60 min 100.0%; the colony says: red 9 times |",
+                 Coordination.trunk_health_row(h.merge(colonySays: "red 9 times"))
+  end
+
+  # Through the report: the fixture's landing commits with the record's landing times, results naming landings, the
+  # repair's spend from the API, and the colony's own line beside it.
+  class Api < Fixture::FakeApi
+    def certifications_page(_id)
+      found = { "status" => "found", "landingId" => "lnd_2", "proposals" => [{ "id" => "prp_2", "paths" => ["src/b.ts"] }] }
+      at = ->(s) { Fixture::T0 + (s * 1000) }
+      { "deployment" => true, "runner" => true, "policy" => { "enabled" => true }, "results" => [
+        { "trunkSha" => "e" * 40, "landingId" => "lnd_5", "status" => "green", "startedAt" => at.(275), "finishedAt" => at.(280) },
+        { "trunkSha" => "d" * 40, "landingId" => "lnd_3", "status" => "red", "startedAt" => at.(165), "finishedAt" => at.(170), "repairIntentId" => "int_5",
+          "suspects" => [{ "landingId" => "lnd_2" }], "firstRed" => found },
+        { "trunkSha" => "c" * 40, "landingId" => "lnd_1", "status" => "green", "startedAt" => at.(45), "finishedAt" => at.(50) }
+      ] }
+    end
+
+    def metrics(_id) = { "trunkHealth" => { "status" => "measured", "text" => "red 1 time in 6 landings, 1.8 min to green at p50, 1 landing built on red" } }
+    def intent_spend(_id, iid) = iid == "int_5" ? { "usd" => 0.002, "tokens" => { "input" => 10, "output" => 5 }, "calls" => { "agent" => 2, "review" => 1 } } : nil
+  end
+
+  def test_through_the_report
+    r = Coordination::Report.new(colony: "fx", git: Coordination::Git.new(CoordinationTest.fixture), api: Api.new(CoordinationTest.fixture), url: "http://fake",
+                                 now: Fixture::T0 + 400_000).build
+    h = r[:trunkHealth]
+    assert_equal "red 1 time in 6 landings, 1.8 min to green at p50, 1 landing built on red", h[:text]
+    assert_equal({ landings: 1, afterRedKnown: 0, repairs: 1 }, h[:builtOnRed])
+    assert_equal({ intents: 1, agentMs: 0, held: 0, spend: { usd: 0.002, calls: 3, intents: 1 } }, h[:repair])
+    assert_equal({ answers: 1, suspect: 1, precision: 1.0, rank1: 1.0 }, h[:culprits])
+    assert_equal [5, 5], h[:certifiedWithin].first.values_at(:certified, :landings)
+    assert_includes Coordination.markdown(r), "| Trunk health | red 1 time in 6 landings, 1.8 min to green at p50, 1 landing built on red; red 30.7% of the 6.0 min measured"
+    assert_includes Coordination.markdown(r), "; the colony says the same |"
+  end
+end
+
 # Definition 16 on a small record: i1 landed on its second proposal after three decisions, i2 on its first with none;
 # i3 (claimed) and i4 (open) are left at the record's last event.
 class ResidueTest < Minitest::Test
@@ -1072,6 +1219,43 @@ class ResidueTest < Minitest::Test
                    oldest: [{ intent: "i4", title: "i4 title", status: "open", ageSeconds: 29.0 }, { intent: "i3", title: "i3 title", status: "claimed", ageSeconds: 26.0 }] }, r[:open])
     assert_equal "| Residue and review rounds | 2 landed intents: 1.50 proposals to land (p90 1.9), 1.50 review rounds; declared to landed p50 13.5 s, " \
                  "p90 18.7 s; 0.75 review rounds a change; 2 intents still open, the oldest 29.0 s old |", Coordination.residue_row(r)
+  end
+end
+
+# Definition 19: the audit sample, blind canaries and people's decisions, as the colony's metrics report serves them.
+class AuditSampleTest < Minitest::Test
+  def test_numbers_as_the_colony_computed_them
+    a = Coordination.audit_sample(Fixture.audit)
+    assert_equal({ landed: 400, queued: 13, audited: 12, wrong: 0, wrongRate: 0, lo: 0, hi: 0.242 }, a.slice(:landed, :queued, :audited, :wrong, :wrongRate, :lo, :hi))
+    assert_equal 0.03, a[:rate]
+    assert_equal({ landed: 100, queued: 4, audited: 3, wrong: 0, wrongRate: 0, lo: 0, hi: 0.562, label: "a model's approval" }, a[:layers]["model"])
+    assert_equal({ on: true, rate: 0.05, decided: 5, caught: 4, approved: 1, catchRate: 0.8, lo: 0.376, hi: 0.964, waiting: 1, line: "canaries: 4 of 5 caught (80%, 38–96%), 1 approved" }, a[:canaries])
+    assert_equal 40, a[:reviewers][:change]
+    assert_equal [{ from: Fixture::T0, decisions: 10, approved: 9, approvalRate: 0.9 }], a[:reviewers][:weeks]
+  end
+
+  def test_markdown_row
+    row = Coordination.audit_row(Coordination.audit_sample(Fixture.audit))
+    assert_equal "| Audit sample (3.0%) | audited 12 of 400 landings without a person: 0 should not have landed (0–24%); 1 waits for a person; " \
+                 "by layer: deterministic 9 of 300, 0 should not have (0–30%), model 3 of 100, 0 should not have (0–56%); " \
+                 "canaries: 4 of 5 caught (80%, 38–96%), 1 approved; people: approved 9 of 10 escalations (90%) in the last 2 weeks, " \
+                 "5 of 10 escalations (50%) in the 6 before: up 40 points |", row
+  end
+
+  def test_an_older_server_or_a_damaged_answer
+    a = Coordination.audit_sample({ "line" => "audit sample off", "layers" => { "model" => "x" }, "canaries" => nil })
+    assert_equal({}, a[:layers])
+    assert_equal 1, a[:hi]
+    assert_equal({ change: nil, line: "", weeks: [] }, a[:reviewers])
+  end
+
+  def test_the_report_reads_it_and_the_canary_agent_is_left_out_like_the_vaccine_agent
+    assert_equal 12, CoordinationTest.report.first[:audit][:audited]
+    assert_includes Coordination.markdown(CoordinationTest.report.first), "| Audit sample (3.0%) | audited 12 of 400"
+    agents = [{ "id" => "v", "name" => "vaccine", "model" => "vaccine" }, { "id" => "c", "name" => "synthetic-ab12-1", "model" => "canary" }, { "id" => "a", "name" => "synthetic-ab12-2", "model" => "m1" }]
+    assert_equal Set["v", "c"], Coordination.sealed_agents(agents)
+    assert Coordination.vaccine?(agents[1])
+    refute Coordination.vaccine?(agents[2])
   end
 end
 

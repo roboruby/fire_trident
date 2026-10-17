@@ -337,7 +337,8 @@ const EXIT_MODEL_ESCALATED = 3;
 /** The colony's page, its replay and its review queue, with how a person decides; this script decides nothing. */
 async function demoSummary(colony: string, names: Map<string, string>): Promise<void> {
   const queue = await rest("GET", `/colonies/${colony}/review`);
-  const waiting: any[] = Array.isArray(queue.data) ? queue.data : [];
+  // Audit items (the audit sample's landed changes among the escalations) already landed: they are not waiting.
+  const waiting: any[] = (Array.isArray(queue.data) ? queue.data : []).filter((x: { audit?: unknown }) => !x.audit);
   console.log(`\nColony: ${URL_BASE}/c/${encodeURIComponent(colony)}`);
   console.log(`Replay: ${URL_BASE}/c/${encodeURIComponent(colony)}?replay=1`);
   console.log(`Review queue: ${waiting.length} ${waiting.length === 1 ? "change waits" : "changes wait"} for a person (${URL_BASE}/api/colonies/${colony}/review)`);

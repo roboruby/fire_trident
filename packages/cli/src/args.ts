@@ -8,6 +8,7 @@ import type { HookCommand } from "./hook.ts";
 import { RECIPE_OPTIONS, RULE_RECIPE_USAGE, parseRecipeCommand, parseRuleRecipe, type RecipeCommand, type RuleRecipe } from "./recipe.ts";
 import { CENSUS_OPTIONS, parseCensusCommand, type CensusCommand } from "./census.ts";
 import type { ReviewBatchCommand } from "./batch.ts";
+import { AUDIT_OPTIONS, parseAuditCommand, type AuditCommand } from "./audit.ts";
 
 /** Event types `ft watch --only` accepts. */
 export const EVENT_TYPES: ReadonlyArray<ColonyEvent["t"]> = [
@@ -91,7 +92,9 @@ export type Command =
   // The spend cap (spendcap.ts): show it (no usd), set it, or remove it (usd null).
   | { name: "spend-cap"; colony: string; usd?: number | null; reviewReserveUsd?: number; by?: string }
   // Recipes (recipe.ts): declare one, list them, show one, approve a held one.
-  | RecipeCommand;
+  | RecipeCommand
+  // The audit sample and blind canaries (audit.ts): show the measures, set the rates, answer an item.
+  | AuditCommand;
 
 /** Options every command accepts. */
 export interface GlobalFlags {
@@ -148,6 +151,7 @@ const COMMAND_OPTIONS: Record<string, Record<string, OptionSpec>> = {
   resume: { deployment: { type: "boolean" }, reason: { type: "string" }, by: { type: "string" } },
   "spend-cap": { "review-reserve": { type: "string" }, by: { type: "string" } },
   recipe: RECIPE_OPTIONS,
+  audit: AUDIT_OPTIONS,
   swarm: { agents: { type: "string" }, model: { type: "string" }, kind: { type: "string" } },
   why: {},
   impact: { depth: { type: "string" } },
@@ -639,6 +643,11 @@ function build(word: string, v: Record<string, unknown>, p: string[]): Command {
       const cmd = parseRecipeCommand(v, p);
       return typeof cmd === "string" ? fail(cmd) : cmd;
     }
+    case "audit": {
+      // The audit sample and blind canaries (audit.ts): the measures, the rates, or a person's answer to an item.
+      const cmd = parseAuditCommand(v, p);
+      return typeof cmd === "string" ? fail(cmd) : cmd;
+    }
     default:
       return fail(`unknown command "${word}"`);
   }
@@ -904,6 +913,7 @@ Commands
   review <colony> <id> <decision>  Approve, reject, or return a proposal
   review <colony> --retest <id>    Run the colony's tests on an escalated change again
   review <colony> --approve-batch <id>  Approve every change of a batch (--reject-batch to reject)
+  audit <colony> [--rate <pct>]    Landings without a person put to a person: measures, rates, answers
   revert <colony> <landing|prp>    Undo a landing or one proposal of it unless work landed on top
   watch <colony>                   Stream live colony events
   delete <colony> --yes            Delete a colony: agents, repos, and history
@@ -1504,6 +1514,32 @@ the detectors on probation and the alert budget. A public read: no token needed.
 
 Example
   ft immune web
+`,
+  audit: `
+ft audit <colony>
+ft audit <colony> --rate <percent> [--canary-rate <percent>]
+ft audit <colony> <proposalId> fine|wrong [--reason <text>] [--revert] [--by <name>]
+
+A share of the changes that land without a person (a deterministic proof, a
+reproduction, a model's approval, earned autonomy) goes to a person after it
+landed, so people keep seeing ordinary landings: 3% by default (the decide
+policy's auditRate), sampled per confirming layer and never holding a landing.
+ft review lists them after the escalations, marked AUDIT. Without options, show
+how many were audited and how many should not have landed, per layer, with 95%
+intervals; the blind canaries' catch rate; and people's decisions on
+escalations over the last weeks. --rate sets the sample (0 to 20 percent; 0 is
+off). --canary-rate turns blind canaries on (0 is off, the default): sealed
+known-bad changes put in the review queue that look like any escalation until a
+person decides one; an approved canary is revealed at once and never lands.
+Answer an item fine, or wrong (should not have landed) with a reason: wrong
+takes back the region's earned autonomy when autonomy landed it, and offers
+the revert, or does it with --revert.
+
+Examples
+  ft audit web
+  ft audit web --rate 5 --canary-rate 2
+  ft audit web prp_42 fine
+  ft audit web prp_43 wrong --reason "drops the rate limit" --revert
 `,
   vaccinate: `
 ft vaccinate <colony> --count <n>

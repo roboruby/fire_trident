@@ -13,6 +13,8 @@ import { useThrottledVersion } from "../useStore.ts";
 import { StuckList } from "./NeedsYou.tsx";
 import type { DecidesState } from "../decides.ts";
 import { DecidesCard, DecidesRow, useDecides } from "./Decides.tsx";
+import { TrunkHealthLine, useTrunkHealth } from "./TrunkHealth.tsx";
+import type { TrunkHealthView } from "../trunkhealth.ts";
 import "./firstscreen.css";
 
 /**
@@ -56,8 +58,8 @@ function andMore(items: readonly string[], shown = SHOWN): string {
 
 const CERT_WORD: Record<Target["cert"]["status"], string> = { green: "green", red: "red", running: "running", error: "could not run", skipped: "skipped", none: "not run yet" };
 
-/** The target column: rules with who approved them, acceptance, protected paths, open goals, certification. */
-export function TargetView({ target, open = false, onToggle, decides }: { target: Target; open?: boolean; onToggle?: () => void; decides?: DecidesState }) {
+/** The target column: rules with who approved them, acceptance, protected paths, open goals, certification (and trunk health under it). */
+export function TargetView({ target, open = false, onToggle, decides, health }: { target: Target; open?: boolean; onToggle?: () => void; decides?: DecidesState; health?: TrunkHealthView | null }) {
   const { rules, acceptance, protectedPaths: pp, goals, cert } = target;
   const approvers = [...new Set(rules.map((r) => r.approvedBy))];
   return (
@@ -141,6 +143,8 @@ export function TargetView({ target, open = false, onToggle, decides }: { target
               no <span className="mono">certified</span> commit yet
             </span>
           )}
+          {/* What certifying after landing cost (TrunkHealth.tsx): red episodes, time to green, landings built on red. */}
+          {health ? <TrunkHealthLine health={health} /> : null}
         </dd>
       </dl>
     </div>
@@ -414,6 +418,7 @@ export function FirstScreen({ store, backend, onGo }: { store: ColonyStore; back
   const [stuckOpen, setStuckOpen] = useState(false);
   const pp = useProtected(store.colonyId, backend.mode);
   const decides = useDecides(store.colonyId, backend.mode);
+  const health = useTrunkHealth(store.colonyId, backend.mode);
   const curve = useCurve(store, backend);
   // An empty row while the colony loads keeps the page grid in place.
   if (!store.loaded) return <section className="fs is-loading" aria-hidden="true" />;
@@ -454,7 +459,7 @@ export function FirstScreen({ store, backend, onGo }: { store: ColonyStore; back
   return (
     <section className="fs" aria-label="Target, distance and exceptions">
       <div className="fs-grid">
-        <TargetView target={target} open={open} onToggle={() => setOpen(!open)} decides={decides} />
+        <TargetView target={target} open={open} onToggle={() => setOpen(!open)} decides={decides} health={health.state === "loaded" ? health.health : null} />
         <DistanceView distance={distance} replay={replay} />
         <CurveView curve={curve} />
         <button type="button" className="fs-toggle fs-fold" onClick={() => fold(true)} title="Fold the target into one line (this browser remembers)">

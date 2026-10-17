@@ -214,6 +214,27 @@ export interface DecidesSplit {
   counts: Record<ConfirmKind, number>;
 }
 
+/**
+ * The audit sample in a line (worker colony/audit.ts): of the changes that landed without a person, how many a person
+ * audited after they landed and how many should not have landed, with its Wilson 95% interval; and the blind canaries'
+ * catch rate. Absent from servers that predate it.
+ */
+export interface DecidesAudit {
+  /** "audited 12 of 400 landings without a person: 0 should not have landed (0–24%)". */
+  line: string;
+  /** The share of landings without a person put in front of a person (0.03 is 3%; 0 is off). */
+  rate: number;
+  landed: number;
+  audited: number;
+  wrong: number;
+  lo: number;
+  hi: number;
+  /** Audit items waiting for a person. */
+  pending: number;
+  /** The canaries in a line ("canaries off", "canaries: 4 of 5 caught (80%, 38–96%), 1 approved"). */
+  canaries: string;
+}
+
 /** How a colony decides: the preset its policy equals (or custom and how it differs), the presets, and the split. */
 export interface DecidesReport {
   colonyId: string;
@@ -235,6 +256,8 @@ export interface DecidesReport {
   always: string;
   presets: DecidesPreset[];
   split: DecidesSplit;
+  /** The audit sample and the canaries; absent from servers that predate them. */
+  audit?: DecidesAudit;
   at: number;
 }
 
@@ -245,6 +268,23 @@ function settingsOf(v: unknown): DecidesPreset["settings"] {
   return list(v)
     .filter(isObj)
     .flatMap((s) => (typeof s.field === "string" && (typeof s.value === "number" || typeof s.value === "boolean") ? [{ field: s.field, label: words(s.label, 80) || s.field, value: s.value }] : []));
+}
+
+/** The audit's line and numbers as the server sent them; null when it sent none (an older server) or not one. */
+export function decidesAuditOf(raw: unknown): DecidesAudit | null {
+  if (!isObj(raw) || typeof raw.line !== "string" || raw.line.trim() === "") return null;
+  const share = (v: unknown, fallback: number): number => Math.min(1, Math.max(0, typeof v === "number" && Number.isFinite(v) ? v : fallback));
+  return {
+    line: words(raw.line, 200),
+    rate: share(raw.rate, 0),
+    landed: whole(raw.landed),
+    audited: whole(raw.audited),
+    wrong: whole(raw.wrong),
+    lo: share(raw.lo, 0),
+    hi: share(raw.hi, 1),
+    pending: whole(raw.pending),
+    canaries: words(raw.canaries, 200),
+  };
 }
 
 /** A report from the server, read defensively; null when the answer is not one (an older server, an error). */
@@ -263,6 +303,7 @@ export function decidesOf(raw: unknown): DecidesReport | null {
         ? [{ field: d.field, label: words(d.label, 80) || d.field, value: d.value, preset: d.preset }]
         : [],
     );
+  const audit = decidesAuditOf(raw.audit);
   return {
     colonyId: words(raw.colonyId, 64),
     preset: words(raw.preset, 40),
@@ -276,6 +317,7 @@ export function decidesOf(raw: unknown): DecidesReport | null {
     always: words(raw.always, 400),
     presets,
     split: { days: whole(s.days) || 30, since: finite(s.since), total: CONFIRM_KINDS.reduce((n, k) => n + counts[k], 0), counts },
+    ...(audit ? { audit } : {}),
     at: finite(raw.at),
   };
 }

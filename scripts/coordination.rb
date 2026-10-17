@@ -21,10 +21,15 @@
 # Where the numbers come from
 #   GET /api/colonies/<id>                  region depth, trunk head, the colony's own counters (a cross-check, and the
 #                                           take counters of 12) and its model spend by model (17)
-#   GET /api/colonies/<id>/certifications   the newest certification results, with culprit suspects and first red (15)
+#   GET /api/colonies/<id>/certifications   the newest certification results, with culprit suspects and first red (15),
+#                                           and whether certification runs (18)
+#   GET /api/colonies/<id>/metrics          the colony's own trunk health line, beside 18's; the audit sample, blind canaries
+#                                           and people's decisions over time (19)
+#   GET /api/colonies/<id>/intents/<iid>/spend  what each repair intent's model calls cost (18)
 #   GET /api/colonies/<id>/events           the event record, every page: each proposal's status changes with their
 #                                           times and reasons, each intent's, landings, and people's decisions
-#   GET /api/colonies/<id>/agents?all=1     every agent's kind and model; the vaccine agent (name and model "vaccine")
+#   GET /api/colonies/<id>/agents?all=1     every agent's kind and model; the vaccine agent (name and model "vaccine") and
+#                                           the canary agent (model "canary")
 #   GET /api/colonies/<id>/proposals/<pid>  the write sets the notes do not hold (every proposal that did not land)
 #   git log --first-parent HEAD             FireTrident commits: from the first commit that carries this colony's note
 #                                           or an FT-Landing trailer the record knows, every commit with a note or an
@@ -35,7 +40,7 @@
 #                                           proposal, which counts only when the API says it landed in that landing.
 #   git blame, log --numstat, --name-status the lines and files below.
 #
-# Definitions (vaccine proposals and their intents are left out of every number)
+# Definitions (vaccine and canary proposals and their intents are left out of every number)
 #
 # 1. Merged fraction. A proposal's status is the status of its last event in the record. Made: every proposal in the
 #    record. Landed: status landed. Returned: status returned, except returns for a change of direction, whose reason
@@ -194,6 +199,35 @@
 #    every proposal of the landing undone), and per model what this platform's model calls with it cost (spend.byModel in
 #    GET /api/colonies/<id>: in-platform agents and review; external agents' own models are not in it). Spend under a
 #    model no agent names (a review model, or an agent listed by its model class) is listed apart, never guessed.
+#
+# 18. Trunk health: what certifying after landing costs (packages/worker/src/certify/health.ts, the same rules; the colony
+#    serves its own as trunkHealth on GET /api/colonies/<id>/metrics, shown beside this one). The certification results
+#    of 15 in the order they started; error and skipped results judge nothing. A red episode runs from the first red
+#    result after a green one (or the first result) to the next green result; time red from when the first red result
+#    was recorded to when the green one was (an episode still red runs to now), within the window: from the oldest
+#    result (or the landing that made its commit) to now. Commits: the landing commits in trunk order (each landing's
+#    time from the record's landing event, else its commit time); a result sits at the landing that made its commit,
+#    else just after the newest landing at or before its start. A commit is red from the episode's first red commit
+#    (the first-red search's answer, else the commit of its first red result) until the fix: the first landing after
+#    the episode's last red result that carried a repair intent (a result's repairIntentId), else the commit the green
+#    result certified. A landing whose parent is red was built on red; a fix (it carried a repair intent, or made the
+#    green commit) is counted apart, and so are the landings that came after the red result was recorded. Repairs: the
+#    time agents held each repair intent (from a claimed or proposed intent event to any other status in the record)
+#    and what its model calls cost (GET /api/colonies/<id>/intents/<iid>/spend, where FT_INTENT_SPEND counted them).
+#    Certified within 5, 15 and 60 minutes: the landings whose first green result at or after them was recorded within
+#    the bound, over the landings that reached one or had that long. Culprit precision is 15's. Reported: episodes and
+#    per 100 landings, time red and its share, time to green p50, p90 and max, landings built on red, the repairs, the
+#    certified-within shares, and the colony's line; a colony with no verdict says why instead (no test this platform
+#    can run, certification off, no run yet).
+#
+# 19. Audit sample, blind canaries and people's decisions (packages/worker/src/colony/audit.ts), as the colony measures
+#    them (`audit` in GET /api/colonies/<id>/metrics; the record cannot rebuild them). Of the changes that landed without
+#    a person (a deterministic proof, a reproduction, a model's approval, earned autonomy), counted per confirming layer
+#    since sampling began: how many the stratified sample put in front of a person after they landed, how many a person
+#    answered, and how many of those should not have landed, with its Wilson 95% interval. Blind canaries (sealed
+#    known-bad changes put in the human queue while the policy's canaryRate is on): how many people decided, caught
+#    (rejected or returned) and approved, with the catch rate's Wilson 95% interval. People's decisions on escalations:
+#    the approval rate of the last 2 weeks against the 6 before, in points (none when either side has fewer than 5).
 require "fileutils"
 require "json"
 require "net/http"
@@ -246,6 +280,9 @@ module Coordination
   # Definitions 13, 14 and 17: agent kinds as the report names them. Definition 15: certification results the colony keeps.
   KIND_LABELS = { "internal" => "platform", "external" => "external", "synthetic" => "synthetic" }.freeze
   CERTIFICATIONS_KEPT = 500
+  # Definition 18: the bounds of the certified-within shares (minutes), and the repair intents whose spend is read at most.
+  WITHIN_MINUTES = [5, 15, 60].freeze
+  SPEND_READS = 50
 
   module_function
 
@@ -692,8 +729,22 @@ module Coordination
 
     def agents(id) = get!("/colonies/#{id}/agents", { all: 1, journal: 0 })["agents"] || []
 
-    # The newest certification results, as many as the colony keeps (definition 15).
-    def certifications(id) = get!("/colonies/#{id}/certifications", { limit: CERTIFICATIONS_KEPT })["results"] || []
+    # The newest certification results, as many as the colony keeps (definition 15), with whether certification runs (18).
+    def certifications_page(id) = get!("/colonies/#{id}/certifications", { limit: CERTIFICATIONS_KEPT })
+
+    def certifications(id) = certifications_page(id)["results"] || []
+
+    # The colony's metrics report (definition 18 reads its trunkHealth), or nil when it answers otherwise.
+    def metrics(id)
+      code, body = get("/colonies/#{id}/metrics")
+      code == 200 && body.is_a?(Hash) ? body : nil
+    end
+
+    # What one intent's model calls cost (definition 18), or nil when the colony answers otherwise.
+    def intent_spend(id, iid)
+      code, body = get("/colonies/#{id}/intents/#{URI.encode_www_form_component(iid)}/spend")
+      code == 200 && body.is_a?(Hash) ? body : nil
+    end
 
     # One proposal, or nil when the colony does not know it.
     def proposal(id, pid)
@@ -709,7 +760,7 @@ module Coordination
   class Record
     attr_reader :proposals, :intents, :landing_ids, :human_returns, :t0, :t_last, :source, :total, :vaccine_proposals,
                 :claims, :declared, :human_decisions, :landings, :first_at, :closures, :uncaused_closures,
-                :takes, :decisions, :certify, :bisects, :last_at
+                :takes, :decisions, :certify, :bisects, :last_at, :intent_events
 
     def initialize(page, vaccine_agents: Set.new)
       # Definition 12: takes (agent events that set an agent working on an intent, with its footprint) and the agents
@@ -735,6 +786,8 @@ module Coordination
       # Definition 10: intent events with a cause, and closes of held intents recorded before the ledger.
       @closures = []
       @uncaused_closures = 0
+      # Definition 18: each intent's status changes, [at, status] in record order.
+      @intent_events = Hash.new { |h, k| h[k] = [] }
       vaccine_ids = Set.new
       vaccine_intents = Set.new
       events = (page["events"] || []).each_with_index.sort_by { |e, i| [e["seq"] || i, i] }.map(&:first)
@@ -769,6 +822,7 @@ module Coordination
           end
           @declared[e["intentId"]] ||= e["at"]
           @claims[e["intentId"]] << e["at"] if e["status"] == "claimed" && e["at"].is_a?(Numeric)
+          @intent_events[e["intentId"]] << [e["at"], e["status"]] if e["at"].is_a?(Numeric)
         when "landing"
           @landing_ids << e["landingId"] if e["landingId"]
           @landings << { id: e["landingId"], at: e["at"], proposals: e["proposalIds"] || [] } if e["at"].is_a?(Numeric)
@@ -1017,8 +1071,9 @@ module Coordination
     RECORD_METRICS = ["merged fraction", "conflicts over time", "hottest file", "where the time went", "access by model and kind",
                       "return to reland", "residue and review rounds"].freeze
 
-    def initialize(colony:, git:, api: nil, url: nil, api_note: nil, log: ->(_m) {})
+    def initialize(colony:, git:, api: nil, url: nil, api_note: nil, log: ->(_m) {}, now: nil)
       @colony = colony
+      @now = now
       @git = git
       @api = api
       @url = url
@@ -1061,9 +1116,11 @@ module Coordination
         takeTokens: take_tokens(snapshot, record, lineage, others),
         access: record && Coordination.access(record, agents, notes_agents(lineage)),
         relands: record && Coordination.relands(record, agents, notes_agents(lineage)),
-        culpritPrecision: culprit_precision(record),
+        culpritPrecision: (culprits = culprit_precision(record)),
+        trunkHealth: trunk_health(record, lineage, culprits),
         residue: record && Coordination.residue(record),
         linesByModel: lines_by_model(lineage, attribution, record, agents, snapshot),
+        audit: audit_sample,
         agents: agent_table(agents, record, lineage, attribution),
         missing: @missing,
         warnings: @warnings
@@ -1087,7 +1144,7 @@ module Coordination
       @log.call("reading the colony, its agents and its event record from #{@api.base}")
       snapshot = attempt("the colony not read") { @api.colony(@colony) }
       agents = attempt("agents not read, so vaccine proposals could not be left out") { @api.agents(@colony) } || []
-      vaccine = agents.select { |a| a["name"] == "vaccine" && a["model"] == "vaccine" }.to_set { |a| a["id"] }
+      vaccine = Coordination.sealed_agents(agents)
       page = @api.events(@colony)
       [snapshot, Record.new(page, vaccine_agents: vaccine), agents]
     rescue ApiError => e
@@ -1422,9 +1479,17 @@ module Coordination
       lineage.landed.group_by(&:agent).transform_values { |props| { kind: Coordination.most(props.map(&:kind)), model: Coordination.most(props.map(&:model)) } }
     end
 
+    # The certification results and whether certification runs (GET /certifications), read once; nil when they could not be.
+    def certifications_page
+      return @certifications_page if defined?(@certifications_page)
+
+      @certifications_page = @api ? attempt("certifications not read, so culprit precision comes from the record's events") { @api.certifications_page(@colony) } : nil
+    end
+
     # Definition 15: the certification results, else the record's certify and bisect events.
     def culprit_precision(record)
-      certs = @api ? attempt("certifications not read, so culprit precision comes from the record's events") { @api.certifications(@colony) } : nil
+      page = certifications_page
+      certs = page ? page["results"] || [] : nil
       source = "certifications"
       if certs.nil?
         return missing("culprit precision", "neither the certifications nor the event record could be read") unless record
@@ -1433,6 +1498,59 @@ module Coordination
         source = "events: suspects stop at 5"
       end
       Coordination.culprit_precision(certs).merge(source: source)
+    end
+
+    # Definition 18: the certification results and their state, the landing commits in trunk order with the record's
+    # landing times, the record's holds of repair intents and what their calls cost, and the colony's own line.
+    def trunk_health(record, lineage, culprits)
+      page = certifications_page
+      unless page.is_a?(Hash)
+        return missing("trunk health", @api ? "the certification results could not be read" : "the certification results need the API (#{@api_note || 'no --url'})")
+      end
+
+      at = record ? record.landings.to_h { |l| [l[:id], l[:at]] } : {}
+      landings = lineage.landings.map { |c| { id: c.landing, sha: c.sha, at: at[c.landing] || c.at, intents: c.intents } }
+      holds = record ? Coordination.holds(record.intent_events) : {}
+      now = @now || (Time.now.to_f * 1000).round
+      h = Coordination.trunk_health(page["results"] || [], landings: landings, holds: holds, state: page, spend: ->(ids) { repair_spend(ids) }, now: now)
+      if h[:status] == "measured"
+        # Culprit precision is 15's, not computed again.
+        h[:culprits] = culprits&.slice(:answers, :suspect, :precision, :rank1)
+        h[:holdsFrom] = record ? "the record's intent events" : "no event record: the time agents held repairs is not known"
+      end
+      h.merge(colonySays: colony_says).compact
+    end
+
+    # Definition 19: the audit sample, the canaries and people's decisions, from the colony's metrics report.
+    def audit_sample
+      return missing("audit sample", "the colony's metrics could not be read (#{@api_note || 'no --url'})") unless @api
+
+      metrics = @api.metrics(@colony)
+      return missing("audit sample", "the colony's metrics carry no audit (it predates the audit sample, or they could not be read)") unless metrics.is_a?(Hash) && metrics["audit"].is_a?(Hash)
+
+      Coordination.audit_sample(metrics["audit"])
+    rescue ApiError => e
+      missing("audit sample", "the colony's metrics could not be read (#{e.message})")
+    end
+
+    # The colony's own trunk health line (GET /metrics), or nil when it serves none.
+    def colony_says
+      text = @api&.metrics(@colony)&.dig("trunkHealth", "text")
+      text.is_a?(String) ? text : nil
+    rescue ApiError
+      nil
+    end
+
+    # What the repair intents' model calls cost, summed over the ones the colony counted (the first SPEND_READS).
+    def repair_spend(ids)
+      return nil unless @api && !ids.empty?
+
+      answers = Coordination.pmap(ids.first(SPEND_READS)) do |iid|
+        @api.intent_spend(@colony, iid)
+      rescue ApiError
+        nil
+      end
+      Coordination.spend_sum(answers)
     end
 
     # Definition 17: lines each landed proposal added (numstat per file, split by the steps of 2 where several wrote a
@@ -1535,7 +1653,38 @@ module Coordination
   # An agent kind as the report names it (in-platform agents are "platform").
   def kind_label(kind) = kind.nil? ? "unknown" : KIND_LABELS.fetch(kind.to_s, kind.to_s)
 
-  def vaccine?(agent) = agent["name"] == "vaccine" && agent["model"] == "vaccine"
+  # An agent whose proposals are sealed tests, not work, left out of every number: the vaccine agent (name and model
+  # "vaccine") and the blind canaries' agent (model "canary", packages/worker/src/colony/audit.ts).
+  def vaccine?(agent) = agent.is_a?(Hash) && ((agent["name"] == "vaccine" && agent["model"] == "vaccine") || agent["model"] == "canary")
+
+  # The ids of those agents.
+  def sealed_agents(agents) = agents.select { |a| vaccine?(a) }.to_set { |a| a["id"] }
+
+  # Definition 19, from the `audit` of the colony's metrics report: numbers kept as the colony computed them.
+  def audit_sample(a)
+    n = ->(v) { v.is_a?(Numeric) ? v : 0 }
+    measure = ->(m) { { landed: n.(m["landed"]), queued: n.(m["queued"]), audited: n.(m["audited"]), wrong: n.(m["wrong"]), wrongRate: n.(m["wrongRate"]), lo: n.(m["lo"]), hi: m["hi"].is_a?(Numeric) ? m["hi"] : 1 } }
+    layers = (a["layers"].is_a?(Hash) ? a["layers"] : {}).select { |_, m| m.is_a?(Hash) }.to_h { |k, m| [k, measure.(m).merge(label: m["label"].to_s)] }
+    c = a["canaries"].is_a?(Hash) ? a["canaries"] : {}
+    r = a["reviewers"].is_a?(Hash) ? a["reviewers"] : {}
+    weeks = (r["weeks"].is_a?(Array) ? r["weeks"] : []).select { |w| w.is_a?(Hash) }.map { |w| { from: n.(w["from"]), decisions: n.(w["decisions"]), approved: n.(w["approved"]), approvalRate: n.(w["approvalRate"]) } }
+    measure.(a).merge(
+      rate: n.(a["rate"]), pending: n.(a["pending"]), line: a["line"].to_s, layers: layers,
+      canaries: { on: c["on"] == true, rate: n.(c["rate"]), decided: n.(c["decided"]), caught: n.(c["caught"]), approved: n.(c["approved"]),
+                  catchRate: n.(c["catchRate"]), lo: n.(c["lo"]), hi: c["hi"].is_a?(Numeric) ? c["hi"] : 1, waiting: n.(c["waiting"]), line: c["line"].to_s },
+      reviewers: { change: r["change"].is_a?(Numeric) ? r["change"] : nil, line: r["line"].to_s, weeks: weeks }
+    )
+  end
+
+  # The markdown row of definition 19.
+  def audit_row(a)
+    per = a[:layers].select { |_, m| m[:landed].positive? }.map do |k, m|
+      wrong = m[:audited].positive? ? ", #{num(m[:wrong])} should not have (#{(m[:lo] * 100).round}–#{(m[:hi] * 100).round}%)" : ""
+      "#{k} #{num(m[:audited])} of #{num(m[:landed])}#{wrong}"
+    end
+    layers = per.empty? ? "" : "; by layer: #{per.join(', ')}"
+    "| Audit sample (#{(a[:rate] * 100).round(1)}%) | #{a[:line]}#{layers}; #{a[:canaries][:line]}; people: #{a[:reviewers][:line]} |"
+  end
 
   # The most frequent value (ties to the larger), nil for none.
   def most(values) = values.compact.tally.max_by { |v, n| [n, v.to_s] }&.first
@@ -1847,6 +1996,219 @@ module Coordination
       isolated: { answers: isolated.size, suspect: isolated.count { |r| r[:isolatedIsSuspect] } }, list: rows }
   end
 
+  # Definition 18: when a result was recorded (its end, else its start).
+  def done_at(r) = r["finishedAt"].is_a?(Numeric) && r["finishedAt"].positive? ? r["finishedAt"] : r["startedAt"]
+
+  # Definition 18: how long agents held each intent, from its [at, status] events in record order: a hold runs from
+  # claimed or proposed to any other status; `since` is set while one still runs at the last event.
+  def holds(intent_events)
+    intent_events.transform_values do |list|
+      closed = 0
+      since = nil
+      list.each do |at, status|
+        if HELD.include?(status)
+          since ||= at
+        elsif since
+          closed += [at - since, 0].max
+          since = nil
+        end
+      end
+      { closed_ms: closed, since: since }
+    end
+  end
+
+  # Definition 18: the model calls the colony counted for some intents (their spend answers), summed; nil when none counted.
+  def spend_sum(answers)
+    counted = answers.select { |s| s.is_a?(Hash) && s["usd"].is_a?(Numeric) && s["tokens"].is_a?(Hash) && (s["tokens"]["input"].to_i + s["tokens"]["output"].to_i).positive? }
+    return nil if counted.empty?
+
+    calls = counted.sum { |s| s["calls"].is_a?(Hash) ? s["calls"].values.sum { |v| v.is_a?(Numeric) ? v : 0 } : 0 }
+    { usd: counted.sum { |s| s["usd"] }.round(8), calls: calls, intents: counted.size }
+  end
+
+  # Definition 18: why certification does not run, from GET /certifications (certify/landingtests.ts certificationOff).
+  def certification_off(state)
+    return nil unless state.is_a?(Hash) && state.key?("deployment")
+    return "trunk certification is off on this deployment" unless state["deployment"]
+    return "trunk certification is off for this colony" unless state.dig("policy", "enabled")
+
+    state["runner"] ? nil : "this deployment has no test runner"
+  end
+
+  # A duration in words, as the colony writes it (certify/health.ts span): "45 s", "3.4 min", "12 min", "2.5 h", "3.1 d".
+  def span(ms)
+    s = [ms.to_f, 0].max / 1000
+    return "#{s.round} s" if s < 59.5
+
+    unit = ->(v, name) { "#{v < 9.95 ? format('%.1f', v) : v.round} #{name}" }
+    m = s / 60
+    return unit.call(m, "min") if m < 59.5
+
+    h = m / 60
+    h < 47.5 ? unit.call(h, "h") : unit.call(h / 24, "d")
+  end
+
+  # Definition 18 with no verdict to measure: why, as the colony says it.
+  def health_unmeasured(results, off)
+    return { status: "off", reason: off, text: "trunk health not measured: #{off}" } if off
+
+    newest = results.reject { |r| r["status"] == "running" }.max_by { |r| done_at(r) }
+    if newest && newest["status"] == "skipped" && newest["detail"].to_s.start_with?("no test file")
+      return { status: "no-tests", reason: newest["detail"], text: "trunk health not measured: certification found no test this platform can run" }
+    end
+    if newest && newest["status"] == "error"
+      why = "the last certification could not run#{newest['detail'] ? " (#{newest['detail'].to_s.sub(/[.\s]+\z/, '')})" : ''}"
+      return { status: "none", reason: why, text: "trunk health not measured yet: #{why}" }
+    end
+    { status: "none", reason: "no certification has judged trunk yet", text: "trunk health not measured yet: no certification has judged trunk" }
+  end
+
+  # Definition 18: trunk health from the certification results (the API's, newest first or in any order), the landing
+  # commits in trunk order ({id:, sha:, at:, intents:}), the holds of the record's intents, the state of GET
+  # /certifications, and `spend` (repair intent ids => summed spend or nil). Times in ms; `now` ends the window.
+  def trunk_health(certs, landings:, now:, holds: {}, state: nil, spend: nil)
+    results = certs.each_with_index.select { |c, _| c.is_a?(Hash) && c["trunkSha"].is_a?(String) && c["startedAt"].is_a?(Numeric) }
+                   .sort_by { |c, i| [c["startedAt"], done_at(c), -i] }.map(&:first)
+    judged = results.select { |r| %w[green red].include?(r["status"]) }
+    return health_unmeasured(results, certification_off(state)) if judged.empty?
+
+    by_sha = {}
+    by_id = {}
+    landings.each_with_index do |l, i|
+      by_sha[l[:sha]] = i if l[:sha]
+      by_id[l[:id]] = i if l[:id]
+    end
+    exact = ->(sha, id) { (sha && by_sha[sha]) || (id && by_id[id]) }
+    after = lambda do |at|
+      k = -1
+      landings.each_with_index do |l, i|
+        break if l[:at] > at
+
+        k = i
+      end
+      k + 0.5
+    end
+    place = ->(r) { exact.call(r["trunkSha"], r["landingId"]) || after.call(r["startedAt"]) }
+    first_red = ->(r) { r["firstRed"].is_a?(Hash) ? exact.call(r["firstRed"]["trunkSha"], r["firstRed"]["landingId"]) : nil }
+
+    from = results.first["startedAt"]
+    oldest = exact.call(results.first["trunkSha"], results.first["landingId"])
+    from = [from, landings[oldest][:at]].min if oldest
+    to = [now, from].max
+    repair_ids = results.filter_map { |r| r["repairIntentId"] if r["repairIntentId"].is_a?(String) }.to_set
+    repair = ->(i) { (landings[i][:intents] || []).any? { |id| repair_ids.include?(id) } }
+
+    # The episodes, walking the verdicts in order; the fix is the first repair landing after the last red commit.
+    episodes = []
+    current = nil
+    last_green = nil
+    close = lambda do |finish, green|
+      return unless current
+
+      fix = green || Float::INFINITY
+      i = current[:last].floor + 1
+      while i < landings.size && i < fix
+        if repair.call(i)
+          fix = i
+          break
+        end
+        i += 1
+      end
+      episodes << { start: current[:start], end: finish, from: current[:from], to: fix, green: green }
+      current = nil
+    end
+    judged.each do |r|
+      at = place.call(r)
+      if r["status"] == "green"
+        close.call(done_at(r), at)
+        last_green = at
+        next
+      end
+      fr = first_red.call(r)
+      if current
+        current[:last] = [current[:last], at].max
+        current[:from] = fr if fr && fr < current[:from] && (last_green.nil? || fr > last_green)
+      else
+        start = fr ? [at, fr].min : at
+        start = [start, [at, last_green.floor + 1].min].max if last_green
+        current = { start: done_at(r), from: start, last: at }
+      end
+    end
+    close.call(nil, nil)
+    seen = episodes.select { |e| (e[:end] || to) > from }
+
+    red_ms = seen.sum { |e| [[e[:end] || to, to].min - [e[:start], from].max, 0].max }
+    to_green = seen.select { |e| e[:end] }.map { |e| [e[:end] - e[:start], 0].max }.sort
+    still = seen.find { |e| e[:end].nil? }
+
+    in_window = landings.each_index.select { |i| landings[i][:at] >= from && landings[i][:at] <= to }
+    built = { landings: 0, afterRedKnown: 0, repairs: 0 }
+    in_window.each do |i|
+      e = episodes.find { |x| x[:from] <= i - 0.5 && i - 0.5 < x[:to] }
+      next unless e
+
+      if repair.call(i) || e[:green] == i
+        built[:repairs] += 1
+      else
+        built[:landings] += 1
+        built[:afterRedKnown] += 1 if landings[i][:at] >= e[:start]
+      end
+    end
+
+    greens = judged.select { |r| r["status"] == "green" }.map { |r| { place: place.call(r), at: done_at(r) } }
+    within = WITHIN_MINUTES.map do |minutes|
+      bound = minutes * 60_000
+      counted = 0
+      certified = 0
+      in_window.each do |i|
+        g = greens.find { |x| x[:place] >= i }
+        if g
+          counted += 1
+          certified += 1 if [g[:at] - landings[i][:at], 0].max <= bound
+        elsif now - landings[i][:at] > bound
+          counted += 1
+        end
+      end
+      { minutes: minutes, landings: counted, certified: certified, share: rounded(ratio(certified, counted)) }
+    end
+
+    declared = {}
+    results.each { |r| declared[r["repairIntentId"]] ||= done_at(r) if r["repairIntentId"].is_a?(String) }
+    repairs = declared.select { |_, at| at >= from }.keys
+    agent_ms = 0
+    held = 0
+    repairs.each do |id|
+      h = holds[id]
+      next unless h
+
+      agent_ms += h[:closed_ms] + (h[:since] ? [now - h[:since], 0].max : 0)
+      held += 1 if h[:since]
+    end
+    cost = spend && !repairs.empty? ? spend.call(repairs) : nil
+
+    health = {
+      status: "measured",
+      window: { from: from, to: to, landings: in_window.size, results: judged.count { |r| done_at(r) >= from } },
+      episodes: { count: seen.size, open: still ? 1 : 0, per100Landings: in_window.empty? ? nil : (seen.size * 100.0 / in_window.size).round(2) },
+      red: { ms: red_ms, share: rounded(ratio(red_ms, to - from)),
+             toGreen: { episodes: to_green.size, p50Ms: quantile(to_green, 0.5), p90Ms: quantile(to_green, 0.9), maxMs: to_green.last } }
+               .merge(still ? { since: still[:start] } : {}),
+      builtOnRed: built,
+      repair: { intents: repairs.size, agentMs: agent_ms, held: held }.merge(cost ? { spend: cost } : {}),
+      certifiedWithin: within
+    }
+    health.merge(text: health_text(health))
+  end
+
+  # Definition 18's line, word for word as the colony writes it (certify/health.ts healthText).
+  def health_text(h)
+    parts = ["red #{many(h[:episodes][:count], 'time')} in #{many(h[:window][:landings], 'landing')}"]
+    parts << "red now for #{span(h[:window][:to] - h[:red][:since])}" if h[:red][:since]
+    parts << "#{span(h[:red][:toGreen][:p50Ms])} to green at p50" if h[:red][:toGreen][:p50Ms]
+    parts << "#{many(h[:builtOnRed][:landings], 'landing')} built on red"
+    parts.join(", ")
+  end
+
   # A count's distribution: mean, p50, p90, max, and how many of each value (4 and more together).
   def count_dist(values)
     s = values.sort
@@ -1964,6 +2326,25 @@ module Coordination
     "| Culprit precision against first red | #{num(c[:suspect])} of #{many(c[:answers], 'first-red answer')} among the suspects " \
       "(#{pct(c[:precision])}#{ranks.empty? ? '' : "; #{ranks}"}), #{num(c[:outsideImportTrace])} outside the import trace, " \
       "#{num(c[:cutByLimit])} in the closure but cut by a limit, #{num(c[:notLookedFor])} with no suspects#{c[:closureNotRecorded].positive? ? ", #{num(c[:closureNotRecorded])} closure not recorded" : ''} (#{c[:source]}) |"
+  end
+
+  # The markdown row of definition 18.
+  def trunk_health_row(h)
+    return "| Trunk health | #{h[:text]} (#{h[:reason]}) |" unless h[:status] == "measured"
+
+    g = h[:red][:toGreen]
+    b = h[:builtOnRed]
+    r = h[:repair]
+    parts = [h[:text], "red #{pct(h[:red][:share])} of the #{span(h[:window][:to] - h[:window][:from])} measured"]
+    parts << "to green p90 #{span(g[:p90Ms])}, longest #{span(g[:maxMs])}" if g[:episodes].positive?
+    parts << "#{num(b[:afterRedKnown])} built on known red, #{num(b[:repairs])} #{b[:repairs] == 1 ? 'fix' : 'fixes'}" if h[:episodes][:count].positive?
+    if r[:intents].positive?
+      parts << "#{many(r[:intents], 'repair intent')} held #{span(r[:agentMs])} by agents#{r[:spend] ? ", #{format('$%.4f', r[:spend][:usd])}" : ''}"
+    end
+    within = h[:certifiedWithin].select { |w| w[:landings].positive? }.map { |w| "#{w[:minutes]} min #{pct(w[:share])}" }
+    parts << "certified within #{within.join(', ')}" unless within.empty?
+    parts << (h[:colonySays] == h[:text] ? "the colony says the same" : "the colony says: #{h[:colonySays]}") if h[:colonySays]
+    "| Trunk health | #{parts.join('; ')} |"
   end
 
   # The markdown row of definition 16.
@@ -2259,8 +2640,10 @@ module Coordination
     out.concat(access_rows(r[:access])) if r[:access]
     out << relands_row(r[:relands]) if r[:relands]
     out << culprit_row(r[:culpritPrecision]) if r[:culpritPrecision]
+    out << trunk_health_row(r[:trunkHealth]) if r[:trunkHealth]
     out << residue_row(r[:residue]) if r[:residue]
     out << lines_row(r[:linesByModel]) if r[:linesByModel]
+    out << audit_row(r[:audit]) if r[:audit]
     notes = r[:missing] + r[:warnings].first(5).map { |w| "warning: #{w}" }
     notes << "#{r[:warnings].size - 5} more warnings in the JSON" if r[:warnings].size > 5
     out += [""] + notes.map { |x| "- #{x}" } unless notes.empty?

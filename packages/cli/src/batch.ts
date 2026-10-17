@@ -25,10 +25,10 @@ export interface ReviewBatch {
   ids: string[];
 }
 
-/** The batch a queue item carries, checked field by field; null when it carries none. */
+/** The batch a queue item carries, checked field by field; null when it carries none, and for an audit item (never batched). */
 export function batchOf(item: Proposal): ReviewBatch | null {
   const v = (item as Proposal & { batch?: unknown }).batch;
-  if (!v || typeof v !== "object" || Array.isArray(v)) return null;
+  if (!v || typeof v !== "object" || Array.isArray(v) || "audit" in item) return null;
   const o = v as Record<string, unknown>;
   if (typeof o.key !== "string" || o.key === "" || typeof o.label !== "string" || o.label === "") return null;
   const ids = Array.isArray(o.ids) ? o.ids.filter((x): x is string => typeof x === "string" && x !== "") : [];

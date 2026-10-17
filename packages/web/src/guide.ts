@@ -23,7 +23,7 @@ export const GUIDE_STEPS: readonly GuideStep[] = [
   {
     target: "agents",
     title: "Dots are agents",
-    text: "Agents choose work where needs are high and claims are low, so they spread out without a manager. Hover a file or a dot to see who is there, the model, what the agent says it is doing, and what it waits for.",
+    text: "Agents choose work where needs are high and claims are low, so they spread out with no one assigning work. Hover a file or a dot to see who is there, the model, what the agent says it is doing, and what it waits for.",
   },
   {
     target: "lanes",

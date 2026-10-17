@@ -46,6 +46,7 @@ import { reviewTestsLines } from "./reviewtests.ts";
 import { batchLines, batchMembers, groupBatches } from "./batch.ts";
 import { lifecycleLines, whyLifecycleRows } from "./strip.ts";
 import { recipeWhyRows } from "./recipe.ts";
+import { auditLines, splitAudits } from "./audit.ts";
 
 /** ANSI styling functions; identity functions when color is off. */
 export interface Colors {
@@ -1396,8 +1397,11 @@ function fullDiff(view: ReviewView, c: Colors): string[] {
  * a proposal's change, "look here first" shows its danger lines and the files it changed outside its
  * declared footprint, before the reason and the checks; `opts.diff` adds every kept file's diff.
  */
-export function formatReview(proposals: Proposal[], intents: Intent[] | undefined, c: Colors, now: number, opts: ReviewOptions = {}): string {
-  if (proposals.length === 0) return c.green("Review queue is empty: nothing needs a human.");
+export function formatReview(queue: Proposal[], intents: Intent[] | undefined, c: Colors, now: number, opts: ReviewOptions = {}): string {
+  // The baseline stream (audit.ts): the audit sample's landed changes are listed after the escalations, marked AUDIT.
+  const { escalations: proposals, audits } = splitAudits(queue);
+  const audited = auditLines(audits, intents, c, opts.colony ?? "<colony>");
+  if (proposals.length === 0) return [c.green("Review queue is empty: nothing needs a human."), ...audited].join("\n");
   const colony = opts.colony ?? "<colony>";
   const byId = new Map((intents ?? []).map((i) => [i.id, i]));
   const out = [`${c.bold(String(proposals.length))} proposal${proposals.length === 1 ? "" : "s"} waiting for a human`];
@@ -1430,6 +1434,7 @@ export function formatReview(proposals: Proposal[], intents: Intent[] | undefine
       out.push(`  ${c.dim("diff     not kept for this proposal")}`);
     }
   }
+  out.push(...audited);
   out.push("");
   if (kept > 0 && !opts.diff) out.push(c.dim(`Full diffs: ft review ${colony} --diff`));
   out.push(c.dim("Decide with: ft review <colony> <proposalId> approve|reject|return --reason <text>"));

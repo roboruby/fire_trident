@@ -3,6 +3,7 @@ import type { Colony, Decision, Id, Intent, IntentSource, Landing, Proposal } fr
 import type { Env } from "../../src/env.ts";
 import { DecideEngine, type DecideHost, type DecisionInput, type TrunkRpc } from "../../src/decide/engine.ts";
 import { ESCALATION_BATCH_PER_HOUR, EscalationBatches, batchKeyOf, markBatches } from "../../src/decide/batch.ts";
+import { CANARY_BATCH } from "../../src/decide/canary.ts";
 
 /**
  * Escalation batching through the decide stage (FT_ESCALATION_BATCH): past the hourly budget, a change a danger pattern
@@ -178,6 +179,9 @@ class Colonyish implements DecideHost {
 /** A new outbound call an agent's own intent cannot ask for: danger pattern capability (network), rule P1. */
 const HOOK = (n: number) => `export async function deliver${n}(url: string, body: string) {\n  await fetch(url, { method: 'POST', body });\n}\n`;
 
+/** A new program run no intent here asks for: danger patterns capability (import-process) and capability (process), rule P1. */
+const RUN = "import { execSync } from \"node:child_process\";\nexport const publish = () => execSync(\"npm publish\");\n";
+
 describe("escalation batching in the decide stage", () => {
   it("past the budget, danger-pattern changes still wait for a person, batched by their pattern", async () => {
     const c = new Colonyish("on");
@@ -219,6 +223,19 @@ describe("escalation batching in the decide stage", () => {
     // Next to them, a capability change past the budget is batched.
     const net = await c.decide(c.declare("agent", ["src/net.ts"]), [{ path: "src/net.ts", after: HOOK(8) }]);
     expect([...new EscalationBatches(c.sql).batchedOf([...ids, net.id]).keys()]).toEqual([net.id]);
+  });
+
+  it("never counts or batches a blind canary: past the budget it still waits as a single escalation", async () => {
+    const c = new Colonyish("on");
+    c.spendBudget();
+    const intent = c.declare("agent", ["src/canary.ts"]);
+    c.engine.store.registerVaccine(intent.id, "secret-log", CANARY_BATCH, Date.now());
+    const canary = await c.decide(intent, [{ path: "src/canary.ts", after: RUN }]);
+    expect(canary.status).toBe("escalated");
+    expect(c.db.prepare("SELECT proposal_id FROM decide_batches WHERE proposal_id = ?").all(canary.id)).toEqual([]);
+    // An ordinary change of the same pattern next to it is batched.
+    const run = await c.decide(c.declare("agent", ["src/run.ts"]), [{ path: "src/run.ts", after: RUN }]);
+    expect([...new EscalationBatches(c.sql).batchedOf([canary.id, run.id]).keys()]).toEqual([run.id]);
   });
 
   it("reads the budget from the colony's decide policy", async () => {

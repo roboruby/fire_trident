@@ -242,13 +242,14 @@ export interface QueueBatch {
  * Mark the review queue's batched changes: each one that waits in a batch with at least one other waiting change
  * carries `batch` (its id and key, rule, what they share, the budget, and the ids in queue order). A batch down to one
  * waiting change shows as that change's own card, and so does a change a person already decided that came back
- * (heldByPerson: a held merge). Returns the batches marked.
+ * (heldByPerson: a held merge), an audit item (`audit`: a landing the audit sample put to a person) and any change `skip`
+ * names (a blind canary). Returns the batches marked.
  */
-export function markBatches<T extends { id: Id }>(queue: readonly T[], rows: ReadonlyMap<Id, BatchRow>, budget = ESCALATION_BATCH_PER_HOUR): QueueBatch[] {
+export function markBatches<T extends { id: Id }>(queue: readonly T[], rows: ReadonlyMap<Id, BatchRow>, budget = ESCALATION_BATCH_PER_HOUR, skip: (p: T) => boolean = () => false): QueueBatch[] {
   const groups = new Map<string, QueueBatch>();
   for (const p of queue) {
     const row = rows.get(p.id);
-    if (!row?.batched || heldByPerson(p as { approvedAt?: unknown; mergeHold?: unknown; reason?: unknown })) continue;
+    if (!row?.batched || "audit" in p || heldByPerson(p as { approvedAt?: unknown; mergeHold?: unknown; reason?: unknown }) || skip(p)) continue;
     const g = groups.get(row.key) ?? { id: batchId(row.key), key: row.key, rule: row.rule, label: row.label, budget, ids: [] };
     g.ids.push(p.id);
     groups.set(row.key, g);
@@ -263,9 +264,9 @@ export function markBatches<T extends { id: Id }>(queue: readonly T[], rows: Rea
 }
 
 /** Mark the queue from the colony's record (markBatches); a record that cannot be read marks nothing, so the queue reads as before. */
-export function markQueueBatches<T extends { id: Id }>(sql: SqlStorage, queue: readonly T[], budget = ESCALATION_BATCH_PER_HOUR): QueueBatch[] {
+export function markQueueBatches<T extends { id: Id }>(sql: SqlStorage, queue: readonly T[], budget = ESCALATION_BATCH_PER_HOUR, skip: (p: T) => boolean = () => false): QueueBatch[] {
   try {
-    return markBatches(queue, new EscalationBatches(sql).batchedOf(queue.map((p) => p.id)), budget);
+    return markBatches(queue, new EscalationBatches(sql).batchedOf(queue.map((p) => p.id)), budget, skip);
   } catch (err) {
     console.error(`review batches not read: ${errorText(err)}`);
     return [];
@@ -295,7 +296,9 @@ export interface BatchAnswer {
 export interface BatchHost {
   batches: EscalationBatches;
   /** A proposal's status and what says a person already decided it (heldByPerson), or null when there is none. */
-  proposal(id: Id): { status: string; approvedAt?: number; mergeHold?: unknown; reason?: string } | null;
+  proposal(id: Id): { status: string; intentId: Id; approvedAt?: number; mergeHold?: unknown; reason?: string } | null;
+  /** A change no batch may decide (a blind canary): it is left alone with the same words as a change outside the batch. */
+  excluded?(p: { id: Id; intentId: Id }): boolean;
   /** The person's decision on one change, as on its own card; `mint` false keeps a rejection from minting an antibody. */
   decide(id: Id, decision: "approve" | "reject", reason: string, by: string, mint: boolean): Promise<void>;
 }
@@ -312,11 +315,11 @@ export async function answerBatch(host: BatchHost, d: BatchDecision): Promise<Ba
   const skipped: BatchAnswer["skipped"] = [];
   for (const id of ids) {
     const row = rows.get(id);
-    if (!row || row.key !== d.key) {
+    const p = host.proposal(id);
+    if (!row || row.key !== d.key || (p !== null && host.excluded?.({ id, intentId: p.intentId }) === true)) {
       skipped.push({ id, why: "not in this batch; decide it on its own card" });
       continue;
     }
-    const p = host.proposal(id);
     if (p?.status !== "escalated") {
       skipped.push({ id, why: p ? `it is ${p.status} and no longer waits for a person` : "no such proposal" });
       continue;

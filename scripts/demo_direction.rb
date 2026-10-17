@@ -98,7 +98,8 @@ def agents(colony) = api!(:get, "/colonies/#{colony}/agents")["agents"]
 $escalated = {}
 def report_escalations(colony)
   api!(:get, "/colonies/#{colony}/review").each do |p|
-    next if $escalated[p["id"]]
+    # Audit items (the audit sample's landed changes among the escalations) already landed: nothing waits on them.
+    next if $escalated[p["id"]] || p["audit"]
 
     $escalated[p["id"]] = true
     say "  waiting for a person: #{p['id']} escalated (#{p['reason'].to_s[0, 120]}); review it at #{BASE}/c/#{colony}?tab=review"

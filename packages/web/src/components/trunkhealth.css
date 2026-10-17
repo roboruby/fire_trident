@@ -1,0 +1,10 @@
+/* Trunk health (components/TrunkHealth.tsx): the second line of the first screen's Certified row. Shares the tokens in styles.css. */
+
+.fs-health {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fs-health.is-red {
+  color: #ff8d98;
+}
