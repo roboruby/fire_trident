@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { serializeNote, type LineageNote } from "@fire_trident/core";
+import { answerableLine, landingAnswerable, serializeNote, type LineageNote } from "@fire_trident/core";
 import { sealNote } from "../../worker/src/trunk/digest.ts";
 import { helpText, parseCommand } from "../src/args.ts";
 import {
+  answerableOf,
   antibodyProblems,
   canonicalJson,
   cloneVerify,
@@ -73,6 +74,15 @@ describe("the note as the trunk writer seals it", () => {
     expect(noteState(`${text}\n`, digest)).toBe("altered");
     expect(noteState("not json", digest)).toBe("altered");
     expect(noteState('"a string"\n', digest)).toBe("altered");
+  });
+});
+
+describe("who answers", () => {
+  it("is core/answerable.ts's line for the note, and nothing for bytes that are not a note", async () => {
+    const { text } = await sealNote(note());
+    expect(answerableOf(text)).toBe(answerableLine(landingAnswerable(note())));
+    expect(answerableOf(text)).toBe("matt (approved this change)");
+    for (const odd of [null, "", "{", "[]", '"x"']) expect(answerableOf(odd)).toBeNull();
   });
 });
 

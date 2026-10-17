@@ -21,8 +21,11 @@
 //                                              each landing: note intact, signature good (with --keys), and the commit
 //                                              changing exactly the files and blob ids its note's write sets name. Commits
 //                                              that are not landings are listed and skipped. Ends with a summary line.
+// A note that checks out gets a second line, "answerable: <who> (<why>)": the nearest person answerable for the landing,
+// or "none" or "unknown" with the reason, by the rules of packages/core/src/answerable.ts (the Why tab says the same);
+// with --all, each landing's line ends with it.
 // Exits 0 when every check passes, 1 when one fails, 2 when the arguments, the clone or the keys cannot be read.
-// packages/cli/src/clonecheck.ts (ft verify --all) does the same; packages/cli/test/clonecheck.test.ts holds them in step.
+// packages/cli/src/clonecheck.ts (ft verify --all) does the same; packages/cli/test/clonecheck-git.test.ts holds them in step.
 import { execFileSync } from "node:child_process";
 import { createHash, createPublicKey, verify } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -357,6 +360,84 @@ function pathsVerdict(c, note) {
   return verdict(writeProblems(expected, diff, held), files(diff.length));
 }
 
+// Who answers for the landing, first match wins for each change: a person who approved it (a human "approve" decision),
+// the person who approved the rule whose deterministic proof landed it, the person who asked for the intent (source
+// human), else none, with who declared the intent and what landed it; unknown where the note predates the record.
+const UNNAMED = new Set(["", "api", "human", "unknown", "person", "someone"]);
+const ln = (v) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim() : "");
+const obj = (x) => typeof x === "object" && x !== null && !Array.isArray(x);
+const named = (v) => (UNNAMED.has(ln(v).slice(0, 200).toLowerCase()) ? null : ln(v).slice(0, 200));
+const change = (p) => {
+  const ds = Array.isArray(p.decisions) ? p.decisions : [];
+  const cs = obj(p.evidence) && Array.isArray(p.evidence.checks) ? p.evidence.checks : [];
+  const it = obj(p.intent) ? p.intent : {};
+  let gate = null;
+  for (let i = cs.length - 1; i >= 0; i--) {
+    const c = cs[i];
+    if (!obj(c) || c.name !== "gate" || c.by === "agent" || typeof c.detail !== "string") continue;
+    const m = /→ (\S+) by (\S+)/.exec(c.detail);
+    const k = /\(confirmations: ([^)]*)\)/.exec(c.detail);
+    if (m) gate = { action: m[1], layer: m[2], conf: k ? k[1].split("+").map((s) => s.trim()).filter(Boolean) : [] };
+    break;
+  }
+  const model = (layer) => {
+    const d = [...ds].reverse().find((x) => obj(x) && x.layer === layer && x.action === "land" && ln(x.by) !== "");
+    if (d) return ln(d.by);
+    const c = [...cs].reverse().find((x) => obj(x) && x.by !== "agent" && typeof x.name === "string" && x.name.startsWith(`${layer}: `));
+    return c ? ln(c.name.slice(layer.length + 2)) : "";
+  };
+  const by = (m) => (m ? `model ${m}` : "a model");
+  const lander = !gate
+    ? "it landed with no review recorded"
+    : gate.layer === "deterministic"
+      ? "a deterministic proof landed it"
+      : gate.layer === "llm"
+        ? `${by(model("llm"))} approved it`
+        : gate.layer === "reflex"
+          ? `${by(model("reflex"))} landed it${gate.conf.includes("autonomy") ? " on earned autonomy" : ""}`
+          : `the ${gate.layer} layer landed it`;
+  const approval = [...ds].reverse().find((d) => obj(d) && d.layer === "human" && d.action === "approve");
+  if (approval) return { basis: "approved", who: named(approval.by) ?? "an unnamed person", why: "approved this change" };
+  const rule = ln(it.ruleId);
+  const known = typeof it.source === "string" && it.source !== "";
+  if (rule && gate?.layer === "deterministic" && gate.action === "land") {
+    if (typeof it.ruleApprovedBy === "string") return { basis: "rule", who: named(it.ruleApprovedBy) ?? "an unnamed person", why: `approved rule ${rule}, whose deterministic proof landed this change` };
+    return { basis: "unknown", who: "unknown", why: known ? `the note does not record who approved rule ${rule}, whose proof landed this change` : "the note was written before notes recorded who approved each rule" };
+  }
+  if (!known) return { basis: "unknown", who: "unknown", why: "the note was written before notes recorded who asked for each intent" };
+  const source = ln(it.source);
+  if (source === "human") return { basis: "asked", who: named(it.createdBy) ?? "an unnamed person", why: "asked for this intent" };
+  const declarer = { agent: `agent ${ln(it.createdBy) || "unknown"} declared the intent`, rule: `rule ${rule || "unknown"} declared the intent`, certify: "trunk certification declared the intent", system: "FireTrident declared the intent" }[source] ?? `an intent of source ${source} was declared`;
+  return { basis: "none", who: "none", why: `${declarer} and ${lander}` };
+};
+const answerable = (n) => {
+  if (obj(n.revert)) return { who: named(n.revert.by) ?? "an unnamed person", why: `reverted ${ln(n.revert.of) || "a landing"}` };
+  if (obj(n.system)) return n.system.kind === "antibody" ? { who: named(n.system.by) ?? "an unnamed person", why: `rejected ${ln(n.system.rejected) || "a change"}, which taught this antibody` } : { who: "none", why: "FireTrident made this commit on its own" };
+  const changes = (Array.isArray(n.proposals) ? n.proposals : []).filter(obj).map(change);
+  if (changes.length === 0) return { who: "unknown", why: "the note lists no change" };
+  const groups = [];
+  for (const c of changes) {
+    const g = groups.find((x) => x.c.basis === c.basis && x.c.who === c.who && x.c.why === c.why);
+    if (g) g.n++;
+    else groups.push({ c, n: 1 });
+  }
+  if (groups.length === 1) return groups[0].c;
+  const all = changes.some((c) => c.basis === "none") ? "none" : changes.some((c) => c.basis === "unknown") ? "unknown" : null;
+  const people = [...new Set(changes.filter((c) => c.basis !== "none" && c.basis !== "unknown").map((c) => c.who))];
+  const phrase = (c) => (c.basis === "none" ? `no person: ${c.why}` : c.basis === "unknown" ? `unknown: ${c.why}` : `${c.who} ${c.why}`);
+  return { who: all ?? people.join(", "), why: groups.map((g) => `${g.n} of ${changes.length}: ${phrase(g.c)}`).join("; ") };
+};
+/** The answerable line of a note's bytes that check out (after "answerable: "), or null when they are not a JSON object. */
+const answerableOf = (raw) => {
+  let note = null;
+  try {
+    note = JSON.parse(raw);
+  } catch {}
+  if (!obj(note)) return null;
+  const a = answerable(note);
+  return `${a.who} (${a.why})`;
+};
+
 // The root: the last commit of the first-parent chain.
 function rootLine(from) {
   const chain = git(["rev-list", "--first-parent", from, "--"]).toString("utf8").trim().split("\n");
@@ -390,6 +471,9 @@ if (!o.all) {
     verdict = s.status === "signed" ? `intact, ${signatureWords(s)}` : signatureWords(s);
   }
   say(verdict, !(verdict === "intact" || verdict.startsWith("intact, signed by ")));
+  // A note that checks out (signed, or landed before signing): who answers for its landing.
+  const who = verdict === "intact" || verdict.startsWith("intact, signed by ") || verdict.startsWith("unsigned") ? answerableOf(raw) : null;
+  if (who !== null) say(`answerable: ${who}`, false);
   if (o.tamper) {
     const t = digest === null ? { ok: false, reason: "the commit carries no FT-Note trailer to check a copy against" } : tamper(raw, digest, o["tamper-field"]);
     say(tamperLine(t), !(t.ok && t.caught));
@@ -412,7 +496,8 @@ if (!o.all) {
     const raw = rawOf(c.sha);
     const state = noteState(raw, digest);
     const signature = keys !== undefined && state === "intact" ? signatureState(c, digest) : null;
-    return { kind: "landing", sha: c.sha, note: state, signature, paths: state === "intact" ? pathsVerdict(c, JSON.parse(raw)) : null };
+    const who = state === "intact" && signature?.status !== "bad" ? answerableOf(raw) : null;
+    return { kind: "landing", sha: c.sha, note: state, signature, paths: state === "intact" ? pathsVerdict(c, JSON.parse(raw)) : null, who };
   });
   // An unsigned landing newer than a signed one was not built by a trunk writer that signs: it fails.
   const lateUnsigned = new Set();
@@ -450,6 +535,7 @@ if (!o.all) {
       if (v.paths.matched === true) count.matched++;
       if (v.paths.matched === false) bad = true;
     }
+    if (v.who !== null) parts.push(`answerable: ${v.who}`);
     if (bad) count.failures++;
     say(`${short(v.sha)}  ${parts.join(", ")}`, bad);
   }

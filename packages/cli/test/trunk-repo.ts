@@ -129,13 +129,21 @@ export async function signingKey(dir: string): Promise<{ signer: NoteSigner; key
 }
 
 /** One proposal of a note, with the fields the trunk writer always writes. */
-export function proposal(p: { id: string; writeSet: Array<{ path: string; blob: string | null }>; readSet?: Array<{ path: string; blob: string | null }>; decisions?: LineageNote["proposals"][number]["decisions"]; intent?: string }): LineageNote["proposals"][number] {
+export function proposal(p: {
+  id: string;
+  writeSet: Array<{ path: string; blob: string | null }>;
+  readSet?: Array<{ path: string; blob: string | null }>;
+  decisions?: LineageNote["proposals"][number]["decisions"];
+  intent?: string;
+  /** Who asked for the intent (its source and creator), as notes record it since they say who is answerable. */
+  askedBy?: { source: string; createdBy: string };
+}): LineageNote["proposals"][number] {
   return {
     id: p.id,
     agentId: `agt_${p.id}`,
     agentKind: "internal",
     model: "test-model",
-    intent: { id: `int_${p.id}`, title: p.intent ?? `Change for ${p.id}`, why: "a test landing" },
+    intent: { id: `int_${p.id}`, title: p.intent ?? `Change for ${p.id}`, why: "a test landing", ...(p.askedBy ?? {}) } as LineageNote["proposals"][number]["intent"],
     writeSet: p.writeSet,
     readSet: p.readSet ?? [],
     decisions: p.decisions ?? [],

@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { createHash, createPublicKey, verify } from "node:crypto";
+import { answerableLine, landingAnswerable } from "@fire_trident/core";
 import type { Colors } from "./format.ts";
 
 /**
@@ -17,9 +18,12 @@ import type { Colors } from "./format.ts";
  *                      --tamper-field picks another), and require the copy to fail against its commit; nothing is written
  *   --colony <root>    pin the colony by its root commit: a history whose first commit is another fails
  *
- * scripts/verify_note.mjs repeats this for a stock Node with no dependencies (the published CLI carries no other
- * package, and the script is downloaded alone); test/clonecheck.test.ts runs both on one repository and holds their
- * output in step.
+ * A note that checks out also says who answers for its landing (core/answerable.ts): a second line after the verdict,
+ * "answerable: <who> (<why>)", and with --all the end of the landing's line.
+ *
+ * scripts/verify_note.mjs repeats this for a stock Node with no dependencies (it is downloaded alone, and carries its
+ * own copy of the answerable rules); test/clonecheck-git.test.ts runs both on one repository and holds their output in
+ * step.
  */
 
 /** `ft verify` on a clone (see the module comment). */
@@ -147,6 +151,17 @@ export function noteState(raw: string | null, digest: string): "intact" | "alter
   }
   if (!note || typeof note !== "object" || Array.isArray(note) || `${canonicalJson(note)}\n` !== raw) return "altered";
   return noteDigest(note as Record<string, unknown>) === digest ? "intact" : "altered";
+}
+
+/** Who answers for the landing of a note that checks out (core/answerable.ts), as the answerable line says it; null when its bytes are not a JSON object. */
+export function answerableOf(raw: string | null): string | null {
+  let note: unknown = null;
+  try {
+    note = raw === null ? null : JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  return isRecord(note) ? answerableLine(landingAnswerable(note)) : null;
 }
 
 /** The digest a commit message's last line carries as its FT-Note trailer, or null. */
@@ -614,6 +629,9 @@ function checkOne(cmd: CloneVerify, git: Git, keys: unknown): CloneReport {
   const ok = verdict === "intact" || verdict.startsWith("intact, signed by ");
   const lines: CheckLine[] = [{ text: verdict, tone: ok ? "ok" : "fail" }];
   let failed = !ok;
+  // A note that checks out (signed, or landed before signing): who answers for its landing.
+  const who = ok || verdict.startsWith("unsigned") ? answerableOf(raw) : null;
+  if (who !== null) lines.push({ text: `answerable: ${who}`, tone: "ok" });
   if (cmd.tamper) {
     const t = digest === null ? ({ ok: false, reason: "the commit carries no FT-Note trailer to check a copy against" } as TamperResult) : tamperNote(raw, digest, cmd.tamperField);
     const caught = t.ok && t.caught;
@@ -631,7 +649,7 @@ function checkOne(cmd: CloneVerify, git: Git, keys: unknown): CloneReport {
 /** What one walked commit is: skipped (not a landing, or landed before sealing), or a landing with its checks. */
 type Verdict =
   | { kind: "skip"; sha: string; unsealed: boolean }
-  | { kind: "landing"; sha: string; note: "intact" | "altered" | "missing"; signature: ReturnType<typeof signatureState> | null; paths: { text: string; matched: boolean | null } | null };
+  | { kind: "landing"; sha: string; note: "intact" | "altered" | "missing"; signature: ReturnType<typeof signatureState> | null; paths: { text: string; matched: boolean | null } | null; who: string | null };
 
 /** The whole first-parent chain: one line per landing, runs of other commits on one line, then the root, the tamper check and a summary. */
 function checkAll(cmd: CloneVerify, git: Git, keys: unknown): CloneReport {
@@ -652,7 +670,8 @@ function checkAll(cmd: CloneVerify, git: Git, keys: unknown): CloneReport {
     const state = noteState(raw, digest);
     const signature = keys !== undefined && state === "intact" ? signatureState({ message: c.message, digest, tree: c.tree, parents: c.parents, keys }) : null;
     const paths = state === "intact" ? pathsVerdict(git, c, JSON.parse(raw as string) as Record<string, unknown>) : null;
-    return { kind: "landing", sha: c.sha, note: state, signature, paths };
+    const who = state === "intact" && signature?.status !== "bad" ? answerableOf(raw) : null;
+    return { kind: "landing", sha: c.sha, note: state, signature, paths, who };
   });
   // An unsigned landing newer than a signed one was not built by a trunk writer that signs: it fails.
   const lateUnsigned = new Set<string>();
@@ -694,6 +713,7 @@ function checkAll(cmd: CloneVerify, git: Git, keys: unknown): CloneReport {
       if (v.paths.matched === true) count.matched++;
       if (v.paths.matched === false) failed = true;
     }
+    if (v.who !== null) parts.push(`answerable: ${v.who}`);
     if (failed) count.failures++;
     lines.push({ text: `${short(v.sha)}  ${parts.join(", ")}`, tone: failed ? "fail" : "ok" });
   }
