@@ -18,6 +18,7 @@ import { movedView } from "../colony/movedby.ts";
 import { isTwinAnswer, type DeclareAnswer } from "../colony/twins.ts";
 import { priorityAnswer } from "../colony/priority.ts";
 import { cleanDeclaredBy, heldNote, type DeclaredBy } from "../colony/chain.ts";
+import { foldPath } from "../decide/pathfold.ts";
 
 /** What one MCP session remembers (stored in the session's Durable Object). */
 export interface Session {
@@ -166,7 +167,7 @@ export function inlinePathProblem(path: unknown): string | null {
   if (path.startsWith("/") || path.includes("\\") || path.includes("\0") || /^[A-Za-z]:/.test(path)) return `${JSON.stringify(path)} is not a relative path with / separators`;
   for (const seg of path.split("/")) {
     if (seg === "" || seg === "." || seg === "..") return `${JSON.stringify(path)} has an empty, "." or ".." segment`;
-    if (seg.toLowerCase() === ".git") return `${JSON.stringify(path)} is inside .git`;
+    if (foldPath(seg) === ".git") return `${JSON.stringify(path)} is inside .git`;
   }
   return null;
 }

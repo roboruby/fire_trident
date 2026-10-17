@@ -1,6 +1,8 @@
 import type { IntentSource, Path } from "@fire_trident/core";
 import { globMatch, importsOf } from "@fire_trident/core";
 import { diffLines, splitLines } from "./diff.ts";
+import { handoffMatches } from "./handoff.ts";
+import { foldPath } from "./pathfold.ts";
 import { assertionCount, blankComments, isTestPath, sensitiveReason } from "./signals.ts";
 
 /**
@@ -19,27 +21,32 @@ import { assertionCount, blankComments, isTestPath, sensitiveReason } from "./si
  * - governance: what decides on agents (by path): the colony's own memory under .firetrident/
  *   (antibodies, including the tolerating ones the colony loads from trunk) and agent
  *   instructions (AGENTS.md, CLAUDE.md, .claude/)
+ * - handoff: files another tool runs or obeys (by path, decide/handoff.ts): agent-client and editor
+ *   configuration such as .mcp.json and .vscode/, dev containers, .envrc, git hooks, .gitmodules, nested
+ *   .git, virtual environments, other coding agents' instruction files, and the .gitattributes lines
+ *   that select a filter, diff or merge driver
  * - loosened-guard: a check a modified script deletes or weakens (a deleted throw or 401/403
  *   denial, a security condition made weaker, verify swapped for decode, a dropped constant-time
  *   compare, a deleted expiry or limit check). It reads removed lines too, so it sees what a
  *   change takes away; it is heuristic, so it is a signal, never a human gate
  * Auth, secret and capability hits must reach a human unless a policy or an antibody explicitly
- * allows them; governance and test-change always reach a human, since no allowance may waive
+ * allows them; governance, handoff and test-change always reach a human, since no allowance may waive
  * them. The others are danger signals that only a reviewer's approval can clear; no allowance
  * or intent clears a loosened guard. Only an intent written by a person, a colony rule or trunk
  * certification can ask for a capability: an agent's own words (an agent-declared intent, a
  * proposal's summary) never waive a hit.
  * Import and export-from lines are never scanned for code patterns: rewriting a specifier
- * (Hono's ./x -> ./x.ts, OpenSpec's 'fs' -> 'node:fs') never adds behavior. Pure: no I/O.
+ * (Hono's ./x -> ./x.ts, OpenSpec's 'fs' -> 'node:fs') never adds behavior. Paths match in their folded
+ * form (decide/pathfold.ts: NFC, case-folded), so `.Firetrident/` and `claude.md` hit too. Pure: no I/O.
  */
 
-export type DangerClass = "auth" | "secret" | "capability" | "crypto" | "ci" | "dependency" | "test-weakening" | "governance" | "test-change" | "loosened-guard";
+export type DangerClass = "auth" | "secret" | "capability" | "crypto" | "ci" | "dependency" | "test-weakening" | "governance" | "handoff" | "test-change" | "loosened-guard";
 
 /** Classes that must reach a human. */
-export const MUST_HUMAN: ReadonlySet<DangerClass> = new Set<DangerClass>(["auth", "secret", "capability", "governance", "test-change"]);
+export const MUST_HUMAN: ReadonlySet<DangerClass> = new Set<DangerClass>(["auth", "secret", "capability", "governance", "handoff", "test-change"]);
 
 /** Classes no policy, antibody or intent can allow. */
-export const UNWAIVABLE: ReadonlySet<DangerClass> = new Set<DangerClass>(["governance", "test-change", "loosened-guard"]);
+export const UNWAIVABLE: ReadonlySet<DangerClass> = new Set<DangerClass>(["governance", "handoff", "test-change", "loosened-guard"]);
 
 /** Who wrote an intent's why: a person, a colony rule, trunk certification, or an agent. */
 export type WhyAuthor = "person" | "rule" | "certification" | "agent";
@@ -67,7 +74,7 @@ export interface DangerIntent {
  */
 const TRUSTED_SOURCES: ReadonlySet<string> = new Set<IntentSource>(["human", "rule"]);
 
-/** Paths that decide on agents: the colony's memory and agent instructions, anywhere in the tree. */
+/** Paths that decide on agents: the colony's memory and agent instructions, anywhere in the tree (tested on the folded path). */
 const GOVERNANCE: ReadonlyArray<{ id: string; re: RegExp }> = [
   { id: "colony-memory", re: /(^|\/)\.firetrident\// },
   { id: "agent-instructions", re: /(^|\/)(?:(?:AGENTS|CLAUDE)\.md$|\.claude\/)/i },
@@ -98,6 +105,8 @@ export interface DangerFile {
   after: string | null;
   /** The change deletes the file. */
   deleted?: boolean;
+  /** The new text could not be read (binary, too large or unreadable), so `after` is not what the file holds. */
+  opaque?: boolean;
 }
 
 const CODE = /\.(?:[cm]?[jt]sx?|py|rb|go|rs|java|kt|kts|php|cs|swift|scala|sh|bash|zsh|ps1|lua|exs?|vue|svelte|astro)$/i;
@@ -1345,8 +1354,13 @@ export function scanDanger(files: readonly DangerFile[], intent: DangerIntent | 
     if (reason === "CI configuration") hits.push({ cls: "ci", pattern: "ci:workflow", path: f.path, line: 0, excerpt: f.after === null ? "deleted" : "changed" });
     if (reason === "dependency manifest") hits.push({ cls: "dependency", pattern: "dependency:manifest", path: f.path, line: 0, excerpt: f.before === null ? "new manifest" : f.after === null ? "deleted" : "changed" });
     // Before the deleted-file exit: removing an antibody weakens the colony as much as adding one.
-    const gov = GOVERNANCE.find((g) => g.re.test(f.path));
+    const gov = GOVERNANCE.find((g) => g.re.test(foldPath(f.path)));
     if (gov) hits.push({ cls: "governance", pattern: `governance:${gov.id}`, path: f.path, line: 0, excerpt: f.deleted ? "deleted" : f.before === null ? "new file" : "changed" });
+    // Files another tool runs or obeys (decide/handoff.ts): a person decides, as for governance, deleted ones too.
+    for (const m of handoffMatches(f)) {
+      const said = m.text === undefined ? `${f.deleted ? "deleted" : f.before === null ? "new file" : "changed"}: another tool runs or obeys this file` : maskExcerpt(m.text, 100);
+      hits.push({ cls: "handoff", pattern: `handoff:${m.id}`, path: f.path, line: m.line, excerpt: `${said} (${m.why})` });
+    }
     const test = isTestPath(f.path);
     // A repair never grades its own exam: its test-file changes beyond imports reach a person.
     if (repair && test) hits.push(...repairTestChange(f));
