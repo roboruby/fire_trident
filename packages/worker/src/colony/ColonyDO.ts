@@ -156,6 +156,7 @@ import type { AiRunner } from "../decide/reflex.ts";
 import type { CheckResult } from "@fire_trident/core";
 import { INLINE_FETCH_BYTES, InlineContents, inlineRefusal, isInlineChange, migrateContents } from "./inline.ts";
 import { FieldGuide, guideEnabled, type GuideView } from "./guide.ts";
+import { lessonScopesEnabled } from "./lessonscope.ts";
 import type { GuideLesson, GuideTake, LessonReceipt } from "@fire_trident/core";
 import { MegafileAlarm, megafileEnabled, type MegafileHost } from "./megafile.ts";
 import { A2A_ACTOR, ColonyPause, DEPLOYMENT_PAUSE_KEY, type PauseAnswer, type PauseView, type ResumeAnswer, type WriterPause } from "./pause.ts";
@@ -4960,7 +4961,8 @@ export class ColonyDO extends DurableObject<Env> {
     const context = this.whyContext(intent);
     const lastReturn = this.lastReturn(intent.id);
     // Field guide (FT_FIELD_GUIDE): the newest lessons, each with its provenance (colony/guide.ts); absent where the guide is off.
-    const guide = this.guide()?.take();
+    // With FT_LESSON_SCOPE, those on the intent's footprint first, marked with the files that changed since (colony/lessonscope.ts).
+    const guide = this.guide()?.take(lessonScopesEnabled(this.env.FT_LESSON_SCOPE, intent.colonyId) ? { footprint: intent.footprint ?? [] } : undefined);
     // Model step-up (FT_MODEL_STEPUP, colony/stepup.ts): the stronger model class after two returns; absent where it is off.
     const model = this.modelStepup(intent);
     // Who declared the intent (colony/chain.ts): its source, the declarer and its model, and the chain depth.

@@ -250,3 +250,25 @@ describe("the field guide in the agent loop", () => {
     expect(s.proposed[0]!.lesson).toBe("The logger is a global set up in src/boot.ts.");
   });
 });
+
+describe("a lesson written before files of its scope changed, in prompts", () => {
+  const MOVED: GuideTake = {
+    lessons: [{ ...LESSON, movedSince: [{ path: "src/routes/index.ts", landingId: "lnd_8", at: Date.UTC(2026, 9, 16), intentId: "int_8", title: "Move the routes" }] }],
+  };
+
+  it("says so inside the guide's fence, after the lesson's provenance", () => {
+    const block = guideBlock(MOVED, NONCE)!;
+    expect(block.split("\n")[2]).toBe(
+      '- Routes register in src/routes/index.ts, not in the app file. (agent agt_9, an external agent, model some-model (declared); landing lnd_7; active since 2026-10-14 03:12, by a green certification) Written before these files changed: src/routes/index.ts (landing lnd_8, "Move the routes").',
+    );
+    expect(block.split("\n").at(-1)).toBe(`<<<END GUIDE ${NONCE}>>>`);
+  });
+
+  it("reaches the in-platform agent's prompt from the take", async () => {
+    const s = run(writeIntent(), { guide: MOVED }, A, ["<file>\nexport function f() {\n  return 3;\n}\n</file>"]);
+    await tick(s.deps);
+    expect(user(s.model.calls[0])).toMatch(
+      /<<<GUIDE ([0-9a-f]{12})>>>\n- Routes register[^\n]*by a green certification\) Written before these files changed: src\/routes\/index\.ts \(landing lnd_8, "Move the routes"\)\.\n<<<END GUIDE \1>>>/,
+    );
+  });
+});

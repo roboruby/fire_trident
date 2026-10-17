@@ -275,6 +275,14 @@ export interface Env {
    */
   FT_FIELD_GUIDE?: string;
   /**
+   * Optional: lesson scopes in the field guide's takes, "on", or a comma-separated list of colony ids; absent or "off" is
+   * off. Every lesson keeps the files its change read and wrote with their blobs either way (colony/lessonscope.ts); where
+   * this is on as well as FT_FIELD_GUIDE, a take ranks the lessons on its intent's footprint first, names the files of a
+   * lesson's scope that landings changed since it was written (`movedSince`, with each landing and intent; prompts and the
+   * MCP take say "Written before these files changed"), and leaves a lesson out once every file of its scope changed.
+   */
+  FT_LESSON_SCOPE?: string;
+  /**
    * Optional: culprit finding, "on", or a comma-separated list of colony ids; absent or "off" is off. A red certification
    * names the landings that changed what its failing test files load since the last green commit (its `suspects`), and
    * its repair intent's why names them too.

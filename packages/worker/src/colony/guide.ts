@@ -4,6 +4,7 @@ import { MASKED, maskSecrets } from "../trunk/mask.ts";
 import { noteProvenance } from "../trunk/provenance.ts";
 import { errorText, ftError } from "./errors.ts";
 import type { SqlRunner } from "./inline.ts";
+import { landedScope, lessonScope, scopedEntries } from "./lessonscope.ts";
 
 /**
  * A colony's field guide (FT_FIELD_GUIDE; the rules are core/guide.ts). An agent may leave one lesson with a proposal:
@@ -14,11 +15,14 @@ import type { SqlRunner } from "./inline.ts";
  * landing is reverted, when a red certification names its change, when a person rejects it, or when its change comes
  * back. Every take carries the newest active lessons (GUIDE_LIMITS.takeChars), and the guide keeps at most
  * GUIDE_LIMITS.activeLessons lessons and GUIDE_LIMITS.activeChars characters: past either, the oldest retires.
+ * Each lesson keeps the files its change read and wrote, with their blobs (its scope, colony/lessonscope.ts); where
+ * FT_LESSON_SCOPE covers the colony too, a take ranks the lessons on its intent's footprint first, marks the files that
+ * changed since a lesson was written, and leaves out a lesson whose every file changed.
  *
  * Its own table is `guide_lessons`, made on first use (so a colony with the guide off has none). It also reads, never
- * writes, the colony's `proposals` (id, status), `landings` (id, at, trunk_sha), `agents` (id, kind, model) and
- * `agent_keys` (agent_id). Every hook is best effort: a failure here is logged and never fails a proposal, a landing, a
- * certification or a take.
+ * writes, the colony's `proposals` (id, status), `landings` (id, at, trunk_sha), `agents` (id, kind, model),
+ * `agent_keys` (agent_id), `landing_paths` and `intents` (id, title). Every hook is best effort: a failure here is
+ * logged and never fails a proposal, a landing, a certification or a take.
  */
 
 /** FT_FIELD_GUIDE: whether this colony keeps a field guide: "on", or a comma-separated list of colony ids; off when absent. */
@@ -83,8 +87,8 @@ const STATUSES: ReadonlySet<string> = new Set<LessonStatus>(["candidate", "activ
 
 /** One colony's field guide (see the module comment). */
 export class FieldGuide {
-  /** What takes carry, kept until the guide changes. */
-  private taken: GuideTake | null = null;
+  /** The active lessons takes read, kept until the guide changes (what moved since is read at each take). */
+  private active: GuideLesson[] | null = null;
 
   constructor(private readonly host: GuideHost) {
     for (const stmt of SCHEMA) host.sql.exec(stmt);
@@ -99,11 +103,12 @@ export class FieldGuide {
   // -------------------------------------------------------------------------
 
   /**
-   * The lesson an agent left with its proposal becomes a candidate: cleaned, masked, with the proposal's provenance.
-   * Not kept when nothing worth keeping is left, or when it repeats an active lesson or a waiting one. The receipt
-   * says which, in a sentence the agent can act on.
+   * The lesson an agent left with its proposal becomes a candidate: cleaned, masked, with the proposal's provenance
+   * and its scope (the read set and write set with their blobs, when the proposal has them). Not kept when nothing
+   * worth keeping is left, or when it repeats an active lesson or a waiting one. The receipt says which, in a sentence
+   * the agent can act on.
    */
-  capture(p: Pick<Proposal, "id" | "intentId" | "agentId" | "evidence">, raw: unknown): LessonReceipt {
+  capture(p: Pick<Proposal, "id" | "intentId" | "agentId" | "evidence"> & Partial<Pick<Proposal, "readSet" | "writeSet">>, raw: unknown): LessonReceipt {
     try {
       const existing = this.rows("SELECT data FROM guide_lessons WHERE proposal_id = ? LIMIT 1", p.id)[0];
       if (existing) return this.receipt(existing);
@@ -119,7 +124,8 @@ export class FieldGuide {
       if (dup) return { status: "duplicate", duplicateOf: dup.id, note: `The guide already holds this lesson (${dup.id}, ${dup.status}), so it was not added again.` };
       this.makeRoom(now);
       const provenance = this.provenanceOf(p.agentId, p.evidence);
-      const lesson: GuideLesson = { id: newId("les_"), text, status: "candidate", agentId: p.agentId, proposalId: p.id, intentId: p.intentId, createdAt: now, ...(provenance ? { provenance } : {}) };
+      const scope = lessonScope(p);
+      const lesson: GuideLesson = { id: newId("les_"), text, status: "candidate", agentId: p.agentId, proposalId: p.id, intentId: p.intentId, ...(scope ? { scope } : {}), createdAt: now, ...(provenance ? { provenance } : {}) };
       this.write(lesson);
       this.pruneEnded();
       return this.receipt(lesson);
@@ -160,6 +166,8 @@ export class FieldGuide {
         if (typeof l.trunkSha === "string" && l.trunkSha !== "") lesson.trunkSha = l.trunkSha;
         lesson.landedAt = typeof l.at === "number" && Number.isFinite(l.at) ? l.at : now;
         lesson.receivedAt = now;
+        // Its scope's written files hold what landed: a text merge's own blob where one merged them.
+        if (lesson.scope) lesson.scope = landedScope(lesson.scope, l.merged, lesson.proposalId);
         this.write(lesson);
       }
       const verdict = this.host.certifications(VERDICT_LOOKBACK).find((c) => c.status === "green" || c.status === "red");
@@ -211,16 +219,20 @@ export class FieldGuide {
     }
   }
 
-  /** What a take carries: the newest active lessons whose lines fit in GUIDE_LIMITS.takeChars (possibly none). */
-  take(): GuideTake {
-    if (this.taken) return this.taken;
+  /**
+   * What a take carries: the newest active lessons whose lines fit in GUIDE_LIMITS.takeChars (possibly none). With
+   * `scoped` (FT_LESSON_SCOPE), the take's intent footprint: the lessons whose change read or wrote a file it covers come
+   * first, each lesson is marked with the files of its scope that changed since it was written, and a lesson whose every
+   * file changed is left out (colony/lessonscope.ts).
+   */
+  take(scoped?: { footprint: readonly string[] }): GuideTake {
     try {
-      this.taken = { lessons: takeLessons(this.list(["active"]).map(guideEntry)) };
+      this.active ??= this.list(["active"]);
+      return { lessons: takeLessons(scoped ? scopedEntries(this.host.sql, this.active, scoped.footprint) : this.active.map(guideEntry)) };
     } catch (err) {
       console.warn(`field guide: not read for a take: ${errorText(err)}`);
       return { lessons: [] };
     }
-    return this.taken;
   }
 
   // -------------------------------------------------------------------------
@@ -432,7 +444,7 @@ export class FieldGuide {
       l.endedAt ?? null,
       JSON.stringify(l),
     );
-    this.taken = null;
+    this.active = null;
   }
 }
 
