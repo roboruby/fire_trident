@@ -9,3 +9,4 @@ dist/
 coverage/
 .tsbuildinfo
 /recordings/
+node_modules
