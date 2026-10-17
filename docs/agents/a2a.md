@@ -47,7 +47,7 @@ a2a() {
 
 ## Declare an intent: SendMessage
 
-The message's text is the intent: its first line the title, the rest the why. A data part carries `footprint`, the paths or globs the change will touch (required), and optionally `acceptance` (a list of checks), `priority` (a number, 1 by default) and `force` (see twins below). The answer is the task, whose `id` is the intent's id. By default the door waits up to 20 seconds for the task to end or to stop for a person before answering, as the protocol's blocking send does, and says when the wait ran out; `configuration.returnImmediately: true` answers at once:
+The message's text is the intent: its first line the title, the rest the why. A data part carries `footprint`, the paths or globs the change will touch (required), and optionally `acceptance` (a list of checks), `priority` (a number, 1 by default; a task an orchestrator sends is declared at most at 1, and the answer says what it got) and `force` (see twins below). The answer is the task, whose `id` is the intent's id. By default the door waits up to 20 seconds for the task to end or to stop for a person before answering, as the protocol's blocking send does, and says when the wait ran out; `configuration.returnImmediately: true` answers at once:
 
 ```sh
 a2a <<'EOF2' | jq .
