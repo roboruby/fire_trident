@@ -1,5 +1,5 @@
 import type { Env } from "../env.ts";
-import { tokensEqual } from "../api/app.ts";
+import { bearerMatches } from "../api/token.ts";
 
 function refuse(status: number, error: string): Response {
   return new Response(JSON.stringify({ error }), { status, headers: { "content-type": "application/json" } });
@@ -19,6 +19,6 @@ export async function mcpRefusal(req: Request, env: Pick<Env, "FT_MCP_TOKEN" | "
   const expected = env.FT_MCP_TOKEN;
   if (!expected) return env.FT_OPEN_WRITES === "1" ? null : refuse(403, "forbidden: MCP needs FT_MCP_TOKEN configured on the server");
   const m = /^Bearer\s+(\S+)\s*$/i.exec(req.headers.get("authorization") ?? "");
-  if (!m || !(await tokensEqual(m[1] ?? "", expected))) return refuse(401, "unauthorized: send the FireTrident MCP token as an Authorization: Bearer <token> header");
+  if (!m || !(await bearerMatches(m[1] ?? "", expected))) return refuse(401, "unauthorized: send the FireTrident MCP token as an Authorization: Bearer <token> header");
   return null;
 }

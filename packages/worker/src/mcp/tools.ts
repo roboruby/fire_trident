@@ -21,6 +21,7 @@ import { priorityAnswer } from "../colony/priority.ts";
 import { cleanDeclaredBy, heldNote, type DeclaredBy } from "../colony/chain.ts";
 import { foldPath } from "../decide/pathfold.ts";
 import { refuseWhilePaused } from "../colony/pause.ts";
+import { replayAnswer, replayedProposal } from "./replay.ts";
 
 /** What one MCP session remembers (stored in the session's Durable Object). */
 export interface Session {
@@ -755,6 +756,9 @@ export class FireTridentTools {
    * one surprising fact the agent learned; the answer says what became of it.
    */
   async propose(a: { headSha?: string; files?: InlineFile[]; summary?: string; notVerified?: string; lesson?: string }): Promise<unknown> {
+    // A retry after a lost reply (mcp/replay.ts): the first call gave up the session's intent, so the same change gets its proposal back.
+    const replayed = await replayedProposal(await this.ctx.load(), a, this.ctx);
+    if (replayed) return { ...replayAnswer(replayed), next: nextFor(replayed.status) };
     const s = await this.leased();
     // Pause (colony/pause.ts): refused at once while the colony's agents are paused; the colony checks again inside.
     await refuseWhilePaused(this.ctx.colony(s.colonyId));

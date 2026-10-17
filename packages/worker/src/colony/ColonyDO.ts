@@ -2107,6 +2107,9 @@ export class ColonyDO extends DurableObject<Env> {
     }
     // Pause (colony/pause.ts): a new change waits for a person to resume (a repeat above gets the proposal it made).
     await this.pauses().refuse();
+    // That read may wait on another object, and a retry of this change sent meanwhile passed the repeat check too: the
+    // call that resumes second finds the first one's proposal and answers as a repeat. Nothing below waits until the insert.
+    if (this.repeatedProposal(input.agentId, intentRow.id, input.headSha)) return this.propose(input);
     this.assertProposable(intentRow, input.agentId);
     const writeSet = this.normalizeVersions(input.writeSet);
     if (writeSet.length === 0) throw ftError(400, "proposal write set is empty");

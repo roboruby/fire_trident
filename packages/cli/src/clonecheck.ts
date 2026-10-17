@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { createHash, createPublicKey, verify } from "node:crypto";
-import { answerableLine, landingAnswerable } from "@fire_trident/core";
+// The published CLI ships without @fire_trident/core: answerable.ts is the CLI's copy of core's (test/package.test.ts).
+import { answerableLine, landingAnswerable } from "./answerable.ts";
 import type { Colors } from "./format.ts";
 
 /**

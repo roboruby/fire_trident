@@ -301,7 +301,10 @@ export function wilson(k: number, n: number, z = 1.959964): { p: number; lo: num
  */
 export type VaccineOutcome = "pending" | "escalated" | "returned" | "missed" | "error";
 
-/** What each settled outcome means, for reports: only a return is a catch the meter measures. */
+/**
+ * What each settled outcome means, for reports. The published recall counts a return and an escalation as caught
+ * (returnedRecall counts returns alone); a miss counts against it, and an error is left out.
+ */
 export const VACCINE_OUTCOMES: Record<Exclude<VaccineOutcome, "pending">, string> = {
   returned: "a model or a deterministic check stopped it and sent it back to its agent: a measured catch",
   escalated: "sent to a person; a sealed vaccine is never put to one, so whether a person would catch it is not measured",

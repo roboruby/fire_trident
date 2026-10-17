@@ -472,7 +472,9 @@ export function parseVerdict(text: string | null, model: string, acceptanceLines
   const acceptance = acceptanceLines > 0 ? parseAcceptance(raw.acceptance) : undefined;
   return {
     verdict,
-    needsHuman: prob(raw.needs_human, verdict === "approve" ? 0.2 : 0.8),
+    // A missing or unparsable needs_human reads as 1, as a missing Clef probability does (readReflex): fail closed, so an
+    // approval that leaves it out never lands on its own.
+    needsHuman: prob(raw.needs_human, 1),
     offIntent: raw.off_intent === true,
     sensitive: raw.sensitive === true,
     confidence: prob(raw.confidence, 0.5),

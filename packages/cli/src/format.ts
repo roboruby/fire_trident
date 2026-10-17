@@ -21,7 +21,9 @@ import type {
   Rule,
 } from "@fire_trident/core";
 import type { StuckAction, StuckItem, StuckReport } from "@fire_trident/core";
-import { bySpeaker, evidenceLines, landingAnswerable, notVerifiedSpeaker, notVerifiedWords, type Evidence } from "@fire_trident/core";
+import type { Evidence } from "@fire_trident/core";
+// The published CLI ships without @fire_trident/core: answerable.ts is the CLI's copy of core's (test/package.test.ts).
+import { bySpeaker, evidenceLines, landingAnswerable, notVerifiedSpeaker, notVerifiedWords } from "./answerable.ts";
 import type { IntentSpend } from "@fire_trident/core";
 import { changeSize, dangerLines, lookHereFirst, parseHunks, reviewOf, visible, type DiffLine, type ReviewFile, type ReviewView } from "./review.ts";
 import { whySummary } from "./spec.ts";
