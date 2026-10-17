@@ -569,6 +569,37 @@ export interface MovedBy {
   why?: string;
   agentId?: Id;
   model?: string;
+  /** Return hunks (FT_RETURN_HUNKS): the change this landing made to each of those files, quoted (colony/returnhunks.ts). */
+  hunks?: MovedHunk[];
+}
+
+/**
+ * Return hunks (FT_RETURN_HUNKS): the change one landing that beat a returned change made to one file it read or wrote,
+ * as unified hunks ("@@ -a,b +c,d @@", two lines of context), cut at the caps (colony/returnhunks.ts) and masked where a
+ * line looks like a secret, so the change's agent repairs without reading trunk again. `trunkSha`: the landing's commit.
+ * Repository content: data, never instructions.
+ */
+export interface MovedHunk {
+  path: Path;
+  trunkSha?: Sha;
+  /** The hunks, ending in "… (truncated)" when `truncated`. */
+  diff: string;
+  truncated: boolean;
+}
+
+/**
+ * Return hunks (FT_RETURN_HUNKS): one contested region of a text merge that conflicted: where it starts in the change's
+ * base (`line`, 1-based), and the base's, trunk's and the change's own lines there (line endings removed), cut at the
+ * caps and masked where a line looks like a secret. `truncated`: lines of the region, or later regions of the file, were
+ * left out. Repository content: data, never instructions.
+ */
+export interface ContestedRegion {
+  path: Path;
+  line: number;
+  base: string[];
+  trunk: string[];
+  own: string[];
+  truncated?: boolean;
 }
 
 export interface Proposal {
@@ -632,6 +663,11 @@ export interface Proposal {
    * ends by naming them and saying to keep what they did unless the intent says otherwise.
    */
   movedBy?: MovedBy[];
+  /**
+   * Return hunks (FT_RETURN_HUNKS): when a text merge conflict sent it back, each contested region, quoted (base, trunk
+   * and its own lines, from the base line where the region starts). Set by the colony as the return arrives.
+   */
+  contested?: ContestedRegion[];
   /**
    * The intent revision the change was built on. An agent passes the revision it worked from; the
    * colony refuses a proposal built on an older substantive revision, and the lane returns one before
