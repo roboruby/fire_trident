@@ -157,6 +157,7 @@ import { FieldGuide, guideEnabled, type GuideView } from "./guide.ts";
 import type { GuideLesson, GuideTake, LessonReceipt } from "@fire_trident/core";
 import { MegafileAlarm, megafileEnabled, type MegafileHost } from "./megafile.ts";
 import type { MegafileHold, MegafileReport } from "@fire_trident/core";
+import { grantPriority, migratePriority, notePriority, priorityCapOf, requestedPriorityOf } from "./priority.ts";
 import { RESOLVER_AGENT, Resolver, migrateResolver, type ResolverTrunk } from "./resolver.ts";
 import type { NoteResolves } from "@fire_trident/core";
 import { impactReport } from "./impact.ts";
@@ -437,6 +438,9 @@ type IntentRow = {
   escalation_open?: number | null;
   /** Contest mode: seats (decide/contest.ts migrates older tables). */
   contest?: number | null;
+  /** What an agent asked for when the cap lowered its priority, and which cap (priority.ts migrates older tables). */
+  requested_priority?: number | null;
+  priority_cap?: string | null;
 };
 
 type RuleRow = {
@@ -636,6 +640,7 @@ export class ColonyDO extends DurableObject<Env> {
     migrateContest(this.sql);
     migrateContents(this.sql);
     migrateResolver(this.sql);
+    migratePriority(this.sql);
     this.backfillSeries();
     this.hub = new EventHub(() => this.ctx.getWebSockets());
     this.certifier = new Certifier(this.certifyHost());
@@ -1767,7 +1772,7 @@ export class ColonyDO extends DurableObject<Env> {
    * (`alternatives`, keyed by the winner's proposal id).
    */
   async landContext(intentIds: Id[], agentIds: Id[], proposalIds: Id[] = []): Promise<{
-    intents: Record<Id, { title: string; why: string; ruleId?: Id; parentId?: Id } & DirectionInfo>;
+    intents: Record<Id, { title: string; why: string; ruleId?: Id; parentId?: Id; priority?: number; requestedPriority?: number } & DirectionInfo>;
     agents: Record<Id, { kind: AgentKind; model?: string; resumeKey?: boolean }>;
     decisions: Record<Id, NoteDecision[]>;
     alternatives?: Record<Id, ContestAlternative[]>;
@@ -1775,7 +1780,7 @@ export class ColonyDO extends DurableObject<Env> {
     protect?: ProtectRecord;
   }> {
     const colonyId = this.requireColony().id;
-    const intents: Record<Id, { title: string; why: string; ruleId?: Id; parentId?: Id } & DirectionInfo> = {};
+    const intents: Record<Id, { title: string; why: string; ruleId?: Id; parentId?: Id; priority?: number; requestedPriority?: number } & DirectionInfo> = {};
     for (const id of new Set(intentIds)) {
       const row = this.intentRow(id);
       if (!row) continue;
@@ -1784,6 +1789,8 @@ export class ColonyDO extends DurableObject<Env> {
       if (i.ruleId) entry.ruleId = i.ruleId;
       if (i.parentId) entry.parentId = i.parentId;
       if (i.withdrawnReason) entry.withdrawnReason = i.withdrawnReason;
+      // What an agent asked for when the cap lowered its priority, for the lineage note (priority.ts).
+      Object.assign(entry, notePriority(i));
       if ((i.revision ?? 1) > 1) {
         entry.revisions = this.revisionRows(id)
           .filter((r) => r.substantive === 1)
@@ -4310,6 +4317,7 @@ export class ColonyDO extends DurableObject<Env> {
     migrateDirection(this.sql);
     migrateContest(this.sql);
     migrateContents(this.sql);
+    migratePriority(this.sql);
     this.certifier.reset();
     return { cleared: true };
   }
@@ -5787,16 +5795,18 @@ export class ColonyDO extends DurableObject<Env> {
       if (d.assignedTo !== undefined && d.assignedTo !== null && !this.agentRow(d.assignedTo)) throw ftError(404, `unknown agent ${d.assignedTo}`);
       if (d.parentId && !this.intentRow(d.parentId)) throw ftError(404, `unknown parent intent ${d.parentId}`);
       const source: IntentSource = d.source === "rule" || d.source === "agent" || d.source === "certify" || d.source === "system" ? d.source : "human";
-      const priority = typeof d.priority === "number" && Number.isFinite(d.priority) ? Math.max(0, d.priority) : 1;
+      // An agent's intent takes at most the priority of a parent it holds or declared, else 1; what it asked is kept (priority.ts).
+      const granted = grantPriority(d.priority, source, source === "agent" && d.parentId ? this.intentRow(d.parentId) : null, d.createdBy || "unknown");
+      const { priority } = granted;
       const seats = contestSeats(d.contest);
       if (seats === null) throw ftError(400, "contest must be 2 to 4 agents (1 or absent: one holder)");
-      return { d, footprint, title, source, priority, seats };
+      return { d, footprint, title, source, priority, granted, seats };
     });
     const batch = new FieldBatch(colony.regionDepth);
     const events: ColonyEvent[] = [];
     const out: Intent[] = [];
     const declared: Array<{ doneAt: number | null }> = [];
-    for (const { d, footprint, title, source, priority, seats } of prepared) {
+    for (const { d, footprint, title, source, priority, granted, seats } of prepared) {
       const assignedTo = d.assignedTo ?? undefined;
       const intent: Intent = {
         id: newId("int_"),
@@ -5814,6 +5824,8 @@ export class ColonyDO extends DurableObject<Env> {
       if (d.parentId) intent.parentId = d.parentId;
       if (Array.isArray(d.acceptance) && d.acceptance.length > 0) intent.acceptance = d.acceptance;
       if (assignedTo) intent.assignedTo = assignedTo;
+      if (granted.requestedPriority !== undefined) intent.requestedPriority = granted.requestedPriority;
+      if (granted.priorityCap !== undefined) intent.priorityCap = granted.priorityCap;
       // Intent chains (FT_INTENT_CHAIN_GATE, colony/chain.ts): read before the row exists, so the declaring agent's earlier
       // intents are counted without this one.
       const hold = this.chainHold(intent, now);
@@ -5837,6 +5849,7 @@ export class ColonyDO extends DurableObject<Env> {
         now,
       );
       this.footprintCache.set(intent.id, footprint);
+      if (granted.requestedPriority !== undefined) this.recordRequestedPriority(intent.id, granted.requestedPriority, granted.priorityCap ?? null);
       // An intent the gate holds waits for a person as an open report, as a reported intent does, before any agent can take it.
       if (hold) {
         this.sql.exec("UPDATE intents SET escalation = ?, escalation_open = 1 WHERE id = ?", JSON.stringify(hold), intent.id);
@@ -5867,6 +5880,15 @@ export class ColonyDO extends DurableObject<Env> {
       }
     }
     return out;
+  }
+
+  /** Keep what an agent asked for when the cap lowered its priority (priority.ts). Best effort: the intent stands at the cap either way. */
+  private recordRequestedPriority(id: Id, requested: number, cap: string | null): void {
+    try {
+      this.sql.exec("UPDATE intents SET requested_priority = ?, priority_cap = ? WHERE id = ?", requested, cap, id);
+    } catch (err) {
+      console.warn(`requested priority of intent ${id} not kept: ${errorText(err)}`);
+    }
   }
 
   private assertProposable(row: IntentRow, agentId: Id): void {
@@ -5983,6 +6005,10 @@ export class ColonyDO extends DurableObject<Env> {
     const escalation = r.escalation ? parseEscalation(r.escalation) : null;
     if (escalation) intent.escalation = escalation;
     if (typeof r.contest === "number" && r.contest >= CONTEST_MIN) intent.contest = r.contest;
+    const requested = requestedPriorityOf(r.requested_priority, r.priority);
+    if (requested !== undefined) intent.requestedPriority = requested;
+    const cap = requested !== undefined ? priorityCapOf(r.priority_cap) : undefined;
+    if (cap) intent.priorityCap = cap;
     return intent;
   }
 
