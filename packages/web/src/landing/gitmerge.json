@@ -1,0 +1,185 @@
+{
+  "about": "Computed by scripts/gitmerge_scene.mjs with stock git and the core's read-set validation; run it again rather than editing this file.",
+  "base": {
+    "files": {
+      "package.json": "{\n  \"name\": \"shop\",\n  \"private\": true,\n  \"type\": \"module\",\n  \"scripts\": { \"start\": \"node src/main.ts\" }\n}\n",
+      "src/cart.ts": "import { formatPrice } from \"./price.ts\";\n\n/** One line of the cart: the item and its price. */\nexport function cartLine(item: string, cents: number): string {\n  return `${item}: ${formatPrice(cents)}`;\n}\n",
+      "src/date.ts": "/** A date as the shop prints it: 2026-10-21. */\nexport function formatDate(date: Date): string {\n  return date.toISOString().slice(0, 10);\n}\n",
+      "src/invoice.ts": "import { formatPrice } from \"./price.ts\";\n\n/** The last line of an invoice. */\nexport function invoiceTotal(cents: number): string {\n  return `Total due: ${formatPrice(cents)}`;\n}\n",
+      "src/main.ts": "import { cartLine } from \"./cart.ts\";\nimport { invoiceTotal } from \"./invoice.ts\";\n\nconsole.log(cartLine(\"Tea\", 450));\nconsole.log(invoiceTotal(1250));\n",
+      "src/price.ts": "/** Cents as the shop prints them: 450 is $4.50. */\nexport function formatPrice(cents: number): string {\n  return `$${(cents / 100).toFixed(2)}`;\n}\n"
+    }
+  },
+  "a": {
+    "branch": "agent-a",
+    "title": "Rename formatPrice to formatAmount",
+    "read": [
+      "src/cart.ts",
+      "src/invoice.ts",
+      "src/price.ts"
+    ],
+    "writes": {
+      "src/price.ts": "/** Cents as the shop prints them: 450 is $4.50. */\nexport function formatAmount(cents: number): string {\n  return `$${(cents / 100).toFixed(2)}`;\n}\n",
+      "src/cart.ts": "import { formatAmount } from \"./price.ts\";\n\n/** One line of the cart: the item and its price. */\nexport function cartLine(item: string, cents: number): string {\n  return `${item}: ${formatAmount(cents)}`;\n}\n",
+      "src/invoice.ts": "import { formatAmount } from \"./price.ts\";\n\n/** The last line of an invoice. */\nexport function invoiceTotal(cents: number): string {\n  return `Total due: ${formatAmount(cents)}`;\n}\n"
+    },
+    "diffs": {
+      "src/price.ts": "@@ -1,4 +1,4 @@\n /** Cents as the shop prints them: 450 is $4.50. */\n-export function formatPrice(cents: number): string {\n+export function formatAmount(cents: number): string {\n   return `$${(cents / 100).toFixed(2)}`;\n }",
+      "src/cart.ts": "@@ -1,6 +1,6 @@\n-import { formatPrice } from \"./price.ts\";\n+import { formatAmount } from \"./price.ts\";\n \n /** One line of the cart: the item and its price. */\n export function cartLine(item: string, cents: number): string {\n-  return `${item}: ${formatPrice(cents)}`;\n+  return `${item}: ${formatAmount(cents)}`;\n }",
+      "src/invoice.ts": "@@ -1,6 +1,6 @@\n-import { formatPrice } from \"./price.ts\";\n+import { formatAmount } from \"./price.ts\";\n \n /** The last line of an invoice. */\n export function invoiceTotal(cents: number): string {\n-  return `Total due: ${formatPrice(cents)}`;\n+  return `Total due: ${formatAmount(cents)}`;\n }"
+    }
+  },
+  "twins": [
+    {
+      "id": "catch",
+      "label": "B calls the renamed function",
+      "b": {
+        "branch": "agent-b",
+        "title": "Print a receipt line with the price",
+        "read": [
+          "src/main.ts",
+          "src/price.ts"
+        ],
+        "writes": {
+          "src/receipt.ts": "import { formatPrice } from \"./price.ts\";\n\n/** The receipt line of one item: what it is and what it cost. */\nexport function receipt(item: string, cents: number): string {\n  return `Receipt: ${item}, ${formatPrice(cents)}`;\n}\n",
+          "src/main.ts": "import { cartLine } from \"./cart.ts\";\nimport { invoiceTotal } from \"./invoice.ts\";\nimport { receipt } from \"./receipt.ts\";\n\nconsole.log(cartLine(\"Tea\", 450));\nconsole.log(invoiceTotal(1250));\nconsole.log(receipt(\"Tea\", 450));\n"
+        },
+        "diffs": {
+          "src/main.ts": "@@ -1,5 +1,7 @@\n import { cartLine } from \"./cart.ts\";\n import { invoiceTotal } from \"./invoice.ts\";\n+import { receipt } from \"./receipt.ts\";\n \n console.log(cartLine(\"Tea\", 450));\n console.log(invoiceTotal(1250));\n+console.log(receipt(\"Tea\", 450));"
+        }
+      },
+      "git": {
+        "a": [
+          "src/cart.ts",
+          "src/invoice.ts",
+          "src/price.ts"
+        ],
+        "b": [
+          "src/main.ts",
+          "src/receipt.ts"
+        ],
+        "both": [],
+        "clean": true,
+        "conflicts": [],
+        "run": {
+          "command": "node src/main.ts",
+          "ok": false,
+          "exit": 1,
+          "stdout": "",
+          "error": "SyntaxError: The requested module './price.ts' does not provide an export named 'formatPrice'",
+          "at": "src/receipt.ts:1"
+        }
+      },
+      "fireTrident": {
+        "a": {
+          "eligible": true,
+          "stale": [],
+          "textMerge": null,
+          "commit": "952a45fcf98990b9305f7c393cb4403744037b98"
+        },
+        "b": {
+          "eligible": false,
+          "stale": [
+            {
+              "path": "src/price.ts",
+              "expected": "03abbee5fc55965d9bb26c37e5183cf0beb2373d",
+              "actual": "64aeb6429e789916222386f30d9962419abd634b"
+            }
+          ],
+          "textMerge": false,
+          "commit": null
+        },
+        "moved": [
+          {
+            "commit": "952a45fcf98990b9305f7c393cb4403744037b98",
+            "change": "a",
+            "paths": [
+              "src/price.ts"
+            ]
+          }
+        ],
+        "quoted": [
+          {
+            "commit": "952a45fcf98990b9305f7c393cb4403744037b98",
+            "path": "src/price.ts",
+            "diff": "@@ -1,4 +1,4 @@\n /** Cents as the shop prints them: 450 is $4.50. */\n-export function formatPrice(cents: number): string {\n+export function formatAmount(cents: number): string {\n   return `$${(cents / 100).toFixed(2)}`;\n }",
+            "truncated": false
+          }
+        ],
+        "run": {
+          "command": "node src/main.ts",
+          "ok": true,
+          "exit": 0,
+          "stdout": "Tea: $4.50\nTotal due: $12.50\n",
+          "error": null,
+          "at": null
+        }
+      }
+    },
+    {
+      "id": "control",
+      "label": "B calls an untouched function",
+      "b": {
+        "branch": "agent-b",
+        "title": "Print a receipt line with the date",
+        "read": [
+          "src/date.ts",
+          "src/main.ts"
+        ],
+        "writes": {
+          "src/receipt.ts": "import { formatDate } from \"./date.ts\";\n\n/** The receipt line of one item: what it is and when it was sold. */\nexport function receipt(item: string, date: Date): string {\n  return `Receipt: ${item}, ${formatDate(date)}`;\n}\n",
+          "src/main.ts": "import { cartLine } from \"./cart.ts\";\nimport { invoiceTotal } from \"./invoice.ts\";\nimport { receipt } from \"./receipt.ts\";\n\nconsole.log(cartLine(\"Tea\", 450));\nconsole.log(invoiceTotal(1250));\nconsole.log(receipt(\"Tea\", new Date(Date.UTC(2026, 9, 21))));\n"
+        },
+        "diffs": {
+          "src/main.ts": "@@ -1,5 +1,7 @@\n import { cartLine } from \"./cart.ts\";\n import { invoiceTotal } from \"./invoice.ts\";\n+import { receipt } from \"./receipt.ts\";\n \n console.log(cartLine(\"Tea\", 450));\n console.log(invoiceTotal(1250));\n+console.log(receipt(\"Tea\", new Date(Date.UTC(2026, 9, 21))));"
+        }
+      },
+      "git": {
+        "a": [
+          "src/cart.ts",
+          "src/invoice.ts",
+          "src/price.ts"
+        ],
+        "b": [
+          "src/main.ts",
+          "src/receipt.ts"
+        ],
+        "both": [],
+        "clean": true,
+        "conflicts": [],
+        "run": {
+          "command": "node src/main.ts",
+          "ok": true,
+          "exit": 0,
+          "stdout": "Tea: $4.50\nTotal due: $12.50\nReceipt: Tea, 2026-10-21\n",
+          "error": null,
+          "at": null
+        }
+      },
+      "fireTrident": {
+        "a": {
+          "eligible": true,
+          "stale": [],
+          "textMerge": null,
+          "commit": "952a45fcf98990b9305f7c393cb4403744037b98"
+        },
+        "b": {
+          "eligible": true,
+          "stale": [],
+          "textMerge": null,
+          "commit": "99a2723804f247a23437b94a41b098af7e386f31"
+        },
+        "moved": [],
+        "quoted": [],
+        "run": {
+          "command": "node src/main.ts",
+          "ok": true,
+          "exit": 0,
+          "stdout": "Tea: $4.50\nTotal due: $12.50\nReceipt: Tea, 2026-10-21\n",
+          "error": null,
+          "at": null
+        }
+      }
+    }
+  ]
+}

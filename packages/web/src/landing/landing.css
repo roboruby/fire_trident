@@ -1887,3 +1887,71 @@ a.lc:hover .lc-open {
     overflow-wrap: anywhere;
   }
 }
+
+/* Scene 5, git beside the trunk writer (gitmerge.ts): each agent's change, then what each side made of the pair. */
+.tr-preset.is-on {
+  border-color: rgba(243, 128, 32, 0.6);
+  color: var(--text);
+}
+
+/* One track as wide as the column, so a long unbroken line scrolls inside its box instead of widening the column. */
+.tr-change,
+.tr-side {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+}
+
+.tr-change .tr-lane,
+.tr-change .tr-out,
+.tr-side .tr-result,
+.tr-side .tr-out {
+  margin: 0;
+}
+
+.tr-sides {
+  margin-top: 18px;
+}
+
+.tr-more summary {
+  font: 12px var(--mono);
+  color: var(--text-3);
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.tr-more summary:hover {
+  color: var(--text-2);
+}
+
+.tr-more[open] summary {
+  margin-bottom: 8px;
+}
+
+/* What a program printed, or the error it stopped on, wraps rather than scrolling sideways. */
+.tr-side .tr-out pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.tr-path {
+  display: block;
+  font: 12px var(--mono);
+  color: var(--text-3);
+  overflow-wrap: anywhere;
+}
+
+.tr-out pre .tr-hunk {
+  color: var(--text-3);
+}
+
+.tr-out pre .tr-add {
+  color: var(--trail);
+}
+
+.tr-out pre .tr-del {
+  color: #ff7a8c;
+}
+
+.tr-result.is-failed {
+  border-left-color: var(--danger);
+}

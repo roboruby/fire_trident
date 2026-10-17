@@ -19,10 +19,12 @@ import {
   twinScene,
   type MergeInputs,
 } from "./tryit.ts";
+import { GITMERGE, gitMergeScene, readText, type ProgramRun, type SceneChange, type TwinId } from "./gitmerge.ts";
 
 /**
  * The landing page's "try the rules" panel: four scenes, each a small editable example that the core's own check
- * decides in the visitor's browser (tryit.ts), with the result worded as the colony words it. No fetch, no token.
+ * decides in the visitor's browser (tryit.ts), with the result worded as the colony words it, and a fifth that sets the
+ * trunk writer's read-set validation beside stock git's merge on two fixed changes (gitmerge.ts). No fetch, no token.
  */
 
 /** A labeled editable text of a scene. */
@@ -45,11 +47,14 @@ function Line({ label, value, mono = false, onChange }: { label: string; value: 
   );
 }
 
-/** The outcome sentence, marked by what happens to the change: it lands or goes on (green), or it is held or goes back (amber). */
+/**
+ * The outcome sentence, marked by what happens to the change: it lands or goes on (green), it is held or goes back
+ * (amber), or a program fails (red).
+ */
 function Result({ kind, who, children }: { kind: string; who?: string; children: ReactNode }) {
   const held = kind === "back" || kind === "waits" || kind === "caught";
   return (
-    <p className={`tr-result ${held ? "is-held" : "is-clear"}`}>
+    <p className={`tr-result ${kind === "fails" ? "is-failed" : held ? "is-held" : "is-clear"}`}>
       {who ? <span className="tr-who">{who}</span> : null}
       {who ? " " : null}
       {children}
@@ -212,6 +217,127 @@ function TwinScene() {
   );
 }
 
+/** A diff (its hunk headers, added and removed lines marked) or a file's whole text. */
+function Code({ text, diff = false }: { text: string; diff?: boolean }) {
+  if (!diff) return <pre className="mono">{text}</pre>;
+  const lines = text.split("\n");
+  return (
+    <pre className="mono">
+      {lines.map((line, i) => (
+        <span key={i} className={line.startsWith("@@") ? "tr-hunk" : line.startsWith("+") ? "tr-add" : line.startsWith("-") ? "tr-del" : undefined}>
+          {line}
+          {i < lines.length - 1 ? "\n" : null}
+        </span>
+      ))}
+    </pre>
+  );
+}
+
+/**
+ * One agent's change: what it is for and what it read, then each file it changed as its diff, and each new file whole.
+ * The first file is the one the scene turns on; the rest fold, so a phone reaches the outcome sooner.
+ */
+function Change({ label, change }: { label: string; change: SceneChange }) {
+  const paths = Object.keys(change.writes);
+  const file = (path: string) => {
+    const diff = change.diffs[path];
+    return (
+      <div className="tr-out" key={path}>
+        <span className="tr-path">{diff === undefined ? `${path} (new file)` : path}</span>
+        <Code text={diff ?? change.writes[path] ?? ""} diff={diff !== undefined} />
+      </div>
+    );
+  };
+  return (
+    <div className="tr-col tr-change">
+      <span className="tr-k">{label}</span>
+      <p className="tr-lane">
+        {change.title}. {readText(change)}
+      </p>
+      {paths.slice(0, 1).map(file)}
+      {paths.length > 1 ? (
+        <details className="tr-more">
+          <summary>
+            {paths.length === 2 ? "1 more file" : `${paths.length - 1} more files`}: {paths.slice(1).join(", ")}
+          </summary>
+          <div className="tr-col tr-change">{paths.slice(1).map(file)}</div>
+        </details>
+      ) : null}
+    </div>
+  );
+}
+
+/** A run of the program: the sentence, then what it printed or the error it stopped on. */
+function Run({ run }: { run: { kind: string; sentence: string; output: string } }) {
+  return (
+    <>
+      <Result kind={run.kind}>{run.sentence}</Result>
+      <div className="tr-out">
+        <pre className="mono">{run.output}</pre>
+      </div>
+    </>
+  );
+}
+
+/**
+ * Scene 5: two changes stock git merges cleanly and the trunk writer does not land together, side by side: git's merge
+ * and the merged program's run (from scripts/gitmerge_scene.mjs), and read-set validation run here on the same files,
+ * with the return the colony sends and the diff it quotes. The control twin lands both on either side.
+ */
+export function GitMergeScene({ initial = "catch" }: { initial?: TwinId }) {
+  const [id, setId] = useState<TwinId>(initial);
+  const out = gitMergeScene(id);
+  const run: ProgramRun = out.twin.git.run ?? out.twin.fireTrident.run;
+  return (
+    <Scene
+      id="gitmerge"
+      n={5}
+      title="Git would have merged this"
+      caption={
+        <>
+          Decided by <code>core/occ.ts</code>: <code>validateProposal</code> on each change in landing order, against the trunk it would land on, as the trunk writer calls it. Git does not run in a browser, so <code>scripts/gitmerge_scene.mjs</code> ran stock git on these same files ahead of time (<code>git merge</code>, then <code>{run.command}</code>), and this scene's files are fixed.
+        </>
+      }
+    >
+      <div className="tr-presets">
+        <span className="tr-presets-k">Try</span>
+        {GITMERGE.twins.map((t) => (
+          <button key={t.id} type="button" className={`tr-preset${t.id === id ? " is-on" : ""}`} aria-pressed={t.id === id} onClick={() => setId(t.id)}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+      <div className="tr-inputs tr-cols-2">
+        <Change label="Agent A lands first" change={GITMERGE.a} />
+        <Change label="Agent B, from the same trunk" change={out.twin.b} />
+      </div>
+      <div className="tr-inputs tr-cols-2 tr-sides">
+        <div className="tr-col tr-side">
+          <span className="tr-k">Stock git</span>
+          <Result kind={out.git.merge.kind}>{out.git.merge.sentence}</Result>
+          {out.git.run ? <Run run={out.git.run} /> : null}
+        </div>
+        <div className="tr-col tr-side">
+          <span className="tr-k">FireTrident</span>
+          <Result kind={out.a.kind}>{out.a.sentence}</Result>
+          <Result kind={out.b.kind}>{out.b.sentence}</Result>
+          {out.moved.flatMap((m) =>
+            (m.hunks ?? []).map((h) => (
+              <div className="tr-out" key={`${m.landingId} ${h.path}`}>
+                <span className="tr-path">
+                  Quoted with the return: what landing {m.landingId} changed in {h.path}
+                </span>
+                <Code text={h.diff} diff />
+              </div>
+            )),
+          )}
+          <Run run={out.run} />
+        </div>
+      </div>
+    </Scene>
+  );
+}
+
 /** The "try the rules" section of the landing page, right after the with-and-without panel. */
 export function TryIt() {
   return (
@@ -228,6 +354,7 @@ export function TryIt() {
         <ReadScene />
         <GoalScene />
         <TwinScene />
+        <GitMergeScene />
       </div>
     </section>
   );

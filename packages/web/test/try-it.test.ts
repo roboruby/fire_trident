@@ -192,10 +192,10 @@ describe("scene 4: twin intents", () => {
 });
 
 describe("the section", () => {
-  it("has the four scenes, each with a caption naming the core module that decides it", () => {
-    for (const id of ["merge", "read", "goals", "twins"]) expect(page).toContain(`id="try-${id}"`);
+  it("has the five scenes, each with a caption naming the core module that decides it", () => {
+    for (const id of ["merge", "read", "goals", "twins", "gitmerge"]) expect(page).toContain(`id="try-${id}"`);
     for (const mod of ["core/textmerge.ts", "core/insertions.ts", "core/occ.ts", "core/goalconflict.ts", "core/twins.ts"]) expect(page).toContain(`<code>${mod}</code>`);
-    expect(page.match(/<p class="tr-cap">/g)).toHaveLength(4);
+    expect(page.match(/<p class="tr-cap">/g)).toHaveLength(5);
     expect(page.match(/<textarea /g)).toHaveLength(8);
     expect(page.match(/<input type="text"/g)).toHaveLength(4);
   });
@@ -212,13 +212,14 @@ describe("the section", () => {
     expect(landing).toContain('<a href="#try">Try it</a>');
   });
 
-  it("runs with no server: the scenes import only the core package, React and each other, and never fetch", () => {
-    for (const file of ["../src/landing/tryit.ts", "../src/landing/TryIt.tsx"]) {
+  it("runs with no server: the scenes import only the core package, React, each other and the fifth scene's data, and never fetch", () => {
+    for (const file of ["../src/landing/tryit.ts", "../src/landing/TryIt.tsx", "../src/landing/gitmerge.ts"]) {
       const src = read(file);
       expect(src).not.toMatch(/\bfetch\(|XMLHttpRequest|WebSocket|localStorage/);
       // Import statements only (one line, or the closing line of a multi-line one): a sample text may quote an import too.
-      const from = [...src.matchAll(/^(?:import[^"\n]*|\})\s*from "([^"]+)";$/gm)].map((m) => m[1]);
-      for (const f of from) expect(["@fire_trident/core", "react", "./tryit.ts"], file).toContain(f);
+      const from = [...src.matchAll(/^(?:import[^"\n]*|\})\s*from "([^"]+)"(?: with \{[^}\n]*\})?;$/gm)].map((m) => m[1]);
+      expect(from.length, file).toBeGreaterThan(0);
+      for (const f of from) expect(["@fire_trident/core", "react", "./tryit.ts", "./gitmerge.ts", "./gitmerge.json"], file).toContain(f);
     }
   });
 });
