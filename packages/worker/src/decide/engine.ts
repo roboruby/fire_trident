@@ -29,6 +29,7 @@ import { addedFromHunks, fileDiff, type FileDiff } from "./diff.ts";
 import { agentReason, gate, type GateVerdict, type ReflexSignals, type SecondOpinion } from "./gate.ts";
 import { checkGoalConflict, type RemovedLineOwners } from "./goalconflict.ts";
 import { applyAllowances, dangerLabels, scanDanger, triageDanger, whyAuthor, type DangerAllowance } from "./danger.ts";
+import { destructiveCheck, destructiveFact, destructiveRecord } from "./destructive.ts";
 import { CallLimiter } from "./limiter.ts";
 import { candidatePaths, mechanicalCheck, nameAssumptionCandidates, nameAssumptions, proofAssumptions, type MechanicalResult } from "./mechanical.ts";
 import { pickSecondOpinion, secondOpinionCandidates, type DecidePolicy } from "./policy.ts";
@@ -310,6 +311,8 @@ export class DecideEngine {
     const clefStates = this.store.clefStates();
     // What each model layer is shown: its approval counts only when it saw every changed line.
     const seen = { reflex: stateCoverage(diffs), llm: secondOpinionDiff(diffs).coverage };
+    // What the change takes away (decide/destructive.ts): no rung that lands without the second opinion or a person lands it.
+    const destructive = destructiveFact(innate.files);
     const base = {
       innate: { ok: innate.ok, failures: innate.failures },
       damage,
@@ -320,6 +323,7 @@ export class DecideEngine {
       antibodies: matching.length,
       autonomy: !vaccine && this.store.approvedLandings(region) >= policy.autonomyAfter,
       whyBy,
+      destructive,
       coverage: {
         reflex: { complete: seen.reflex.complete, seen: `the reflex ${coverageText(seen.reflex)}` },
         llm: { complete: seen.llm.complete, seen: `the second opinion ${coverageText(seen.llm)}` },
@@ -333,6 +337,7 @@ export class DecideEngine {
       ...innate.checks,
       ...observed.result.checks.map((c, i) => ({ ...c, ms: i === 0 ? observed.ms : c.ms, ...(mech ? {} : { detail: `(observed only: policy.deterministic is off) ${c.detail ?? ""}`.slice(0, 1_000) }) })),
       dangerCheck,
+      destructiveCheck(destructive),
       ...(goal?.check ? [goal.check] : []),
     ];
     let final: GateVerdict = gate(base);
@@ -405,6 +410,7 @@ export class DecideEngine {
                 damage: v1.damage,
                 confidence: v1.confidence,
                 coverage: seen.reflex,
+                ...destructiveRecord(destructive),
                 ...(vaccine ? { vaccine: true } : {}),
               },
               p: v1.p,
@@ -438,6 +444,7 @@ export class DecideEngine {
             reasons: final.reasons,
             damage: final.damage,
             coverage: seen.llm,
+            ...destructiveRecord(destructive),
             ...(accepted ? { acceptance: accepted } : {}),
             ...(vaccine ? { vaccine: true } : {}),
           },

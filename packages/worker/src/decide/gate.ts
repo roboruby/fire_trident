@@ -1,5 +1,6 @@
 import type { DecisionLayer, Id, NoteAcceptance } from "@fire_trident/core";
 import type { WhyAuthor } from "./danger.ts";
+import { autonomyRefusal, proofRefusal, type DestructiveFact } from "./destructive.ts";
 import type { DecidePolicy, DetectorState } from "./policy.ts";
 import { acceptanceGate, type AcceptanceAnswer } from "./quotes.ts";
 import type { DamageSignals, ProtectedHit } from "./signals.ts";
@@ -30,15 +31,16 @@ import { damageLabels } from "./signals.ts";
  *      FT_GOAL_CONFLICT) → escalate (deterministic; in every phase; no proof or approval lands it, and the
  *      alert budget cannot bounce it), or return a change failing its checks first
  * - D2 innate checks fail and there is no damage               → return (deterministic)
- * - D3 mechanical proof and no antibody to screen               → land (deterministic)
+ * - D3 mechanical proof, no antibody to screen, not destructive → land (deterministic)
  * - P2 an earlier proposal for this intent had a security finding → a person instead of a model:
  *      escalate (deterministic; the alert budget cannot bounce it), or return a change failing its checks
  * - D4 anything else                                            → screen with System 1
- * - M1 mechanical proof: an antibody hit returns it (reflex); otherwise it lands (deterministic)
+ * - M1 mechanical proof, not destructive: an antibody hit returns it (reflex); otherwise it lands (deterministic)
  * - R1 confident detector hit + damage          → escalate to a human (reflex)
  * - R2 innate checks fail                       → return to the agent (reflex)
  * - R3 confidently clear + no damage + earned autonomy + p(needs_human) < threshold, for an intent
- *      a person or a rule wrote, with every changed line in the reflex's view → land (reflex)
+ *      a person or a rule wrote, with every changed line in the reflex's view, and a destructive fact
+ *      computed that names nothing → land (reflex)
  * - R4 anything else                            → consult System 2 (only reached when the
  *                                                 deterministic stage is inconclusive)
  * - L1 detector hit + damage                    → escalate to a human (llm)
@@ -53,6 +55,8 @@ import { damageLabels } from "./signals.ts";
  * - L4 anything else (one signal only)          → return to the agent with the reason
  * An escalation over the hourly alert budget goes back to its agent unless its risk is at or
  * above the budget's risk floor.
+ * A destructive change (decide/destructive.ts: a file deleted or renamed, an export removed, a large
+ * removal) never lands without the second opinion or a person: D3, M1 and R3 leave it to the rules after them.
  * A verdict driven by a security finding carries `security` (its classes): P0 and P1's danger
  * patterns, a security antibody, Clef's touches_sensitive, System 2's sensitive or escalate, or an
  * escalation with security damage. A returned change's agent reads only those classes
@@ -122,6 +126,12 @@ export interface GateInput {
   autonomy: boolean;
   /** Who wrote the intent's why. Earned autonomy covers only an intent a person or a rule wrote; absent counts as unknown (no R3). */
   whyBy?: WhyAuthor;
+  /**
+   * What the change takes away (decide/destructive.ts): files deleted or renamed, exports removed, large removals, and
+   * what could not be read to tell. R3 lands only when it is computed and names nothing; D3 and M1 do not land a change it
+   * names something for. Either way the change goes on to the second opinion. Absent: not computed, so no R3.
+   */
+  destructive?: DestructiveFact | null;
   /** What each model layer saw: an approval counts only when its layer saw every changed line. Absent: all of it. */
   coverage?: { reflex?: LayerView; llm?: LayerView };
   /**
@@ -337,6 +347,9 @@ export function gate(input: GateInput): GateVerdict {
     guarded.length === 0 ? "" : `protected paths need a person: ${guarded.slice(0, 5).map((h) => `${h.path} (protected by ${h.glob})`).join(", ")}${guarded.length > 5 ? ` and ${guarded.length - 5} more` : ""}`;
   // A goal conflict is named wherever a person is asked (P1 and P3 escalations name it too).
   const conflictReasons = input.goalConflict?.reason ? [input.goalConflict.reason] : [];
+  // Destructive changes (decide/destructive.ts): no rung that lands without the second opinion or a person lands one.
+  const unproven = proofRefusal(input.destructive);
+  const unearned = autonomyRefusal(input.destructive);
 
   /**
    * P0/P1: a recognized danger pattern (auth, secret, unrequested capability, governance, a repair's
@@ -387,7 +400,7 @@ export function gate(input: GateInput): GateVerdict {
     const gated = danger() ?? guard() ?? conflict();
     if (gated) return gated;
     if (!input.innate.ok && facts.length === 0) return verdict("return", "deterministic", "D2 innate", 1, input.innate.failures.map((f) => `innate: ${f}`), []);
-    if (mech === "pass" && facts.length === 0 && (input.antibodies ?? 0) === 0) return verdict("land", "deterministic", "D3 innate+proof", 1, [`deterministic proof: ${proof}`], [], ["innate", "deterministic"]);
+    if (mech === "pass" && facts.length === 0 && (input.antibodies ?? 0) === 0 && !unproven) return verdict("land", "deterministic", "D3 innate+proof", 1, [`deterministic proof: ${proof}`], [], ["innate", "deterministic"]);
     // P2: after a security return, this intent's proposals go to a person instead of a model (a proof needs neither).
     if (input.probation) {
       const was = `an earlier proposal for this intent had a security finding${input.probation.classes.length > 0 ? ` (${input.probation.classes.join(", ")})` : ""}`;
@@ -395,7 +408,7 @@ export function gate(input: GateInput): GateVerdict {
       risk = 3;
       return escalate("deterministic", "P2 security finding", 1, [`${was}: a person reviews this one instead of a model`], ["intent:security-finding"], []);
     }
-    return verdict("screen", "deterministic", "D4 screen", 1, [mech === "pass" ? "proof holds; matching antibodies need System 1" : `deterministic stage inconclusive: ${proof || "no proof attempted"}`], []);
+    return verdict("screen", "deterministic", "D4 screen", 1, [mech === "pass" ? (unproven ?? "proof holds; matching antibodies need System 1") : `deterministic stage inconclusive: ${proof || "no proof attempted"}`], []);
   }
 
   if (!consulted) {
@@ -404,7 +417,7 @@ export function gate(input: GateInput): GateVerdict {
       if (gated) return gated;
     }
     // M1: a proven change only answers to antibodies (learned from humans); Clef's other alarms are advisory.
-    if (mech === "pass" && facts.length === 0) {
+    if (mech === "pass" && facts.length === 0 && !unproven) {
       const ab = s1.filter((h) => h.antibody);
       if (ab.length > 0) {
         const back = verdict("return", "reflex", "M1 proof+antibody", Math.max(...ab.map((h) => h.p)), [`a reviewer rejected similar changes: ${ab.map((h) => h.label).join(", ")}`], ab.map((h) => h.id));
@@ -429,7 +442,7 @@ export function gate(input: GateInput): GateVerdict {
     const trusted = input.whyBy === "person" || input.whyBy === "rule";
     const reflexView = input.coverage?.reflex;
     const sawAll = reflexView?.complete ?? true;
-    if (s1.length === 0 && damage.length === 0 && sure && input.autonomy && trusted && sawAll && needsHuman < policy.needsHuman) {
+    if (s1.length === 0 && damage.length === 0 && sure && input.autonomy && trusted && sawAll && needsHuman < policy.needsHuman && !unearned) {
       return verdict("land", "reflex", "R3 innate+autonomy", 1 - needsHuman, [`reflex clear (confidence ${r2(confidence)}), region has earned autonomy`], [], ["innate", "autonomy"]);
     }
     // R4: the deterministic stage was inconclusive and the reflex cannot act alone.
@@ -445,7 +458,11 @@ export function gate(input: GateInput): GateVerdict {
               ? `earned autonomy does not cover an intent written by ${input.whyBy === "certification" ? "trunk certification (a repair)" : "an agent"}: a second confirmation is required`
               : input.autonomy && !sawAll
                 ? `${reflexView?.seen ?? "the reflex saw only part of the change"}: its clear answer does not count alone, a second confirmation is required`
-                : "no earned autonomy and no deterministic proof: a second confirmation is required";
+                : mech === "pass" && unproven
+                  ? unproven
+                  : input.autonomy && unearned
+                    ? unearned
+                    : "no earned autonomy and no deterministic proof: a second confirmation is required";
     return verdict("consult", "reflex", "R4 consult", 1 - confidence, [why], s1.map((h) => h.id));
   }
 
