@@ -1,8 +1,9 @@
 import type { CheckResult, Colony, Direction, FileVersion, LineageNote, NoteDecision, Rule } from "@fire_trident/core";
+import { decisionSpeaker, landingAnswerable, speaker } from "@fire_trident/core";
 import { useEffect, useState } from "react";
 import { agentsOn, waitingWhy } from "../agents.ts";
 import type { Backend, WhyEntry } from "../api.ts";
-import { basename, dirname, fmtFixed, fmtInt, fmtMs, plural, shortId, shortSha, timeAgo } from "../format.ts";
+import { basename, dirname, fmtFixed, fmtInt, plural, shortId, shortSha, timeAgo } from "../format.ts";
 import type { ColonyStore } from "../store.ts";
 import { FIELD_COLOR, KINDS, LAYER_COLOR, intensity, KIND_INDEX } from "../theme.ts";
 import { decisionsFromChecks, type DecisionStep } from "../decisions.ts";
@@ -12,6 +13,7 @@ import { certCounts, certTitle } from "../certs.ts";
 import { NoteBar } from "./NoteSeal.tsx";
 import { acceptanceOf } from "../acceptance.ts";
 import { AcceptanceLines } from "./AcceptanceLines.tsx";
+import { AnswerableLine, EvidenceList, SaidBy } from "./SaidBy.tsx";
 
 type NoteProposal = LineageNote["proposals"][number];
 
@@ -223,6 +225,8 @@ function LineageEntry({ entry, path, store, newest, backend }: { entry: WhyEntry
       </div>
       {/* The note's integrity badge and this landing's change to the file (NoteSeal.tsx); keyed so another file starts closed. */}
       <NoteBar key={path} backend={backend} landingId={landing.id} path={path} />
+      {/* Who answers for this landing, from its whole note (core/answerable.ts). */}
+      <AnswerableLine a={landingAnswerable(note)} />
       {shown.map((p) => (
         <ProposalChain key={p.id} p={p} path={path} store={store} />
       ))}
@@ -368,6 +372,7 @@ function DirectionStep({ d }: { d: Direction }) {
           <div className="lin-dir-row" key={`r${r.revision}`} title={r.reason}>
             <span className="lin-chip">r{r.revision}</span>
             {(r.changed ?? []).join(", ")} changed by <b>{r.by}</b> {r.at ? <span className="lin-dir-when">{timeAgo(r.at)}</span> : null}
+            <SaidBy s={decisionSpeaker({ layer: "human", by: r.by })} />
             <span className="lin-dir-why">“{r.reason}”</span>
           </div>
         ))}
@@ -375,9 +380,14 @@ function DirectionStep({ d }: { d: Direction }) {
           <div className="lin-dir-row" key={g.id} title={g.message}>
             <span className="lin-chip lin-chip-dir">directive</span>
             <span className="lin-dir-why">“{g.message}”</span> from <b>{g.by}</b> {g.at ? <span className="lin-dir-when">{timeAgo(g.at)}</span> : null}
+            <SaidBy s={decisionSpeaker({ layer: "human", by: g.by })} />
           </div>
         ))}
-        {d.note ? <div className="lin-dir-note">Agent said: “{d.note}”</div> : null}
+        {d.note ? (
+          <div className="lin-dir-note">
+            <SaidBy s={speaker("agent")} /> Agent said: “{d.note}”
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -458,7 +468,6 @@ function ProposalChain({ p, path, store }: { p: NoteProposal; path: string; stor
   const decisions = recorded.length ? recorded : decisionsFromChecks(p.evidence?.checks);
   const proof = deterministicStep(checks);
   const direction = p.evidence?.direction;
-  const residual = p.evidence?.residual ?? [];
   const alternatives = alternativesOf(p);
   const revalidated = revalidatedOf(p);
   const provenance = provenanceOf(p);
@@ -512,7 +521,7 @@ function ProposalChain({ p, path, store }: { p: NoteProposal; path: string; stor
                 proof
               </span>
               <span className="dec-what">
-                deterministic → <b>{proof.action}</b>
+                deterministic → <b>{proof.action}</b> <SaidBy s={decisionSpeaker({ layer: "proof" })} />
               </span>
               <span className="dec-bar">
                 <b style={{ width: "100%", background: FIELD_COLOR.trail }} />
@@ -533,8 +542,7 @@ function ProposalChain({ p, path, store }: { p: NoteProposal; path: string; stor
                       {d.layer}
                     </span>
                     <span className="dec-what">
-                      {d.kind} → <b>{d.action}</b>
-                      {note.by ? <span className="dec-by"> · {note.by}</span> : null}
+                      {d.kind} → <b>{d.action}</b> <SaidBy s={decisionSpeaker(note)} />
                     </span>
                     <span className="dec-bar">{has ? <b style={{ width: `${Math.round(pv * 100)}%`, background: color }} /> : null}</span>
                     <span className="mono dec-p">{has ? `p ${pv.toFixed(2)}` : ""}</span>
@@ -553,38 +561,17 @@ function ProposalChain({ p, path, store }: { p: NoteProposal; path: string; stor
         <span className="node node-evidence" />
         <div className="lin-body">
           <div className="lin-k">Evidence</div>
-          {checks.length ? (
-            <div className="evid">
-              {checks.map((c, i) => (
-                <div className={`evid-row ${c.ok ? "is-ok" : "is-bad"}`} key={`${c.name}-${i}`}>
-                  <span className="evid-mark">{c.ok ? "✓" : "✕"}</span>
-                  <span className="evid-name" title={c.name}>
-                    {c.name.replace(path, basename(path))}
-                  </span>
-                  <span className="evid-ms mono">{fmtMs(c.ms)}</span>
-                  {c.detail ? <span className="evid-detail">{c.detail}</span> : null}
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="lin-muted">No checks recorded.</div>
-          )}
-          {residual.length ? (
-            <div className="lin-residual">
-              <span className="lin-chip lin-chip-need">residual</span>
-              <span className="mono">{residual.join(", ")}</span>
-            </div>
-          ) : null}
-          {p.evidence?.notVerified ? (
-            <div className="nv">
-              <span className="nv-k">Not verified</span>
-              <span className="nv-text">{p.evidence.notVerified}</span>
-            </div>
-          ) : null}
+          {/* Who said each line (core/answerable.ts): FireTrident's checks first, then models, then the agent's claims. */}
+          <div className="evid">
+            <EvidenceList evidence={p.evidence} path={path} />
+          </div>
           {p.evidence?.previewUrl ? (
-            <a className="link lin-preview" href={p.evidence.previewUrl} target="_blank" rel="noreferrer">
-              Preview
-            </a>
+            <span className="lin-preview-row">
+              <a className="link lin-preview" href={p.evidence.previewUrl} target="_blank" rel="noreferrer">
+                Preview
+              </a>{" "}
+              <SaidBy s={speaker("agent")} />
+            </span>
           ) : null}
         </div>
       </div>

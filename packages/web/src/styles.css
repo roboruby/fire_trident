@@ -5741,3 +5741,110 @@ html[data-emphasize="trunk"] .trunk {
 .pause-command code {
   color: var(--text);
 }
+/* Who said each line of a note (components/SaidBy.tsx): FireTrident, a model, a person, the agent, or unknown. */
+.said {
+  display: inline-block;
+  padding: 0 6px;
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 16px;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  white-space: nowrap;
+  vertical-align: 1px;
+}
+
+.said-platform {
+  color: #8fe8bd;
+  border-color: rgba(31, 224, 142, 0.3);
+}
+
+.said-model {
+  color: var(--llm);
+  border-color: rgba(167, 139, 250, 0.35);
+}
+
+.said-person {
+  color: var(--human);
+  border-color: rgba(243, 128, 32, 0.4);
+}
+
+.said-agent {
+  color: var(--need);
+  border-color: rgba(255, 181, 61, 0.35);
+}
+
+.said-unknown {
+  color: var(--text-3);
+}
+
+.said-quote {
+  font-style: italic;
+  color: var(--text-2);
+}
+
+.checks-run {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.nc-check-said {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+}
+
+.lin-preview-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.lin-preview-row .lin-preview {
+  margin-top: 0;
+}
+
+/* The answerable line of a landing card: a person, or no person and why. */
+.answerable {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  margin: 6px 0 2px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.answerable-k {
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--text-4);
+}
+
+.answerable.is-person .answerable-text {
+  color: var(--text);
+}
+
+.answerable.is-none .answerable-text {
+  color: var(--need);
+}
+
+.answerable.is-unknown .answerable-text {
+  color: var(--text-3);
+}
+
+.nc-answerable.is-none {
+  color: var(--need);
+}
+
+.nc-answerable.is-unknown {
+  color: var(--text-3);
+}

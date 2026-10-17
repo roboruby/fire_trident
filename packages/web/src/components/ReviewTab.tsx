@@ -1,7 +1,7 @@
 import type { DecisionLayer, Proposal } from "@fire_trident/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { HttpError, readReviewer, readToken, type Backend, type ReviewDecision } from "../api.ts";
-import { fmtInt, fmtMs, fmtPct, plural, shortId, timeAgo } from "../format.ts";
+import { fmtInt, fmtPct, plural, shortId, timeAgo } from "../format.ts";
 import { reviewOf } from "../review.ts";
 import type { ColonyStore, DecisionView } from "../store.ts";
 import { LAYER_COLOR } from "../theme.ts";
@@ -16,6 +16,7 @@ import { MergeHold } from "./MergeHold.tsx";
 import { mergeHoldOf } from "../mergehold.ts";
 import { cleanContested, cleanMoved } from "../moved.ts";
 import { AutonomyStrip } from "./AutonomyStrip.tsx";
+import { EvidenceChips } from "./SaidBy.tsx";
 
 const NONE: readonly string[] = [];
 
@@ -222,7 +223,6 @@ export function ReviewTab({ store, backend, director = false }: { store: ColonyS
           const intent = store.intents.get(p.intentId);
           const residual = p.evidence?.residual ?? [];
           const declared = p.declared?.footprint ?? [];
-          const checks = p.evidence?.checks ?? [];
           const paths = [...residual, ...declared];
           const reason = notes[p.id] ?? "";
           const hasReason = reason.trim().length > 0;
@@ -292,21 +292,8 @@ export function ReviewTab({ store, backend, director = false }: { store: ColonyS
               )}
               <div className="k card-k">Decision path</div>
               <DecisionPath path={path} />
-              {checks.length ? (
-                <div className="checks">
-                  {checks.map((c, i) => (
-                    <span key={`${c.name}-${i}`} className={`check ${c.ok ? "check-ok" : "check-bad"}`} title={c.detail}>
-                      {c.ok ? "✓" : "✕"} {c.name} <span className="check-ms">{fmtMs(c.ms)}</span>
-                    </span>
-                  ))}
-                </div>
-              ) : null}
-              {p.evidence?.notVerified ? (
-                <div className="nv">
-                  <span className="nv-k">Not verified</span>
-                  <span className="nv-text">{p.evidence.notVerified}</span>
-                </div>
-              ) : null}
+              {/* Who said each check and the statement of what was not verified (core/answerable.ts): FireTrident's first, the agent's quoted. */}
+              <EvidenceChips evidence={p.evidence} />
               {antibodies.length ? (
                 <div className="abs">
                   <div className="k">Matched antibodies</div>

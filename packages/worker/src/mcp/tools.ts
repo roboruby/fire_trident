@@ -1,4 +1,4 @@
-import { INLINE_LIMITS, blobId, changesetId, inlineProblem, regionOf } from "@fire_trident/core";
+import { INLINE_LIMITS, blobId, changesetId, inlineProblem, landingAnswerable, regionOf, type LandingAnswerable } from "@fire_trident/core";
 import type { AgentInfo, AgentKind, ContestedRegion, Directive, EscalationKind, FieldReading, FileVersion, Id, Intent, Landing, LineageNote, Path, Proposal, ProposalStatus, RepoRef, Rule, Sha, WorkspaceLease } from "@fire_trident/core";
 import { ESCALATION_KINDS, isInboxDirective, landingMessage } from "../colony/direction.ts";
 import { cleanPath } from "../agents/change.ts";
@@ -295,14 +295,18 @@ function hunksNext(r: LastReturn | undefined): string {
 /**
  * One landing of a why answer, cut to the path asked about: its note keeps only the proposals that
  * wrote the path (all of them when none did, as `ft why` shows them), and `otherProposals` counts the
- * proposals of the landing left out.
+ * proposals of the landing left out. `answerable`: who answers for the whole landing, read from its
+ * whole note (core/answerable.ts), as the Why tab and `ft why` say it.
  */
-function whyEntry(e: { landing: Landing; note: LineageNote }, path: Path): { landing: Landing; note: LineageNote; otherProposals: number } {
+function whyEntry(e: { landing: Landing; note: LineageNote }, path: Path): WhyEntry {
   const all = Array.isArray(e.note?.proposals) ? e.note.proposals : [];
   const wrote = all.filter((p) => Array.isArray(p?.writeSet) && p.writeSet.some((w) => w?.path === path));
   const shown = wrote.length > 0 ? wrote : all;
-  return { landing: e.landing, note: { ...e.note, proposals: shown }, otherProposals: all.length - shown.length };
+  return { landing: e.landing, note: { ...e.note, proposals: shown }, otherProposals: all.length - shown.length, answerable: landingAnswerable(e.note) };
 }
+
+/** One landing of a why answer (whyEntry). */
+type WhyEntry = { landing: Landing; note: LineageNote; otherProposals: number; answerable: LandingAnswerable };
 
 /** Landings one why answer shows at most. */
 const WHY_LANDINGS = 10;
@@ -315,7 +319,7 @@ export function whyAnswer(
   path: Path,
   line: number | undefined,
   entries: ReadonlyArray<{ landing: Landing; note: LineageNote }>,
-): { path: Path; line: number | null; entries: Array<{ landing: Landing; note: LineageNote; otherProposals: number }> } {
+): { path: Path; line: number | null; entries: WhyEntry[] } {
   return { path, line: line ?? null, entries: (Array.isArray(entries) ? entries : []).slice(0, WHY_LANDINGS).map((e) => whyEntry(e, path)) };
 }
 
@@ -799,7 +803,8 @@ export class FireTridentTools {
       ...(contents ? { contents } : {}),
       declared: { footprint: intent.footprint, summary: (a.summary ?? "").trim() || intent.title },
       ...(typeof intent.revision === "number" ? { intentRevision: intent.revision } : {}),
-      evidence: { notVerified: stated === "" ? EXTERNAL_NOT_VERIFIED : /^not verified/i.test(stated) ? stated : `Not verified: ${stated}` },
+      // An agent that stated nothing gets FireTrident's sentence, marked as FireTrident's (notVerifiedBy), never as the agent's.
+      evidence: stated === "" ? { notVerified: EXTERNAL_NOT_VERIFIED, notVerifiedBy: "platform" } : { notVerified: /^not verified/i.test(stated) ? stated : `Not verified: ${stated}` },
       ...(lesson ? { lesson } : {}),
     });
     const at = this.ctx.now();

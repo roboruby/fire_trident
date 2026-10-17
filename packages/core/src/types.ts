@@ -450,6 +450,11 @@ export interface CheckResult {
   ok: boolean;
   ms: number;
   detail?: string;
+  /**
+   * `agent`: the check came with the proposal (the colony marks each one it is sent), so it is the agent's own claim.
+   * Absent: a check FireTrident or a model ran, known by its name (core/answerable.ts checkSpeaker).
+   */
+  by?: "agent";
 }
 
 /**
@@ -486,6 +491,11 @@ export interface Evidence {
   residual?: Path[];
   /** Mandatory honest gap statement. */
   notVerified?: string;
+  /**
+   * Who wrote `notVerified`: the agent, or FireTrident when the agent stated nothing (the colony's default, or the MCP
+   * server's sentence for an external agent). Absent on notes written before it (readers derive it: core/answerable.ts).
+   */
+  notVerifiedBy?: "agent" | "platform";
   previewUrl?: string;
   /** The intent revision and directives the change was built under (set by the colony at propose time). */
   direction?: Direction;
@@ -699,7 +709,16 @@ export interface Landing {
    * `rule`: the rule beyond git's that resolved its conflicting hunks (FT_MERGE_INSERTIONS: `insertions`), when one did.
    */
   merged?: Array<{ proposalId: Id; path: Path; blob: Sha; rule?: "insertions" }>;
+  /** Who answers for this landing, from its lineage note as the trunk writer wrote it (see LandingAnswer); absent on landings recorded before it. */
+  answerable?: LandingAnswer;
 }
+
+/**
+ * Who answers for a landing, from its lineage note (core/answerable.ts landingAnswerable): `person` a person answers for
+ * every change in it (one who approved it, approved the rule whose proof landed it, or asked for its intent), `none` no
+ * person answers for one of its changes, `unknown` the note cannot say for one (it lacks who declared the intent).
+ */
+export type LandingAnswer = "person" | "none" | "unknown";
 
 /**
  * A change in flight that landed although a person withdrew or amended its intent: the trunk writer's
@@ -839,8 +858,13 @@ export interface LineageNote {
     agentId: Id;
     agentKind: AgentKind;
     model?: string;
-    /** `priority` and `requestedPriority` only when an agent asked for more than its intent was granted (worker colony/priority.ts). */
-    intent: { id: Id; title: string; why: string; ruleId?: Id; parentId?: Id; priority?: number; requestedPriority?: number };
+    /**
+     * `priority` and `requestedPriority` only when an agent asked for more than its intent was granted (worker colony/priority.ts).
+     * `source` and `createdBy`: who declared the intent, as the colony recorded it; `ruleApprovedBy`: for a rule's intent,
+     * who approved the rule. The trunk writer adds them from the land context (absent on older notes, and when the writer
+     * did not know them); they name the nearest person answerable for the change (core/answerable.ts).
+     */
+    intent: { id: Id; title: string; why: string; ruleId?: Id; parentId?: Id; priority?: number; requestedPriority?: number; source?: IntentSource; createdBy?: string; ruleApprovedBy?: string };
     writeSet: FileVersion[];
     readSet: FileVersion[];
     decisions: NoteDecision[];

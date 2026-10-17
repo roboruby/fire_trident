@@ -390,7 +390,8 @@ const ANSWERS: ReadonlyArray<[decision: "amend" | "withdraw" | "dismiss", note: 
 // Simulation state
 // ---------------------------------------------------------------------------
 
-type DecisionLite = Pick<Decision, "kind" | "layer" | "p" | "action">;
+/** `by`: the person who decided, on a human decision (the note names who approved a change). */
+type DecisionLite = Pick<Decision, "kind" | "layer" | "p" | "action"> & { by?: string };
 
 interface SimIntent {
   intent: Intent;
@@ -1045,7 +1046,17 @@ export class ColonySim {
           agentId: sp.agent.id,
           agentKind: sp.agent.kind,
           model: sp.agent.model,
-          intent: { id: sp.intent.intent.id, title: sp.intent.intent.title, why: sp.intent.intent.why, ruleId: sp.intent.intent.ruleId, parentId: sp.intent.intent.parentId },
+          intent: {
+            id: sp.intent.intent.id,
+            title: sp.intent.intent.title,
+            why: sp.intent.intent.why,
+            ruleId: sp.intent.intent.ruleId,
+            parentId: sp.intent.intent.parentId,
+            // Who declared it and who approved its rule, as the trunk writer records them.
+            source: sp.intent.intent.source,
+            createdBy: sp.intent.intent.createdBy,
+            ...(sp.intent.intent.ruleId ? { ruleApprovedBy: this.rules.find((r) => r.id === sp.intent.intent.ruleId)?.approvedBy } : {}),
+          },
           writeSet: sp.p.writeSet,
           readSet: sp.p.readSet,
           decisions: sp.decisions,
@@ -1233,9 +1244,11 @@ export class ColonySim {
     this.now = Date.now();
     this.decide("triage", "human", 1, decision, sp.p.id, sp.decisions);
     const who = by ?? "you";
+    // The person who decided is recorded with the decision, never in the agent's own statement.
+    const human = sp.decisions[sp.decisions.length - 1];
+    if (human) human.by = who;
     const a = sp.agent;
     if (decision === "approve") {
-      sp.p.evidence.notVerified = `${sp.p.evidence.notVerified ?? ""} Residual approved by ${who}${reason ? `: ${reason}` : "."}`.trim();
       this.toLane(sp);
       const lane = this.lanes.get(sp.region);
       if (lane) lane.next = Math.min(lane.next, this.t + 700);
