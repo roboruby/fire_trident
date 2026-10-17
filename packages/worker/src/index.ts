@@ -7,6 +7,7 @@ import { mcpRefusal } from "./mcp/gate.ts";
 import { publicMcp } from "./mcp/public.ts";
 import { aboutResponse } from "./front/about.ts";
 import { frontDoor } from "./front/door.ts";
+import { responseHeaders } from "./front/headers.ts";
 import { KEYS_PATH, keysResponse, noteKeyId } from "./trunk/signature.ts";
 
 export { ColonyDO } from "./colony/ColonyDO.ts";
@@ -19,6 +20,9 @@ export { IngestWorkflow } from "./workflows/IngestWorkflow.ts";
 export { VerifyWorkflow } from "./workflows/VerifyWorkflow.ts";
 
 const app = new Hono<{ Bindings: Env }>();
+// Security headers on every answer, and no-store on JSON that sets no caching of its own (front/headers.ts). First, so
+// it sees every route below.
+app.use("*", responseHeaders);
 // Which build is serving (commit, Worker version, deploy time), which flags are on, by name only (front/about.ts), and
 // the id of the key that signs lineage notes (trunk/signature.ts).
 app.get("/api/about", async (c) => aboutResponse(c.env, await noteKeyId(c.env.FT_NOTE_KEY)));
