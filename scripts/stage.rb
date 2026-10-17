@@ -14,6 +14,14 @@ require "zlib"
 module Stage
   # The ft CLI's default server (packages/cli/src/api.ts DEFAULT_URL): the server a config file without FT_URL is for.
   DEFAULT_URL = "https://firetrident.com"
+  # The Node that runs these scripts, by absolute path, resolved once from the repository: inside a clone, a version manager
+  # can switch to the version the cloned project pins (Hono pins one that may not be installed). NODE overrides it.
+  NODE = ENV.fetch("NODE") do
+    out, status = Open3.capture2("node", "-p", "process.execPath", chdir: File.expand_path("..", __dir__))
+    status.success? && !out.strip.empty? ? out.strip : "node"
+  rescue SystemCallError
+    "node"
+  end
   # Exit codes every stage script uses.
   EXIT_PASS = 0
   EXIT_FAIL = 1
@@ -314,7 +322,7 @@ module Stage
   # answer, or a Hash with ok: false and the error.
   def self.mcp_ask(base, calls: [], timeout: 30, access: {})
     script = File.expand_path("mcp_ask.ts", __dir__)
-    cmd = ["node", script, "--url", base, "--timeout", timeout.to_s]
+    cmd = [NODE, script, "--url", base, "--timeout", timeout.to_s]
     calls.each { |tool, args| cmd += ["--call", "#{tool}=#{JSON.generate(args)}"] }
     pass = { "CF_ACCESS_CLIENT_ID" => access["CF-Access-Client-Id"].to_s, "CF_ACCESS_CLIENT_SECRET" => access["CF-Access-Client-Secret"].to_s }
     ok, out, err, timed_out = run(cmd, env: pass, chdir: File.expand_path("..", __dir__), timeout: timeout + 10)

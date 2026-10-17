@@ -129,14 +129,14 @@ module JudgePath
       @landing = newest_landing
       return ["FAIL", "none of the newest #{SEARCH} commits on the clone's main carries an FT-Note trailer"] unless @landing
 
-      verdict, problem = verify_note(@landing)
+      verdict, problem, answerable = verify_note(@landing)
       return ["FAIL", problem] if problem
       return ["FAIL", "newest landing #{short(@landing)}: verify_note.mjs says #{verdict}"] unless verdict == "intact"
 
       signed = signature_check
       return ["FAIL", signed] if signed&.start_with?("FAIL ")
 
-      ["PASS", "newest landing #{short(@landing)}: verify_note.mjs says intact#{signed ? "; #{signed}" : ''}"]
+      ["PASS", "newest landing #{short(@landing)}: verify_note.mjs says intact#{signed ? "; #{signed}" : ''}#{answerable ? "; #{answerable}" : ''}"]
     end
 
     def note_api
@@ -265,14 +265,17 @@ module JudgePath
       out.lines.map(&:strip).find { |p| !p.empty? && !p.start_with?(".firetrident/") && git("cat-file", "-e", "HEAD:#{p}")[0] }
     end
 
-    # verify_note.mjs's verdict on `commit` in the clone, or [nil, the problem].
+    # verify_note.mjs's verdict on `commit` in the clone (its first line) and its answerable line if it prints one, or
+    # [nil, the problem].
     def verify_note(commit, keys = nil)
-      cmd = ["node", VERIFY_NOTE, commit, *(keys ? ["--keys", keys] : [])]
+      cmd = [Stage::NODE, VERIFY_NOTE, commit, *(keys ? ["--keys", keys] : [])]
       _, out, err, timed_out = Stage.run(cmd, env: git_env, chdir: @clone, timeout: @timeout)
       return [nil, "verify_note.mjs did not finish within #{Stage.seconds(@timeout)} s"] if timed_out
 
-      verdict = out.strip
-      verdict.empty? ? [nil, "verify_note.mjs printed nothing: #{last_line(err)}"] : [verdict]
+      lines = out.lines.map(&:strip).reject(&:empty?)
+      return [nil, "verify_note.mjs printed nothing: #{last_line(err)}"] if lines.empty?
+
+      [lines.first, nil, lines.find { |l| l.start_with?("answerable: ") }]
     end
 
     # The newest landing's signature against the key the deployment publishes: nil when it publishes none, a few words
