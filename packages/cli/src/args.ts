@@ -7,6 +7,7 @@ import { parseSilentTtl } from "./closure.ts";
 import type { HookCommand } from "./hook.ts";
 import { RECIPE_OPTIONS, RULE_RECIPE_USAGE, parseRecipeCommand, parseRuleRecipe, type RecipeCommand, type RuleRecipe } from "./recipe.ts";
 import { CENSUS_OPTIONS, parseCensusCommand, type CensusCommand } from "./census.ts";
+import type { ReviewBatchCommand } from "./batch.ts";
 
 /** Event types `ft watch --only` accepts. */
 export const EVENT_TYPES: ReadonlyArray<ColonyEvent["t"]> = [
@@ -57,6 +58,8 @@ export type Command =
   | { name: "review-decide"; colony: string; proposalId: string; decision: ReviewDecision; reason: string; by?: string }
   // Tests before approval: run the colony's tests on an escalated change again.
   | { name: "review-retest"; colony: string; proposalId: string; by?: string }
+  // Escalation batching: approve or reject one batch of the review queue (batch.ts).
+  | ReviewBatchCommand
   | { name: "watch"; colony: string; only: string[] }
   | { name: "new"; specPath: string; colonyName?: string; by?: string }
   | { name: "colonies"; scan: boolean }
@@ -150,7 +153,7 @@ const COMMAND_OPTIONS: Record<string, Record<string, OptionSpec>> = {
   impact: { depth: { type: "string" } },
   verify: { limit: { type: "string" }, ...CLONE_OPTIONS },
   census: CENSUS_OPTIONS,
-  review: { reason: { type: "string" }, by: { type: "string" }, diff: { type: "boolean" }, retest: { type: "string" } },
+  review: { reason: { type: "string" }, by: { type: "string" }, diff: { type: "boolean" }, retest: { type: "string" }, "approve-batch": { type: "string" }, "reject-batch": { type: "string" } },
   revert: { reason: { type: "string" }, by: { type: "string" }, "no-redo": { type: "boolean" } },
   watch: { only: { type: "string", multiple: true } },
   new: { spec: { type: "string" }, name: { type: "string" }, by: { type: "string" } },
@@ -394,8 +397,23 @@ function build(word: string, v: Record<string, unknown>, p: string[]): Command {
       return typeof cmd === "string" ? fail(cmd) : cmd;
     }
     case "review": {
-      const usage = "ft review <colony> [--diff] | ft review <colony> <proposalId> approve|reject|return --reason <text> | ft review <colony> --retest <proposalId>";
+      const usage = "ft review <colony> [--diff] | ft review <colony> <proposalId> approve|reject|return --reason <text> | ft review <colony> --retest <proposalId> | ft review <colony> --approve-batch|--reject-batch <batchId>";
       const colony = colonyArg(p[0], usage);
+      // Escalation batching (batch.ts): one batch of the queue, approved or rejected; each change is still decided by you.
+      if (v["approve-batch"] !== undefined || v["reject-batch"] !== undefined) {
+        if (v["approve-batch"] !== undefined && v["reject-batch"] !== undefined) fail("give --approve-batch or --reject-batch, not both");
+        noExtras(p, 1, usage);
+        onlyFlags(v, ["approve-batch", "reject-batch", "reason", "by"], "deciding a batch");
+        const decision = v["approve-batch"] !== undefined ? "approve" : "reject";
+        const batch = str(v[`${decision}-batch`])?.trim() ?? "";
+        if (!batch) fail(`--${decision}-batch needs the batch id that ft review ${colony} shows`);
+        const reason = str(v.reason)?.trim() ?? "";
+        if (decision === "reject" && !reason) fail("--reason is required to reject a batch (it becomes one antibody, from its first change)");
+        const cmd: Command = { name: "review-batch", colony, batch, decision, reason };
+        const by = str(v.by)?.trim();
+        if (by) cmd.by = by;
+        return cmd;
+      }
       // Tests before approval: run the colony's tests on an escalated change again.
       if (v.retest !== undefined) {
         noExtras(p, 1, usage);
@@ -885,6 +903,7 @@ Commands
   review <colony> [--diff]         List proposals escalated to a human, code first
   review <colony> <id> <decision>  Approve, reject, or return a proposal
   review <colony> --retest <id>    Run the colony's tests on an escalated change again
+  review <colony> --approve-batch <id>  Approve every change of a batch (--reject-batch to reject)
   revert <colony> <landing|prp>    Undo a landing or one proposal of it unless work landed on top
   watch <colony>                   Stream live colony events
   delete <colony> --yes            Delete a colony: agents, repos, and history
@@ -1133,6 +1152,8 @@ Examples
 ft review <colony> [--diff]
 ft review <colony> <proposalId> approve|reject|return [--reason <text>] [--by <name>]
 ft review <colony> --retest <proposalId> [--by <name>]
+ft review <colony> --approve-batch <batchId> [--by <name>]
+ft review <colony> --reject-batch <batchId> --reason <text> [--by <name>]
 
 List proposals escalated to a human, code first, or decide one. Each proposal
 leads with its tests: the colony's tests run on the change at its base while it
@@ -1146,10 +1167,20 @@ danger lines flagged. --retest runs a proposal's tests again.
 
 --reason is required to reject or return; a rejection can mint an antibody.
 
+Past the colony's hourly budget for escalations the alert budget cannot send
+back (FT_ESCALATION_BATCH), changes that escalated for the same reason wait in a
+batch: the list shows one block per batch, its count and each change, and --diff
+shows each change in full too. --approve-batch and --reject-batch decide every
+change the batch holds now, each as your own decision; a rejection mints one
+antibody, from the first change. Changes with an auth, secret, governance or
+handoff hit, a loosened guard, a protected path or a held merge are never in a
+batch: decide each on its own.
+
 Examples
   ft review web --diff
   ft review web prp_42 approve
   ft review web --retest prp_42
+  ft review web --approve-batch bat_1a2b3c4d
 `,
   intent: `
 ft intent amend <colony> <intentId> [--title <t>] [--why <text>] [--footprint <path>]...

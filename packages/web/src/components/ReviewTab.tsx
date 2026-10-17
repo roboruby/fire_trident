@@ -21,6 +21,8 @@ import { ReviewTests } from "./ReviewTests.tsx";
 import { testsPending } from "../reviewtests.ts";
 import { LifecycleStrip } from "./Lifecycle.tsx";
 import { lifecycleHref, reviewLifecycle } from "../lifecycle.ts";
+import { ReviewBatchCard } from "./ReviewBatch.tsx";
+import { batchDoneText, groupBatches, type BatchGroup } from "../batch.ts";
 
 const NONE: readonly string[] = [];
 
@@ -131,6 +133,11 @@ export function ReviewTab({ store, backend, director = false }: { store: ColonyS
   const replay = backend.mode === "replay";
   const reports = store.openEscalations();
   const answered = store.recentlyResolved();
+  // Escalation batching (FT_ESCALATION_BATCH, batch.ts): changes that escalated for one reason past the budget share a card;
+  // their own cards show only once it is opened.
+  const batches = useMemo(() => groupBatches(items ?? []), [items]);
+  const [opened, setOpened] = useState<ReadonlySet<string>>(() => new Set());
+  const folded = useMemo(() => new Set(batches.filter((g) => !opened.has(g.batch.key)).flatMap((g) => g.members.map((m) => m.id))), [batches, opened]);
 
   const load = useCallback(async () => {
     try {
@@ -192,6 +199,31 @@ export function ReviewTab({ store, backend, director = false }: { store: ColonyS
     }
   };
 
+  // A person's answer for a batch card: their decision on each change it lists (the server decides only those still in it).
+  const decideBatch = async (g: BatchGroup, decision: "approve" | "reject") => {
+    const id = `batch:${g.batch.key}`;
+    const reason = (notes[id] ?? "").trim();
+    if (!backend.decideBatch || (decision === "reject" && !reason)) return;
+    setBusy(id);
+    try {
+      const answer = await backend.decideBatch(g.batch.key, g.members.map((m) => m.id), decision, reason, readReviewer() || undefined);
+      for (const done of answer.decided) decided.current.add(done);
+      setItems((cur) => (cur ? cur.filter((x) => !answer.decided.includes(x.id)) : cur));
+      setToast(batchDoneText(decision, answer));
+      setError(null);
+      setPending(null);
+    } catch (err) {
+      if (err instanceof HttpError && (err.status === 401 || err.status === 403)) {
+        setPending({ id, decision, refused: readToken() !== "" });
+        setError(null);
+      } else {
+        setError(err instanceof Error ? err.message : "The decision didn't go through.");
+      }
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const f = store.funnel;
   const total = f.proof + f.reflex + f.llm + f.human;
   const handled = total ? (f.proof + f.reflex + f.llm) / total : 1;
@@ -238,7 +270,38 @@ export function ReviewTab({ store, backend, director = false }: { store: ColonyS
         </section>
       ) : null}
       <div className="cards">
-        {(items ?? []).map((p) => {
+        {batches.map((g) => {
+          const id = `batch:${g.batch.key}`;
+          return (
+            <ReviewBatchCard
+              key={id}
+              group={g}
+              agentName={(a) => store.agentName(a)}
+              titleOf={(p) => store.intents.get(p.intentId)?.title ?? p.declared?.summary ?? p.intentId}
+              open={opened.has(g.batch.key)}
+              busy={busy === id}
+              readOnly={replay || !backend.decideBatch}
+              reason={notes[id] ?? ""}
+              onReason={(text) => setNotes({ ...notes, [id]: text })}
+              onToggle={() => setOpened((cur) => (cur.has(g.batch.key) ? new Set([...cur].filter((k) => k !== g.batch.key)) : new Set([...cur, g.batch.key])))}
+              onDecide={(decision) => void decideBatch(g, decision)}
+            >
+              {pending?.id === id && !director ? (
+                <TokenForm
+                  refused={pending.refused}
+                  action={pending.decision === "approve" ? "Approve all" : "Reject all"}
+                  onRetry={() => {
+                    const again = pending;
+                    setPending(null);
+                    void decideBatch(g, again.decision === "approve" ? "approve" : "reject");
+                  }}
+                  onCancel={() => setPending(null)}
+                />
+              ) : null}
+            </ReviewBatchCard>
+          );
+        })}
+        {(items ?? []).filter((p) => !folded.has(p.id)).map((p) => {
           const intent = store.intents.get(p.intentId);
           const residual = p.evidence?.residual ?? [];
           const declared = p.declared?.footprint ?? [];

@@ -2,6 +2,7 @@ import type { ColonyEvent, ColonySnapshot, FieldReading, Landing, LandingDiff, L
 import { isColonyEvent, type ColonyStore } from "./store.ts";
 import { fetchLandingDiff, fetchNoteCheck } from "./verified.ts";
 import { fetchLandingTests } from "./tests.ts";
+import { batchAnswerOf, type BatchAnswer } from "./batch.ts";
 
 /** One entry of GET /api/colonies/:id/why. */
 export interface WhyEntry {
@@ -34,6 +35,8 @@ export interface Backend {
   why(path: string, line?: number): Promise<WhyEntry[]>;
   review(): Promise<Proposal[]>;
   decide(proposalId: string, decision: ReviewDecision, reason: string, by?: string): Promise<void>;
+  /** Approve or reject one batch of the queue (escalation batching, batch.ts; POST /review/batches/decide): the listed changes only; absent in the simulator and replays. */
+  decideBatch?(key: string, ids: string[], decision: "approve" | "reject", reason: string, by?: string): Promise<BatchAnswer>;
   /** Run the colony's tests on an escalated change again (tests before approval; POST /proposals/:pid/tests); absent in the simulator and replays. */
   retestProposal?(proposalId: string, by?: string): Promise<void>;
   /** Answer an agent's report that an intent cannot be done as written. */
@@ -372,6 +375,11 @@ export class HttpBackend implements Backend {
     await this.post(`/review/${encodeURIComponent(proposalId)}`, { decision, reason, ...(by ? { by } : {}) });
   }
 
+  async decideBatch(key: string, ids: string[], decision: "approve" | "reject", reason: string, by?: string): Promise<BatchAnswer> {
+    const res = await this.post("/review/batches/decide", { key, ids, decision, reason, ...(by ? { by } : {}) });
+    return batchAnswerOf(await res.json().catch(() => null));
+  }
+
   async retestProposal(proposalId: string, by?: string): Promise<void> {
     await this.post(`/proposals/${encodeURIComponent(proposalId)}/tests`, by ? { by } : {});
   }
@@ -380,13 +388,14 @@ export class HttpBackend implements Backend {
     await this.post(`/intents/${encodeURIComponent(intentId)}/escalation`, { decision, note, ...(by ? { by } : {}), ...(decision === "amend" && amend ? { amend } : {}) });
   }
 
-  /** POST JSON to a mutating route with the bearer token this browser keeps (if any). */
-  private async post(suffix: string, body: unknown): Promise<void> {
+  /** POST JSON to a mutating route with the bearer token this browser keeps (if any); the response, its body unread. */
+  private async post(suffix: string, body: unknown): Promise<Response> {
     const headers: Record<string, string> = { "content-type": "application/json", accept: "application/json" };
     const token = readToken();
     if (token) headers.authorization = `Bearer ${token}`;
     const res = await fetch(this.url(suffix), { method: "POST", headers, body: JSON.stringify(body) });
     if (!res.ok) throw new HttpError(res.status, await failure(res));
+    return res;
   }
 }
 

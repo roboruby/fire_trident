@@ -29,6 +29,7 @@ import { acceptanceCheck, acceptanceFor } from "./acceptance.ts";
 import { ANTIBODY_DIR, antibodyFile, antibodyPath, calibrateThreshold, cleanQuestion, deriveMatcher, fallbackQuestion, parseAntibodyFile, securityAntibody } from "./antibodies.ts";
 import { addedFromHunks, fileDiff, type FileDiff } from "./diff.ts";
 import { agentReason, gate, type GateVerdict, type ReflexSignals, type SecondOpinion } from "./gate.ts";
+import { recordEscalation } from "./batch.ts";
 import { checkGoalConflict, type RemovedLineOwners } from "./goalconflict.ts";
 import { DANGER_CHECK, applyAllowances, dangerLabels, scanDanger, triageDanger, whyAuthor, type DangerAllowance } from "./danger.ts";
 import { destructiveCheck, destructiveFact, destructiveRecord } from "./destructive.ts";
@@ -574,6 +575,10 @@ export class DecideEngine {
       } catch (err) {
         console.error(`review view of ${p.id} not stored: ${errorText(err)}`);
       }
+      // Escalation batching (FT_ESCALATION_BATCH, decide/batch.ts): past the colony's hourly budget for escalations the alert
+      // budget cannot send back, the change still waits for a person, in a batch the review queue shows as one card (never
+      // a change with an auth, secret, governance, handoff, test-change or loosened-guard hit, or a protected path).
+      recordEscalation(this.host, p.id, final.rule, { danger: danger.mustHuman, signals: danger.signals, protected: base.protected, probation }, now, policy.escalationBatchPerHour);
       // A person's approval later lands the same proposal, so it keeps the assumptions too, and what it undoes for its lineage note.
       const undoes = goal?.conflict ? { undoes: goal.conflict.undoes } : {};
       await this.host.updateProposals([{ id: p.id, patch: { status: "escalated", reason: `escalated by ${final.layer}: ${reason}`, evidence, ...relied, ...undoes } }]);
@@ -703,9 +708,10 @@ export class DecideEngine {
   /**
    * A human decided an escalated (or queued) proposal. Approvals mark the detectors that fired as
    * not useful; rejections mark them useful and revoke the region's autonomy. A rejection an
-   * antibody had already caught counts as a recurrence on that antibody; only a miss mints one.
+   * antibody had already caught counts as a recurrence on that antibody; only a miss mints one, unless `mint` is false
+   * (a person rejecting a batch of changes with one reason mints one antibody, from the first of them: decide/batch.ts).
    */
-  onHumanDecision(p: Proposal, d: "approve" | "reject" | "return", reason: string, by: string): void {
+  onHumanDecision(p: Proposal, d: "approve" | "reject" | "return", reason: string, by: string, mint = true): void {
     const policy = this.store.policy();
     const now = Date.now();
     const out = this.store.outcome(p.id);
@@ -723,7 +729,7 @@ export class DecideEngine {
       if (caught.length > 0) {
         for (const id of caught) this.store.recordRecurrence(id, p.id);
         console.log(`rejection of ${p.id} recurs on ${caught.join(", ")}: no new antibody`);
-      } else if (reason.trim() && this.enabled()) {
+      } else if (mint && reason.trim() && this.enabled()) {
         // Minting calibrates on Clef and commits to trunk, so it needs the reflex arc.
         this.host.waitUntil(this.mintAntibody(p, reason.trim(), by).catch((err) => console.error(`antibody from ${p.id} failed: ${errorText(err)}`)));
       }

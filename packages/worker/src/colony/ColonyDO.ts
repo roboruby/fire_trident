@@ -171,6 +171,7 @@ import { declareRecipe, intentRecipe, migrateIntentRecipes, recipeNews, type Rec
 import { mechanicalShare, ruleRecipe, ruleRecipeNews, splitViolations, startRuleRecipe, type RuleRecipeHost, type RuleRecipeStart } from "./rulerecipe.ts";
 import { declaredRecipe } from "../decide/reproduce.ts";
 import { reviewReproduction } from "../decide/review.ts";
+import { answerBatch, escalationBatchOn, EscalationBatches, markQueueBatches, type BatchAnswer, type BatchDecision } from "../decide/batch.ts";
 import { revalidationEnabled as flagCovers } from "@fire_trident/core";
 import type { RecipeRecord } from "@fire_trident/core";
 import { A2A_ACTOR, ColonyPause, DEPLOYMENT_PAUSE_KEY, type PauseAnswer, type PauseView, type ResumeAnswer, type WriterPause } from "./pause.ts";
@@ -2554,6 +2555,8 @@ export class ColonyDO extends DurableObject<Env> {
       const last = this.lastReturn(p.intentId);
       if (last?.movedBy || last?.contested) Object.assign(p, { lastReturn: last });
     }
+    // Escalation batching (FT_ESCALATION_BATCH, decide/batch.ts): the changes waiting in one batch carry it, for one card.
+    if (escalationBatchOn(this.env.FT_ESCALATION_BATCH, this.requireColony().id)) markQueueBatches(this.sql, queue, engine.store.policy().escalationBatchPerHour);
     return queue;
   }
 
@@ -2616,8 +2619,11 @@ export class ColonyDO extends DurableObject<Env> {
     return views;
   }
 
-  /** A human decision on a proposal: approve (back to its lane), reject (intent reopened) or return. */
-  async decide(proposalId: Id, d: "approve" | "reject" | "return", reason: string, by: string): Promise<void> {
+  /**
+   * A human decision on a proposal: approve (back to its lane), reject (intent reopened) or return. `mint` false keeps a
+   * rejection from minting an antibody (a batch rejected with one reason mints one, from its first change: decide/batch.ts).
+   */
+  async decide(proposalId: Id, d: "approve" | "reject" | "return", reason: string, by: string, mint = true): Promise<void> {
     const colony = this.requireColony();
     if (d !== "approve" && d !== "reject" && d !== "return") throw ftError(400, `unknown decision ${String(d)}`);
     const row = this.proposalRow(proposalId);
@@ -2647,7 +2653,7 @@ export class ColonyDO extends DurableObject<Env> {
       },
       now,
     );
-    engine.onHumanDecision(p, d, reason, by);
+    engine.onHumanDecision(p, d, reason, by, mint);
     this.scheduleFunnel();
     if (d === "approve") {
       // Merge locks (trunk/mergelock.ts): the approval travels with the change, so the trunk writer never merges it on its
@@ -2666,6 +2672,18 @@ export class ColonyDO extends DurableObject<Env> {
     } else {
       await this.updateProposals([{ id: proposalId, patch: { status: d === "reject" ? "rejected" : "returned", reason: reason || `${d} by ${by}`, ...(tested.evidence ? { evidence: tested.evidence } : {}) } }]);
     }
+  }
+
+  /**
+   * Escalation batching (POST /api/colonies/:id/review/batches/decide; decide/batch.ts): a person approves or rejects
+   * one batch of the review queue, recorded as their decision on each change the card listed that still waits in it.
+   * 409 where FT_ESCALATION_BATCH does not cover the colony.
+   */
+  async decideBatch(d: BatchDecision): Promise<BatchAnswer> {
+    const colony = this.requireColony();
+    if (!escalationBatchOn(this.env.FT_ESCALATION_BATCH, colony.id)) throw ftError(409, "escalation batching is off for this colony (FT_ESCALATION_BATCH), so there is no batch to answer; decide each change on its own card");
+    const batches = new EscalationBatches(this.sql);
+    return answerBatch({ batches, proposal: (id) => this.getProposalSync(id), decide: (id, decision, reason, by, mint) => this.decide(id, decision, reason, by, mint) }, d);
   }
 
   /** Record a decision made by another layer (reflex, LLM); feeds the funnel and the live stream. */

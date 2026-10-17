@@ -3,6 +3,7 @@ import { globMatch, importsOf } from "@fire_trident/core";
 import { diffLines, splitLines } from "./diff.ts";
 import { handoffMatches } from "./handoff.ts";
 import { foldPath } from "./pathfold.ts";
+import { withoutSqlStatements } from "./sqlexec.ts";
 import { assertionCount, blankComments, isTestPath, sensitiveReason } from "./signals.ts";
 
 /**
@@ -11,7 +12,8 @@ import { assertionCount, blankComments, isTestPath, sensitiveReason } from "./si
  * and its paths flag what must never depend on a model's judgment:
  * - auth: authorization headers, bearer schemes, credential comparisons, admin gates, 401/403
  * - secret: hard-coded credentials, known token formats, private keys, secrets written to logs
- * - capability: process, network or eval capability the intent does not ask for
+ * - capability: process, network or eval capability the intent does not ask for (a SQL statement run
+ *   on a SQL handle, `this.sql.exec("UPDATE ...")`, runs no program: decide/sqlexec.ts)
  * - crypto: cryptographic or security randomness primitives the intent does not ask for
  * - ci, dependency: CI workflows and dependency manifests (by path)
  * - test-weakening: skipped, todo or focused tests (test.skip(), a test context's t.skip() and
@@ -136,8 +138,18 @@ interface LinePattern {
   anyFile?: boolean;
   /** Applies to comment lines too. */
   comments?: boolean;
-  /** Extra condition on the line. */
-  when?: (line: string) => boolean;
+  /** Extra condition on the line, which may read around it. */
+  when?: (line: string, around: LineContext) => boolean;
+}
+
+/** What a line pattern may read around a line: the lines before and after it, and whether its file imports a process module. */
+interface LineContext {
+  /** The nearest line before it that is not blank ("" for the first). */
+  prev: string;
+  /** The nearest line after it that is not blank ("" for the last). */
+  next: string;
+  /** Does the file import child_process, cluster or worker_threads (read once per text, when a pattern asks)? */
+  processModule: () => boolean;
 }
 
 const CREDENTIAL = /\b\w*(?:secret|passw(?:or)?d|api[_-]?key|apikey|credential|private[_-]?key|(?:auth|access|admin|bearer|session|csrf|refresh|id|jwt|api)[_-]?token)\w*\b/i;
@@ -161,6 +173,9 @@ const TOKEN_FORMAT_SOURCE = String.raw`\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pa
 const TOKEN_FORMAT = new RegExp(TOKEN_FORMAT_SOURCE);
 /** A credential-named key set to a bare (unquoted) literal that looks like a secret (`api_key: s3cr3tv4lu3x`, `TOKEN=ab12…`). */
 const UNQUOTED_CREDENTIAL = /\b\w*(?:secret|passw(?:or)?d|api[_-]?key|apikey|private[_-]?key|access[_-]?key|token)\w*["']?\s*[:=]\s*(?=[A-Za-z0-9_\-+/=]*\d)(?=[A-Za-z0-9_\-+/=]*[A-Za-z])[A-Za-z0-9_\-+/=]{12,}\s*,?\s*$/i;
+
+/** Running a program: child_process and its calls, a string handed to exec(), Deno's and Bun's process APIs. */
+const PROCESS = /\b(?:child_process|execSync|execFileSync|spawnSync)\b|\b(?:spawn|execFile)\s*\(|\bexec\s*\(\s*['"`]|\bDeno\.(?:run|Command)\b|\bBun\.spawn\b/;
 
 const LINE_PATTERNS: readonly LinePattern[] = [
   // auth
@@ -203,7 +218,8 @@ const LINE_PATTERNS: readonly LinePattern[] = [
   },
   { cls: "secret", id: "secret:logged", re: LOGGING, when: (l) => SECRETISH.test(l) },
   // capability
-  { cls: "capability", id: "capability:process", kind: "process", re: /\b(?:child_process|execSync|execFileSync|spawnSync)\b|\b(?:spawn|execFile)\s*\(|\bexec\s*\(\s*['"`]|\bDeno\.(?:run|Command)\b|\bBun\.spawn\b/, tests: true },
+  // A SQL statement on a SQL handle (this.sql.exec("UPDATE ...")) runs no program, except in a file that imports a process module.
+  { cls: "capability", id: "capability:process", kind: "process", re: PROCESS, tests: true, when: (l, around) => PROCESS.test(withoutSqlStatements(l, around.prev, around.next)) || around.processModule() },
   { cls: "capability", id: "capability:network", kind: "network", re: /(?<![\w.$])fetch\s*\(|\bnew\s+(?:WebSocket|EventSource)\s*\(|\bXMLHttpRequest\b|\b(?:http|https|http2)\.(?:request|get)\s*\(|\bnet\.(?:connect|createConnection)\s*\(|\bnavigator\.sendBeacon\s*\(/, tests: true, when: (l) => !FETCH_DEFINITION.test(l) || /(?<![\w.$])fetch\s*\(\s*['"`]/.test(l) },
   { cls: "capability", id: "capability:eval", kind: "eval", re: /\beval\s*\(|\bnew\s+Function\s*\(|\bvm\.(?:runIn\w*|Script)\b|\bset(?:Timeout|Interval)\s*\(\s*['"`]/, tests: true },
   // crypto
@@ -479,6 +495,27 @@ function capabilityImports(path: Path, text: string | null): Map<string, "proces
     if (kind) out.set(m, kind);
   }
   return out;
+}
+
+/** Around a line that could not be placed: no line before it, and a process module assumed (every exec counts). */
+const UNKNOWN_AROUND: LineContext = { prev: "", next: "", processModule: () => true };
+
+/** Each line of a text with what a line pattern reads around it (LineContext). */
+function lineContexts(path: Path, text: string): Array<{ text: string; around: LineContext }> {
+  let imports: boolean | undefined;
+  const processModule = (): boolean => (imports ??= [...capabilityImports(path, text).values()].includes("process"));
+  const lines = splitLines(text);
+  const next: string[] = new Array<string>(lines.length);
+  for (let i = lines.length - 1, after = ""; i >= 0; i--) {
+    next[i] = after;
+    if (lines[i]!.trim() !== "") after = lines[i]!;
+  }
+  let prev = "";
+  return lines.map((l, i) => {
+    const out = { text: l, around: { prev, next: next[i]!, processModule } };
+    if (l.trim() !== "") prev = l;
+    return out;
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -1375,7 +1412,7 @@ export function scanDanger(files: readonly DangerFile[], intent: DangerIntent | 
       continue;
     }
     const code = CODE.test(f.path);
-    const matches = (p: LinePattern, text: string): boolean => {
+    const matches = (p: LinePattern, text: string, around: LineContext): boolean => {
       if (text.trim() === "") return false;
       if (!p.anyFile && !code) return false;
       if (test && !p.tests) return false;
@@ -1384,16 +1421,19 @@ export function scanDanger(files: readonly DangerFile[], intent: DangerIntent | 
       if (!p.anyFile && code && IMPORT.test(text)) return false;
       p.re.lastIndex = 0;
       if (!p.re.test(text)) return false;
-      return !p.when || p.when(text);
+      return !p.when || p.when(text, around);
     };
+    // Each text's lines with what a pattern reads around them, read once per file.
+    const afterLines = lineContexts(f.path, f.after);
+    let beforeLines: ReturnType<typeof lineContexts> | null = null;
     // A pattern counts only when the new text has more lines with it than the old one: a line that was
     // only edited around it (a specifier renamed inside `typeof import('child_process')`) adds nothing.
     const counts = new Map<LinePattern, boolean>();
     const grew = (p: LinePattern): boolean => {
       let g = counts.get(p);
       if (g === undefined) {
-        const n = (t: string | null): number => (t === null ? 0 : splitLines(t).filter((l) => matches(p, l)).length);
-        g = n(f.after) > n(f.before);
+        const n = (lines: ReturnType<typeof lineContexts>): number => lines.filter((l) => matches(p, l.text, l.around)).length;
+        g = n(afterLines) > (f.before === null ? 0 : n((beforeLines ??= lineContexts(f.path, f.before))));
         counts.set(p, g);
       }
       return g;
@@ -1401,7 +1441,7 @@ export function scanDanger(files: readonly DangerFile[], intent: DangerIntent | 
     const added = addedLines(f.before, f.after);
     for (const { line, text } of added) {
       for (const p of LINE_PATTERNS) {
-        if (!matches(p, text) || !grew(p)) continue;
+        if (!matches(p, text, afterLines[line - 1]?.around ?? UNKNOWN_AROUND) || !grew(p)) continue;
         const hit: DangerHit = { cls: p.cls, pattern: p.id, path: f.path, line, excerpt: maskExcerpt(text) };
         if (p.kind && asks(p.kind)) {
           hit.requested = true;

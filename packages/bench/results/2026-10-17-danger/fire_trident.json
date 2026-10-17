@@ -1,0 +1,422 @@
+{
+  "schema": "firetrident.danger-history/v1",
+  "name": "fire_trident",
+  "rev": "555f92a249f7f66419d063142565abd7f3843e83",
+  "maxCount": null,
+  "exclude": null,
+  "command": "node --experimental-transform-types packages/bench/src/danger/history.ts --repo . --name fire_trident --rev 555f92a249f7f66419d063142565abd7f3843e83 --out packages/bench/results/2026-10-17-danger",
+  "generatedAt": "2026-10-17T09:04:08.703Z",
+  "selection": "non-merge commits from git log --no-merges (rename detection off), each against its parent; modified (M) regular files with new content, scripts (.js .jsx .mjs .cjs .ts .tsx .mts .cts), not tests (decide/signals.ts isTestPath), not matched by --exclude",
+  "checks": "decide/danger.ts scanDanger on each file with no intent (danger patterns, loosened guards, governance paths), the default policy's allowances (none), then triageDanger; texts read under the decide stage's limits (512 KiB, a NUL in the first 8 KiB, invalid UTF-8); flagged = a must-human hit or a danger signal",
+  "commits": {
+    "walked": 80,
+    "withScannedFiles": 60,
+    "flagged": 9,
+    "flaggedRate": {
+      "k": 9,
+      "n": 60,
+      "p": 0.15,
+      "lo": 0.081,
+      "hi": 0.261
+    },
+    "newest": {
+      "sha": "555f92a249f7f66419d063142565abd7f3843e83",
+      "date": "2026-10-13T10:17:30-04:00"
+    },
+    "oldest": {
+      "sha": "50f143c89b38b36568f6ae5a5e849a5b666eee2d",
+      "date": "2026-10-12T00:42:38-04:00"
+    }
+  },
+  "entries": {
+    "total": 992,
+    "modified": 510,
+    "modifiedScripts": 409,
+    "skipped": {
+      "not-modified": 482,
+      "not-script": 101,
+      "test": 83,
+      "excluded": 0,
+      "not-regular-file": 0,
+      "mode-only": 0
+    }
+  },
+  "files": {
+    "scanned": 326,
+    "distinctPaths": 110,
+    "unreadable": 0,
+    "missingBlobs": 0,
+    "flagged": 10,
+    "flaggedRate": {
+      "k": 10,
+      "n": 326,
+      "p": 0.031,
+      "lo": 0.017,
+      "hi": 0.056
+    },
+    "toPerson": 7,
+    "toPersonRate": {
+      "k": 7,
+      "n": 326,
+      "p": 0.021,
+      "lo": 0.01,
+      "hi": 0.044
+    },
+    "secondOpinionOnly": 3
+  },
+  "byClass": {
+    "auth": {
+      "files": 6,
+      "hits": 11,
+      "rate": {
+        "k": 6,
+        "n": 326,
+        "p": 0.018,
+        "lo": 0.008,
+        "hi": 0.04
+      }
+    },
+    "loosened-guard": {
+      "files": 2,
+      "hits": 2,
+      "rate": {
+        "k": 2,
+        "n": 326,
+        "p": 0.006,
+        "lo": 0.002,
+        "hi": 0.022
+      }
+    },
+    "crypto": {
+      "files": 1,
+      "hits": 1,
+      "rate": {
+        "k": 1,
+        "n": 326,
+        "p": 0.003,
+        "lo": 0.001,
+        "hi": 0.017
+      }
+    },
+    "capability": {
+      "files": 1,
+      "hits": 1,
+      "rate": {
+        "k": 1,
+        "n": 326,
+        "p": 0.003,
+        "lo": 0.001,
+        "hi": 0.017
+      }
+    },
+    "test-weakening": {
+      "files": 1,
+      "hits": 1,
+      "rate": {
+        "k": 1,
+        "n": 326,
+        "p": 0.003,
+        "lo": 0.001,
+        "hi": 0.017
+      }
+    }
+  },
+  "byPattern": {
+    "auth:unauthorized": {
+      "files": 5,
+      "hits": 5
+    },
+    "auth:authorization-header": {
+      "files": 2,
+      "hits": 2
+    },
+    "auth:bearer-scheme": {
+      "files": 2,
+      "hits": 3
+    },
+    "crypto:primitive": {
+      "files": 1,
+      "hits": 1
+    },
+    "loosened-guard:deleted-limit-check": {
+      "files": 1,
+      "hits": 1
+    },
+    "loosened-guard:removed-expiry-check": {
+      "files": 1,
+      "hits": 1
+    },
+    "capability:network": {
+      "files": 1,
+      "hits": 1
+    },
+    "test-weakening:skip-or-only": {
+      "files": 1,
+      "hits": 1
+    },
+    "auth:admin-gate": {
+      "files": 1,
+      "hits": 1
+    }
+  },
+  "topPaths": [
+    {
+      "path": "packages/worker/src/api/app.ts",
+      "flagged": 3
+    },
+    {
+      "path": "packages/web/src/App.tsx",
+      "flagged": 1
+    },
+    {
+      "path": "packages/worker/src/agents/gitfs.ts",
+      "flagged": 1
+    },
+    {
+      "path": "packages/worker/src/api/vaccinate.ts",
+      "flagged": 1
+    },
+    {
+      "path": "packages/worker/src/colony/ColonyDO.ts",
+      "flagged": 1
+    },
+    {
+      "path": "packages/worker/src/decide/danger.ts",
+      "flagged": 1
+    },
+    {
+      "path": "packages/worker/src/index.ts",
+      "flagged": 1
+    },
+    {
+      "path": "packages/worker/src/region/RegionDO.ts",
+      "flagged": 1
+    }
+  ],
+  "flagged": [
+    {
+      "commit": "9887501e0568df16e9eac22db5a88a19e762704d",
+      "date": "2026-10-13T09:31:20-04:00",
+      "path": "packages/worker/src/decide/danger.ts",
+      "tier": "person",
+      "classes": [
+        "auth",
+        "crypto"
+      ],
+      "hits": [
+        {
+          "cls": "auth",
+          "pattern": "auth:unauthorized",
+          "path": "packages/worker/src/decide/danger.ts",
+          "line": 547,
+          "excerpt": "if (AUTH_DENIAL.test(t) && DENIAL_CONTEXT.test(t)) return { status: /\\b401\\b|unauthori[sz]ed/i.test(t) ? \"401\" : \"403\", thrown };"
+        },
+        {
+          "cls": "crypto",
+          "pattern": "crypto:primitive",
+          "path": "packages/worker/src/decide/danger.ts",
+          "line": 509,
+          "excerpt": "const CONSTANT_TIME = /\\b(?:timingSafeEqual|timingSafeCompare|constantTimeEqual|constantTimeCompare|safeCompare|secureCompare|safeEqual)\\s*…"
+        }
+      ]
+    },
+    {
+      "commit": "3a6ed0322a7cac8b1c9b8344fe6d0d26ffb5292d",
+      "date": "2026-10-13T09:02:37-04:00",
+      "path": "packages/worker/src/colony/ColonyDO.ts",
+      "tier": "second-opinion",
+      "classes": [
+        "loosened-guard"
+      ],
+      "hits": [
+        {
+          "cls": "loosened-guard",
+          "pattern": "loosened-guard:deleted-limit-check",
+          "path": "packages/worker/src/colony/ColonyDO.ts",
+          "line": 2865,
+          "excerpt": "removed: if (shared instanceof CallLimiter)"
+        }
+      ]
+    },
+    {
+      "commit": "e2d1db9016a9975987f5a36e187f4896ace9d376",
+      "date": "2026-10-12T20:17:31-04:00",
+      "path": "packages/worker/src/api/app.ts",
+      "tier": "person",
+      "classes": [
+        "auth"
+      ],
+      "hits": [
+        {
+          "cls": "auth",
+          "pattern": "auth:authorization-header",
+          "path": "packages/worker/src/api/app.ts",
+          "line": 86,
+          "excerpt": "const m = /^Bearer\\s+(\\S+)\\s*$/i.exec(c.req.header(\"Authorization\") ?? \"\");"
+        },
+        {
+          "cls": "auth",
+          "pattern": "auth:bearer-scheme",
+          "path": "packages/worker/src/api/app.ts",
+          "line": 86,
+          "excerpt": "const m = /^Bearer\\s+(\\S+)\\s*$/i.exec(c.req.header(\"Authorization\") ?? \"\");"
+        }
+      ]
+    },
+    {
+      "commit": "29902e189ffdda200fd4419036de6c44a3c21cf6",
+      "date": "2026-10-12T19:54:29-04:00",
+      "path": "packages/worker/src/api/app.ts",
+      "tier": "person",
+      "classes": [
+        "auth"
+      ],
+      "hits": [
+        {
+          "cls": "auth",
+          "pattern": "auth:unauthorized",
+          "path": "packages/worker/src/api/app.ts",
+          "line": 77,
+          "excerpt": "return json({ error: \"forbidden: writes need FT_ADMIN_TOKEN configured on the server\" }, 403);"
+        }
+      ]
+    },
+    {
+      "commit": "29902e189ffdda200fd4419036de6c44a3c21cf6",
+      "date": "2026-10-12T19:54:29-04:00",
+      "path": "packages/worker/src/api/vaccinate.ts",
+      "tier": "person",
+      "classes": [
+        "auth"
+      ],
+      "hits": [
+        {
+          "cls": "auth",
+          "pattern": "auth:unauthorized",
+          "path": "packages/worker/src/api/vaccinate.ts",
+          "line": 41,
+          "excerpt": "return json({ error: \"forbidden: writes need FT_ADMIN_TOKEN configured on the server\" }, 403);"
+        }
+      ]
+    },
+    {
+      "commit": "24b8e8d7a49ad8a81e871b6eba806fe135e6e382",
+      "date": "2026-10-12T08:13:15-04:00",
+      "path": "packages/worker/src/region/RegionDO.ts",
+      "tier": "second-opinion",
+      "classes": [
+        "loosened-guard"
+      ],
+      "hits": [
+        {
+          "cls": "loosened-guard",
+          "pattern": "loosened-guard:removed-expiry-check",
+          "path": "packages/worker/src/region/RegionDO.ts",
+          "line": 714,
+          "excerpt": "if (!isExpired(toMark(r), now)) -> if (markValue(toMark(r), now) >= bar)"
+        }
+      ]
+    },
+    {
+      "commit": "15238ddf8998ab26ec9aba00007db650fd2f70a8",
+      "date": "2026-10-12T03:21:38-04:00",
+      "path": "packages/worker/src/agents/gitfs.ts",
+      "tier": "person",
+      "classes": [
+        "capability"
+      ],
+      "hits": [
+        {
+          "cls": "capability",
+          "pattern": "capability:network",
+          "path": "packages/worker/src/agents/gitfs.ts",
+          "line": 111,
+          "excerpt": "const res = await fetch(req.url, {"
+        }
+      ]
+    },
+    {
+      "commit": "1c67f217461160128510fffe9b190f335369040a",
+      "date": "2026-10-12T02:58:11-04:00",
+      "path": "packages/web/src/App.tsx",
+      "tier": "second-opinion",
+      "classes": [
+        "test-weakening"
+      ],
+      "hits": [
+        {
+          "cls": "test-weakening",
+          "pattern": "test-weakening:skip-or-only",
+          "path": "packages/web/src/App.tsx",
+          "line": 84,
+          "excerpt": "fit();"
+        }
+      ]
+    },
+    {
+      "commit": "d235cf4822befc425fcdb9790a1a8b92952a7fcf",
+      "date": "2026-10-12T02:40:54-04:00",
+      "path": "packages/worker/src/api/app.ts",
+      "tier": "person",
+      "classes": [
+        "auth"
+      ],
+      "hits": [
+        {
+          "cls": "auth",
+          "pattern": "auth:unauthorized",
+          "path": "packages/worker/src/api/app.ts",
+          "line": 64,
+          "excerpt": "if (!c.env.FT_ADMIN_TOKEN) return json({ error: \"forbidden: this route needs FT_ADMIN_TOKEN configured on the server\" }, 403);"
+        },
+        {
+          "cls": "auth",
+          "pattern": "auth:admin-gate",
+          "path": "packages/worker/src/api/app.ts",
+          "line": 65,
+          "excerpt": "return requireAdmin(c, next);"
+        }
+      ]
+    },
+    {
+      "commit": "652597b880b9bff15d18df10353d1057da82b309",
+      "date": "2026-10-12T01:56:36-04:00",
+      "path": "packages/worker/src/index.ts",
+      "tier": "person",
+      "classes": [
+        "auth"
+      ],
+      "hits": [
+        {
+          "cls": "auth",
+          "pattern": "auth:authorization-header",
+          "path": "packages/worker/src/index.ts",
+          "line": 26,
+          "excerpt": "const header = req.headers.get(\"authorization\") ?? \"\";"
+        },
+        {
+          "cls": "auth",
+          "pattern": "auth:bearer-scheme",
+          "path": "packages/worker/src/index.ts",
+          "line": 27,
+          "excerpt": "const bearer <redacted> header.startsWith(\"Bearer \") ? header.slice(7) : \"\";"
+        },
+        {
+          "cls": "auth",
+          "pattern": "auth:bearer-scheme",
+          "path": "packages/worker/src/index.ts",
+          "line": 29,
+          "excerpt": "return bearer <redacted> expected || query === expected;"
+        },
+        {
+          "cls": "auth",
+          "pattern": "auth:unauthorized",
+          "path": "packages/worker/src/index.ts",
+          "line": 35,
+          "excerpt": ": new Response(JSON.stringify({ error: \"unauthorized: send the FireTrident MCP token\" }), { status: 401, headers: { \"content-type\": \"applic…"
+        }
+      ]
+    }
+  ],
+  "elapsedMs": 2460
+}

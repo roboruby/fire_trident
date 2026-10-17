@@ -69,6 +69,7 @@ import type { IntentBody, SpecPolicy } from "./spec.ts";
 import type { Certification, GuideLesson, Intent, Landing, LandingTests, LineageNote, Proposal, Rule } from "@fire_trident/core";
 import { connectInfo, connectText } from "./connect.ts";
 import { retestText } from "./reviewtests.ts";
+import { runReviewBatch } from "./batch.ts";
 import { lifecycleRequest } from "./strip.ts";
 import { readStdin, runHook, type HookCommand } from "./hook.ts";
 
@@ -243,6 +244,11 @@ async function execute(cmd: Command, ctx: Ctx): Promise<number> {
   if (cmd.name === "census") return runCensus(cmd, { json: ctx.flags.json, c: ctx.c, stdout: ctx.io.stdout, stderr: ctx.io.stderr, ...(ctx.io.progress ? { progress: ctx.io.progress } : {}) });
   // Connect your agent (core/connect.ts): built from the server URL, nothing sent.
   if (cmd.name === "connect") return connect(cmd, ctx);
+  // Escalation batching (batch.ts): read the queue, then answer one batch of it.
+  if (cmd.name === "review-batch") {
+    const { io, c, flags } = ctx;
+    return runReviewBatch(cmd, { by: ctx.by, json: flags.json, dryRun: flags.dryRun, c, send: (r) => send(ctx.http, r), stdout: io.stdout, stderr: io.stderr, showDryRun: (reqs) => dryRun(ctx, reqs) });
+  }
   const req = planRequest(cmd, ctx.by);
   if (!req) throw new Error(`nothing to do for ${cmd.name}`);
   if (ctx.flags.dryRun) return dryRun(ctx, [req]);

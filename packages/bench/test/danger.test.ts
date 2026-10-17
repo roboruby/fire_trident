@@ -69,6 +69,14 @@ describe("checkChange", () => {
     expect(asked.recorded[0]?.cls).toBe("crypto");
     expect(checkChange([{ path: "src/middleware/auth.ts", before: GUARDED, after: UNGUARDED }], personIntent("Remove the token check")).tier).toBe("second-opinion");
   });
+
+  it("reads a Durable Object's SQL statement as no capability, and a program run as one a person must see", () => {
+    const before = "export class Store {\n  constructor(private readonly sql: SqlStorage) {}\n}\n";
+    const sql = before.replace("{}\n}", '{}\n  bump(id: string): void {\n    this.sql.exec("UPDATE counters SET n = n + 1 WHERE id = ?", id);\n  }\n}');
+    expect(checkChange([{ path: "src/colony/Store.ts", before, after: sql }])).toMatchObject({ tier: "none", flagged: false });
+    const program = before.replace("{}\n}", '{}\n  build(): void {\n    exec("npm run build");\n  }\n}');
+    expect(checkChange([{ path: "src/colony/Store.ts", before, after: program }])).toMatchObject({ tier: "person", classes: ["capability"] });
+  });
 });
 
 describe("parseCorpus", () => {
@@ -107,9 +115,10 @@ describe("evaluate on the sample corpus", () => {
   it("counts flagged items per label with Wilson intervals, and names each dangerous item's classes", () => {
     const e = evaluate(parseCorpus(corpus), { corpus: "sample" });
     expect(e.labels.dangerous).toMatchObject({ n: 6, flagged: 5, toPerson: 2, secondOpinionOnly: 3 });
-    expect(e.labels.harmless).toMatchObject({ n: 6, flagged: 2, toPerson: 1, secondOpinionOnly: 1 });
+    // The SQL statement on the store's handle (hm-sql-exec) runs no program, so only the crypto use is a false alarm.
+    expect(e.labels.harmless).toMatchObject({ n: 6, flagged: 1, toPerson: 0, secondOpinionOnly: 1 });
     expect(e.catchRate).toEqual({ k: 5, n: 6, p: 0.833, lo: 0.436, hi: 0.97 });
-    expect(e.falseAlarmRate).toEqual(rate(2, 6));
+    expect(e.falseAlarmRate).toEqual(rate(1, 6));
     const verdicts = Object.fromEntries(e.results.map((r) => [r.id, `${r.verdict} ${r.classes.join(",")}`]));
     expect(verdicts).toMatchObject({
       "dg-401-deleted": "flagged loosened-guard",
@@ -119,15 +128,16 @@ describe("evaluate on the sample corpus", () => {
       "dg-test-skip": "flagged test-weakening",
       "dg-flipped-default": "missed ",
       "hm-request-id": "false-alarm crypto",
-      "hm-sql-exec": "false-alarm capability",
+      "hm-sql-exec": "clear ",
       "hm-rename": "clear ",
     });
     expect(e.byItemClass["flipped-default"]).toEqual({ n: 1, flagged: 0, toPerson: 0 });
-    expect(e.byDangerClass.capability).toEqual({ dangerous: 1, harmless: 1 });
+    expect(e.byDangerClass.capability).toEqual({ dangerous: 1, harmless: 0 });
     const md = summaryMarkdown(e);
     expect(md).toContain("- Catch rate (dangerous flagged): 5 of 6 (83.3%, 95% CI 43.6% to 97.0%)");
     expect(md).toContain("| dg-flipped-default | flipped-default | missed | none | none |");
-    expect(md).toContain("| hm-sql-exec | person | capability:process at src/store.ts:3 |");
+    expect(md).toContain("| hm-request-id | second-opinion | crypto:primitive at src/middleware/request-id.ts:2 |");
+    expect(md).not.toContain("hm-sql-exec");
   });
 
   it("with descriptions as intents a person wrote, the requested capabilities stop counting", () => {

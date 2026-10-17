@@ -43,6 +43,7 @@ import { entryPath, walkOwnsFirst, type CertNow } from "./whyholds.ts";
 import { heldLines } from "./mergehold.ts";
 import { confirmedLine } from "./gateline.ts";
 import { reviewTestsLines } from "./reviewtests.ts";
+import { batchLines, batchMembers, groupBatches } from "./batch.ts";
 import { lifecycleLines, whyLifecycleRows } from "./strip.ts";
 import { recipeWhyRows } from "./recipe.ts";
 
@@ -1401,7 +1402,12 @@ export function formatReview(proposals: Proposal[], intents: Intent[] | undefine
   const byId = new Map((intents ?? []).map((i) => [i.id, i]));
   const out = [`${c.bold(String(proposals.length))} proposal${proposals.length === 1 ? "" : "s"} waiting for a human`];
   let kept = 0;
+  // Escalation batching (batch.ts): one block per batch, its changes listed; their own entries follow only with --diff.
+  const batches = groupBatches(proposals);
+  for (const g of batches) out.push("", ...batchLines(g, byId, c, colony, (at) => ago(at, now)));
+  const folded = opts.diff ? new Set<string>() : batchMembers(batches);
   for (const p of [...proposals].sort((a, b) => a.createdAt - b.createdAt)) {
+    if (folded.has(p.id)) continue;
     const intent = byId.get(p.intentId);
     const view = reviewOf(p);
     out.push("");

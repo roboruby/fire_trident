@@ -200,6 +200,18 @@ export interface Env {
    */
   FT_GOAL_CONFLICT?: string;
   /**
+   * Optional: escalation batching, "on", or a comma-separated list of colony ids; absent or "off" is off. The escalations
+   * the hourly alert budget cannot send back (gate rules P1 to P4, M2, L5, L7, L8) get a budget of their own, the decide
+   * policy's escalationBatchPerHour (60 an hour per colony; decide/batch.ts). Past it, each next one still waits for a
+   * person, and the review queue (and ft review) shows the batchable ones that escalated for the same reason (the same
+   * rule; for P1 the same danger patterns) as one card with their count and list: approve all, reject all, or open each.
+   * Batchable: capability-only danger patterns, M2, L5, L7, L8. Never batched, one card each: auth, secret, governance,
+   * handoff, a repair's test change, a loosened guard, a protected path, P2, P4 and a held merge. An answer for a
+   * batch (POST /api/colonies/:id/review/batches/decide) is the person's decision on each change it lists; a rejection
+   * mints one antibody, from the first change. Off, every escalation is its own card, as before.
+   */
+  FT_ESCALATION_BATCH?: string;
+  /**
    * Optional: quoted acceptance, "on", or a comma-separated list of colony ids; absent or "off" is off. For a change whose
    * intent carries an acceptance list (and was not written by trunk certification or the colony itself), the second
    * opinion answers each line as met, not met or unclear, and each "met" names a file and quotes a line of the diff it

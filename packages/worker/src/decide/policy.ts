@@ -6,6 +6,12 @@ import type { DangerClass } from "./danger.ts";
  * Pure: no I/O.
  */
 
+/**
+ * Escalations an hour that the alert budget cannot send back, per colony, before the next ones are batched
+ * (FT_ESCALATION_BATCH, decide/batch.ts): the default of escalationBatchPerHour.
+ */
+export const ESCALATION_BATCH_PER_HOUR = 60;
+
 /** Detector lifecycle under probation: counted and gating, recorded only, or no longer asked. */
 export type DetectorState = "active" | "advisory" | "off";
 
@@ -39,6 +45,11 @@ export interface DecidePolicy {
   alertsPerHour: number;
   /** Escalations at or above this risk (0 none, 1 low, 2 medium, 3 high) still reach humans when the budget is spent. */
   budgetRiskFloor: number;
+  /**
+   * Escalation batching (FT_ESCALATION_BATCH, decide/batch.ts): escalations per rolling hour that the alert budget cannot
+   * send back (P1 to P4, M2, L5, L7, L8) before the next ones wait in batches, one review card per batch.
+   */
+  escalationBatchPerHour: number;
   /** Landings approved by a higher layer in a region before the reflex may land there alone. */
   autonomyAfter: number;
   /** Detector probation: not useful at least `advisory` of the time → advisory; more than `off` → off; after `minFires` fires. */
@@ -98,6 +109,7 @@ export const DEFAULT_POLICY: DecidePolicy = {
   needsHuman: 0.5,
   alertsPerHour: 30,
   budgetRiskFloor: 2,
+  escalationBatchPerHour: ESCALATION_BATCH_PER_HOUR,
   autonomyAfter: 3,
   probation: { advisory: 0.1, off: 0.25, minFires: 5 },
   maxAntibodies: 60,
@@ -233,6 +245,7 @@ export function mergePolicy(base: DecidePolicy, patch: unknown): DecidePolicy {
     needsHuman: num(p.needsHuman, 0.01, 1, base.needsHuman),
     alertsPerHour: Math.floor(num(p.alertsPerHour, 0, 10_000, base.alertsPerHour)),
     budgetRiskFloor: num(p.budgetRiskFloor, 0, 3, base.budgetRiskFloor),
+    escalationBatchPerHour: Math.floor(num(p.escalationBatchPerHour, 1, 10_000, base.escalationBatchPerHour)),
     autonomyAfter: Math.floor(num(p.autonomyAfter, 1, 1_000, base.autonomyAfter)),
     probation: {
       advisory: num(prob.advisory, 0, 1, base.probation.advisory),

@@ -34,6 +34,7 @@ import { certifyRoutes } from "./certify.ts";
 import { guideRoutes } from "./guide.ts";
 import { megafileRoutes } from "./megafile.ts";
 import { reviewTestsRoutes } from "./reviewtests.ts";
+import { reviewBatchRoutes } from "./batch.ts";
 import { landingRoutes, verifyLanding } from "./landing.ts";
 import { previewRoutes } from "./preview.ts";
 import { impactRoutes } from "./impact.ts";
@@ -216,6 +217,7 @@ async function requireColony(env: Env, colonyId: Id): Promise<void> {
  *   GET    /colonies/:id/preview/:commit/*  a trunk file at a landing's commit, sandboxed (public colonies only, api/preview.ts)
  *   GET    /colonies/:id/review             review queue
  *   POST   /colonies/:id/review/:pid        approve | reject | return
+ *   POST   /colonies/:id/review/batches/decide  approve or reject one batch of escalations (FT_ESCALATION_BATCH; api/batch.ts)
  *   POST   /colonies/:id/proposals/:pid/tests  run the colony's tests on an escalated change again (api/reviewtests.ts)
  *   POST   /colonies/:id/swarm              spawn in-platform agents
  *   POST   /colonies/:id/swarm/stop         stop every running in-platform agent
@@ -605,6 +607,7 @@ export function createApi(deps: ApiDeps): Hono<ApiEnv> {
   guideRoutes(app, requireAdmin, isAdminRequest); // Field guide: lessons agents left, and a person's approval or rejection (api/guide.ts)
   megafileRoutes(app, requireAdmin); // Megafile alarm: held files, a person's hold or release (api/megafile.ts)
   reviewTestsRoutes(app, requireAdmin); // Tests before approval: run an escalated change's tests again (api/reviewtests.ts)
+  reviewBatchRoutes(app, requireAdmin); // Escalation batching: approve or reject one batch of the review queue (FT_ESCALATION_BATCH; api/batch.ts)
   landingRoutes(app); // One landing's change to a file, for public colonies (api/landing.ts)
   previewRoutes(app); // A trunk file at a landing's commit, sandboxed, for public colonies (api/preview.ts)
   impactRoutes(app); // Impact: what a change to a file reaches through imports, and who works on those files now (api/impact.ts)

@@ -1674,6 +1674,50 @@ a.signed-by:hover {
   color: var(--text-2);
 }
 
+/* Escalation batching (components/ReviewBatch.tsx): the changes that escalated for one reason past the budget, one card. */
+.card-batch {
+  border-color: rgba(243, 128, 32, 0.45);
+}
+
+.pill-batch {
+  background: var(--line-2);
+  color: var(--text-2);
+}
+
+.batch-list {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0;
+  padding: 0;
+  list-style: none;
+}
+
+.batch-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 2px 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.batch-id {
+  color: var(--text-3);
+}
+
+.batch-title {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.batch-by,
+.batch-line {
+  grid-column: 2;
+  color: var(--text-3);
+  overflow-wrap: anywhere;
+}
+
 /* Tests before approval (components/ReviewTests.tsx): the colony's tests on an escalated change lead its card. */
 .rtests {
   margin: 10px 0;
