@@ -18,7 +18,7 @@ git fetch origin refs/notes/firetrident:refs/notes/firetrident
 git log --notes=firetrident -1
 curl -fsSL -o ../verify_note.mjs \
   https://raw.githubusercontent.com/roboruby/fire_trident/main/scripts/verify_note.mjs
-node ../verify_note.mjs HEAD   # prints intact
+node ../verify_note.mjs HEAD   # prints intact, then who is answerable for the landing
 ```
 
 Since 2026-10-14 the trunk writer also signs each commit it builds, and publishes the key: on `signed-notes`, the same script with `--keys` names the signer.
