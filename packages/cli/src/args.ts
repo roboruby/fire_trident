@@ -6,6 +6,7 @@ import { isConnectColony } from "./connect.ts";
 import { parseSilentTtl } from "./closure.ts";
 import type { HookCommand } from "./hook.ts";
 import { RECIPE_OPTIONS, RULE_RECIPE_USAGE, parseRecipeCommand, parseRuleRecipe, type RecipeCommand, type RuleRecipe } from "./recipe.ts";
+import { CENSUS_OPTIONS, parseCensusCommand, type CensusCommand } from "./census.ts";
 
 /** Event types `ft watch --only` accepts. */
 export const EVENT_TYPES: ReadonlyArray<ColonyEvent["t"]> = [
@@ -50,6 +51,8 @@ export type Command =
   | { name: "impact"; colony: string; paths: string[]; depth?: number }
   | { name: "verify"; colony: string; limit?: number }
   | CloneVerify
+  // Who wrote a repository, read offline from any git clone (census.ts).
+  | CensusCommand
   | { name: "review-list"; colony: string; diff: boolean }
   | { name: "review-decide"; colony: string; proposalId: string; decision: ReviewDecision; reason: string; by?: string }
   // Tests before approval: run the colony's tests on an escalated change again.
@@ -146,6 +149,7 @@ const COMMAND_OPTIONS: Record<string, Record<string, OptionSpec>> = {
   why: {},
   impact: { depth: { type: "string" } },
   verify: { limit: { type: "string" }, ...CLONE_OPTIONS },
+  census: CENSUS_OPTIONS,
   review: { reason: { type: "string" }, by: { type: "string" }, diff: { type: "boolean" }, retest: { type: "string" } },
   revert: { reason: { type: "string" }, by: { type: "string" }, "no-redo": { type: "boolean" } },
   watch: { only: { type: "string", multiple: true } },
@@ -383,6 +387,11 @@ function build(word: string, v: Record<string, unknown>, p: string[]): Command {
       const cmd: Command = { name: "verify", colony: colonyArg(p[0], usage) };
       if (str(v.limit) !== undefined) cmd.limit = positiveInt(str(v.limit) ?? "", "--limit", 200);
       return cmd;
+    }
+    case "census": {
+      // Who wrote a repository, offline (census.ts): agents, bots and people, with how sure each count is.
+      const cmd = parseCensusCommand(v, p);
+      return typeof cmd === "string" ? fail(cmd) : cmd;
     }
     case "review": {
       const usage = "ft review <colony> [--diff] | ft review <colony> <proposalId> approve|reject|return --reason <text> | ft review <colony> --retest <proposalId>";
@@ -872,6 +881,7 @@ Commands
   impact <colony> <path>...        What a change to a file reaches, and who works on it now
   verify <colony>                  Check the newest lineage notes on git against their commits
   verify --all                     Check every landing of a git clone with stock git, no server
+  census [<dir>]                   Who wrote a repository: agents, bots and people, read offline
   review <colony> [--diff]         List proposals escalated to a human, code first
   review <colony> <id> <decision>  Approve, reject, or return a proposal
   review <colony> --retest <id>    Run the colony's tests on an escalated change again
@@ -1085,6 +1095,39 @@ Examples
   ft verify web --limit 50
   ft verify --all --keys https://firetrident.com/.well-known/firetrident-keys.json
   ft verify --tamper --colony <root sha from ft status>
+`,
+  census: `
+ft census [<dir>] [--since <date>] [--json]
+
+Count who wrote a repository, offline, in any git clone (not only a colony's).
+Every commit reachable from HEAD goes to a coding agent, a bot, or people,
+with how sure the count is:
+
+  sealed     a FireTrident landing whose lineage note (refs/notes/firetrident)
+             hashes to its commit's FT-Note trailer and names every file the
+             commit changed: each file goes to the agent and model it records
+  claimed    the commit's author or committer is a known agent, or a trailer at
+             the end of its message names one (Co-authored-by, FT-Agent); a
+             bot counts only as the author. Mentions in prose or in code
+             fences never count
+  inferred   the commit came in through a merge of a branch named the way an
+             agent tool names its branches
+
+Lines added come from git log --numstat, by each commit's attribution. Lines
+alive come from git blame at HEAD over the files agents and bots touched, at
+most 2,000 files and 60 s; the output says when a cap stopped it. The tables
+total commits, lines added and lines alive by owner (the tool, and the agent
+within it) and by model (where a note or a trailer names one), with commits
+by confidence. The signatures it knows are one table in its source (census.ts).
+
+  --since <date>   Count only commits made since this date (a bare date such
+                   as 2025-01-01 is midnight UTC)
+  --json           The whole census as one JSON object
+
+Examples
+  ft census
+  ft census ../hono --since 2025-01-01
+  ft census --json > census.json
 `,
   review: `
 ft review <colony> [--diff]

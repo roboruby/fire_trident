@@ -63,6 +63,7 @@ import { autonomyLine, formatImmune } from "./immune.ts";
 import { decidesLines, decidesRequest } from "./gateline.ts";
 import { signatureFailed } from "./signatures.ts";
 import { checkClone, colorLines, keysReader, nodeGit, rootRow, type CloneVerify } from "./clonecheck.ts";
+import { runCensus } from "./censusgit.ts";
 import { firstLandings, readRows, testsRequest } from "./tests.ts";
 import type { IntentBody, SpecPolicy } from "./spec.ts";
 import type { Certification, GuideLesson, Intent, Landing, LandingTests, LineageNote, Proposal, Rule } from "@fire_trident/core";
@@ -238,6 +239,8 @@ async function execute(cmd: Command, ctx: Ctx): Promise<number> {
   if (cmd.name === "revert") return revert(cmd, ctx);
   if (cmd.name === "policy") return policy(cmd, ctx);
   if (cmd.name === "verify-clone") return verifyClone(cmd, ctx);
+  // Who wrote a repository (census.ts): stock git in a clone, offline, no server.
+  if (cmd.name === "census") return runCensus(cmd, { json: ctx.flags.json, c: ctx.c, stdout: ctx.io.stdout, stderr: ctx.io.stderr, ...(ctx.io.progress ? { progress: ctx.io.progress } : {}) });
   // Connect your agent (core/connect.ts): built from the server URL, nothing sent.
   if (cmd.name === "connect") return connect(cmd, ctx);
   const req = planRequest(cmd, ctx.by);
