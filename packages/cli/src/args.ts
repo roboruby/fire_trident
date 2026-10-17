@@ -22,6 +22,8 @@ export const EVENT_TYPES: ReadonlyArray<ColonyEvent["t"]> = [
   "stuck",
   "status",
   "certify",
+  "paused",
+  "resumed",
 ];
 
 /** What a human can do with an escalated proposal. */
@@ -65,7 +67,10 @@ export type Command =
   | { name: "escalation"; colony: string; intentId: string; decision: EscalationDecision; note: string; title?: string; why?: string; footprint?: string[]; by?: string }
   | { name: "guide"; colony: string }
   | { name: "guide-decide"; colony: string; lessonId: string; action: "approve" | "reject"; reason?: string; by?: string }
-  | { name: "megafile"; colony: string; path?: string; release: boolean; by?: string };
+  | { name: "megafile"; colony: string; path?: string; release: boolean; by?: string }
+  // The pause switch: one colony's agents, or (no colony) every agent on the server.
+  | { name: "pause"; colony?: string; reason: string; by?: string }
+  | { name: "resume"; colony?: string; by?: string; reason?: string };
 
 /** Options every command accepts. */
 export interface GlobalFlags {
@@ -116,6 +121,8 @@ const COMMAND_OPTIONS: Record<string, Record<string, OptionSpec>> = {
   escalation: { note: { type: "string" }, title: { type: "string" }, why: { type: "string" }, footprint: { type: "string", multiple: true }, by: { type: "string" } },
   guide: { reason: { type: "string" }, by: { type: "string" } },
   megafile: { release: { type: "boolean" }, by: { type: "string" } },
+  pause: { deployment: { type: "boolean" }, reason: { type: "string" }, by: { type: "string" } },
+  resume: { deployment: { type: "boolean" }, reason: { type: "string" }, by: { type: "string" } },
   swarm: { agents: { type: "string" }, model: { type: "string" }, kind: { type: "string" } },
   why: {},
   impact: { depth: { type: "string" } },
@@ -521,9 +528,27 @@ function build(word: string, v: Record<string, unknown>, p: string[]): Command {
       if (by) cmd.by = by;
       return cmd;
     }
+    case "pause":
+    case "resume":
+      return buildPause(word, v, p);
     default:
       return fail(`unknown command "${word}"`);
   }
+}
+
+/** `ft pause <colony> --reason <text>`, `ft pause --deployment --reason <text>`, and `ft resume` for either. */
+function buildPause(word: "pause" | "resume", v: Record<string, unknown>, p: string[]): Command {
+  const usage = word === "pause" ? "ft pause <colony> --reason <text> [--by <name>] | ft pause --deployment --reason <text>" : "ft resume <colony> [--by <name>] | ft resume --deployment";
+  const deployment = v.deployment === true;
+  noExtras(p, deployment ? 0 : 1, usage);
+  const colony = deployment ? undefined : colonyArg(p[0], `${usage} (or --deployment for every colony)`);
+  const by = str(v.by)?.trim();
+  const reason = str(v.reason)?.trim();
+  if (word === "pause") {
+    if (!reason) fail(`missing --reason: agents and people see it while they wait. Usage: ${usage}`);
+    return { name: "pause", ...(colony ? { colony } : {}), reason, ...(by ? { by } : {}) };
+  }
+  return { name: "resume", ...(colony ? { colony } : {}), ...(by ? { by } : {}), ...(reason ? { reason } : {}) };
 }
 
 /** `ft guide <colony>`, or a person's decision on one lesson: `ft guide <colony> approve|reject <lessonId>`. */
@@ -732,6 +757,8 @@ Commands
   escalation <colony> <intent>     Answer a report: amend, withdraw or dismiss
   guide <colony>                   Lessons agents left (the field guide); approve or reject one
   megafile <colony> [path]         Files held for their split; hold or release one
+  pause <colony> --reason <text>   Pause every agent of a colony (--deployment: of the server)
+  resume <colony>                  Let a paused colony's agents work again (--deployment too)
   swarm <colony> --agents <n>      Spawn in-platform agents
   agents <colony>                  List agents: state, intent, step, what each says it is doing
   stop <colony> <agentId>|--all    Stop one agent, or every in-platform agent
@@ -1031,6 +1058,34 @@ Examples
   ft guide web
   ft guide web approve les_42
   ft guide web reject les_42 --reason "the router moved to src/routes"
+`,
+  pause: `
+ft pause <colony> --reason <text> [--by <name>]
+ft pause --deployment --reason <text> [--by <name>]
+
+Pause every agent of a colony, or with --deployment of every colony on the
+server, for a reason people and agents see. Until a person resumes, agents
+cannot take work, propose, declare, report or start, and each refused write
+says who paused and why. Changes already in a lane wait there and nothing an
+agent wrote lands. Reads still work, and so does everything a person does:
+review, amend, withdraw, revert, and resume. ft status shows the pause.
+
+Examples
+  ft pause web --reason "demo reset at 14:00"
+  ft pause --deployment --reason "spend check"
+`,
+  resume: `
+ft resume <colony> [--by <name>] [--reason <text>]
+ft resume --deployment [--by <name>]
+
+Let a paused colony's agents work again (or with --deployment, every colony's):
+agents take and propose again, and the lanes land what waited in them. A colony
+paused on its own stays paused when the deployment resumes, and the other way
+round; the answer names any pause still in force.
+
+Examples
+  ft resume web
+  ft resume --deployment
 `,
   megafile: `
 ft megafile <colony>

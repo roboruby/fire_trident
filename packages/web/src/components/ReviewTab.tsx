@@ -1,7 +1,7 @@
 import type { DecisionLayer, Proposal } from "@fire_trident/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { HttpError, readReviewer, readToken, type Backend, type ReviewDecision } from "../api.ts";
-import { fmtInt, fmtMs, fmtPct, plural, shortId, timeAgo } from "../format.ts";
+import { fmtInt, fmtPct, plural, shortId, timeAgo } from "../format.ts";
 import { reviewOf } from "../review.ts";
 import type { ColonyStore, DecisionView } from "../store.ts";
 import { LAYER_COLOR } from "../theme.ts";
@@ -12,8 +12,11 @@ import { ReviewChange } from "./ReviewChange.tsx";
 import { TokenForm } from "./TokenForm.tsx";
 import { VaccineMeter } from "./VaccineMeter.tsx";
 import { MovedByList } from "./MovedBy.tsx";
-import { cleanMoved } from "../moved.ts";
+import { MergeHold } from "./MergeHold.tsx";
+import { mergeHoldOf } from "../mergehold.ts";
+import { cleanContested, cleanMoved } from "../moved.ts";
 import { AutonomyStrip } from "./AutonomyStrip.tsx";
+import { EvidenceChips } from "./SaidBy.tsx";
 
 const NONE: readonly string[] = [];
 
@@ -220,16 +223,18 @@ export function ReviewTab({ store, backend, director = false }: { store: ColonyS
           const intent = store.intents.get(p.intentId);
           const residual = p.evidence?.residual ?? [];
           const declared = p.declared?.footprint ?? [];
-          const checks = p.evidence?.checks ?? [];
           const paths = [...residual, ...declared];
           const reason = notes[p.id] ?? "";
           const hasReason = reason.trim().length > 0;
           const path = decisionPath(p, store);
           const antibodies = matchedAntibodies(p);
           const view = views.get(p.id) ?? null;
+          const held = mergeHoldOf(p);
           const winner = typeof p.supersededBy === "string" && p.supersededBy ? p.supersededBy : store.superseded.get(p.id);
           // What beat the intent's last change (the queue's lastReturn, else a return this page saw): the landings this one was redone on.
           const moved = cleanMoved((p as Proposal & { lastReturn?: { movedBy?: unknown } }).lastReturn?.movedBy) ?? store.returns.get(p.intentId)?.movedBy ?? null;
+          // Return hunks (FT_RETURN_HUNKS): the last change's contested regions, when the queue quoted them.
+          const contested = cleanContested((p as Proposal & { lastReturn?: { contested?: unknown } }).lastReturn?.contested) ?? null;
           return (
             <article key={p.id} className="card" onMouseEnter={() => store.setHighlight(paths)} onMouseLeave={() => store.setHighlight([])}>
               <header className="card-head">
@@ -251,7 +256,9 @@ export function ReviewTab({ store, backend, director = false }: { store: ColonyS
               <div className="card-meta">
                 by <span className="mono">{store.agentName(p.agentId)}</span> · wrote {fmtInt(p.writeSet?.length ?? 0)} · read {fmtInt(p.readSet?.length ?? 0)}
               </div>
-              {moved ? <MovedByList moved={moved} agentName={(id) => store.agentName(id)} /> : null}
+              {moved || contested ? <MovedByList moved={moved ?? []} contested={contested ?? []} agentName={(id) => store.agentName(id)} /> : null}
+              {/* Merge locks: the merge a person is asked to approve, read before the change itself. */}
+              {held ? <MergeHold files={held} /> : null}
               {view ? (
                 <>
                   <ReviewChange view={view} declared={p.declared?.footprint ?? NONE} />
@@ -285,21 +292,8 @@ export function ReviewTab({ store, backend, director = false }: { store: ColonyS
               )}
               <div className="k card-k">Decision path</div>
               <DecisionPath path={path} />
-              {checks.length ? (
-                <div className="checks">
-                  {checks.map((c, i) => (
-                    <span key={`${c.name}-${i}`} className={`check ${c.ok ? "check-ok" : "check-bad"}`} title={c.detail}>
-                      {c.ok ? "✓" : "✕"} {c.name} <span className="check-ms">{fmtMs(c.ms)}</span>
-                    </span>
-                  ))}
-                </div>
-              ) : null}
-              {p.evidence?.notVerified ? (
-                <div className="nv">
-                  <span className="nv-k">Not verified</span>
-                  <span className="nv-text">{p.evidence.notVerified}</span>
-                </div>
-              ) : null}
+              {/* Who said each check and the statement of what was not verified (core/answerable.ts): FireTrident's first, the agent's quoted. */}
+              <EvidenceChips evidence={p.evidence} />
               {antibodies.length ? (
                 <div className="abs">
                   <div className="k">Matched antibodies</div>

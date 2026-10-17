@@ -1,6 +1,7 @@
 import type { Id } from "@fire_trident/core";
 import { revalidationEnabled } from "@fire_trident/core";
-import { JUDGE_ATTEMPTS, JUDGE_DEADLINE_MS, JUDGE_TIMEOUT_MS, askJudge, judgeMessages, judgeView } from "./contest.ts";
+import type { Hedge, HedgeRecord } from "../colony/hedge.ts";
+import { JUDGE_ATTEMPTS, JUDGE_DEADLINE_MS, JUDGE_TIMEOUT_MS, askJudge, judgeHedge, judgeMessages, judgeView, withHedged } from "./contest.ts";
 import type { JudgeIntent, PairJudge, PairVerdict } from "./contest.ts";
 import type { CallLimiter } from "./limiter.ts";
 import { modelFamily } from "./policy.ts";
@@ -121,6 +122,8 @@ export interface JuryOptions {
   now?: () => number;
   deadlineMs?: number;
   timeoutMs?: number;
+  /** Hedged calls (FT_HEDGE, colony/hedge.ts): each member's copy goes to that member's model; absent or null, none. */
+  hedge?: Hedge | null;
 }
 
 /**
@@ -133,12 +136,14 @@ export function pairJury(o: JuryOptions): PairJudge {
   const now = o.now ?? Date.now;
   const deadlineMs = o.deadlineMs ?? JUDGE_DEADLINE_MS;
   const timeoutMs = o.timeoutMs ?? JUDGE_TIMEOUT_MS;
+  const hedge = judgeHedge(o.hedge, o.limiter);
   return async (x, y) => {
     const vx = judgeView(x.diffs);
     const vy = judgeView(y.diffs);
     if (!vx.complete || !vy.complete) return { better: "tie", why: "too large or unreadable for the jury to see whole", calls: 0 };
     if (o.models.length === 0) return { better: "tie", why: "no jury model configured", calls: 0 };
     const deadline = now() + deadlineMs;
+    const copies: HedgeRecord[] = [];
     const sit = async (model: string): Promise<JuryMember> => {
       let calls = 0;
       const ask = async (a: string, b: string): Promise<Answer> => {
@@ -150,7 +155,9 @@ export function pairJury(o: JuryOptions): PairJudge {
             if (left <= 0) throw new Error(`did not answer within ${Math.round(deadlineMs / 1000)} s`);
             calls++;
             o.onCall?.(model);
-            return await askJudge(o.ai, model, judgeMessages(o.intent, a, b), Math.min(timeoutMs, left));
+            const answer = await askJudge(o.ai, model, judgeMessages(o.intent, a, b), Math.min(timeoutMs, left), hedge);
+            if (answer.hedged) copies.push(...answer.hedged);
+            return answer;
           } catch (err) {
             if (!isThrottled(err) || attempt + 1 >= JUDGE_ATTEMPTS) throw err;
             o.limiter.cooldown(model, 2_000 * 2 ** attempt);
@@ -171,7 +178,7 @@ export function pairJury(o: JuryOptions): PairJudge {
     const members = await Promise.all(o.models.map((model) => sit(model)));
     const verdict = tally(members, x.proposalId, y.proposalId);
     o.onVerdict?.(members, verdict.better);
-    return { ...verdict, calls: members.reduce((n, m) => n + m.calls, 0), jury: members };
+    return { ...withHedged(verdict, copies), calls: members.reduce((n, m) => n + m.calls, 0), jury: members };
   };
 }
 

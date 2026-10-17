@@ -166,12 +166,16 @@ async function main(): Promise<void> {
     git("fetch", "--quiet", "origin", "refs/notes/firetrident:refs/notes/firetrident");
     const lines = git("log", "-1", "--format=%B", sha).trimEnd().split("\n");
     check(`the clone's commit ${sha.slice(0, 7)} ends with FT-Note-Signature (key ${keyId}) and then FT-Note`, /^FT-Note: sha256:[0-9a-f]{64}$/.test(lines.at(-1) ?? "") && new RegExp(`^FT-Note-Signature: ed25519 ${keyId} [A-Za-z0-9_-]{86}$`).test(lines.at(-2) ?? ""));
-    const verifyNote = (commit: string, keys: boolean): { code: number | null; out: string } => {
+    // The verdict is the first line; a note that checks out gets a second, "answerable: <who> (<why>)".
+    const verifyNote = (commit: string, keys: boolean): { code: number | null; out: string; answerable: string } => {
       const r = spawnSync(process.execPath, [VERIFY_NOTE, commit, ...(keys ? ["--keys", KEYS_URL] : [])], { cwd: dir, encoding: "utf8" });
-      return { code: r.status, out: (r.stdout ?? "").trim() };
+      const [out = "", answerable = ""] = (r.stdout ?? "").trim().split("\n");
+      return { code: r.status, out, answerable };
     };
     let r = verifyNote(sha, false);
     check(`verify_note.mjs ${sha.slice(0, 7)} prints intact, as before (${r.out}, exit ${r.code})`, r.out === "intact" && r.code === 0);
+    // The check's intent was declared by its agent over MCP and landed with review off: no person answers for it.
+    check(`and says who answers for it (${r.answerable})`, /^answerable: none \(agent \S+ declared the intent and it landed with no review recorded\)$/.test(r.answerable));
     r = verifyNote(sha, true);
     check(`verify_note.mjs ${sha.slice(0, 7)} --keys ${KEYS_URL} prints "intact, signed by ${keyId}" (${r.out}, exit ${r.code})`, r.out === `intact, signed by ${keyId}` && r.code === 0);
 

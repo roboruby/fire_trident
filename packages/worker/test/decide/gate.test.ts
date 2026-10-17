@@ -15,6 +15,8 @@ function input(over: Partial<GateInput> = {}): GateInput {
     reflex: CLEAN,
     autonomy: false,
     whyBy: "person",
+    // Computed, and the change takes nothing away (decide/destructive.ts; destructive-gate.test.ts covers the rest).
+    destructive: { hits: [], unknown: [] },
     alerts: { used: 0, max: 30 },
     detectors: {},
     policy: DEFAULT_POLICY,

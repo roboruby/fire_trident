@@ -5,6 +5,7 @@ import { modelClient } from "../agents/llm.ts";
 import type { ModelClient } from "../agents/loop.ts";
 import { extractUsage } from "../agents/prompt.ts";
 import type { AiRunner } from "../decide/reflex.ts";
+import type { Hedge } from "./hedge.ts";
 import type { SqlRunner } from "./inline.ts";
 import { agentIntentUsage, migrateIntentSpend, storeAgentIntents } from "./intentspend.ts";
 
@@ -88,7 +89,11 @@ export function meteredAi(ai: AiRunner, prefix: SpendPrefix, bump: (name: string
   };
 }
 
-/** A model client with each reply's tokens counted under `prefix`, per model (the one that answered). The reply passes through untouched. */
+/**
+ * A model client with each reply's tokens counted under `prefix`, per model (the one that answered). The reply passes
+ * through untouched. A hedged call's losing copy (FT_HEDGE, colony/hedge.ts) counts too, under its own model, once it
+ * settles with usage.
+ */
 export function meteredClient(client: ModelClient, prefix: SpendPrefix, bump: (name: string, delta: number) => void): ModelClient {
   return {
     complete: async (req) => {
@@ -98,14 +103,50 @@ export function meteredClient(client: ModelClient, prefix: SpendPrefix, bump: (n
       } catch {
         // Counting never fails a call.
       }
+      if (reply.late) {
+        void reply.late.then(
+          (l) => {
+            try {
+              if (l) for (const [name, delta] of spendCounters(prefix, l.model, l.usage)) bump(name, delta);
+            } catch {
+              // Counting never fails a call.
+            }
+          },
+          () => undefined,
+        );
+      }
       return reply;
     },
   };
 }
 
-/** The conflict resolver's model client: the one agents use (agents/llm.ts), with its calls counted under `resolver`. */
-export function resolverClient(env: Parameters<typeof modelClient>[0], bump: (name: string, delta: number) => void): ModelClient {
-  return meteredClient(modelClient(env), "resolver", bump);
+/** The conflict resolver's model client: the one agents use (agents/llm.ts), with its calls counted under `resolver`; `hedge`: FT_HEDGE. */
+export function resolverClient(env: Parameters<typeof modelClient>[0], bump: (name: string, delta: number) => void, hedge?: Hedge | null): ModelClient {
+  return meteredClient(modelClient(env, hedge), "resolver", bump);
+}
+
+/**
+ * A hedged decide call's losing copy that answered anyway (FT_HEDGE, colony/hedge.ts), counted where the decide stage
+ * counts its winner's tokens: Clef's (`decide.clef`: input tokens) or the second opinion's (`decide.llm`), in the
+ * aggregate counters, per model, and for the proposal's intent (spend per intent). A result with no usage counts nothing.
+ */
+export function lateDecideSpend(
+  host: { bump(name: string, delta: number): void; countIntentCall?(intentId: Id, layer: "review" | "judge", model: string, usage: { input?: number; output?: number } | null): void },
+  prefix: "decide.clef" | "decide.llm",
+  intentId: Id,
+): (model: string, result: unknown) => void {
+  return (model, result) => {
+    const u = extractUsage(result);
+    if (!u) return;
+    const usage = prefix === "decide.clef" ? { input: u.input } : { input: u.input, output: u.output };
+    if (prefix === "decide.clef") host.bump("decide.clef.tokens", count(u.input));
+    else {
+      host.bump("decide.llm.tokensIn", count(u.input));
+      host.bump("decide.llm.tokensOut", count(u.output));
+    }
+    for (const [name, delta] of spendCounters(prefix, model, usage)) host.bump(name, delta);
+    host.countIntentCall?.(intentId, "review", model, usage);
+  };
 }
 
 /** A model id as priced: "default" and "bulk" are the models they name on this server; any other id as given. */

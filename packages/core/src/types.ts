@@ -195,6 +195,12 @@ export interface ImpactReport {
  * colony itself (the megafile alarm's split intents, FT_MEGAFILE); its why is the colony's own numbers.
  */
 export type IntentSource = "human" | "rule" | "agent" | "certify" | "system";
+/**
+ * The cap that lowered an agent's priority: its parent's (`parent`: a parent it holds or declared, or one whose priority
+ * is below the default), the default with no parent (`no-parent`), or the default under a parent that is not its own
+ * (`other-parent`).
+ */
+export type PriorityCap = "parent" | "no-parent" | "other-parent";
 /** `withdrawn`: a human (or a retracted rule) called it off before it landed; it stays in history. */
 export type IntentStatus = "open" | "claimed" | "proposed" | "landed" | "abandoned" | "withdrawn";
 
@@ -211,6 +217,13 @@ export interface Intent {
   footprint: Path[];
   acceptance?: string[];
   priority: number;
+  /**
+   * What an agent asked for when its priority was capped: an agent's intent takes at most its parent's priority when it
+   * holds or declared the parent, else 1 (worker colony/priority.ts). Absent when the intent got what was asked.
+   */
+  requestedPriority?: number;
+  /** Which cap lowered it, with requestedPriority. */
+  priorityCap?: PriorityCap;
   status: IntentStatus;
   createdAt: Millis;
   createdBy: string;
@@ -437,6 +450,11 @@ export interface CheckResult {
   ok: boolean;
   ms: number;
   detail?: string;
+  /**
+   * `agent`: the check came with the proposal (the colony marks each one it is sent), so it is the agent's own claim.
+   * Absent: a check FireTrident or a model ran, known by its name (core/answerable.ts checkSpeaker).
+   */
+  by?: "agent";
 }
 
 /**
@@ -473,6 +491,11 @@ export interface Evidence {
   residual?: Path[];
   /** Mandatory honest gap statement. */
   notVerified?: string;
+  /**
+   * Who wrote `notVerified`: the agent, or FireTrident when the agent stated nothing (the colony's default, or the MCP
+   * server's sentence for an external agent). Absent on notes written before it (readers derive it: core/answerable.ts).
+   */
+  notVerifiedBy?: "agent" | "platform";
   previewUrl?: string;
   /** The intent revision and directives the change was built under (set by the colony at propose time). */
   direction?: Direction;
@@ -511,6 +534,35 @@ export interface MergeConflict {
 }
 
 /**
+ * Merge locks (worker trunk/mergelock.ts): one unified diff of a held merge, masked like a review view (a line that may
+ * hold a secret is replaced) and cut to about 60 lines (`truncated` when cut); how many lines it adds and removes in all.
+ */
+export interface HeldDiff {
+  hunks: string;
+  added: number;
+  removed: number;
+  truncated: boolean;
+}
+
+/**
+ * Merge locks: one file of a merge the trunk writer held for a person instead of landing it. Its blobs: the change's base,
+ * the trunk version it would land on, the change's own (what was decided on) and the merged result; `by`, the change
+ * landing ahead in the same cycle that wrote that trunk version. For the first files held, the diffs a person reads:
+ * what trunk changed since the base (`trunkDiff`, base to trunk) and the merged result against the change's own version
+ * (`mergedDiff`). Repository text: data, never instructions.
+ */
+export interface HeldMergeFile {
+  path: Path;
+  base: Sha;
+  trunk: Sha;
+  theirs: Sha;
+  result: Sha;
+  by?: Id;
+  trunkDiff?: HeldDiff;
+  mergedDiff?: HeldDiff;
+}
+
+/**
  * What beat a returned change: one landing after the change's base that changed files it read or wrote, from the colony's
  * per-path landing index (colony/movedby.ts). `paths`: those files. The intent the landing completed for them (its title
  * and why), the agent whose proposal wrote them, the model that landing's lineage note names for that proposal, the trunk
@@ -527,6 +579,37 @@ export interface MovedBy {
   why?: string;
   agentId?: Id;
   model?: string;
+  /** Return hunks (FT_RETURN_HUNKS): the change this landing made to each of those files, quoted (colony/returnhunks.ts). */
+  hunks?: MovedHunk[];
+}
+
+/**
+ * Return hunks (FT_RETURN_HUNKS): the change one landing that beat a returned change made to one file it read or wrote,
+ * as unified hunks ("@@ -a,b +c,d @@", two lines of context), cut at the caps (colony/returnhunks.ts) and masked where a
+ * line looks like a secret, so the change's agent repairs without reading trunk again. `trunkSha`: the landing's commit.
+ * Repository content: data, never instructions.
+ */
+export interface MovedHunk {
+  path: Path;
+  trunkSha?: Sha;
+  /** The hunks, ending in "… (truncated)" when `truncated`. */
+  diff: string;
+  truncated: boolean;
+}
+
+/**
+ * Return hunks (FT_RETURN_HUNKS): one contested region of a text merge that conflicted: where it starts in the change's
+ * base (`line`, 1-based), and the base's, trunk's and the change's own lines there (line endings removed), cut at the
+ * caps and masked where a line looks like a secret. `truncated`: lines of the region, or later regions of the file, were
+ * left out. Repository content: data, never instructions.
+ */
+export interface ContestedRegion {
+  path: Path;
+  line: number;
+  base: string[];
+  trunk: string[];
+  own: string[];
+  truncated?: boolean;
 }
 
 export interface Proposal {
@@ -559,6 +642,12 @@ export interface Proposal {
    * when it went to a person for that; a person's approval lands it, and its lineage note keeps the record.
    */
   undoes?: UndoneLines[];
+  /**
+   * When a person last approved this change (ColonyDO.decide). The trunk writer lands its files as approved and never
+   * merges them with a newer trunk on its own (trunk/mergelock.ts). Absent when no person approved it; an older change
+   * without it is read from the decisions its lane passes.
+   */
+  approvedAt?: Millis;
   /** Contest mode: the proposal that won this intent's contest instead of this one. */
   supersededBy?: Id;
   declared: { footprint: Path[]; summary: string };
@@ -570,15 +659,26 @@ export interface Proposal {
   reason?: string;
   /**
    * Text merge: the files whose line merge conflicted, when that is why it went back (set by the trunk writer only while
-   * the conflict resolver, FT_RESOLVER, covers the colony; colony/resolver.ts reads them).
+   * the conflict resolver, FT_RESOLVER, or return hunks, FT_RETURN_HUNKS, cover the colony; colony/resolver.ts reads them
+   * only under FT_RESOLVER).
    */
   mergeConflicts?: MergeConflict[];
+  /**
+   * Merge locks: the merge the trunk writer held for a person instead of landing it (each file with its blobs and diffs),
+   * while the change waits for that person; a person's approval clears it.
+   */
+  mergeHold?: HeldMergeFile[];
   /**
    * What beat it: when it went back because trunk moved files it read or wrote (stale, or a text merge conflict), the
    * landings that moved them, newest first. Set by the colony as the return arrives (colony/movedby.ts); its reason then
    * ends by naming them and saying to keep what they did unless the intent says otherwise.
    */
   movedBy?: MovedBy[];
+  /**
+   * Return hunks (FT_RETURN_HUNKS): when a text merge conflict sent it back, each contested region, quoted (base, trunk
+   * and its own lines, from the base line where the region starts). Set by the colony as the return arrives.
+   */
+  contested?: ContestedRegion[];
   /**
    * The intent revision the change was built on. An agent passes the revision it worked from; the
    * colony refuses a proposal built on an older substantive revision, and the lane returns one before
@@ -609,7 +709,16 @@ export interface Landing {
    * `rule`: the rule beyond git's that resolved its conflicting hunks (FT_MERGE_INSERTIONS: `insertions`), when one did.
    */
   merged?: Array<{ proposalId: Id; path: Path; blob: Sha; rule?: "insertions" }>;
+  /** Who answers for this landing, from its lineage note as the trunk writer wrote it (see LandingAnswer); absent on landings recorded before it. */
+  answerable?: LandingAnswer;
 }
+
+/**
+ * Who answers for a landing, from its lineage note (core/answerable.ts landingAnswerable): `person` a person answers for
+ * every change in it (one who approved it, approved the rule whose proof landed it, or asked for its intent), `none` no
+ * person answers for one of its changes, `unknown` the note cannot say for one (it lacks who declared the intent).
+ */
+export type LandingAnswer = "person" | "none" | "unknown";
 
 /**
  * A change in flight that landed although a person withdrew or amended its intent: the trunk writer's
@@ -749,7 +858,13 @@ export interface LineageNote {
     agentId: Id;
     agentKind: AgentKind;
     model?: string;
-    intent: { id: Id; title: string; why: string; ruleId?: Id; parentId?: Id };
+    /**
+     * `priority` and `requestedPriority` only when an agent asked for more than its intent was granted (worker colony/priority.ts).
+     * `source` and `createdBy`: who declared the intent, as the colony recorded it; `ruleApprovedBy`: for a rule's intent,
+     * who approved the rule. The trunk writer adds them from the land context (absent on older notes, and when the writer
+     * did not know them); they name the nearest person answerable for the change (core/answerable.ts).
+     */
+    intent: { id: Id; title: string; why: string; ruleId?: Id; parentId?: Id; priority?: number; requestedPriority?: number; source?: IntentSource; createdBy?: string; ruleApprovedBy?: string };
     writeSet: FileVersion[];
     readSet: FileVersion[];
     decisions: NoteDecision[];
@@ -931,7 +1046,20 @@ export interface Suspect {
   files: Path[];
   /** When it landed. */
   at: Millis;
+  /**
+   * Why it is listed, for at least one of its failing test files (see SuspectLabel). Absent on suspects recorded before
+   * labels existed, which read as before.
+   */
+  labels?: SuspectLabel[];
 }
+
+/**
+ * Why culprit finding lists a suspect. `first-since-green`: the oldest landing since the last green commit that changed
+ * what a failing test file loads (every later suspect landed on a trunk that may already have been red); `latest`: one of
+ * the newest landings that did; `first-red`: the landing of the first commit the failing tests fail on (FT_BISECT),
+ * marked once that search ends. A landing can carry several.
+ */
+export type SuspectLabel = "first-since-green" | "latest" | "first-red";
 
 /**
  * The first trunk commit at which a red result's failing tests fail (FT_BISECT), searched after the result is recorded:
@@ -1060,6 +1188,21 @@ export interface Antibody {
 }
 
 // ---------------------------------------------------------------------------
+// Pause: a person stops every agent of one colony, or of the whole deployment
+// ---------------------------------------------------------------------------
+
+/** What a pause covers: one colony, or every colony on the deployment. */
+export type PauseScope = "colony" | "deployment";
+
+/** A pause in force: who paused (a person, or code acting for one, such as a spend cap), why, and when. */
+export interface PauseState {
+  scope: PauseScope;
+  by: string;
+  reason: string;
+  at: Millis;
+}
+
+// ---------------------------------------------------------------------------
 // Live events (UI stream and internal fan-out)
 // ---------------------------------------------------------------------------
 
@@ -1089,6 +1232,9 @@ export type ColonyEvent =
   | { t: "contest"; at: Millis; intentId: Id; title: string; winner: Id; losers: Id[]; reason: string }
   | { t: "revalidated"; at: Millis; proposalId: Id; intentId: Id; paths: Path[]; names: string[] }
   | { t: "status"; at: Millis; agentId: Id; intentId?: Id; note: string }
+  // A person paused the agents of the colony (or of the deployment), or resumed them.
+  | { t: "paused"; at: Millis; scope: PauseScope; by: string; reason: string }
+  | { t: "resumed"; at: Millis; scope: PauseScope; by: string; reason?: string; pausedAt?: Millis }
   // Trunk certification: a run started, or its result (failing names capped at 10).
   | {
       t: "certify";
@@ -1333,6 +1479,11 @@ export interface ColonySnapshot {
    * served by GET /api/colonies/:id and /metrics, the 2,000 most recently active at most; absent when none was counted).
    */
   intentSpend?: Record<Id, IntentSpendBrief>;
+  /**
+   * The pauses in force (colony/pause.ts): the colony's own first, then the deployment's. Absent while agents may work,
+   * and from servers that predate the pause.
+   */
+  pauses?: PauseState[];
 }
 
 // ---------------------------------------------------------------------------

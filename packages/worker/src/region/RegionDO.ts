@@ -20,9 +20,11 @@ import { errorText } from "../colony/errors.ts";
 import { coalesceEvents } from "../colony/events.ts";
 import { isRedirect, splitByDirection } from "../colony/direction.ts";
 import { isProtectStop, splitByProtection } from "../colony/protect.ts";
+import { LANE_PAUSE_RECHECK_MS, laneHold, pausedIn } from "../colony/pause.ts";
 import type { ClearFilter, FieldOps } from "../colony/logic.ts";
 import { settleLane, suspects } from "../trunk/outcome.ts";
 import { textMergeEnabled, type LandResult } from "../trunk/plan.ts";
+import { isMergeHold } from "../trunk/mergelock.ts";
 import {
   accumulates,
   admissionBar,
@@ -485,6 +487,15 @@ export class RegionDO extends DurableObject<Env> {
     await this.ensureAlarm(now, wasEmpty);
   }
 
+  /**
+   * Merge locks (trunk/mergelock.ts): a person approved a change already waiting in this lane, so its copy here carries
+   * the approval (`approvedAt`) to the trunk writer. A change not in the lane is left alone. Returns whether it was there.
+   */
+  async stampApproval(id: Id, at: number): Promise<boolean> {
+    if (typeof id !== "string" || typeof at !== "number" || !Number.isFinite(at)) return false;
+    return this.sql.exec("UPDATE lane SET data = json_set(data, '$.approvedAt', ?) WHERE id = ? RETURNING id", at, id).toArray().length > 0;
+  }
+
   /** Drop proposals from the lane (rejected or returned elsewhere). Returns how many were queued. */
   async dequeue(ids: Id[]): Promise<number> {
     return this.deleteFromLane(ids);
@@ -922,6 +933,11 @@ export class RegionDO extends DurableObject<Env> {
     }
     if (proposals.length === 0) return null;
 
+    // 0. Pause (colony/pause.ts): while a person has paused the colony's agents (or the deployment's), the lane holds.
+    //    It reads nothing, lands nothing and sends nothing back, and asks again shortly; a resume lets it go on.
+    const hold = await laneHold(this.env, colonyId);
+    if (hold !== null) return hold;
+
     // 1. Trunk state: current blobs for every path read or written, and base blobs per distinct base.
     const trunk = this.trunkStub(colonyId);
     const allPaths = [...new Set(proposals.flatMap(proposalPaths))];
@@ -967,6 +983,8 @@ export class RegionDO extends DurableObject<Env> {
             .landContext(valid.map((p) => p.intentId), valid.map((p) => p.agentId), valid.map((p) => p.id))
             .catch(() => undefined)
         : undefined;
+    // A pause that began during this tick holds the lane too, before anything reaches the trunk writer.
+    if (pausedIn(ctx)) return LANE_PAUSE_RECHECK_MS;
     const direction = splitByDirection(valid, ctx?.intents);
     // Protected paths (colony/protect.ts): a change that writes a path protected after a person last approved it goes to a person.
     const guarded = splitByProtection(direction.keep, ctx?.protect, ctx?.decisions);
@@ -998,8 +1016,9 @@ export class RegionDO extends DurableObject<Env> {
     for (const r of settled.returned) {
       remove.add(r.id);
       // Protected paths (colony/protect.ts): one the trunk writer stopped at its protection check waits for a person; no causal event.
-      if (isProtectStop(r.reason)) {
-        updates.push({ id: r.id, patch: { status: "escalated", reason: r.reason } });
+      // So does one the trunk writer held rather than merge with a newer trunk on its own (trunk/mergelock.ts).
+      if (isProtectStop(r.reason) || isMergeHold(r.reason)) {
+        updates.push({ id: r.id, patch: { status: "escalated", reason: r.reason, ...(r.held ? { mergeHold: r.held } : {}) } });
         continue;
       }
       // A text merge conflict travels with its return (FT_RESOLVER: the colony's conflict resolver reads it), and so do

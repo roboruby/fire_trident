@@ -379,6 +379,12 @@ class CoordinationTest < Minitest::Test
     assert_equal [6, 22, 15, 13], [l[:agentTouchedFiles], l[:linesInAgentTouchedFiles], l[:agentWrittenLinesAtHead], l[:attributedLinesAtHead]]
   end
 
+  # The fixture's notes predate the record of who declared each intent: every landing read from a note is unknown.
+  def test_who_answers_for_the_landings_read_from_notes
+    assert_equal({ landings: 5, person: 0, none: 0, unknown: 5, noneShare: 0.0 }, report[:answerable])
+    assert_includes Coordination.markdown(report), "| No person answerable | 0 of 5 landings read from notes (0.000); 0 a person answers for, 5 unknown"
+  end
+
   def test_reads_only_the_proposals_the_notes_do_not_hold
     asked = []
     api = self.class.report.last
@@ -638,6 +644,31 @@ class CoordinationPartsTest < Minitest::Test
     assert_equal "src", Coordination.primary_region(["src/b.ts", "docs/guide.md"], 1)
     assert_equal "docs", Coordination.primary_region(["src/b.ts", "docs/a.md", "docs/b.md"], 1)
     assert_equal ".", Coordination.primary_region([], 1)
+  end
+
+  # Definition 9, the rules of packages/core/src/answerable.ts.
+  def test_who_answers_for_a_change_and_a_landing
+    proof = { "name" => "gate", "ok" => true, "detail" => "D3 innate+proof → land by deterministic at head f (confirmations: innate + deterministic): proven" }
+    model = { "name" => "gate", "ok" => true, "detail" => "L1 innate+llm → land by llm at head f (confirmations: innate + llm): approved" }
+    change = lambda do |intent, decisions: [], checks: []|
+      { "id" => "p", "intent" => { "id" => "i" }.merge(intent), "decisions" => decisions, "evidence" => { "checks" => checks } }
+    end
+    approve = { "layer" => "human", "action" => "approve", "by" => "Matt" }
+    assert_equal "approved", Coordination.change_answer(change.call({ "source" => "agent" }, decisions: [approve]))
+    assert_equal "rule", Coordination.change_answer(change.call({ "source" => "rule", "ruleId" => "rul_1", "ruleApprovedBy" => "Ana" }, checks: [proof]))
+    assert_equal "unknown", Coordination.change_answer(change.call({ "ruleId" => "rul_1" }, checks: [proof]))
+    assert_equal "asked", Coordination.change_answer(change.call({ "source" => "human", "createdBy" => "Lee" }, checks: [model]))
+    assert_equal "none", Coordination.change_answer(change.call({ "source" => "agent", "createdBy" => "agt_1" }, checks: [model]))
+    # A rule's intent a model approved, and a gate check the agent sent: no person.
+    assert_equal "none", Coordination.change_answer(change.call({ "source" => "rule", "ruleId" => "rul_1", "ruleApprovedBy" => "Ana" }, checks: [model]))
+    assert_equal "none", Coordination.change_answer(change.call({ "source" => "rule", "ruleId" => "rul_1", "ruleApprovedBy" => "Ana" }, checks: [proof.merge("by" => "agent")]))
+    assert_equal "unknown", Coordination.change_answer(change.call({}, checks: [model]))
+    note = ->(*ps) { { "proposals" => ps } }
+    assert_equal "none", Coordination.landing_answer(note.call(change.call({ "source" => "human" }), change.call({ "source" => "agent" })))
+    assert_equal "unknown", Coordination.landing_answer(note.call(change.call({ "source" => "human" }), change.call({})))
+    assert_equal "person", Coordination.landing_answer(note.call(change.call({ "source" => "human" })))
+    assert_equal "person", Coordination.landing_answer({ "proposals" => [], "revert" => { "by" => "Matt" } })
+    assert_equal "unknown", Coordination.landing_answer({ "proposals" => [] })
   end
 
   def test_classify_return_reasons

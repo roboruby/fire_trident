@@ -1,5 +1,6 @@
 import type { Colony, Rule } from "@fire_trident/core";
 import type { Command } from "./args.ts";
+import { pauseRequest } from "./pause.ts";
 
 /**
  * HTTP contract the CLI assumes (routes in packages/worker/src/api/routes.ts).
@@ -36,6 +37,7 @@ import type { Command } from "./args.ts";
  *   GET    /api/colonies/:id/proposals/:pid         -> Proposal (with landingId once it landed)
  *   GET    /api/colonies/:id/guide                  -> the field guide: { on, gate, active, chars, candidates?, ended? } (the last two with the token)
  *   POST   /api/colonies/:id/guide/:lessonId        { action: approve|reject, by, reason? } -> the lesson
+ *   POST   /api/colonies/:id/pause | /resume        { reason, by } | { by, reason? } -> { pause, already } | { resumed, pauses }; /api/pause and /api/resume for the deployment
  *
  * Every request carries `Authorization: Bearer $FT_TOKEN` when the token is set.
  */
@@ -69,7 +71,21 @@ export class ApiError extends Error {
 export interface HttpConfig {
   baseUrl: string;
   token?: string;
+  /** Headers sent with every request and the live stream, e.g. a Cloudflare Access service token (accessHeaders). */
+  headers?: Record<string, string>;
   fetch: typeof fetch;
+}
+
+/**
+ * The Cloudflare Access service-token headers for a deployment behind Access, from CF_ACCESS_CLIENT_ID and
+ * CF_ACCESS_CLIENT_SECRET (both or neither); null when they are not set.
+ */
+export function accessHeaders(env: Record<string, string | undefined>): Record<string, string> | null {
+  const id = env.CF_ACCESS_CLIENT_ID?.trim();
+  const secret = env.CF_ACCESS_CLIENT_SECRET?.trim();
+  if (!id && !secret) return null;
+  if (!id || !secret) throw new ApiError(0, "set both CF_ACCESS_CLIENT_ID and CF_ACCESS_CLIENT_SECRET to reach a deployment behind Cloudflare Access, or neither", null);
+  return { "CF-Access-Client-Id": id, "CF-Access-Client-Secret": secret };
 }
 
 /** Resolve the server base URL from --url, then FT_URL, then the default. Strips trailing slashes. */
@@ -158,6 +174,10 @@ export function planRequest(cmd: Command, by: string): ApiRequest | null {
       };
     case "colonies":
       return { method: "GET", path: `/api/colonies${cmd.scan ? "?scan=1" : ""}` };
+    case "pause":
+    case "resume":
+      // The pause switch (pause.ts): the colony's route, or the deployment's when no colony is named.
+      return pauseRequest(cmd, by, colonyPath);
     case "megafile":
       if (!cmd.path) return { method: "GET", path: colonyPath(cmd.colony, "/megafile") };
       return { method: "POST", path: colonyPath(cmd.colony, "/megafile"), body: { path: cmd.path, action: cmd.release ? "release" : "hold", by: cmd.by ?? by } };
@@ -268,7 +288,7 @@ function errorDetail(data: unknown): string {
 
 /** Send one request and return the parsed JSON body. Throws ApiError on network or HTTP failure. */
 export async function send<T = unknown>(cfg: HttpConfig, req: ApiRequest, timeoutMs = 30_000): Promise<T> {
-  const headers: Record<string, string> = { accept: "application/json", "user-agent": `ft/${VERSION}` };
+  const headers: Record<string, string> = { ...cfg.headers, accept: "application/json", "user-agent": `ft/${VERSION}` };
   if (cfg.token) headers.authorization = `Bearer ${cfg.token}`;
   let body: string | undefined;
   if (req.body !== undefined) {

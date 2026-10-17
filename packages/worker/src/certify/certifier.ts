@@ -2,7 +2,7 @@ import type { Certification, CertificationStatus, ColonyEvent, FailingTest, File
 import { FirstRedSearch } from "./bisect.ts";
 import { PrelandChecks, prelandMatches, type PrelandOutcome, type PrelandReader } from "./preland.ts";
 import { TEST_FILE } from "./compile.ts";
-import { SUSPECT_MS, findSuspects, publicSuspect, type FoundSuspect, type LandedOn } from "./culprit.ts";
+import { SUSPECT_MS, capSuspects, findSuspects, markFirstRed, publicSuspect, type FoundSuspect, type LandedOn, type SinceGreen } from "./culprit.ts";
 import { DEFAULT_CAPS, load, testFiles, type CompileMemo, type IndexedFile, type Loaded } from "./load.ts";
 import { RUNNER_FAILED, RUNNER_VERSION, buildPlan, closureOf, type Plan } from "./plan.ts";
 import { DEFAULT_POLICY, isOpen, mergePolicy, repairAction, repairIntent, type CertifyPolicy, type RepairIntentInput, type RepairRow } from "./repair.ts";
@@ -87,8 +87,10 @@ export interface CertifyHost {
   /**
    * The latest landings that changed any of `paths` (at most three, newest first), from the colony's
    * per-path landing index, each with its proposal and intent and the blobs it wrote for those paths.
+   * With `since`: the oldest landings since the last green commit that changed them (a few, oldest
+   * first), from the colony's landing log; none when the log may no longer hold them all.
    */
-  landedOn?(paths: Path[]): Promise<LandedOn[]>;
+  landedOn?(paths: Path[], since?: SinceGreen): Promise<LandedOn[]>;
   /** The colony's landing that made commit `sha`, or null (a commit FireTrident made itself, or one no longer kept). */
   landingOf?(sha: Sha): { landingId: Id; at: number } | null;
   /** The first red search is on for this colony (FT_BISECT); absent means off. */
@@ -728,7 +730,8 @@ export class Certifier {
     if (cert.greenSha) e.greenSha = cert.greenSha;
     if (cert.detail) e.detail = cert.detail;
     if (cert.reusedFrom) e.reusedFrom = cert.reusedFrom;
-    if (cert.suspects && cert.suspects.length > 0) e.suspects = cert.suspects.slice(0, EVENT_SUSPECTS);
+    // The first landing since green keeps its place when the event carries fewer suspects than the result.
+    if (cert.suspects && cert.suspects.length > 0) e.suspects = capSuspects(cert.suspects, EVENT_SUSPECTS);
     return e;
   }
 
@@ -756,6 +759,7 @@ export class Certifier {
         // Called as methods: the trunk is a Durable Object stub.
         blobsAt: (sha, paths) => trunk.baseBlobs!(sha, paths),
         landedOn: (paths) => host.landedOn!(paths),
+        landedSince: (paths, since) => host.landedOn!(paths, since),
       });
       return await withTimeout(search, SUSPECT_MS, `took longer than ${SUSPECT_MS} ms`);
     } catch (err) {
@@ -769,6 +773,8 @@ export class Certifier {
     const s = this.stored(sha);
     if (!s || s.cert.status !== "red") return null;
     s.cert.firstRed = firstRed;
+    // Culprit finding's suspect in the landing it found is marked `first-red` (the suspects were recorded before the search ended).
+    if (firstRed.status === "found" && firstRed.landingId && Array.isArray(s.cert.suspects)) s.cert.suspects = markFirstRed(s.cert.suspects, firstRed.landingId);
     this.store(s);
     return s.cert;
   }

@@ -47,6 +47,7 @@ import { addNotes } from "./notes.ts";
 import { sealNote, withNoteDigest } from "./digest.ts";
 import { noteSigner, publishedKeys, withSignature } from "./signature.ts";
 import { noteProvenance } from "./provenance.ts";
+import { intentWho, landingAnswer, noteIntentWho, type IntentWho } from "./answerable.ts";
 import { bindingSource, checkLandings, layered, localSource, summarize, verifyLimit } from "./verify.ts";
 import { findLanding, landingOf, landingRow, storedNote, verifyOne } from "./landing-note.ts";
 import { ROOT_META, findRoot, rootAnswer } from "./root.ts";
@@ -87,10 +88,18 @@ import type { DirectionInfo } from "../colony/direction.ts";
 import { ftError } from "../colony/errors.ts";
 import { INLINE_FETCH_BYTES, isInlineChange } from "../colony/inline.ts";
 import { noteResolves } from "../colony/resolver-merge.ts";
+import { notePriority } from "../colony/priority.ts";
+import { returnHunksEnabled, type ReturnHunksAnswer, type ReturnHunksQuery } from "../colony/returnhunks.ts";
+import { quoteReturns, sqlQuoteSource } from "./quote.ts";
 import { DIRECTION_TABLE, FENCE_WAIT_MS, directionReturns, fenceAnswer, mergeDirection, parseDirection, pushDelayMs, settlesWithin, type FenceAnswer } from "./direction.ts";
 import { PUBLISH_BOUND, addedObjects, asyncPublishEnabled, publishBackoffMs, publishChain, settlePublish, withinBound, type PublishBound, type RecordedCommit } from "./publish.ts";
 import { PROTECT_TABLE, keepProtect, protectReturns } from "./protect.ts";
+import { keepHolds, mergeLocks } from "./mergelock.ts";
+import { cyclePause, keepPause } from "./pause.ts";
 import { landingRange as rangeOfLandings, type LandingRange, type RangeQuery } from "../certify/range.ts";
+import { FoldedIndex, cycleCollisions, structureProblem, submoduleProblems, type SubmoduleOutcome } from "./structure.ts";
+import { readTreeCached } from "./surgery.ts";
+import { foldPath } from "../decide/pathfold.ts";
 
 export type { LandResult, Returned } from "./plan.ts";
 
@@ -140,7 +149,11 @@ const PATH_HISTORY_MS = 250;
  * Missing entries are looked up from the colony's snapshot, then fall back to the proposal.
  */
 export interface LandContext {
-  intents?: Record<Id, { title: string; why?: string; ruleId?: Id; parentId?: Id }>;
+  /**
+   * Each intent's lineage fields: `priority` and `requestedPriority` only when an agent asked for more than its intent was
+   * granted (colony/priority.ts); who declared it and who approved its rule (trunk/answerable.ts IntentWho) when the colony says.
+   */
+  intents?: Record<Id, { title: string; why?: string; ruleId?: Id; parentId?: Id; priority?: number; requestedPriority?: number } & IntentWho>;
   /** `resumeKey`: an external agent holds an MCP resume key (it joined over MCP), for the note's provenance. */
   agents?: Record<Id, { kind: AgentKind; model?: string; resumeKey?: boolean }>;
   decisions?: Record<Id, Array<Pick<Decision, "kind" | "layer" | "p" | "action">>>;
@@ -150,7 +163,7 @@ export interface LandContext {
   resolves?: Record<Id, NoteResolves>;
 }
 
-type IntentInfo = { title: string; why: string; ruleId?: Id; parentId?: Id };
+type IntentInfo = { title: string; why: string; ruleId?: Id; parentId?: Id; priority?: number; requestedPriority?: number } & IntentWho;
 type AgentLite = { kind: AgentKind; model?: string; resumeKey?: boolean };
 type StagedChange = { blob: Sha; mode: string; size: number; before: Sha | null } | { blob: null; before: Sha | null };
 
@@ -276,6 +289,8 @@ export class TrunkDO extends DurableObject<Env> {
   private readonly surfaces = new BoundedMap<Sha, ExportSurface | null>(SURFACE_CACHE);
   /** Export guard (FT_EXPORT_GUARD): the exports of versions it read, by blob id, and its pause after a stalled read. */
   private readonly exportMemo = new ExportMemo();
+  /** Trunk's paths by folded form, for the case-collision check at landing (trunk/structure.ts); rebuilt when trunk moves. */
+  private readonly foldedIndex = new FoldedIndex();
   /**
    * Asynchronous publishing (FT_ASYNC_PUBLISH, trunk/publish.ts): the publish attempt in flight (single-flight), the loop
    * that drives attempts beside the cycles and whether it should go round again, whether everything recorded before this
@@ -480,6 +495,19 @@ export class TrunkDO extends DurableObject<Env> {
   }
 
   /**
+   * The pause (trunk/pause.ts): the colony's pauses as it worked them out, kept when newer than the writer's own. Every
+   * later cycle reads it before it builds and, while a pause is in force, defers each change it was handed. Then waits
+   * for the cycles that may have read the old record (the serial chain as it stands, at most FENCE_WAIT_MS): `settled`
+   * says they finished, so trunk stays where it is from the answer on while the pause holds.
+   */
+  async pause(p: { record: unknown }): Promise<{ paused: boolean; settled: boolean }> {
+    this.state();
+    const kept = keepPause(this.sql, p?.record);
+    const settled = await settlesWithin(this.chain, FENCE_WAIT_MS);
+    return { paused: kept?.paused === true, settled };
+  }
+
+  /**
    * Commit files to trunk as FireTrident itself (colony memory such as antibodies under
    * .firetrident/): one commit on current main, message plus an FT-Landing trailer, pushed with
    * compare-and-swap and rebuilt on a moved trunk. It is recorded like a landing with no proposals
@@ -572,6 +600,17 @@ export class TrunkDO extends DurableObject<Env> {
   async removedLineOwners(q: RemovedLinesQuery): Promise<RemovedLinesAnswer> {
     this.state();
     return removedLineOwners(sqlLineageSource(this.sql, (blob) => this.blobBytes(blob)), q);
+  }
+
+  /**
+   * Return hunks (FT_RETURN_HUNKS, colony/returnhunks.ts; trunk/quote.ts): what beat a batch of returned changes, quoted
+   * for their agents: each named landing's diff of each named file, from the landing log and the blob store, and the
+   * contested regions of each text merge conflict, cut and masked, within the budget the colony gives. Read only, beside
+   * the cycles, like `why`.
+   */
+  async returnHunks(q: ReturnHunksQuery): Promise<ReturnHunksAnswer> {
+    this.state();
+    return quoteReturns(sqlQuoteSource(this.sql, (blob) => this.blobBytes(blob)), q);
   }
 
   /** The most recent landings, newest first (default 50). */
@@ -1353,6 +1392,9 @@ export class TrunkDO extends DurableObject<Env> {
     // Conflict resolver (FT_RESOLVER, colony/resolver.ts): a change sent back for overlapping hunks carries them to its
     // colony (paths, blobs, lines), so the resolver never parses a reason. Off: returns carry only their reasons.
     const resolving = revalidationEnabled((this.env as unknown as { FT_RESOLVER?: string } | undefined)?.FT_RESOLVER, st.colonyId);
+    // Return hunks (FT_RETURN_HUNKS, colony/returnhunks.ts): the conflict travels with the return too, so the colony can
+    // have its contested regions quoted for the change's agent.
+    const quoting = returnHunksEnabled((this.env as unknown as { FT_RETURN_HUNKS?: string } | undefined)?.FT_RETURN_HUNKS, st.colonyId);
     const batches = reqs.map((r) => r.batch);
     const outcome = new Map<Id, Outcome>();
     const own: Array<Landing | undefined> = reqs.map(() => undefined);
@@ -1390,6 +1432,14 @@ export class TrunkDO extends DurableObject<Env> {
       live = live.filter((e) => !guarded.has(e.p.id));
     }
 
+    // 2d. Pause (trunk/pause.ts), the same commit point: while a person has paused the colony's agents (or the
+    //     deployment's), every change waits in its lane, deferred with the pause's sentence. One read per cycle.
+    const paused = cyclePause(this.sql, reqs.map((r) => r.ctx));
+    if (paused !== null) {
+      for (const e of live) outcome.set(e.p.id, { kind: "deferred", reason: paused });
+      live = [];
+    }
+
     // 3. Screen against current trunk with local reads (base blobs, OCC, structure); stale ones never pull.
     const caches: BaseCaches = { commits: new Map(), trees: new Map(), remote: new Map() };
     const bases = new Map<Id, FileVersion[]>();
@@ -1417,6 +1467,19 @@ export class TrunkDO extends DurableObject<Env> {
       if (o) outcome.set(e.p.id, o);
       return !o;
     });
+    // 3b. Submodules (trunk/structure.ts): a change that writes or deletes a submodule, or a path inside one, goes back.
+    const submodules = await this.submoduleProblems(live.map((e) => e.p));
+    if (submodules.size > 0) {
+      for (const [id, o] of submodules) outcome.set(id, o);
+      live = live.filter((e) => !submodules.has(e.p.id));
+    }
+    // 3c. Second spellings inside the cycle (trunk/structure.ts): of two changes adding paths that are one file on a
+    //     case-insensitive file system, the later waits for the next cycle, where the first is trunk.
+    const spelled = cycleCollisions(live.map((e) => e.p), (path) => this.indexBlob(path) !== null);
+    if (spelled.size > 0) {
+      for (const [id, reason] of spelled) outcome.set(id, { kind: "deferred", reason });
+      live = live.filter((e) => !spelled.has(e.p.id));
+    }
     lap("screen");
 
     // 4. Pull the new blobs: an inline change's from its contents (pullInline: no workspace read, one call to the
@@ -1443,6 +1506,9 @@ export class TrunkDO extends DurableObject<Env> {
 
     // 5. Plan over the virtual trunk, build one chained commit per batch, push the tip once.
     const mergeLoad: MergeLoad = { texts: new Map(), reads: 0, bytes: 0 };
+    // Merge locks (trunk/mergelock.ts): a change a person approved, or one with a danger pattern a person must see or a
+    // protected write, lands merged with a newer trunk only once a person approved that merge. Unreadable: no merges.
+    const locks = merging ? mergeLocks(this.sql, live.map((e) => ({ p: e.p, ctx: reqs[e.request]?.ctx }))) : null;
     for (let attempt = 0; ; attempt++) {
       if (attempt > 0) {
         // Trunk moved underneath: the plan re-validates against the new index, structure too.
@@ -1451,16 +1517,22 @@ export class TrunkDO extends DurableObject<Env> {
           if (s) outcome.set(e.p.id, { kind: "returned", reason: s });
           return !s;
         });
+        // Submodules too, in the tree trunk moved to (trunk/structure.ts).
+        const moved = await this.submoduleProblems(live.map((e) => e.p));
+        if (moved.size > 0) {
+          for (const [id, o] of moved) outcome.set(id, o);
+          live = live.filter((e) => !moved.has(e.p.id));
+        }
       }
       const input: PlanProposal[][] = reqs.map(() => []);
-      for (const e of live) input[e.request]!.push({ p: e.p, base: bases.get(e.p.id) ?? [] });
+      for (const e of live) input[e.request]!.push({ p: e.p, base: bases.get(e.p.id) ?? [], ...(locks?.has(e.p.id) ? { lock: locks.get(e.p.id)! } : {}) });
       const surfaces = revalidating ? await this.assumptionSurfaces(live.map((e) => e.p)) : null;
       if (surfaces) lap("assumptions");
       const deletions = guarding ? await this.deletionGuardInput(live.map((e) => e.p)) : undefined;
       if (deletions !== undefined) lap("deletions");
       const exportInput = exportGuarding ? await this.exportGuardInput(live.map((e) => e.p)) : undefined;
       if (exportInput !== undefined) lap("exports");
-      const merge = merging ? await this.mergeTexts(input.flat(), mergeLoad) : undefined;
+      const merge = merging && locks !== null ? await this.mergeTexts(input.flat(), mergeLoad) : undefined;
       if (merge) lap("merges");
       // Text merge's insertion rule (FT_MERGE_INSERTIONS): insertions by both sides at one place land as their union.
       if (merge && mergeInsertionsEnabled((this.env as unknown as { FT_MERGE_INSERTIONS?: string } | undefined)?.FT_MERGE_INSERTIONS, st.colonyId)) merge.insertions = true;
@@ -1475,7 +1547,9 @@ export class TrunkDO extends DurableObject<Env> {
         mergedSizes = new Map();
       }
       const back = (): void => {
-        for (const r of plan.returned.flat()) outcome.set(r.proposalId, { kind: "returned", reason: r.reason, ...(resolving && r.conflicts ? { conflicts: r.conflicts } : {}) });
+        for (const r of plan.returned.flat()) outcome.set(r.proposalId, { kind: "returned", reason: r.reason, ...((resolving || quoting) && r.conflicts ? { conflicts: r.conflicts } : {}), ...(r.held ? { held: r.held } : {}) });
+        // Merge locks: the merges held for a person this cycle; an approval given after this lands them.
+        keepHolds(this.sql, plan.returned.flat(), Date.now());
       };
       lap("plan");
       if (exportInput !== undefined) stat.exportsUncovered = plan.exportsUncovered ?? 0;
@@ -1614,7 +1688,8 @@ export class TrunkDO extends DurableObject<Env> {
       const intentIds = unique(proposals.map((p) => p.intentId));
       // The note names the landing, never the commit, so it is final here and the commit carries its digest as the
       // FT-Note trailer (trunk/digest.ts); certification, added after landing, is left out of the digest.
-      const note = await sealNote(buildNote({ id, colonyId: st.colonyId }, proposals, info, ctx, revalidated, merges.merged));
+      const built = buildNote({ id, colonyId: st.colonyId }, proposals, info, ctx, revalidated, merges.merged);
+      const note = await sealNote(built);
       lap("note");
       const message = withNoteDigest(await withSignature(landingMessage({ id, intentIds }, proposals, info.titles), signer, { digest: note.digest, tree, parents: [parent] }), note.digest);
       const content = commitContent({ tree, parents: [parent], message, name: LANDING_IDENTITY.name, email: LANDING_IDENTITY.email, timestamp: Math.floor(at / 1000) });
@@ -1636,6 +1711,8 @@ export class TrunkDO extends DurableObject<Env> {
         regions: unique(paths.map((path) => regionOf(path, st.regionDepth))).sort(),
         at,
         ...(mergedHere.length > 0 ? { merged: mergedHere } : {}),
+        // Who answers for it, from its note (trunk/answerable.ts): the colony counts it for its metrics.
+        answerable: landingAnswer(built),
       };
       items.push({ request: i, data: { landing, note: note.text, changes: [...changes] } });
       parent = commit;
@@ -1816,7 +1893,7 @@ export class TrunkDO extends DurableObject<Env> {
     return this.lastLandingAt;
   }
 
-  /** A file where a directory is needed (or the reverse), or a write into a submodule. */
+  /** A file where a directory is needed (or the reverse), a write into a submodule, a symbolic link retargeted, or a second spelling of a trunk file. */
   private structuralProblem(p: Proposal): string | null {
     for (const w of p.writeSet) {
       if (w.blob === null) continue;
@@ -1829,7 +1906,30 @@ export class TrunkDO extends DurableObject<Env> {
       if (child.length > 0) return `${w.path} is a directory in trunk`;
       if (this.indexMode(w.path) === "160000") return `${w.path} is a submodule in trunk`;
     }
-    return null;
+    // A symbolic link retargeted, or a second spelling of a trunk file (trunk/structure.ts).
+    return structureProblem(p.writeSet, {
+      file: (path) => this.sql.exec<{ blob: string; mode: string }>(`SELECT blob, mode FROM ft_files WHERE path = ?`, path).toArray()[0] ?? null,
+      folded: () => this.foldedIndex.get(this.meta("trunk_sha") ?? "", () => this.sql.exec<{ path: string }>(`SELECT path FROM ft_files`).toArray().map((r) => r.path)),
+    });
+  }
+
+  /**
+   * The proposals that write or delete a submodule of trunk, or a path inside one, read from trunk's current tree (the
+   * index lists no submodules): each returned with its reason, or deferred when the tree cannot be read (trunk/structure.ts).
+   */
+  private async submoduleProblems(proposals: Proposal[]): Promise<Map<Id, SubmoduleOutcome>> {
+    if (proposals.length === 0) return new Map();
+    const g = this.repo();
+    const sha = this.state().trunkSha;
+    let root: string | null;
+    try {
+      root = this.commitTrees.get(sha) ?? (await commitTree(g, sha));
+    } catch (err) {
+      root = null;
+      console.error(`submodule check: trunk commit ${sha} unreadable: ${errorText(err)}`);
+    }
+    if (root === null) return new Map(proposals.map((p) => [p.id, { kind: "deferred", reason: `trunk commit ${sha} is missing locally, so submodules could not be checked` }]));
+    return submoduleProblems(proposals, root, (oid) => readTreeCached(g, this.trees, oid));
   }
 
   /** Read every new blob of `p` from its workspace repo, verify its id, and write it locally. Returns each pulled blob's size by path. */
@@ -2511,7 +2611,7 @@ export class TrunkDO extends DurableObject<Env> {
   // -------------------------------------------------------------------------
 
   private async lineageInfo(proposals: Proposal[], ctx: LandContext, colonyId: Id): Promise<{ titles: Record<Id, string>; intents: Map<Id, IntentInfo>; agents: Map<Id, AgentLite> }> {
-    for (const [id, i] of Object.entries(ctx.intents ?? {})) this.intentCache.set(id, { title: i.title, why: i.why ?? "", ruleId: i.ruleId, parentId: i.parentId });
+    for (const [id, i] of Object.entries(ctx.intents ?? {})) this.intentCache.set(id, { title: i.title, why: i.why ?? "", ruleId: i.ruleId, parentId: i.parentId, ...notePriority(i), ...noteIntentWho(i) });
     for (const [id, a] of Object.entries(ctx.agents ?? {})) this.agentCache.set(id, { kind: a.kind, model: a.model, ...(typeof a.resumeKey === "boolean" ? { resumeKey: a.resumeKey } : {}) });
     const missing = proposals.some((p) => !this.intentCache.has(p.intentId) || !this.agentCache.has(p.agentId));
     if (missing) await this.loadColonyContext(colonyId);
@@ -2537,7 +2637,11 @@ export class TrunkDO extends DurableObject<Env> {
       const stub = ns.get(ns.idFromName(colonyId)) as unknown as { snapshot(): Promise<ColonySnapshot> };
       const snap = await Promise.race([stub.snapshot(), sleep(2_500).then(() => null)]);
       if (!snap) return;
-      for (const i of snap.intents ?? []) this.intentCache.set(i.id, { title: i.title, why: i.why, ruleId: i.ruleId, parentId: i.parentId });
+      // Who declared each intent and who approved its rule, for the note's answerable person (trunk/answerable.ts).
+      const approvers = new Map((snap.rules ?? []).map((r) => [r.id, r.approvedBy] as const));
+      for (const i of snap.intents ?? []) {
+        this.intentCache.set(i.id, { title: i.title, why: i.why, ruleId: i.ruleId, parentId: i.parentId, ...notePriority(i), ...noteIntentWho({ ...intentWho(i, (id) => approvers.get(id)), ruleId: i.ruleId }) });
+      }
       // A snapshot does not say who holds a resume key: keep what a land context said.
       for (const a of snap.agents ?? []) this.agentCache.set(a.id, { ...this.agentCache.get(a.id), kind: a.kind, model: a.model });
     } catch {
@@ -2932,7 +3036,9 @@ function buildNote(
         agentId: p.agentId,
         agentKind: a?.kind ?? "internal",
         model: a?.model,
-        intent: { id: p.intentId, title: i.title, why: i.why, ruleId: i.ruleId, parentId: i.parentId },
+        // What an agent asked for, only when the cap lowered its intent's priority (colony/priority.ts), and who declared
+        // the intent and who approved its rule, when the colony said (trunk/answerable.ts).
+        intent: { id: p.intentId, title: i.title, why: i.why, ruleId: i.ruleId, parentId: i.parentId, ...notePriority(i), ...noteIntentWho(i) },
         writeSet: p.writeSet,
         readSet: p.readSet,
         decisions: ctx.decisions?.[p.id] ?? [],
@@ -2975,7 +3081,7 @@ function pathProblem(path: unknown): string | null {
   if (path.startsWith("/") || path.endsWith("/") || path.includes("\\") || path.includes("\0")) return `invalid path ${JSON.stringify(path)}`;
   for (const seg of path.split("/")) {
     if (seg === "" || seg === "." || seg === "..") return `invalid path ${JSON.stringify(path)}`;
-    if (seg.toLowerCase() === ".git") return `path ${JSON.stringify(path)} touches .git`;
+    if (foldPath(seg) === ".git") return `path ${JSON.stringify(path)} touches .git`;
   }
   return null;
 }

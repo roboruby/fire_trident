@@ -1,5 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
+import { decisionSpeaker } from "@fire_trident/core";
 import { NoteSealBadge } from "../components/NoteSeal.tsx";
+import { SaidBy } from "../components/SaidBy.tsx";
 import { shortId, shortSha, timeAgo } from "../format.ts";
 import { colonyHref } from "../route.ts";
 import { LAYER_COLOR, STAGE_COLOR } from "../theme.ts";
@@ -42,7 +44,9 @@ function Decision({ d }: { d: CardDecision }) {
       <span className="nc-dec-what">
         {d.kind ? `${d.kind} → ` : "→ "}
         <b>{d.action || "?"}</b>
-        {d.by ? <span className="nc-by">{d.by}</span> : null}
+        <span className="nc-by">
+          <SaidBy s={decisionSpeaker(d)} />
+        </span>
       </span>
       <span className="mono nc-p">{d.p !== null ? `p ${d.p.toFixed(2)}` : d.layer === "proof" ? "no model" : ""}</span>
     </div>
@@ -82,6 +86,9 @@ export function NoteCardView({ card, origin }: { card: NoteCard; origin: string 
       </div>
       <div className="nc-body">
         <div className="nc-col">
+          <Field k="Answerable">
+            <div className={`nc-answerable is-${card.answerable.answer}`}>{card.answerable.text}</div>
+          </Field>
           <Field k="Intent">
             <div className="nc-title">{card.intent?.title ?? "No intent recorded"}</div>
             {reasons.map((l, i) => (
@@ -137,15 +144,20 @@ export function NoteCardView({ card, origin }: { card: NoteCard; origin: string 
           <Field k="Checks">
             <div className="nc-checks">
               {checks.map((c, i) => (
-                <span key={`${c.name}:${i}`} className={`nc-check ${c.ok ? "is-ok" : "is-bad"}`} title={c.detail ?? undefined}>
-                  {c.ok ? "✓" : "✕"} {c.name}
+                <span key={`${c.name}:${i}`} className="nc-check-said">
+                  {/* Who said it, once per run of one speaker: FireTrident's checks come first, the agent's last. */}
+                  {i === 0 || checks[i - 1]!.speaker.label !== c.speaker.label ? <SaidBy s={c.speaker} /> : null}
+                  <span className={`nc-check ${c.ok ? "is-ok" : "is-bad"}`} title={c.detail ? (c.quoted ? `“${c.detail}”` : c.detail) : undefined}>
+                    {c.ok ? "✓" : "✕"} {c.name}
+                  </span>
                 </span>
               ))}
               {card.checks.length > checks.length ? <span className="nc-dim">and {card.checks.length - checks.length} more</span> : null}
             </div>
             {card.notVerified ? (
               <div className="nc-nv">
-                <b>Not verified:</b> {card.notVerified}
+                <b>Not verified:</b> {card.notVerifiedBy ? <SaidBy s={card.notVerifiedBy} /> : null}{" "}
+                {card.notVerifiedBy?.kind === "platform" ? card.notVerified : <span className="said-quote">“{card.notVerified}”</span>}
               </div>
             ) : null}
           </Field>

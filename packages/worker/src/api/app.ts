@@ -29,6 +29,7 @@ import {
 import { decideApi } from "./vaccinate.ts";
 import { inlineEnabled } from "../colony/inline.ts";
 import { isTwinAnswer } from "../colony/twins.ts";
+import { priorityNote } from "../colony/priority.ts";
 import { certifyRoutes } from "./certify.ts";
 import { guideRoutes } from "./guide.ts";
 import { megafileRoutes } from "./megafile.ts";
@@ -36,6 +37,8 @@ import { landingRoutes, verifyLanding } from "./landing.ts";
 import { impactRoutes } from "./impact.ts";
 import { rootRoutes } from "./root.ts";
 import { a2aRoutes } from "./a2a.ts";
+import { pauseRoutes } from "./pause.ts";
+import { refuseWhilePaused } from "../colony/pause.ts";
 
 /** Hono environment of the API. */
 export type ApiEnv = { Bindings: Env };
@@ -217,6 +220,7 @@ async function requireColony(env: Env, colonyId: Id): Promise<void> {
  *   GET    /colonies/:id/root               the colony's root commit: the first commit of trunk, which pins a clone (api/root.ts)
  *   GET    /colonies/:id/.well-known/agent-card.json  the colony's Agent2Agent card (FT_A2A; api/a2a.ts)
  *   POST   /colonies/:id/a2a                Agent2Agent JSON-RPC: SendMessage and CancelTask (admin token), GetTask, ListTasks (api/a2a.ts)
+ *   POST   /colonies/:id/pause | /resume    a person pauses or resumes the colony's agents; POST /pause and /resume the deployment's (api/pause.ts)
  * POST routes require the admin bearer token when FT_ADMIN_TOKEN is set; DELETE always does.
  */
 export function createApi(deps: ApiDeps): Hono<ApiEnv> {
@@ -379,7 +383,9 @@ export function createApi(deps: ApiDeps): Hono<ApiEnv> {
       ...(b.contest !== undefined ? { contest: b.contest } : {}),
     }, b.force === true ? { force: true } : {});
     if (isTwinAnswer(res)) return json({ ...res.intent, duplicateOf: res.duplicateOf, similar: res.similar, note: res.note }, 200);
-    return json(res.intent, 201);
+    // An agent's intent takes at most the priority of a parent it holds or declared, else 1: the answer says what it got (colony/priority.ts).
+    const priority = priorityNote(res.intent);
+    return json(priority ? { ...res.intent, priorityNote: priority } : res.intent, 201);
   });
 
   app.post("/colonies/:id/rules", requireAdmin, async (c) => {
@@ -576,6 +582,8 @@ export function createApi(deps: ApiDeps): Hono<ApiEnv> {
     const colonyId = colonyParam(c);
     const b = await body(c, SwarmBody);
     await requireColony(c.env, colonyId);
+    // Pause (colony/pause.ts): no in-platform agent starts while the colony's agents are paused.
+    await refuseWhilePaused(colonyStub(c.env, colonyId));
     const count = b.count ?? b.agents ?? 1;
     const res = await deps.spawnSwarm(c.env, colonyId, { count, ...(b.kind ? { kind: b.kind } : {}), ...(b.model ? { model: b.model } : {}) });
     return json(res ?? { ok: true }, 202);
@@ -589,6 +597,7 @@ export function createApi(deps: ApiDeps): Hono<ApiEnv> {
   impactRoutes(app); // Impact: what a change to a file reaches through imports, and who works on those files now (api/impact.ts)
   rootRoutes(app); // The colony's root commit, which pins a clone of its history (api/root.ts)
   a2aRoutes(app, requireAdmin); // Agent2Agent: an orchestrator declares intents and follows them as tasks (FT_A2A; api/a2a.ts)
+  pauseRoutes(app, requireAdmin); // Pause: a person stops the agents of a colony or of the deployment, with a reason (api/pause.ts)
 
   // Unknown API paths answer JSON here instead of falling through to the static UI.
   app.all("*", (c) => json({ error: `no route for ${c.req.method} ${c.req.path}` }, 404));

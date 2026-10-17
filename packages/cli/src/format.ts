@@ -21,15 +21,18 @@ import type {
   Rule,
 } from "@fire_trident/core";
 import type { StuckAction, StuckItem, StuckReport } from "@fire_trident/core";
+import { bySpeaker, evidenceLines, landingAnswerable, notVerifiedSpeaker, notVerifiedWords, type Evidence } from "@fire_trident/core";
 import type { IntentSpend } from "@fire_trident/core";
 import { changeSize, dangerLines, lookHereFirst, parseHunks, reviewOf, visible, type DiffLine, type ReviewFile, type ReviewView } from "./review.ts";
 import { whySummary } from "./spec.ts";
 import { megafileLines } from "./megafile.ts";
+import { pauseLines } from "./pause.ts";
 import { signatureLines } from "./signatures.ts";
 import { intentSpendDetail, intentSpendLine, spendLine } from "./spend.ts";
 import { acceptanceRows } from "./acceptance.ts";
 import { contestLines } from "./contest.ts";
 import { prelandLine } from "./preland.ts";
+import { heldLines } from "./mergehold.ts";
 
 /** ANSI styling functions; identity functions when color is off. */
 export interface Colors {
@@ -292,23 +295,46 @@ function suspectsOf(cert: Pick<Certification, "suspects">): Suspect[] {
     if (typeof s.intentId === "string" && s.intentId) out.intentId = s.intentId;
     if (typeof s.title === "string" && s.title) out.title = s.title;
     if (typeof s.trunkSha === "string" && s.trunkSha) out.trunkSha = s.trunkSha;
+    const labels = strings(s.labels).filter((l): l is SuspectLabel => Object.hasOwn(LABEL_WORDS, l));
+    if (labels.length > 0) out.labels = labels;
     return [out];
   });
 }
 
+/** Why culprit finding lists a suspect (core's SuspectLabel). */
+type SuspectLabel = NonNullable<Suspect["labels"]>[number];
+
+/** The labels in words, in the order `ft certify` prints them. */
+const LABEL_WORDS: Record<SuspectLabel, string> = { "first-red": "first red", "first-since-green": "first since green", latest: "latest" };
+
+/** At most `n` suspects in their order (newest first), the first red and first since green ones kept before newer ones. */
+function shownSuspects(list: Suspect[], n: number): Suspect[] {
+  const rank = (s: Suspect): number => (s.labels?.includes("first-red") ? 0 : s.labels?.includes("first-since-green") ? 1 : 2);
+  const kept = new Set(
+    list
+      .map((s, i) => ({ r: rank(s), i }))
+      .sort((a, b) => a.r - b.r || a.i - b.i)
+      .slice(0, n)
+      .map((x) => x.i),
+  );
+  return list.filter((_, i) => kept.has(i));
+}
+
 /**
- * A red result's suspects for `ft certify`, newest first: the proposal (or landing) that changed what
- * the failing tests load, its intent's title, the files it changed, and the command that undoes it.
+ * A red result's suspects for `ft certify`, newest first: why each is listed (its labels, when the
+ * server recorded them), the proposal (or landing) that changed what the failing tests load, its
+ * intent's title, the files it changed, and the command that undoes it.
  */
 function suspectLines(colony: string, suspects: Suspect[], c: Colors): string[] {
   const out: string[] = [];
   const names = (list: string[], max: number): string => (list.length > max ? `${list.slice(0, max).join(", ")} +${list.length - max}` : list.join(", "));
-  for (const s of suspects.slice(0, SUSPECTS_SHOWN)) {
+  for (const s of shownSuspects(suspects, SUSPECTS_SHOWN)) {
     const ref = s.proposalId ?? s.landingId;
+    const labels = (Object.keys(LABEL_WORDS) as SuspectLabel[]).filter((l) => s.labels?.includes(l)).map((l) => LABEL_WORDS[l]);
     const where = [s.proposalId ? `landing ${s.landingId}` : "", s.trunkSha ? shortSha(s.trunkSha) : ""].filter(Boolean).join(", ");
     const changed = s.paths.length > 0 ? ` changed ${names(s.paths, 3)}` : "";
     const files = s.files.length > 0 ? ` for ${names(s.files, 2)}` : "";
-    out.push(`    ${c.yellow("suspect")} ${c.bold(ref)}${s.title ? ` ${quote(s.title, 60)}` : ""}${changed}${c.dim(`${where ? ` (${where})` : ""}${files}`)}`);
+    out.push(`    ${c.yellow("suspect")} ${labels.length > 0 ? `${c.yellow(`[${labels.join(", ")}]`)} ` : ""}${c.bold(ref)}${s.title ? ` ${quote(s.title, 60)}` : ""}${changed}${c.dim(`${where ? ` (${where})` : ""}${files}`)}`);
     out.push(`      ${c.dim("undo:")} ft revert ${colony} ${ref}`);
   }
   if (suspects.length > SUSPECTS_SHOWN) out.push(c.dim(`    and ${suspects.length - SUSPECTS_SHOWN} more (--json lists them)`));
@@ -328,6 +354,8 @@ export function formatStatus(s: SnapshotLike, c: Colors, now: number): string {
 
   const head = `${c.bold(col.name ?? col.id)} ${c.dim(col.id)}`;
   out.push(col.source ? `${head}  ${c.dim("from")} ${col.source.url}${col.source.branch ? c.dim(` (${col.source.branch})`) : ""}` : head);
+  // The pauses in force (pause.ts) come first; a server without the switch sends none.
+  out.push(...pauseLines(s.pauses, col.id, c));
   row("trunk", trunkLine(col, c));
   const regions = new Set(files.map((f) => regionOf(f.path, col.regionDepth || 1)));
   row("files", `${num(files.length)} in ${num(regions.size)} region${regions.size === 1 ? "" : "s"}`);
@@ -700,9 +728,19 @@ export function policyRows(p: DecidePolicyView | undefined, c: Colors): string[]
   return out;
 }
 
-function checkLine(checks: CheckResult[] | undefined, c: Colors): string {
-  if (!checks || checks.length === 0) return c.dim("none recorded");
-  return checks.map((k) => `${k.ok ? c.green("✓") : c.red("✗")} ${k.name} ${c.dim(ms(k.ms))}`).join("  ");
+/** A change's checks in runs of who said them (core/answerable.ts): FireTrident's first, then the models', then the agent's. */
+function checkLine(evidence: Partial<Evidence> | undefined, c: Colors): string {
+  const runs = bySpeaker(evidenceLines(evidence).filter((l) => l.kind === "check"));
+  if (runs.length === 0) return c.dim("none recorded");
+  return runs.map((r) => `${c.dim(`${r.speaker.label}:`)} ${r.lines.map((k) => `${k.ok ? c.green("✓") : c.red("✗")} ${k.name} ${c.dim(ms(k.ms ?? 0))}`).join("  ")}`).join(c.dim(" · "));
+}
+
+/** The statement of what a change did not verify, with who wrote it: the agent's words quoted, FireTrident's as they are. */
+function unprovenLine(evidence: Partial<Evidence> | undefined, c: Colors): string | null {
+  const words = notVerifiedWords(evidence?.notVerified);
+  if (!words) return null;
+  const s = notVerifiedSpeaker(evidence);
+  return `${c.dim(`${s.label}:`)} ${s.kind === "platform" ? words : `"${words}"`}`;
 }
 
 function ms(n: number): string {
@@ -746,6 +784,9 @@ export function formatWhy(
     out.push("");
     const when = at(landing) ? `  ${new Date(at(landing)).toISOString().replace("T", " ").slice(0, 16)}Z ${c.dim(`(${ago(at(landing), now)})`)}` : "";
     out.push(`${c.green("●")} ${c.bold(`landing ${landing.id}`)}  ${shortSha(landing.trunkSha)} ${c.dim(`← ${shortSha(landing.parentSha)}`)}${when}`);
+    // Who answers for this landing, from its whole note (core/answerable.ts), as the Why tab says it.
+    const answer = landingAnswerable(note);
+    out.push(`  ${label("answer")}${answer.answer === "person" ? answer.text : c.yellow(answer.text)}`);
     const proposals = (note?.proposals ?? []).map((p) => ({
       ...p,
       writeSet: p.writeSet ?? [],
@@ -786,14 +827,15 @@ export function formatWhy(
       }
       // Quoted acceptance (FT_QUOTED_ACCEPTANCE): the changed line quoted for each acceptance line (acceptance.ts).
       for (const row of acceptanceRows(p.decisions, c)) out.push(`  ${label(row.k)}${row.v}`);
-      out.push(`  ${label("checks")}${checkLine(p.evidence?.checks, c)}`);
+      out.push(`  ${label("checks")}${checkLine(p.evidence, c)}`);
       // Contest mode (contest.ts): how the change won its contest, and the attempts it was chosen over.
       for (const line of contestLines(p.evidence?.checks, p.alternatives, c)) out.push(`  ${label(line.k)}${line.v}`);
       // Tests before landing (FT_PRELAND, preland.ts): what ran on its base with the change before it landed.
       const tested = prelandLine(p.evidence?.preland, c);
       if (tested) out.push(`  ${label("tested")}${tested}`);
       if (p.evidence?.residual?.length) out.push(`  ${label("residual")}${c.yellow(paths(p.evidence.residual, 4))} ${c.dim("(outside the declared footprint)")}`);
-      if (p.evidence?.notVerified) out.push(`  ${label("unproven")}${p.evidence.notVerified}`);
+      const unproven = unprovenLine(p.evidence, c);
+      if (unproven) out.push(`  ${label("unproven")}${unproven}`);
       out.push(`  ${label("wrote")}${paths(p.writeSet.map((w) => w.path), 4)}`);
       if (p.readSet.length) out.push(`  ${label("read")}${paths(p.readSet.map((r) => r.path), 4)}`);
     }
@@ -1276,10 +1318,12 @@ export function formatReview(proposals: Proposal[], intents: Intent[] | undefine
     out.push("");
     out.push(`${c.magenta(p.id)}  ${intent ? quote(intent.title, 60) : p.intentId}  ${c.dim(`${p.agentId} · ${p.writeSet.length} file(s) · ${ago(p.createdAt, now)}`)}`);
     if (p.declared?.summary) out.push(`  ${c.dim("summary ")} ${p.declared.summary.replace(/\s+/g, " ").trim()}`);
+    // Merge locks: the merge a person is asked to approve, before the change itself.
+    out.push(...heldLines(p, c, (l) => diffText(l, c)));
     if (view) out.push(...lookLines(view, colony, opts.diff === true, c));
     else if (p.evidence?.residual?.length) out.push(`  ${c.dim("residual")} ${c.yellow(paths(p.evidence.residual, 4))}`);
     if (p.reason) out.push(`  ${c.dim("reason  ")} ${p.reason}`);
-    out.push(`  ${c.dim("checks  ")} ${checkLine(p.evidence?.checks, c)}`);
+    out.push(`  ${c.dim("checks  ")} ${checkLine(p.evidence, c)}`);
     if (view) {
       kept++;
       const size = changeSize(view);
@@ -1356,6 +1400,11 @@ export function formatEvent(e: ColonyEvent, c: Colors, clock: (at: number) => st
     }
     case "status":
       return `${time} ${tag("status", "blue")} ${e.agentId} ${e.note}`;
+    // The pause switch (pause.ts): who paused or resumed the colony's agents (or the deployment's), and why.
+    case "paused":
+      return `${time} ${tag("paused", "red")} ${e.scope} ${c.dim(`by ${plainLine(e.by)}: ${plainLine(e.reason)}`)}`;
+    case "resumed":
+      return `${time} ${tag("resumed", "green")} ${e.scope} ${c.dim(`by ${plainLine(e.by)}${e.reason ? `: ${plainLine(e.reason)}` : ""}`)}`;
     case "certify": {
       const sha = c.bold(shortSha(e.trunkSha));
       if (e.status === "running") return `${time} ${tag("certify", "yellow")} ${sha} testing…`;

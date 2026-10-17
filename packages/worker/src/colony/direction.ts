@@ -19,6 +19,7 @@ import type {
 } from "@fire_trident/core";
 import { noteAcceptance } from "../decide/quotes.ts";
 import { CHAIN_KIND } from "./chain.ts";
+import { cleanHedgeRecord, hedgeText } from "./hedge.ts";
 
 /**
  * Changing direction: intent revisions, withdrawals, retracted rules, human directives, and agents'
@@ -542,12 +543,15 @@ export function noteDecision(r: DecisionRow): NoteDecision {
         ? `unavailable: ${a.error}`
         : "";
     const reasons = text(a.reasons);
-    d.answer = oneLine([answer, reasons].filter(Boolean).join("; "), ANSWER_CHARS);
+    // Hedged calls (FT_HEDGE, colony/hedge.ts): which copy answered, before the reasons so the line keeps it.
+    const hedged = cleanHedgeRecord(a.hedged);
+    d.answer = oneLine([answer, hedged ? hedgeText(hedged) : "", reasons].filter(Boolean).join("; "), ANSWER_CHARS);
   } else if (r.layer === "llm") {
     d.question = "second opinion: approve, return or escalate";
     if (typeof a.model === "string") d.by = a.model;
     const v = a.verdict as Record<string, unknown> | undefined;
-    const answer = v ? `${text(v.verdict)}: ${text(v.reason)}` : typeof a.error === "string" ? `unavailable: ${a.error}` : text(a.reasons);
+    const hedged = cleanHedgeRecord(a.hedged);
+    const answer = v ? `${text(v.verdict)}${hedged ? ` (${hedgeText(hedged)})` : ""}: ${text(v.reason)}` : typeof a.error === "string" ? `unavailable: ${a.error}` : text(a.reasons);
     d.answer = oneLine(answer, ANSWER_CHARS);
     // Quoted acceptance (FT_QUOTED_ACCEPTANCE): each acceptance line with what counted and the line quoted for it.
     const acceptance = noteAcceptance(a.acceptance);

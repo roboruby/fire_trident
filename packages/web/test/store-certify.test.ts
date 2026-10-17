@@ -102,3 +102,32 @@ describe("trunk certification in the UI store", () => {
     expect(start.colony.certification).toBeUndefined();
   });
 });
+
+describe("culprit finding's labels on the certification card", () => {
+  const suspect = (n: number, labels?: Array<"first-since-green" | "latest" | "first-red">) => ({
+    landingId: `lnd_${n}`,
+    proposalId: `prp_${n}`,
+    paths: [`src/${n}.ts`],
+    files: ["test/a.test.ts"],
+    at: n,
+    ...(labels ? { labels } : {}),
+  });
+
+  it("says why each suspect is listed and keeps the first since green, and the first red, before newer ones", () => {
+    const red: CertView = { trunkSha: B, status: "red", at: 1, suspects: [suspect(5, ["latest"]), suspect(4, ["latest"]), suspect(3), suspect(1, ["first-since-green"])] };
+    expect(certSuspects(red, "web").map((s) => [s.ref, s.label])).toEqual([
+      ["prp_5", "latest"],
+      ["prp_4", "latest"],
+      ["prp_1", "first since green"],
+    ]);
+    expect(certTitle(red)).toContain("• prp_1 changed src/1.ts (first since green)");
+    // The first red search ended later (a bisect event): its landing's suspect is marked and kept first.
+    const searched: CertView = { ...red, firstRed: { status: "found", trunkSha: C, landingId: "lnd_3", probes: 2, ms: 5 } };
+    expect(certSuspects(searched, "web", 2).map((s) => [s.ref, s.label])).toEqual([
+      ["prp_3", "first red"],
+      ["prp_1", "first since green"],
+    ]);
+    // A suspect recorded before labels existed shows as before: no label.
+    expect(certSuspects({ suspects: [suspect(3)] }, "web")).toEqual([{ key: "lnd_3:prp_3", ref: "prp_3", title: "", paths: "src/3.ts", files: "test/a.test.ts", commit: "", undo: "ft revert web prp_3" }]);
+  });
+});

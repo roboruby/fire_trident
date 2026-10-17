@@ -35,7 +35,16 @@ export interface SuspectView {
   /** Its trunk commit, short ("" when unknown). */
   commit: string;
   undo: string;
+  /** Why it is listed ("first since green · latest", "first red"); absent for a suspect recorded without labels. */
+  label?: string;
 }
+
+/** Culprit finding's labels as the card words them, in this order. */
+const LABEL_WORDS: ReadonlyArray<[string, string]> = [
+  ["first-red", "first red"],
+  ["first-since-green", "first since green"],
+  ["latest", "latest"],
+];
 
 /** Names joined with ", ", the ones past `max` counted ("a, b +2"). */
 function names(list: string[], max: number): string {
@@ -44,18 +53,25 @@ function names(list: string[], max: number): string {
 
 /**
  * A red result's suspects (culprit finding) for the card, newest first, at most `max`, each with its
- * undo command (`ft revert <colony> <prp>`). Malformed entries (older or odd data) are left out.
+ * undo command (`ft revert <colony> <prp>`) and why it is listed. The first red one (the first failing
+ * commit's landing, also when only the result's `firstRed` names it) and the first since green keep
+ * their place before newer ones. Malformed entries (older or odd data) are left out.
  */
-export function certSuspects(c: Pick<CertView, "suspects">, colonyId: string, max = 3): SuspectView[] {
+export function certSuspects(c: Pick<CertView, "suspects"> & Partial<Pick<CertView, "firstRed">>, colonyId: string, max = 3): SuspectView[] {
   const list: unknown[] = Array.isArray(c.suspects) ? c.suspects : [];
   const strings = (x: unknown): string[] => (Array.isArray(x) ? x.filter((p): p is string => typeof p === "string" && p !== "") : []);
-  const out: SuspectView[] = [];
+  const firstRed = c.firstRed && c.firstRed.status === "found" && typeof c.firstRed.landingId === "string" ? c.firstRed.landingId : "";
+  const valid: Array<{ view: SuspectView; rank: number }> = [];
   for (const raw of list) {
-    if (out.length >= max) break;
     const s = (raw ?? {}) as Record<string, unknown>;
     if (typeof s.landingId !== "string" || s.landingId === "") continue;
     const ref = typeof s.proposalId === "string" && s.proposalId ? s.proposalId : s.landingId;
-    out.push({
+    const labels = new Set(strings(s.labels));
+    if (firstRed && s.landingId === firstRed) labels.add("first-red");
+    const label = LABEL_WORDS.filter(([k]) => labels.has(k))
+      .map(([, w]) => w)
+      .join(" · ");
+    const view: SuspectView = {
       key: `${s.landingId}:${ref}`,
       ref,
       title: typeof s.title === "string" ? s.title : "",
@@ -63,9 +79,18 @@ export function certSuspects(c: Pick<CertView, "suspects">, colonyId: string, ma
       files: names(strings(s.files), 2),
       commit: typeof s.trunkSha === "string" ? shortSha(s.trunkSha) : "",
       undo: `ft revert ${colonyId || "<colony>"} ${ref}`,
-    });
+    };
+    if (label) view.label = label;
+    valid.push({ view, rank: labels.has("first-red") ? 0 : labels.has("first-since-green") ? 1 : 2 });
   }
-  return out;
+  const kept = new Set(
+    valid
+      .map((v, i) => ({ r: v.rank, i }))
+      .sort((a, b) => a.r - b.r || a.i - b.i)
+      .slice(0, Math.max(0, max))
+      .map((x) => x.i),
+  );
+  return valid.filter((_, i) => kept.has(i)).map((v) => v.view);
 }
 
 /** A red result's first failing commit (FT_BISECT) as the card words it: one sentence, and the commands that undo the proposals it names. */
@@ -118,7 +143,8 @@ export function certTitle(c: CertView): string {
   const lines = (c.failing ?? []).slice(0, 10).map((f) => `• ${f.name}${f.error ? `: ${f.error}` : ""}`);
   const more = k ? k.fail + k.cancelled - lines.length : 0;
   const suspects = certSuspects(c, "");
-  const suspected = suspects.length > 0 ? `\nSuspects, newest first:\n${suspects.map((s) => `• ${s.ref}${s.title ? ` “${s.title}”` : ""}${s.paths ? ` changed ${s.paths}` : ""}`).join("\n")}` : "";
+  const suspected =
+    suspects.length > 0 ? `\nSuspects, newest first:\n${suspects.map((s) => `• ${s.ref}${s.title ? ` “${s.title}”` : ""}${s.paths ? ` changed ${s.paths}` : ""}${s.label ? ` (${s.label})` : ""}`).join("\n")}` : "";
   const firstRed = certFirstRed(c, "");
   return `${shortSha(c.trunkSha)}: ${fmtInt(k ? k.fail + k.cancelled : lines.length)} of ${fmtInt(k?.tests ?? 0)} tests failing${notRun ? ` (${notRun})` : ""}${took}\n${lines.join("\n")}${more > 0 ? `\n… and ${more} more` : ""}${suspected}${firstRed ? `\n${firstRed.text}` : ""}${reused}`;
 }

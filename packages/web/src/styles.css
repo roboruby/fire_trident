@@ -1654,6 +1654,22 @@ a.signed-by:hover {
   overflow-wrap: anywhere;
 }
 
+/* Return hunks (FT_RETURN_HUNKS): what a landing changed in a file, or a contested region, quoted. */
+.moved-hunk {
+  margin: 2px 0 6px;
+  padding: 6px 8px;
+  max-height: 240px;
+  overflow: auto;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-2);
+  font-family: var(--mono);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  white-space: pre;
+}
+
 .checks {
   display: flex;
   flex-wrap: wrap;
@@ -5674,4 +5690,161 @@ html[data-emphasize="trunk"] .trunk {
   right: 0;
   margin: 0;
   transform: translateY(-50%);
+}
+
+/* ------------------------------------------------------------------ pause banner (components/PauseBanner.tsx) */
+
+.pause-banner {
+  position: absolute;
+  left: 50%;
+  bottom: 46px;
+  z-index: 7;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  width: max-content;
+  max-width: calc(100% - 24px);
+  padding: 10px 14px;
+  border: 1px solid rgba(255, 46, 79, 0.55);
+  border-radius: 11px;
+  background: rgba(24, 6, 10, 0.94);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  color: var(--text);
+  font-size: 13px;
+  transform: translateX(-50%);
+}
+
+.pause-k {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--danger);
+}
+
+.pause-headline {
+  font-weight: 700;
+}
+
+.pause-detail {
+  flex-basis: 100%;
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.pause-command {
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+.pause-command code {
+  color: var(--text);
+}
+/* Who said each line of a note (components/SaidBy.tsx): FireTrident, a model, a person, the agent, or unknown. */
+.said {
+  display: inline-block;
+  padding: 0 6px;
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 16px;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  white-space: nowrap;
+  vertical-align: 1px;
+}
+
+.said-platform {
+  color: #8fe8bd;
+  border-color: rgba(31, 224, 142, 0.3);
+}
+
+.said-model {
+  color: var(--llm);
+  border-color: rgba(167, 139, 250, 0.35);
+}
+
+.said-person {
+  color: var(--human);
+  border-color: rgba(243, 128, 32, 0.4);
+}
+
+.said-agent {
+  color: var(--need);
+  border-color: rgba(255, 181, 61, 0.35);
+}
+
+.said-unknown {
+  color: var(--text-3);
+}
+
+.said-quote {
+  font-style: italic;
+  color: var(--text-2);
+}
+
+.checks-run {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.nc-check-said {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+}
+
+.lin-preview-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.lin-preview-row .lin-preview {
+  margin-top: 0;
+}
+
+/* The answerable line of a landing card: a person, or no person and why. */
+.answerable {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  margin: 6px 0 2px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.answerable-k {
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--text-4);
+}
+
+.answerable.is-person .answerable-text {
+  color: var(--text);
+}
+
+.answerable.is-none .answerable-text {
+  color: var(--need);
+}
+
+.answerable.is-unknown .answerable-text {
+  color: var(--text-3);
+}
+
+.nc-answerable.is-none {
+  color: var(--need);
+}
+
+.nc-answerable.is-unknown {
+  color: var(--text-3);
 }

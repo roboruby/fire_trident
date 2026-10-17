@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Certification, ColonyEvent, Id, Landing, Path, Sha } from "@fire_trident/core";
 import { Certifier, type CertifyHost, type CertifyTrunk } from "../../src/certify/certifier.ts";
+import type { LandedOn } from "../../src/certify/culprit.ts";
 import { MAIN_MODULE, type Plan } from "../../src/certify/plan.ts";
 import type { LandingRange, RangeQuery } from "../../src/certify/range.ts";
 import type { RepairIntentInput } from "../../src/certify/repair.ts";
@@ -166,8 +167,8 @@ interface Colony {
   whys: Map<Id, string>;
 }
 
-/** A certifier over `trunk` with the first red search on (unless `bisect` is false), repairs on, runs at once. */
-function setup(trunk: Trunk, loader: WorkerLoader, bisect = true): Colony {
+/** A certifier over `trunk` with the first red search on (unless `bisect` is false), repairs on, runs at once; `extra` adds to its host. */
+function setup(trunk: Trunk, loader: WorkerLoader, bisect = true, extra: Partial<CertifyHost> = {}): Colony {
   let green: Sha | null = null;
   const events: ColonyEvent[] = [];
   const declared: RepairIntentInput[] = [];
@@ -200,6 +201,7 @@ function setup(trunk: Trunk, loader: WorkerLoader, bisect = true): Colony {
       whys.set(id, next);
       return true;
     },
+    ...extra,
   };
   const certifier = new Certifier(host);
   const set = certifier.setPolicy({ minIntervalMs: 0, repair: true });
@@ -371,5 +373,52 @@ describe("the first red search (FT_BISECT) in the certifier", () => {
     const done = await firstRedOf(colony.certifier, trunk.sha);
     expect(done.firstRed).toMatchObject({ status: "inconclusive", reason: "The landing log could not be read: the trunk writer is busy", probes: 0 });
     expect(done).toEqual({ ...red, firstRed: done.firstRed });
+  }, 60_000);
+});
+
+describe("culprit finding beside the first red search", () => {
+  it("labels the first landing since green beside the newest two, and marks the first red one once the search ends", async () => {
+    const trunk = new Trunk();
+    seed(trunk);
+    /** The colony's lookups over the trunk stand-in: its index (the newest three landings on the paths) and its landing log. */
+    const landedOn = async (paths: Path[], since?: { at: number; landingId: Id | null }): Promise<LandedOn[]> => {
+      const touched = trunk.landings
+        .filter((l) => l.paths.some((p) => paths.includes(p)))
+        .map((l): LandedOn => {
+          const p = trunk.notes.get(l.id)?.proposals[0];
+          return { landingId: l.id, at: l.at, trunkSha: l.trunkSha, ...(p ? { proposalId: p.id, intentId: p.intent.id } : {}), title: p?.intent.title ?? "", why: "", paths: l.paths.filter((x) => paths.includes(x)) };
+        });
+      return since ? touched.filter((l) => l.at >= since.at).slice(0, 4) : touched.reverse().slice(0, 3);
+    };
+    const colony = setup(trunk, nodeLoader(), true, {
+      culprits: () => true,
+      landedOn,
+      landingOf: (sha) => {
+        const l = trunk.landings.find((x) => x.trunkSha === sha);
+        return l ? { landingId: l.id, at: l.at } : null;
+      },
+    });
+    expect((await land(colony.certifier, trunk)).status).toBe("green");
+    // Four landings change what the failing test loads: the first breaks it, the later ones land on a red trunk.
+    const broke = trunk.commit({ "src/math.ts": MATH_BUG }, [{ id: "prp_bad", intentId: "int_bad", title: "Speed up subtraction", paths: ["src/math.ts"] }]);
+    for (let i = 2; i <= 4; i++) trunk.commit({ "src/math.ts": `${MATH_BUG}// pass ${i}\n` }, [{ id: `prp_b${i}`, intentId: `int_b${i}`, title: `Tidy subtraction ${i}`, paths: ["src/math.ts"] }]);
+    const red = await land(colony.certifier, trunk);
+    expect(red.status).toBe("red");
+    // As recorded and published, before the search ended (the stored result may already carry its answer).
+    const published = colony.events.find((e): e is Extract<ColonyEvent, { t: "certify" }> => e.t === "certify" && e.trunkSha === trunk.sha && e.status === "red");
+    expect(published?.suspects?.map((s) => [s.proposalId, s.labels])).toEqual([
+      ["prp_b4", ["latest"]],
+      ["prp_b3", ["latest"]],
+      ["prp_bad", ["first-since-green"]],
+    ]);
+    const done = await firstRedOf(colony.certifier, trunk.sha);
+    expect(done.firstRed).toMatchObject({ status: "found", landingId: broke.id });
+    expect(done.suspects?.map((s) => [s.proposalId, s.labels])).toEqual([
+      ["prp_b4", ["latest"]],
+      ["prp_b3", ["latest"]],
+      ["prp_bad", ["first-since-green", "first-red"]],
+    ]);
+    // The repair intent named the first since green as it was declared.
+    expect(colony.whys.get("int_r1")).toContain('- [first since green] proposal prp_bad (landing ');
   }, 60_000);
 });

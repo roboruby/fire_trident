@@ -8,6 +8,7 @@ import { modelClient, resolveModel } from "./llm.ts";
 import { DEFAULT_TICK_BUDGET_MS, agentState, receiveDirective, stopAgent, tick } from "./loop.ts";
 import type { AgentConfig, AgentIntentUsage, HistoryEntry, Job, JobStep, LoopDeps, StepLogEntry } from "./loop.ts";
 import { intentSpendEnabled } from "../colony/intentspend.ts";
+import { hedgeFor } from "../colony/hedge.ts";
 import { OutcomeBox, regionNames, type ClaimRefresher, type PushedOutcome } from "./outcomes.ts";
 import { colonyStub, errorMessage, trunkBlobsStub } from "./rpc.ts";
 import type { AgentStartParams } from "./rpc.ts";
@@ -90,7 +91,8 @@ export class AgentDO extends DurableObject<Env> {
       colony: colonyStub(this.env, colonyId),
       trunk: trunkBlobsStub(this.env, colonyId),
       git: this.git,
-      model: modelClient(this.env),
+      // Hedged calls (FT_HEDGE, colony/hedge.ts): copies to the same model, counted in this agent's journal.
+      model: modelClient(this.env, hedgeFor(this.env, colonyId, "agent", { bump: (name, delta) => this.journal.bump(name, delta) })),
       journal: this.journal,
       now: () => Date.now(),
       log: (line) => console.log(`agent ${this.journal.config()?.agentId ?? "?"}: ${line}`),

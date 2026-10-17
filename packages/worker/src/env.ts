@@ -39,6 +39,20 @@ export interface Env {
   FT_DEFAULT_MODEL: string;
   FT_BULK_MODEL: string;
   FT_REFLEX_MODEL: string;
+  /**
+   * Optional: hedged model calls, "on", or a comma-separated list of colony ids; absent or "off" is off. Where it covers
+   * the colony, a model call with no answer after its call site's wait goes out once more (colony/hedge.ts): Clef, the
+   * second opinion (to its next candidate model), antibody minting, the contest judge and jury, the conflict resolver
+   * and in-platform agents. The first answer wins, the other copy is aborted, both copies' tokens count in the spend,
+   * and the decision record (`hedged`) and the model's check say which copy answered. Metrics `hedge.<site>.sent` and
+   * `hedge.<site>.copy` count copies sent and copies whose answer was used.
+   */
+  FT_HEDGE?: string;
+  /**
+   * Optional: the hedge's wait in ms, for every call site ("8000") or by site ("review=8000,agent=90000"; sites reflex,
+   * review, judge, antibody, resolver, agent), held to 1 s .. 10 minutes; absent, each site's own (HEDGE_AFTER_MS).
+   */
+  FT_HEDGE_MS?: string;
   /** Secret: bearer token for mutating API routes. */
   FT_ADMIN_TOKEN?: string;
   /**
@@ -85,6 +99,17 @@ export interface Env {
   FT_RESOLVER?: string;
   /** Optional: the model the conflict resolver calls; FT_DEFAULT_MODEL when absent ("default" and "bulk" name the server's models). */
   FT_RESOLVER_MODEL?: string;
+  /**
+   * Optional: return hunks, "on", or a comma-separated list of colony ids; absent or "off" is off. When a change goes back
+   * because trunk moved files it read or wrote, its return quotes what beat it (colony/returnhunks.ts): each landing that
+   * movedBy names carries its unified diff of each moved file (movedBy[].hunks: about 40 lines a file, 3 files a landing),
+   * and a text merge conflict carries each contested region (contested: the base, trunk and own lines, from the base line
+   * where it starts), at most 120 lines and 8,000 characters a return, masked where a line looks like a secret. The colony
+   * asks the trunk writer once per batch of returns and waits at most a second; past that, the return goes out as before,
+   * its landings named. Agents read the hunks in the take's lastReturn, the MCP inbox and the in-platform agent's redo
+   * prompt (fenced as data there); review cards show them under what beat the intent's last change.
+   */
+  FT_RETURN_HUNKS?: string;
   /**
    * Optional: model step-up, "on", or a comma-separated list of colony ids; absent or "off" is off. When an intent's
    * changes have come back twice since it last changed course (a landing or a substantive amendment), its next take asks

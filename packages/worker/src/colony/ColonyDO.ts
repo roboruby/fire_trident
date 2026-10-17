@@ -114,6 +114,7 @@ import { DerivedSet, recordedLanding, type LandingLog } from "../trunk/derived.t
 import { NeighborCache, claimLookup, type Neighbor } from "../trunk/cochange.ts";
 import { importNeighbors, type ImportLinks } from "../trunk/imports.ts";
 import type { RevertResult } from "../trunk/revert.ts";
+import { agentClaims, answerableBumps, answerableMeter, intentWho, type AnswerableMeter, type IntentWho } from "../trunk/answerable.ts";
 import { asyncPublishEnabled } from "../trunk/publish.ts";
 import {
   BUCKET_MS,
@@ -136,7 +137,8 @@ import {
 } from "./metrics.ts";
 import type { AgentListEntry, ColonySeries, ColonySummary, RegistryEntry, SnapshotWithSeries } from "./metrics.ts";
 import { Certifier, type CertifyHost, type CertifyTrunk } from "../certify/certifier.ts";
-import { culpritsEnabled, type LandedOn } from "../certify/culprit.ts";
+import { culpritsEnabled, type LandedOn, type SinceGreen } from "../certify/culprit.ts";
+import { landedSince } from "../certify/since.ts";
 import { bisectEnabled } from "../certify/bisect.ts";
 import { prelandEnabled, prelandReader } from "../certify/preland.ts";
 import type { CertifyPolicy } from "../certify/repair.ts";
@@ -156,7 +158,9 @@ import { INLINE_FETCH_BYTES, InlineContents, inlineRefusal, isInlineChange, migr
 import { FieldGuide, guideEnabled, type GuideView } from "./guide.ts";
 import type { GuideLesson, GuideTake, LessonReceipt } from "@fire_trident/core";
 import { MegafileAlarm, megafileEnabled, type MegafileHost } from "./megafile.ts";
+import { A2A_ACTOR, ColonyPause, DEPLOYMENT_PAUSE_KEY, type PauseAnswer, type PauseView, type ResumeAnswer, type WriterPause } from "./pause.ts";
 import type { MegafileHold, MegafileReport } from "@fire_trident/core";
+import { grantPriority, migratePriority, notePriority, priorityCapOf, requestedPriorityOf } from "./priority.ts";
 import { RESOLVER_AGENT, Resolver, migrateResolver, type ResolverTrunk } from "./resolver.ts";
 import type { NoteResolves } from "@fire_trident/core";
 import { impactReport } from "./impact.ts";
@@ -167,8 +171,11 @@ import { findTwin, twinChecked, twinsEnabled, type DeclareAnswer, type TwinAnswe
 import { chainGateEnabled, chainHold, declaredBy, type DeclaredBy } from "./chain.ts";
 import { a2aTasks, type A2APage, type A2AQuery } from "./a2a.ts";
 import { REVIEW_MOVED, cleanMovedBy, movedCollision, movedReturn, type StalePath } from "./movedby.ts";
+import { cleanContested } from "./hunks.ts";
+import { eventMovedBy, fetchReturnHunks, quoteHunks, returnHunksEnabled, type QuotedHunks, type ReturnHunksAnswer, type ReturnHunksQuery } from "./returnhunks.ts";
 import { PROTECT_META, isProtectStop, parseProtectRecord, protectChanged, protectLandedText, type ProtectHost, type ProtectOutcome, type ProtectRecord } from "./protect.ts";
 import { SpendBook, modelOfClass, resolverClient, spendCounters } from "./spend.ts";
+import { hedgeFor } from "./hedge.ts";
 import type { ColonySpend, IntentSpendBrief } from "@fire_trident/core";
 import { IntentSpendBook, intentSpendEnabled, type IntentSpendAnswer } from "./intentspend.ts";
 
@@ -437,6 +444,9 @@ type IntentRow = {
   escalation_open?: number | null;
   /** Contest mode: seats (decide/contest.ts migrates older tables). */
   contest?: number | null;
+  /** What an agent asked for when the cap lowered its priority, and which cap (priority.ts migrates older tables). */
+  requested_priority?: number | null;
+  priority_cap?: string | null;
 };
 
 type RuleRow = {
@@ -636,6 +646,7 @@ export class ColonyDO extends DurableObject<Env> {
     migrateContest(this.sql);
     migrateContents(this.sql);
     migrateResolver(this.sql);
+    migratePriority(this.sql);
     this.backfillSeries();
     this.hub = new EventHub(() => this.ctx.getWebSockets());
     this.certifier = new Certifier(this.certifyHost());
@@ -768,6 +779,8 @@ export class ColonyDO extends DurableObject<Env> {
     const megafiles = this.megafileReportSafe();
     // Spend per intent (colony/intentspend.ts), for the Intents tab's rows; absent when nothing was counted per intent.
     const intentSpend = this.intentSpendMap();
+    // Pause (colony/pause.ts): the pauses in force, for the colony page's banner and ft status; absent while agents may work.
+    const pauses = await this.pauses().current();
     return {
       colony: certification || publish ? { ...colony, ...(certification ? { certification } : {}), ...(publish ? { publish } : {}) } : colony,
       files,
@@ -783,6 +796,7 @@ export class ColonyDO extends DurableObject<Env> {
       ...(stuck ? { stuck } : {}),
       ...(megafiles ? { megafiles } : {}),
       ...(intentSpend ? { intentSpend } : {}),
+      ...(pauses.length > 0 ? { pauses } : {}),
     };
   }
 
@@ -804,6 +818,8 @@ export class ColonyDO extends DurableObject<Env> {
    * unless `force`. Otherwise, and for rule, certification and the colony's own intents, it is addIntent.
    */
   async declareIntent(i: IntentInput, opts: { force?: boolean } = {}): Promise<DeclareAnswer> {
+    // Pause (colony/pause.ts): an agent's declaration (MCP declare, Agent2Agent SendMessage) waits for a person to resume.
+    if (i?.source === "agent") await this.pauses().refuse();
     const twin = opts?.force === true ? null : this.twinOf(i);
     return twin ?? { intent: await this.addIntent(i) };
   }
@@ -1037,6 +1053,8 @@ export class ColonyDO extends DurableObject<Env> {
    */
   async withdrawIntent(id: Id, p: { reason: string; by?: string }): Promise<{ intent: Intent; notified: Notified[]; already?: true } & RedirectOutcome> {
     const colony = this.requireColony();
+    // Pause (colony/pause.ts): the Agent2Agent CancelTask is an agent's write; a person's withdrawal goes ahead.
+    if (p?.by === A2A_ACTOR) await this.pauses().refuse();
     const row = this.intentRow(id);
     if (!row) throw ftError(404, `unknown intent ${id}`);
     if (row.status === "withdrawn") return { intent: this.toIntent(row, colony.id), returned: 0, landed: [], confirmed: true, notified: [], already: true };
@@ -1549,6 +1567,8 @@ export class ColonyDO extends DurableObject<Env> {
   async escalate(agentId: Id, p: { intentId?: Id; kind: EscalationKind; report: string }): Promise<{ intent: Intent; escalation: IntentEscalation }> {
     const colony = this.requireColony();
     const agent = this.requireAgent(agentId);
+    // Pause (colony/pause.ts): an agent's report waits for a person to resume, like its changes.
+    await this.pauses().refuse();
     const kind = escalationKind(p?.kind);
     if (!kind) throw ftError(400, `kind must be one of ${ESCALATION_KINDS.join(", ")}`);
     const report = reportText(p?.report);
@@ -1723,6 +1743,8 @@ export class ColonyDO extends DurableObject<Env> {
   /** Register many agents in one call (swarms). */
   async registerAgents(list: Array<{ kind: AgentKind; name: string; model?: string }>): Promise<AgentInfo[]> {
     const colony = this.requireColony();
+    // Pause (colony/pause.ts): no platform-run agent (a swarm's in-platform or synthetic agents) starts while paused.
+    if (Array.isArray(list) && list.some((a) => a?.kind === "internal" || a?.kind === "synthetic")) await this.pauses().refuse();
     const now = Date.now();
     const out: AgentInfo[] = [];
     const events: ColonyEvent[] = [];
@@ -1767,23 +1789,28 @@ export class ColonyDO extends DurableObject<Env> {
    * (`alternatives`, keyed by the winner's proposal id).
    */
   async landContext(intentIds: Id[], agentIds: Id[], proposalIds: Id[] = []): Promise<{
-    intents: Record<Id, { title: string; why: string; ruleId?: Id; parentId?: Id } & DirectionInfo>;
+    intents: Record<Id, { title: string; why: string; ruleId?: Id; parentId?: Id; priority?: number; requestedPriority?: number } & DirectionInfo & IntentWho>;
     agents: Record<Id, { kind: AgentKind; model?: string; resumeKey?: boolean }>;
     decisions: Record<Id, NoteDecision[]>;
     alternatives?: Record<Id, ContestAlternative[]>;
     resolves?: Record<Id, NoteResolves>;
     protect?: ProtectRecord;
+    pause?: WriterPause;
   }> {
     const colonyId = this.requireColony().id;
-    const intents: Record<Id, { title: string; why: string; ruleId?: Id; parentId?: Id } & DirectionInfo> = {};
+    const intents: Record<Id, { title: string; why: string; ruleId?: Id; parentId?: Id; priority?: number; requestedPriority?: number } & DirectionInfo & IntentWho> = {};
+    // Who approved each rule, for the lineage note's answerable person (trunk/answerable.ts).
+    const approver = (ruleId: Id): string | undefined => this.sql.exec<{ approved_by: string }>("SELECT approved_by FROM rules WHERE id = ?", ruleId).toArray()[0]?.approved_by;
     for (const id of new Set(intentIds)) {
       const row = this.intentRow(id);
       if (!row) continue;
       const i = this.toIntent(row, colonyId);
-      const entry: { title: string; why: string; ruleId?: Id; parentId?: Id } & DirectionInfo = { title: i.title, why: i.why, status: i.status, revision: i.revision ?? 1 };
+      const entry: { title: string; why: string; ruleId?: Id; parentId?: Id } & DirectionInfo & IntentWho = { title: i.title, why: i.why, status: i.status, revision: i.revision ?? 1, ...intentWho(i, approver) };
       if (i.ruleId) entry.ruleId = i.ruleId;
       if (i.parentId) entry.parentId = i.parentId;
       if (i.withdrawnReason) entry.withdrawnReason = i.withdrawnReason;
+      // What an agent asked for when the cap lowered its priority, for the lineage note (priority.ts).
+      Object.assign(entry, notePriority(i));
       if ((i.revision ?? 1) > 1) {
         entry.revisions = this.revisionRows(id)
           .filter((r) => r.substantive === 1)
@@ -1819,7 +1846,9 @@ export class ColonyDO extends DurableObject<Env> {
     // Protected paths (colony/protect.ts): the colony's protected globs, once it keeps a record of them; lanes check
     // their batch against it, and the trunk writer keeps the newest one it is handed.
     const protect = parseProtectRecord(this.decider().store.meta(PROTECT_META));
-    return { intents, agents, decisions, ...(alternatives ? { alternatives } : {}), ...(Object.keys(resolves).length > 0 ? { resolves } : {}), ...(protect ? { protect } : {}) };
+    // Pause (colony/pause.ts): the colony's pauses as they stand; a lane holds on it, and the trunk writer keeps the newest.
+    const pause = await this.pauses().writerRecord();
+    return { intents, agents, decisions, ...(alternatives ? { alternatives } : {}), ...(Object.keys(resolves).length > 0 ? { resolves } : {}), ...(protect ? { protect } : {}), pause };
   }
 
   /**
@@ -1832,6 +1861,8 @@ export class ColonyDO extends DurableObject<Env> {
   async take(agentId: Id): Promise<TakeResult> {
     this.requireColony();
     this.requireAgent(agentId);
+    // Pause (colony/pause.ts): no agent takes work while the colony's agents are paused.
+    await this.pauses().refuse();
     // One take per agent at a time: a second one could reserve another intent while the first awaits.
     if (this.taking.has(agentId)) return { wait: true, retryInMs: BUSY_RETRY_MS, reason: "take already in progress" };
     // Backpressure: TAKES_IN_FLIGHT takes score candidates at once and up to TAKES_QUEUED more wait
@@ -2074,6 +2105,8 @@ export class ColonyDO extends DurableObject<Env> {
       const again = input.lesson !== undefined ? this.guide()?.repeated(repeat.id) : undefined;
       return again ? { ...repeat, lesson: again } : repeat;
     }
+    // Pause (colony/pause.ts): a new change waits for a person to resume (a repeat above gets the proposal it made).
+    await this.pauses().refuse();
     this.assertProposable(intentRow, input.agentId);
     const writeSet = this.normalizeVersions(input.writeSet);
     if (writeSet.length === 0) throw ftError(400, "proposal write set is empty");
@@ -2091,10 +2124,14 @@ export class ColonyDO extends DurableObject<Env> {
     const footprint = declaredFootprint.length > 0 ? declaredFootprint : this.footprintOf(intentRow.id, intentRow.footprint);
     const now = Date.now();
     const ev = input.evidence ?? {};
+    const stated = typeof ev.notVerified === "string" && ev.notVerified.trim() !== "";
     const evidence: Evidence = {
-      checks: Array.isArray(ev.checks) ? ev.checks : [],
+      // The checks it came with are the agent's own claims (trunk/answerable.ts).
+      checks: agentClaims(ev.checks),
       residual: residualPaths(footprint, writeSet),
-      notVerified: typeof ev.notVerified === "string" && ev.notVerified.trim() ? ev.notVerified.trim() : DEFAULT_NOT_VERIFIED,
+      notVerified: stated ? (ev.notVerified as string).trim() : DEFAULT_NOT_VERIFIED,
+      // Who wrote the statement: the agent, or FireTrident (this default, or the MCP server's sentence for an agent that gave none).
+      notVerifiedBy: stated && ev.notVerifiedBy !== "platform" ? "agent" : "platform",
     };
     if (typeof ev.previewUrl === "string" && ev.previewUrl) evidence.previewUrl = ev.previewUrl;
     // Megafile alarm (colony/megafile.ts, FT_MEGAFILE): a split's change records the held file's lines before and after
@@ -2265,6 +2302,9 @@ export class ColonyDO extends DurableObject<Env> {
    */
   async updateProposals(items: Array<{ id: Id; patch: Partial<Proposal>; stale?: StalePath[] }>): Promise<void> {
     const colony = this.requireColony();
+    // Return hunks (FT_RETURN_HUNKS, colony/returnhunks.ts): the trunk writer quotes what beat these returns, read before
+    // anything below is written, so the writes stay one synchronous step.
+    const quoted = await this.quoteReturns(items);
     const now = Date.now();
     const fx = this.effects(colony.regionDepth);
     for (const { id, patch, stale } of items) {
@@ -2284,9 +2324,9 @@ export class ColonyDO extends DurableObject<Env> {
         createdAt: prev.createdAt,
         evidence: patch.evidence ? { ...prev.evidence, ...patch.evidence } : prev.evidence,
       };
-      if (!next.evidence.notVerified) next.evidence = { ...next.evidence, notVerified: DEFAULT_NOT_VERIFIED };
+      if (!next.evidence.notVerified) next.evidence = { ...next.evidence, notVerified: DEFAULT_NOT_VERIFIED, notVerifiedBy: "platform" };
       // What beat it (colony/movedby.ts): a change back because trunk moved its files names the landings that moved them.
-      if (next.status === "returned" && prev.status !== "returned") this.attributeReturn(next, stale);
+      if (next.status === "returned" && prev.status !== "returned") this.attributeReturn(next, stale, quoted);
       this.writeProposal(next, now);
       this.transition(next, prev.status, now, fx);
     }
@@ -2298,15 +2338,33 @@ export class ColonyDO extends DurableObject<Env> {
    * the per-path landing index, and its reason ends by naming them, with what to do. Best effort: a return never fails
    * over it.
    */
-  private attributeReturn(p: Proposal, stale: StalePath[] | undefined): void {
+  private attributeReturn(p: Proposal, stale: StalePath[] | undefined, quoted: QuotedHunks | null = null): void {
     if (!movedCollision(p)) return;
     try {
       this.backfillLandedIndex();
       const moved = movedReturn(this.sql, p, Array.isArray(stale) ? stale : null);
       if (moved) Object.assign(p, moved);
+      // Return hunks (FT_RETURN_HUNKS): what those landings changed in its files, and its contested regions, quoted.
+      quoteHunks(p, quoted);
     } catch (err) {
       console.warn(`movedBy for ${p.id} skipped: ${errorText(err)}`);
     }
+  }
+
+  /**
+   * Return hunks (FT_RETURN_HUNKS, colony/returnhunks.ts): the trunk writer's quotes of what beat these returns (one call,
+   * at most RETURN_HUNKS_MS), or null: the flag off, nothing to quote, or no answer in time. Never throws.
+   */
+  private async quoteReturns(items: Array<{ id: Id; patch: Partial<Proposal>; stale?: StalePath[] }>): Promise<QuotedHunks | null> {
+    if (!returnHunksEnabled(this.env.FT_RETURN_HUNKS, this.loadColony()?.colony.id ?? "")) return null;
+    if (!Array.isArray(items) || !items.some((i) => i?.patch?.status === "returned")) return null;
+    try {
+      this.backfillLandedIndex();
+    } catch (err) {
+      console.warn(`return hunks: the landing index did not catch up: ${errorText(err)}`);
+    }
+    const quote = (q: ReturnHunksQuery) => this.trunkStub().returnHunks(q) as unknown as Promise<ReturnHunksAnswer>;
+    return fetchReturnHunks({ sql: this.sql, proposal: (id) => this.getProposalSync(id), quote }, items);
   }
 
   /**
@@ -2372,6 +2430,8 @@ export class ColonyDO extends DurableObject<Env> {
     this.guide()?.landed(l);
 
     this.bump("landings", 1, now);
+    // Who answers for it, as its note says (trunk/answerable.ts): the meter metricsReport serves as `answerable`.
+    for (const [name, delta] of answerableBumps(l)) this.bump(name, delta, now);
     const perMin = this.landingsPerMin(now);
     this.setMetric("landingsPerMin", perMin, now);
     fx.events.push({ t: "landing", at: now, landingId: l.id, trunkSha: l.trunkSha, proposalIds: l.proposalIds ?? [], paths });
@@ -2411,7 +2471,7 @@ export class ColonyDO extends DurableObject<Env> {
     // What beat the intent's last change (colony/movedby.ts): the landings this one was redone on, for its reviewer.
     for (const p of queue.slice(0, REVIEW_MOVED)) {
       const last = this.lastReturn(p.intentId);
-      if (last?.movedBy) Object.assign(p, { lastReturn: last });
+      if (last?.movedBy || last?.contested) Object.assign(p, { lastReturn: last });
     }
     return queue;
   }
@@ -2507,8 +2567,19 @@ export class ColonyDO extends DurableObject<Env> {
     engine.onHumanDecision(p, d, reason, by);
     this.scheduleFunnel();
     if (d === "approve") {
-      if (p.status === "ready") return;
-      await this.updateProposals([{ id: proposalId, patch: { status: "ready" } }]);
+      // Merge locks (trunk/mergelock.ts): the approval travels with the change, so the trunk writer never merges it on its
+      // own. A change already cleared to land carries it too, in its lane's copy as well; a held merge is answered.
+      if (p.status === "ready") {
+        await this.updateProposals([{ id: proposalId, patch: { approvedAt: now } }]);
+        try {
+          await (await this.region(row.region ?? ".")).stampApproval(proposalId, now);
+        } catch (err) {
+          // The lane still passes the recorded decision with its lineage context.
+          console.warn(`approval of ${proposalId} not stamped in its lane: ${errorText(err)}`);
+        }
+        return;
+      }
+      await this.updateProposals([{ id: proposalId, patch: { status: "ready", approvedAt: now, mergeHold: undefined } }]);
     } else {
       await this.updateProposals([{ id: proposalId, patch: { status: d === "reject" ? "rejected" : "returned", reason: reason || `${d} by ${by}` } }]);
     }
@@ -2521,6 +2592,62 @@ export class ColonyDO extends DurableObject<Env> {
     const decision: Decision = { ...d, id: newId("dec_"), colonyId: colony.id, at };
     this.storeDecision(decision, at);
     return decision;
+  }
+
+  // =========================================================================
+  // Pause (colony/pause.ts): a person stops every agent of the colony, or of the deployment, with a reason
+  // =========================================================================
+
+  private pauseSwitch: ColonyPause | null = null;
+
+  /**
+   * Pause the colony's agents (POST /api/colonies/:id/pause, or code acting for a person, such as a spend cap, naming
+   * itself as `by`). Until a person resumes, every agent-facing write is refused with one sentence, the lanes hold and
+   * the trunk writer defers what it was handed. A pause already in force stands (`already`).
+   */
+  async pause(p: { reason: string; by?: string }): Promise<PauseAnswer> {
+    this.requireColony();
+    return this.pauses().pause({ by: p?.by ?? "api", reason: p?.reason });
+  }
+
+  /** Resume the colony's agents (POST /api/colonies/:id/resume); a deployment pause in force still holds them. */
+  async resume(p: { by?: string; reason?: string } = {}): Promise<ResumeAnswer> {
+    this.requireColony();
+    return this.pauses().resume({ by: p?.by ?? "api", reason: p?.reason });
+  }
+
+  /** The pauses in force (the colony's own first) and the sentence an agent's write meets: lanes, MCP and agents ask. */
+  async pauseState(): Promise<PauseView> {
+    this.requireColony();
+    return this.pauses().view();
+  }
+
+  /** The deployment's switch changed (api/pause.ts pushes the registry's record to every colony). */
+  async deploymentPause(record: unknown): Promise<{ changed: boolean; writer: boolean | null }> {
+    if (!this.loadColony()) return { changed: false, writer: null };
+    return this.pauses().deploymentChanged(record);
+  }
+
+  /** The pause switch, with this colony as its host (made on first use). */
+  private pauses(): ColonyPause {
+    if (this.pauseSwitch) return this.pauseSwitch;
+    this.pauseSwitch = new ColonyPause({
+      sql: this.sql,
+      now: () => Date.now(),
+      readDeployment: () => this.env.COLONY.get(this.env.COLONY.idFromName(REGISTRY_NAME)).registryFlag(DEPLOYMENT_PAUSE_KEY),
+      publish: (events) => void this.publish(events),
+      tellWriter: async (record: WriterPause) => {
+        try {
+          const trunk = this.trunkStub() as unknown as { pause(p: { record: WriterPause }): Promise<{ settled?: boolean }> };
+          return (await trunk.pause({ record })).settled === true;
+        } catch (err) {
+          // Lanes pass the same record with every batch, and hold before they hand one over.
+          console.warn(`pause: the trunk writer of ${this.loadColony()?.colony.id ?? "?"} was not told: ${errorText(err)}`);
+          return false;
+        }
+      },
+    });
+    return this.pauseSwitch;
   }
 
   // =========================================================================
@@ -3368,6 +3495,8 @@ export class ColonyDO extends DurableObject<Env> {
     const limiter = this.contestLimiter();
     limiter.configure(policy.llmConcurrency, policy.llmPerMinute);
     const judged: JudgeIntent = { title: intent.title, why: intent.why, whyBy: whyAuthor(intent.source), ...(intent.acceptance ? { acceptance: intent.acceptance } : {}) };
+    // Hedged calls (FT_HEDGE, colony/hedge.ts): judgeSpend counts every run, a losing copy's too.
+    const hedge = hedgeFor(this.env, this.requireColony().id, "judge", { bump: (name, delta) => void this.bump(name, delta, Date.now()) });
     // The contest jury (FT_CONTEST_JURY, decide/jury.ts): two or three small models from different families in place of the one judge.
     if (juryEnabled(this.env.FT_CONTEST_JURY, this.requireColony().id)) {
       return pairJury({
@@ -3377,6 +3506,7 @@ export class ColonyDO extends DurableObject<Env> {
         intent: judged,
         onCall: () => this.bump("contest.judge.calls", 1, Date.now()),
         onVerdict: (members, better) => this.juryCount(members, better),
+        hedge,
       });
     }
     return pairJudge({
@@ -3385,6 +3515,7 @@ export class ColonyDO extends DurableObject<Env> {
       limiter,
       intent: judged,
       onCall: () => this.bump("contest.judge.calls", 1, Date.now()),
+      hedge,
     });
   }
 
@@ -3651,7 +3782,7 @@ export class ColonyDO extends DurableObject<Env> {
       specFor: (paths) => this.specContextFor(paths),
       // Culprit finding (certify/culprit.ts): off unless FT_CULPRITS names this colony.
       culprits: () => culpritsEnabled(this.env.FT_CULPRITS, this.loadColony()?.colony.id ?? ""),
-      landedOn: (paths) => this.suspectLandings(paths),
+      landedOn: (paths, since) => this.suspectLandings(paths, since),
       landingOf: (sha) => {
         const r = this.sql.exec<{ id: string; at: number }>("SELECT id, at FROM landings WHERE trunk_sha = ? ORDER BY at DESC LIMIT 1", sha).toArray()[0];
         return r ? { landingId: r.id, at: r.at } : null;
@@ -3675,11 +3806,12 @@ export class ColonyDO extends DurableObject<Env> {
    * Culprit finding: the latest landings that changed any of `paths` (at most three, newest first),
    * read from the per-path landing index through whyContext, each with the proposal of its intent in
    * that landing and the blobs that proposal landed for those paths (one query for all of them; a file
-   * the trunk writer merged, the merged blob).
+   * the trunk writer merged, the merged blob). With `since`: the oldest landings since the last green
+   * commit that changed them, oldest first, from the landing log (certify/since.ts).
    */
-  private async suspectLandings(paths: Path[]): Promise<LandedOn[]> {
+  private async suspectLandings(paths: Path[], since?: SinceGreen): Promise<LandedOn[]> {
     // whyContext reads only the footprint, and the id for its log line.
-    const found = (await this.whyContext({ id: "certify-suspects", footprint: paths } as Intent)) ?? [];
+    const found = since ? landedSince(this.sql, paths, since, LANDINGS_KEEP) : ((await this.whyContext({ id: "certify-suspects", footprint: paths } as Intent)) ?? []);
     if (found.length === 0) return [];
     const writes = this.sql
       .exec<{ landing_id: string; proposal_id: string; intent_id: string; path: string | null; blob: string | null }>(
@@ -4072,6 +4204,7 @@ export class ColonyDO extends DurableObject<Env> {
     series: ColonySeries;
     convergence: Convergence;
     stuck?: StuckReport;
+    answerable: AnswerableMeter;
     spend?: ColonySpend;
     intentSpend?: Record<Id, IntentSpendBrief>;
   }> {
@@ -4090,6 +4223,8 @@ export class ColonyDO extends DurableObject<Env> {
       series: this.seriesReport(now),
       convergence: this.convergence(violations.total),
       ...(stuck ? { stuck } : {}),
+      // Landings no person is answerable for, as a count and share (trunk/answerable.ts).
+      answerable: answerableMeter(metrics),
     };
     // Model spend (colony/spend.ts): left out when it cannot be computed; the rest of the report stands.
     const spend = await this.spendReport(now, metrics);
@@ -4285,6 +4420,8 @@ export class ColonyDO extends DurableObject<Env> {
     this.guideStore = null;
     // So did the megafile alarm's.
     this.megafileAlarm = null;
+    // And the pause switch's (a deployment pause in force is read again from the registry).
+    this.pauseSwitch = null;
     await this.ctx.storage.deleteAlarm();
     await this.ctx.storage.deleteAll();
     this.colonyCache = null;
@@ -4310,6 +4447,7 @@ export class ColonyDO extends DurableObject<Env> {
     migrateDirection(this.sql);
     migrateContest(this.sql);
     migrateContents(this.sql);
+    migratePriority(this.sql);
     this.certifier.reset();
     return { cleared: true };
   }
@@ -4710,8 +4848,9 @@ export class ColonyDO extends DurableObject<Env> {
         this.returnsIndexedFor = colony.createdAt;
       }
       const rows = this.sql
-        .exec<{ id: string; status: string; updated_at: number; reason: string | null; superseded_by: string | null; moved_by: string | null }>(
-          `SELECT id, status, updated_at, json_extract(data, '$.reason') AS reason, json_extract(data, '$.supersededBy') AS superseded_by, json_extract(data, '$.movedBy') AS moved_by
+        .exec<{ id: string; status: string; updated_at: number; reason: string | null; superseded_by: string | null; moved_by: string | null; contested: string | null }>(
+          `SELECT id, status, updated_at, json_extract(data, '$.reason') AS reason, json_extract(data, '$.supersededBy') AS superseded_by, json_extract(data, '$.movedBy') AS moved_by,
+                  json_extract(data, '$.contested') AS contested
              FROM proposals WHERE intent_id = ? AND status IN ('returned', 'rejected', 'landed') ORDER BY created_at DESC LIMIT ?`,
           intentId,
           RETURN_LOOKBACK,
@@ -4730,6 +4869,9 @@ export class ColonyDO extends DurableObject<Env> {
         // What beat it: the landings that moved its files (colony/movedby.ts).
         const moved = cleanMovedBy(parseJson<unknown>(r.moved_by, undefined));
         if (moved) out.movedBy = moved;
+        // Return hunks (FT_RETURN_HUNKS): its text merge's contested regions, when quoted (colony/returnhunks.ts).
+        const contested = cleanContested(parseJson<unknown>(r.contested, undefined));
+        if (contested) out.contested = contested;
         return out;
       }
       return undefined;
@@ -5341,7 +5483,13 @@ export class ColonyDO extends DurableObject<Env> {
       waitUntil: (p) => this.ctx.waitUntil(p),
       limiter: () => this.decider().limiter,
       // The client agents use, with each call's tokens counted per model for the colony's spend (colony/spend.ts).
-      model: () => resolverClient(this.env, (name, delta) => void this.bump(name, delta, Date.now())),
+      // Hedged calls (FT_HEDGE, colony/hedge.ts): the copy goes to the same model, through the decide limiter.
+      model: () =>
+        resolverClient(
+          this.env,
+          (name, delta) => void this.bump(name, delta, Date.now()),
+          hedgeFor(this.env, this.requireColony().id, "resolver", { admit: (m) => this.decider().limiter.acquire(m, 0), bump: (name, delta) => void this.bump(name, delta, Date.now()) }),
+        ),
       // An in-platform agent named "resolver", registered on first use (synchronously: a return is being settled).
       agent: (known, model) => {
         const now = Date.now();
@@ -5432,7 +5580,7 @@ export class ColonyDO extends DurableObject<Env> {
     const proposalEvent: ColonyEvent = { t: "proposal", at: now, proposalId: p.id, intentId: p.intentId, agentId: p.agentId, status: p.status };
     if (p.reason) proposalEvent.reason = p.reason;
     // What beat a returned change (colony/movedby.ts): the web's intent and review cards show it.
-    if (p.status === "returned" && Array.isArray(p.movedBy) && p.movedBy.length > 0) proposalEvent.movedBy = p.movedBy;
+    if (p.status === "returned" && Array.isArray(p.movedBy) && p.movedBy.length > 0) proposalEvent.movedBy = eventMovedBy(p.movedBy);
     fx.events.push(proposalEvent);
     if (prev === "ready" && p.status !== "landed") {
       const list = fx.dequeue.get(region) ?? [];
@@ -5787,16 +5935,18 @@ export class ColonyDO extends DurableObject<Env> {
       if (d.assignedTo !== undefined && d.assignedTo !== null && !this.agentRow(d.assignedTo)) throw ftError(404, `unknown agent ${d.assignedTo}`);
       if (d.parentId && !this.intentRow(d.parentId)) throw ftError(404, `unknown parent intent ${d.parentId}`);
       const source: IntentSource = d.source === "rule" || d.source === "agent" || d.source === "certify" || d.source === "system" ? d.source : "human";
-      const priority = typeof d.priority === "number" && Number.isFinite(d.priority) ? Math.max(0, d.priority) : 1;
+      // An agent's intent takes at most the priority of a parent it holds or declared, else 1; what it asked is kept (priority.ts).
+      const granted = grantPriority(d.priority, source, source === "agent" && d.parentId ? this.intentRow(d.parentId) : null, d.createdBy || "unknown");
+      const { priority } = granted;
       const seats = contestSeats(d.contest);
       if (seats === null) throw ftError(400, "contest must be 2 to 4 agents (1 or absent: one holder)");
-      return { d, footprint, title, source, priority, seats };
+      return { d, footprint, title, source, priority, granted, seats };
     });
     const batch = new FieldBatch(colony.regionDepth);
     const events: ColonyEvent[] = [];
     const out: Intent[] = [];
     const declared: Array<{ doneAt: number | null }> = [];
-    for (const { d, footprint, title, source, priority, seats } of prepared) {
+    for (const { d, footprint, title, source, priority, granted, seats } of prepared) {
       const assignedTo = d.assignedTo ?? undefined;
       const intent: Intent = {
         id: newId("int_"),
@@ -5814,6 +5964,8 @@ export class ColonyDO extends DurableObject<Env> {
       if (d.parentId) intent.parentId = d.parentId;
       if (Array.isArray(d.acceptance) && d.acceptance.length > 0) intent.acceptance = d.acceptance;
       if (assignedTo) intent.assignedTo = assignedTo;
+      if (granted.requestedPriority !== undefined) intent.requestedPriority = granted.requestedPriority;
+      if (granted.priorityCap !== undefined) intent.priorityCap = granted.priorityCap;
       // Intent chains (FT_INTENT_CHAIN_GATE, colony/chain.ts): read before the row exists, so the declaring agent's earlier
       // intents are counted without this one.
       const hold = this.chainHold(intent, now);
@@ -5837,6 +5989,7 @@ export class ColonyDO extends DurableObject<Env> {
         now,
       );
       this.footprintCache.set(intent.id, footprint);
+      if (granted.requestedPriority !== undefined) this.recordRequestedPriority(intent.id, granted.requestedPriority, granted.priorityCap ?? null);
       // An intent the gate holds waits for a person as an open report, as a reported intent does, before any agent can take it.
       if (hold) {
         this.sql.exec("UPDATE intents SET escalation = ?, escalation_open = 1 WHERE id = ?", JSON.stringify(hold), intent.id);
@@ -5867,6 +6020,15 @@ export class ColonyDO extends DurableObject<Env> {
       }
     }
     return out;
+  }
+
+  /** Keep what an agent asked for when the cap lowered its priority (priority.ts). Best effort: the intent stands at the cap either way. */
+  private recordRequestedPriority(id: Id, requested: number, cap: string | null): void {
+    try {
+      this.sql.exec("UPDATE intents SET requested_priority = ?, priority_cap = ? WHERE id = ?", requested, cap, id);
+    } catch (err) {
+      console.warn(`requested priority of intent ${id} not kept: ${errorText(err)}`);
+    }
   }
 
   private assertProposable(row: IntentRow, agentId: Id): void {
@@ -5983,6 +6145,10 @@ export class ColonyDO extends DurableObject<Env> {
     const escalation = r.escalation ? parseEscalation(r.escalation) : null;
     if (escalation) intent.escalation = escalation;
     if (typeof r.contest === "number" && r.contest >= CONTEST_MIN) intent.contest = r.contest;
+    const requested = requestedPriorityOf(r.requested_priority, r.priority);
+    if (requested !== undefined) intent.requestedPriority = requested;
+    const cap = requested !== undefined ? priorityCapOf(r.priority_cap) : undefined;
+    if (cap) intent.priorityCap = cap;
     return intent;
   }
 

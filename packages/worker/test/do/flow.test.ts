@@ -71,7 +71,8 @@ describe("take → propose → lane → landing", () => {
 
     const p = await proposeEdit(c.id, got, a.id);
     expect(p).toMatchObject({ status: "ready", intentId: i.id, agentId: a.id, colonyId: c.id });
-    expect(p.evidence).toEqual({ checks: [], residual: [], notVerified: "Not verified: behavior beyond the checks listed" });
+    // The agent stated nothing: the colony's default, marked as FireTrident's.
+    expect(p.evidence).toEqual({ checks: [], residual: [], notVerified: "Not verified: behavior beyond the checks listed", notVerifiedBy: "platform" });
     expect((await intent(c.id, i.id)).status).toBe("proposed");
     expect((await agent(c.id, a.id)).state).toBe("proposing");
     expect((await region(c.id, "src").status()).lane).toBe(1);
@@ -275,10 +276,12 @@ describe("proposals", () => {
       evidence: { checks: [{ name: "typecheck", ok: true, ms: 12 }], notVerified: "Not verified: runtime behavior" },
     });
     expect(res.status).toBe(201);
+    // The checks and the statement the agent sent are marked as its own claims.
     expect(res.body.evidence).toEqual({
-      checks: [{ name: "typecheck", ok: true, ms: 12 }],
+      checks: [{ name: "typecheck", ok: true, ms: 12, by: "agent" }],
       residual: ["src/lib/util.ts"],
       notVerified: "Not verified: runtime behavior",
+      notVerifiedBy: "agent",
     });
   });
 

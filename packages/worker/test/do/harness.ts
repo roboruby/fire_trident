@@ -6,7 +6,7 @@
 import { DurableObject } from "cloudflare:workers";
 import { Hono } from "hono";
 import { blobId, newId, regionOf } from "@fire_trident/core";
-import type { AgentKind, FileVersion, Id, Landing, LineageNote, MergeConflict, NoteCertification, Path, Proposal, RepoRef, Sha, TrunkPublish, WorkspaceLease } from "@fire_trident/core";
+import type { AgentKind, FileVersion, HeldMergeFile, Id, Landing, LineageNote, MergeConflict, NoteCertification, Path, Proposal, RepoRef, Sha, TrunkPublish, WorkspaceLease } from "@fire_trident/core";
 import { createApi } from "../../src/api/app.ts";
 import type { ApiDeps } from "../../src/api/app.ts";
 import type { Env } from "../../src/env.ts";
@@ -17,6 +17,8 @@ import { IMPACT_FILES, expandEntries, walkImporters, type ImportersOf, type Impo
 import { newerProtect, parseProtectRecord, type ProtectRecord } from "../../src/colony/protect.ts";
 import { cycleProtect, protectionReturns, type ProtectContext } from "../../src/trunk/protect.ts";
 import type { LandingRange } from "../../src/certify/range.ts";
+import type { ReturnHunksAnswer, ReturnHunksQuery } from "../../src/colony/returnhunks.ts";
+import { quoteReturns } from "../../src/trunk/quote.ts";
 
 export { ColonyDO } from "../../src/colony/ColonyDO.ts";
 export { RegionDO } from "../../src/region/RegionDO.ts";
@@ -37,6 +39,8 @@ interface TrunkState {
   returnNext: Id[];
   /** The text merge conflicts a return of returnNext carries, by proposal id (as the real writer's do with FT_RESOLVER). */
   returnConflicts?: Record<Id, MergeConflict[]>;
+  /** What a return of returnNext gives instead of the conflict's reason, by proposal id (a merge hold, for example). */
+  returnAs?: Record<Id, { reason?: string; held?: HeldMergeFile[] }>;
   reportLandings: boolean;
   /** land() calls that land the batch and then throw anyway (the caller never learns). */
   loseAnswers?: number;
@@ -63,6 +67,9 @@ interface TrunkState {
   /** Asynchronous publishing: the published head publishState() names (the head when unset), or "fail" to make it throw; and its calls. */
   published?: Sha | "fail";
   publishStateCalls?: number;
+  /** Return hunks: what returnHunks() was asked (the latest 20), and how long it waits before it answers (holdQuotes). */
+  quoteAsks?: ReturnHunksQuery[];
+  quoteDelayMs?: number;
 }
 
 /** A point where a held land() call waits until releaseLand() (see holdNextLand). */
@@ -74,7 +81,7 @@ interface LandGate {
   opened: Promise<void>;
 }
 
-type Returned = { proposalId: Id; reason: string; conflicts?: MergeConflict[] };
+type Returned = { proposalId: Id; reason: string; conflicts?: MergeConflict[]; held?: HeldMergeFile[] };
 
 const DEFAULT_FILES: Record<Path, string> = {
   "README.md": "# demo\n",
@@ -151,6 +158,37 @@ export class TrunkDO extends DurableObject<Env> {
     await this.save(s);
   }
 
+  /**
+   * Return hunks (FT_RETURN_HUNKS), as the real TrunkDO answers them (trunk/quote.ts): each landing's change to a file from
+   * its parent's snapshot and its own, the texts from the blob contents this stand-in keeps.
+   */
+  async returnHunks(q: ReturnHunksQuery): Promise<ReturnHunksAnswer> {
+    const s = await this.load();
+    s.quoteAsks = [...(s.quoteAsks ?? []), q].slice(-20);
+    await this.save(s);
+    if ((s.quoteDelayMs ?? 0) > 0) await new Promise((r) => setTimeout(r, s.quoteDelayMs));
+    const text = (blob: Sha): string | null => Object.values(s.files).find((f) => f.blob === blob)?.content ?? s.contents?.[blob] ?? null;
+    return quoteReturns(
+      {
+        landingPath: (landingId, path) => {
+          const l = s.landings.find((x) => x.id === landingId);
+          if (!l || !(l.paths ?? []).includes(path)) return null;
+          return { trunkSha: l.trunkSha, before: s.commits[l.parentSha]?.[path] ?? null, after: s.commits[l.trunkSha]?.[path] ?? null };
+        },
+        read: async (blob) => text(blob),
+        now: () => Date.now(),
+      },
+      q,
+    );
+  }
+
+  /** Test helper: returnHunks() waits this long before it answers (a writer too busy to quote in time). */
+  async holdQuotes(ms: number): Promise<void> {
+    const s = await this.load();
+    s.quoteDelayMs = ms;
+    await this.save(s);
+  }
+
   /** Test helper: make the next n land() calls throw. */
   async failNextLands(n: number): Promise<void> {
     const s = await this.load();
@@ -158,11 +196,15 @@ export class TrunkDO extends DurableObject<Env> {
     await this.save(s);
   }
 
-  /** Test helper: land() returns these proposals as conflicts instead of landing them (`conflicts`: what each return carries). */
-  async returnOnLand(ids: Id[], conflicts?: Record<Id, MergeConflict[]>): Promise<void> {
+  /**
+   * Test helper: land() returns these proposals as conflicts instead of landing them (`conflicts`: what each return
+   * carries; `as`: a reason, and a held merge, in place of the conflict's reason).
+   */
+  async returnOnLand(ids: Id[], conflicts?: Record<Id, MergeConflict[]>, as?: Record<Id, { reason?: string; held?: HeldMergeFile[] }>): Promise<void> {
     const s = await this.load();
     s.returnNext = ids;
     s.returnConflicts = conflicts;
+    s.returnAs = as;
     await this.save(s);
   }
 
@@ -258,6 +300,12 @@ export class TrunkDO extends DurableObject<Env> {
     const kept = newerProtect(parseProtectRecord(await this.ctx.storage.get("protect")), parseProtectRecord(p?.record));
     if (kept) await this.ctx.storage.put("protect", kept);
     return this.direction({ intents: {}, proposalIds: p?.proposalIds ?? [] });
+  }
+
+  /** The pause (trunk/pause.ts): the colony's record of its pauses, kept as the real writer keeps it; the cycle in flight is settled at once here. */
+  async pause(p: { record: unknown }): Promise<{ paused: boolean; settled: boolean }> {
+    await this.ctx.storage.put("pause", p?.record ?? null);
+    return { paused: (p?.record as { paused?: unknown } | undefined)?.paused === true, settled: true };
   }
 
   /** Test helper: the protected-paths record this writer keeps (null when none). */
@@ -435,8 +483,10 @@ export class TrunkDO extends DurableObject<Env> {
       for (const p of batch) {
         const back = redirected.get(p.id) ?? guarded.get(p.id);
         if (back) returned.push({ proposalId: p.id, reason: back });
-        else if (s.returnNext.includes(p.id)) returned.push({ proposalId: p.id, reason: "conflict at land time: src/lib/util.ts", ...(s.returnConflicts?.[p.id] ? { conflicts: s.returnConflicts[p.id] } : {}) });
-        else landed.push(p);
+        else if (s.returnNext.includes(p.id)) {
+          const as = s.returnAs?.[p.id];
+          returned.push({ proposalId: p.id, reason: as?.reason ?? "conflict at land time: src/lib/util.ts", ...(s.returnConflicts?.[p.id] ? { conflicts: s.returnConflicts[p.id] } : {}), ...(as?.held ? { held: as.held } : {}) });
+        } else landed.push(p);
       }
       if (landed.length === 0) {
         await this.save(s);

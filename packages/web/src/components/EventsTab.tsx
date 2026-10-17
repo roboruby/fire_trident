@@ -7,6 +7,7 @@ import { ACCENT, FIELD_COLOR, LAYER_COLOR } from "../theme.ts";
 import { useThrottledVersion } from "../useStore.ts";
 import { certCounts, certFirstRed, certTitle } from "../certs.ts";
 import { contestText, escalationText, firstLine, noticeText, revalidatedText } from "../eventText.ts";
+import { pauseEventText } from "../pause.ts";
 
 /** Changing direction: amendments, withdrawals, retracted rules, reverted landings and human directives. */
 const DIRECTION_COLOR = "#c084fc";
@@ -27,7 +28,7 @@ const FILTERS: ReadonlyArray<[key: string, label: string, color: string, types: 
   ["intent", "Intents", "#7cc4ff", ["intent"]],
   ["escalation", "Reports", ACCENT, ["escalation"]],
   ["stuck", "Stuck", STUCK_COLOR, ["stuck"]],
-  ["direction", "Direction", DIRECTION_COLOR, ["amended", "withdrawn", "retracted", "reverted", "directive"]],
+  ["direction", "Direction", DIRECTION_COLOR, ["amended", "withdrawn", "retracted", "reverted", "directive", "paused", "resumed"]],
   ["status", "Status", STATUS_COLOR, ["status"]],
   ["certify", "Tests", TESTS_GREEN, ["certify", "bisect"]],
   ["agent", "Agents", "#c9d4e5", ["agent"]],
@@ -153,6 +154,10 @@ function describe(le: LoggedEvent, store: ColonyStore): Line {
     case "directive":
       if (e.kind === "landing") return noticeLine(le.group, e, store);
       return { tag: "directive", color: DIRECTION_COLOR, text: `${e.by} → ${store.agentName(e.agentId)}: “${e.message}”`, mono: e.via, title: e.message };
+    case "paused":
+      return { tag: "paused", color: FIELD_COLOR.danger, text: pauseEventText(e), mono: e.scope, title: pauseEventText(e) };
+    case "resumed":
+      return { tag: "resumed", color: TESTS_GREEN, text: pauseEventText(e), mono: e.scope, title: pauseEventText(e) };
     case "status":
       return { tag: "status", color: STATUS_COLOR, text: `${store.agentName(e.agentId)}: ${e.note}`, title: e.note };
     case "certify": {

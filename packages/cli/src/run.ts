@@ -3,7 +3,7 @@ import { userInfo } from "node:os";
 import { ABOUT_REQUEST, buildRow, type AboutLike } from "./about.ts";
 import type { Command, GlobalFlags } from "./args.ts";
 import { helpText, parseCommand } from "./args.ts";
-import { ApiError, VERSION, asArray, colonyPath, isProposalRef, liveUrl, pickColony, planRequest, resolveBaseUrl, revertRequest, send } from "./api.ts";
+import { ApiError, VERSION, accessHeaders, asArray, colonyPath, isProposalRef, liveUrl, pickColony, planRequest, resolveBaseUrl, revertRequest, send } from "./api.ts";
 import type { ApiRequest, HttpConfig } from "./api.ts";
 import { configPath, parseEnvFile, withConfig } from "./config.ts";
 import {
@@ -54,6 +54,7 @@ import type {
 import { formatGuide, formatLessonDecision, type GuideViewLike } from "./guide.ts";
 import { extractSpec, planNew } from "./spec.ts";
 import { formatMegafile } from "./megafile.ts";
+import { formatPause } from "./pause.ts";
 import { formatImpact } from "./impact.ts";
 import { autonomyLine, formatImmune } from "./immune.ts";
 import { signatureFailed } from "./signatures.ts";
@@ -136,6 +137,8 @@ export async function main(argv: readonly string[], io: Io = nodeIo()): Promise<
     const token = env.FT_TOKEN?.trim();
     const http: HttpConfig = { baseUrl: resolveBaseUrl(flags.url, env), fetch: io.fetch };
     if (token) http.token = token;
+    const access = accessHeaders(env);
+    if (access) http.headers = access;
     const ctx: Ctx = { io, flags, http, c: colors(colorEnabled(env, io.isTTY, flags.json)), by: resolveUser(env) };
     return await execute(command, ctx);
   } catch (e) {
@@ -409,6 +412,14 @@ async function execute(cmd: Command, ctx: Ctx): Promise<number> {
       else io.stdout(formatMegafile(cmd, res, c, io.now()));
       return 0;
     }
+    case "pause":
+    case "resume": {
+      // Pausing waits for the trunk writer's cycle in flight (up to 15 s); a deployment pause tells every colony.
+      const res = await send<unknown>(ctx.http, req, 60_000);
+      if (ctx.flags.json) printJson(ctx, res);
+      else io.stdout(formatPause(cmd, res, c));
+      return 0;
+    }
     default:
       throw new Error(`unhandled command ${cmd.name}`);
   }
@@ -673,7 +684,8 @@ function watch(cmd: Extract<Command, { name: "watch" }>, ctx: Ctx): Promise<numb
 
     const connect = () => {
       const init: WebSocketInit = {};
-      if (ctx.http.token) init.headers = { authorization: `Bearer ${ctx.http.token}` };
+      const wsHeaders: Record<string, string> = { ...ctx.http.headers, ...(ctx.http.token ? { authorization: `Bearer ${ctx.http.token}` } : {}) };
+      if (Object.keys(wsHeaders).length > 0) init.headers = wsHeaders;
       let ws: WebSocket;
       try {
         ws = new WS(url, init);

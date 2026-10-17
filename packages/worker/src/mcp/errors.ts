@@ -21,6 +21,12 @@ const NEXT_CALLS: ReadonlyArray<{ status: number; sentence: RegExp; next: string
   },
   { status: 400, sentence: /^call join first\b/, next: "Call join with the colony id." },
   { status: 400, sentence: /^you hold no intent; call take first\b/, next: "Call take." },
+  // A person paused the colony's agents (colony/pause.ts): writes wait for a person to resume; reads go on.
+  {
+    status: 409,
+    sentence: /^Agents are paused in this colony by /,
+    next: "Wait for a person to resume the colony, then call the tool again; sense, read, why, impact, inbox and checkout still answer meanwhile.",
+  },
 ];
 
 /** The next call after a failure, when it is clear (a revision conflict, stale work, a missing join or take); undefined otherwise. */

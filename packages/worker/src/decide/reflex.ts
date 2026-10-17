@@ -1,4 +1,5 @@
 import type { Antibody, Intent, Path, Rule } from "@fire_trident/core";
+import { hedged, runAi, type Hedge, type HedgeRecord } from "../colony/hedge.ts";
 import { antibodyQuestionId } from "./antibodies.ts";
 import type { WhyAuthor } from "./danger.ts";
 import type { FileDiff } from "./diff.ts";
@@ -251,14 +252,27 @@ export function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise
   });
 }
 
-/** Ask Clef. Returns the answers keyed by question id, with timing and input tokens. */
-export async function askClef(ai: AiRunner, model: string, state: unknown, questions: Record<string, ClefQuestion>, timeoutMs = 15_000): Promise<{ answers: Record<string, ClefAnswer>; ms: number; tokens: number }> {
+/**
+ * Ask Clef. Returns the answers keyed by question id, with timing and input tokens. With `hedge` (FT_HEDGE,
+ * colony/hedge.ts), a slow call is sent once more and the answer says which copy answered.
+ */
+export async function askClef(
+  ai: AiRunner,
+  model: string,
+  state: unknown,
+  questions: Record<string, ClefQuestion>,
+  timeoutMs = 15_000,
+  hedge?: Hedge | null,
+): Promise<{ answers: Record<string, ClefAnswer>; ms: number; tokens: number; hedged?: HedgeRecord }> {
   const t0 = Date.now();
   const selector = model.endsWith("clef-flash") ? "clef-flash" : "clef";
   let raw: Record<string, unknown> | null = null;
+  let copied: HedgeRecord | undefined;
   for (let attempt = 0; ; attempt++) {
     try {
-      raw = (await withTimeout(ai.run(model, { model: selector, state, questions }), timeoutMs, model)) as Record<string, unknown> | null;
+      const r = await withTimeout(hedged((m, signal) => runAi(ai, m, { model: selector, state, questions }, signal), model, hedge), timeoutMs, model);
+      raw = r.value as Record<string, unknown> | null;
+      copied = r.hedged;
       break;
     } catch (err) {
       // Throttled: back off briefly (0.5 s, 1.5 s) instead of failing the reflex.
@@ -270,7 +284,7 @@ export async function askClef(ai: AiRunner, model: string, state: unknown, quest
   const answers = (body.answers ?? {}) as Record<string, ClefAnswer>;
   if (Object.keys(answers).length === 0) throw new Error(`${model} returned no answers`);
   const usage = body.usage as { input_tokens?: number } | undefined;
-  return { answers, ms: Date.now() - t0, tokens: usage?.input_tokens ?? 0 };
+  return { answers, ms: Date.now() - t0, tokens: usage?.input_tokens ?? 0, ...(copied ? { hedged: copied } : {}) };
 }
 
 /** Probability of a yes/no answer (NaN when missing). */
@@ -470,7 +484,9 @@ export function parseVerdict(text: string | null, model: string, acceptanceLines
 
 /**
  * Ask the System 2 model for a verdict (JSON schema output; one retry on an unparsable reply). With `acceptanceLines`
- * (FT_QUOTED_ACCEPTANCE), the schema asks for one answer per numbered line and the reply may be longer.
+ * (FT_QUOTED_ACCEPTANCE), the schema asks for one answer per numbered line and the reply may be longer. With `hedge`
+ * (FT_HEDGE, colony/hedge.ts), a slow call is sent once more (to the hedge's copy model, if it names one); the answer
+ * names the model that answered and which copy it was.
  */
 export async function askSecondOpinion(
   ai: AiRunner,
@@ -478,20 +494,25 @@ export async function askSecondOpinion(
   messages: Array<{ role: string; content: string }>,
   timeoutMs = 45_000,
   acceptanceLines = 0,
-): Promise<{ opinion: SecondOpinion; ms: number; tokens: { in: number; out: number } }> {
+  hedge?: Hedge | null,
+): Promise<{ opinion: SecondOpinion; ms: number; tokens: { in: number; out: number }; model: string; hedged?: HedgeRecord }> {
   const t0 = Date.now();
-  const extra = requestOptions(model);
   let lastText: string | null = null;
   for (let attempt = 0; attempt < 2; attempt++) {
-    const input: Record<string, unknown> = { messages, max_tokens: acceptanceLines > 0 ? Math.min(4_000, 2_000 + 120 * acceptanceLines) : 2_000, ...extra };
-    if (attempt === 0) input.response_format = { type: "json_schema", json_schema: { name: "verdict", schema: verdictSchema(acceptanceLines), strict: true } };
+    // The request for one model (a hedge copy may go to another, with its own request fields).
+    const input = (m: string): Record<string, unknown> => {
+      const x: Record<string, unknown> = { messages, max_tokens: acceptanceLines > 0 ? Math.min(4_000, 2_000 + 120 * acceptanceLines) : 2_000, ...requestOptions(m) };
+      if (attempt === 0) x.response_format = { type: "json_schema", json_schema: { name: "verdict", schema: verdictSchema(acceptanceLines), strict: true } };
+      return x;
+    };
     // Throttling is not retried here: the caller backs off and may switch models.
-    const result = await withTimeout(ai.run(model, input), timeoutMs, model);
+    const r = await withTimeout(hedged((m, signal) => runAi(ai, m, input(m), signal), model, hedge), timeoutMs, model);
+    const result = r.value;
     lastText = modelText(result);
-    const opinion = parseVerdict(lastText, model, acceptanceLines);
+    const opinion = parseVerdict(lastText, r.model, acceptanceLines);
     if (opinion) {
       const usage = (result as { usage?: { prompt_tokens?: number; completion_tokens?: number } } | null)?.usage;
-      return { opinion, ms: Date.now() - t0, tokens: { in: usage?.prompt_tokens ?? 0, out: usage?.completion_tokens ?? 0 } };
+      return { opinion, ms: Date.now() - t0, tokens: { in: usage?.prompt_tokens ?? 0, out: usage?.completion_tokens ?? 0 }, model: r.model, ...(r.hedged ? { hedged: r.hedged } : {}) };
     }
   }
   throw new Error(`${model} gave no parsable verdict: ${(lastText ?? "").slice(0, 120)}`);
@@ -515,16 +536,20 @@ export function rephraseMessages(reason: string, intentTitle: string): Array<{ r
   ];
 }
 
-/** Rephrase a reviewer's rejection reason as one general yes/no question about a change (null on failure). */
-export async function rephraseAsQuestion(ai: AiRunner, model: string, reason: string, intentTitle: string, timeoutMs = 30_000): Promise<string | null> {
+/** Rephrase a reviewer's rejection reason as one general yes/no question about a change (null on failure); `hedge`: FT_HEDGE. */
+export async function rephraseAsQuestion(ai: AiRunner, model: string, reason: string, intentTitle: string, timeoutMs = 30_000, hedge?: Hedge | null): Promise<string | null> {
   const messages = rephraseMessages(reason, intentTitle);
   const schema = { type: "object", additionalProperties: false, properties: { question: { type: "string" } }, required: ["question"] };
-  const result = await withTimeout(
-    ai.run(model, { messages, max_tokens: 800, response_format: { type: "json_schema", json_schema: { name: "question", schema, strict: true } }, ...requestOptions(model) }),
+  const r = await withTimeout(
+    hedged(
+      (m, signal) => runAi(ai, m, { messages, max_tokens: 800, response_format: { type: "json_schema", json_schema: { name: "question", schema, strict: true } }, ...requestOptions(m) }, signal),
+      model,
+      hedge,
+    ),
     timeoutMs,
     model,
   );
-  const text = modelText(result) ?? "";
+  const text = modelText(r.value) ?? "";
   try {
     const raw = JSON.parse(text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1)) as { question?: unknown };
     return typeof raw.question === "string" ? raw.question : null;

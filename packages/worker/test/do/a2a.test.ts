@@ -148,10 +148,17 @@ describe("SendMessage", () => {
     expect(ok.status).toBe(200);
     const t = ok.body.result.task;
     expect(t.id).toMatch(/^int_/);
-    expect(t).toMatchObject({ contextId: c.id, status: { state: "TASK_STATE_SUBMITTED" }, metadata: { firetrident: { colony: c.id, intent: t.id, status: "open", createdBy: "a2a", source: "agent" } } });
-    expect(textOf(t)).toBe(`Intent ${t.id} is open in colony ${c.id}: no agent has taken it yet. Follow it with GetTask; CancelTask withdraws it.`);
+    // An agent's intent with no parent takes at most priority 1 (colony/priority.ts): the task says so, and keeps what was asked.
+    expect(t).toMatchObject({ contextId: c.id, status: { state: "TASK_STATE_SUBMITTED" }, metadata: { firetrident: { colony: c.id, intent: t.id, status: "open", createdBy: "a2a", source: "agent", priority: 1, requestedPriority: 2 } } });
+    expect(textOf(t)).toBe(
+      `You asked for priority 2; an agent's intent with no parent takes at most the default priority (1), so it was declared at 1. A person can raise it. Intent ${t.id} is open in colony ${c.id}: no agent has taken it yet. Follow it with GetTask; CancelTask withdraws it.`,
+    );
     const intent = (await colony(c.id).getIntent(t.id)) as Intent;
-    expect(intent).toMatchObject({ title: "Tidy util", why: "Keep helper as it is.\nNo other file.", footprint: ["src/lib/util.ts"], acceptance: ["helper() still returns 1"], priority: 2, source: "agent", createdBy: "a2a", status: "open" });
+    expect(intent).toMatchObject({ title: "Tidy util", why: "Keep helper as it is.\nNo other file.", footprint: ["src/lib/util.ts"], acceptance: ["helper() still returns 1"], priority: 1, requestedPriority: 2, source: "agent", createdBy: "a2a", status: "open" });
+    // GetTask carries what was asked too; the lead is the declare's own.
+    const got = await task(c.id, t.id);
+    expect(got.metadata.firetrident).toMatchObject({ priority: 1, requestedPriority: 2 });
+    expect(textOf(got)).toBe(`Intent ${t.id} is open in colony ${c.id}: no agent has taken it yet. Follow it with GetTask; CancelTask withdraws it.`);
 
     // 0.3: message/send answers the task itself, with kind and lowercase states.
     const old = await rpc(c.id, "message/send", { message: { kind: "message", messageId: "m-old", role: "user", parts: [{ kind: "text", text: "Tidy the guide" }, { kind: "data", data: { footprint: ["docs/guide.md"] } }] } });

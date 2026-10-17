@@ -449,10 +449,12 @@ describe("MCP tools", () => {
     await tools.take();
     await tools.propose({ headSha: sha("c"), notVerified: "Not verified: Windows paths" });
     expect(colony.proposals[0]?.evidence?.notVerified).toBe("Not verified: Windows paths");
+    expect(colony.proposals[0]?.evidence?.notVerifiedBy).toBeUndefined();
     colony.proposals = [];
     await tools.take();
     await tools.propose({ headSha: sha("c") });
-    expect(colony.proposals[0]?.evidence?.notVerified).toBe(EXTERNAL_NOT_VERIFIED);
+    // FireTrident's sentence is marked as FireTrident's, so no reader takes it for the agent's words.
+    expect(colony.proposals[0]?.evidence).toEqual({ notVerified: EXTERNAL_NOT_VERIFIED, notVerifiedBy: "platform" });
   });
 
   it("propose refuses commits that are missing or do not build on the lease base", async () => {

@@ -16,7 +16,9 @@ import type { Directive } from "@fire_trident/core";
 import { isInboxDirective } from "../colony/direction.ts";
 import type { VirtualReads } from "./virtual.ts";
 import { cleanModelHint, stepupCheck, type ModelHint } from "../colony/stepup.ts";
+import { hedgeSummary, type HedgeRecord } from "../colony/hedge.ts";
 import { cleanDeclaredBy, type DeclaredBy } from "../colony/chain.ts";
+import { PAUSE_WAIT_MS, isPauseRefusal, pauseViewOf } from "../colony/pause.ts";
 
 /**
  * The in-platform agent loop as a journaled state machine.
@@ -128,6 +130,8 @@ export interface Job {
   parentHow?: string;
   /** Model usage of this job. */
   usage?: JobUsage;
+  /** Its hedged model calls (FT_HEDGE, colony/hedge.ts): which copy answered each, the newest few. */
+  hedged?: HedgeRecord[];
   /** Git network cost of this job, by phase; `reads` is what a virtual checkout read through the binding. */
   net?: { fetch?: NetStats; probe?: NetStats; push?: NetStats; reads?: NetStats };
   proposalId?: Id;
@@ -310,6 +314,10 @@ export interface ModelReply {
   ms?: number;
   /** The model that answered (the client resolves "default" and "bulk" to model ids). */
   model?: string;
+  /** Which copy answered, when the call was hedged (FT_HEDGE, colony/hedge.ts). */
+  hedged?: HedgeRecord;
+  /** A hedged call's losing copy: its model and tokens once it settles, or null when it failed or was aborted. */
+  late?: Promise<{ model: string; usage: TokenUsage | null } | null>;
 }
 
 /** Text generation, whichever provider serves the model. */
@@ -500,6 +508,11 @@ async function stepOnce(deps: LoopDeps, cfg: AgentConfig): Promise<StepResult> {
   // A pushed directive (withdrawal, revision, guidance) is acted on before the next step runs.
   const turned = await applyDirection(deps, cfg, job);
   if (turned) return turned;
+  // Pause (colony/pause.ts): no model call starts while the colony's agents are paused; the agent keeps its place.
+  if (job.step === "produce" && (await pausedNow(deps))) {
+    await maybeHeartbeat(deps, cfg, job);
+    return { sleepMs: PAUSE_WAIT_MS };
+  }
   if (job.attempts >= MAX_STEP_ATTEMPTS) {
     return abandon(deps, cfg, job, `gave up at ${job.step} after ${job.attempts} attempts: ${job.lastError ?? "interrupted"}`);
   }
@@ -518,6 +531,7 @@ async function stepOnce(deps: LoopDeps, cfg: AgentConfig): Promise<StepResult> {
     const msg = errorMessage(e);
     deps.journal.log({ at: deps.now(), intentId: job.intentId, step, ok: false, ms: deps.now() - t0, detail: msg });
     if (errorStatus(e) === 429) return throttled(deps, cfg, job, msg);
+    if (isPauseRefusal(e)) return paused(deps, cfg, job, msg);
     // The colony refused because the intent was revised or withdrawn under this job: turn, do not retry.
     const turn = directionError(e);
     if (turn) return finishJob(deps, cfg, job, turn.kind === "withdrawal" ? "withdrawn" : "redirected", turn.reason);
@@ -531,6 +545,25 @@ async function stepOnce(deps: LoopDeps, cfg: AgentConfig): Promise<StepResult> {
     }
     return { sleepMs: backoffMs(job.attempts, deps.rand) };
   }
+}
+
+/** Whether the colony's agents are paused now (colony/pause.ts). Fails open: the colony refuses the write itself. */
+async function pausedNow(deps: LoopDeps): Promise<boolean> {
+  return (await pauseViewOf(deps.colony).catch(() => null))?.paused === true;
+}
+
+/**
+ * The colony refused a write because its agents are paused (colony/pause.ts). That is not the agent's failure: the
+ * attempt is given back and the step waits PAUSE_WAIT_MS, as long as the pause lasts, keeping the job and its work.
+ */
+function paused(deps: LoopDeps, cfg: AgentConfig, job: Job, msg: string): StepResult {
+  const fresh = deps.journal.job();
+  if (fresh && fresh.intentId === job.intentId) {
+    fresh.attempts = Math.max(0, fresh.attempts - 1);
+    fresh.lastError = msg;
+    save(deps, cfg, fresh);
+  }
+  return { sleepMs: PAUSE_WAIT_MS };
 }
 
 /** Throttled waits one job may take before it gives its intent back (about half an hour). */
@@ -593,6 +626,8 @@ async function takeWork(deps: LoopDeps, cfg: AgentConfig): Promise<StepResult> {
     if (e instanceof Halt) throw e;
     const msg = errorMessage(e);
     deps.journal.log({ at: deps.now(), step: "take", ok: false, ms: deps.now() - t0, detail: msg });
+    // Pause (colony/pause.ts): the colony's agents are paused; wait for a person to resume, no failure counted.
+    if (isPauseRefusal(e)) return { sleepMs: PAUSE_WAIT_MS };
     deps.journal.bump("errors");
     deps.log?.(`take failed: ${msg}`);
     if (isGone(e)) return halt(deps, cfg, msg);
@@ -1173,11 +1208,39 @@ function countCall(deps: LoopDeps, cfg: AgentConfig, job: Job, reply: ModelReply
     }
   }
   job.usage = u;
+  // Hedged calls (FT_HEDGE, colony/hedge.ts): which copy answered, for the usage check, kept with the job's usage.
+  if (reply.hedged) job.hedged = [...(job.hedged ?? []), reply.hedged].slice(-MAX_HEDGED);
   save(deps, cfg, job);
   deps.journal.bump("llmCalls");
   if (other) deps.journal.bump(`llmCalls:${other}`);
   // Per intent too, where FT_INTENT_SPEND covers the colony: the colony prices each intent's calls from these rows.
   if (deps.intentSpend) deps.journal.bumpIntent?.(job.intentId, model, { input: reply.usage?.input ?? 0, output: reply.usage?.output ?? 0 }, deps.now());
+  // A hedged call's losing copy that answered anyway spent tokens too: they count once it settles.
+  if (reply.late) void reply.late.then((l) => (l?.usage ? countLate(deps, cfg, job.intentId, l.model, l.usage) : undefined), () => undefined);
+}
+
+/** Hedge records a job keeps. */
+const MAX_HEDGED = 8;
+
+/**
+ * A hedged call's losing copy that answered anyway (FT_HEDGE): its call and tokens in the agent's counters, under its
+ * model as countCall books them, and for its intent where FT_INTENT_SPEND covers the colony. The job's own usage is
+ * left as it was: the job may have moved on.
+ */
+function countLate(deps: LoopDeps, cfg: AgentConfig, intentId: Id, model: string, usage: TokenUsage): void {
+  try {
+    deps.journal.bump("llmCalls");
+    deps.journal.bump("tokensIn", usage.input);
+    deps.journal.bump("tokensOut", usage.output);
+    if (model !== cfg.model) {
+      deps.journal.bump(`llmCalls:${model}`);
+      deps.journal.bump(`tokensIn:${model}`, usage.input);
+      deps.journal.bump(`tokensOut:${model}`, usage.output);
+    }
+    if (deps.intentSpend) deps.journal.bumpIntent?.(intentId, model, { input: usage.input, output: usage.output }, deps.now());
+  } catch {
+    // Counting never fails a call.
+  }
 }
 
 /**
@@ -1359,7 +1422,7 @@ function telemetryChecks(cfg: AgentConfig, job: Job): CheckResult[] {
       name: "agent model usage",
       ok: true,
       ms: u.ms,
-      detail: `${job.writeModel ?? cfg.model}: ${u.calls} call(s), ${u.input} input / ${u.output} output tokens${u.cached ? ` (${u.cached} cached)` : ""}${u.neurons ? `, ${u.neurons.toFixed(1)} neurons` : ""}`,
+      detail: `${job.writeModel ?? cfg.model}: ${u.calls} call(s), ${u.input} input / ${u.output} output tokens${u.cached ? ` (${u.cached} cached)` : ""}${u.neurons ? `, ${u.neurons.toFixed(1)} neurons` : ""}${job.hedged?.length ? `; ${hedgeSummary(job.hedged)}` : ""}`,
     });
   }
   const n = job.net;
