@@ -69,7 +69,21 @@ export class ApiError extends Error {
 export interface HttpConfig {
   baseUrl: string;
   token?: string;
+  /** Headers sent with every request and the live stream, e.g. a Cloudflare Access service token (accessHeaders). */
+  headers?: Record<string, string>;
   fetch: typeof fetch;
+}
+
+/**
+ * The Cloudflare Access service-token headers for a deployment behind Access, from CF_ACCESS_CLIENT_ID and
+ * CF_ACCESS_CLIENT_SECRET (both or neither); null when they are not set.
+ */
+export function accessHeaders(env: Record<string, string | undefined>): Record<string, string> | null {
+  const id = env.CF_ACCESS_CLIENT_ID?.trim();
+  const secret = env.CF_ACCESS_CLIENT_SECRET?.trim();
+  if (!id && !secret) return null;
+  if (!id || !secret) throw new ApiError(0, "set both CF_ACCESS_CLIENT_ID and CF_ACCESS_CLIENT_SECRET to reach a deployment behind Cloudflare Access, or neither", null);
+  return { "CF-Access-Client-Id": id, "CF-Access-Client-Secret": secret };
 }
 
 /** Resolve the server base URL from --url, then FT_URL, then the default. Strips trailing slashes. */
@@ -268,7 +282,7 @@ function errorDetail(data: unknown): string {
 
 /** Send one request and return the parsed JSON body. Throws ApiError on network or HTTP failure. */
 export async function send<T = unknown>(cfg: HttpConfig, req: ApiRequest, timeoutMs = 30_000): Promise<T> {
-  const headers: Record<string, string> = { accept: "application/json", "user-agent": `ft/${VERSION}` };
+  const headers: Record<string, string> = { ...cfg.headers, accept: "application/json", "user-agent": `ft/${VERSION}` };
   if (cfg.token) headers.authorization = `Bearer ${cfg.token}`;
   let body: string | undefined;
   if (req.body !== undefined) {

@@ -45,6 +45,8 @@ ft watch hono
 
 `ft` also reads `KEY=value` lines from `~/.config/firetrident/env` when `FT_URL` or `FT_TOKEN` is unset; the token there is only sent to the server named in that file.
 
+For a deployment behind Cloudflare Access, set `CF_ACCESS_CLIENT_ID` and `CF_ACCESS_CLIENT_SECRET` to an Access service token: `ft` sends them with every request and the live stream.
+
 ## License
 
 MIT
