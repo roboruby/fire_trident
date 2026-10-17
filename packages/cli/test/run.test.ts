@@ -109,6 +109,20 @@ beforeAll(async () => {
         return json(200, reviewQueue);
       case "POST /api/colonies/web/review/prp_1":
         return json(200, { ok: true });
+      case "GET /api/colonies/web/landings/lnd_1/tests":
+        return json(200, {
+          colonyId: "web",
+          landingId: "lnd_1",
+          trunkSha: "b".repeat(40),
+          baseSha: "a".repeat(40),
+          status: "certified",
+          base: { sha: "a".repeat(40), status: "red", pass: 433, tests: 434, failing: 1, exact: true },
+          certified: { sha: "b".repeat(40), status: "green", pass: 434, tests: 434, failing: 0 },
+          lost: 0,
+          reach: { earlier: 0, own: 0, later: 0, earlierFiles: [], ownFiles: [], checked: 12 },
+          proof: { rungs: [{ rung: "model", count: 1 }], text: "model approval" },
+          text: "433/434 at base, 434/434 certified, 0 lost · proof: model approval",
+        });
       case "GET /api/colonies/web/why":
         return json(200, [
           {
@@ -232,7 +246,10 @@ describe("ft against a server", () => {
     expect(text).toContain('rule     rule_1 "No console" approved by tester');
     expect(text).toContain("decided  reflex triage p=0.97 → land");
     expect(text).toContain("✓ typecheck 1.2s");
-    expect(seen.map((s) => s.url).sort()).toEqual(["/api/colonies/web", "/api/colonies/web/why?path=src%2Fa.ts&line=3"]);
+    // The landing's test row (tests.ts), read beside the lineage.
+    expect(text).toContain("delta    433/434 at base, 434/434 certified, 0 lost · proof: model approval");
+    expect(text).toContain("         No earlier test reaches this change: no test file reaches its files.");
+    expect(seen.map((s) => s.url).sort()).toEqual(["/api/colonies/web", "/api/colonies/web/landings/lnd_1/tests", "/api/colonies/web/why?path=src%2Fa.ts&line=3"]);
   });
 
   it("lists an empty review queue and decides a proposal", async () => {

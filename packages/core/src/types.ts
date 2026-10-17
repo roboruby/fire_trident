@@ -972,6 +972,117 @@ export interface LandingDiff {
   detail?: string;
 }
 
+/**
+ * A landing's test row (GET /api/colonies/:id/landings/:ref/tests; worker certify/landingtests.ts, core/testdelta.ts): the
+ * colony's own tests at the commit the landing was applied on against the first green certification that includes it,
+ * the tests lost on the way, whose tests they are, whether a test from before the landing reaches the files it wrote,
+ * what landed it and what the model calls this platform made for it cost. Every number is FireTrident's own (trunk
+ * certification, the landing log, the colony's spend counters); nothing in it is an agent's claim.
+ */
+export interface LandingTests {
+  colonyId: Id;
+  landingId: Id;
+  trunkSha: Sha;
+  /** The trunk commit the landing was applied on (its parent). */
+  baseSha: Sha;
+  /**
+   * `certified`: a green certification at or after the landing includes it; `pending`: none does yet (`reason` says why);
+   * `no-tests`: certification found no test this platform can run (none on trunk, none written for node:test, or none it
+   * can load; `reason` says which).
+   */
+  status: "certified" | "pending" | "no-tests";
+  /** Why it is pending or has no tests, as a clause ("trunk certification is off for this colony"). */
+  reason?: string;
+  /** The result at the base (`exact`), or at the nearest earlier commit that has one; absent when none is kept. */
+  base?: TestsAt;
+  /** The first green certification at or after the landing. */
+  certified?: TestsAt;
+  /** The first red result at or after the landing, before `certified` (or while there is none). */
+  red?: TestsAt;
+  /** Tests that passed at `base` and are missing or failing at `certified`; absent when there is no base to compare with. */
+  lost?: number;
+  /** The lost tests by name (at most 20). */
+  lostTests?: Array<{ file: Path; name: string }>;
+  /** Tests that pass at `certified` and did not pass at `base`. */
+  added?: number;
+  /** Test files whose per-test results at either commit are no longer kept: `lost` and `added` leave them out. */
+  unknownFiles?: number;
+  /** Whose tests ran at `certified`, by the landing log of each test file. */
+  authors?: TestAuthors;
+  /** The test files at `certified` whose import closure reaches a file the landing wrote. */
+  reach?: TestReach;
+  /** What landed each of its changes (the gate's rung, from its lineage note). */
+  proof: ProofPath;
+  /** What the model calls this platform made for its intents cost (FT_INTENT_SPEND); absent when none were counted. */
+  spend?: { usd: number; calls: number; intents: number };
+  /** What could not be read or was cut short, as sentences. */
+  detail?: string;
+  /** The row a landing card shows (core/testdelta.ts testsRow). */
+  text: string;
+}
+
+/** One certification as a landing's test row reads it: its status and counts (pass of tests, failing ones). */
+export interface TestsAt {
+  sha: Sha;
+  status: CertificationStatus;
+  pass: number;
+  tests: number;
+  failing: number;
+  /** Base only: the result is the base commit's own (false: a commit before it). */
+  exact?: boolean;
+}
+
+/** Test files of one origin and the tests in them. */
+export interface TestAuthorGroup {
+  files: number;
+  tests: number;
+  /** Agents: the models that wrote or edited them; person: the people who approved the edits. */
+  by?: string[];
+}
+
+/**
+ * Whose tests ran at the certified commit, by the landing log of each test file (a test counts under its file):
+ * `inherited` came with the repository and no landing changed them; `agents` were added or edited by a change no person
+ * approved; `person` were added or edited only by changes a person approved (or by a person's revert); `unknown` files
+ * whose log could not be read in full or that only FireTrident's own commits changed.
+ */
+export interface TestAuthors {
+  inherited: TestAuthorGroup;
+  agents: TestAuthorGroup;
+  person: TestAuthorGroup;
+  unknown?: TestAuthorGroup;
+  /** Test files whose test count is no longer kept: their tests are in no group's `tests`. */
+  uncounted?: number;
+}
+
+/**
+ * The test files at the certified commit whose import closure (certification's own, certify/plan.ts closureOf) reaches a
+ * file the landing wrote: `earlier` ones were on trunk before it, `own` ones it wrote itself, `later` ones came after it.
+ * `none` says why nothing was checked: it wrote no file a test can load.
+ */
+export interface TestReach {
+  earlier: number;
+  own: number;
+  later: number;
+  /** Up to five of each, nearest first. */
+  earlierFiles: Path[];
+  ownFiles: Path[];
+  /** Test files whose closures were checked. */
+  checked: number;
+  none?: "no-code";
+  /** What the bounds cut short, as a sentence. */
+  bounded?: string;
+}
+
+/** The rung that landed a change: a deterministic proof, a model's approval, earned autonomy, a person, no review, FireTrident's own commit, or unknown. */
+export type ProofRung = "deterministic" | "model" | "autonomy" | "person" | "unreviewed" | "system" | "unknown";
+
+/** What landed each change of a landing, grouped by rung (and by the model or person named), with the phrase a card shows. */
+export interface ProofPath {
+  rungs: Array<{ rung: ProofRung; count: number; by?: string }>;
+  text: string;
+}
+
 // ---------------------------------------------------------------------------
 // Trunk certification (the project's own tests, run after landings)
 // ---------------------------------------------------------------------------

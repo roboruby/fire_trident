@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { decisionSpeaker } from "@fire_trident/core";
 import { NoteSealBadge } from "../components/NoteSeal.tsx";
 import { SaidBy } from "../components/SaidBy.tsx";
+import { TestsBody } from "../components/TestsRow.tsx";
 import { shortId, shortSha, timeAgo } from "../format.ts";
 import { colonyHref } from "../route.ts";
 import { LAYER_COLOR, STAGE_COLOR } from "../theme.ts";
@@ -88,6 +89,13 @@ export function NoteCardView({ card, origin }: { card: NoteCard; origin: string 
         <div className="nc-col">
           <Field k="Answerable">
             <div className={`nc-answerable is-${card.answerable.answer}`}>{card.answerable.text}</div>
+          </Field>
+          <Field k="Tests">
+            {card.tests ? (
+              <TestsBody t={card.tests} />
+            ) : (
+              <span className="nc-dim">{card.live ? "No test row came back for this landing just now." : "Not read: this note is from FireTrident's recorded results."}</span>
+            )}
           </Field>
           <Field k="Intent">
             <div className="nc-title">{card.intent?.title ?? "No intent recorded"}</div>

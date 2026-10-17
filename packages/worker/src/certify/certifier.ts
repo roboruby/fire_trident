@@ -339,6 +339,11 @@ export class Certifier {
     return this.latest()?.cert ?? null;
   }
 
+  /** The compile memo runs share (modules by path and blob): a landing's test row (landingtests.ts) reads trees through it, so a tree a run read is not read again. */
+  compileMemo(): CompileMemo {
+    return this.memo;
+  }
+
   /** Results, newest first. */
   list(limit = 50): Certification[] {
     const n = Math.max(1, Math.min(KEEP, Math.floor(limit) || 50));

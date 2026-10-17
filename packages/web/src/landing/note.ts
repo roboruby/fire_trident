@@ -1,8 +1,9 @@
-import type { LandingAnswer, LineageNote, NoteCheck, Speaker } from "@fire_trident/core";
+import type { LandingAnswer, LandingTests, LineageNote, NoteCheck, Speaker } from "@fire_trident/core";
 import { evidenceLines, landingAnswerable, notVerifiedSpeaker, notVerifiedWords } from "@fire_trident/core";
 import { decisionsFromChecks } from "../decisions.ts";
 import { provenanceOf, type ProvenanceView } from "../lineage.ts";
 import { checksOf, sealOf, uncheckedSeal, type NoteSeal } from "../verified.ts";
+import { landingTestsOf } from "../tests.ts";
 
 /**
  * The Remember card of the landing page: the newest sealed landing of a showcase colony, read live from the public
@@ -66,6 +67,8 @@ export interface NoteCard {
   notVerifiedBy: Speaker | null;
   /** Who answers for the landing (its whole note). */
   answerable: { answer: LandingAnswer; text: string };
+  /** Its tests at its base against the certified commit (GET /landings/:ref/tests; tests.ts); null when not read (the recorded stand-in, or no answer). */
+  tests?: LandingTests | null;
   reads: CardFile[];
   writes: CardFile[];
   /** Files beyond FILES_SHOWN in each set. */
@@ -195,7 +198,9 @@ async function cardFor(id: string, check: NoteCheck, get: GetJson): Promise<Note
   const landing = recentLanding(snap, check.landingId);
   const path = landing?.paths[0];
   if (!landing || !path) return null;
-  const note = noteIn(await get(`${api(id)}/why?path=${encodeURIComponent(path)}`), landing.id);
+  // The landing's test row is read beside its lineage; the card shows its note without it when it does not come.
+  const [why, tests] = await Promise.all([get(`${api(id)}/why?path=${encodeURIComponent(path)}`), get(`${api(id)}/landings/${encodeURIComponent(landing.id)}/tests`).then(landingTestsOf, () => null)]);
+  const note = noteIn(why, landing.id);
   if (!note) return null;
   const agents = agentNames(snap);
   const first = note.proposals?.[0]?.agentId;
@@ -203,7 +208,7 @@ async function cardFor(id: string, check: NoteCheck, get: GetJson): Promise<Note
     // An agent that stopped more than an hour ago is not in the snapshot: the agents route still names it.
     for (const [k, v] of agentNames(await get(`${api(id)}/agents?all=1&journal=0&limit=500`).catch(() => null))) agents.set(k, v);
   }
-  return cardOf({ colonyId: id, landing, note, seal: sealOf(check), rules: rulesOf(snap), agents, live: true });
+  return { ...cardOf({ colonyId: id, landing, note, seal: sealOf(check), rules: rulesOf(snap), agents, live: true }), tests };
 }
 
 /**

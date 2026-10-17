@@ -1,5 +1,5 @@
 import { INLINE_LIMITS, blobId, changesetId, inlineProblem, landingAnswerable, regionOf, type LandingAnswerable } from "@fire_trident/core";
-import type { AgentInfo, AgentKind, ContestedRegion, Directive, EscalationKind, FieldReading, FileVersion, Id, Intent, Landing, LineageNote, Path, Proposal, ProposalStatus, RepoRef, Rule, Sha, WorkspaceLease } from "@fire_trident/core";
+import type { AgentInfo, AgentKind, ContestedRegion, Directive, EscalationKind, FieldReading, FileVersion, Id, Intent, Landing, LandingTests, LineageNote, Path, Proposal, ProposalStatus, RepoRef, Rule, Sha, WorkspaceLease } from "@fire_trident/core";
 import { ESCALATION_KINDS, isInboxDirective, landingMessage } from "../colony/direction.ts";
 import { cleanPath } from "../agents/change.ts";
 import { cleanContext, type LandedWhy } from "../agents/landed.ts";
@@ -21,6 +21,7 @@ import { priorityAnswer } from "../colony/priority.ts";
 import { cleanDeclaredBy, heldNote, type DeclaredBy } from "../colony/chain.ts";
 import { foldPath } from "../decide/pathfold.ts";
 import { refuseWhilePaused } from "../colony/pause.ts";
+import { withTests } from "./whytests.ts";
 
 /** What one MCP session remembers (stored in the session's Durable Object). */
 export interface Session {
@@ -88,6 +89,8 @@ export type McpColonyRpc = Omit<ColonyRpc, "registerAgent"> & {
   resumeAgent(agentId: Id, resumeKey: string): Promise<ResumeCheck>;
   /** What a change to these paths reaches, and who works on it now (colony/impact.ts). */
   impact?(paths: Path[], opts?: { depth?: number }): Promise<ImpactReport>;
+  /** A landing's test row (certify/landingtests.ts): its tests at its base against the certified commit, and more. */
+  landingTests?(ref: string): Promise<LandingTests | null>;
   /** Declare through the agent's door: where FT_TWINS covers the colony, a twin answers instead (colony/twins.ts). */
   declareIntent?(i: Omit<Intent, "id" | "status" | "createdAt">, opts?: { force?: boolean }): Promise<DeclareAnswer>;
 };
@@ -998,7 +1001,10 @@ export class FireTridentTools {
     const path = cleanPath(a.path);
     if (!path) fail(400, `invalid path ${a.path}`);
     const entries = await this.ctx.trunk(s.colonyId).why(path, a.line);
-    return whyAnswer(path, a.line, entries);
+    const answer = whyAnswer(path, a.line, entries);
+    // The newest landings' test rows (mcp/whytests.ts), read as a method of the colony's stub.
+    const colony = this.ctx.colony(s.colonyId);
+    return { ...answer, entries: await withTests(answer.entries, colony.landingTests ? (ref) => colony.landingTests!(ref) : undefined) };
   }
 
   /**

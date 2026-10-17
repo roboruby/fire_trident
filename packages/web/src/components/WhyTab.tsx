@@ -14,6 +14,8 @@ import { NoteBar } from "./NoteSeal.tsx";
 import { acceptanceOf } from "../acceptance.ts";
 import { AcceptanceLines } from "./AcceptanceLines.tsx";
 import { AnswerableLine, EvidenceList, SaidBy } from "./SaidBy.tsx";
+import { LandingTestsRow } from "./TestsRow.tsx";
+import { AUTO_ROWS } from "../tests.ts";
 
 type NoteProposal = LineageNote["proposals"][number];
 
@@ -170,14 +172,14 @@ export function WhyTab({ store, backend, director = false }: { store: ColonyStor
       ) : null}
       <div className="lineage">
         {current?.entries?.map((e, i) => (
-          <LineageEntry key={e.landing.id} entry={e} path={path} store={store} newest={i === 0} backend={backend} />
+          <LineageEntry key={e.landing.id} entry={e} path={path} store={store} newest={i === 0} backend={backend} tests={i < AUTO_ROWS} />
         ))}
       </div>
     </div>
   );
 }
 
-function LineageEntry({ entry, path, store, newest, backend }: { entry: WhyEntry; path: string; store: ColonyStore; newest: boolean; backend: Backend }) {
+function LineageEntry({ entry, path, store, newest, backend, tests }: { entry: WhyEntry; path: string; store: ColonyStore; newest: boolean; backend: Backend; tests: boolean }) {
   const { landing, note } = entry;
   const proposals = note?.proposals ?? [];
   const relevant = proposals.filter((p) => p.writeSet?.some((w) => w.path === path));
@@ -227,6 +229,8 @@ function LineageEntry({ entry, path, store, newest, backend }: { entry: WhyEntry
       <NoteBar key={path} backend={backend} landingId={landing.id} path={path} />
       {/* Who answers for this landing, from its whole note (core/answerable.ts). */}
       <AnswerableLine a={landingAnswerable(note)} />
+      {/* Its tests at its base against the certified commit (TestsRow.tsx): read as the card opens for the newest, on a click for the rest. */}
+      <LandingTestsRow backend={backend} landingId={landing.id} auto={tests} />
       {shown.map((p) => (
         <ProposalChain key={p.id} p={p} path={path} store={store} />
       ))}

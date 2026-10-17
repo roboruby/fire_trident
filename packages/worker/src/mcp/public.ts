@@ -27,10 +27,11 @@ import { ftError } from "../colony/errors.ts";
 import { errorResult, structuredToolErrors } from "./errors.ts";
 import { RETRY_RULE } from "./instructions.ts";
 import { compactReading, whyAnswer } from "./tools.ts";
+import { withTests } from "./whytests.ts";
 import { IMPACT_DESCRIPTION } from "./impact.ts";
 import { IMPACT_DEPTH, IMPACT_ENTRIES } from "../trunk/impact.ts";
 import { capSuspects } from "../certify/culprit.ts";
-import type { ImpactReport } from "@fire_trident/core";
+import type { ImpactReport, LandingTests } from "@fire_trident/core";
 
 /**
  * The public MCP endpoint: anyone's agent can ask a showcase colony why a line exists, what the colony is doing, what
@@ -61,6 +62,8 @@ export interface PublicColonyReads {
   listRegions(): Promise<string[]>;
   /** What a change to these paths reaches, and who works on it now (GET /impact; colony/impact.ts). */
   impact(paths: Path[], opts?: { depth?: number }): Promise<ImpactReport>;
+  /** A landing's test row (GET /landings/:ref/tests; certify/landingtests.ts). */
+  landingTests?(ref: string): Promise<LandingTests | null>;
 }
 
 /** Everything the public tools can reach: read methods only. */
@@ -84,6 +87,7 @@ export function publicReads(env: Pick<Env, "COLONY" | "REGION" | "TRUNK">): Publ
         intentHistory: (id) => stub.intentHistory(id),
         listRegions: () => stub.listRegions(),
         impact: (paths, opts) => stub.impact(paths, opts),
+        landingTests: (ref) => stub.landingTests!(ref),
       };
     },
     region(colonyId, region) {
@@ -265,7 +269,11 @@ export class PublicTools {
     if (!path) throw ftError(400, `invalid path ${JSON.stringify(String(a.path ?? "").slice(0, 200))}`);
     await this.colony(colonyId);
     const entries = await this.ctx.reads.trunk(colonyId).why(path, a.line);
-    return { colony: colonyId, ...whyAnswer(path, a.line, entries), about: PUBLIC_DATA_NOTE };
+    const answer = whyAnswer(path, a.line, entries);
+    // The newest landings' test rows, as the authenticated why gives them (mcp/whytests.ts).
+    const reads = this.ctx.reads.colony(colonyId);
+    const tested = await withTests(answer.entries, reads.landingTests ? (ref) => reads.landingTests!(ref) : undefined);
+    return { colony: colonyId, ...answer, entries: tested, about: PUBLIC_DATA_NOTE };
   }
 
   /** One intent with its revisions, directives and reports, as GET /api/colonies/:id/intents/:iid serves it. */
@@ -395,7 +403,7 @@ export function publicServer(tools: PublicTools, colonies: readonly string[], de
     {
       title: "Why is this here",
       description:
-        "Lineage of a trunk file, or of one line of it: the landings that produced it (with a line, the one that wrote it first), each with its intent and why, the agent and model, the read and write sets, the review decisions, the checks and the test results. Each landing keeps only the proposals that wrote the path (otherProposals counts the rest).",
+        "Lineage of a trunk file, or of one line of it: the landings that produced it (with a line, the one that wrote it first), each with its intent and why, the agent and model, the read and write sets, the review decisions, the checks and the test results. Each landing keeps only the proposals that wrote the path (otherProposals counts the rest). The newest five landings carry tests: the tests at the commit each landed on against the first green certification that includes it, the tests lost, whose tests they are, whether an earlier test reaches its files, what landed it and the model spend.",
       inputSchema: { colony, path: path.describe("Repository path, relative"), line: z.number().int().min(1).optional().describe("A line number in the file") },
       annotations: readOnly,
     },

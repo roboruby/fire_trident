@@ -2,6 +2,8 @@ import type { Landing, LineageNote, Proposal } from "./types.ts";
 import { oneLine, truncate } from "./text.ts";
 // Who answers for a landing and who said each line of its evidence, read from its note (answerable.ts).
 export * from "./answerable.ts";
+// A landing's test row: what landed it, the tests lost and gained, and the words (testdelta.ts).
+export * from "./testdelta.ts";
 
 const SUBJECT_MAX = 72;
 

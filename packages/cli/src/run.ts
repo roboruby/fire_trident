@@ -58,8 +58,9 @@ import { formatPause } from "./pause.ts";
 import { formatImpact } from "./impact.ts";
 import { autonomyLine, formatImmune } from "./immune.ts";
 import { signatureFailed } from "./signatures.ts";
+import { firstLandings, readRows, testsRequest } from "./tests.ts";
 import type { IntentBody, SpecPolicy } from "./spec.ts";
-import type { GuideLesson, Intent, Landing, LineageNote, Proposal, Rule } from "@fire_trident/core";
+import type { GuideLesson, Intent, Landing, LandingTests, LineageNote, Proposal, Rule } from "@fire_trident/core";
 
 /** Everything the CLI touches outside itself, injectable for tests. */
 export interface Io {
@@ -249,9 +250,12 @@ async function execute(cmd: Command, ctx: Ctx): Promise<number> {
       const entries = asArray<{ landing: Landing; note: LineageNote }>(res, ["lineage", "entries", "landings"]);
       const target: { path: string; line?: number } = { path: cmd.path };
       if (cmd.line !== undefined) target.line = cmd.line;
-      const why: { intents?: Intent[]; rules?: Rule[] } = {};
+      const why: { intents?: Intent[]; rules?: Rule[]; tests?: Record<string, LandingTests> } = {};
       if (snap?.intents) why.intents = snap.intents;
       if (snap?.rules) why.rules = snap.rules;
+      // The newest landings' test rows (tests.ts): public reads the colony computes once per certified commit.
+      const tests = await readRows(firstLandings(entries, cmd.line), (id) => send<unknown>(ctx.http, testsRequest(cmd.colony, id), 15_000));
+      if (Object.keys(tests).length > 0) why.tests = tests;
       io.stdout(formatWhy(target, entries, why, c, io.now()));
       return 0;
     }

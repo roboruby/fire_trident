@@ -1,5 +1,5 @@
 import type { Context, Hono } from "hono";
-import type { Id, LandingDiff, LineageNote, NotesVerification, Path, Sha } from "@fire_trident/core";
+import type { Id, LandingDiff, LandingTests, LineageNote, NotesVerification, Path, Sha } from "@fire_trident/core";
 import type { Env } from "../env.ts";
 import { dispose, withArtifactsRetry } from "../artifacts/git.ts";
 import { bindingFor } from "../artifacts/shards.ts";
@@ -18,6 +18,11 @@ import { publicColonies } from "./git-proxy.ts";
  *                                                  landing's lineage note write set against its blob in the parent commit,
  *                                                  both read through the Artifacts binding, as unified hunks (decide/diff.ts)
  *                                                  in an answer of at most 64 KB
+ *   GET /colonies/:id/landings/:ref/tests          the landing's test row (certify/landingtests.ts): its tests at its base
+ *                                                  against the first green certification that includes it, the tests it
+ *                                                  lost, whose tests they are, whether an earlier test reaches its files,
+ *                                                  what landed it and its intents' model spend; any colony, like the
+ *                                                  certification reads (it shows test names and paths, never contents)
  * `ref` is a landing id or the trunk commit the landing made (40 hex, or a unique prefix of 7+). The diff shows file
  * contents, so it is served only for colonies that are public already (listed in FT_PUBLIC_GIT or FT_PUBLIC_MCP, whose
  * trunks anyone can clone or read); every other colony answers 404. A system commit (a revert, an antibody) writes files
@@ -36,7 +41,7 @@ const CUT = "… (truncated)";
 /** Diffs in flight in this isolate. */
 let inFlight = 0;
 
-/** Register the diff route (createApi). */
+/** Register the diff and test-row routes (createApi). */
 export function landingRoutes(app: Hono<ApiEnv>): void {
   app.get("/colonies/:id/landings/:ref/diff", async (c) => {
     const id = colonyId(c);
@@ -54,6 +59,17 @@ export function landingRoutes(app: Hono<ApiEnv>): void {
       inFlight--;
     }
   });
+
+  app.get("/colonies/:id/landings/:ref/tests", async (c) => json(await landingTests(c.env, colonyId(c), landingRef(c.req.param("ref")))));
+}
+
+/** GET /colonies/:id/landings/:ref/tests: one landing's test row (ColonyDO.landingTests); 404 when the colony or the landing is unknown. */
+export async function landingTests(env: Env, colonyId: Id, ref: string): Promise<LandingTests> {
+  const stub = colony(env, colonyId);
+  if (!(await stub.getColony())) throw ftError(404, "colony not found");
+  const answer = await stub.landingTests(ref);
+  if (!answer) throw ftError(404, `no landing ${ref} in colony ${colonyId}: name a landing by its id or by the trunk commit it made`);
+  return answer;
 }
 
 /** GET /colonies/:id/notes/verify?landing=<ref> (app.ts): one landing's note check; 404 when the colony or the landing is unknown. */

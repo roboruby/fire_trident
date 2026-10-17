@@ -1,6 +1,7 @@
-import type { ColonyEvent, ColonySnapshot, FieldReading, Landing, LandingDiff, LineageNote, NoteCheck, Proposal } from "@fire_trident/core";
+import type { ColonyEvent, ColonySnapshot, FieldReading, Landing, LandingDiff, LandingTests, LineageNote, NoteCheck, Proposal } from "@fire_trident/core";
 import { isColonyEvent, type ColonyStore } from "./store.ts";
 import { fetchLandingDiff, fetchNoteCheck } from "./verified.ts";
+import { fetchLandingTests } from "./tests.ts";
 
 /** One entry of GET /api/colonies/:id/why. */
 export interface WhyEntry {
@@ -38,6 +39,8 @@ export interface Backend {
   verifyNote?(landingId: string): Promise<NoteCheck | null>;
   /** The change a landing made to one file (verified.ts; the server shows it for public colonies only); absent in the simulator. */
   landingDiff?(landingId: string, path: string): Promise<LandingDiff>;
+  /** A landing's test row (tests.ts; GET /landings/:ref/tests): its tests at its base against the certified commit, and more; absent in the simulator. */
+  landingTests?(landingId: string): Promise<LandingTests | null>;
   /** The colony's immune report, read without a token (autonomy.ts reads earned autonomy from it); absent in the simulator and replays. */
   immune?(): Promise<unknown>;
 }
@@ -344,6 +347,10 @@ export class HttpBackend implements Backend {
 
   landingDiff(landingId: string, path: string): Promise<LandingDiff> {
     return fetchLandingDiff(this.colonyId, landingId, path);
+  }
+
+  landingTests(landingId: string): Promise<LandingTests | null> {
+    return fetchLandingTests(this.colonyId, landingId);
   }
 
   /** GET /immune: a public read, so no token goes with it. */

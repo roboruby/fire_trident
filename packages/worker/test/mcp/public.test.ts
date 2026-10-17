@@ -325,7 +325,7 @@ expect(later.data.trunk.certification.suspects).toEqual([
       );
     const ns = (kind: string) => ({ idFromName: (n: string) => n, get: () => stub(kind) });
     const env = { COLONY: ns("colony"), REGION: ns("region"), TRUNK: ns("trunk"), FT_PUBLIC_MCP: "hono" } as unknown as Env;
-    expect(Object.keys(publicReads(env).colony("hono")).sort()).toEqual(["getColony", "impact", "intentHistory", "listRegions", "snapshot"]);
+    expect(Object.keys(publicReads(env).colony("hono")).sort()).toEqual(["getColony", "impact", "intentHistory", "landingTests", "listRegions", "snapshot"]);
     expect(Object.keys(publicReads(env).region("hono", "src"))).toEqual(["reading"]);
     expect(Object.keys(publicReads(env).trunk("hono"))).toEqual(["why"]);
     const client = await connect((req) => publicMcp(req, env));
@@ -346,7 +346,7 @@ expect(later.data.trunk.certification.suspects).toEqual([
     ] as const) {
       expect((await call(client, name, args)).ok).toBe(true);
     }
-    expect([...new Set(called)].sort()).toEqual(["colony.getColony", "colony.impact", "colony.intentHistory", "colony.listRegions", "colony.snapshot", "region.reading", "trunk.why"]);
+    expect([...new Set(called)].sort()).toEqual(["colony.getColony", "colony.impact", "colony.intentHistory", "colony.landingTests", "colony.listRegions", "colony.snapshot", "region.reading", "trunk.why"]);
   });
 
   it("impact answers what a change reaches as GET /impact serves it, labeled as data, and refuses a bad path", async () => {
