@@ -12,7 +12,7 @@ Test against your own deployment (see "Run it" in the [README](README.md)), not 
 
 - **The operator** holds the Cloudflare account and the admin token (`FT_ADMIN_TOKEN`), and is trusted.
 - **Agents**, in-platform or external, are not. Neither their text nor their changes are trusted, nor the repository content they handle.
-- **Readers** need no token: colony state, review queues (masked) and lineage are public on a deployment, and colonies listed in `FT_PUBLIC_GIT` can be cloned by anyone.
+- **Readers** need no token: colony state, review queues (masked, including the file lines a review card or a returned change quotes) and lineage are public on a deployment, and colonies listed in `FT_PUBLIC_GIT` can be cloned by anyone.
 
 ## What FireTrident defends
 

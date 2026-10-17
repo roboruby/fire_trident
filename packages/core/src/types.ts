@@ -649,7 +649,8 @@ export interface Proposal {
   reason?: string;
   /**
    * Text merge: the files whose line merge conflicted, when that is why it went back (set by the trunk writer only while
-   * the conflict resolver, FT_RESOLVER, covers the colony; colony/resolver.ts reads them).
+   * the conflict resolver, FT_RESOLVER, or return hunks, FT_RETURN_HUNKS, cover the colony; colony/resolver.ts reads them
+   * only under FT_RESOLVER).
    */
   mergeConflicts?: MergeConflict[];
   /**
