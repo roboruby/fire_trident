@@ -1,4 +1,4 @@
-import type { ColonyEvent, ColonySnapshot, FieldReading, Landing, LandingDiff, LandingTests, LineageNote, NoteCheck, Proposal } from "@fire_trident/core";
+import type { ColonyEvent, ColonySnapshot, FieldReading, Landing, LandingDiff, LandingTests, LineageNote, NoteCheck, Proposal, WhyHolds, WhyWalk } from "@fire_trident/core";
 import { isColonyEvent, type ColonyStore } from "./store.ts";
 import { fetchLandingDiff, fetchNoteCheck } from "./verified.ts";
 import { fetchLandingTests } from "./tests.ts";
@@ -7,6 +7,9 @@ import { fetchLandingTests } from "./tests.ts";
 export interface WhyEntry {
   landing: Landing;
   note: LineageNote;
+  /** Whether it still holds on today's trunk, and on the first entry of a line's answer the walk (worker trunk/whywalk.ts); absent from servers before them. */
+  holds?: WhyHolds;
+  walk?: WhyWalk;
 }
 
 export type ReviewDecision = "approve" | "reject" | "return";

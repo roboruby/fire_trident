@@ -20,6 +20,8 @@ import type {
   ProposalStatus,
   Rule,
   Sha,
+  WhyHolds,
+  WhyWalk,
   WorkspaceLease,
 } from "@fire_trident/core";
 import type { Env } from "../env.ts";
@@ -115,7 +117,8 @@ export interface RegionRpc {
 
 /** TrunkDO methods used for lineage questions. */
 export interface TrunkRpc {
-  why(path: Path, line?: number): Promise<Array<{ landing: Landing; note: LineageNote }>>;
+  /** Each landing also says whether it still holds, and with a line the first carries the walk (trunk/whywalk.ts). */
+  why(path: Path, line?: number): Promise<Array<{ landing: Landing; note: LineageNote; holds?: WhyHolds; walk?: WhyWalk }>>;
 }
 
 /** TrunkDO reads an agent uses. */

@@ -1,5 +1,5 @@
 import type { CheckResult, Colony, Direction, FileVersion, LineageNote, NoteDecision, Rule } from "@fire_trident/core";
-import { decisionSpeaker, landingAnswerable, landingConfirmed, speaker } from "@fire_trident/core";
+import { decisionSpeaker, entryPath, landingAnswerable, landingConfirmed, speaker, walkOwnsFirst } from "@fire_trident/core";
 import { useEffect, useState } from "react";
 import { agentsOn, waitingWhy } from "../agents.ts";
 import type { Backend, WhyEntry } from "../api.ts";
@@ -18,6 +18,7 @@ import { LandingTestsRow } from "./TestsRow.tsx";
 import { AUTO_ROWS } from "../tests.ts";
 import { ConfirmedLine, DecidesFold, useDecides } from "./Decides.tsx";
 import { WhyLifecycles } from "./Lifecycle.tsx";
+import { HoldsLine, WalkLines } from "./WhyHolds.tsx";
 
 type NoteProposal = LineageNote["proposals"][number];
 
@@ -110,7 +111,8 @@ export function WhyTab({ store, backend, director = false }: { store: ColonyStor
   const here = agentsOn(store, path, 3);
   // As `ft why` reads it: the server only moves the line's landing ahead of newer ones, so a newer one after the first means it did.
   const first = current?.entries?.[0]?.landing?.at ?? 0;
-  const owner = !!line && !!current?.entries?.slice(1).some((e) => (e.landing?.at ?? 0) > first);
+  // A server with the walk (worker trunk/whywalk.ts) says whether the first landing wrote the line.
+  const owner = !!line && (walkOwnsFirst(current?.entries?.[0]) ?? !!current?.entries?.slice(1).some((e) => (e.landing?.at ?? 0) > first));
   return (
     <div className="why">
       <div className="why-head">
@@ -123,6 +125,8 @@ export function WhyTab({ store, backend, director = false }: { store: ColonyStor
         {line && current?.entries?.length ? (
           <div className="why-order">{owner ? `The landing that wrote line ${line} comes first, then the newest.` : `Line ${line}: the landings that changed this file, newest first.`}</div>
         ) : null}
+        {/* How the walk found it: formatting-only landings skipped, code moved from another file followed (WhyHolds.tsx). */}
+        {current?.entries?.length ? <WalkLines walk={current.entries[0]?.walk} path={path} line={line} /> : null}
         <div className="why-field">
           {KINDS.map((kind) => (
             <div className={`wf${values[kind] > 0.005 ? "" : " zero"}`} key={kind} title={`${kind} ${fmtFixed(values[kind])}`}>
@@ -187,7 +191,9 @@ export function WhyTab({ store, backend, director = false }: { store: ColonyStor
 function LineageEntry({ entry, path, store, newest, backend, tests }: { entry: WhyEntry; path: string; store: ColonyStore; newest: boolean; backend: Backend; tests: boolean }) {
   const { landing, note } = entry;
   const proposals = note?.proposals ?? [];
-  const relevant = proposals.filter((p) => p.writeSet?.some((w) => w.path === path));
+  // The landing that wrote the line in another file (moved since) shows the changes that wrote that file.
+  const wrotePath = entryPath(entry, path);
+  const relevant = proposals.filter((p) => p.writeSet?.some((w) => w.path === wrotePath));
   const shown = relevant.length ? relevant : proposals;
   const others = proposals.length - shown.length;
   const [copied, setCopied] = useState(false);
@@ -238,6 +244,8 @@ function LineageEntry({ entry, path, store, newest, backend, tests }: { entry: W
       <ConfirmedLine c={landingConfirmed(note)} />
       {/* Its tests at its base against the certified commit (TestsRow.tsx): read as the card opens for the newest, on a click for the rest. */}
       <LandingTestsRow backend={backend} landingId={landing.id} auto={tests} />
+      {/* Whether it still holds on today's trunk, and the tests that cover it now (WhyHolds.tsx). */}
+      <HoldsLine entry={entry} backend={backend} cert={store.headCert()?.cert ?? null} auto={tests} />
       {/* Each change's lifecycle strip, declared to merged by a person, from its note (Lifecycle.tsx, core/lifecycle.ts). */}
       <WhyLifecycles store={store} backend={backend} entry={entry} proposals={shown} auto={tests} />
       {shown.map((p) => (

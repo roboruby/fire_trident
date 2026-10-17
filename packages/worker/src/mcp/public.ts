@@ -18,6 +18,8 @@ import type {
   LineageNote,
   Path,
   StuckReport,
+  WhyHolds,
+  WhyWalk,
 } from "@fire_trident/core";
 import type { Env } from "../env.ts";
 import { cleanPath } from "../agents/change.ts";
@@ -28,6 +30,7 @@ import { errorResult, structuredToolErrors } from "./errors.ts";
 import { RETRY_RULE } from "./instructions.ts";
 import { compactReading, whyAnswer } from "./tools.ts";
 import { withTests } from "./whytests.ts";
+import { latestCertification, withHoldsText } from "./whyholds.ts";
 import { IMPACT_DESCRIPTION } from "./impact.ts";
 import { IMPACT_DEPTH, IMPACT_ENTRIES } from "../trunk/impact.ts";
 import { capSuspects } from "../certify/culprit.ts";
@@ -64,13 +67,15 @@ export interface PublicColonyReads {
   impact(paths: Path[], opts?: { depth?: number }): Promise<ImpactReport>;
   /** A landing's test row (GET /landings/:ref/tests; certify/landingtests.ts). */
   landingTests?(ref: string): Promise<LandingTests | null>;
+  /** The newest trunk certifications (GET /certifications), for the holds line of a why answer (mcp/whyholds.ts). */
+  certifications?(limit?: number): Promise<Certification[]>;
 }
 
 /** Everything the public tools can reach: read methods only. */
 export interface PublicReads {
   colony(colonyId: Id): PublicColonyReads;
   region(colonyId: Id, region: string): { reading(opts?: { paths?: Path[] }): Promise<FieldReading> };
-  trunk(colonyId: Id): { why(path: Path, line?: number): Promise<Array<{ landing: Landing; note: LineageNote }>> };
+  trunk(colonyId: Id): { why(path: Path, line?: number): Promise<Array<{ landing: Landing; note: LineageNote; holds?: WhyHolds; walk?: WhyWalk }>> };
 }
 
 /**
@@ -88,6 +93,7 @@ export function publicReads(env: Pick<Env, "COLONY" | "REGION" | "TRUNK">): Publ
         listRegions: () => stub.listRegions(),
         impact: (paths, opts) => stub.impact(paths, opts),
         landingTests: (ref) => stub.landingTests!(ref),
+        certifications: (limit) => stub.certifications!(limit),
       };
     },
     region(colonyId, region) {
@@ -272,8 +278,12 @@ export class PublicTools {
     const answer = whyAnswer(path, a.line, entries);
     // The newest landings' test rows, as the authenticated why gives them (mcp/whytests.ts).
     const reads = this.ctx.reads.colony(colonyId);
-    const tested = await withTests(answer.entries, reads.landingTests ? (ref) => reads.landingTests!(ref) : undefined);
-    return { colony: colonyId, ...answer, entries: tested, about: PUBLIC_DATA_NOTE };
+    const [tested, latest] = await Promise.all([
+      withTests(answer.entries, reads.landingTests ? (ref) => reads.landingTests!(ref) : undefined),
+      latestCertification(reads.certifications ? (n) => reads.certifications!(n) : undefined),
+    ]);
+    // Each landing's holds line, with the current certification of the tests that cover it (mcp/whyholds.ts).
+    return { colony: colonyId, ...answer, entries: withHoldsText(tested, latest), about: PUBLIC_DATA_NOTE };
   }
 
   /** One intent with its revisions, directives and reports, as GET /api/colonies/:id/intents/:iid serves it. */
@@ -403,7 +413,7 @@ export function publicServer(tools: PublicTools, colonies: readonly string[], de
     {
       title: "Why is this here",
       description:
-        "Lineage of a trunk file, or of one line of it: the landings that produced it (with a line, the one that wrote it first), each with its intent and why, the agent and model, the read and write sets, the review decisions, the checks and the test results. Each landing keeps only the proposals that wrote the path (otherProposals counts the rest). The newest five landings carry tests: the tests at the commit each landed on against the first green certification that includes it, the tests lost, whose tests they are, whether an earlier test reaches its files, what landed it and the model spend.",
+        "Lineage of a trunk file, or of one line of it: the landings that produced it (with a line, the one that wrote it first), each with its intent and why, the agent and model, the read and write sets, the review decisions, the checks and the test results. Each landing keeps only the proposals that wrote the path (otherProposals counts the rest). The newest five landings carry tests: the tests at the commit each landed on against the first green certification that includes it, the tests lost, whose tests they are, whether an earlier test reaches its files, what landed it and the model spend. Each landing says whether it still holds (holds.text): the file as it wrote it, changed since or deleted (and by which landing), the other files it wrote or read that changed since, and the current certification of the tests that cover it. With a line, walk says which landing wrote its meaning: formatting-only landings (whitespace, quotes, trailing commas and semicolons, line wrapping) are skipped and listed, and code moved from another file is followed there.",
       inputSchema: { colony, path: path.describe("Repository path, relative"), line: z.number().int().min(1).optional().describe("A line number in the file") },
       annotations: readOnly,
     },

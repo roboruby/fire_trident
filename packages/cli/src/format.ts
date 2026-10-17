@@ -21,7 +21,7 @@ import type {
   Rule,
 } from "@fire_trident/core";
 import type { StuckAction, StuckItem, StuckReport } from "@fire_trident/core";
-import type { Evidence, LandingTests } from "@fire_trident/core";
+import type { Evidence, LandingTests, WhyHolds, WhyWalk } from "@fire_trident/core";
 // The published CLI ships without @fire_trident/core: answerable.ts is the CLI's copy of core's (test/package.test.ts).
 import { bySpeaker, evidenceLines, landingAnswerable, notVerifiedSpeaker, notVerifiedWords } from "./answerable.ts";
 import { testsRows } from "./tests.ts";
@@ -38,6 +38,8 @@ import { spendCapStatus } from "./spendcap.ts";
 import { acceptanceRows } from "./acceptance.ts";
 import { contestLines } from "./contest.ts";
 import { prelandLine } from "./preland.ts";
+import { holdsRow, walkRows } from "./holds.ts";
+import { entryPath, walkOwnsFirst, type CertNow } from "./whyholds.ts";
 import { heldLines } from "./mergehold.ts";
 import { confirmedLine } from "./gateline.ts";
 import { reviewTestsLines } from "./reviewtests.ts";
@@ -768,6 +770,8 @@ export interface WhyContext {
   /** The status read's newest green commit and recent landings: the lifecycle strip places a landing without a test row by them (strip.ts). */
   greenSha?: string;
   landings?: Landing[];
+  /** The status read's latest certification: each landing's holds row ends with the tests that cover it (holds.ts). */
+  certification?: CertNow;
 }
 
 /**
@@ -777,7 +781,7 @@ export interface WhyContext {
  */
 export function formatWhy(
   target: { path: string; line?: number },
-  entries: Array<{ landing: Landing; note: LineageNote }>,
+  entries: Array<{ landing: Landing; note: LineageNote; holds?: WhyHolds; walk?: WhyWalk }>,
   ctx: WhyContext,
   c: Colors,
   now: number,
@@ -792,12 +796,16 @@ export function formatWhy(
   const rules = new Map((ctx.rules ?? []).map((r) => [r.id, r]));
   // The server only ever moves the line's landing ahead of newer ones: a newer landing after the first means it did.
   const first = at(sorted[0]?.landing);
-  const owner = target.line !== undefined && sorted.slice(1).some((e) => at(e.landing) > first);
+  // A server with the walk (trunk/whywalk.ts) says whether the first landing wrote the line; else the order tells.
+  const owner = target.line !== undefined && (walkOwnsFirst(sorted[0]) ?? sorted.slice(1).some((e) => at(e.landing) > first));
   const order = owner ? `the landing that wrote line ${target.line} first, then newest first` : "newest first";
   const out: string[] = [`${c.bold(where)}  ${c.dim(`${sorted.length} landing${sorted.length === 1 ? "" : "s"}, ${order}`)}`];
+  // How the walk found it: the formatting-only landings it skipped, the moves it followed (holds.ts).
+  out.push(...walkRows(sorted[0]?.walk, target, c));
   const label = (s: string) => c.dim(s.padEnd(9));
 
-  for (const { landing, note } of sorted) {
+  for (const entry of sorted) {
+    const { landing, note } = entry;
     out.push("");
     const when = at(landing) ? `  ${new Date(at(landing)).toISOString().replace("T", " ").slice(0, 16)}Z ${c.dim(`(${ago(at(landing), now)})`)}` : "";
     out.push(`${c.green("●")} ${c.bold(`landing ${landing.id}`)}  ${shortSha(landing.trunkSha)} ${c.dim(`← ${shortSha(landing.parentSha)}`)}${when}`);
@@ -809,6 +817,9 @@ export function formatWhy(
     // Its tests at its base against the certified commit (tests.ts), where the colony gave its row.
     const row = ctx.tests && Object.hasOwn(ctx.tests, landing.id) ? ctx.tests[landing.id] : undefined;
     if (row) for (const r of testsRows(row, c)) out.push(`  ${label(r.k)}${r.v}`);
+    // Whether it still holds on today's trunk, and the tests that cover it now (holds.ts).
+    const holds = holdsRow(entry, row, ctx.certification, c);
+    if (holds) out.push(`  ${label("holds")}${holds}`);
     const proposals = (note?.proposals ?? []).map((p) => ({
       ...p,
       writeSet: p.writeSet ?? [],
@@ -817,7 +828,9 @@ export function formatWhy(
       intent: p.intent ?? { id: "?", title: "(intent not recorded)", why: "" },
     }));
     if (note?.certification && (note.certification.status === "green" || note.certification.status === "red")) out.push(`  ${label("tests")}${noteCertLine(note.certification, c)}`);
-    const touching = proposals.filter((p) => p.writeSet.some((w) => w.path === target.path));
+    // The landing that wrote the line in another file (moved since) shows the changes that wrote that file.
+    const path = entryPath(entry, target.path);
+    const touching = proposals.filter((p) => p.writeSet.some((w) => w.path === path));
     const shown = touching.length ? touching : proposals;
     if (proposals.length > shown.length) out.push(`  ${c.dim(`${proposals.length - shown.length} other proposal(s) in this landing touched other files`)}`);
     for (const p of shown) {

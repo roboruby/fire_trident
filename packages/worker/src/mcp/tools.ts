@@ -1,5 +1,5 @@
-import { INLINE_LIMITS, blobId, changesetId, inlineProblem, landingAnswerable, regionOf, type LandingAnswerable } from "@fire_trident/core";
-import type { AgentInfo, AgentKind, ContestedRegion, Directive, EscalationKind, FieldReading, FileVersion, Id, Intent, Landing, LandingTests, LineageNote, Path, Proposal, ProposalStatus, RepoRef, Rule, Sha, WorkspaceLease } from "@fire_trident/core";
+import { INLINE_LIMITS, blobId, changesetId, entryPath, inlineProblem, landingAnswerable, regionOf, type LandingAnswerable } from "@fire_trident/core";
+import type { AgentInfo, AgentKind, Certification, ContestedRegion, Directive, EscalationKind, FieldReading, FileVersion, Id, Intent, Landing, LandingTests, LineageNote, Path, Proposal, ProposalStatus, RepoRef, Rule, Sha, WhyHolds, WhyWalk, WorkspaceLease } from "@fire_trident/core";
 import { ESCALATION_KINDS, isInboxDirective, landingMessage } from "../colony/direction.ts";
 import { cleanPath } from "../agents/change.ts";
 import { cleanContext, type LandedWhy } from "../agents/landed.ts";
@@ -23,6 +23,7 @@ import { foldPath } from "../decide/pathfold.ts";
 import { refuseWhilePaused } from "../colony/pause.ts";
 import { replayAnswer, replayedProposal } from "./replay.ts";
 import { withTests } from "./whytests.ts";
+import { latestCertification, withHoldsText } from "./whyholds.ts";
 
 /** What one MCP session remembers (stored in the session's Durable Object). */
 export interface Session {
@@ -92,6 +93,8 @@ export type McpColonyRpc = Omit<ColonyRpc, "registerAgent"> & {
   impact?(paths: Path[], opts?: { depth?: number }): Promise<ImpactReport>;
   /** A landing's test row (certify/landingtests.ts): its tests at its base against the certified commit, and more. */
   landingTests?(ref: string): Promise<LandingTests | null>;
+  /** The newest trunk certifications (certify/certifier.ts), for the holds line of a why answer (mcp/whyholds.ts). */
+  certifications?(limit?: number): Promise<Certification[]>;
   /** Declare through the agent's door: where FT_TWINS covers the colony, a twin answers instead (colony/twins.ts). */
   declareIntent?(i: Omit<Intent, "id" | "status" | "createdAt">, opts?: { force?: boolean }): Promise<DeclareAnswer>;
 };
@@ -302,15 +305,21 @@ function hunksNext(r: LastReturn | undefined): string {
  * proposals of the landing left out. `answerable`: who answers for the whole landing, read from its
  * whole note (core/answerable.ts), as the Why tab and `ft why` say it.
  */
-function whyEntry(e: { landing: Landing; note: LineageNote }, path: Path): WhyEntry {
+function whyEntry(e: { landing: Landing; note: LineageNote; holds?: WhyHolds; walk?: WhyWalk }, asked: Path): WhyEntry {
+  // The landing that wrote the line in another file (code moved since, trunk/whywalk.ts) is cut to that file.
+  const path = entryPath(e, asked);
   const all = Array.isArray(e.note?.proposals) ? e.note.proposals : [];
   const wrote = all.filter((p) => Array.isArray(p?.writeSet) && p.writeSet.some((w) => w?.path === path));
   const shown = wrote.length > 0 ? wrote : all;
-  return { landing: e.landing, note: { ...e.note, proposals: shown }, otherProposals: all.length - shown.length, answerable: landingAnswerable(e.note) };
+  const out: WhyEntry = { landing: e.landing, note: { ...e.note, proposals: shown }, otherProposals: all.length - shown.length, answerable: landingAnswerable(e.note) };
+  // Whether it still holds on today's trunk, and the walk for a line (trunk/whywalk.ts), where the trunk writer sent them.
+  if (e.holds) out.holds = e.holds;
+  if (e.walk) out.walk = e.walk;
+  return out;
 }
 
 /** One landing of a why answer (whyEntry). */
-type WhyEntry = { landing: Landing; note: LineageNote; otherProposals: number; answerable: LandingAnswerable };
+type WhyEntry = { landing: Landing; note: LineageNote; otherProposals: number; answerable: LandingAnswerable; holds?: WhyHolds; walk?: WhyWalk };
 
 /** Landings one why answer shows at most. */
 const WHY_LANDINGS = 10;
@@ -322,7 +331,7 @@ const WHY_LANDINGS = 10;
 export function whyAnswer(
   path: Path,
   line: number | undefined,
-  entries: ReadonlyArray<{ landing: Landing; note: LineageNote }>,
+  entries: ReadonlyArray<{ landing: Landing; note: LineageNote; holds?: WhyHolds; walk?: WhyWalk }>,
 ): { path: Path; line: number | null; entries: WhyEntry[] } {
   return { path, line: line ?? null, entries: (Array.isArray(entries) ? entries : []).slice(0, WHY_LANDINGS).map((e) => whyEntry(e, path)) };
 }
@@ -1021,7 +1030,12 @@ export class FireTridentTools {
     const answer = whyAnswer(path, a.line, entries);
     // The newest landings' test rows (mcp/whytests.ts), read as a method of the colony's stub.
     const colony = this.ctx.colony(s.colonyId);
-    return { ...answer, entries: await withTests(answer.entries, colony.landingTests ? (ref) => colony.landingTests!(ref) : undefined) };
+    const [tested, latest] = await Promise.all([
+      withTests(answer.entries, colony.landingTests ? (ref) => colony.landingTests!(ref) : undefined),
+      latestCertification(colony.certifications ? (n) => colony.certifications!(n) : undefined),
+    ]);
+    // Each landing's holds line, with the current certification of the tests that cover it (mcp/whyholds.ts).
+    return { ...answer, entries: withHoldsText(tested, latest) };
   }
 
   /**

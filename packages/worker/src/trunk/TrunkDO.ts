@@ -41,7 +41,7 @@ import {
   type PathChange,
   type PushOutcome,
 } from "../artifacts/git.ts";
-import { mapLine } from "./blame.ts";
+import { sqlWhySource, whyLineage, type WhyLineage } from "./whywalk.ts";
 import { maskNote } from "./mask.ts";
 import { addNotes } from "./notes.ts";
 import { sealNote, withNoteDigest } from "./digest.ts";
@@ -566,31 +566,13 @@ export class TrunkDO extends DurableObject<Env> {
   }
 
   /**
-   * Landings that changed `path`, newest first, with their lineage notes. With `line`
-   * (1-based, in the current file), the landing that last changed that line comes first;
-   * the order is unchanged when the line predates every landing.
+   * Landings that changed `path`, newest first, with their lineage notes, each saying whether it still holds on today's
+   * trunk. With `line` (1-based, in the current file), the landing that wrote the line's meaning comes first, found past
+   * formatting-only landings and through code moved from another file, with the walk on the first entry; the order is
+   * unchanged when the line predates every landing (trunk/whywalk.ts).
    */
-  async why(path: Path, line?: number): Promise<Array<{ landing: Landing; note: LineageNote }>> {
-    const rows = this.sql
-      .exec<{ landing: string; note: string | null; before_blob: string | null; after_blob: string | null }>(
-        `SELECT l.data AS landing, n.note AS note, lp.before_blob AS before_blob, lp.after_blob AS after_blob FROM ft_landing_paths lp
-           JOIN ft_landings l ON l.seq = lp.seq
-           LEFT JOIN ft_notes n ON n.landing_id = lp.landing_id
-         WHERE lp.path = ? ORDER BY lp.seq DESC LIMIT ?`,
-        path,
-        WHY_LIMIT,
-      )
-      .toArray();
-    const out: Array<{ landing: Landing; note: LineageNote }> = [];
-    let ownerAt = -1;
-    const owner = line !== undefined && Number.isFinite(line) && line >= 1 ? await this.lineOwner(path, Math.floor(line), rows).catch(() => null) : null;
-    rows.forEach((r, i) => {
-      if (r.note === null) return;
-      if (i === owner) ownerAt = out.length;
-      out.push({ landing: JSON.parse(r.landing) as Landing, note: JSON.parse(r.note) as LineageNote });
-    });
-    if (ownerAt > 0) out.unshift(...out.splice(ownerAt, 1));
-    return out;
+  async why(path: Path, line?: number): Promise<WhyLineage[]> {
+    return whyLineage(sqlWhySource(this.sql, (blob) => this.blobBytes(blob)), path, line, WHY_LIMIT);
   }
 
   /**
@@ -2905,43 +2887,6 @@ export class TrunkDO extends DurableObject<Env> {
       for (const path of paths) out.set(path, await remoteBlobAt(repo, commit.treeHash, path, trees));
       return out;
     });
-  }
-
-  /**
-   * Index into `history` (the path's landings, newest first) of the landing that last changed
-   * line `line` of the current file: follow the line back through each landing's diff until
-   * a landing added it. Null when the line came from outside the landings.
-   */
-  private async lineOwner(path: Path, line: number, history: Array<{ before_blob: string | null; after_blob: string | null }>): Promise<number | null> {
-    let blob = this.indexBlob(path);
-    if (blob === null) return null;
-    const g = this.repo();
-    const texts = new Map<string, string>();
-    const text = async (oid: string): Promise<string> => {
-      let t = texts.get(oid);
-      if (t === undefined) {
-        t = new TextDecoder().decode(await readLocalBlob(g, oid));
-        texts.set(oid, t);
-      }
-      return t;
-    };
-    let idx = line - 1;
-    for (let i = 0; i < history.length; i++) {
-      const h = history[i]!;
-      if (h.after_blob === null) return null;
-      if (blob !== h.after_blob) {
-        const m = mapLine(await text(h.after_blob), await text(blob), idx);
-        if (m === null) return null;
-        idx = m;
-        blob = h.after_blob;
-      }
-      if (h.before_blob === null) return i;
-      const older = mapLine(await text(h.before_blob), await text(h.after_blob), idx);
-      if (older === null) return i;
-      idx = older;
-      blob = h.before_blob;
-    }
-    return null;
   }
 
   /** A landing by id, or by the trunk commit it produced (40 hex, or a unique prefix of 7+). */

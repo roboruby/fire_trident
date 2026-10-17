@@ -8,6 +8,9 @@ export * from "./testdelta.ts";
 export * from "./decides.ts";
 // The lifecycle strip of a change: declared to merged by a person, and where it left the path (lifecycle.ts).
 export * from "./lifecycle.ts";
+// Why per line, about today: whether each landing still holds, and the walk past reformatting and moved code (whyholds.ts, reformat.ts).
+export * from "./whyholds.ts";
+export * from "./reformat.ts";
 
 const SUBJECT_MAX = 72;
 

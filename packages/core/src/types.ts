@@ -1055,6 +1055,49 @@ export interface LineageNote {
 }
 
 /**
+ * One file a landing wrote or read, against today's trunk (`ft why`, worker trunk/whywalk.ts): `same` today's trunk
+ * holds the blob it wrote or read, `changed` another one, `deleted` no file. `by` names the newest landing after it that
+ * changed the file and `landings` counts them; both are absent when no landing did (it changed before it landed, or
+ * outside the landings).
+ */
+export interface WhySince {
+  path: Path;
+  state: "same" | "changed" | "deleted";
+  by?: Id;
+  landings?: number;
+}
+
+/**
+ * Whether a landing of a why answer still holds on today's trunk: `wrote` the file asked about against the blob the
+ * landing wrote; `others` the other files its changes (those that wrote that file) wrote or read, against the blobs they
+ * wrote or read: how many were compared, how many changed since, and those, at most five. `text` is the line `ft why`,
+ * the Why tab and the MCP `why` tools show, with the current certification of the tests that cover it (core/whyholds.ts
+ * holdsText): the trunk writer sends none, a reader adds it. Absent on answers from trunk writers before it.
+ */
+export interface WhyHolds {
+  wrote: WhySince;
+  others: { files: number; changed: number; list: WhySince[] };
+  text?: string;
+}
+
+/**
+ * How a why answer for one line found the landing behind it (worker trunk/whywalk.ts). `landingId` wrote the line's
+ * meaning, at `line` (1-based) of `path` in the version it wrote; absent when the line came with the files before any
+ * landing. `skipped`: landings that only reformatted the line (whitespace, quote style, trailing commas and semicolons,
+ * line wrapping), newest first. `moved`: landings that moved the block holding it from another file, which the walk
+ * followed back, newest first. `bounded`: why the walk stopped early, as a sentence; `landingId` is then the oldest
+ * landing it found that changed the line.
+ */
+export interface WhyWalk {
+  landingId?: Id;
+  path: Path;
+  line: number;
+  skipped: Array<{ landingId: Id; path: Path }>;
+  moved: Array<{ landingId: Id; from: Path; to: Path; line: number }>;
+  bounded?: string;
+}
+
+/**
  * One landing's lineage note on the trunk repository against the FT-Note trailer of its commit (the sha256 of the note as
  * the trunk writer wrote it, without `certification`): `intact` (they match), `altered` (they do not, or the note is not
  * in the form the trunk writer writes), `missing` (no note for the commit), `pending` (the note is not pushed yet),

@@ -6038,3 +6038,32 @@ html[data-emphasize="trunk"] .trunk {
 .tests-btn {
   font-size: 12px;
 }
+
+/* Today in the Why tab (WhyHolds.tsx): how the walk found a line's landing, and whether each landing still holds. */
+.why-walk {
+  margin-top: 4px;
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+
+.why-walk-line.is-skipped,
+.why-walk-line.is-moved {
+  padding-left: 8px;
+  border-left: 2px solid var(--line-2);
+}
+
+.holds-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  margin: 4px 0 2px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+/* The file it wrote changed or went since: amber. */
+.holds-row.is-changed .holds-text,
+.holds-row.is-deleted .holds-text {
+  color: var(--need);
+}
