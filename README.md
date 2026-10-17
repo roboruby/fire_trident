@@ -188,6 +188,8 @@ Load is how much the platform lands, routing is where review sends each change, 
 | Goal conflict, two of three held | Production (`order-backend`) | Three scripted agents over MCP, placed by the script | On | Yes, by construction: each rewrites the same file | Coordination: one goal undoing another |
 | First red commit, 3 test runs | Production (`first-red`) | Scripted changes | Off | No | Certification: the landing that broke a test |
 
+**How often overlapping human work conflicts** (MEASURED, [Hono's merged pull requests](packages/bench/results/2026-10-17-hono-overlap/), 2025-10-17 to 2026-10-17): of 1,562 pairs of pull requests open at the same time on one branch, 89 (5.7%) changed a common file, which per-file locks would have serialized; stock git conflicted on 20 of the 87 pairs it could replay, and FireTrident's text merge with the insertion rule lands 7 of those 20. Pull requests carry no read sets, so this cannot count the changes git merges cleanly that read-set validation would send back.
+
 The benchmark compares FireTrident with exclusive file locks plus one serialized merge queue on the same workloads; it does not model a queue that tests several changes at once. Every point is labeled measured or simulated: [packages/bench/results](packages/bench/results).
 
 ## What each mechanism buys
@@ -248,7 +250,7 @@ node ../verify_note.mjs --all --keys https://firetrident.com/.well-known/firetri
 node ../verify_note.mjs HEAD --tamper   # an edited copy of the newest note is caught
 ```
 
-`ruby scripts/coordination.rb --url <deployment> --colony <id>` measures how a colony's agents coordinated from that same public record (plain git, the notes, public reads): proposals and intents merged, code sharing (the share of each file other agents wrote), specialization against a shuffled baseline, returns over time, the hottest file, sprawl, lines per landed intent, and where the time went (agent work, review, waiting to land, rework) with the critical path to the last landing. Its header defines each. `git notes --ref=firetrident show <commit>` prints a note on its own. On your own deployment, list the colonies to share in `FT_PUBLIC_GIT` (see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#plain-git-access)).
+`ruby scripts/coordination.rb --url <deployment> --colony <id>` measures how a colony's agents coordinated from that same public record (plain git, the notes, public reads): proposals and intents merged, code sharing (the share of each file other agents wrote), specialization against a shuffled baseline, returns over time, the hottest file, sprawl, lines per landed intent, and where the time went (agent work, review, waiting to land, rework) with the critical path to the last landing, coordination tokens per take against agent count (an estimate, with a read-everything comparison), access by model and agent kind, return to reland, culprit precision against first red, residue and review rounds, and lines alive on trunk by model. Its header defines each. `git notes --ref=firetrident show <commit>` prints a note on its own. On your own deployment, list the colonies to share in `FT_PUBLIC_GIT` (see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#plain-git-access)).
 
 ### Ask it with your own agent
 
