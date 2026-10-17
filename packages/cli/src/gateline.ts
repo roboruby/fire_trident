@@ -43,6 +43,8 @@ export function decidesLines(raw: unknown, c: Colors): string[] {
   const out = [`${c.dim("decides".padEnd(LABEL))}${r.preset === "custom" ? c.yellow(presetWords(r)) : c.bold(presetWords(r))} · ${splitText(r.split)}`];
   if (r.lets) out.push(`${pad}${c.dim(r.lets)}`);
   if (!r.reviewing) out.push(`${pad}${c.yellow("Review is off now: changes go to their lanes without the gate, except those a protected path or tests before landing hold.")}`);
+  // The audit sample (ft audit): what people found when they looked at landings without a person.
+  if (r.audit) out.push(`${pad}${r.audit.line}${r.audit.canaries && r.audit.canaries !== "canaries off" ? c.dim(` · ${r.audit.canaries}`) : ""}`);
   return out;
 }
 

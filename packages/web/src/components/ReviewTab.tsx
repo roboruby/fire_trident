@@ -21,6 +21,8 @@ import { ReviewTests } from "./ReviewTests.tsx";
 import { testsPending } from "../reviewtests.ts";
 import { LifecycleStrip } from "./Lifecycle.tsx";
 import { lifecycleHref, reviewLifecycle } from "../lifecycle.ts";
+import { auditOf, canaryOf } from "../audit.ts";
+import { AuditCard } from "./AuditCard.tsx";
 
 const NONE: readonly string[] = [];
 
@@ -125,6 +127,8 @@ export function ReviewTab({ store, backend, director = false }: { store: ColonyS
   const [busy, setBusy] = useState<string | null>(null);
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [toast, setToast] = useState<string | null>(null);
+  // Blind canaries (audit.ts): a decided canary's reveal stays on the tab until the next decision.
+  const [reveal, setReveal] = useState<{ outcome: string; sentence: string } | null>(null);
   // A decision the server refused for want of a token: asked for on that card, retried once the token is saved.
   const [pending, setPending] = useState<{ id: string; decision: ReviewDecision; refused: boolean } | null>(null);
   const decided = useRef(new Set<string>());
@@ -135,7 +139,8 @@ export function ReviewTab({ store, backend, director = false }: { store: ColonyS
   const load = useCallback(async () => {
     try {
       const list = await backend.review();
-      setItems(list.filter((p) => p && (p.status === "escalated" || !p.status) && !decided.current.has(p.id)));
+      // Audit items (audit.ts) are landed changes among the escalations: the baseline stream keeps them in the list.
+      setItems(list.filter((p) => p && (p.status === "escalated" || !p.status || auditOf(p) !== null) && !decided.current.has(p.id)));
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? `Couldn't load the review queue: ${err.message}` : "Couldn't load the review queue.");
@@ -173,10 +178,13 @@ export function ReviewTab({ store, backend, director = false }: { store: ColonyS
     if (decision !== "approve" && !reason) return;
     setBusy(p.id);
     try {
-      await backend.decide(p.id, decision, reason, readReviewer() || undefined);
+      const res = await backend.decide(p.id, decision, reason, readReviewer() || undefined);
       decided.current.add(p.id);
       setItems((cur) => (cur ? cur.filter((x) => x.id !== p.id) : cur));
-      setToast(doneText(decision, store.agentName(p.agentId)));
+      // A blind canary is revealed by the answer: say what it was instead of what an ordinary decision did.
+      const canary = canaryOf(res);
+      setReveal(canary);
+      setToast(canary ? null : doneText(decision, store.agentName(p.agentId)));
       setError(null);
       setPending(null);
       store.setHighlight([]);
@@ -197,7 +205,8 @@ export function ReviewTab({ store, backend, director = false }: { store: ColonyS
   const handled = total ? (f.proof + f.reflex + f.llm) / total : 1;
   const vaccine = store.vaccination();
 
-  const queued = replay ? store.reviewQueue() : (items?.length ?? 0);
+  const audits = (items ?? []).filter((p) => auditOf(p) !== null).length;
+  const queued = replay ? store.reviewQueue() : (items?.length ?? 0) - audits;
   const head =
     items === null && !replay
       ? "Loading the review queue…"
@@ -221,10 +230,16 @@ export function ReviewTab({ store, backend, director = false }: { store: ColonyS
             <VaccineMeter v={vaccine} compact />
           </div>
         ) : null}
+        {audits > 0 ? <div className="review-audits">and {plural(audits, "landed change")} from the audit sample, among them: no person saw {audits === 1 ? "it" : "them"} before {audits === 1 ? "it" : "they"} landed</div> : null}
         {/* Earned autonomy per region (AutonomyStrip.tsx): where review relaxed, and what took it back. */}
         <AutonomyStrip backend={backend} refresh={reviewVersion} />
       </div>
       {toast ? <div className="toast">{toast}</div> : null}
+      {reveal ? (
+        <div className={`canary-reveal${reveal.outcome === "caught" ? " is-caught" : ""}`} role="status">
+          {reveal.sentence}
+        </div>
+      ) : null}
       {error ? <div className="alert">{error}</div> : null}
       {reports.length || answered.length ? (
         <section className="cards report-cards" aria-label="Agents' reports">
@@ -239,6 +254,23 @@ export function ReviewTab({ store, backend, director = false }: { store: ColonyS
       ) : null}
       <div className="cards">
         {(items ?? []).map((p) => {
+          // The baseline stream (audit.ts): a landed change from the audit sample, on its own card.
+          if (auditOf(p)) {
+            return (
+              <AuditCard
+                key={p.id}
+                p={p}
+                view={views.get(p.id) ?? null}
+                store={store}
+                backend={backend}
+                onDone={(id, sentence) => {
+                  decided.current.add(id);
+                  setItems((cur) => (cur ? cur.filter((x) => x.id !== id) : cur));
+                  setToast(sentence);
+                }}
+              />
+            );
+          }
           const intent = store.intents.get(p.intentId);
           const residual = p.evidence?.residual ?? [];
           const declared = p.declared?.footprint ?? [];

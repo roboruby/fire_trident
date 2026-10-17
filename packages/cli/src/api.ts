@@ -3,6 +3,7 @@ import type { Command } from "./args.ts";
 import { pauseRequest } from "./pause.ts";
 import { spendCapRequest } from "./spendcap.ts";
 import { recipeRequest } from "./recipe.ts";
+import { auditRequest } from "./audit.ts";
 import { silentTtlRequest } from "./closure.ts";
 
 /**
@@ -192,6 +193,9 @@ export function planRequest(cmd: Command, by: string): ApiRequest | null {
     case "spend-cap":
       // The spend cap (spendcap.ts): read it, set it, or remove it.
       return spendCapRequest(cmd, by, colonyPath);
+    case "audit":
+      // The audit sample and blind canaries (audit.ts): the measures, the rates, or a person's answer.
+      return auditRequest(cmd, by, colonyPath);
     case "recipe":
       // Recipes (recipe.ts): declare, list, show, approve.
       return recipeRequest(cmd, by, colonyPath);

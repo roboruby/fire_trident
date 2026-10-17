@@ -57,6 +57,7 @@ import { formatMegafile } from "./megafile.ts";
 import { formatPause } from "./pause.ts";
 import { formatSpendCap } from "./spendcap.ts";
 import { formatRecipe, ruleRecipeLines } from "./recipe.ts";
+import { canaryLines, formatAudit } from "./audit.ts";
 import { formatSilentTtl, type SilentTtlView } from "./closure.ts";
 import { formatImpact } from "./impact.ts";
 import { autonomyLine, formatImmune } from "./immune.ts";
@@ -358,7 +359,10 @@ async function execute(cmd: Command, ctx: Ctx): Promise<number> {
     }
     case "review-decide": {
       const res = await send<unknown>(ctx.http, req);
+      // A blind canary (audit.ts): the answer reveals what it was and how the decision scored, in place of the usual words.
+      const canary = ctx.flags.json ? [] : canaryLines(res, c);
       if (ctx.flags.json) printJson(ctx, res ?? { ok: true });
+      else if (canary.length > 0) for (const line of canary) io.stdout(line);
       else {
         const verb = { approve: c.green("Approved"), reject: c.red("Rejected"), return: c.yellow("Returned") }[cmd.decision];
         io.stdout(`${verb} ${c.bold(cmd.proposalId)}${cmd.decision === "approve" ? "" : `: ${cmd.reason}`}`);
@@ -483,6 +487,12 @@ async function execute(cmd: Command, ctx: Ctx): Promise<number> {
       const res = await send<unknown>(ctx.http, req, 60_000);
       if (ctx.flags.json) printJson(ctx, res);
       else io.stdout(formatSpendCap(cmd, res, c));
+      return 0;
+    }
+    case "audit": {
+      const res = await send<unknown>(ctx.http, req, 60_000);
+      if (ctx.flags.json) printJson(ctx, res);
+      else io.stdout(formatAudit(cmd, res, c));
       return 0;
     }
     case "recipe": {
