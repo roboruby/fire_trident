@@ -4,8 +4,9 @@
  * the tour included). With public GET requests only, it reads everything those pages read: GET /api/about (the build),
  * the colony's snapshot, its agents, its decide policy (the first screen's protected paths), its whole event record
  * (page by page), each file's lineage (/why?path=), each landing's note check (/notes/verify?landing=), the change each
- * landing made to each of its files (/landings/:id/diff?path=), and the reads of the colony's tour; then it writes them
- * into one file
+ * landing made to each of its files (/landings/:id/diff?path=), the reads of the colony's tour, and, for a colony with
+ * mosaic.json at the root of its trunk, that file at each landing that changed it (/preview/<commit>/mosaic.json, which
+ * the replay's picture panel draws); then it writes them into one file
  * (packages/web/src/playback/recording.ts has the layout). Every answer passes through the evidence redaction
  * (packages/bench/src/evidence.ts: tokens, the account id, emails, local paths) and loses any token field; no request
  * header is written, and neither is the deployment's address.
@@ -35,6 +36,7 @@ import type { ColonySnapshot, EventsPage, RecordedEvent } from "@fire_trident/co
 import { redactEvidence } from "../packages/bench/src/evidence.ts";
 import { RECORDING_FORMAT, RECORDING_NAME, RECORDING_VERSION, keyOf, type Recording, type RecordingRefusal } from "../packages/web/src/playback/recording.ts";
 import { tourFor } from "../packages/web/src/tour/tours.ts";
+import { PICTURE_FILE, pictureCommits, picturePath } from "../packages/web/src/picture.ts";
 
 /** The repository root (bundled recordings go under it). */
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -303,6 +305,12 @@ export async function recordColony(opts: RecordOptions): Promise<RecordResult> {
     await phase([...pairs.values()].map(({ id, path }) => `${colony}/landings/${encodeURIComponent(id)}/diff?path=${encodeURIComponent(path)}`));
     log(`changes: ${pairs.size.toLocaleString("en-US")} files of landings`);
   }
+  // The picture panel (packages/web/src/picture.ts): mosaic.json at each landing that changed it, through the preview route.
+  const pictures = pictureCommits(events);
+  if (pictures.length > 0) {
+    await phase(pictures.map((sha) => picturePath(opts.colonyId, sha)));
+    log(`pictures: ${PICTURE_FILE} at ${pictures.length.toLocaleString("en-US")} landings`);
+  }
   // Each landing card's test row (landings/:ref/tests) and each intent's lifecycle strip (intents/:iid/lifecycle).
   await phase([...ids].map((id) => `${colony}/landings/${encodeURIComponent(id)}/tests`));
   const intentIds = [...new Set((snap.intents ?? []).map((i) => i.id))];
@@ -315,7 +323,7 @@ export async function recordColony(opts: RecordOptions): Promise<RecordResult> {
     version: RECORDING_VERSION,
     colonyId: opts.colonyId,
     recordedAt: (opts.now ?? (() => new Date()))().toISOString(),
-    note: `Public reads of colony ${opts.colonyId}, recorded by scripts/record_colony.ts for playback with no network: the event record, the snapshot, the agents, the build, each file's lineage, each landing's note check${opts.diffs === false ? "" : " and changes"}, and the tour's reads. Tokens, account ids, emails and local paths are redacted; no request header or deployment address is kept.`,
+    note: `Public reads of colony ${opts.colonyId}, recorded by scripts/record_colony.ts for playback with no network: the event record, the snapshot, the agents, the build, each file's lineage, each landing's note check${opts.diffs === false ? "" : " and changes"}${pictures.length > 0 ? `, ${PICTURE_FILE} at each landing that changed it` : ""}, and the tour's reads. Tokens, account ids, emails and local paths are redacted; no request header or deployment address is kept.`,
     record: {
       source: first?.source === "reconstructed" ? "reconstructed" : "recorded",
       total: first?.total ?? events.length,

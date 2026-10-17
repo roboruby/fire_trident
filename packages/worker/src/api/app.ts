@@ -35,6 +35,7 @@ import { guideRoutes } from "./guide.ts";
 import { megafileRoutes } from "./megafile.ts";
 import { reviewTestsRoutes } from "./reviewtests.ts";
 import { landingRoutes, verifyLanding } from "./landing.ts";
+import { previewRoutes } from "./preview.ts";
 import { impactRoutes } from "./impact.ts";
 import { rootRoutes } from "./root.ts";
 import { a2aRoutes } from "./a2a.ts";
@@ -212,6 +213,7 @@ async function requireColony(env: Env, colonyId: Id): Promise<void> {
  *   GET    /colonies/:id/why                ?path=&line=
  *   GET    /colonies/:id/notes/verify       the newest landings' git notes against their commits' FT-Note trailers (?limit=; ?landing= checks one, api/landing.ts)
  *   GET    /colonies/:id/landings/:ref/diff the change a landing made to one file (?path=; public colonies only, api/landing.ts)
+ *   GET    /colonies/:id/preview/:commit/*  a trunk file at a landing's commit, sandboxed (public colonies only, api/preview.ts)
  *   GET    /colonies/:id/review             review queue
  *   POST   /colonies/:id/review/:pid        approve | reject | return
  *   POST   /colonies/:id/proposals/:pid/tests  run the colony's tests on an escalated change again (api/reviewtests.ts)
@@ -604,6 +606,7 @@ export function createApi(deps: ApiDeps): Hono<ApiEnv> {
   megafileRoutes(app, requireAdmin); // Megafile alarm: held files, a person's hold or release (api/megafile.ts)
   reviewTestsRoutes(app, requireAdmin); // Tests before approval: run an escalated change's tests again (api/reviewtests.ts)
   landingRoutes(app); // One landing's change to a file, for public colonies (api/landing.ts)
+  previewRoutes(app); // A trunk file at a landing's commit, sandboxed, for public colonies (api/preview.ts)
   impactRoutes(app); // Impact: what a change to a file reaches through imports, and who works on those files now (api/impact.ts)
   rootRoutes(app); // The colony's root commit, which pins a clone of its history (api/root.ts)
   a2aRoutes(app, requireAdmin); // Agent2Agent: an orchestrator declares intents and follows them as tasks (FT_A2A; api/a2a.ts)
