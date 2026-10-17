@@ -169,6 +169,7 @@ import { a2aTasks, type A2APage, type A2AQuery } from "./a2a.ts";
 import { REVIEW_MOVED, cleanMovedBy, movedCollision, movedReturn, type StalePath } from "./movedby.ts";
 import { PROTECT_META, isProtectStop, parseProtectRecord, protectChanged, protectLandedText, type ProtectHost, type ProtectOutcome, type ProtectRecord } from "./protect.ts";
 import { SpendBook, modelOfClass, resolverClient, spendCounters } from "./spend.ts";
+import { hedgeFor } from "./hedge.ts";
 import type { ColonySpend, IntentSpendBrief } from "@fire_trident/core";
 import { IntentSpendBook, intentSpendEnabled, type IntentSpendAnswer } from "./intentspend.ts";
 
@@ -3368,6 +3369,8 @@ export class ColonyDO extends DurableObject<Env> {
     const limiter = this.contestLimiter();
     limiter.configure(policy.llmConcurrency, policy.llmPerMinute);
     const judged: JudgeIntent = { title: intent.title, why: intent.why, whyBy: whyAuthor(intent.source), ...(intent.acceptance ? { acceptance: intent.acceptance } : {}) };
+    // Hedged calls (FT_HEDGE, colony/hedge.ts): judgeSpend counts every run, a losing copy's too.
+    const hedge = hedgeFor(this.env, this.requireColony().id, "judge", { bump: (name, delta) => void this.bump(name, delta, Date.now()) });
     // The contest jury (FT_CONTEST_JURY, decide/jury.ts): two or three small models from different families in place of the one judge.
     if (juryEnabled(this.env.FT_CONTEST_JURY, this.requireColony().id)) {
       return pairJury({
@@ -3377,6 +3380,7 @@ export class ColonyDO extends DurableObject<Env> {
         intent: judged,
         onCall: () => this.bump("contest.judge.calls", 1, Date.now()),
         onVerdict: (members, better) => this.juryCount(members, better),
+        hedge,
       });
     }
     return pairJudge({
@@ -3385,6 +3389,7 @@ export class ColonyDO extends DurableObject<Env> {
       limiter,
       intent: judged,
       onCall: () => this.bump("contest.judge.calls", 1, Date.now()),
+      hedge,
     });
   }
 
@@ -5341,7 +5346,13 @@ export class ColonyDO extends DurableObject<Env> {
       waitUntil: (p) => this.ctx.waitUntil(p),
       limiter: () => this.decider().limiter,
       // The client agents use, with each call's tokens counted per model for the colony's spend (colony/spend.ts).
-      model: () => resolverClient(this.env, (name, delta) => void this.bump(name, delta, Date.now())),
+      // Hedged calls (FT_HEDGE, colony/hedge.ts): the copy goes to the same model, through the decide limiter.
+      model: () =>
+        resolverClient(
+          this.env,
+          (name, delta) => void this.bump(name, delta, Date.now()),
+          hedgeFor(this.env, this.requireColony().id, "resolver", { admit: (m) => this.decider().limiter.acquire(m, 0), bump: (name, delta) => void this.bump(name, delta, Date.now()) }),
+        ),
       // An in-platform agent named "resolver", registered on first use (synchronously: a return is being settled).
       agent: (known, model) => {
         const now = Date.now();

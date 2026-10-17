@@ -1,6 +1,7 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { generateText } from "ai";
 import type { Env } from "../env.ts";
+import { hedged, runAi, type Hedge, type Hedged } from "../colony/hedge.ts";
 import type { ModelClient, ModelReply } from "./loop.ts";
 import type { ChatMessage } from "./prompt.ts";
 import { extractFinishReason, extractModelText, extractUsage } from "./prompt.ts";
@@ -52,31 +53,48 @@ interface AiRunner {
  * chat messages and `max_tokens`; `claude-*` models run through the AI SDK's
  * Anthropic provider when ANTHROPIC_API_KEY is set. No sampling parameters are
  * sent (current Anthropic models reject them) and no assistant prefill is used.
+ * With `hedge` (FT_HEDGE, colony/hedge.ts), a call with no answer after the hedge's
+ * wait goes out once more, and the reply says which copy answered.
  */
-export function modelClient(env: Pick<Env, "AI" | "ANTHROPIC_API_KEY"> & Partial<Pick<Env, "FT_DEFAULT_MODEL" | "FT_BULK_MODEL">>): ModelClient {
+export function modelClient(env: Pick<Env, "AI" | "ANTHROPIC_API_KEY"> & Partial<Pick<Env, "FT_DEFAULT_MODEL" | "FT_BULK_MODEL">>, hedge?: Hedge | null): ModelClient {
   return {
     async complete(req: { model: string; messages: ChatMessage[]; maxTokens: number }): Promise<ModelReply> {
       // "default" and "bulk" name the server's models (a spec intent may ask for one by class).
       const alias = req.model === "default" ? env.FT_DEFAULT_MODEL : req.model === "bulk" ? env.FT_BULK_MODEL : undefined;
       const p = alias ? { ...req, model: alias } : req;
-      if (usesAnthropic(env, p.model)) return { ...(await anthropicComplete(env.ANTHROPIC_API_KEY as string, p)), model: p.model };
+      if (usesAnthropic(env, p.model)) {
+        const r = await hedged((m, signal) => anthropicComplete(env.ANTHROPIC_API_KEY as string, { ...p, model: m }, signal), p.model, hedge);
+        return withHedge({ ...r.value, model: r.model }, r, (v) => v.usage ?? null);
+      }
       if (p.model.startsWith("claude-")) throw new Error(`model ${p.model} needs ANTHROPIC_API_KEY, which is not set`);
       const ai = env.AI as unknown as AiRunner;
       const t0 = Date.now();
-      let result: unknown;
+      let result: Hedged<unknown>;
       try {
-        result = await withTimeout(ai.run(p.model, { messages: p.messages, max_tokens: p.maxTokens, ...modelOptions(p.model) }), CALL_TIMEOUT_MS, `model ${p.model}`);
+        result = await withTimeout(
+          hedged((m, signal) => runAi(ai, m, { messages: p.messages, max_tokens: p.maxTokens, ...modelOptions(m) }, signal), p.model, hedge),
+          CALL_TIMEOUT_MS,
+          `model ${p.model}`,
+        );
       } catch (e) {
         throw throttleError(e, p.model);
       }
-      const reply: ModelReply = { text: extractModelText(result), ms: Date.now() - t0, model: p.model };
-      const finish = extractFinishReason(result);
+      const reply: ModelReply = { text: extractModelText(result.value), ms: Date.now() - t0, model: result.model };
+      const finish = extractFinishReason(result.value);
       if (finish) reply.finishReason = finish;
-      const usage = extractUsage(result);
+      const usage = extractUsage(result.value);
       if (usage) reply.usage = usage;
-      return reply;
+      return withHedge(reply, result, extractUsage);
     },
   };
+}
+
+/** A reply with its hedge (FT_HEDGE): which copy answered, and the losing copy's tokens once it settles. Unhedged replies pass as they are. */
+function withHedge<T>(reply: ModelReply, r: Hedged<T>, usageOf: (value: T) => ModelReply["usage"] | null): ModelReply {
+  if (!r.hedged) return reply;
+  reply.hedged = r.hedged;
+  if (r.late) reply.late = r.late.then((l) => (l ? { model: l.model, usage: usageOf(l.value) ?? null } : null));
+  return reply;
 }
 
 /**
@@ -103,7 +121,7 @@ function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
   });
 }
 
-async function anthropicComplete(apiKey: string, p: { model: string; messages: ChatMessage[]; maxTokens: number }): Promise<ModelReply> {
+async function anthropicComplete(apiKey: string, p: { model: string; messages: ChatMessage[]; maxTokens: number }, signal?: AbortSignal): Promise<ModelReply> {
   const anthropic = createAnthropic({ apiKey });
   const system = p.messages.filter((m) => m.role === "system").map((m) => m.content).join("\n\n");
   const turns = p.messages.filter((m) => m.role !== "system").map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
@@ -113,7 +131,8 @@ async function anthropicComplete(apiKey: string, p: { model: string; messages: C
     messages: turns,
     maxOutputTokens: Math.min(ANTHROPIC_MAX_OUTPUT, Math.max(16_000, p.maxTokens)),
     maxRetries: 2,
-    abortSignal: AbortSignal.timeout(CALL_TIMEOUT_MS),
+    // A hedge copy's signal (FT_HEDGE) aborts it beside the time-out.
+    abortSignal: signal ? AbortSignal.any([AbortSignal.timeout(CALL_TIMEOUT_MS), signal]) : AbortSignal.timeout(CALL_TIMEOUT_MS),
   });
   const reply: ModelReply = { text: r.text, finishReason: r.finishReason };
   const u = r.usage as { inputTokens?: number; outputTokens?: number; cachedInputTokens?: number } | undefined;
