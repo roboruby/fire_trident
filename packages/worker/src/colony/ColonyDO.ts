@@ -146,6 +146,8 @@ import { prelandEnabled, prelandReader } from "../certify/preland.ts";
 import type { CertifyPolicy } from "../certify/repair.ts";
 import { LandingTestsReader, certificationOff, landingSpend, type LandingTestsTrunk } from "../certify/landingtests.ts";
 import type { LandingTests } from "@fire_trident/core";
+import type { IntentLifecycle } from "@fire_trident/core";
+import { readLifecycle, type LifecycleTrunk } from "./lifecycle.ts";
 import { reviewPreview, type ReviewPreview } from "../agents/preview.ts";
 import { RETURN_PATHS, extractUsage, returnReason, type LastReturn } from "../agents/prompt.ts";
 import { MAX_RESUME_KEY, MIN_RESUME_KEY, resumeDigest, resumeKeyMatches } from "../mcp/resume.ts";
@@ -1296,6 +1298,25 @@ export class ColonyDO extends DurableObject<Env> {
       .map((r) => toDirective(r, colony.id));
     // The closure ledger (colony/closure.ts): every close and reopen while an agent held it, newest first.
     return { intent: this.toIntent(row, colony.id), revisions: this.revisionRows(id).map(toRevision), directives, escalations: this.escalationHistory(id), ...this.closureHistory(id) };
+  }
+
+  /**
+   * One intent's lifecycle strip (colony/lifecycle.ts, core/lifecycle.ts; GET /intents/:iid/lifecycle): declared, claimed,
+   * proposed, confirmed, landed and certified with their evidence, the two steps outside FireTrident, and where a change
+   * left the path, for the change it stands on now and each of its changes. Read only; null for an unknown intent.
+   */
+  async intentLifecycle(id: Id): Promise<IntentLifecycle | null> {
+    const colony = this.requireColony();
+    const row = this.intentRow(id);
+    if (!row) return null;
+    return readLifecycle({
+      sql: this.sql,
+      colonyId: colony.id,
+      intent: this.toIntent(row, colony.id),
+      updatedAt: row.updated_at,
+      trunk: () => this.trunkStub() as unknown as LifecycleTrunk,
+      off: () => certificationOff(this.certifier.state()),
+    });
   }
 
   /** Amending or withdrawing needs an intent that is still live: not landed, withdrawn or sealed. */

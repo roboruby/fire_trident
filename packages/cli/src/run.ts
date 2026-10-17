@@ -66,6 +66,7 @@ import { firstLandings, readRows, testsRequest } from "./tests.ts";
 import type { IntentBody, SpecPolicy } from "./spec.ts";
 import type { GuideLesson, Intent, Landing, LandingTests, LineageNote, Proposal, Rule } from "@fire_trident/core";
 import { connectInfo, connectText } from "./connect.ts";
+import { lifecycleRequest } from "./strip.ts";
 
 /** Everything the CLI touches outside itself, injectable for tests. */
 export interface Io {
@@ -280,9 +281,12 @@ async function execute(cmd: Command, ctx: Ctx): Promise<number> {
       const entries = asArray<{ landing: Landing; note: LineageNote }>(res, ["lineage", "entries", "landings"]);
       const target: { path: string; line?: number } = { path: cmd.path };
       if (cmd.line !== undefined) target.line = cmd.line;
-      const why: { intents?: Intent[]; rules?: Rule[]; tests?: Record<string, LandingTests> } = {};
+      const why: { intents?: Intent[]; rules?: Rule[]; tests?: Record<string, LandingTests>; greenSha?: string; landings?: Landing[] } = {};
       if (snap?.intents) why.intents = snap.intents;
       if (snap?.rules) why.rules = snap.rules;
+      // The lifecycle strip places a landing without a test row by the newest green commit among the recent landings (strip.ts).
+      if (typeof snap?.colony?.greenSha === "string" && snap.colony.greenSha) why.greenSha = snap.colony.greenSha;
+      if (Array.isArray(snap?.recentLandings)) why.landings = snap.recentLandings;
       // The newest landings' test rows (tests.ts): public reads the colony computes once per certified commit.
       const tests = await readRows(firstLandings(entries, cmd.line), (id) => send<unknown>(ctx.http, testsRequest(cmd.colony, id), 15_000));
       if (Object.keys(tests).length > 0) why.tests = tests;
@@ -377,7 +381,9 @@ async function execute(cmd: Command, ctx: Ctx): Promise<number> {
       return 0;
     }
     case "intent-show": {
-      const res = await send<IntentShowResult>(ctx.http, req);
+      // Its lifecycle strip beside it (strip.ts): a public read an older server does not have, so a failure leaves it out.
+      const [res, lifecycle] = await Promise.all([send<IntentShowResult>(ctx.http, req), tryGet<unknown>(ctx, lifecycleRequest(cmd.colony, cmd.intentId))]);
+      if (res && lifecycle !== undefined) res.lifecycle = lifecycle;
       if (ctx.flags.json) printJson(ctx, res);
       else io.stdout(formatIntentShow(res ?? {}, c, io.now()));
       return 0;

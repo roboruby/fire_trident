@@ -16,6 +16,7 @@ import { createApi } from "./app.ts";
  *   POST   /api/colonies/:id/intents          declare an intent
  *   GET    /api/colonies/:id/intents/:iid     one intent with its revisions and directives (and its model spend)
  *   GET    /api/colonies/:id/intents/:iid/spend  what the intent's model calls cost (FT_INTENT_SPEND)
+ *   GET    /api/colonies/:id/intents/:iid/lifecycle  the intent's lifecycle strip, declared to merged by a person
  *   PATCH  /api/colonies/:id/intents/:iid     amend an intent (revision + 1)
  *   POST   /api/colonies/:id/intents/:iid/withdraw  withdraw an intent
  *   POST   /api/colonies/:id/rules            add a morphology rule (creates needs)

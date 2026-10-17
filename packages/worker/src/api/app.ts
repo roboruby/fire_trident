@@ -41,6 +41,7 @@ import { pauseRoutes } from "./pause.ts";
 import { spendCapRoutes } from "./spendcap.ts";
 import { skillRoutes } from "./skill.ts";
 import { silentTtlRoutes } from "./closure.ts";
+import { lifecycleRoutes } from "./lifecycle.ts";
 import { refuseWhilePaused } from "../colony/pause.ts";
 import { bearerMatches } from "./token.ts";
 
@@ -186,6 +187,7 @@ async function requireColony(env: Env, colonyId: Id): Promise<void> {
  *   POST   /colonies/:id/intents            declare an intent
  *   GET    /colonies/:id/intents/:iid       one intent with its revision history and directives (and its model spend, FT_INTENT_SPEND)
  *   GET    /colonies/:id/intents/:iid/spend what the intent's model calls cost: agents and review, by model (FT_INTENT_SPEND)
+ *   GET    /colonies/:id/intents/:iid/lifecycle  the intent's lifecycle strip: declared to merged by a person, and where a change left the path (api/lifecycle.ts)
  *   PATCH  /colonies/:id/intents/:iid       amend an intent (revision + 1; stale work goes back)
  *   POST   /colonies/:id/intents/:iid/withdraw  withdraw an intent (needs evaporate, holder stops)
  *   POST   /colonies/:id/intents/:iid/escalation  answer an agent's report: amend | withdraw | dismiss
@@ -599,6 +601,7 @@ export function createApi(deps: ApiDeps): Hono<ApiEnv> {
   spendCapRoutes(app, requireAdmin); // Spend cap: a person caps what this platform's model calls for a colony may cost (api/spendcap.ts)
   skillRoutes(app); // The colony's SKILL.md: how an agent connects and works there, its rules and protected paths (api/skill.ts)
   silentTtlRoutes(app, requireAdmin); // Silent-agent limit: how long an outside agent may be silent before the colony takes its intents back (api/closure.ts)
+  lifecycleRoutes(app); // Lifecycle strip: each change from declared to merged by a person, with its evidence (api/lifecycle.ts)
 
   // Unknown API paths answer JSON here instead of falling through to the static UI.
   app.all("*", (c) => json({ error: `no route for ${c.req.method} ${c.req.path}` }, 404));
