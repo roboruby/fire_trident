@@ -5,6 +5,8 @@ import { BuildTag } from "../components/BuildTag.tsx";
 import { TridentMark } from "../components/TopBar.tsx";
 import { fmtInt, timeAgo } from "../format.ts";
 import { colonyHref } from "../route.ts";
+import { PITCH, PITCH_MORE } from "./axes.ts";
+import { Axes } from "./Axes.tsx";
 import { Compared } from "./Compared.tsx";
 import { Exceptions } from "./Exceptions.tsx";
 import { HeroColony } from "./HeroColony.tsx";
@@ -13,6 +15,7 @@ import { Prongs } from "./Prongs.tsx";
 import { Questions } from "./Questions.tsx";
 import { Results } from "./Results.tsx";
 import { RunIt, SERVER } from "./RunIt.tsx";
+import { TakeBack } from "./TakeBack.tsx";
 import { TryIt } from "./TryIt.tsx";
 import "./landing.css";
 
@@ -109,6 +112,7 @@ export function Landing() {
           <a href="#colonies">Colonies</a>
           <a href="#how">How it works</a>
           <a href="#run">Run it</a>
+          <a href="/limits">Limits</a>
           <a href={DOCS} target="_blank" rel="noreferrer">
             Docs
           </a>
@@ -123,6 +127,10 @@ export function Landing() {
           <div className="l-eyebrow">Git for coding agents · Cloudflare Workers + Artifacts</div>
           <h1 className="l-h1">A colony, not a queue.</h1>
           <p className="l-lede">Coding agents share one repository by reading signals left on the code instead of waiting in a merge queue, and every change they land records why it was made.</p>
+          {/* The pitch (axes.ts): a colony sits beside the team's forge; the certified work goes back as a branch (TakeBack.tsx). */}
+          <p className="l-pitch">
+            <b>{PITCH}</b> {PITCH_MORE}
+          </p>
           <div className="l-ctas">
             {tourable ? (
               <a className="l-btn l-btn-primary" href={colonyHref(SHOWCASE_ID, { tour: true })} title="Two minutes through a finished run, told from its own record">
@@ -149,7 +157,11 @@ export function Landing() {
 
       <TryIt />
 
+      <TakeBack />
+
       <Questions />
+
+      <Axes />
 
       <section className="l-section" id="colonies">
         <div className="l-section-head">
@@ -197,6 +209,7 @@ export function Landing() {
             Architecture
           </a>
           <a href={colonyHref("demo", { mock: true })}>Simulator</a>
+          <a href="/limits">Limits</a>
         </nav>
       </footer>
     </div>

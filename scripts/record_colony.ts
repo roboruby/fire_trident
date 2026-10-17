@@ -2,9 +2,10 @@
 /**
  * Record a colony's finished run for playback with no network (/c/<colony>?replay=1&recording=<name>, the director and
  * the tour included). With public GET requests only, it reads everything those pages read: GET /api/about (the build),
- * the colony's snapshot, its agents, its whole event record (page by page), each file's lineage (/why?path=), each
- * landing's note check (/notes/verify?landing=), the change each landing made to each of its files
- * (/landings/:id/diff?path=), and the reads of the colony's tour; then it writes them into one file
+ * the colony's snapshot, its agents, its decide policy (the first screen's protected paths), its whole event record
+ * (page by page), each file's lineage (/why?path=), each landing's note check (/notes/verify?landing=), the change each
+ * landing made to each of its files (/landings/:id/diff?path=), and the reads of the colony's tour; then it writes them
+ * into one file
  * (packages/web/src/playback/recording.ts has the layout). Every answer passes through the evidence redaction
  * (packages/bench/src/evidence.ts: tokens, the account id, emails, local paths) and loses any token field; no request
  * header is written, and neither is the deployment's address.
@@ -227,9 +228,11 @@ export async function recordColony(opts: RecordOptions): Promise<RecordResult> {
   }
   keep(colony, snapOut);
   const snap = snapOut.body as unknown as ColonySnapshot;
-  const [about, agents] = await Promise.all([get("/api/about"), get(`${colony}/agents?all=1&journal=0&limit=10000`)]);
+  const [about, agents, policy] = await Promise.all([get("/api/about"), get(`${colony}/agents?all=1&journal=0&limit=10000`), get(`${colony}/decide/policy`)]);
   keep("/api/about", about);
   keep(`${colony}/agents?all=1&journal=0&limit=10000`, agents);
+  // The first screen's protected paths (packages/web/src/target.ts).
+  keep(`${colony}/decide/policy`, policy);
 
   const pageSize = Math.max(1, Math.min(PAGE, opts.pageSize ?? PAGE));
   const source = opts.source && opts.source !== "auto" ? `&source=${opts.source}` : "";

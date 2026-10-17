@@ -1,7 +1,8 @@
 import { Suspense, lazy, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { HttpBackend, saveToken, type Backend } from "./api.ts";
+import { ColonyFooter } from "./components/ColonyFooter.tsx";
+import { FirstScreen } from "./components/FirstScreen.tsx";
 import { Guide } from "./components/Guide.tsx";
-import { NeedsYou } from "./components/NeedsYou.tsx";
 import { PauseBanner } from "./components/PauseBanner.tsx";
 import { PerfReadout } from "./components/PerfReadout.tsx";
 import { ReplayBar } from "./components/ReplayBar.tsx";
@@ -235,12 +236,13 @@ export function App({ route }: { route: ColonyRoute }) {
   const showGuide = guideOpen && !director && !touring && store.loaded;
   return (
     <Stage on={director}>
-      <div className={`app${director ? " is-director" : ""}`} data-guide={showGuide && guideTarget ? guideTarget : undefined}>
+      <div className={`app${director ? " is-director" : " has-fs"}`} data-guide={showGuide && guideTarget ? guideTarget : undefined}>
         <TopBar store={store} director={director} mock={route.mock} />
+        {/* The first screen (components/FirstScreen.tsx): the target, the distance to it, and the exceptions strip (the needs-you line). */}
+        {director ? null : <FirstScreen store={store} backend={backend} onGo={go} />}
         <main className="main">
           <div className="map-col">
             <ColonyMap store={store} onPick={pick} onRenderer={setRenderer} director={director} onGuide={director || touring ? undefined : () => setGuideOpen(true)} />
-            {director ? null : <NeedsYou store={store} onGo={go} />}
             {/* The pause banner (pause.ts): who paused the agents and why, while they are paused. */}
             <PauseBanner store={store} />
             {backend instanceof ReplayBackend && !director && !touring ? <ReplayBar backend={backend} colonyId={route.colonyId} /> : null}
@@ -255,6 +257,7 @@ export function App({ route }: { route: ColonyRoute }) {
           <SidePanel store={store} backend={backend} tab={tab} onTab={chooseTab} onPick={pick} director={director} open={!director || panelOpen} focus={focus} panelRef={side} />
           {director ? <Director store={store} backend={backend} renderer={renderer} onTab={setTab} onPanel={setPanelOpen} panelOpen={panelOpen} /> : null}
         </main>
+        {director ? null : <ColonyFooter />}
         {route.debug ? <PerfReadout store={store} renderer={renderer} /> : null}
       </div>
     </Stage>

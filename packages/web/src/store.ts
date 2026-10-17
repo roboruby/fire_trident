@@ -138,6 +138,8 @@ export interface IntentView {
   withdrawnReason?: string;
   /** Contest mode: how many agents may hold it at once (2 to 4); absent for one holder. */
   contest?: number;
+  /** What the intent must meet, line by line, when it was declared with acceptance (the snapshot says; live events do not). */
+  acceptance?: string[];
 }
 
 export interface ProposalView {
@@ -176,6 +178,8 @@ export interface IntentOrigin {
   parentId?: Id;
   priority?: number;
   why?: string;
+  /** Its acceptance lines, when it has any. */
+  acceptance?: string[];
 }
 
 /** An intent whose changes keep coming back: how many returns this page saw, and the latest reason. */
@@ -429,7 +433,16 @@ export function intentOriginOf(raw: unknown): IntentOrigin | null {
   if (typeof r.parentId === "string" && r.parentId) o.parentId = r.parentId;
   if (typeof r.priority === "number" && Number.isFinite(r.priority)) o.priority = r.priority;
   if (typeof r.why === "string") o.why = r.why;
+  const acceptance = acceptanceOf((raw as { acceptance?: unknown }).acceptance);
+  if (acceptance) o.acceptance = acceptance;
   return o;
+}
+
+/** An intent's acceptance lines (strings, trimmed, blank ones dropped, at most 50); null without any. */
+function acceptanceOf(raw: unknown): string[] | null {
+  if (!Array.isArray(raw)) return null;
+  const lines = raw.filter((x): x is string => typeof x === "string" && x.trim() !== "").map((x) => x.trim()).slice(0, 50);
+  return lines.length > 0 ? lines : null;
 }
 
 /** Give an intent placed without an origin what its origin says. */
@@ -439,6 +452,7 @@ function fillOrigin(view: IntentView, o: IntentOrigin): void {
   if (o.parentId) view.parentId = o.parentId;
   if (o.priority !== undefined) view.priority = o.priority;
   if (o.why !== undefined && view.why === undefined) view.why = o.why;
+  if (o.acceptance && view.acceptance === undefined) view.acceptance = o.acceptance;
 }
 
 /** The landing a notice names, when its event carries one (`landingId`, or a `landing` with its id). */
@@ -712,6 +726,8 @@ export class ColonyStore {
       };
       const contest = finite(i.contest, 1);
       if (contest >= 2) view.contest = Math.min(4, Math.floor(contest));
+      const acceptance = acceptanceOf(i.acceptance);
+      if (acceptance) view.acceptance = acceptance;
       this.intents.set(i.id, view);
       tally(this.intentsByStatus, i.status, 1, INTENT_STATUSES);
       const esc = escalationOf(i.id, i.escalation, view.title, now);
@@ -887,6 +903,11 @@ export class ColonyStore {
       this.bump();
     }
     return filled;
+  }
+
+  /** Where an intent came from, as this page learned it (learnIntents), for an intent it may not have placed yet. */
+  learnedOrigin(id: Id): IntentOrigin | undefined {
+    return this.origins.get(id);
   }
 
   /** Learn rules this page has not seen (no event carries a rule: one added after the page loaded). Returns how many. */

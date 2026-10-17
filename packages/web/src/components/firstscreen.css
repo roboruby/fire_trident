@@ -1,0 +1,529 @@
+/* The colony's first screen (components/FirstScreen.tsx): target, distance, convergence, exceptions. Shares the tokens in styles.css. */
+
+/* The panel takes a row between the top bar and the map, and the footer one under them. */
+.app.has-fs:not(.is-director) {
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+}
+
+.fs {
+  position: relative;
+  z-index: 1;
+  padding: 8px clamp(14px, 1.3vw, 24px) 7px;
+  background: linear-gradient(180deg, #080b11 0%, #06080c 100%);
+  border-bottom: 1px solid var(--line);
+}
+
+.fs-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(220px, 0.85fr) auto;
+  gap: 6px clamp(14px, 1.6vw, 30px);
+  align-items: start;
+}
+
+.fs-col {
+  min-width: 0;
+}
+
+.fs-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  margin-bottom: 3px;
+}
+
+.fs-k {
+  flex: none;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent-2);
+}
+
+.fs-sub {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 11px;
+  color: var(--text-4);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fs-toggle {
+  flex: none;
+  height: 20px;
+  margin-left: auto;
+  padding: 0 9px;
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  background: #121925;
+  color: var(--text-2);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  appearance: none;
+}
+
+.fs-toggle:hover {
+  border-color: #3a475e;
+  color: var(--text);
+}
+
+.fs-fold {
+  align-self: start;
+}
+
+/* target */
+
+.fs-dl {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0 10px;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.fs-dl dt {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  line-height: 18px;
+  color: var(--text-3);
+}
+
+.fs-dl dd {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--text-2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fs-dl b,
+.fs-detail b {
+  color: var(--text);
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.fs-quote {
+  color: var(--text);
+}
+
+.fs-none,
+.fs-dim {
+  color: var(--text-3);
+}
+
+.fs-none {
+  font-style: normal;
+}
+
+.fs-globs {
+  font-size: 11.5px;
+  color: var(--text);
+}
+
+.fs-cert-green b {
+  color: var(--trail);
+}
+
+.fs-cert-red b {
+  color: #ff8d98;
+}
+
+.fs-cert-running b {
+  color: var(--calm);
+}
+
+/* distance */
+
+.fs-total {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 1px 0 3px;
+}
+
+.fs-total-n {
+  font-size: 28px;
+  font-weight: 750;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  color: var(--need);
+  text-shadow: 0 0 24px rgba(255, 181, 61, 0.25);
+}
+
+.fs-total-k {
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.fs-at {
+  font-size: 24px;
+  font-weight: 750;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  color: var(--trail);
+  text-shadow: 0 0 26px rgba(31, 224, 142, 0.35);
+}
+
+.fs-kinds {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fs-kind {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 5px;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-2);
+}
+
+.fs-kind-n {
+  font: 700 12.5px var(--mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--need);
+}
+
+.fs-kind-tests .fs-kind-n {
+  color: #ff8d98;
+}
+
+.fs-kind-waiting .fs-kind-n {
+  color: var(--accent-2);
+}
+
+.fs-kind.is-zero {
+  color: var(--text-3);
+}
+
+.fs-kind.is-zero .fs-kind-n {
+  color: var(--text-4);
+}
+
+.fs-kind-label {
+  white-space: nowrap;
+}
+
+.fs-kind-parts {
+  flex: 1 1 100%;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 11px;
+  color: var(--text-3);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* curve */
+
+.fs-svg {
+  display: block;
+  width: 100%;
+  height: 46px;
+  overflow: visible;
+}
+
+.fs-line {
+  fill: none;
+  stroke: var(--need);
+  stroke-width: 1.6;
+  vector-effect: non-scaling-stroke;
+}
+
+.fs-line.is-ahead {
+  stroke: var(--line-2);
+}
+
+.fs-now {
+  stroke: var(--text-2);
+  stroke-width: 1;
+  stroke-dasharray: 2 3;
+  vector-effect: non-scaling-stroke;
+}
+
+.fs-zero {
+  fill: var(--trail);
+}
+
+.fs-caption {
+  margin-top: 2px;
+  overflow: hidden;
+  font-size: 11.5px;
+  color: var(--text-2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fs-curve.is-empty .fs-none {
+  margin: 4px 0 0;
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+/* the whole target, opened */
+
+.fs-detail {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px clamp(14px, 1.6vw, 30px);
+  max-height: min(38vh, 340px);
+  margin-top: 8px;
+  padding: 10px 0 4px;
+  overflow-y: auto;
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-2);
+}
+
+.fs-detail-col {
+  min-width: 0;
+}
+
+.fs-detail-k {
+  margin: 0 0 5px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.fs-detail-k:not(:first-child) {
+  margin-top: 10px;
+}
+
+.fs-detail p {
+  margin: 0;
+}
+
+.fs-list {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-wrap: anywhere;
+}
+
+.fs-list.mono {
+  font-size: 11.5px;
+  color: var(--text);
+}
+
+.fs-title {
+  color: var(--text);
+}
+
+.fs-who {
+  font-weight: 650;
+}
+
+.fs-lines {
+  margin: 2px 0 0;
+  padding-left: 18px;
+  color: var(--text-2);
+}
+
+/* the exceptions strip (the needs-you line, in the panel instead of over the map) */
+
+.fs-needs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  margin-top: 7px;
+  padding: 4px 6px 4px 10px;
+  border: 1px solid rgba(243, 128, 32, 0.42);
+  border-radius: 11px;
+  background: rgba(15, 11, 7, 0.9);
+}
+
+.fs-needs.is-quiet {
+  border-color: var(--line);
+  background: transparent;
+}
+
+.fs-needs.is-quiet .needs-k {
+  color: var(--text-3);
+}
+
+.fs-quiet {
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.need-paused {
+  max-width: 100%;
+  border-color: rgba(255, 46, 79, 0.55);
+  background: rgba(24, 6, 10, 0.94);
+  padding-left: 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: default;
+}
+
+.need-paused .need-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* folded: one line */
+
+.fs.is-folded {
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+
+.fs-fold-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+}
+
+.fs-fold-total {
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--need);
+}
+
+.fs-fold-total.is-done {
+  color: var(--trail);
+}
+
+.fs.is-folded .fs-needs {
+  flex: 1 1 320px;
+  min-width: 0;
+  margin-top: 0;
+}
+
+.fs.is-folded .fs-toggle {
+  margin-left: 0;
+}
+
+/* the colony page's footer */
+
+.app-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 16px;
+  min-height: 24px;
+  padding: 3px clamp(14px, 1.3vw, 24px);
+  border-top: 1px solid var(--line);
+  background: var(--bg);
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+
+.app-foot a {
+  color: var(--text-2);
+  text-decoration: none;
+}
+
+.app-foot a:hover {
+  color: var(--text);
+}
+
+/* Narrow windows: two columns, the curve under them. */
+@media (max-width: 1199px) {
+  .fs-grid {
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) auto;
+  }
+
+  .fs-curve {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .fs-svg {
+    height: 40px;
+  }
+
+  .fs-detail {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Phones: one column with 16 px gutters, the distance first, every line wraps instead of scrolling sideways. */
+@media (max-width: 760px) {
+  .fs {
+    padding: 10px 16px 10px;
+  }
+
+  .fs-grid {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .fs-distance {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .fs-fold {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .fs-curve {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .fs-target {
+    grid-column: 1 / -1;
+    grid-row: 3;
+  }
+
+  .fs-dl dd,
+  .fs-sub,
+  .fs-caption,
+  .fs-kind-parts {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .fs-kinds {
+    gap: 2px 10px;
+  }
+
+  .fs-detail {
+    grid-template-columns: minmax(0, 1fr);
+    max-height: none;
+  }
+
+  .fs-needs .need {
+    max-width: 100%;
+    white-space: normal;
+    height: auto;
+    min-height: 26px;
+  }
+
+  .app-foot {
+    padding: 8px 16px 12px;
+  }
+}
+
+.fs.is-loading {
+  padding: 0;
+  border: 0;
+}
