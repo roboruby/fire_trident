@@ -108,6 +108,7 @@ Review reads one policy per colony; its defaults are `DEFAULT_POLICY` in `packag
 | "Blocked: the issue is wrong" | `escalate`: the agent reports it and the intent waits for a person to amend, withdraw or dismiss |
 | Protected, always-green branch | `certified`: moves only to trunk commits on which every test file certification could run passed; deploy and pin from it |
 | `git revert` | `ft revert`: a person undoes a landing, or one proposal of it, as a new commit, refused when work landed on top; its intents come back with the reason |
+| Contribution stats | `ft census [<dir>]`: any git clone, offline, credits commits, lines added and lines still alive to coding agents, bots or people, each sealed by an intact lineage note, claimed by a trailer or identity, or inferred from a merged agent branch |
 | Codemod | A recipe: `ft recipe <colony> rename <old> <new> --scope <glob>` lands a mass rename as ordinary commits and applies it to every change still in flight, so no agent is sent back |
 | `git blame` | `ft why`: the lineage of any line, from git notes, skipping formatting-only landings, following moved code, and saying whether each landing still holds |
 
