@@ -219,6 +219,13 @@ export function landingAnswerable(note: LineageNote | Json | null | undefined): 
     const why = `reverted ${line(n.revert.of) || "a landing"}`;
     return one("person", who, why, `${capital(who)} ${why}.`);
   }
+  // A batch of a recipe (worker trunk/recipes.ts): the person who declared the recipe answers for what it rewrote.
+  if (isObj(n.recipe)) {
+    const name = personName(n.recipe.by);
+    const who = name ?? "an unnamed person";
+    const why = `declared recipe ${line(n.recipe.id) || "a recipe"}, which the trunk writer ran`;
+    return one("person", who, why, `${capital(who)} ${why}.`);
+  }
   if (isObj(n.system)) {
     if (n.system.kind === "antibody") {
       const name = personName(n.system.by);

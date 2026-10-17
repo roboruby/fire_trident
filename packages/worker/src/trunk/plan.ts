@@ -18,6 +18,7 @@ import { importBindings, isRelative, mayName, specifierTarget, type ImportBindin
 import { guardExports, guardsScript, removedNames, type GuardExports } from "./exportguard.ts";
 import { importTargets } from "./imports.ts";
 import { mergeHold, type HeldFile, type MergeLock } from "./mergelock.ts";
+import { commute, recipeHold, recipeLockFiles, refusedText, type RecipeInput } from "./recipes.ts";
 
 /** A proposal sent back from `land`, with the exact reason. */
 export interface Returned {
@@ -72,6 +73,11 @@ export interface PlanResult {
   mergedTexts: Map<Sha, string>;
   /** The export guard (with `exportGuard`): checks of changed script files it left undone (see brokenExports). */
   exportsUncovered?: number;
+  /**
+   * Recipes (with `recipes`): accepted proposals whose written files recipes that landed after their base rewrote, with
+   * each recipe, its landing and those files (trunk/recipes.ts commute). The rewritten texts are in `mergedTexts`.
+   */
+  recipes?: Map<Id, Array<{ recipe: Id; landing: Id; paths: Path[] }>>;
 }
 
 /**
@@ -200,6 +206,12 @@ function changedText(c: { path: Path; line: number; why: "edited" | "added" }): 
  *   accepted earlier in the cycle rewrites that importer without the import; and of a proposal that stops exporting a
  *   name and one that imports it anew in the same cycle, the second goes back, naming the first. Checked after the
  *   deletion guard. Null: on, but its input could not be read; every changed script file counts as unchecked.
+ * - Recipes (with `recipes`, see trunk/recipes.ts commute): a proposal built before a recipe landed is brought through
+ *   the recipe before any rule above: the recipe's output of each file it writes in scope is what lands (and what later
+ *   batches see), its base versions that trunk has only through the recipe are its bases, and a read whose transform is
+ *   what trunk has is current; every rule above then applies to it as to any proposal. A written file the recipe cannot
+ *   transform keeps the proposal's own version, and a return for it being stale names the recipe's landing. A locked
+ *   proposal whose files a recipe rewrote goes to a person with the rewrite, as a held merge does.
  *
  * Proposal ids must be unique across the cycle (the caller dedupes); a repeated id is skipped.
  */
@@ -210,6 +222,7 @@ export function planCycle(
   deletions?: DeletionImports | null,
   merge?: TextMergeInput | null,
   exportGuard?: ExportImports | null,
+  recipes?: RecipeInput | null,
 ): PlanResult {
   const ahead = new Map<Path, { blob: Sha | null; by: Id }>();
   const aheadPaths: Path[] = [];
@@ -227,7 +240,9 @@ export function planCycle(
   const mergedTexts = new Map<Sha, string>();
   /** The versions this cycle's merges made, by blob id, with their file: a later merge, export or import check may read one. */
   const produced = new Map<Sha, { path: Path; text: string }>();
-  const textOf = (blob: Sha): string | null => produced.get(blob)?.text ?? merge?.text(blob) ?? null;
+  const textOf = (blob: Sha): string | null => produced.get(blob)?.text ?? merge?.text(blob) ?? recipes?.text(blob) ?? null;
+  /** Recipes: what each accepted proposal had applied. */
+  const applied = new Map<Id, Array<{ recipe: Id; landing: Id; paths: Path[] }>>();
   // A merged version is not one the trunk writer read exports or imports from: they are read from its text here.
   const surfaces = new Map<Sha, ExportSurface | null>();
   const exportedOf: ExportedNames | undefined = exported
@@ -268,10 +283,17 @@ export function planCycle(
       const w = batchWrites.get(path);
       return w !== undefined ? w : virtual(path);
     };
-    for (const { p: proposal, base, lock } of batch) {
+    for (const { p: proposal, base: started, lock } of batch) {
       let p = proposal;
       if (seen.has(p.id)) continue;
       seen.add(p.id);
+      // Recipes (trunk/recipes.ts): a proposal built before a recipe landed is brought through it first. What lands is the
+      // recipe's output of its written files; it is checked with its bases and reads moved through the recipe.
+      const commuted = recipes ? commute(p, started, recipes, virtual) : null;
+      if (commuted) for (const [blob, made] of commuted.texts) produced.set(blob, made);
+      const base = commuted ? commuted.base : started;
+      if (commuted) p = commuted.p;
+      const checked = commuted ? commuted.check : p;
       const w = p.writeSet.map((f) => f.path);
       const r = p.readSet.map((f) => f.path);
       const assumptions = p.assumptions ?? [];
@@ -292,12 +314,12 @@ export function planCycle(
         back.push({ proposalId: p.id, reason: `conflicts with ${by}${here ? " in this landing" : ", landing ahead in this cycle"}: this change deletes ${kill.path}, which ${by}'s imports resolve to` });
         continue;
       }
-      const occ = validateProposal(p, virtual, base);
+      const occ = validateProposal(checked, virtual, base);
       let kept: Revalidated[] | null = null;
       let files: TextMerged[] | null = null;
       if (!occ.eligible) {
         const tried = merge ? mergeWrites(p, occ.stale, base, virtual, textOf, merge.blobOf, merge.insertions === true) : null;
-        const rv = tried?.ok || !exportedOf ? null : revalidate(p, occ.stale, exportedOf, grewOnly);
+        const rv = tried?.ok || !exportedOf ? null : revalidate(checked, occ.stale, exportedOf, grewOnly);
         if (tried?.ok) {
           // The change goes on with its merged files: what it lands, and what later batches see.
           files = tried.files;
@@ -317,8 +339,11 @@ export function planCycle(
           const changed = rv?.ok === false && rv.changed ? `; ${changedText(rv.changed)}` : "";
           const conflicted = tried && !tried.ok && tried.conflicts.length > 0 ? tried.conflicts : null;
           const conflicts = conflicted ? `; ${conflictText(conflicted)}` : "";
+          // Recipes: the versions a recipe made that a conflict names are stored with the cycle, so its quotes can be read.
+          if (commuted && conflicted) for (const c of conflicted) for (const b of [c.base, c.theirs]) if (produced.has(b)) mergedTexts.set(b, produced.get(b)!.text);
+          const reason = `stale: ${detail}${broken}${changed}${conflicts}`;
           // A locked change never goes on to the conflict resolver (merge locks): its conflicts stay in the reason only.
-          back.push({ proposalId: p.id, reason: `stale: ${detail}${broken}${changed}${conflicts}`, ...(conflicted && !lock ? { conflicts: conflicted } : {}) });
+          back.push({ proposalId: p.id, reason: commuted ? refusedText(reason, commuted, occ.stale) : reason, ...(conflicted && !lock ? { conflicts: conflicted } : {}) });
           continue;
         }
       }
@@ -342,9 +367,11 @@ export function planCycle(
       }
       // Merge locks (trunk/mergelock.ts): a change a person decided on lands merged only once a person approved that merge.
       // Before the export guard, which records what a change it lets through stops exporting.
-      const hold = files && lock ? mergeHold(lock, p.id, files, (path) => ahead.get(path)?.by, textOf) : null;
+      // Recipes: a locked change's files a recipe rewrote land only once a person approved the rewrite, as a merge does.
+      const lockFiles = commuted && lock ? recipeLockFiles(files, commuted, started, virtual) : files;
+      const hold = lockFiles && lock ? mergeHold(lock, p.id, lockFiles, (path) => ahead.get(path)?.by, textOf) : null;
       if (hold !== null) {
-        back.push(hold);
+        back.push(commuted ? recipeHold(hold, commuted) : hold);
         continue;
       }
       const unexported = exportRun ? brokenExports(p, before, trunk, exportRun, accepted.length) : null;
@@ -353,6 +380,11 @@ export function planCycle(
         continue;
       }
       ok.push(p);
+      if (commuted) {
+        // Recipes: the rewritten versions that land are stored with the cycle's merged texts.
+        for (const f of p.writeSet) if (f.blob && produced.has(f.blob)) mergedTexts.set(f.blob, produced.get(f.blob)!.text);
+        if (commuted.applied.length > 0) applied.set(p.id, commuted.applied);
+      }
       if (kept) revalidated.set(p.id, kept);
       if (files) {
         merged.set(p.id, files);
@@ -375,7 +407,7 @@ export function planCycle(
     accepted.push(ok);
     returned.push(back);
   }
-  return { accepted, returned, revalidated, merged, mergedTexts, ...(exportRun ? { exportsUncovered: exportRun.uncovered } : {}) };
+  return { accepted, returned, revalidated, merged, mergedTexts, ...(exportRun ? { exportsUncovered: exportRun.uncovered } : {}), ...(applied.size > 0 ? { recipes: applied } : {}) };
 }
 
 /** The merge of one stale proposal's files (mergeWrites): the files and their merged texts by blob id, or the conflicts that stopped it. */

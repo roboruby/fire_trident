@@ -8,6 +8,8 @@ export * from "./testdelta.ts";
 export * from "./decides.ts";
 // The lifecycle strip of a change: declared to merged by a person, and where it left the path (lifecycle.ts).
 export * from "./lifecycle.ts";
+// Recipes: the transforms the trunk writer runs at landing and over changes in flight, and how a recipe is read (recipe.ts).
+export * from "./recipe.ts";
 
 const SUBJECT_MAX = 72;
 

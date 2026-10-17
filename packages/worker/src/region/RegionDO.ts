@@ -971,6 +971,19 @@ export class RegionDO extends DurableObject<Env> {
         candidates.set(p.id, occ.stale);
       } else stale.push({ p, occ });
     }
+    // Recipes (trunk/recipes.ts): a stale change built before a recipe landed goes on to the trunk writer, which brings it
+    // through the recipe before it validates it. A writer that cannot answer (older code, busy) leaves them stale.
+    if (stale.length > 0) {
+      const asked = stale.map(({ p }) => ({ id: p.id, baseSha: p.baseSha, paths: proposalPaths(p) }));
+      const through = new Set<Id>(await Promise.resolve().then(() => trunk.recipeCandidates(asked)).catch(() => [] as Id[]));
+      for (let k = stale.length - 1; k >= 0; k--) {
+        const s = stale[k]!;
+        if (!through.has(s.p.id)) continue;
+        valid.push(s.p);
+        candidates.set(s.p.id, s.occ.stale);
+        stale.splice(k, 1);
+      }
+    }
 
     // 3. Direction, then lateral inhibition. One small call fetches the lineage context (intents with
     //    their direction, agents, recorded decisions), so TrunkDO never pulls a full colony snapshot.

@@ -154,6 +154,15 @@ export interface Env {
    */
   FT_EXPORT_GUARD?: string;
   /**
+   * Optional: module recipes, "on", or a comma-separated list of colony ids; absent or "off" is off. Built-in recipes
+   * (rename-identifier, replace-import, text-replace: POST /api/colonies/:id/recipes, `ft recipe`) need no flag. Where
+   * this covers a colony and the deployment has a Worker Loader (LOADER), a person may also declare a `module` recipe:
+   * their own `transform(path, text)` module, which the trunk writer runs in a sealed Dynamic Worker (no network, no
+   * bindings) twice per batch and lands only when both runs agree (trunk/reciperunner.ts). Module recipes are not applied
+   * to changes in flight: a change stale through one goes back as before.
+   */
+  FT_RECIPE_MODULES?: string;
+  /**
    * Optional: the goal-conflict check, "on", or a comma-separated list of colony ids; absent or "off" is off. In the
    * decide stage, a change that would undo lines a recent landing wrote for another intent (neither an ancestor nor a
    * descendant of its own; at least 3 lines and half of that landing's lines in the file) waits for a person instead of

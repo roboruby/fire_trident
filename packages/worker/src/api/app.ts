@@ -44,6 +44,7 @@ import { skillRoutes } from "./skill.ts";
 import { silentTtlRoutes } from "./closure.ts";
 import { lifecycleRoutes } from "./lifecycle.ts";
 import { headsUpRoutes } from "./headsup.ts";
+import { recipeRoutes } from "./recipes.ts";
 import { refuseWhilePaused } from "../colony/pause.ts";
 import { bearerMatches } from "./token.ts";
 
@@ -225,6 +226,7 @@ async function requireColony(env: Env, colonyId: Id): Promise<void> {
  *   POST   /colonies/:id/pause | /resume    a person pauses or resumes the colony's agents; POST /pause and /resume the deployment's (api/pause.ts)
  *   GET    /colonies/:id/spend-cap          the colony's spend cap on the model calls this platform makes; POST sets, raises or removes it (api/spendcap.ts)
  *   GET    /colonies/:id/skill              the colony's SKILL.md for an agent: connect, arrive, work, leave, come back (api/skill.ts)
+ *   GET    /colonies/:id/recipes            the colony's recipes; POST declares one, POST recipes/:rid/approve lands a held one (api/recipes.ts)
  * POST routes require the admin bearer token when FT_ADMIN_TOKEN is set; DELETE always does.
  */
 export function createApi(deps: ApiDeps): Hono<ApiEnv> {
@@ -608,6 +610,7 @@ export function createApi(deps: ApiDeps): Hono<ApiEnv> {
   silentTtlRoutes(app, requireAdmin); // Silent-agent limit: how long an outside agent may be silent before the colony takes its intents back (api/closure.ts)
   lifecycleRoutes(app); // Lifecycle strip: each change from declared to merged by a person, with its evidence (api/lifecycle.ts)
   headsUpRoutes(app); // Heads-up for the Claude Code hook: what moved under an agent's files and what waits to land on them (api/headsup.ts)
+  recipeRoutes(app, requireAdmin, isAdminRequest); // Recipes: a person's mass mechanical change, landed by the trunk writer and applied to work in flight (api/recipes.ts)
 
   // Unknown API paths answer JSON here instead of falling through to the static UI.
   app.all("*", (c) => json({ error: `no route for ${c.req.method} ${c.req.path}` }, 404));

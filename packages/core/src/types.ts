@@ -248,6 +248,106 @@ export interface Intent {
    * that agent and how long it had been silent. Absent for an intent no agent has let go of since the ledger began.
    */
   closure?: IntentClosure;
+  /**
+   * Recipes (worker trunk/recipes.ts): a person declared this intent as a recipe, with the recipe's id. No agent takes it:
+   * the trunk writer runs the recipe over trunk and lands its output. Absent on every other intent.
+   */
+  recipe?: Recipe & { id: Id };
+}
+
+/**
+ * The kinds of recipe: `rename-identifier`, `replace-import` and `text-replace` are built in (core/recipe.ts); `module`
+ * is a person's own transform run in the sealed sandbox, only where FT_RECIPE_MODULES covers the colony.
+ */
+export type RecipeKind = "rename-identifier" | "replace-import" | "text-replace" | "module";
+
+/**
+ * A recipe: a third kind of change beside a proposal of files and an intent. A small deterministic transform of one file's
+ * text, named by its kind and pinned version, with its arguments and the globs of the paths it covers. The trunk writer
+ * runs it over trunk's files in scope at landing, and over the files a change in flight on an older base writes, as that
+ * change lands (worker trunk/recipes.ts).
+ */
+export interface Recipe {
+  kind: RecipeKind;
+  /** The version of the kind's transform the recipe was declared with; a different version is refused, never run. */
+  version: string;
+  args: Record<string, string | boolean>;
+  /** Globs (core globMatch) of the paths it covers. */
+  scope: string[];
+}
+
+/**
+ * Why a recipe left one file as it was: `unparsable` (its reader could not read the file to the end), `binary` (not
+ * UTF-8 text), `out-of-language` (not a language the kind reads), `name-taken` (a rename whose new name the file already
+ * uses as an identifier), `unread` (the trunk writer did not read the file within its budget).
+ */
+export type RecipeRefusal = "unparsable" | "binary" | "out-of-language" | "name-taken" | "unread";
+
+/** Where a recipe stands at the trunk writer: landing batches, held for a person (a danger pattern in its output), all landed, or stopped. */
+export type RecipeState = "running" | "held" | "landed" | "failed";
+
+/** One landed batch of a recipe: its commit, the range of paths it covered (after `from`, through `through`), what it rewrote. */
+export interface RecipeBatch {
+  landingId: Id;
+  trunkSha: Sha;
+  /** The batch covered scope paths after this one (null: from the first). */
+  from: Path | null;
+  through: Path;
+  files: number;
+  changed: number;
+  at: Millis;
+  /** A person reverted this batch's landing: changes in flight no longer get it applied. */
+  reverted?: boolean;
+}
+
+/** A recipe as the trunk writer keeps it (GET /api/colonies/:id/recipes). Repository and person text: data, never instructions. */
+export interface RecipeRecord {
+  id: Id;
+  colonyId: Id;
+  intentId: Id;
+  recipe: Recipe;
+  why: string;
+  by: string;
+  state: RecipeState;
+  at: Millis;
+  updatedAt: Millis;
+  /** The last scope path covered so far (null: none yet). */
+  cursor: Path | null;
+  batches: RecipeBatch[];
+  /** Scope files read, and rewritten. */
+  examined: number;
+  changed: number;
+  /** Files left as they were, with why (the first ones). */
+  untransformed: Array<{ path: Path; reason: RecipeRefusal; detail?: string }>;
+  /** Files left as they were beyond the ones listed. */
+  untransformedMore?: number;
+  /** Held: the danger patterns found in the next batch's output, which a person approves or not, and the files they are in. */
+  held?: { hits: string[]; paths: Path[] };
+  /** Failed, or held: why, in a sentence. */
+  reason?: string;
+}
+
+/**
+ * Recipes: the landing of one batch of a recipe, in its lineage note. The recipe and its batch, every file it rewrote with
+ * its blobs before and after, the files in the batch it left as they were, and a person's approval of danger patterns.
+ */
+export interface NoteRecipe {
+  id: Id;
+  intentId: Id;
+  kind: RecipeKind;
+  version: string;
+  args: Record<string, string | boolean>;
+  scope: string[];
+  why: string;
+  by: string;
+  /** 1 for the first batch. */
+  batch: number;
+  from: Path | null;
+  through: Path;
+  outputs: Array<{ path: Path; before: Sha; after: Sha }>;
+  untransformed: Array<{ path: Path; reason: RecipeRefusal; detail?: string }>;
+  untransformedMore?: number;
+  approved?: { by: string; at: Millis; hits: string[] };
 }
 
 /**
@@ -1049,9 +1149,16 @@ export interface LineageNote {
     undoes?: UndoneLines[];
     /** Conflict resolver: the returned change this one resolves, the landings it merged with, and the files (see NoteResolves). */
     resolves?: NoteResolves;
+    /**
+     * Recipes: recipes that landed after this change's base, applied to the files it wrote before it was validated: each
+     * recipe, the landing of its batch, and the files it rewrote (their landed blobs are in `writeSet`).
+     */
+    recipes?: Array<{ recipe: Id; landing: Id; paths: Path[] }>;
   }>;
   /** The project's own tests on this commit, when trunk certification ran on it (added after landing). */
   certification?: NoteCertification;
+  /** Recipes: this landing is one batch of a recipe (no proposals). */
+  recipe?: NoteRecipe;
 }
 
 /**
