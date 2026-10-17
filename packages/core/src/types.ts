@@ -1330,9 +1330,10 @@ export interface Suspect {
  * Why culprit finding lists a suspect. `first-since-green`: the oldest landing since the last green commit that changed
  * what a failing test file loads (every later suspect landed on a trunk that may already have been red); `latest`: one of
  * the newest landings that did; `first-red`: the landing of the first commit the failing tests fail on (FT_BISECT),
- * marked once that search ends. A landing can carry several.
+ * marked once that search ends; `isolated`: the one proposal of that landing the search isolated (FirstRedIsolation), so the
+ * failing tests pass without it. A landing can carry several.
  */
-export type SuspectLabel = "first-since-green" | "latest" | "first-red";
+export type SuspectLabel = "first-since-green" | "latest" | "first-red" | "isolated";
 
 /**
  * The first trunk commit at which a red result's failing tests fail (FT_BISECT), searched after the result is recorded:
@@ -1362,6 +1363,56 @@ export interface FirstRed {
   greenSha?: Sha;
   /** Copied from the search of this earlier red result: the same failing tests since the same green commit. */
   reusedFrom?: Sha;
+  /**
+   * Found only, when the landing carries more than one proposal: the proposal inside it that the failing tests fail
+   * with, once those runs end (absent until then, and on answers recorded before isolation existed).
+   */
+  isolated?: FirstRedIsolation;
+}
+
+/**
+ * Proposal isolation inside the first red landing (FT_BISECT, certify/isolate.ts). A landing is one lane batch whose
+ * proposals write disjoint files, so the failing tests run on the landing with half of the proposals that changed what
+ * they load put back as the parent had them, then the other half, then without one proposal at a time. `isolated`: one
+ * proposal without which the failing tests pass while every other test in their files keeps its outcome; `interaction`:
+ * each half passed alone, or the tests passed without any one of several proposals (they break them together); `none`:
+ * no single proposal was found (each half fails alone, no run without one turned them green, or none changed what they
+ * load); `inconclusive`: a run failed or the runs or time ran out, and the landing-level answer stands.
+ */
+export interface FirstRedIsolation {
+  status: "isolated" | "interaction" | "none" | "inconclusive";
+  /** What the runs showed, or why no proposal was named, in one or two sentences. */
+  reason: string;
+  /** Isolated only: the proposal, its intent and the agent that wrote it, and the files it changed under the failing tests. */
+  culprit?: { id: Id; intentId?: Id; title?: string; agentId?: Id; paths: Path[] };
+  /** The two halves the proposals were split into (each listed up to a bound), when both ran. */
+  halves?: Id[][];
+  /** Interaction found without one at a time: the proposals without any one of which the failing tests passed. */
+  together?: Id[];
+  /** Isolated only: the revert probe, the failing tests on the red commit with the culprit's files put back as the landing's parent had them. */
+  revert?: { causal: boolean; reason: string; trunkSha: Sha };
+  /** Every run, in order: what it ran and what it showed (the evidence). */
+  runs: IsolationRun[];
+  /** Proposals of the landing whose writes meet what the failing tests load, and the ones not tried within the bounds. */
+  candidates: number;
+  untried?: Id[];
+  /** Runs used and wall time. */
+  probes: number;
+  ms: number;
+}
+
+/**
+ * One run of proposal isolation. `half`: the landing with only these proposals among the ones that changed what the
+ * failing tests load; `without`: the landing without this one; `revert`: the red commit with this one reverted.
+ * Outcomes: `red` a failing test failed; `pass` (a half) none did; `green` they passed and every other test in their
+ * files kept its outcome (for `revert`: every test in the failing files passed); `changed` they passed but another test
+ * changed its outcome or a file did not load; `error` the run said nothing about the code (a failure or time-out).
+ */
+export interface IsolationRun {
+  kind: "half" | "without" | "revert";
+  proposals: Id[];
+  outcome: "red" | "pass" | "green" | "changed" | "error";
+  detail?: string;
 }
 
 /** Counts in the order `node --test` prints them. `tests` = pass + fail + cancelled + skipped + todo. */

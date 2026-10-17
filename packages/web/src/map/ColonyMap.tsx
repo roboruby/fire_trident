@@ -151,6 +151,7 @@ function CertBadge({ store }: { store: ColonyStore }) {
             <b>{s.title || s.ref}</b>
             <span className="mono">{[s.label ?? "", s.title ? s.ref : "", s.paths ? `changed ${s.paths}` : "", s.commit, s.files ? `for ${s.files}` : ""].filter(Boolean).join(" · ")}</span>
             <code className="trunk-cert-undo">{s.undo}</code>
+            {s.proven ? <span className="trunk-cert-proof is-proven">proven: reverting it alone turns these tests green</span> : null}
           </span>
         ))}
         {firstRed ? (
@@ -162,6 +163,7 @@ function CertBadge({ store }: { store: ColonyStore }) {
                 {u}
               </code>
             ))}
+            {firstRed.proof ? <span className={`trunk-cert-proof${firstRed.proven ? " is-proven" : ""}`}>{firstRed.proof}</span> : null}
           </span>
         ) : null}
         <span className="trunk-cert-foot">

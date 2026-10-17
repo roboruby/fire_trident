@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { ColonySnapshot, FirstRed } from "@fire_trident/core";
-import { certFirstRed, certTitle } from "../src/certs.ts";
+import type { ColonySnapshot, FirstRed, FirstRedIsolation } from "@fire_trident/core";
+import { certFirstRed, certSuspects, certTitle } from "../src/certs.ts";
 import { ColonyStore } from "../src/store.ts";
 
 /** The first red search (FT_BISECT) in the UI: the answer from the snapshot or a live `bisect` event, and its words on the certification card. */
@@ -71,5 +71,66 @@ describe("the first failing commit in the UI", () => {
     live.applyEvents([{ t: "bisect", at: 5, trunkSha: A, firstRed: found }]);
     expect(live.headCert()!.cert.firstRed).toEqual(found);
     expect(live.typeCounts.get("bisect")).toBe(3);
+  });
+});
+
+/** Proposal isolation inside the first red landing: the isolated proposal, and its undo shown as proven only when causal. */
+const isolation = (causal: boolean): FirstRedIsolation => ({
+  status: "isolated",
+  reason: "Proposal prp_4 is the one inside the landing.",
+  culprit: { id: "prp_4", intentId: "int_4", title: "Speed up subtraction", agentId: "agt_b", paths: ["src/math.ts"] },
+  revert: causal
+    ? { causal: true, reason: "causal: reverting it alone turns these tests green (on the red commit aaaaaaa).", trunkSha: A }
+    : { causal: false, reason: "not shown causal: on the red commit aaaaaaa, 1 test of the failing files still fails with it reverted.", trunkSha: A },
+  runs: [
+    { kind: "half", proposals: ["prp_3"], outcome: "pass" },
+    { kind: "half", proposals: ["prp_4"], outcome: "red" },
+    { kind: "without", proposals: ["prp_4"], outcome: "green" },
+    { kind: "revert", proposals: ["prp_4"], outcome: causal ? "green" : "red" },
+  ],
+  candidates: 2,
+  probes: 4,
+  ms: 300,
+});
+
+describe("the proposal isolated inside the first failing commit in the UI", () => {
+  const two = { ...found, proposals: [found.proposals![0]!, { id: "prp_3", intentId: "int_3", title: "Tidy", paths: ["src/fmt.ts"] }] };
+  it("names the proposal, its intent and agent, and shows its undo as proven only when reverting it alone turned the tests green", () => {
+    expect(certFirstRed({ firstRed: { ...two, isolated: isolation(true) } }, "web")).toEqual({
+      text: "The failing tests first failed at commit 1a2b3c4 (landing lnd_4, intent “Speed up subtraction”), found in 3 test runs; its change to src/fmt.ts, src/math.ts is the likely cause. Inside it, proposal prp_4 (intent “Speed up subtraction”, agent agt_b) is the one the failing tests pass without (4 more test runs); causal: reverting it alone turns these tests green (on the red commit aaaaaaa).",
+      undo: ["ft revert web prp_4"],
+      proven: true,
+      proof: "proven: reverting it alone turns these tests green",
+    });
+    expect(certFirstRed({ firstRed: { ...two, isolated: isolation(false) } }, "web")).toMatchObject({
+      undo: ["ft revert web prp_4"],
+      proven: false,
+      proof: "not proven: reverting it alone was not shown to turn these tests green",
+    });
+    expect(certFirstRed({ firstRed: { ...two, isolated: isolation(false) } }, "web")!.text).toContain("; not shown causal: on the red commit aaaaaaa, 1 test of the failing files still fails with it reverted.");
+    // No single proposal: the reason, and the landing's undo commands, none proven.
+    const none: FirstRedIsolation = { status: "interaction", reason: "Each half of the 2 proposals that changed what the failing tests load passed on its own (prp_4; prp_3): they break the tests only together, so no single proposal is the cause.", halves: [["prp_4"], ["prp_3"]], runs: [], candidates: 2, probes: 2, ms: 90 };
+    const view = certFirstRed({ firstRed: { ...two, isolated: none } }, "web")!;
+    expect(view.text).toMatch(/is the likely cause\. Inside it: Each half of the 2 proposals .* so no single proposal is the cause\.$/);
+    expect(view).toMatchObject({ undo: ["ft revert web prp_4", "ft revert web prp_3"], proven: false, proof: "not proven: no single proposal was isolated" });
+    // Before isolation ran (or on answers recorded before it existed): as before, with no proof shown.
+    expect(certFirstRed({ firstRed: two }, "web")).not.toHaveProperty("proof");
+  });
+
+  it("marks the isolated proposal among the suspects, proven only when causal", () => {
+    const suspects = [
+      { landingId: "lnd_4", proposalId: "prp_3", title: "Tidy", paths: ["src/fmt.ts"], files: ["test/math.test.ts"], at: 4, labels: ["first-since-green" as const] },
+      { landingId: "lnd_4", proposalId: "prp_4", title: "Speed up subtraction", paths: ["src/math.ts"], files: ["test/math.test.ts"], at: 4, labels: ["first-since-green" as const] },
+    ];
+    const proven = certSuspects({ suspects, firstRed: { ...two, isolated: isolation(true) } }, "web");
+    expect(proven.map((s) => [s.ref, s.label, s.proven ?? false])).toEqual([
+      ["prp_3", "first red · first since green", false],
+      ["prp_4", "first red · isolated · first since green", true],
+    ]);
+    const unproven = certSuspects({ suspects, firstRed: { ...two, isolated: isolation(false) } }, "web");
+    expect(unproven.map((s) => [s.ref, s.label, s.proven ?? false])).toEqual([
+      ["prp_3", "first red · first since green", false],
+      ["prp_4", "first red · isolated · first since green", false],
+    ]);
   });
 });

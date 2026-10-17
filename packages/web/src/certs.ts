@@ -37,11 +37,14 @@ export interface SuspectView {
   undo: string;
   /** Why it is listed ("first since green · latest", "first red"); absent for a suspect recorded without labels. */
   label?: string;
+  /** The proposal isolated inside the first failing commit, and reverting it alone turned the failing tests green. */
+  proven?: true;
 }
 
 /** Culprit finding's labels as the card words them, in this order. */
 const LABEL_WORDS: ReadonlyArray<[string, string]> = [
   ["first-red", "first red"],
+  ["isolated", "isolated"],
   ["first-since-green", "first since green"],
   ["latest", "latest"],
 ];
@@ -61,6 +64,8 @@ export function certSuspects(c: Pick<CertView, "suspects"> & Partial<Pick<CertVi
   const list: unknown[] = Array.isArray(c.suspects) ? c.suspects : [];
   const strings = (x: unknown): string[] => (Array.isArray(x) ? x.filter((p): p is string => typeof p === "string" && p !== "") : []);
   const firstRed = c.firstRed && c.firstRed.status === "found" && typeof c.firstRed.landingId === "string" ? c.firstRed.landingId : "";
+  // Proposal isolation: the proposal isolated inside that landing, and whether reverting it alone is proven.
+  const iso = firstRed ? isolationOf(c.firstRed) : null;
   const valid: Array<{ view: SuspectView; rank: number }> = [];
   for (const raw of list) {
     const s = (raw ?? {}) as Record<string, unknown>;
@@ -68,6 +73,8 @@ export function certSuspects(c: Pick<CertView, "suspects"> & Partial<Pick<CertVi
     const ref = typeof s.proposalId === "string" && s.proposalId ? s.proposalId : s.landingId;
     const labels = new Set(strings(s.labels));
     if (firstRed && s.landingId === firstRed) labels.add("first-red");
+    const isolated = !!iso?.culprit && s.landingId === firstRed && s.proposalId === iso.culprit;
+    if (isolated) labels.add("isolated");
     const label = LABEL_WORDS.filter(([k]) => labels.has(k))
       .map(([, w]) => w)
       .join(" · ");
@@ -81,6 +88,7 @@ export function certSuspects(c: Pick<CertView, "suspects"> & Partial<Pick<CertVi
       undo: `ft revert ${colonyId || "<colony>"} ${ref}`,
     };
     if (label) view.label = label;
+    if (isolated && iso?.proven) view.proven = true;
     valid.push({ view, rank: labels.has("first-red") ? 0 : labels.has("first-since-green") ? 1 : 2 });
   }
   const kept = new Set(
@@ -96,8 +104,35 @@ export function certSuspects(c: Pick<CertView, "suspects"> & Partial<Pick<CertVi
 /** A red result's first failing commit (FT_BISECT) as the card words it: one sentence, and the commands that undo the proposals it names. */
 export interface FirstRedView {
   text: string;
-  /** `ft revert <colony> <prp>` for the proposals that changed what the failing tests load (at most two). */
+  /** `ft revert <colony> <prp>` for the proposal isolated inside it, else the proposals that changed what the failing tests load (at most two). */
   undo: string[];
+  /** Whether reverting the isolated proposal alone turned the failing tests green (the revert probe); only then is the undo proven. */
+  proven?: boolean;
+  /** What the card says beside the undo commands once a proposal isolation ran ("proven: ...", "not proven: ..."); absent before. */
+  proof?: string;
+}
+
+/** A first red answer's proposal isolation as the card reads it (older answers carry none; odd data reads as none). */
+function isolationOf(f: unknown): { status: string; reason: string; culprit: string; title: string; intent: string; agent: string; proven: boolean; revert: string; probes: number } | null {
+  const iso = f && typeof f === "object" ? (f as { isolated?: unknown }).isolated : null;
+  if (!iso || typeof iso !== "object") return null;
+  const i = iso as Record<string, unknown>;
+  if (typeof i.status !== "string" || typeof i.reason !== "string") return null;
+  const c = (i.culprit && typeof i.culprit === "object" ? i.culprit : {}) as Record<string, unknown>;
+  const r = (i.revert && typeof i.revert === "object" ? i.revert : {}) as Record<string, unknown>;
+  const text = (x: unknown): string => (typeof x === "string" ? x : "");
+  const culprit = i.status === "isolated" ? text(c.id) : "";
+  return {
+    status: i.status,
+    reason: i.reason,
+    culprit,
+    title: text(c.title),
+    intent: text(c.intentId),
+    agent: text(c.agentId),
+    proven: culprit !== "" && r.causal === true,
+    revert: text(r.reason),
+    probes: typeof i.probes === "number" ? i.probes : 0,
+  };
 }
 
 /**
@@ -121,10 +156,27 @@ export function certFirstRed(c: Pick<CertView, "firstRed">, colonyId: string): F
   const where = [typeof f.landingId === "string" && f.landingId ? `landing ${f.landingId}` : "", who].filter(Boolean).join(", ");
   const paths = [...new Set(proposals.flatMap((p) => p.paths.filter((x): x is string => typeof x === "string")))].sort();
   const cause = paths.length > 0 ? `its change to ${names(paths, 3)} is the likely cause.` : "none of its proposals changed a file the failing tests load.";
-  return {
+  const view: FirstRedView = {
     text: `The failing tests first failed at commit ${shortSha(f.trunkSha)} (${where})${runs ? `, found in ${runs}` : ""}; ${cause}`,
     undo: proposals.slice(0, 2).map((p) => `ft revert ${colonyId || "<colony>"} ${p.id}`),
   };
+  // Proposal isolation: the proposal inside the landing, and its undo shown as proven only when reverting it alone turned the tests green.
+  const iso = isolationOf(f);
+  if (!iso) return view;
+  const isoRuns = iso.probes > 0 ? `${fmtInt(iso.probes)} more test run${iso.probes === 1 ? "" : "s"}` : "";
+  if (iso.culprit) {
+    const about = [iso.title ? `intent “${iso.title}”` : iso.intent ? `intent ${iso.intent}` : "", iso.agent ? `agent ${iso.agent}` : ""].filter(Boolean).join(", ");
+    const revert = iso.revert ? `; ${iso.revert.replace(/[.\s]+$/, "")}` : "";
+    view.text += ` Inside it, proposal ${iso.culprit}${about ? ` (${about})` : ""} is the one the failing tests pass without${isoRuns ? ` (${isoRuns})` : ""}${revert}.`;
+    view.undo = [`ft revert ${colonyId || "<colony>"} ${iso.culprit}`];
+    view.proven = iso.proven;
+    view.proof = iso.proven ? "proven: reverting it alone turns these tests green" : "not proven: reverting it alone was not shown to turn these tests green";
+    return view;
+  }
+  view.text += ` Inside it: ${iso.reason}`;
+  view.proven = false;
+  if (view.undo.length > 0) view.proof = "not proven: no single proposal was isolated";
+  return view;
 }
 
 /** The hover text of a certification: what ran and, when red, which tests failed and why. */

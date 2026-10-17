@@ -166,7 +166,7 @@ function flat(s: string): string {
 }
 
 /** A suspect's labels in words, as the repair intent tags it. */
-const LABEL_WORDS: Record<SuspectLabel, string> = { "first-since-green": "first since green", latest: "latest", "first-red": "first failing commit" };
+const LABEL_WORDS: Record<SuspectLabel, string> = { "first-since-green": "first since green", latest: "latest", "first-red": "first failing commit", isolated: "isolated in it" };
 
 /** "[first since green, latest] ", or "" for a suspect recorded without labels. */
 function labelTag(s: Pick<Suspect, "labels">): string {

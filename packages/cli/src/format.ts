@@ -281,9 +281,46 @@ function firstRedLines(colony: string, raw: unknown, c: Colors): string[] {
   const paths = [...new Set(proposals.flatMap((p) => p.paths.filter((x): x is string => typeof x === "string")))].sort();
   const shown = paths.length > 3 ? `${paths.slice(0, 3).join(", ")} +${paths.length - 3}` : paths.join(", ");
   const cause = paths.length > 0 ? `its change to ${shown} is the likely cause.` : "none of its proposals changed a file the failing tests load.";
-  const out = [`    ${c.red("first red")} ${c.bold(shortSha(f.trunkSha))} (${where})${runs ? `, found in ${runs}` : ""}; ${cause}`];
-  for (const p of proposals.slice(0, SUSPECTS_SHOWN)) out.push(`      ${c.dim("undo:")} ft revert ${colony} ${p.id}`);
+  // Proposal isolation: the proposal inside the landing, and its undo shown as proven only when reverting it alone turned the tests green.
+  const iso = isolationOf(f);
+  const inside = !iso ? "" : iso.culprit ? ` Isolated ${iso.culprit}${iso.proven ? " (proven)" : " (not shown causal)"}.` : iso.status === "inconclusive" ? " Isolating a proposal inside it was inconclusive." : " No single proposal inside it.";
+  const out = [`    ${c.red("first red")} ${c.bold(shortSha(f.trunkSha))} (${where})${runs ? `, found in ${runs}` : ""}; ${cause}${inside}`];
+  if (!iso) {
+    for (const p of proposals.slice(0, SUSPECTS_SHOWN)) out.push(`      ${c.dim("undo:")} ft revert ${colony} ${p.id}`);
+    return out;
+  }
+  if (iso.culprit) {
+    const about = [iso.title ? `intent ${quote(iso.title, 60)}` : iso.intent ? `intent ${iso.intent}` : "", iso.agent ? `agent ${iso.agent}` : ""].filter(Boolean).join(", ");
+    out.push(`      ${c.dim("inside:")} ${iso.culprit}${about ? ` (${about})` : ""}: the failing tests pass without it${iso.probes > 0 ? `, in ${iso.probes} more test run${iso.probes === 1 ? "" : "s"}` : ""}; ${iso.revert || "not shown causal"}`);
+    out.push(`      ${c.dim(iso.proven ? "undo (proven):" : "undo (not proven):")} ft revert ${colony} ${iso.culprit}`);
+    return out;
+  }
+  out.push(`      ${c.dim("inside:")} ${iso.reason}`);
+  for (const p of proposals.slice(0, SUSPECTS_SHOWN)) out.push(`      ${c.dim("undo (not proven):")} ft revert ${colony} ${p.id}`);
   return out;
+}
+
+/** A first red answer's proposal isolation as `ft certify` reads it (older answers carry none; odd data reads as none). */
+function isolationOf(f: unknown): { status: string; reason: string; culprit: string; title: string; intent: string; agent: string; proven: boolean; revert: string; probes: number } | null {
+  const iso = f && typeof f === "object" ? (f as { isolated?: unknown }).isolated : null;
+  if (!iso || typeof iso !== "object") return null;
+  const i = iso as Record<string, unknown>;
+  if (typeof i.status !== "string" || typeof i.reason !== "string") return null;
+  const c = (i.culprit && typeof i.culprit === "object" ? i.culprit : {}) as Record<string, unknown>;
+  const r = (i.revert && typeof i.revert === "object" ? i.revert : {}) as Record<string, unknown>;
+  const text = (x: unknown): string => (typeof x === "string" ? plainLine(x) : "");
+  const culprit = i.status === "isolated" ? text(c.id) : "";
+  return {
+    status: i.status,
+    reason: plainLine(i.reason),
+    culprit,
+    title: typeof c.title === "string" ? c.title : "",
+    intent: text(c.intentId),
+    agent: text(c.agentId),
+    proven: culprit !== "" && r.causal === true,
+    revert: text(r.reason),
+    probes: typeof i.probes === "number" ? i.probes : 0,
+  };
 }
 
 /** Suspects listed under one red result of `ft certify`. */
@@ -314,7 +351,7 @@ function suspectsOf(cert: Pick<Certification, "suspects">): Suspect[] {
 type SuspectLabel = NonNullable<Suspect["labels"]>[number];
 
 /** The labels in words, in the order `ft certify` prints them. */
-const LABEL_WORDS: Record<SuspectLabel, string> = { "first-red": "first red", "first-since-green": "first since green", latest: "latest" };
+const LABEL_WORDS: Record<SuspectLabel, string> = { "first-red": "first red", isolated: "isolated", "first-since-green": "first since green", latest: "latest" };
 
 /** At most `n` suspects in their order (newest first), the first red and first since green ones kept before newer ones. */
 function shownSuspects(list: Suspect[], n: number): Suspect[] {

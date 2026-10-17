@@ -65,3 +65,48 @@ describe("the bisect event in ft watch", () => {
     );
   });
 });
+
+describe("the proposal isolated inside the first failing commit in ft certify", () => {
+  const isolated = (causal: boolean): FirstRed["isolated"] => ({
+    status: "isolated",
+    reason: "Proposal prp_4 is the one inside the landing.",
+    culprit: { id: "prp_4", intentId: "int_4", title: "Speed up subtraction", agentId: "agt_b", paths: ["src/math.ts"] },
+    revert: causal
+      ? { causal: true, reason: "causal: reverting it alone turns these tests green (on the red commit aaaaaaa).", trunkSha: HEAD }
+      : { causal: false, reason: "not shown causal: on the red commit aaaaaaa, 1 test of the failing files still fails with it reverted.", trunkSha: HEAD },
+    runs: [],
+    candidates: 2,
+    probes: 4,
+    ms: 300,
+  });
+  const lines = (f: FirstRed): string[] => show([cert({ status: "red", counts: counts(1, 1), failing, durationMs: 120, firstRed: f })]).slice(3);
+
+  it("names the isolated proposal with its intent and agent, and marks its undo proven only when reverting it alone turned the tests green", () => {
+    expect(lines({ ...found, isolated: isolated(true) })).toEqual([
+      '    first red ccccccc (landing lnd_4, intent "Speed up subtraction"), found in 3 test runs; its change to src/math.ts is the likely cause. Isolated prp_4 (proven).',
+      '      inside: prp_4 (intent "Speed up subtraction", agent agt_b): the failing tests pass without it, in 4 more test runs; causal: reverting it alone turns these tests green (on the red commit aaaaaaa).',
+      "      undo (proven): ft revert web prp_4",
+    ]);
+    expect(lines({ ...found, isolated: isolated(false) })).toEqual([
+      '    first red ccccccc (landing lnd_4, intent "Speed up subtraction"), found in 3 test runs; its change to src/math.ts is the likely cause. Isolated prp_4 (not shown causal).',
+      '      inside: prp_4 (intent "Speed up subtraction", agent agt_b): the failing tests pass without it, in 4 more test runs; not shown causal: on the red commit aaaaaaa, 1 test of the failing files still fails with it reverted.',
+      "      undo (not proven): ft revert web prp_4",
+    ]);
+  });
+
+  it("says when no single proposal was isolated, with the reason, and marks no undo proven", () => {
+    const none: FirstRed["isolated"] = { status: "interaction", reason: "Each half passed on its own: they break the tests only together.", runs: [], candidates: 2, probes: 2, ms: 90 };
+    expect(lines({ ...found, isolated: none })).toEqual([
+      '    first red ccccccc (landing lnd_4, intent "Speed up subtraction"), found in 3 test runs; its change to src/math.ts is the likely cause. No single proposal inside it.',
+      "      inside: Each half passed on its own: they break the tests only together.",
+      "      undo (not proven): ft revert web prp_4",
+    ]);
+  });
+
+  it("puts the isolation in the bisect event's line in ft watch", async () => {
+    const { formatEvent } = await import("../src/format.ts");
+    expect(formatEvent({ t: "bisect", at: 0, trunkSha: HEAD, firstRed: { ...found, isolated: isolated(true) } }, plain, () => "12:00:00")).toBe(
+      '12:00:00 bisect     aaaaaaa first red ccccccc (landing lnd_4, intent "Speed up subtraction"), found in 3 test runs; its change to src/math.ts is the likely cause. Isolated prp_4 (proven).',
+    );
+  });
+});
