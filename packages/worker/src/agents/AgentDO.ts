@@ -6,9 +6,10 @@ import { WorkspaceGit } from "./gitfs.ts";
 import { SqlJournal } from "./journal.ts";
 import { modelClient, resolveModel } from "./llm.ts";
 import { DEFAULT_TICK_BUDGET_MS, agentState, receiveDirective, stopAgent, tick } from "./loop.ts";
-import type { AgentConfig, AgentIntentUsage, HistoryEntry, Job, JobStep, LoopDeps, StepLogEntry } from "./loop.ts";
+import type { AgentConfig, AgentIntentUsage, HistoryEntry, Job, JobStep, LoopDeps, ModelClient, StepLogEntry } from "./loop.ts";
 import { intentSpendEnabled } from "../colony/intentspend.ts";
 import { hedgeFor } from "../colony/hedge.ts";
+import { agentCapGate, cappedClient, type CapMemo } from "../colony/spendcap.ts";
 import { OutcomeBox, regionNames, type ClaimRefresher, type PushedOutcome } from "./outcomes.ts";
 import { colonyStub, errorMessage, trunkBlobsStub } from "./rpc.ts";
 import type { AgentStartParams } from "./rpc.ts";
@@ -76,6 +77,18 @@ export class AgentDO extends DurableObject<Env> {
   private readonly depths = new Map<Id, number>();
   /** The trunk repo handle of the running tick (virtual checkouts), released when the tick ends. */
   private trunkRepo: { release(): void } | null = null;
+  /** What this agent last heard of its colony's spend cap (colony/spendcap.ts agentCapGate). */
+  private readonly capMemo: CapMemo = { capped: null };
+
+  /**
+   * The model client of one tick. Hedged calls (FT_HEDGE, colony/hedge.ts): copies to the same model, counted in this
+   * agent's journal. Spend cap (colony/spendcap.ts): each call reserved with the colony before it starts (twice when a
+   * copy may go out) and settled after; with no cap the colony says so and the call goes as before.
+   */
+  private modelFor(colonyId: Id): ModelClient {
+    const hedge = hedgeFor(this.env, colonyId, "agent", { bump: (name, delta) => this.journal.bump(name, delta) });
+    return cappedClient(modelClient(this.env, hedge), agentCapGate(colonyStub(this.env, colonyId), this.journal.config()?.agentId ?? "", this.capMemo), hedge ? 2 : 1);
+  }
 
   private deps(colonyId: Id): LoopDeps {
     if (!this.git) this.git = new WorkspaceGit(this.ctx.storage);
@@ -91,8 +104,7 @@ export class AgentDO extends DurableObject<Env> {
       colony: colonyStub(this.env, colonyId),
       trunk: trunkBlobsStub(this.env, colonyId),
       git: this.git,
-      // Hedged calls (FT_HEDGE, colony/hedge.ts): copies to the same model, counted in this agent's journal.
-      model: modelClient(this.env, hedgeFor(this.env, colonyId, "agent", { bump: (name, delta) => this.journal.bump(name, delta) })),
+      model: this.modelFor(colonyId),
       journal: this.journal,
       now: () => Date.now(),
       log: (line) => console.log(`agent ${this.journal.config()?.agentId ?? "?"}: ${line}`),

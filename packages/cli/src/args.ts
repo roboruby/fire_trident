@@ -1,5 +1,6 @@
 import { parseArgs } from "node:util";
 import type { AgentKind, ColonyEvent } from "@fire_trident/core";
+import { parseSpendCap } from "./spendcap.ts";
 
 /** Event types `ft watch --only` accepts. */
 export const EVENT_TYPES: ReadonlyArray<ColonyEvent["t"]> = [
@@ -68,7 +69,9 @@ export type Command =
   | { name: "megafile"; colony: string; path?: string; release: boolean; by?: string }
   // The pause switch: one colony's agents, or (no colony) every agent on the server.
   | { name: "pause"; colony?: string; reason: string; by?: string }
-  | { name: "resume"; colony?: string; by?: string; reason?: string };
+  | { name: "resume"; colony?: string; by?: string; reason?: string }
+  // The spend cap (spendcap.ts): show it (no usd), set it, or remove it (usd null).
+  | { name: "spend-cap"; colony: string; usd?: number | null; reviewReserveUsd?: number; by?: string };
 
 /** Options every command accepts. */
 export interface GlobalFlags {
@@ -121,6 +124,7 @@ const COMMAND_OPTIONS: Record<string, Record<string, OptionSpec>> = {
   megafile: { release: { type: "boolean" }, by: { type: "string" } },
   pause: { deployment: { type: "boolean" }, reason: { type: "string" }, by: { type: "string" } },
   resume: { deployment: { type: "boolean" }, reason: { type: "string" }, by: { type: "string" } },
+  "spend-cap": { "review-reserve": { type: "string" }, by: { type: "string" } },
   swarm: { agents: { type: "string" }, model: { type: "string" }, kind: { type: "string" } },
   why: {},
   impact: { depth: { type: "string" } },
@@ -525,6 +529,11 @@ function build(word: string, v: Record<string, unknown>, p: string[]): Command {
     case "pause":
     case "resume":
       return buildPause(word, v, p);
+    case "spend-cap": {
+      // The spend cap (spendcap.ts): show it, set it with an amount, or remove it with off.
+      const cmd = parseSpendCap(v, p);
+      return typeof cmd === "string" ? fail(cmd) : cmd;
+    }
     default:
       return fail(`unknown command "${word}"`);
   }
@@ -753,6 +762,7 @@ Commands
   megafile <colony> [path]         Files held for their split; hold or release one
   pause <colony> --reason <text>   Pause every agent of a colony (--deployment: of the server)
   resume <colony>                  Let a paused colony's agents work again (--deployment too)
+  spend-cap <colony> <usd>         Cap what the model calls the platform makes for a colony may cost
   swarm <colony> --agents <n>      Spawn in-platform agents
   agents <colony>                  List agents: state, intent, step, what each says it is doing
   stop <colony> <agentId>|--all    Stop one agent, or every in-platform agent
@@ -1053,6 +1063,28 @@ round; the answer names any pause still in force.
 Examples
   ft resume web
   ft resume --deployment
+`,
+  "spend-cap": `
+ft spend-cap <colony> <usd> [--review-reserve <usd>] [--by <name>]
+ft spend-cap <colony> off
+ft spend-cap <colony>
+
+Cap what the model calls the platform makes for a colony may cost, in US
+dollars at Workers AI list prices: its in-platform agents, review, the contest
+judge, the conflict resolver. What external agents spend on their own models
+is not counted. Each call is reserved before it starts, so calls running at
+once cannot pass the cap. Everything but review stops at the cap minus the
+review reserve (a tenth of the cap unless you set one): then the agents are
+paused (ft status shows it), and changes already in flight are still proven
+or reviewed from the reserve. When the reserve is spent too, review calls no
+model and those changes wait for a person (ft review). Raising the cap past
+the spend lifts the pause; off removes the cap. With no amount, show where
+the colony stands.
+
+Examples
+  ft spend-cap web 5
+  ft spend-cap web 20 --review-reserve 2
+  ft spend-cap web off
 `,
   megafile: `
 ft megafile <colony>

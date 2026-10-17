@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MODEL_PRICES, PRICE_DATE, colonySpend, modelPrice, priceTokens, spendDetail, spendLine, spendParts, usdText } from "../src/pricing.ts";
+import { MODEL_PRICES, PRICE_DATE, colonySpend, modelPrice, priceTokens, spendCapLine, spendDetail, spendLine, spendParts, usdText } from "../src/pricing.ts";
 import type { LayerUsage } from "../src/pricing.ts";
 
 const GEMMA = "@cf/google/gemma-4-26b-a4b-it";
@@ -105,18 +105,30 @@ describe("usdText and the spend line", () => {
 
   it("says what the model calls cost and what that is a landed intent", () => {
     const s = colonySpend([{ layer: "agents", model: GEMMA, input: 227_842, output: 15_467 }, { layer: "agents", model: KIMI, input: 9_230, output: 1_422 }], 283);
-    expect(spendLine(s)).toBe("$0.042 of model calls · $0.0001 a landed intent");
-    expect(spendParts(s)).toEqual({ total: "$0.042 of model calls", perIntent: "$0.0001 a landed intent" });
-    expect(spendLine({ ...s, perLandedIntent: null })).toBe("$0.042 of model calls");
+    expect(spendLine(s)).toBe("$0.042 of model calls this platform made · $0.0001 a landed intent");
+    expect(spendParts(s)).toEqual({ total: "$0.042 of model calls this platform made", perIntent: "$0.0001 a landed intent" });
+    expect(spendLine({ ...s, perLandedIntent: null })).toBe("$0.042 of model calls this platform made");
     expect(spendLine(null)).toBeNull();
     const detail = spendDetail(s).split("\n");
     expect(detail[0]).toBe("Model spend by layer: agents $0.042, review $0.0000, contest judge $0.0000, conflict resolver $0.0000, other $0.0000.");
-    expect(detail.at(-1)).toBe(`Priced at Workers AI list prices on ${PRICE_DATE}, from the 237,072 input and 16,889 output tokens the colony counted.`);
+    expect(detail.at(-2)).toBe(`Priced at Workers AI list prices on ${PRICE_DATE}, from the 237,072 input and 16,889 output tokens the colony counted.`);
+    // Only the platform's own calls count: an external agent's own model spend is never in the figure.
+    expect(detail.at(-1)).toBe("Only the model calls this platform made count: what external agents spend on their own models is not seen here.");
+  });
+
+  it("says where the colony stands against its spend cap, in the detail too", () => {
+    const s = colonySpend([{ layer: "agents", model: GEMMA, input: 227_842, output: 15_467 }], 1);
+    const cap = { usd: 5, reviewReserveUsd: 0.5, spentUsd: 1.2, inFlightUsd: 0.01, setBy: "maya", setAt: 1 };
+    expect(spendCapLine({ ...cap, state: "open" })).toBe("cap $5.00: $1.20 spent, agents stop at $4.50 and review keeps $0.500");
+    expect(spendCapLine({ ...cap, spentUsd: 4.6, state: "review-only" })).toBe("cap $5.00: $4.60 spent, agents stopped at $4.50; review spends its $0.500 reserve");
+    expect(spendCapLine({ ...cap, spentUsd: 5, state: "spent" })).toBe("cap $5.00 spent ($5.00): review makes no model call, changes wait for a person");
+    expect(spendCapLine(undefined)).toBeNull();
+    expect(spendDetail({ ...s, cap: { ...cap, state: "open" } }).split("\n").at(-1)).toBe("Spend cap: cap $5.00: $1.20 spent, agents stop at $4.50 and review keeps $0.500.");
   });
 
   it("says when some tokens are unpriced or some agents are not read yet", () => {
     const s = colonySpend([{ layer: "agents", model: GEMMA, input: 10_000, output: 0 }, { layer: "review", model: "@cf/x/unlisted", input: 7, output: 0 }], 1, { agentsUnread: 2 });
-    expect(spendLine(s)).toBe("$0.0010 of model calls (some unpriced) · $0.0010 a landed intent");
+    expect(spendLine(s)).toBe("$0.0010 of model calls this platform made (some unpriced) · $0.0010 a landed intent");
     const detail = spendDetail(s);
     expect(detail).toContain("Not priced (no list price): @cf/x/unlisted 7 input / 0 output tokens.");
     expect(detail).toContain("2 in-platform agents not read yet");

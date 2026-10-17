@@ -44,6 +44,7 @@ export function formatPause(cmd: PauseCommand, res: unknown, c: Colors): string 
     resumed?: { by?: string } | null;
     pauses?: Array<Partial<PauseState>>;
     colonies?: { total?: number; told?: number; failed?: unknown[] };
+    spendCap?: string;
   };
   const told =
     r.colonies && typeof r.colonies.total === "number"
@@ -64,7 +65,9 @@ export function formatPause(cmd: PauseCommand, res: unknown, c: Colors): string 
   if (r.already || !r.resumed) {
     return [`${c.yellow("Not paused")}: nothing to resume for ${where(cmd)}.`, ...stillPaused(r.pauses, cmd.colony ?? "", c), ...(told ? [told] : [])].join("\n");
   }
-  return [`${c.green("Resumed")} ${where(cmd)}: agents may work again, and the lanes land what waited in them.`, ...stillPaused(r.pauses, cmd.colony ?? "", c), ...(told ? [told] : [])].join("\n");
+  // The spend cap (spendcap.ts): resumed while still over the cap, the next model call pauses the agents again.
+  const capNote = typeof r.spendCap === "string" && r.spendCap ? [c.yellow(`  ${plain(r.spendCap)}`)] : [];
+  return [`${c.green("Resumed")} ${where(cmd)}: agents may work again, and the lanes land what waited in them.`, ...stillPaused(r.pauses, cmd.colony ?? "", c), ...capNote, ...(told ? [told] : [])].join("\n");
 }
 
 /** Lines for pauses still in force after a resume (a colony's own pause outlives the deployment's, and the other way round). */

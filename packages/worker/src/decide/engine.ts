@@ -24,6 +24,7 @@ import { runInnateChecks, type InnateResult } from "../colony/innate.ts";
 import { errorText, ftError } from "../colony/errors.ts";
 import { lateDecideSpend, meteredAi, spendCounters } from "../colony/spend.ts";
 import { hedgeFor, hedgeText, type Hedge, type HedgeExtra, type HedgeRecord, type HedgeSite } from "../colony/hedge.ts";
+import { isSpendCapRefusal, type CapUse } from "../colony/spendcap.ts";
 import { acceptanceCheck, acceptanceFor } from "./acceptance.ts";
 import { ANTIBODY_DIR, antibodyFile, antibodyPath, calibrateThreshold, cleanQuestion, deriveMatcher, fallbackQuestion, parseAntibodyFile, securityAntibody } from "./antibodies.ts";
 import { addedFromHunks, fileDiff, type FileDiff } from "./diff.ts";
@@ -129,6 +130,12 @@ export interface DecideHost {
   preland?(p: Proposal, texts?: ReadonlyMap<Sha, string>): Promise<PrelandOutcome | null>;
   /** Spend per intent (FT_INTENT_SPEND, colony/intentspend.ts): one of the stage's model calls, for the proposal's intent, as it happens; a host without it counts none. */
   countIntentCall?(intentId: Id, layer: "review" | "judge", model: string, usage: { input?: number; output?: number } | null): void;
+  /**
+   * The spend cap (colony/spendcap.ts): the Workers AI binding with each run reserved against the colony's cap for `use`
+   * (review may use the reserve). A refused run throws, which the stage reads as the model being unavailable. A host
+   * without it calls the binding as it is.
+   */
+  capAi?(ai: AiRunner, use: CapUse): AiRunner;
 }
 
 /** Decide runs in flight per colony. Most finish in the deterministic stage without a model call. */
@@ -144,6 +151,8 @@ const LLM_DEADLINE_MS = 90_000;
 const LLM_ATTEMPTS = 3;
 /** Trunk paths asked per proposal for import resolution. */
 const MAX_RESOLUTION_PATHS = 4_000;
+/** Escalations because a model could not answer (decide/gate.ts L8, M2): nothing was found wrong, so autonomy stands. */
+const UNREVIEWED = new Set(["L8 spend cap", "M2 antibodies unscreened"]);
 
 /** A vaccination batch as started. */
 export interface VaccinationResult {
@@ -224,8 +233,10 @@ export class DecideEngine {
     }
   }
 
-  private ai(): AiRunner {
-    return this.host.env.AI as unknown as AiRunner;
+  /** The Workers AI binding, reserved against the colony's spend cap for `use` where the host has one (capAi). */
+  private ai(use: CapUse = "review"): AiRunner {
+    const ai = this.host.env.AI as unknown as AiRunner;
+    return this.host.capAi ? this.host.capAi(ai, use) : ai;
   }
 
   /** Hedged model calls (FT_HEDGE, colony/hedge.ts) at one call site of this colony, its copies counted in the metrics; null where the flag does not cover it. */
@@ -379,7 +390,8 @@ export class DecideEngine {
       let clefHedged: HedgeRecord | undefined;
       try {
         // Hedged (FT_HEDGE): a losing copy that answers anyway counts where the winner's tokens do.
-        const r = await askClef(this.ai(), policy.reflexModel, state, reflexQuestions(input.antibodies, skip), undefined, this.hedge("reflex", { onLate: lateDecideSpend(this.host, "decide.clef", p.intentId) }));
+        // Spend cap: a vaccine's calls never use the review reserve (it is kept for changes that may land).
+        const r = await askClef(this.ai(vaccine ? "other" : "review"), policy.reflexModel, state, reflexQuestions(input.antibodies, skip), undefined, this.hedge("reflex", { onLate: lateDecideSpend(this.host, "decide.clef", p.intentId) }));
         clefHedged = r.hedged;
         reflex = readReflex(
           r.answers,
@@ -395,7 +407,9 @@ export class DecideEngine {
         reflex = null;
         clefError = errorText(err);
       }
-      v1 = gate({ ...base, reflex });
+      // Why the reflex did not answer, for a proven change whose antibodies it could not screen (M2).
+      const cause = reflex === null ? { reflexError: isSpendCapRefusal(clefError) ? "the spend cap left review no room for the call" : clefError || "no answer" } : {};
+      v1 = gate({ ...base, reflex, ...cause });
       final = v1;
       checks.push({
         name: `reflex: ${policy.reflexModel}`,
@@ -430,11 +444,13 @@ export class DecideEngine {
 
       // System 2: only when the deterministic stage was inconclusive and the reflex cannot act alone.
       if (v1.action === "consult") {
-        const so = await this.secondOpinion(p, input, policy);
+        const so = await this.secondOpinion(p, input, policy, vaccine ? "other" : "review");
         llm = so.opinion;
         // Quoted acceptance: each line as the second opinion answered it, its quote looked for in the diff it was shown.
         const accepted = acceptance && llm ? checkAcceptance(acceptance, llm.acceptance, secondOpinionDiff(diffs).shown) : undefined;
-        final = gate({ ...base, reflex, llm, ...(accepted ? { acceptance: accepted } : {}) });
+        // Spend cap (colony/spendcap.ts): no second opinion because the cap refused its call; the gate sends it to a person (L8).
+        const capped = !llm && isSpendCapRefusal(so.error) ? { spendCap: so.error } : {};
+        final = gate({ ...base, reflex, llm, ...(accepted ? { acceptance: accepted } : {}), ...capped });
         checks.push({
           name: `llm: ${so.model}`,
           ok: llm?.verdict === "approve",
@@ -527,7 +543,8 @@ export class DecideEngine {
     if (final.action === "land") {
       await this.host.updateProposals([{ id: p.id, patch: { status: "ready", evidence, ...relied } }]);
     } else if (final.action === "escalate") {
-      this.store.revokeAutonomy(region, `escalated ${p.id}`, now);
+      // A change no model could review (L8: the spend cap; M2: the reflex unavailable) says nothing against its region.
+      if (!UNREVIEWED.has(final.rule)) this.store.revokeAutonomy(region, `escalated ${p.id}`, now);
       // What the person sees: the change itself, its danger patterns and residual, secrets masked.
       try {
         this.store.putReview(p.id, buildReviewView({ files: innate.files, danger: dangerHits, residual: innate.residual }), now);
@@ -584,6 +601,7 @@ export class DecideEngine {
     p: Proposal,
     input: ReflexInput,
     policy: DecidePolicy,
+    use: CapUse = "review",
   ): Promise<{ opinion: SecondOpinion | null; model: string; ms: number; error: string; hedged?: HedgeRecord; hedgeNote?: string }> {
     this.limiter.configure(policy.llmConcurrency, policy.llmPerMinute);
     const models = secondOpinionCandidates(this.host.agent(p.agentId)?.model, policy.secondOpinionModels);
@@ -606,7 +624,7 @@ export class DecideEngine {
             onLate: lateDecideSpend(this.host, "decide.llm", p.intentId),
           });
           // Quoted acceptance asks for one answer per acceptance line (FT_QUOTED_ACCEPTANCE).
-          const r = await askSecondOpinion(this.ai(), model, messages, undefined, askedLines(input.acceptance ?? []).length, hedge);
+          const r = await askSecondOpinion(this.ai(use), model, messages, undefined, askedLines(input.acceptance ?? []).length, hedge);
           // The model that answered (a hedge copy may have gone to the next candidate).
           const used = r.model;
           this.host.bump("decide.llm.tokensIn", r.tokens.in);
@@ -701,7 +719,7 @@ export class DecideEngine {
     const colony = this.host.colony();
     const intent = this.host.intent(p.intentId);
     // Minting's calls (the rephrasing and the self-check) count in the colony's spend, per model (colony/spend.ts).
-    const ai = meteredAi(this.ai(), "decide.antibody", (name, delta) => this.host.bump(name, delta));
+    const ai = meteredAi(this.ai("other"), "decide.antibody", (name, delta) => this.host.bump(name, delta));
     let state = parseState(this.store.outcome(p.id)?.state);
     let added: string[];
     if (state) {

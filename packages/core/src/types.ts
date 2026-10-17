@@ -1336,6 +1336,36 @@ export interface ColonySpend {
   priceDate: string;
   /** In-platform agents whose journals the colony has not read yet: their calls are missing from `byLayer.agents`. */
   agentsUnread?: number;
+  /** The colony's spend cap (colony/spendcap.ts), when a person set one; absent means no cap. */
+  cap?: SpendCap;
+}
+
+/**
+ * Where a colony stands against its spend cap: `open` (every model call goes on), `review-only` (the share for
+ * everything but review is spent: agents are paused and only review may call, from its reserve) or `spent` (the reserve
+ * too: review makes no model call and changes wait for a person).
+ */
+export type SpendCapState = "open" | "review-only" | "spent";
+
+/**
+ * A colony's spend cap (POST /api/colonies/:id/spend-cap, colony/spendcap.ts): a dollar limit on the model calls this
+ * platform makes for the colony (never what external agents spend on their own models), with a reserve only review may
+ * use. Each call is reserved before it starts and settled at its actual tokens' price after, so calls in flight together
+ * cannot pass the cap.
+ */
+export interface SpendCap {
+  /** The cap in USD. */
+  usd: number;
+  /** The part of the cap kept for review (the reflex and the second opinion); every other call stops at `usd - reviewReserveUsd`. */
+  reviewReserveUsd: number;
+  /** What the cap counts as spent so far (USD): the colony's spend, with the calls settled since that its journals have not shown yet. */
+  spentUsd: number;
+  /** Reserved for model calls in flight (USD). */
+  inFlightUsd: number;
+  state: SpendCapState;
+  /** Who set the cap last, and when. */
+  setBy: string;
+  setAt: Millis;
 }
 
 /**

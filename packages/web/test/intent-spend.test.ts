@@ -85,7 +85,7 @@ describe("the Intents tab", () => {
   it("shows what an intent's model calls cost on its row, with the layers and calls behind it", () => {
     const html = renderToStaticMarkup(createElement(IntentsTab, { store: loaded({ intentSpend: { int_1: ONE } }), onPick: () => undefined }));
     expect(html).toContain('<span class="intent-spend" title="agents $0.0001 in 2 calls, review $0.0004 in 1 call; 2,400 input and 60 output tokens at Workers AI list prices on ');
-    expect(html).toContain(`${PRICE_DATE}.">$0.0005 of model calls</span>`);
+    expect(html).toContain(`${PRICE_DATE}.">$0.0005 of model calls this platform made</span>`);
     expect(html.split("of model calls").length - 1).toBe(1);
   });
 

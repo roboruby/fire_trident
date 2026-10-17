@@ -31,7 +31,7 @@ describe("the intent's spend line", () => {
       expect(intentSpendLine(s)).toBe(coreLine(s));
       expect(intentSpendDetail(s)).toBe(coreDetail(s));
     }
-    expect(intentSpendLine(COUNTED)).toBe("$0.0024 of model calls");
+    expect(intentSpendLine(COUNTED)).toBe("$0.0024 of model calls this platform made");
     expect(intentSpendLine(undefined)).toBeNull();
     expect(intentSpendLine({ usd: "1" } as unknown as IntentSpend)).toBeNull();
   });
@@ -43,7 +43,7 @@ describe("ft intent show", () => {
   it("prints what the intent's model calls cost, with the layers, calls, tokens and the prices' date", () => {
     const out = formatIntentShow({ intent: INTENT, spend: COUNTED }, c, 120_000);
     expect(out).toContain(
-      `spend     $0.0024 of model calls (agents $0.0001 in 2 calls, review $0.0011 in 2 calls, contest judge $0.0012 in 2 calls; 7,400 input and 360 output tokens at Workers AI list prices on ${PRICE_DATE})`,
+      `spend     $0.0024 of model calls this platform made (agents $0.0001 in 2 calls, review $0.0011 in 2 calls, contest judge $0.0012 in 2 calls; 7,400 input and 360 output tokens at Workers AI list prices on ${PRICE_DATE})`,
     );
   });
 

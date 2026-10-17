@@ -31,7 +31,7 @@ describe("the spend line", () => {
     ];
     for (const s of cases) expect(spendLine(s)).toBe(coreSpendLine(s));
     for (const v of [0, 0.00002, 0.0099, 0.042, 0.5, 1, 12.345, Number.NaN]) expect(usdText(v)).toBe(coreUsdText(v));
-    expect(spendLine(HONO)).toBe("$0.042 of model calls · $0.0001 a landed intent");
+    expect(spendLine(HONO)).toBe("$0.042 of model calls this platform made · $0.0001 a landed intent");
   });
 
   it("is absent when the colony made no model call or the server sends no spend", () => {
@@ -44,7 +44,7 @@ describe("the spend line", () => {
 describe("ft status", () => {
   it("prints the colony's model spend and the prices' date", () => {
     const out = formatStatus(snapshot(HONO), colors(false), NOW);
-    expect(out).toContain("spend      $0.042 of model calls · $0.0001 a landed intent (Workers AI list prices on 2026-10-12)");
+    expect(out).toContain("spend      $0.042 of model calls this platform made · $0.0001 a landed intent (Workers AI list prices on 2026-10-12)");
   });
 
   it("prints no spend row for a colony with no model calls, or a server that sends none", () => {

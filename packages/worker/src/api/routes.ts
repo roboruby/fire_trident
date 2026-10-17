@@ -11,7 +11,7 @@ import { createApi } from "./app.ts";
  *   DELETE /api/colonies/:id                  delete a colony (admin token required)
  *   GET    /api/colonies/:id/live             WebSocket of ColonyEvent
  *   GET    /api/colonies/:id/field            FieldReading[] (all regions) or ?region=
- *   GET    /api/colonies/:id/metrics          metrics, funnel, violations, series
+ *   GET    /api/colonies/:id/metrics          metrics, funnel, violations, series, spend (the model calls this platform made)
  *   GET    /api/colonies/:id/events           the event record for replays (?after=<seq>&limit=<n>)
  *   POST   /api/colonies/:id/intents          declare an intent
  *   GET    /api/colonies/:id/intents/:iid     one intent with its revisions and directives (and its model spend)
@@ -35,5 +35,6 @@ import { createApi } from "./app.ts";
  *   POST   /api/colonies/:id/review/:pid      approve | reject | return
  *   POST   /api/colonies/:id/swarm            spawn in-platform agents
  *   POST   /api/colonies/:id/swarm/stop       stop every running in-platform agent
+ *   GET    /api/colonies/:id/spend-cap        the spend cap; POST { usd, reviewReserveUsd? } sets it, { usd: null } removes it
  */
 export const api = createApi({ provisionTrunk, spawnSwarm });
