@@ -85,6 +85,8 @@ import type { DirectionInfo } from "../colony/direction.ts";
 import { ftError } from "../colony/errors.ts";
 import { INLINE_FETCH_BYTES, isInlineChange } from "../colony/inline.ts";
 import { noteResolves } from "../colony/resolver-merge.ts";
+import { returnHunksEnabled, type ReturnHunksAnswer, type ReturnHunksQuery } from "../colony/returnhunks.ts";
+import { quoteReturns, sqlQuoteSource } from "./quote.ts";
 import { DIRECTION_TABLE, FENCE_WAIT_MS, directionReturns, fenceAnswer, mergeDirection, parseDirection, pushDelayMs, settlesWithin, type FenceAnswer } from "./direction.ts";
 import { PUBLISH_BOUND, addedObjects, asyncPublishEnabled, publishBackoffMs, publishChain, settlePublish, withinBound, type PublishBound, type RecordedCommit } from "./publish.ts";
 import { PROTECT_TABLE, keepProtect, protectReturns } from "./protect.ts";
@@ -570,6 +572,17 @@ export class TrunkDO extends DurableObject<Env> {
   async removedLineOwners(q: RemovedLinesQuery): Promise<RemovedLinesAnswer> {
     this.state();
     return removedLineOwners(sqlLineageSource(this.sql, (blob) => this.blobBytes(blob)), q);
+  }
+
+  /**
+   * Return hunks (FT_RETURN_HUNKS, colony/returnhunks.ts; trunk/quote.ts): what beat a batch of returned changes, quoted
+   * for their agents: each named landing's diff of each named file, from the landing log and the blob store, and the
+   * contested regions of each text merge conflict, cut and masked, within the budget the colony gives. Read only, beside
+   * the cycles, like `why`.
+   */
+  async returnHunks(q: ReturnHunksQuery): Promise<ReturnHunksAnswer> {
+    this.state();
+    return quoteReturns(sqlQuoteSource(this.sql, (blob) => this.blobBytes(blob)), q);
   }
 
   /** The most recent landings, newest first (default 50). */
@@ -1330,6 +1343,9 @@ export class TrunkDO extends DurableObject<Env> {
     // Conflict resolver (FT_RESOLVER, colony/resolver.ts): a change sent back for overlapping hunks carries them to its
     // colony (paths, blobs, lines), so the resolver never parses a reason. Off: returns carry only their reasons.
     const resolving = revalidationEnabled((this.env as unknown as { FT_RESOLVER?: string } | undefined)?.FT_RESOLVER, st.colonyId);
+    // Return hunks (FT_RETURN_HUNKS, colony/returnhunks.ts): the conflict travels with the return too, so the colony can
+    // have its contested regions quoted for the change's agent.
+    const quoting = returnHunksEnabled((this.env as unknown as { FT_RETURN_HUNKS?: string } | undefined)?.FT_RETURN_HUNKS, st.colonyId);
     const batches = reqs.map((r) => r.batch);
     const outcome = new Map<Id, Outcome>();
     const own: Array<Landing | undefined> = reqs.map(() => undefined);
@@ -1452,7 +1468,7 @@ export class TrunkDO extends DurableObject<Env> {
         mergedSizes = new Map();
       }
       const back = (): void => {
-        for (const r of plan.returned.flat()) outcome.set(r.proposalId, { kind: "returned", reason: r.reason, ...(resolving && r.conflicts ? { conflicts: r.conflicts } : {}) });
+        for (const r of plan.returned.flat()) outcome.set(r.proposalId, { kind: "returned", reason: r.reason, ...((resolving || quoting) && r.conflicts ? { conflicts: r.conflicts } : {}) });
       };
       lap("plan");
       if (exportInput !== undefined) stat.exportsUncovered = plan.exportsUncovered ?? 0;

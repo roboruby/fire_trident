@@ -167,6 +167,8 @@ import { findTwin, twinChecked, twinsEnabled, type DeclareAnswer, type TwinAnswe
 import { chainGateEnabled, chainHold, declaredBy, type DeclaredBy } from "./chain.ts";
 import { a2aTasks, type A2APage, type A2AQuery } from "./a2a.ts";
 import { REVIEW_MOVED, cleanMovedBy, movedCollision, movedReturn, type StalePath } from "./movedby.ts";
+import { cleanContested } from "./hunks.ts";
+import { eventMovedBy, fetchReturnHunks, quoteHunks, returnHunksEnabled, type QuotedHunks, type ReturnHunksAnswer, type ReturnHunksQuery } from "./returnhunks.ts";
 import { PROTECT_META, isProtectStop, parseProtectRecord, protectChanged, protectLandedText, type ProtectHost, type ProtectOutcome, type ProtectRecord } from "./protect.ts";
 import { SpendBook, modelOfClass, resolverClient, spendCounters } from "./spend.ts";
 import type { ColonySpend, IntentSpendBrief } from "@fire_trident/core";
@@ -2265,6 +2267,9 @@ export class ColonyDO extends DurableObject<Env> {
    */
   async updateProposals(items: Array<{ id: Id; patch: Partial<Proposal>; stale?: StalePath[] }>): Promise<void> {
     const colony = this.requireColony();
+    // Return hunks (FT_RETURN_HUNKS, colony/returnhunks.ts): the trunk writer quotes what beat these returns, read before
+    // anything below is written, so the writes stay one synchronous step.
+    const quoted = await this.quoteReturns(items);
     const now = Date.now();
     const fx = this.effects(colony.regionDepth);
     for (const { id, patch, stale } of items) {
@@ -2286,7 +2291,7 @@ export class ColonyDO extends DurableObject<Env> {
       };
       if (!next.evidence.notVerified) next.evidence = { ...next.evidence, notVerified: DEFAULT_NOT_VERIFIED };
       // What beat it (colony/movedby.ts): a change back because trunk moved its files names the landings that moved them.
-      if (next.status === "returned" && prev.status !== "returned") this.attributeReturn(next, stale);
+      if (next.status === "returned" && prev.status !== "returned") this.attributeReturn(next, stale, quoted);
       this.writeProposal(next, now);
       this.transition(next, prev.status, now, fx);
     }
@@ -2298,15 +2303,33 @@ export class ColonyDO extends DurableObject<Env> {
    * the per-path landing index, and its reason ends by naming them, with what to do. Best effort: a return never fails
    * over it.
    */
-  private attributeReturn(p: Proposal, stale: StalePath[] | undefined): void {
+  private attributeReturn(p: Proposal, stale: StalePath[] | undefined, quoted: QuotedHunks | null = null): void {
     if (!movedCollision(p)) return;
     try {
       this.backfillLandedIndex();
       const moved = movedReturn(this.sql, p, Array.isArray(stale) ? stale : null);
       if (moved) Object.assign(p, moved);
+      // Return hunks (FT_RETURN_HUNKS): what those landings changed in its files, and its contested regions, quoted.
+      quoteHunks(p, quoted);
     } catch (err) {
       console.warn(`movedBy for ${p.id} skipped: ${errorText(err)}`);
     }
+  }
+
+  /**
+   * Return hunks (FT_RETURN_HUNKS, colony/returnhunks.ts): the trunk writer's quotes of what beat these returns (one call,
+   * at most RETURN_HUNKS_MS), or null: the flag off, nothing to quote, or no answer in time. Never throws.
+   */
+  private async quoteReturns(items: Array<{ id: Id; patch: Partial<Proposal>; stale?: StalePath[] }>): Promise<QuotedHunks | null> {
+    if (!returnHunksEnabled(this.env.FT_RETURN_HUNKS, this.loadColony()?.colony.id ?? "")) return null;
+    if (!Array.isArray(items) || !items.some((i) => i?.patch?.status === "returned")) return null;
+    try {
+      this.backfillLandedIndex();
+    } catch (err) {
+      console.warn(`return hunks: the landing index did not catch up: ${errorText(err)}`);
+    }
+    const quote = (q: ReturnHunksQuery) => this.trunkStub().returnHunks(q) as unknown as Promise<ReturnHunksAnswer>;
+    return fetchReturnHunks({ sql: this.sql, proposal: (id) => this.getProposalSync(id), quote }, items);
   }
 
   /**
@@ -2411,7 +2434,7 @@ export class ColonyDO extends DurableObject<Env> {
     // What beat the intent's last change (colony/movedby.ts): the landings this one was redone on, for its reviewer.
     for (const p of queue.slice(0, REVIEW_MOVED)) {
       const last = this.lastReturn(p.intentId);
-      if (last?.movedBy) Object.assign(p, { lastReturn: last });
+      if (last?.movedBy || last?.contested) Object.assign(p, { lastReturn: last });
     }
     return queue;
   }
@@ -4710,8 +4733,9 @@ export class ColonyDO extends DurableObject<Env> {
         this.returnsIndexedFor = colony.createdAt;
       }
       const rows = this.sql
-        .exec<{ id: string; status: string; updated_at: number; reason: string | null; superseded_by: string | null; moved_by: string | null }>(
-          `SELECT id, status, updated_at, json_extract(data, '$.reason') AS reason, json_extract(data, '$.supersededBy') AS superseded_by, json_extract(data, '$.movedBy') AS moved_by
+        .exec<{ id: string; status: string; updated_at: number; reason: string | null; superseded_by: string | null; moved_by: string | null; contested: string | null }>(
+          `SELECT id, status, updated_at, json_extract(data, '$.reason') AS reason, json_extract(data, '$.supersededBy') AS superseded_by, json_extract(data, '$.movedBy') AS moved_by,
+                  json_extract(data, '$.contested') AS contested
              FROM proposals WHERE intent_id = ? AND status IN ('returned', 'rejected', 'landed') ORDER BY created_at DESC LIMIT ?`,
           intentId,
           RETURN_LOOKBACK,
@@ -4730,6 +4754,9 @@ export class ColonyDO extends DurableObject<Env> {
         // What beat it: the landings that moved its files (colony/movedby.ts).
         const moved = cleanMovedBy(parseJson<unknown>(r.moved_by, undefined));
         if (moved) out.movedBy = moved;
+        // Return hunks (FT_RETURN_HUNKS): its text merge's contested regions, when quoted (colony/returnhunks.ts).
+        const contested = cleanContested(parseJson<unknown>(r.contested, undefined));
+        if (contested) out.contested = contested;
         return out;
       }
       return undefined;
@@ -5432,7 +5459,7 @@ export class ColonyDO extends DurableObject<Env> {
     const proposalEvent: ColonyEvent = { t: "proposal", at: now, proposalId: p.id, intentId: p.intentId, agentId: p.agentId, status: p.status };
     if (p.reason) proposalEvent.reason = p.reason;
     // What beat a returned change (colony/movedby.ts): the web's intent and review cards show it.
-    if (p.status === "returned" && Array.isArray(p.movedBy) && p.movedBy.length > 0) proposalEvent.movedBy = p.movedBy;
+    if (p.status === "returned" && Array.isArray(p.movedBy) && p.movedBy.length > 0) proposalEvent.movedBy = eventMovedBy(p.movedBy);
     fx.events.push(proposalEvent);
     if (prev === "ready" && p.status !== "landed") {
       const list = fx.dequeue.get(region) ?? [];

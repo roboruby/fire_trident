@@ -86,6 +86,17 @@ export interface Env {
   /** Optional: the model the conflict resolver calls; FT_DEFAULT_MODEL when absent ("default" and "bulk" name the server's models). */
   FT_RESOLVER_MODEL?: string;
   /**
+   * Optional: return hunks, "on", or a comma-separated list of colony ids; absent or "off" is off. When a change goes back
+   * because trunk moved files it read or wrote, its return quotes what beat it (colony/returnhunks.ts): each landing that
+   * movedBy names carries its unified diff of each moved file (movedBy[].hunks: about 40 lines a file, 3 files a landing),
+   * and a text merge conflict carries each contested region (contested: the base, trunk and own lines, from the base line
+   * where it starts), at most 120 lines and 8,000 characters a return, masked where a line looks like a secret. The colony
+   * asks the trunk writer once per batch of returns and waits at most a second; past that, the return goes out as before,
+   * its landings named. Agents read the hunks in the take's lastReturn, the MCP inbox and the in-platform agent's redo
+   * prompt (fenced as data there); review cards show them under what beat the intent's last change.
+   */
+  FT_RETURN_HUNKS?: string;
+  /**
    * Optional: model step-up, "on", or a comma-separated list of colony ids; absent or "off" is off. When an intent's
    * changes have come back twice since it last changed course (a landing or a substantive amendment), its next take asks
    * for the stronger model class ("default", FT_DEFAULT_MODEL) and says why (colony/stepup.ts): in-platform agents write

@@ -2,6 +2,7 @@ import type { AgentKind, Id, MovedBy, Path, Proposal } from "@fire_trident/core"
 import { oneLine } from "../agents/change.ts";
 import { shortTitle, shortWhy } from "../agents/landed.ts";
 import { noteProvenance } from "../trunk/provenance.ts";
+import { cleanHunks } from "./hunks.ts";
 
 /**
  * What beat a returned change (`movedBy`). When a change goes back because trunk moved files it read or wrote (the lane
@@ -162,8 +163,8 @@ export function movedReturn(sql: SqlRunner, p: Proposal, stale?: readonly StaleP
 }
 
 /**
- * movedBy as received from another object or read back from storage, checked field by field and capped; undefined when
- * nothing usable is left (older data has none).
+ * movedBy as received from another object or read back from storage, checked field by field and capped (the quoted
+ * hunks too, colony/hunks.ts); undefined when nothing usable is left (older data has none).
  */
 export function cleanMovedBy(x: unknown): MovedBy[] | undefined {
   if (!Array.isArray(x)) return undefined;
@@ -186,6 +187,9 @@ export function cleanMovedBy(x: unknown): MovedBy[] | undefined {
     if (typeof e.agentId === "string" && ID.test(e.agentId)) m.agentId = e.agentId;
     const model = typeof e.model === "string" ? oneLine(e.model).slice(0, MODEL_CHARS) : "";
     if (model) m.model = model;
+    // Return hunks (FT_RETURN_HUNKS, colony/returnhunks.ts): what the landing changed in those files, when quoted.
+    const hunks = cleanHunks(e.hunks);
+    if (hunks) m.hunks = hunks;
     out.push(m);
   }
   return out.length > 0 ? out : undefined;

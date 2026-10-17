@@ -17,6 +17,8 @@ import { IMPACT_FILES, expandEntries, walkImporters, type ImportersOf, type Impo
 import { newerProtect, parseProtectRecord, type ProtectRecord } from "../../src/colony/protect.ts";
 import { cycleProtect, protectionReturns, type ProtectContext } from "../../src/trunk/protect.ts";
 import type { LandingRange } from "../../src/certify/range.ts";
+import type { ReturnHunksAnswer, ReturnHunksQuery } from "../../src/colony/returnhunks.ts";
+import { quoteReturns } from "../../src/trunk/quote.ts";
 
 export { ColonyDO } from "../../src/colony/ColonyDO.ts";
 export { RegionDO } from "../../src/region/RegionDO.ts";
@@ -63,6 +65,9 @@ interface TrunkState {
   /** Asynchronous publishing: the published head publishState() names (the head when unset), or "fail" to make it throw; and its calls. */
   published?: Sha | "fail";
   publishStateCalls?: number;
+  /** Return hunks: what returnHunks() was asked (the latest 20), and how long it waits before it answers (holdQuotes). */
+  quoteAsks?: ReturnHunksQuery[];
+  quoteDelayMs?: number;
 }
 
 /** A point where a held land() call waits until releaseLand() (see holdNextLand). */
@@ -148,6 +153,37 @@ export class TrunkDO extends DurableObject<Env> {
   async setContents(contents: Record<Sha, string>): Promise<void> {
     const s = await this.load();
     s.contents = { ...(s.contents ?? {}), ...contents };
+    await this.save(s);
+  }
+
+  /**
+   * Return hunks (FT_RETURN_HUNKS), as the real TrunkDO answers them (trunk/quote.ts): each landing's change to a file from
+   * its parent's snapshot and its own, the texts from the blob contents this stand-in keeps.
+   */
+  async returnHunks(q: ReturnHunksQuery): Promise<ReturnHunksAnswer> {
+    const s = await this.load();
+    s.quoteAsks = [...(s.quoteAsks ?? []), q].slice(-20);
+    await this.save(s);
+    if ((s.quoteDelayMs ?? 0) > 0) await new Promise((r) => setTimeout(r, s.quoteDelayMs));
+    const text = (blob: Sha): string | null => Object.values(s.files).find((f) => f.blob === blob)?.content ?? s.contents?.[blob] ?? null;
+    return quoteReturns(
+      {
+        landingPath: (landingId, path) => {
+          const l = s.landings.find((x) => x.id === landingId);
+          if (!l || !(l.paths ?? []).includes(path)) return null;
+          return { trunkSha: l.trunkSha, before: s.commits[l.parentSha]?.[path] ?? null, after: s.commits[l.trunkSha]?.[path] ?? null };
+        },
+        read: async (blob) => text(blob),
+        now: () => Date.now(),
+      },
+      q,
+    );
+  }
+
+  /** Test helper: returnHunks() waits this long before it answers (a writer too busy to quote in time). */
+  async holdQuotes(ms: number): Promise<void> {
+    const s = await this.load();
+    s.quoteDelayMs = ms;
     await this.save(s);
   }
 

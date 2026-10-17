@@ -1654,6 +1654,22 @@ a.signed-by:hover {
   overflow-wrap: anywhere;
 }
 
+/* Return hunks (FT_RETURN_HUNKS): what a landing changed in a file, or a contested region, quoted. */
+.moved-hunk {
+  margin: 2px 0 6px;
+  padding: 6px 8px;
+  max-height: 240px;
+  overflow: auto;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-2);
+  font-family: var(--mono);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  white-space: pre;
+}
+
 .checks {
   display: flex;
   flex-wrap: wrap;
