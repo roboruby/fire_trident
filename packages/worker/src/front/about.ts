@@ -24,6 +24,7 @@ export const COLONY_FLAGS: readonly string[] = [
   "FT_EXPORT_GUARD",
   "FT_FIELD_GUIDE",
   "FT_GOAL_CONFLICT",
+  "FT_HEADS_UP",
   "FT_HEDGE",
   "FT_INLINE",
   "FT_INTENT_SPEND",

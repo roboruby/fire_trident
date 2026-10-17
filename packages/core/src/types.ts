@@ -746,6 +746,30 @@ export interface ContestedRegion {
   truncated?: boolean;
 }
 
+/**
+ * Heads-up (FT_HEADS_UP): what the MCP server had told a change's agent, while it held the intent, of landings that moved
+ * files it read or would write after its lease base, carried with its proposal. `landings`: each landing a reply named,
+ * with when it landed and when the agent was first told (newest first, at most 16). `through`: the newest of them
+ * (deliveredThrough). `lastReplyAt`: when the last reply before the proposal was sent. Set by the MCP server, never by
+ * the agent.
+ */
+export interface ToldOf {
+  landings: Array<{ landingId: Id; at: Millis; toldAt: Millis }>;
+  through?: { landingId: Id; at: Millis; toldAt: Millis };
+  lastReplyAt?: Millis;
+}
+
+/**
+ * Heads-up (FT_HEADS_UP): whether the agent of a change that went back because trunk moved had been told, before it
+ * proposed, of the landing that beat it (colony/headsup.ts). `warned`: told, and it proposed anyway (`toldAt` says
+ * when); `unwarned`: it could not have known.
+ */
+export interface ReturnWarning {
+  landingId: Id;
+  verdict: "warned" | "unwarned";
+  toldAt?: Millis;
+}
+
 export interface Proposal {
   id: Id;
   colonyId: Id;
@@ -813,6 +837,10 @@ export interface Proposal {
    * and its own lines, from the base line where the region starts). Set by the colony as the return arrives.
    */
   contested?: ContestedRegion[];
+  /** Heads-up (FT_HEADS_UP): what the MCP server had told its agent of landings under its files before it proposed. */
+  toldOf?: ToldOf;
+  /** Heads-up (FT_HEADS_UP): set as it goes back because trunk moved, whether its agent had been told of the landing that beat it. */
+  warning?: ReturnWarning;
   /**
    * The intent revision the change was built on. An agent passes the revision it worked from; the
    * colony refuses a proposal built on an older substantive revision, and the lane returns one before

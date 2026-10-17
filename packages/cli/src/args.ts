@@ -4,6 +4,7 @@ import { CLONE_OPTIONS, cloneVerify, type CloneVerify } from "./clonecheck.ts";
 import { parseSpendCap } from "./spendcap.ts";
 import { isConnectColony } from "./connect.ts";
 import { parseSilentTtl } from "./closure.ts";
+import type { HookCommand } from "./hook.ts";
 
 /** Event types `ft watch --only` accepts. */
 export const EVENT_TYPES: ReadonlyArray<ColonyEvent["t"]> = [
@@ -57,6 +58,8 @@ export type Command =
   | { name: "colonies"; scan: boolean }
   // Connect your agent: each MCP client's command and configuration for this server, for one colony when named.
   | { name: "connect"; colony?: string }
+  // The Claude Code hook (hook.ts): install or remove it in local settings, or run its check.
+  | HookCommand
   | { name: "agents"; colony: string; all: boolean; journal: boolean }
   | { name: "stop"; colony: string; agentId?: string; all: boolean; reason?: string }
   | { name: "delete"; colony: string }
@@ -143,6 +146,7 @@ const COMMAND_OPTIONS: Record<string, Record<string, OptionSpec>> = {
   new: { spec: { type: "string" }, name: { type: "string" }, by: { type: "string" } },
   colonies: { scan: { type: "boolean" } },
   connect: {},
+  hook: { colony: { type: "string" }, agent: { type: "string" }, dir: { type: "string" }, text: { type: "boolean" } },
   agents: { all: { type: "boolean" }, "no-journal": { type: "boolean" } },
   stop: { all: { type: "boolean" }, reason: { type: "string" } },
   delete: { yes: { type: "boolean" } },
@@ -449,6 +453,28 @@ function build(word: string, v: Record<string, unknown>, p: string[]): Command {
       if (colony === undefined || colony === "") return { name: "connect" };
       if (!isConnectColony(colony)) fail(`"${colony}" is not a colony id (lowercase letters, digits and single hyphens). Usage: ${usage}`);
       return { name: "connect", colony };
+    }
+    case "hook": {
+      // The Claude Code hook (hook.ts): local settings only; check never fails the edit it runs before.
+      const usage = "ft hook install|uninstall|check [--colony <id>] [--agent <id>] [--dir <path>]";
+      noExtras(p, 1, usage);
+      const action = p[0];
+      if (action !== "install" && action !== "uninstall" && action !== "check") fail(action ? `unknown hook action "${action}". Usage: ${usage}` : `missing hook action. Usage: ${usage}`);
+      onlyFlags(v, action === "check" ? ["colony", "agent", "text"] : action === "install" ? ["colony", "agent", "dir"] : ["dir"], `ft hook ${action}`);
+      const cmd: HookCommand = { name: "hook", action, text: v.text === true };
+      const colony = str(v.colony)?.trim();
+      if (colony !== undefined) {
+        if (!isConnectColony(colony)) fail(`"${colony}" is not a colony id (lowercase letters, digits and single hyphens). Usage: ${usage}`);
+        cmd.colony = colony;
+      }
+      const agent = str(v.agent)?.trim();
+      if (agent !== undefined) {
+        if (!/^[\w-]{1,100}$/.test(agent)) fail(`"${agent}" is not an agent id. Usage: ${usage}`);
+        cmd.agent = agent;
+      }
+      const dir = str(v.dir)?.trim();
+      if (dir) cmd.dir = dir;
+      return cmd;
     }
     case "agents": {
       const usage = "ft agents <colony> [--all] [--no-journal]";
@@ -788,6 +814,7 @@ Usage
 Commands
   colonies                         List every colony with live counters
   connect [<colony>]               Connect an agent: each MCP client's command and config
+  hook install [--colony <id>]     A heads-up in Claude Code before it edits a file (local settings)
   import <git-url>                 Import a public repository as a new colony
   new --spec <file>                Start a colony from a spec: empty trunk, rules, intents
   status <colony>                  Summarize trunk, intents, agents, and violations
@@ -1204,6 +1231,31 @@ Examples
   ft connect
   ft connect hono
   ft connect hono --url https://<your-worker>.workers.dev
+`,
+  hook: `
+ft hook install [--colony <id>] [--agent <id>] [--dir <path>]
+ft hook uninstall [--dir <path>]
+ft hook check [--colony <id>] [--agent <id>] [--text]
+
+install writes a Claude Code PreToolUse hook into .claude/settings.local.json
+of the directory (default: here), merged with what is there: local settings,
+never .claude/settings.json, which is committed. In a git work tree it also
+lists the file in .git/info/exclude so it is never committed. Before Edit,
+Write, MultiEdit or NotebookEdit, Claude Code runs ft hook check: one read of
+the agent's heads-up (1.5 s at most) that prints one line when trunk moved
+under the file or a change waiting to land writes it, and nothing otherwise.
+It always exits 0 and never denies an edit. uninstall removes exactly what
+install added.
+
+check finds the colony and agent from --colony and --agent, else FT_COLONY
+and FT_AGENT_ID, else the clone's local git config (the take's git commands
+record them where the server runs the heads-up). It sends FT_MCP_TOKEN, or
+the agent's resume key from FT_RESUME_KEY. --text prints the bare sentence
+instead of Claude Code's JSON. --url (or FT_URL) at install goes into the hook.
+
+Examples
+  ft hook install --colony hono
+  ft hook uninstall
 `,
   colonies: `
 ft colonies [--scan]

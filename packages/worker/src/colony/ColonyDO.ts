@@ -180,6 +180,7 @@ import { chainGateEnabled, chainHold, declaredBy, type DeclaredBy } from "./chai
 import { a2aTasks, type A2APage, type A2AQuery } from "./a2a.ts";
 import { REVIEW_MOVED, cleanMovedBy, movedCollision, movedReturn, type StalePath } from "./movedby.ts";
 import { cleanContested } from "./hunks.ts";
+import { HeadsUpBook, headsUpEnabled, toldOfField, warnReturn, type HeadsUpAnswer, type HeadsUpQuery } from "./headsup.ts";
 import { eventMovedBy, fetchReturnHunks, quoteHunks, returnHunksEnabled, type QuotedHunks, type ReturnHunksAnswer, type ReturnHunksQuery } from "./returnhunks.ts";
 import { PROTECT_META, isProtectStop, parseProtectRecord, protectChanged, protectLandedText, type ProtectHost, type ProtectOutcome, type ProtectRecord } from "./protect.ts";
 import { SpendBook, modelOfClass, resolverClient, spendCounters } from "./spend.ts";
@@ -2198,6 +2199,8 @@ export class ColonyDO extends DurableObject<Env> {
       evidence,
       status: "pending",
       createdAt: now,
+      // Heads-up (FT_HEADS_UP, colony/headsup.ts): what the MCP server had told the agent of landings under its files.
+      ...toldOfField(input.toldOf),
     };
     // Direction: refuse a change built on an older revision; record revision, directives and status note.
     this.stampDirection(draft, intentRow, input.intentRevision);
@@ -2392,6 +2395,9 @@ export class ColonyDO extends DurableObject<Env> {
       if (moved) Object.assign(p, moved);
       // Return hunks (FT_RETURN_HUNKS): what those landings changed in its files, and its contested regions, quoted.
       quoteHunks(p, quoted);
+      // Heads-up (FT_HEADS_UP, colony/headsup.ts): whether its agent had been told of the landing that beat it, counted in /metrics.
+      const warned = headsUpEnabled(this.env.FT_HEADS_UP, p.colonyId) ? warnReturn(p) : null;
+      if (warned) this.bump(warned, 1, Date.now());
     } catch (err) {
       console.warn(`movedBy for ${p.id} skipped: ${errorText(err)}`);
     }
@@ -5129,6 +5135,31 @@ export class ColonyDO extends DurableObject<Env> {
       console.warn(`review preview for intent ${intent.id} failed: ${errorText(err)}`);
       return undefined;
     }
+  }
+
+  // =========================================================================
+  // Heads-up (FT_HEADS_UP, colony/headsup.ts): what an agent at work should
+  // know before it proposes
+  // =========================================================================
+
+  /** The heads-up book, made on first use; it keeps the changes in flight for a moment between replies. */
+  private headsUpBook: HeadsUpBook | null = null;
+
+  /**
+   * What an agent working on an intent should know before it proposes (colony/headsup.ts): the landings since its lease
+   * base that changed files it read or will write, and the changes in flight whose write sets meet those files. The MCP
+   * server passes the session's intent, lease base and read set; the hook's route passes the files it asks about. Read-only.
+   */
+  async headsUp(agentId: Id, q: HeadsUpQuery = {}): Promise<HeadsUpAnswer> {
+    this.requireColony();
+    this.requireAgent(agentId);
+    try {
+      // The why-context index caught up first, as a take does.
+      this.backfillLandedIndex();
+    } catch (err) {
+      console.warn(`heads-up: why-context index not caught up: ${errorText(err)}`);
+    }
+    return (this.headsUpBook ??= new HeadsUpBook(this.sql)).answer(agentId, q ?? {});
   }
 
   // =========================================================================

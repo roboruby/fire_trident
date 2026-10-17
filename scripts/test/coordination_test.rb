@@ -696,6 +696,34 @@ class ClosuresTest < Minitest::Test
   end
 end
 
+# Definition 11 on a small record: returns by the heads-up's sentence at the end of their reason.
+class HeadsUpTest < Minitest::Test
+  MOVED = "stale: 1 path changed on trunk since read: src/a.ts. Landing lnd_x moved it. Keep what that landing did unless your intent says otherwise, and escalate if both cannot hold."
+
+  def record
+    events = []
+    back = ->(id, at, reason) { events << { "t" => "proposal", "at" => at, "proposalId" => id, "intentId" => "int_#{id}", "agentId" => "agt_1", "status" => "returned", "reason" => reason } }
+    back.("prp_w", 10, "#{MOVED} You were told of lnd_x at 12:03:10 UTC, 40 s before you proposed.")
+    back.("prp_a", 20, "#{MOVED} Landing lnd_x came after your last reply, so you could not have known.")
+    back.("prp_n", 30, "#{MOVED} No reply named landing lnd_x before you proposed, so you could not have known.")
+    back.("prp_o", 40, MOVED)
+    back.("prp_r", 50, "withdrawn: the intent was called off")
+    events << { "t" => "proposal", "at" => 60, "proposalId" => "prp_l", "intentId" => "int_l", "agentId" => "agt_1", "status" => "landed" }
+    Coordination::Record.new({ "source" => "recorded", "total" => events.size, "events" => events })
+  end
+
+  def test_returns_by_what_the_heads_up_had_told_their_agent
+    h = Coordination.heads_up(record, { "metrics" => { "headsUp.warned" => 1, "headsUp.unwarned" => 2 } })
+    assert_equal({ returns: 4, warned: 1, unwarned: 2, none: 1, colonyCounters: { warned: 1, unwarned: 2 } }, h)
+    assert_equal "| Heads-up before returns | 1 warned and proposed anyway, 2 could not have known (of 4 returns; 1 with no heads-up) |", Coordination.heads_up_row(h)
+  end
+
+  def test_no_row_without_a_heads_up
+    assert_nil Coordination.heads_up_row({ returns: 3, warned: 0, unwarned: 0, none: 3, colonyCounters: {} })
+    assert_nil Coordination.heads_up_row(nil)
+  end
+end
+
 class CoordinationPartsTest < Minitest::Test
   def test_region_of_matches_the_colony
     assert_equal "src/adapter/bun", Coordination.region_of("src/adapter/bun/server.ts", 3)

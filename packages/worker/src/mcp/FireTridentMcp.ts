@@ -19,6 +19,7 @@ import { FireTridentTools, MAX_WAIT_S } from "./tools.ts";
 import type { McpColonyRpc, McpTrunkRpc, RepoReader, Session, ToolContext } from "./tools.ts";
 import { IMPACT_DESCRIPTION } from "./impact.ts";
 import { PROPOSE_RETRY } from "./replay.ts";
+import { sessionTools } from "./headsup.ts";
 import { IMPACT_DEPTH, IMPACT_ENTRIES } from "../trunk/impact.ts";
 
 const SESSION_KEY = "ft:session";
@@ -101,9 +102,12 @@ export class FireTridentMcp extends McpAgent<Env, Record<string, never>, Record<
 
   private toolsInstance: FireTridentTools | null = null;
 
-  /** One tools instance per session object, so parallel tool calls share its write queue. */
+  /**
+   * One tools instance per session object, so parallel tool calls share its write queue. Where FT_HEADS_UP is set, the
+   * tools add a heads-up to every reply (mcp/headsup.ts).
+   */
   private tools(): FireTridentTools {
-    this.toolsInstance ??= new FireTridentTools(this.context());
+    this.toolsInstance ??= sessionTools(this.context(), this.env.FT_HEADS_UP, this.ctx.storage);
     return this.toolsInstance;
   }
 
