@@ -1,3 +1,4 @@
+import type { PauseState } from "@fire_trident/core";
 import type { Env } from "../env.ts";
 import { publicColonies } from "../api/git-proxy.ts";
 import { parseBudget } from "../mcp/budget.ts";
@@ -86,6 +87,8 @@ export interface About {
   flags: string[];
   /** The id of the key that signs lineage notes, published at /.well-known/firetrident-keys.json (trunk/signature.ts); null when landings are not signed. */
   noteKey: string | null;
+  /** The deployment's pause while one is in force (colony/pause.ts): who paused every colony's agents, why, and when. */
+  pause?: PauseState;
 }
 
 /** The part of the env GET /api/about reads. */
@@ -115,8 +118,9 @@ const KEY_ID = /^[0-9a-f]{16}$/;
 /**
  * Which build is serving and which flags are on, from the Worker's env, and `noteKey`, the id of the key that signs
  * lineage notes (the caller derives it from FT_NOTE_KEY, trunk/signature.ts). Odd or missing values become null.
+ * `pause`, the deployment's pause in force (api/pause.ts deploymentPause), is listed only while there is one.
  */
-export function about(env: AboutEnv, noteKey: string | null = null): About {
+export function about(env: AboutEnv, noteKey: string | null = null, pause: PauseState | null = null): About {
   const meta = env.CF_VERSION_METADATA;
   const commit = typeof env.FT_BUILD === "string" ? env.FT_BUILD.trim() : "";
   const id = typeof meta?.id === "string" ? meta.id.trim() : "";
@@ -130,10 +134,11 @@ export function about(env: AboutEnv, noteKey: string | null = null): About {
     deployedAt: Number.isFinite(at) ? new Date(at).toISOString() : null,
     flags: flagsOn(env),
     noteKey: typeof noteKey === "string" && KEY_ID.test(noteKey) ? noteKey : null,
+    ...(pause ? { pause } : {}),
   };
 }
 
 /** The JSON response of GET /api/about, never cached, so a deploy shows at once. */
-export function aboutResponse(env: AboutEnv, noteKey: string | null = null): Response {
-  return new Response(JSON.stringify(about(env, noteKey)), { headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
+export function aboutResponse(env: AboutEnv, noteKey: string | null = null, pause: PauseState | null = null): Response {
+  return new Response(JSON.stringify(about(env, noteKey, pause)), { headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
 }

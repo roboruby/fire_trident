@@ -17,6 +17,7 @@ import { isInboxDirective } from "../colony/direction.ts";
 import type { VirtualReads } from "./virtual.ts";
 import { cleanModelHint, stepupCheck, type ModelHint } from "../colony/stepup.ts";
 import { cleanDeclaredBy, type DeclaredBy } from "../colony/chain.ts";
+import { PAUSE_WAIT_MS, isPauseRefusal, pauseViewOf } from "../colony/pause.ts";
 
 /**
  * The in-platform agent loop as a journaled state machine.
@@ -500,6 +501,11 @@ async function stepOnce(deps: LoopDeps, cfg: AgentConfig): Promise<StepResult> {
   // A pushed directive (withdrawal, revision, guidance) is acted on before the next step runs.
   const turned = await applyDirection(deps, cfg, job);
   if (turned) return turned;
+  // Pause (colony/pause.ts): no model call starts while the colony's agents are paused; the agent keeps its place.
+  if (job.step === "produce" && (await pausedNow(deps))) {
+    await maybeHeartbeat(deps, cfg, job);
+    return { sleepMs: PAUSE_WAIT_MS };
+  }
   if (job.attempts >= MAX_STEP_ATTEMPTS) {
     return abandon(deps, cfg, job, `gave up at ${job.step} after ${job.attempts} attempts: ${job.lastError ?? "interrupted"}`);
   }
@@ -518,6 +524,7 @@ async function stepOnce(deps: LoopDeps, cfg: AgentConfig): Promise<StepResult> {
     const msg = errorMessage(e);
     deps.journal.log({ at: deps.now(), intentId: job.intentId, step, ok: false, ms: deps.now() - t0, detail: msg });
     if (errorStatus(e) === 429) return throttled(deps, cfg, job, msg);
+    if (isPauseRefusal(e)) return paused(deps, cfg, job, msg);
     // The colony refused because the intent was revised or withdrawn under this job: turn, do not retry.
     const turn = directionError(e);
     if (turn) return finishJob(deps, cfg, job, turn.kind === "withdrawal" ? "withdrawn" : "redirected", turn.reason);
@@ -531,6 +538,25 @@ async function stepOnce(deps: LoopDeps, cfg: AgentConfig): Promise<StepResult> {
     }
     return { sleepMs: backoffMs(job.attempts, deps.rand) };
   }
+}
+
+/** Whether the colony's agents are paused now (colony/pause.ts). Fails open: the colony refuses the write itself. */
+async function pausedNow(deps: LoopDeps): Promise<boolean> {
+  return (await pauseViewOf(deps.colony).catch(() => null))?.paused === true;
+}
+
+/**
+ * The colony refused a write because its agents are paused (colony/pause.ts). That is not the agent's failure: the
+ * attempt is given back and the step waits PAUSE_WAIT_MS, as long as the pause lasts, keeping the job and its work.
+ */
+function paused(deps: LoopDeps, cfg: AgentConfig, job: Job, msg: string): StepResult {
+  const fresh = deps.journal.job();
+  if (fresh && fresh.intentId === job.intentId) {
+    fresh.attempts = Math.max(0, fresh.attempts - 1);
+    fresh.lastError = msg;
+    save(deps, cfg, fresh);
+  }
+  return { sleepMs: PAUSE_WAIT_MS };
 }
 
 /** Throttled waits one job may take before it gives its intent back (about half an hour). */
@@ -593,6 +619,8 @@ async function takeWork(deps: LoopDeps, cfg: AgentConfig): Promise<StepResult> {
     if (e instanceof Halt) throw e;
     const msg = errorMessage(e);
     deps.journal.log({ at: deps.now(), step: "take", ok: false, ms: deps.now() - t0, detail: msg });
+    // Pause (colony/pause.ts): the colony's agents are paused; wait for a person to resume, no failure counted.
+    if (isPauseRefusal(e)) return { sleepMs: PAUSE_WAIT_MS };
     deps.journal.bump("errors");
     deps.log?.(`take failed: ${msg}`);
     if (isGone(e)) return halt(deps, cfg, msg);

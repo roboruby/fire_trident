@@ -25,6 +25,7 @@ import type { IntentSpend } from "@fire_trident/core";
 import { changeSize, dangerLines, lookHereFirst, parseHunks, reviewOf, visible, type DiffLine, type ReviewFile, type ReviewView } from "./review.ts";
 import { whySummary } from "./spec.ts";
 import { megafileLines } from "./megafile.ts";
+import { pauseLines } from "./pause.ts";
 import { signatureLines } from "./signatures.ts";
 import { intentSpendDetail, intentSpendLine, spendLine } from "./spend.ts";
 import { acceptanceRows } from "./acceptance.ts";
@@ -328,6 +329,8 @@ export function formatStatus(s: SnapshotLike, c: Colors, now: number): string {
 
   const head = `${c.bold(col.name ?? col.id)} ${c.dim(col.id)}`;
   out.push(col.source ? `${head}  ${c.dim("from")} ${col.source.url}${col.source.branch ? c.dim(` (${col.source.branch})`) : ""}` : head);
+  // The pauses in force (pause.ts) come first; a server without the switch sends none.
+  out.push(...pauseLines(s.pauses, col.id, c));
   row("trunk", trunkLine(col, c));
   const regions = new Set(files.map((f) => regionOf(f.path, col.regionDepth || 1)));
   row("files", `${num(files.length)} in ${num(regions.size)} region${regions.size === 1 ? "" : "s"}`);
@@ -1356,6 +1359,11 @@ export function formatEvent(e: ColonyEvent, c: Colors, clock: (at: number) => st
     }
     case "status":
       return `${time} ${tag("status", "blue")} ${e.agentId} ${e.note}`;
+    // The pause switch (pause.ts): who paused or resumed the colony's agents (or the deployment's), and why.
+    case "paused":
+      return `${time} ${tag("paused", "red")} ${e.scope} ${c.dim(`by ${plainLine(e.by)}: ${plainLine(e.reason)}`)}`;
+    case "resumed":
+      return `${time} ${tag("resumed", "green")} ${e.scope} ${c.dim(`by ${plainLine(e.by)}${e.reason ? `: ${plainLine(e.reason)}` : ""}`)}`;
     case "certify": {
       const sha = c.bold(shortSha(e.trunkSha));
       if (e.status === "running") return `${time} ${tag("certify", "yellow")} ${sha} testing…`;

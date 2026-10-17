@@ -25,6 +25,8 @@ import type {
 import type { StuckAction, StuckItem, StuckKind, StuckRepairState } from "@fire_trident/core";
 import type { MovedBy } from "@fire_trident/core";
 import type { ColonySpend, IntentSpendBrief } from "@fire_trident/core";
+import type { PauseState } from "@fire_trident/core";
+import { applyPauseEvent, parsePauses } from "./pause.ts";
 import { finite } from "./format.ts";
 import { movedByOf } from "./moved.ts";
 import { parseSeries, type Series } from "./series.ts";
@@ -288,6 +290,8 @@ const EVENT_TYPES: ReadonlySet<string> = new Set([
   "status",
   "certify",
   "bisect",
+  "paused",
+  "resumed",
 ]);
 const AGENT_STATES: ReadonlySet<string> = new Set<AgentState>(["idle", "working", "proposing", "waiting", "dead"]);
 const ESCALATION_KINDS: ReadonlySet<string> = new Set<EscalationKind>(["broken-test", "contradictory-spec", "impossible", "other", "chain"]);
@@ -595,6 +599,8 @@ export class ColonyStore {
   spend: ColonySpend | null = null;
   /** What each intent's model calls cost, by intent id, where the colony counts per intent (FT_INTENT_SPEND); empty otherwise. */
   readonly intentSpend = new Map<Id, IntentSpendBrief>();
+  /** The pauses in force (pause.ts): the colony's own first, then the deployment's; empty while agents may work. */
+  pauses: PauseState[] = [];
   readonly sigma = new Map<string, { sigma: number; at: number }>();
 
   private ring: Array<LoggedEvent | undefined> = new Array<LoggedEvent | undefined>(LOG_CAP);
@@ -790,6 +796,8 @@ export class ColonyStore {
     this.stuck.clear();
     this.stuckMore = 0;
     this.setStuck(s.stuck);
+    // A server without the pause switch sends no pauses: agents may work as far as this page knows.
+    this.pauses = parsePauses((s as { pauses?: unknown }).pauses);
 
     this.loaded = true;
     this.error = null;
@@ -1034,6 +1042,10 @@ export class ColonyStore {
         this.setCert({ ...ev, at: finite(ev.at, now) });
         if (ev.status === "green") this.greenSha = ev.trunkSha;
         else if (typeof ev.greenSha === "string" && ev.greenSha) this.greenSha = ev.greenSha;
+        break;
+      case "paused":
+      case "resumed":
+        this.pauses = applyPauseEvent(this.pauses, ev);
         break;
       case "bisect": {
         // The first red search ended: the red result it was for gains its answer (a result this page never saw is left alone).
@@ -1469,6 +1481,7 @@ export class ColonyStore {
     this.returns.clear();
     this.stuck.clear();
     this.stuckMore = 0;
+    this.pauses = [];
     this.noticeGroups.clear();
     this.landingNotices = 0;
     for (const k of STAGES) this.lastDecisionAt[k] = 0;

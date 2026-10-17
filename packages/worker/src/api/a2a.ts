@@ -4,6 +4,7 @@ import type { Colony, Id } from "@fire_trident/core";
 import { A2A_CANCEL_REASON, A2A_PAGE_DEFAULT, A2A_PAGE_MAX, a2aState, a2aTerminal, type A2ACursor, type A2APage, type A2AState, type A2ATaskFacts } from "../colony/a2a.ts";
 import { decodeError } from "../colony/errors.ts";
 import { isTwinAnswer } from "../colony/twins.ts";
+import { pauseViewOf } from "../colony/pause.ts";
 import type { Env } from "../env.ts";
 import type { ApiEnv } from "./app.ts";
 import { publicColonies } from "./git-proxy.ts";
@@ -504,6 +505,9 @@ export function a2aRoutes(app: Hono<ApiEnv>, admin: MiddlewareHandler<ApiEnv>, o
       if (route.op === "send" || route.op === "cancel") {
         const refusal = await writeRefusal(c, admin, method);
         if (refusal) return rpcError(id, A2A_ERRORS.writeRefused, refusal.message, refusal.status, refusal.status === 401 ? { "WWW-Authenticate": "Bearer" } : {});
+        // Pause (colony/pause.ts): while the colony's agents are paused, SendMessage and CancelTask meet the pause's sentence.
+        const paused = await pauseViewOf(colonyStub(c.env, colony.id));
+        if (paused?.paused && paused.refusal) return rpcError(id, A2A_ERRORS.writeRefused, paused.refusal, 409);
       }
       const result =
         route.op === "send"

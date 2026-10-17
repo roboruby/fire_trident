@@ -156,6 +156,7 @@ import { INLINE_FETCH_BYTES, InlineContents, inlineRefusal, isInlineChange, migr
 import { FieldGuide, guideEnabled, type GuideView } from "./guide.ts";
 import type { GuideLesson, GuideTake, LessonReceipt } from "@fire_trident/core";
 import { MegafileAlarm, megafileEnabled, type MegafileHost } from "./megafile.ts";
+import { A2A_ACTOR, ColonyPause, DEPLOYMENT_PAUSE_KEY, type PauseAnswer, type PauseView, type ResumeAnswer, type WriterPause } from "./pause.ts";
 import type { MegafileHold, MegafileReport } from "@fire_trident/core";
 import { RESOLVER_AGENT, Resolver, migrateResolver, type ResolverTrunk } from "./resolver.ts";
 import type { NoteResolves } from "@fire_trident/core";
@@ -768,6 +769,8 @@ export class ColonyDO extends DurableObject<Env> {
     const megafiles = this.megafileReportSafe();
     // Spend per intent (colony/intentspend.ts), for the Intents tab's rows; absent when nothing was counted per intent.
     const intentSpend = this.intentSpendMap();
+    // Pause (colony/pause.ts): the pauses in force, for the colony page's banner and ft status; absent while agents may work.
+    const pauses = await this.pauses().current();
     return {
       colony: certification || publish ? { ...colony, ...(certification ? { certification } : {}), ...(publish ? { publish } : {}) } : colony,
       files,
@@ -783,6 +786,7 @@ export class ColonyDO extends DurableObject<Env> {
       ...(stuck ? { stuck } : {}),
       ...(megafiles ? { megafiles } : {}),
       ...(intentSpend ? { intentSpend } : {}),
+      ...(pauses.length > 0 ? { pauses } : {}),
     };
   }
 
@@ -804,6 +808,8 @@ export class ColonyDO extends DurableObject<Env> {
    * unless `force`. Otherwise, and for rule, certification and the colony's own intents, it is addIntent.
    */
   async declareIntent(i: IntentInput, opts: { force?: boolean } = {}): Promise<DeclareAnswer> {
+    // Pause (colony/pause.ts): an agent's declaration (MCP declare, Agent2Agent SendMessage) waits for a person to resume.
+    if (i?.source === "agent") await this.pauses().refuse();
     const twin = opts?.force === true ? null : this.twinOf(i);
     return twin ?? { intent: await this.addIntent(i) };
   }
@@ -1037,6 +1043,8 @@ export class ColonyDO extends DurableObject<Env> {
    */
   async withdrawIntent(id: Id, p: { reason: string; by?: string }): Promise<{ intent: Intent; notified: Notified[]; already?: true } & RedirectOutcome> {
     const colony = this.requireColony();
+    // Pause (colony/pause.ts): the Agent2Agent CancelTask is an agent's write; a person's withdrawal goes ahead.
+    if (p?.by === A2A_ACTOR) await this.pauses().refuse();
     const row = this.intentRow(id);
     if (!row) throw ftError(404, `unknown intent ${id}`);
     if (row.status === "withdrawn") return { intent: this.toIntent(row, colony.id), returned: 0, landed: [], confirmed: true, notified: [], already: true };
@@ -1549,6 +1557,8 @@ export class ColonyDO extends DurableObject<Env> {
   async escalate(agentId: Id, p: { intentId?: Id; kind: EscalationKind; report: string }): Promise<{ intent: Intent; escalation: IntentEscalation }> {
     const colony = this.requireColony();
     const agent = this.requireAgent(agentId);
+    // Pause (colony/pause.ts): an agent's report waits for a person to resume, like its changes.
+    await this.pauses().refuse();
     const kind = escalationKind(p?.kind);
     if (!kind) throw ftError(400, `kind must be one of ${ESCALATION_KINDS.join(", ")}`);
     const report = reportText(p?.report);
@@ -1723,6 +1733,8 @@ export class ColonyDO extends DurableObject<Env> {
   /** Register many agents in one call (swarms). */
   async registerAgents(list: Array<{ kind: AgentKind; name: string; model?: string }>): Promise<AgentInfo[]> {
     const colony = this.requireColony();
+    // Pause (colony/pause.ts): no platform-run agent (a swarm's in-platform or synthetic agents) starts while paused.
+    if (Array.isArray(list) && list.some((a) => a?.kind === "internal" || a?.kind === "synthetic")) await this.pauses().refuse();
     const now = Date.now();
     const out: AgentInfo[] = [];
     const events: ColonyEvent[] = [];
@@ -1773,6 +1785,7 @@ export class ColonyDO extends DurableObject<Env> {
     alternatives?: Record<Id, ContestAlternative[]>;
     resolves?: Record<Id, NoteResolves>;
     protect?: ProtectRecord;
+    pause?: WriterPause;
   }> {
     const colonyId = this.requireColony().id;
     const intents: Record<Id, { title: string; why: string; ruleId?: Id; parentId?: Id } & DirectionInfo> = {};
@@ -1819,7 +1832,9 @@ export class ColonyDO extends DurableObject<Env> {
     // Protected paths (colony/protect.ts): the colony's protected globs, once it keeps a record of them; lanes check
     // their batch against it, and the trunk writer keeps the newest one it is handed.
     const protect = parseProtectRecord(this.decider().store.meta(PROTECT_META));
-    return { intents, agents, decisions, ...(alternatives ? { alternatives } : {}), ...(Object.keys(resolves).length > 0 ? { resolves } : {}), ...(protect ? { protect } : {}) };
+    // Pause (colony/pause.ts): the colony's pauses as they stand; a lane holds on it, and the trunk writer keeps the newest.
+    const pause = await this.pauses().writerRecord();
+    return { intents, agents, decisions, ...(alternatives ? { alternatives } : {}), ...(Object.keys(resolves).length > 0 ? { resolves } : {}), ...(protect ? { protect } : {}), pause };
   }
 
   /**
@@ -1832,6 +1847,8 @@ export class ColonyDO extends DurableObject<Env> {
   async take(agentId: Id): Promise<TakeResult> {
     this.requireColony();
     this.requireAgent(agentId);
+    // Pause (colony/pause.ts): no agent takes work while the colony's agents are paused.
+    await this.pauses().refuse();
     // One take per agent at a time: a second one could reserve another intent while the first awaits.
     if (this.taking.has(agentId)) return { wait: true, retryInMs: BUSY_RETRY_MS, reason: "take already in progress" };
     // Backpressure: TAKES_IN_FLIGHT takes score candidates at once and up to TAKES_QUEUED more wait
@@ -2074,6 +2091,8 @@ export class ColonyDO extends DurableObject<Env> {
       const again = input.lesson !== undefined ? this.guide()?.repeated(repeat.id) : undefined;
       return again ? { ...repeat, lesson: again } : repeat;
     }
+    // Pause (colony/pause.ts): a new change waits for a person to resume (a repeat above gets the proposal it made).
+    await this.pauses().refuse();
     this.assertProposable(intentRow, input.agentId);
     const writeSet = this.normalizeVersions(input.writeSet);
     if (writeSet.length === 0) throw ftError(400, "proposal write set is empty");
@@ -2521,6 +2540,62 @@ export class ColonyDO extends DurableObject<Env> {
     const decision: Decision = { ...d, id: newId("dec_"), colonyId: colony.id, at };
     this.storeDecision(decision, at);
     return decision;
+  }
+
+  // =========================================================================
+  // Pause (colony/pause.ts): a person stops every agent of the colony, or of the deployment, with a reason
+  // =========================================================================
+
+  private pauseSwitch: ColonyPause | null = null;
+
+  /**
+   * Pause the colony's agents (POST /api/colonies/:id/pause, or code acting for a person, such as a spend cap, naming
+   * itself as `by`). Until a person resumes, every agent-facing write is refused with one sentence, the lanes hold and
+   * the trunk writer defers what it was handed. A pause already in force stands (`already`).
+   */
+  async pause(p: { reason: string; by?: string }): Promise<PauseAnswer> {
+    this.requireColony();
+    return this.pauses().pause({ by: p?.by ?? "api", reason: p?.reason });
+  }
+
+  /** Resume the colony's agents (POST /api/colonies/:id/resume); a deployment pause in force still holds them. */
+  async resume(p: { by?: string; reason?: string } = {}): Promise<ResumeAnswer> {
+    this.requireColony();
+    return this.pauses().resume({ by: p?.by ?? "api", reason: p?.reason });
+  }
+
+  /** The pauses in force (the colony's own first) and the sentence an agent's write meets: lanes, MCP and agents ask. */
+  async pauseState(): Promise<PauseView> {
+    this.requireColony();
+    return this.pauses().view();
+  }
+
+  /** The deployment's switch changed (api/pause.ts pushes the registry's record to every colony). */
+  async deploymentPause(record: unknown): Promise<{ changed: boolean; writer: boolean | null }> {
+    if (!this.loadColony()) return { changed: false, writer: null };
+    return this.pauses().deploymentChanged(record);
+  }
+
+  /** The pause switch, with this colony as its host (made on first use). */
+  private pauses(): ColonyPause {
+    if (this.pauseSwitch) return this.pauseSwitch;
+    this.pauseSwitch = new ColonyPause({
+      sql: this.sql,
+      now: () => Date.now(),
+      readDeployment: () => this.env.COLONY.get(this.env.COLONY.idFromName(REGISTRY_NAME)).registryFlag(DEPLOYMENT_PAUSE_KEY),
+      publish: (events) => void this.publish(events),
+      tellWriter: async (record: WriterPause) => {
+        try {
+          const trunk = this.trunkStub() as unknown as { pause(p: { record: WriterPause }): Promise<{ settled?: boolean }> };
+          return (await trunk.pause({ record })).settled === true;
+        } catch (err) {
+          // Lanes pass the same record with every batch, and hold before they hand one over.
+          console.warn(`pause: the trunk writer of ${this.loadColony()?.colony.id ?? "?"} was not told: ${errorText(err)}`);
+          return false;
+        }
+      },
+    });
+    return this.pauseSwitch;
   }
 
   // =========================================================================
@@ -4285,6 +4360,8 @@ export class ColonyDO extends DurableObject<Env> {
     this.guideStore = null;
     // So did the megafile alarm's.
     this.megafileAlarm = null;
+    // And the pause switch's (a deployment pause in force is read again from the registry).
+    this.pauseSwitch = null;
     await this.ctx.storage.deleteAlarm();
     await this.ctx.storage.deleteAll();
     this.colonyCache = null;

@@ -260,6 +260,12 @@ export class TrunkDO extends DurableObject<Env> {
     return this.direction({ intents: {}, proposalIds: p?.proposalIds ?? [] });
   }
 
+  /** The pause (trunk/pause.ts): the colony's record of its pauses, kept as the real writer keeps it; the cycle in flight is settled at once here. */
+  async pause(p: { record: unknown }): Promise<{ paused: boolean; settled: boolean }> {
+    await this.ctx.storage.put("pause", p?.record ?? null);
+    return { paused: (p?.record as { paused?: unknown } | undefined)?.paused === true, settled: true };
+  }
+
   /** Test helper: the protected-paths record this writer keeps (null when none). */
   async protectRecord(): Promise<ProtectRecord | null> {
     return parseProtectRecord(await this.ctx.storage.get("protect")) ?? null;

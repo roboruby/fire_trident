@@ -1042,6 +1042,21 @@ export interface Antibody {
 }
 
 // ---------------------------------------------------------------------------
+// Pause: a person stops every agent of one colony, or of the whole deployment
+// ---------------------------------------------------------------------------
+
+/** What a pause covers: one colony, or every colony on the deployment. */
+export type PauseScope = "colony" | "deployment";
+
+/** A pause in force: who paused (a person, or code acting for one, such as a spend cap), why, and when. */
+export interface PauseState {
+  scope: PauseScope;
+  by: string;
+  reason: string;
+  at: Millis;
+}
+
+// ---------------------------------------------------------------------------
 // Live events (UI stream and internal fan-out)
 // ---------------------------------------------------------------------------
 
@@ -1071,6 +1086,9 @@ export type ColonyEvent =
   | { t: "contest"; at: Millis; intentId: Id; title: string; winner: Id; losers: Id[]; reason: string }
   | { t: "revalidated"; at: Millis; proposalId: Id; intentId: Id; paths: Path[]; names: string[] }
   | { t: "status"; at: Millis; agentId: Id; intentId?: Id; note: string }
+  // A person paused the agents of the colony (or of the deployment), or resumed them.
+  | { t: "paused"; at: Millis; scope: PauseScope; by: string; reason: string }
+  | { t: "resumed"; at: Millis; scope: PauseScope; by: string; reason?: string; pausedAt?: Millis }
   // Trunk certification: a run started, or its result (failing names capped at 10).
   | {
       t: "certify";
@@ -1315,6 +1333,11 @@ export interface ColonySnapshot {
    * served by GET /api/colonies/:id and /metrics, the 2,000 most recently active at most; absent when none was counted).
    */
   intentSpend?: Record<Id, IntentSpendBrief>;
+  /**
+   * The pauses in force (colony/pause.ts): the colony's own first, then the deployment's. Absent while agents may work,
+   * and from servers that predate the pause.
+   */
+  pauses?: PauseState[];
 }
 
 // ---------------------------------------------------------------------------
