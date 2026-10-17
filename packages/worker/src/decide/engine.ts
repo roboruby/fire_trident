@@ -28,7 +28,7 @@ import { ANTIBODY_DIR, antibodyFile, antibodyPath, calibrateThreshold, cleanQues
 import { addedFromHunks, fileDiff, type FileDiff } from "./diff.ts";
 import { agentReason, gate, type GateVerdict, type ReflexSignals, type SecondOpinion } from "./gate.ts";
 import { checkGoalConflict, type RemovedLineOwners } from "./goalconflict.ts";
-import { applyAllowances, dangerLabels, scanDanger, triageDanger, whyAuthor, type DangerAllowance } from "./danger.ts";
+import { DANGER_CHECK, applyAllowances, dangerLabels, scanDanger, triageDanger, whyAuthor, type DangerAllowance } from "./danger.ts";
 import { destructiveCheck, destructiveFact, destructiveRecord } from "./destructive.ts";
 import { CallLimiter } from "./limiter.ts";
 import { candidatePaths, mechanicalCheck, nameAssumptionCandidates, nameAssumptions, proofAssumptions, type MechanicalResult } from "./mechanical.ts";
@@ -277,7 +277,7 @@ export class DecideEngine {
     const danger = triageDanger(dangerHits);
     for (const cls of new Set([...danger.mustHuman, ...danger.signals].map((h) => h.cls))) this.host.bump(`decide.danger.${cls}`, 1);
     const dangerCheck: CheckResult = {
-      name: "danger patterns",
+      name: DANGER_CHECK,
       ok: danger.mustHuman.length === 0,
       ms: 0,
       detail:

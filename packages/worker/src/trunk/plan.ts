@@ -17,6 +17,7 @@ import { topStatements } from "../decide/statements.ts";
 import { importBindings, isRelative, mayName, specifierTarget, type ImportBinding } from "../decide/mechanical.ts";
 import { guardExports, guardsScript, removedNames, type GuardExports } from "./exportguard.ts";
 import { importTargets } from "./imports.ts";
+import { mergeHold, type HeldFile, type MergeLock } from "./mergelock.ts";
 
 /** A proposal sent back from `land`, with the exact reason. */
 export interface Returned {
@@ -24,6 +25,8 @@ export interface Returned {
   reason: string;
   /** Text merge: the files whose line merge conflicted, when that is why it went back (the conflict resolver reads them). */
   conflicts?: MergeConflict[];
+  /** Merge locks (trunk/mergelock.ts): the merge a person is asked to approve, when that is why it went back. */
+  held?: HeldFile[];
 }
 
 /**
@@ -42,7 +45,7 @@ export interface LandResult {
 /** One proposal's fate in a cycle. */
 export type Outcome =
   | { kind: "landed"; landing: Landing }
-  | { kind: "returned"; reason: string; conflicts?: MergeConflict[] }
+  | { kind: "returned"; reason: string; conflicts?: MergeConflict[]; held?: HeldFile[] }
   | { kind: "deferred"; reason: string };
 
 /** A proposal ready for planning: shape-checked, not landed before, its new blobs local. */
@@ -50,6 +53,8 @@ export interface PlanProposal {
   p: Proposal;
   /** Blob of every written path at the proposal's base commit. */
   base: FileVersion[];
+  /** Merge locks (trunk/mergelock.ts): its files land as decided; a merge lands only once a person approved that merge. */
+  lock?: MergeLock;
 }
 
 /**
@@ -187,6 +192,9 @@ function changedText(c: { path: Path; line: number; why: "edited" | "added" }): 
  *   in the reason and carried in the return's `conflicts` (for the conflict resolver). With `merge.insertions`
  *   (FT_MERGE_INSERTIONS), a file whose only conflicts are insertions by both sides at one place merges as their
  *   union, recorded with `rule: "insertions"`. Without `merge`, stale means back as before.
+ * - Merge locks (a proposal's `lock`, see trunk/mergelock.ts mergeHold): a change a person approved, or one with a danger
+ *   pattern a person must see or a protected write, whose clean merge would land a result no person approved goes back
+ *   to a person with the trunk delta (`held`); one whose merge conflicts goes back without `conflicts`.
  * - Export guard (with `exportGuard`, see brokenExports): a proposal that stops exporting a name from a script file goes
  *   back while a script file imports that name from it once the proposal lands, unless the proposal itself or one
  *   accepted earlier in the cycle rewrites that importer without the import; and of a proposal that stops exporting a
@@ -260,7 +268,7 @@ export function planCycle(
       const w = batchWrites.get(path);
       return w !== undefined ? w : virtual(path);
     };
-    for (const { p: proposal, base } of batch) {
+    for (const { p: proposal, base, lock } of batch) {
       let p = proposal;
       if (seen.has(p.id)) continue;
       seen.add(p.id);
@@ -309,7 +317,8 @@ export function planCycle(
           const changed = rv?.ok === false && rv.changed ? `; ${changedText(rv.changed)}` : "";
           const conflicted = tried && !tried.ok && tried.conflicts.length > 0 ? tried.conflicts : null;
           const conflicts = conflicted ? `; ${conflictText(conflicted)}` : "";
-          back.push({ proposalId: p.id, reason: `stale: ${detail}${broken}${changed}${conflicts}`, ...(conflicted ? { conflicts: conflicted } : {}) });
+          // A locked change never goes on to the conflict resolver (merge locks): its conflicts stay in the reason only.
+          back.push({ proposalId: p.id, reason: `stale: ${detail}${broken}${changed}${conflicts}`, ...(conflicted && !lock ? { conflicts: conflicted } : {}) });
           continue;
         }
       }
@@ -329,6 +338,13 @@ export function planCycle(
       const broken = deletions ? brokenImports(p, before, trunk, deletions, targetsOf) : null;
       if (broken !== null) {
         back.push({ proposalId: p.id, reason: broken });
+        continue;
+      }
+      // Merge locks (trunk/mergelock.ts): a change a person decided on lands merged only once a person approved that merge.
+      // Before the export guard, which records what a change it lets through stops exporting.
+      const hold = files && lock ? mergeHold(lock, p.id, files, (path) => ahead.get(path)?.by, textOf) : null;
+      if (hold !== null) {
+        back.push(hold);
         continue;
       }
       const unexported = exportRun ? brokenExports(p, before, trunk, exportRun, accepted.length) : null;
@@ -830,7 +846,7 @@ export function resultsFor(requests: Proposal[][], outcome: Map<Id, Outcome>, ow
         if (mine && o.landing.id === mine.id) res.landing = mine;
         else prior.set(o.landing.id, o.landing);
       } else if (o.kind === "returned") {
-        res.returned.push({ proposalId: id, reason: o.reason, ...(o.conflicts ? { conflicts: o.conflicts } : {}) });
+        res.returned.push({ proposalId: id, reason: o.reason, ...(o.conflicts ? { conflicts: o.conflicts } : {}), ...(o.held ? { held: o.held } : {}) });
       } else {
         (res.deferred ??= []).push({ proposalId: id, reason: o.reason });
       }

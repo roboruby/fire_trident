@@ -2515,8 +2515,19 @@ export class ColonyDO extends DurableObject<Env> {
     engine.onHumanDecision(p, d, reason, by);
     this.scheduleFunnel();
     if (d === "approve") {
-      if (p.status === "ready") return;
-      await this.updateProposals([{ id: proposalId, patch: { status: "ready" } }]);
+      // Merge locks (trunk/mergelock.ts): the approval travels with the change, so the trunk writer never merges it on its
+      // own. A change already cleared to land carries it too, in its lane's copy as well; a held merge is answered.
+      if (p.status === "ready") {
+        await this.updateProposals([{ id: proposalId, patch: { approvedAt: now } }]);
+        try {
+          await (await this.region(row.region ?? ".")).stampApproval(proposalId, now);
+        } catch (err) {
+          // The lane still passes the recorded decision with its lineage context.
+          console.warn(`approval of ${proposalId} not stamped in its lane: ${errorText(err)}`);
+        }
+        return;
+      }
+      await this.updateProposals([{ id: proposalId, patch: { status: "ready", approvedAt: now, mergeHold: undefined } }]);
     } else {
       await this.updateProposals([{ id: proposalId, patch: { status: d === "reject" ? "rejected" : "returned", reason: reason || `${d} by ${by}` } }]);
     }

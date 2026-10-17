@@ -89,6 +89,7 @@ import { notePriority } from "../colony/priority.ts";
 import { DIRECTION_TABLE, FENCE_WAIT_MS, directionReturns, fenceAnswer, mergeDirection, parseDirection, pushDelayMs, settlesWithin, type FenceAnswer } from "./direction.ts";
 import { PUBLISH_BOUND, addedObjects, asyncPublishEnabled, publishBackoffMs, publishChain, settlePublish, withinBound, type PublishBound, type RecordedCommit } from "./publish.ts";
 import { PROTECT_TABLE, keepProtect, protectReturns } from "./protect.ts";
+import { keepHolds, mergeLocks } from "./mergelock.ts";
 import { landingRange as rangeOfLandings, type LandingRange, type RangeQuery } from "../certify/range.ts";
 import { FoldedIndex, cycleCollisions, structureProblem, submoduleProblems, type SubmoduleOutcome } from "./structure.ts";
 import { readTreeCached } from "./surgery.ts";
@@ -1440,6 +1441,9 @@ export class TrunkDO extends DurableObject<Env> {
 
     // 5. Plan over the virtual trunk, build one chained commit per batch, push the tip once.
     const mergeLoad: MergeLoad = { texts: new Map(), reads: 0, bytes: 0 };
+    // Merge locks (trunk/mergelock.ts): a change a person approved, or one with a danger pattern a person must see or a
+    // protected write, lands merged with a newer trunk only once a person approved that merge. Unreadable: no merges.
+    const locks = merging ? mergeLocks(this.sql, live.map((e) => ({ p: e.p, ctx: reqs[e.request]?.ctx }))) : null;
     for (let attempt = 0; ; attempt++) {
       if (attempt > 0) {
         // Trunk moved underneath: the plan re-validates against the new index, structure too.
@@ -1456,14 +1460,14 @@ export class TrunkDO extends DurableObject<Env> {
         }
       }
       const input: PlanProposal[][] = reqs.map(() => []);
-      for (const e of live) input[e.request]!.push({ p: e.p, base: bases.get(e.p.id) ?? [] });
+      for (const e of live) input[e.request]!.push({ p: e.p, base: bases.get(e.p.id) ?? [], ...(locks?.has(e.p.id) ? { lock: locks.get(e.p.id)! } : {}) });
       const surfaces = revalidating ? await this.assumptionSurfaces(live.map((e) => e.p)) : null;
       if (surfaces) lap("assumptions");
       const deletions = guarding ? await this.deletionGuardInput(live.map((e) => e.p)) : undefined;
       if (deletions !== undefined) lap("deletions");
       const exportInput = exportGuarding ? await this.exportGuardInput(live.map((e) => e.p)) : undefined;
       if (exportInput !== undefined) lap("exports");
-      const merge = merging ? await this.mergeTexts(input.flat(), mergeLoad) : undefined;
+      const merge = merging && locks !== null ? await this.mergeTexts(input.flat(), mergeLoad) : undefined;
       if (merge) lap("merges");
       // Text merge's insertion rule (FT_MERGE_INSERTIONS): insertions by both sides at one place land as their union.
       if (merge && mergeInsertionsEnabled((this.env as unknown as { FT_MERGE_INSERTIONS?: string } | undefined)?.FT_MERGE_INSERTIONS, st.colonyId)) merge.insertions = true;
@@ -1478,7 +1482,9 @@ export class TrunkDO extends DurableObject<Env> {
         mergedSizes = new Map();
       }
       const back = (): void => {
-        for (const r of plan.returned.flat()) outcome.set(r.proposalId, { kind: "returned", reason: r.reason, ...(resolving && r.conflicts ? { conflicts: r.conflicts } : {}) });
+        for (const r of plan.returned.flat()) outcome.set(r.proposalId, { kind: "returned", reason: r.reason, ...(resolving && r.conflicts ? { conflicts: r.conflicts } : {}), ...(r.held ? { held: r.held } : {}) });
+        // Merge locks: the merges held for a person this cycle; an approval given after this lands them.
+        keepHolds(this.sql, plan.returned.flat(), Date.now());
       };
       lap("plan");
       if (exportInput !== undefined) stat.exportsUncovered = plan.exportsUncovered ?? 0;

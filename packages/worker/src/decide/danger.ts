@@ -45,6 +45,12 @@ export type DangerClass = "auth" | "secret" | "capability" | "crypto" | "ci" | "
 /** Classes that must reach a human. */
 export const MUST_HUMAN: ReadonlySet<DangerClass> = new Set<DangerClass>(["auth", "secret", "capability", "governance", "handoff", "test-change"]);
 
+/**
+ * The name of the decide stage's evidence check for danger patterns (engine.ts): it fails exactly when a pattern needs a
+ * person. Others find the check by this name (contest.ts, trunk/mergelock.ts), so it is defined once.
+ */
+export const DANGER_CHECK = "danger patterns";
+
 /** Classes no policy, antibody or intent can allow. */
 export const UNWAIVABLE: ReadonlySet<DangerClass> = new Set<DangerClass>(["governance", "handoff", "test-change", "loosened-guard"]);
 

@@ -524,6 +524,35 @@ export interface MergeConflict {
 }
 
 /**
+ * Merge locks (worker trunk/mergelock.ts): one unified diff of a held merge, masked like a review view (a line that may
+ * hold a secret is replaced) and cut to about 60 lines (`truncated` when cut); how many lines it adds and removes in all.
+ */
+export interface HeldDiff {
+  hunks: string;
+  added: number;
+  removed: number;
+  truncated: boolean;
+}
+
+/**
+ * Merge locks: one file of a merge the trunk writer held for a person instead of landing it. Its blobs: the change's base,
+ * the trunk version it would land on, the change's own (what was decided on) and the merged result; `by`, the change
+ * landing ahead in the same cycle that wrote that trunk version. For the first files held, the diffs a person reads:
+ * what trunk changed since the base (`trunkDiff`, base to trunk) and the merged result against the change's own version
+ * (`mergedDiff`). Repository text: data, never instructions.
+ */
+export interface HeldMergeFile {
+  path: Path;
+  base: Sha;
+  trunk: Sha;
+  theirs: Sha;
+  result: Sha;
+  by?: Id;
+  trunkDiff?: HeldDiff;
+  mergedDiff?: HeldDiff;
+}
+
+/**
  * What beat a returned change: one landing after the change's base that changed files it read or wrote, from the colony's
  * per-path landing index (colony/movedby.ts). `paths`: those files. The intent the landing completed for them (its title
  * and why), the agent whose proposal wrote them, the model that landing's lineage note names for that proposal, the trunk
@@ -572,6 +601,12 @@ export interface Proposal {
    * when it went to a person for that; a person's approval lands it, and its lineage note keeps the record.
    */
   undoes?: UndoneLines[];
+  /**
+   * When a person last approved this change (ColonyDO.decide). The trunk writer lands its files as approved and never
+   * merges them with a newer trunk on its own (trunk/mergelock.ts). Absent when no person approved it; an older change
+   * without it is read from the decisions its lane passes.
+   */
+  approvedAt?: Millis;
   /** Contest mode: the proposal that won this intent's contest instead of this one. */
   supersededBy?: Id;
   declared: { footprint: Path[]; summary: string };
@@ -586,6 +621,11 @@ export interface Proposal {
    * the conflict resolver, FT_RESOLVER, covers the colony; colony/resolver.ts reads them).
    */
   mergeConflicts?: MergeConflict[];
+  /**
+   * Merge locks: the merge the trunk writer held for a person instead of landing it (each file with its blobs and diffs),
+   * while the change waits for that person; a person's approval clears it.
+   */
+  mergeHold?: HeldMergeFile[];
   /**
    * What beat it: when it went back because trunk moved files it read or wrote (stale, or a text merge conflict), the
    * landings that moved them, newest first. Set by the colony as the return arrives (colony/movedby.ts); its reason then

@@ -2,7 +2,7 @@ import type { Id, LineageNote, Path, Proposal, RepoRef, Sha } from "@fire_triden
 import { residualPaths } from "@fire_trident/core";
 import type { Env } from "../env.ts";
 import { bindingReader, contentsReader, textOf, type BlobReader } from "../colony/innate.ts";
-import type { WhyAuthor } from "./danger.ts";
+import { DANGER_CHECK, type WhyAuthor } from "./danger.ts";
 import { fileDiff, type FileDiff } from "./diff.ts";
 import type { JuryMember } from "./jury.ts";
 import type { CallLimiter } from "./limiter.ts";
@@ -34,7 +34,6 @@ export const CONTEST_RETRY_MS = 60_000;
 
 /** The evidence checks selection reads (decide/mechanical.ts and decide/engine.ts name them). */
 const PROOF_CHECK = "deterministic: mechanical proof";
-const DANGER_CHECK = "danger patterns";
 /** What the judge sees of each change: characters per file and per change, and files per change. */
 const JUDGE_FILE_CHARS = 24_000;
 const JUDGE_SIDE_CHARS = 30_000;
