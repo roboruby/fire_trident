@@ -62,6 +62,8 @@ import type { DetectorState } from "../decide/policy.ts";
 import type { DecideStore, StoredAntibody } from "../decide/store.ts";
 import { ANTIBODY_DIR, antibodyAllows, parseAntibodyFile, type AllowingAntibody } from "../decide/antibodies.ts";
 import { keepSource } from "../decide/quotes.ts";
+import { cachedSplit, decidesReport } from "../decide/decides.ts";
+import type { DecidesReport } from "@fire_trident/core";
 import { DEFAULT_NOT_VERIFIED, FieldBatch, groupByRegion, jitter, normalizePath, normalizePaths, overlapCount, primaryRegion, violationIntents } from "./logic.ts";
 import { EmitPacer, Gate, WaitPacer, fastRepulsion, fieldIndex, unseenByRegion, type FieldIndex, type RecentClaim } from "./views.ts";
 import { LagProbe } from "./lag.ts";
@@ -2771,6 +2773,14 @@ export class ColonyDO extends DurableObject<Env> {
   async immune(): Promise<Record<string, unknown>> {
     this.requireColony();
     return this.decider().immune();
+  }
+
+  /** How this colony decides (decide/decides.ts): the preset its policy equals, and the last 30 days of landed changes by what confirmed them. */
+  async decides(): Promise<DecidesReport> {
+    const colony = this.requireColony();
+    const engine = this.decider();
+    const now = Date.now();
+    return decidesReport({ colonyId: colony.id, policy: engine.store.policy(), reviewing: engine.enabled(), split: cachedSplit(this.sql, now), now });
   }
 
   /**

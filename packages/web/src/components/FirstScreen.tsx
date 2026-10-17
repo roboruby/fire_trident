@@ -11,6 +11,8 @@ import type { ColonyStore } from "../store.ts";
 import { readProtected, targetOf, type ProtectedPaths, type Target } from "../target.ts";
 import { useThrottledVersion } from "../useStore.ts";
 import { StuckList } from "./NeedsYou.tsx";
+import type { DecidesState } from "../decides.ts";
+import { DecidesCard, DecidesRow, useDecides } from "./Decides.tsx";
 import "./firstscreen.css";
 
 /**
@@ -55,7 +57,7 @@ function andMore(items: readonly string[], shown = SHOWN): string {
 const CERT_WORD: Record<Target["cert"]["status"], string> = { green: "green", red: "red", running: "running", error: "could not run", skipped: "skipped", none: "not run yet" };
 
 /** The target column: rules with who approved them, acceptance, protected paths, open goals, certification. */
-export function TargetView({ target, open = false, onToggle }: { target: Target; open?: boolean; onToggle?: () => void }) {
+export function TargetView({ target, open = false, onToggle, decides }: { target: Target; open?: boolean; onToggle?: () => void; decides?: DecidesState }) {
   const { rules, acceptance, protectedPaths: pp, goals, cert } = target;
   const approvers = [...new Set(rules.map((r) => r.approvedBy))];
   return (
@@ -106,6 +108,8 @@ export function TargetView({ target, open = false, onToggle }: { target: Target;
             <span className="mono fs-globs">{andMore(pp.globs, 3)}</span>
           )}
         </dd>
+        {/* How the colony decides (Decides.tsx): its preset and the last 30 days by what confirmed them. */}
+        {decides ? <DecidesRow d={decides} /> : null}
         <dt>Goals</dt>
         <dd>
           {goals.people + goals.rules === 0 ? (
@@ -144,7 +148,7 @@ export function TargetView({ target, open = false, onToggle }: { target: Target;
 }
 
 /** Everything in the target, listed: each rule with who approved it, each acceptance line, every protected path, the open goals. */
-export function TargetDetails({ target }: { target: Target }) {
+export function TargetDetails({ target, decides, colonyId = "" }: { target: Target; decides?: DecidesState; colonyId?: string }) {
   const pp = target.protectedPaths;
   return (
     <div className="fs-detail" aria-label="The whole target">
@@ -210,6 +214,8 @@ export function TargetDetails({ target }: { target: Target }) {
         </ul>
         {target.goals.list.length > 12 ? <p className="fs-dim">{plural(target.goals.people + target.goals.rules - 12, "more goal")}.</p> : null}
       </section>
+      {/* How the colony decides, the whole card (Decides.tsx), across the panel. */}
+      {decides ? <DecidesCard d={decides} colonyId={colonyId} /> : null}
     </div>
   );
 }
@@ -407,6 +413,7 @@ export function FirstScreen({ store, backend, onGo }: { store: ColonyStore; back
   const [open, setOpen] = useState(false);
   const [stuckOpen, setStuckOpen] = useState(false);
   const pp = useProtected(store.colonyId, backend.mode);
+  const decides = useDecides(store.colonyId, backend.mode);
   const curve = useCurve(store, backend);
   // An empty row while the colony loads keeps the page grid in place.
   if (!store.loaded) return <section className="fs is-loading" aria-hidden="true" />;
@@ -447,14 +454,14 @@ export function FirstScreen({ store, backend, onGo }: { store: ColonyStore; back
   return (
     <section className="fs" aria-label="Target, distance and exceptions">
       <div className="fs-grid">
-        <TargetView target={target} open={open} onToggle={() => setOpen(!open)} />
+        <TargetView target={target} open={open} onToggle={() => setOpen(!open)} decides={decides} />
         <DistanceView distance={distance} replay={replay} />
         <CurveView curve={curve} />
         <button type="button" className="fs-toggle fs-fold" onClick={() => fold(true)} title="Fold the target into one line (this browser remembers)">
           Fold
         </button>
       </div>
-      {open ? <TargetDetails target={target} /> : null}
+      {open ? <TargetDetails target={target} decides={decides} colonyId={store.colony?.id ?? store.colonyId} /> : null}
       {strip}
     </section>
   );

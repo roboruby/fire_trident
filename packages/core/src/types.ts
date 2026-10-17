@@ -505,6 +505,31 @@ export interface CheckResult {
    * Absent: a check FireTrident or a model ran, known by its name (core/answerable.ts checkSpeaker).
    */
   by?: "agent";
+  /**
+   * The gate check only (worker decide/ruleline.ts): the rule that decided, the colony's preset then, and the values the
+   * rule used, each with the policy bound it met. Absent on other checks and on notes written before it was kept.
+   */
+  gate?: GateRecord;
+}
+
+/** One value a gate rule used, with the policy bound it was held to when it has one ("confidence 0.93 ≥ 0.85"). */
+export interface GateValue {
+  /** What it is, as a reader names it: "confidence", "p(needs_human)", "approved landings", "model", ... */
+  name: string;
+  value: number | string | boolean;
+  /** How the value met the bound. Absent when the value has no bound (a model name, a count). */
+  op?: "≥" | ">" | "<" | "≤" | "=";
+  bound?: number;
+}
+
+/**
+ * What the gate check keeps of its decision (core/decides.ts reads it): the rule ("R3 innate+autonomy"), the preset the
+ * colony's policy equalled when it decided ("production", or "custom"; worker decide/presets.ts), and the rule's values.
+ */
+export interface GateRecord {
+  rule: string;
+  preset: string;
+  values: GateValue[];
 }
 
 /**

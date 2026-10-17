@@ -261,6 +261,12 @@ describe("earned autonomy", () => {
     const p = await c.decide(c.declare("human", ["src/add.ts"]), [{ path: "src/add.ts", after: MODULE }]);
     expect(p.status).toBe("ready");
     expect(c.ai.secondOpinions()).toEqual([]);
+    // The gate check keeps the rule's values (decide/ruleline.ts): the approved landings it counted, against the policy's bound.
+    expect(p.evidence.checks.find((k) => k.name === "gate")!.gate).toMatchObject({
+      rule: "R3 innate+autonomy",
+      preset: "central-development",
+      values: expect.arrayContaining([{ name: "approved landings", value: 3, op: "≥", bound: 3 }, { name: "p(needs_human)", value: 0.03, op: "<", bound: 0.5 }]),
+    });
   });
 
   it("never covers an agent's intent: the second opinion is asked", async () => {
@@ -431,6 +437,7 @@ describe("the comment-only proof", () => {
     expect(c.decisions).toEqual([]);
     const gate = p.evidence.checks.find((k) => k.name === "gate")!;
     expect(gate.detail).toMatch(/^D3 innate\+proof → land by deterministic .*\(confirmations: innate \+ deterministic\): deterministic proof: 1 file proven comment-only \(src\/add\.ts\)/);
+    expect(gate.gate).toEqual({ rule: "D3 innate+proof", preset: "central-development", values: [{ name: "proof", value: "1 file proven comment-only (src/add.ts): the code's tokens and the line breaks between them are unchanged, and no comment there is a directive tools read" }, { name: "antibodies to screen", value: 0 }, { name: "destructive change", value: false }] });
     expect(p.evidence.checks.find((k) => k.name === "deterministic: mechanical proof")).toMatchObject({ ok: true });
   });
 

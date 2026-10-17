@@ -4,6 +4,8 @@ import { oneLine, truncate } from "./text.ts";
 export * from "./answerable.ts";
 // A landing's test row: what landed it, the tests lost and gained, and the words (testdelta.ts).
 export * from "./testdelta.ts";
+// How a colony decides: the rule that confirmed each landed change, and the words for its report (decides.ts).
+export * from "./decides.ts";
 
 const SUBJECT_MAX = 72;
 

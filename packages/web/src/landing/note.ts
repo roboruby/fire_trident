@@ -1,5 +1,5 @@
 import type { LandingAnswer, LandingTests, LineageNote, NoteCheck, Speaker } from "@fire_trident/core";
-import { evidenceLines, landingAnswerable, notVerifiedSpeaker, notVerifiedWords } from "@fire_trident/core";
+import { evidenceLines, landingAnswerable, landingConfirmed, notVerifiedSpeaker, notVerifiedWords, type LandingConfirmation } from "@fire_trident/core";
 import { decisionsFromChecks } from "../decisions.ts";
 import { provenanceOf, type ProvenanceView } from "../lineage.ts";
 import { checksOf, sealOf, uncheckedSeal, type NoteSeal } from "../verified.ts";
@@ -67,6 +67,8 @@ export interface NoteCard {
   notVerifiedBy: Speaker | null;
   /** Who answers for the landing (its whole note). */
   answerable: { answer: LandingAnswer; text: string };
+  /** The rule that confirmed each change, with the values it used (core/decides.ts); absent on cards built before it. */
+  confirmed?: LandingConfirmation;
   /** Its tests at its base against the certified commit (GET /landings/:ref/tests; tests.ts); null when not read (the recorded stand-in, or no answer). */
   tests?: LandingTests | null;
   reads: CardFile[];
@@ -146,6 +148,7 @@ export function cardOf(x: CardInput): NoteCard {
     notVerified,
     notVerifiedBy: notVerified ? notVerifiedSpeaker(evidence) : null,
     answerable: { answer: answerable.answer, text: answerable.text },
+    confirmed: landingConfirmed(x.note),
     reads: reads.slice(0, FILES_SHOWN),
     writes: writes.slice(0, FILES_SHOWN),
     moreReads: Math.max(0, reads.length - FILES_SHOWN),

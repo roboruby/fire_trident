@@ -55,6 +55,7 @@ import {
   type ReflexInput,
 } from "./reflex.ts";
 import { buildReviewView } from "./review.ts";
+import { gateRecord } from "./ruleline.ts";
 import { maskNote } from "../trunk/mask.ts";
 import { damageSignals, isTestPath, protectedHits } from "./signals.ts";
 import { DecideStore, type DetectorStats, type StoredAntibody } from "./store.ts";
@@ -330,6 +331,8 @@ export class DecideEngine {
     const seen = { reflex: stateCoverage(diffs), llm: secondOpinionDiff(diffs).coverage };
     // What the change takes away (decide/destructive.ts): no rung that lands without the second opinion or a person lands it.
     const destructive = destructiveFact(innate.files);
+    // The region's approved landings, read once: earned autonomy below, and the gate check's record of R3 (decide/ruleline.ts).
+    const approved = vaccine ? 0 : this.store.approvedLandings(region);
     const base = {
       innate: { ok: innate.ok, failures: innate.failures },
       damage,
@@ -338,7 +341,7 @@ export class DecideEngine {
       protected: protectedHits(paths, policy.protectedPaths),
       ...(goal?.conflict ? { goalConflict: { reason: goal.conflict.reason } } : {}),
       antibodies: matching.length,
-      autonomy: !vaccine && this.store.approvedLandings(region) >= policy.autonomyAfter,
+      autonomy: !vaccine && approved >= policy.autonomyAfter,
       whyBy,
       destructive,
       coverage: {
@@ -504,6 +507,8 @@ export class DecideEngine {
       ok: final.action === "land",
       ms: 0,
       detail: `${final.rule} → ${final.action} by ${final.layer} at head ${p.headSha.slice(0, 12)}${final.confirmations.length > 0 ? ` (confirmations: ${final.confirmations.join(" + ")})` : ""}: ${final.reasons.join("; ")}`.slice(0, 1_000),
+      // The rule's values and the colony's preset (decide/ruleline.ts), for the line every landing card shows.
+      gate: gateRecord(final, { input: { ...base, reflex, llm }, policy, approvals: () => approved }),
     });
     const evidence = { ...p.evidence, checks: [...p.evidence.checks, ...checks], ...(preland ? { preland: preland.run } : {}) };
 

@@ -3,6 +3,7 @@ import { decisionSpeaker } from "@fire_trident/core";
 import { NoteSealBadge } from "../components/NoteSeal.tsx";
 import { SaidBy } from "../components/SaidBy.tsx";
 import { TestsBody } from "../components/TestsRow.tsx";
+import { ConfirmedLine } from "../components/Decides.tsx";
 import { shortId, shortSha, timeAgo } from "../format.ts";
 import { colonyHref } from "../route.ts";
 import { LAYER_COLOR, STAGE_COLOR } from "../theme.ts";
@@ -89,6 +90,8 @@ export function NoteCardView({ card, origin }: { card: NoteCard; origin: string 
         <div className="nc-col">
           <Field k="Answerable">
             <div className={`nc-answerable is-${card.answerable.answer}`}>{card.answerable.text}</div>
+            {/* The rule that confirmed it, with the values it used (core/decides.ts). */}
+            {card.confirmed ? <ConfirmedLine c={card.confirmed} /> : null}
           </Field>
           <Field k="Tests">
             {card.tests ? (
