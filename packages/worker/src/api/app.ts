@@ -34,6 +34,7 @@ import { guideRoutes } from "./guide.ts";
 import { megafileRoutes } from "./megafile.ts";
 import { landingRoutes, verifyLanding } from "./landing.ts";
 import { impactRoutes } from "./impact.ts";
+import { rootRoutes } from "./root.ts";
 import { a2aRoutes } from "./a2a.ts";
 
 /** Hono environment of the API. */
@@ -213,6 +214,7 @@ async function requireColony(env: Env, colonyId: Id): Promise<void> {
  *   GET    /colonies/:id/guide              the field guide's active lessons (api/guide.ts; candidates with the admin token; POST guide/:lessonId approves or rejects)
  *   GET    /colonies/:id/megafile           files held for their split (api/megafile.ts; POST holds or releases one)
  *   GET    /colonies/:id/impact             ?path=&depth=: what a change reaches through imports, and who works on it now (api/impact.ts)
+ *   GET    /colonies/:id/root               the colony's root commit: the first commit of trunk, which pins a clone (api/root.ts)
  *   GET    /colonies/:id/.well-known/agent-card.json  the colony's Agent2Agent card (FT_A2A; api/a2a.ts)
  *   POST   /colonies/:id/a2a                Agent2Agent JSON-RPC: SendMessage and CancelTask (admin token), GetTask, ListTasks (api/a2a.ts)
  * POST routes require the admin bearer token when FT_ADMIN_TOKEN is set; DELETE always does.
@@ -585,6 +587,7 @@ export function createApi(deps: ApiDeps): Hono<ApiEnv> {
   megafileRoutes(app, requireAdmin); // Megafile alarm: held files, a person's hold or release (api/megafile.ts)
   landingRoutes(app); // One landing's change to a file, for public colonies (api/landing.ts)
   impactRoutes(app); // Impact: what a change to a file reaches through imports, and who works on those files now (api/impact.ts)
+  rootRoutes(app); // The colony's root commit, which pins a clone of its history (api/root.ts)
   a2aRoutes(app, requireAdmin); // Agent2Agent: an orchestrator declares intents and follows them as tasks (FT_A2A; api/a2a.ts)
 
   // Unknown API paths answer JSON here instead of falling through to the static UI.

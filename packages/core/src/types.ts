@@ -832,6 +832,24 @@ export interface NotesVerification {
 }
 
 /**
+ * A colony's root commit (GET /api/colonies/:id/root): the first commit of its trunk, first parent from the tip, as the
+ * trunk repository held it when the trunk writer first read it, and kept from then on. It pins the colony's history: a
+ * clone checked with `scripts/verify_note.mjs --colony <root>` or `ft verify --all --colony <root>` fails when its root
+ * is another (a clone of another colony, or history rewritten from its first commit).
+ */
+export interface TrunkRoot {
+  colonyId: Id;
+  /** The root commit, or null when it could not be read (`detail` says why). */
+  rootSha: Sha | null;
+  /** The root names a parent the trunk repository does not hold: an import keeps the newest 200 commits of its source, so its root is the oldest one kept. */
+  shallow: boolean;
+  /** When the root was first read. */
+  at: Millis;
+  /** Why the root could not be read, in words. */
+  detail?: string;
+}
+
+/**
  * The change one landing made to one file (GET /api/colonies/:id/landings/:ref/diff?path=, served for the colonies listed in
  * FT_PUBLIC_GIT or FT_PUBLIC_MCP): the file's blob in the landing's lineage note write set against its blob in the parent
  * commit, as unified hunks cut on a line boundary so the answer stays within 64 KB. `before` and `after` are null where the
