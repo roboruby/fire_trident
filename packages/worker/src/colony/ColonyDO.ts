@@ -168,6 +168,9 @@ import { lessonScopesEnabled } from "./lessonscope.ts";
 import type { GuideLesson, GuideTake, LessonReceipt } from "@fire_trident/core";
 import { MegafileAlarm, megafileEnabled, type MegafileHost } from "./megafile.ts";
 import { declareRecipe, intentRecipe, migrateIntentRecipes, recipeNews, type RecipeColonyHost, type RecipeDeclare } from "./recipe.ts";
+import { mechanicalShare, ruleRecipe, ruleRecipeNews, splitViolations, startRuleRecipe, type RuleRecipeHost, type RuleRecipeStart } from "./rulerecipe.ts";
+import { declaredRecipe } from "../decide/reproduce.ts";
+import { reviewReproduction } from "../decide/review.ts";
 import { revalidationEnabled as flagCovers } from "@fire_trident/core";
 import type { RecipeRecord } from "@fire_trident/core";
 import { A2A_ACTOR, ColonyPause, DEPLOYMENT_PAUSE_KEY, type PauseAnswer, type PauseView, type ResumeAnswer, type WriterPause } from "./pause.ts";
@@ -893,7 +896,7 @@ export class ColonyDO extends DurableObject<Env> {
   }
 
   /** Add a morphology rule: scan trunk, one `rule` intent per violating file. */
-  async addRule(r: Omit<Rule, "id" | "createdAt">): Promise<{ rule: Rule; violations: number; intents: number }> {
+  async addRule(r: Omit<Rule, "id" | "createdAt"> & { recipe?: unknown }): Promise<{ rule: Rule; violations: number; intents: number; recipe?: RuleRecipeStart }> {
     const colony = this.requireColony();
     const problems = validateRule({ kind: r.kind, spec: r.spec ?? {} });
     if (problems.length > 0) throw ftError(400, `invalid rule: ${problems.join("; ")}`);
@@ -907,9 +910,14 @@ export class ColonyDO extends DurableObject<Env> {
       approvedBy: r.approvedBy || "unknown",
       createdAt: Date.now(),
     };
+    // Target items that carry recipes (colony/rulerecipe.ts): the rule's recipe, refused before anything is stored, is kept
+    // in its spec; the violations in the recipe's scope wait for it, and only the others become intents now.
+    const recipe = ruleRecipe(r.recipe ?? rule.spec.recipe, rule, this.recipeColony().modules);
+    if (recipe) rule.spec = { ...rule.spec, recipe };
     const violations = await this.scan(rule);
-    const drafts = violationIntents(rule, violations);
-    const open = drafts.reduce((n, d) => n + d.violations, 0);
+    const split = splitViolations(recipe, violations);
+    const drafts = violationIntents(rule, split.now);
+    const open = drafts.reduce((n, d) => n + d.violations, 0) + [...split.later.values()].reduce((n, lines) => n + lines.length, 0);
     this.sql.exec(
       "INSERT INTO rules (id, kind, spec, description, approved_by, created_at, open_violations) VALUES (?, ?, ?, ?, ?, ?, ?)",
       rule.id,
@@ -933,8 +941,10 @@ export class ColonyDO extends DurableObject<Env> {
         violations: d.violations,
       })),
     );
+    // The recipe lands directly, its intent the rule's; its residue becomes intents once it has landed (colony/rulerecipe.ts).
+    const started = recipe ? await startRuleRecipe(this.ruleRecipeHost(), rule, recipe, split.later) : null;
     this.publish(this.violationsEvent(Date.now()));
-    return { rule, violations: open, intents: intents.length };
+    return { rule, violations: open, intents: intents.length + (started?.intents ?? 0), ...(started ? { recipe: started } : {}) };
   }
 
   /** One rule by id. */
@@ -2212,6 +2222,9 @@ export class ColonyDO extends DurableObject<Env> {
       // Heads-up (FT_HEADS_UP, colony/headsup.ts): what the MCP server had told the agent of landings under its files.
       ...toldOfField(input.toldOf),
     };
+    // Review by reproduction (decide/reproduce.ts, FT_REPRODUCE): the recipe the change says made it, kept bounded for the decide stage.
+    const recipe = declaredRecipe(input.recipe);
+    if (recipe) draft.recipe = recipe;
     // Direction: refuse a change built on an older revision; record revision, directives and status note.
     this.stampDirection(draft, intentRow, input.intentRevision);
 
@@ -2597,7 +2610,7 @@ export class ColonyDO extends DurableObject<Env> {
         .map((d) => ({ path: d.path as Path, line: count(d.line), cls: d.cls as string, pattern: text(d.pattern), label: text(d.label) }));
       const residual = Array.isArray(o.residual) ? o.residual.filter((p): p is Path => typeof p === "string" && p !== "") : [];
       if (files.length === 0 && danger.length === 0 && residual.length === 0) continue;
-      views.set(r.id, { files, filesChanged: Math.max(count(o.filesChanged), files.length), danger, residual });
+      views.set(r.id, { files, filesChanged: Math.max(count(o.filesChanged), files.length), danger, residual, ...reviewReproduction(o.reproduction) });
     }
     return views;
   }
@@ -2777,6 +2790,32 @@ export class ColonyDO extends DurableObject<Env> {
         await this.withdrawIntent(intentId, { reason, by });
       },
       intentStatus: (id) => this.intentRow(id)?.status ?? null,
+      // Target items that carry recipes (colony/rulerecipe.ts): the mechanical share, and a rule's recipe counting its violations off.
+      afterNews: (record, landing) => ruleRecipeNews(this.ruleRecipeHost(), record, landing),
+    };
+  }
+
+  /** What a rule's recipe needs from the colony (colony/rulerecipe.ts). */
+  private ruleRecipeHost(): RuleRecipeHost {
+    const colony = this.requireColony();
+    return {
+      sql: this.sql,
+      now: () => Date.now(),
+      recipes: () => this.recipeColony(),
+      rule: (id) => {
+        const row = this.sql.exec<RuleRow>("SELECT * FROM rules WHERE id = ?", id).toArray()[0];
+        return row ? this.toRule(row, colony.id) : null;
+      },
+      readFile: (path) => this.trunkStub().readFile(path),
+      declareIntents: async (rule, drafts) =>
+        (
+          await this.createIntents(
+            drafts.map((d) => ({ colonyId: colony.id, title: d.title, why: d.why, source: "rule" as const, ruleId: rule.id, footprint: [d.path], priority: 1, createdBy: rule.approvedBy, violations: d.violations })),
+          )
+        ).length,
+      publish: (events) => this.publish(events),
+      violationsEvent: (now) => this.violationsEvent(now),
+      bump: (name, delta, now) => this.bump(name, delta, now),
     };
   }
 
@@ -4449,6 +4488,9 @@ export class ColonyDO extends DurableObject<Env> {
       console.warn(`spend report failed: ${errorText(err)}`);
       return undefined;
     }
+    // The mechanical share (colony/rulerecipe.ts): work that landed with no model call, which the spend card shows at $0.
+    const mechanical = mechanicalShare(metrics);
+    if (mechanical) spend = { ...spend, mechanical };
     // The spend cap (colony/spendcap.ts), when a person set one; the report stands without it if it cannot be read.
     try {
       const cap = this.spendCaps().state();

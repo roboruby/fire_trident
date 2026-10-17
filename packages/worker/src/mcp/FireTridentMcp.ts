@@ -19,6 +19,7 @@ import { FireTridentTools, MAX_WAIT_S } from "./tools.ts";
 import type { McpColonyRpc, McpTrunkRpc, RepoReader, Session, ToolContext } from "./tools.ts";
 import { IMPACT_DESCRIPTION } from "./impact.ts";
 import { PROPOSE_RETRY } from "./replay.ts";
+import { RECIPE_ARGUMENT, reproduceOffered } from "../decide/reproduce.ts";
 import { sessionTools } from "./headsup.ts";
 import { IMPACT_DEPTH, IMPACT_ENTRIES } from "../trunk/impact.ts";
 
@@ -216,6 +217,17 @@ export class FireTridentMcp extends McpAgent<Env, Record<string, never>, Record<
     const notVerified = z.string().max(5_000).optional().describe("What you did not check (tests not run, platforms not tried, ...)");
     // Field guide (FT_FIELD_GUIDE): propose takes a lesson only where the deployment keeps a guide for some colony.
     const lesson: Record<string, z.ZodOptional<z.ZodString>> = guideOffered(this.env.FT_FIELD_GUIDE) ? { lesson: z.string().max(GUIDE_LIMITS.lessonChars).optional().describe(LESSON_ARGUMENT) } : {};
+    // Review by reproduction (FT_REPRODUCE, decide/reproduce.ts): propose takes the recipe that made the change where the deployment replays one.
+    const recipeArg = z
+      .object({
+        kind: z.string().max(40),
+        version: z.union([z.string().max(20), z.number().int().min(0)]).optional(),
+        args: z.record(z.string().max(40), z.union([z.string().max(70_000), z.boolean()])).default({}),
+        scope: z.union([z.string().max(200), z.array(z.string().max(200)).max(20)]),
+      })
+      .optional()
+      .describe(RECIPE_ARGUMENT);
+    const recipe: Record<string, typeof recipeArg> = reproduceOffered(this.env.FT_REPRODUCE) ? { recipe: recipeArg } : {};
     if (inlineOffered(this.env.FT_INLINE)) {
       this.server.registerTool(
         "propose",
@@ -233,6 +245,7 @@ export class FireTridentMcp extends McpAgent<Env, Record<string, never>, Record<
             summary,
             notVerified,
             ...lesson,
+            ...recipe,
           },
           // Idempotent: a repeat of the same change (head commit, or files) gets the proposal the colony already has.
           annotations: { idempotentHint: true, openWorldHint: false },
@@ -245,7 +258,7 @@ export class FireTridentMcp extends McpAgent<Env, Record<string, never>, Record<
         {
           title: "Propose your change",
           description: `Propose the commit you pushed to refs/heads/main of your workspace. The server computes the files you wrote by diffing your commit against the lease base; your read set comes from read calls in this session. Say what you did not verify in notVerified: reviewers see it. ${PROPOSE_RETRY}`,
-          inputSchema: { headSha, summary, notVerified, ...lesson },
+          inputSchema: { headSha, summary, notVerified, ...lesson, ...recipe },
           annotations: { idempotentHint: true, openWorldHint: false },
         },
         async (a) => run(() => this.tools().propose(a)),

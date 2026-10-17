@@ -32,6 +32,30 @@ export interface ReviewView {
   filesChanged: number;
   danger: ReviewDanger[];
   residual: string[];
+  /** Review by reproduction: the change declared a recipe and these lines equalled its replay, so `files` is only the residual. */
+  reproduction?: ReviewReproduction;
+}
+
+/** What equalled a declared recipe's replay (not shown) and what is left to review, with the server's line. */
+export interface ReviewReproduction {
+  /** kind@version: "rename-identifier@1". */
+  recipe: string;
+  reproduced: { files: number; lines: number };
+  residual: { files: number; lines: number };
+  /** "3,999 lines reproduced by rename-identifier@1, 1 line to review". */
+  text: string;
+}
+
+/** A reproduction as the server sent it, checked field by field; null when there is none. */
+export function reproductionOf(raw: unknown): ReviewReproduction | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const o = raw as Record<string, unknown>;
+  if (typeof o.recipe !== "string" || o.recipe === "" || typeof o.text !== "string" || o.text === "") return null;
+  const side = (v: unknown): { files: number; lines: number } => {
+    const s = v && typeof v === "object" ? (v as Record<string, unknown>) : {};
+    return { files: count(s.files), lines: count(s.lines) };
+  };
+  return { recipe: o.recipe, reproduced: side(o.reproduced), residual: side(o.residual), text: o.text };
 }
 
 /** One line of a rendered diff: a hunk header, an added, removed or unchanged line, or a note such as the cut marker. */
@@ -89,7 +113,8 @@ export function reviewOf(item: Proposal): ReviewView | null {
     .map((d) => ({ path: d.path as string, line: count(d.line), cls: d.cls as string, pattern: text(d.pattern), label: text(d.label) }));
   const residual = Array.isArray(o.residual) ? o.residual.filter((p): p is string => typeof p === "string" && p !== "") : [];
   if (files.length === 0 && danger.length === 0 && residual.length === 0) return null;
-  return { files, filesChanged: Math.max(count(o.filesChanged), files.length), danger, residual };
+  const reproduction = reproductionOf(o.reproduction);
+  return { files, filesChanged: Math.max(count(o.filesChanged), files.length), danger, residual, ...(reproduction ? { reproduction } : {}) };
 }
 
 /** Unified hunks ("@@ -a,b +c,d @@", then lines marked " ", "-" or "+") as lines numbered in the old and the new text. */

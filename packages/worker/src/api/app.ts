@@ -46,6 +46,7 @@ import { lifecycleRoutes } from "./lifecycle.ts";
 import { headsUpRoutes } from "./headsup.ts";
 import { recipeRoutes } from "./recipes.ts";
 import { refuseWhilePaused } from "../colony/pause.ts";
+import { declaredRecipe } from "../decide/reproduce.ts";
 import { bearerMatches } from "./token.ts";
 
 /** Hono environment of the API. */
@@ -397,7 +398,7 @@ export function createApi(deps: ApiDeps): Hono<ApiEnv> {
   app.post("/colonies/:id/rules", requireAdmin, async (c) => {
     const colonyId = colonyParam(c);
     const b = await body(c, RuleBody);
-    const res = await colonyStub(c.env, colonyId).addRule({ colonyId, kind: b.kind, spec: b.spec, description: b.description, approvedBy: b.approvedBy ?? "api" });
+    const res = await colonyStub(c.env, colonyId).addRule({ colonyId, kind: b.kind, spec: b.spec, description: b.description, approvedBy: b.approvedBy ?? "api", ...(b.recipe ? { recipe: b.recipe } : {}) });
     return json(res, 201);
   });
 
@@ -537,6 +538,8 @@ export function createApi(deps: ApiDeps): Hono<ApiEnv> {
       ...(evidence ? { evidence } : {}),
       // Field guide (FT_FIELD_GUIDE): the agent's lesson; the answer says what became of it where the guide is on.
       ...(b.lesson !== undefined ? { lesson: b.lesson } : {}),
+      // Review by reproduction (FT_REPRODUCE): the recipe the change says made it.
+      ...(b.recipe ? { recipe: declaredRecipe(b.recipe) } : {}),
     });
     return json(proposal, 201);
   });

@@ -37,6 +37,7 @@ import { candidatePaths, mechanicalCheck, nameAssumptionCandidates, nameAssumpti
 import { pickSecondOpinion, secondOpinionCandidates, type DecidePolicy } from "./policy.ts";
 import { pushQuarantine } from "./quarantine.ts";
 import { askedLines, checkAcceptance, type KeepSource } from "./quotes.ts";
+import { REPRODUCED_LINES_METRIC, reproduceChange } from "./reproduce.ts";
 import {
   askClef,
   askSecondOpinion,
@@ -268,14 +269,14 @@ export class DecideEngine {
 
     // Innate checks, then what the change looks like and what it could damage.
     const innate = await runInnateChecks(p, { env: this.host.env, colony, intent, rules, baseBlobs: (sha, paths) => this.host.trunk().baseBlobs(sha, paths) });
-    const diffs = innate.files.map((f) => fileDiff(f.path, f.before, f.after, { binary: f.binary, unreadable: f.unreadable, maxChars: REVIEW_FILE_CHARS }));
+    let diffs = innate.files.map((f) => fileDiff(f.path, f.before, f.after, { binary: f.binary, unreadable: f.unreadable, maxChars: REVIEW_FILE_CHARS }));
     const damage = damageSignals(
       innate.files.map((f, i) => ({ path: f.path, before: f.before, after: f.after, added: diffs[i]?.addedLines ?? [] })),
       innate.residual,
     );
     const paths = p.writeSet.map((w) => w.path);
     const added = diffs.flatMap((d) => d.addedLines);
-    const matching = this.store.matchingAntibodies(paths, added, policy.maxAntibodies);
+    let matching = this.store.matchingAntibodies(paths, added, policy.maxAntibodies);
 
     // Danger patterns: fixed receptors over added lines and paths. Auth, secrets and unrequested
     // capabilities reach a human unless the policy or a tolerating antibody explicitly allows them.
@@ -314,9 +315,20 @@ export class DecideEngine {
     const dangerSignals = dangerLabels(danger.signals.filter((h) => h.cls !== "ci" && h.cls !== "dependency"));
     const dangerFacts = [...dangerLabels(danger.signals), ...dangerLabels(danger.recorded)].map((l) => `danger pattern (deterministic): ${l}`);
 
+    // Review by reproduction (decide/reproduce.ts, FT_REPRODUCE): a change that declared the recipe it was made by has it
+    // replayed on its base files. The files that equal the replay are proven; from here the model layers, the antibodies
+    // and the review card see only the residual, each file against the replay. Danger, protected paths, damage, the
+    // destructive fact (less what the recipe explains) and the innate checks read the whole change; the goal-conflict
+    // check leaves out the files a rename reproduced (a rename undoes no goal).
+    const repro = p.recipe === undefined ? null : reproduceChange(p.recipe, { files: innate.files, outside: innate.residual, danger: dangerHits, destructive: destructiveFact(innate.files), on: revalidationEnabled(this.host.env.FT_REPRODUCE, colony.id), maxChars: REVIEW_FILE_CHARS, diffs });
+    if (repro?.diffs) {
+      diffs = repro.diffs;
+      matching = this.store.matchingAntibodies(repro.view.map((f) => f.path), diffs.flatMap((d) => d.addedLines), policy.maxAntibodies);
+    }
+
     // Goal conflict (FT_GOAL_CONFLICT, decide/goalconflict.ts): a change that undoes lines a recent landing wrote for
     // another intent waits for a person (rule P4). It fails open: the check's own failure never holds a change.
-    const goal = vaccine ? null : await checkGoalConflict(this.host, p, innate.files, policy);
+    const goal = vaccine ? null : await checkGoalConflict(this.host, p, repro?.goalFiles ?? innate.files, policy);
 
     // Deterministic stage: import resolution against the trunk tree and the mechanical proof. No model.
     // With policy.deterministic off the facts are still recorded (observed only), but nothing uses them.
@@ -330,13 +342,14 @@ export class DecideEngine {
     // What each model layer is shown: its approval counts only when it saw every changed line.
     const seen = { reflex: stateCoverage(diffs), llm: secondOpinionDiff(diffs).coverage };
     // What the change takes away (decide/destructive.ts): no rung that lands without the second opinion or a person lands it.
-    const destructive = destructiveFact(innate.files);
+    const destructive = repro ? repro.destructive : destructiveFact(innate.files);
     // The region's approved landings, read once: earned autonomy below, and the gate check's record of R3 (decide/ruleline.ts).
     const approved = vaccine ? 0 : this.store.approvedLandings(region);
     const base = {
       innate: { ok: innate.ok, failures: innate.failures },
       damage,
       ...(mech ? { mechanical: { verdict: mech.result.verdict, reasons: mech.result.reasons } } : {}),
+      ...(repro?.signal ? { reproduction: repro.signal } : {}),
       danger: { mustHuman: dangerLabels(danger.mustHuman), signals: dangerSignals },
       protected: protectedHits(paths, policy.protectedPaths),
       ...(goal?.conflict ? { goalConflict: { reason: goal.conflict.reason } } : {}),
@@ -356,6 +369,7 @@ export class DecideEngine {
     const checks: CheckResult[] = [
       ...innate.checks,
       ...observed.result.checks.map((c, i) => ({ ...c, ms: i === 0 ? observed.ms : c.ms, ...(mech ? {} : { detail: `(observed only: policy.deterministic is off) ${c.detail ?? ""}`.slice(0, 1_000) }) })),
+      ...(repro ? [repro.check] : []),
       dangerCheck,
       destructiveCheck(destructive),
       ...(goal?.check ? [goal.check] : []),
@@ -374,7 +388,7 @@ export class DecideEngine {
     if (final.action === "screen") {
       // Quoted acceptance (FT_QUOTED_ACCEPTANCE, decide/acceptance.ts): the intent's acceptance lines and the keep lines
       // the second opinion answers one by one; null keeps today's rule.
-      const acceptance = acceptanceFor(this.host, intent, innate.files, Boolean(vaccine));
+      const acceptance = acceptanceFor(this.host, intent, repro?.view ?? innate.files, Boolean(vaccine));
       // System 1, given the deterministic facts.
       const input: ReflexInput = {
         intent: { title: intent?.title ?? (p.declared.summary || p.intentId), why: intent?.why ?? "", whyBy },
@@ -383,7 +397,7 @@ export class DecideEngine {
         residual: innate.residual,
         diffs,
         antibodies: matching.map((s) => s.antibody),
-        ...((mech ? mech.result.facts : []).length + dangerFacts.length > 0 ? { facts: [...(mech ? mech.result.facts : []), ...dangerFacts] } : {}),
+        ...((mech ? mech.result.facts : []).length + dangerFacts.length + (repro?.fact ? 1 : 0) > 0 ? { facts: [...(mech ? mech.result.facts : []), ...dangerFacts, ...(repro?.fact ? [repro.fact] : [])] } : {}),
         ...(acceptance ? { acceptance } : {}),
       };
       state = reflexState(input);
@@ -437,6 +451,7 @@ export class DecideEngine {
                 confidence: v1.confidence,
                 coverage: seen.reflex,
                 ...destructiveRecord(destructive),
+                ...(repro ? { reproduction: repro.note } : {}),
                 ...(clefHedged ? { hedged: clefHedged } : {}),
                 ...(vaccine ? { vaccine: true } : {}),
               },
@@ -474,6 +489,7 @@ export class DecideEngine {
             damage: final.damage,
             coverage: seen.llm,
             ...destructiveRecord(destructive),
+            ...(repro ? { reproduction: repro.note } : {}),
             ...(so.hedged ? { hedged: so.hedged } : {}),
             ...(accepted ? { acceptance: accepted } : {}),
             ...(vaccine ? { vaccine: true } : {}),
@@ -487,6 +503,8 @@ export class DecideEngine {
 
     const now = Date.now();
     this.host.bump(`decide.${final.layer}.${final.action}`, 1);
+    // The mechanical share (the spend card): lines a reproduction proved in a change that goes on to land.
+    if (repro?.signal && final.action === "land") this.host.bump(REPRODUCED_LINES_METRIC, repro.signal.reproduced.lines);
     if (!vaccine && v1) this.probation(v1, final, llm, policy, now);
     this.store.recordOutcome({
       proposalId: p.id,
@@ -510,7 +528,7 @@ export class DecideEngine {
       // The rule's values and the colony's preset (decide/ruleline.ts), for the line every landing card shows.
       gate: gateRecord(final, { input: { ...base, reflex, llm }, policy, approvals: () => approved }),
     });
-    const evidence = { ...p.evidence, checks: [...p.evidence.checks, ...checks], ...(preland ? { preland: preland.run } : {}) };
+    const evidence = { ...p.evidence, checks: [...p.evidence.checks, ...checks], ...(preland ? { preland: preland.run } : {}), ...(repro ? { reproduction: repro.note } : {}) };
 
     // Both confirmations are bound to this head commit and write set: if either moved, nothing lands.
     const cur = this.host.proposal(p.id);
@@ -552,7 +570,7 @@ export class DecideEngine {
       if (!UNREVIEWED.has(final.rule)) this.store.revokeAutonomy(region, `escalated ${p.id}`, now);
       // What the person sees: the change itself, its danger patterns and residual, secrets masked.
       try {
-        this.store.putReview(p.id, buildReviewView({ files: innate.files, danger: dangerHits, residual: innate.residual }), now);
+        this.store.putReview(p.id, buildReviewView({ files: repro?.view ?? innate.files, danger: dangerHits, residual: innate.residual, ...(repro?.review ? { reproduction: repro.review } : {}) }), now);
       } catch (err) {
         console.error(`review view of ${p.id} not stored: ${errorText(err)}`);
       }

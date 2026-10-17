@@ -181,6 +181,17 @@ export interface Env {
    */
   FT_RECIPE_MODULES?: string;
   /**
+   * Optional: review by reproduction, "on", or a comma-separated list of colony ids; absent or "off" is off. A proposal
+   * may declare the recipe that made it (`recipe` on MCP and REST propose: a built-in kind, its version, arguments and
+   * scope). Where this covers the colony, the decide stage replays that recipe on the change's base files, twice: the
+   * files that equal the replay are proven (gate rule D5 lands a change they all are, with no model call), and only the
+   * rest goes through the reflex arc, its diff against the replay (decide/reproduce.ts). Unknown, unpinned, module and
+   * text-replace recipes, and a replay that differs between its runs, get ordinary review. The danger scan, protected
+   * paths and the innate checks read the whole change either way. Off, a declared recipe is recorded and the change has
+   * ordinary review.
+   */
+  FT_REPRODUCE?: string;
+  /**
    * Optional: the goal-conflict check, "on", or a comma-separated list of colony ids; absent or "off" is off. In the
    * decide stage, a change that would undo lines a recent landing wrote for another intent (neither an ancestor nor a
    * descendant of its own; at least 3 lines and half of that landing's lines in the file) waits for a person instead of

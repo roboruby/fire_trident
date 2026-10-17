@@ -39,12 +39,26 @@ export const IntentBody = z.object({
   force: z.boolean().optional(),
 });
 
+/**
+ * A recipe a rule or a proposal names (core/recipe.ts reads it): its kind, version, arguments and scope globs. A rule's
+ * recipe is parsed and pinned when the rule is added (colony/rulerecipe.ts); a proposal's is checked when the change is
+ * reviewed (decide/reproduce.ts), where an unknown kind or a missing version gets ordinary review.
+ */
+export const RecipeRef = z.object({
+  kind: z.string().trim().min(1).max(40),
+  version: z.union([z.string().trim().min(1).max(20), z.number().int().min(0).max(1_000_000)]).optional(),
+  args: z.record(z.string().max(40), z.union([z.string().max(70_000), z.boolean()])).default({}),
+  scope: z.union([z.string().trim().min(1).max(200), z.array(z.string().trim().min(1).max(200)).min(1).max(20)]).optional(),
+});
+
 /** POST /api/colonies/:id/rules */
 export const RuleBody = z.object({
   kind: z.enum(["forbid-pattern", "forbid-import"]),
   spec: z.record(z.string(), z.unknown()),
   description: z.string().trim().min(1).max(500),
   approvedBy: z.string().trim().min(1).max(200).optional(),
+  /** Target items that carry recipes (colony/rulerecipe.ts): a recipe that fixes the rule's violations; its scope defaults to the rule's include (or from) globs. */
+  recipe: RecipeRef.optional(),
 });
 
 /** POST /api/colonies/:id/agents */
@@ -85,6 +99,8 @@ export const ProposalBody = z.object({
     .optional(),
   /** One surprising fact the agent learned, for the colony's field guide (FT_FIELD_GUIDE; ignored where it is off). */
   lesson: z.string().max(GUIDE_LIMITS.lessonChars).optional(),
+  /** Review by reproduction (FT_REPRODUCE, decide/reproduce.ts): the recipe that made this change, replayed on its base files. */
+  recipe: RecipeRef.optional(),
 });
 
 /** POST /api/colonies/:id/review/:pid */

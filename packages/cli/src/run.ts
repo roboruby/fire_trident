@@ -56,7 +56,7 @@ import { extractSpec, planNew } from "./spec.ts";
 import { formatMegafile } from "./megafile.ts";
 import { formatPause } from "./pause.ts";
 import { formatSpendCap } from "./spendcap.ts";
-import { formatRecipe } from "./recipe.ts";
+import { formatRecipe, ruleRecipeLines } from "./recipe.ts";
 import { formatSilentTtl, type SilentTtlView } from "./closure.ts";
 import { formatImpact } from "./impact.ts";
 import { autonomyLine, formatImmune } from "./immune.ts";
@@ -281,6 +281,8 @@ async function execute(cmd: Command, ctx: Ctx): Promise<number> {
         const n = typeof res?.intents === "number" ? res.intents : undefined;
         io.stdout(`${c.green("✓")} ${c.bold(id)} added ${c.dim(`(${cmd.name === "rule-add" ? "forbid-pattern" : "forbid-import"}, approved by ${cmd.by ?? ctx.by})`)}`);
         if (v !== undefined) io.stdout(`  ${v === 0 ? c.green("0 violations") : c.yellow(`${num(v)} violation${v === 1 ? "" : "s"}`)}${n !== undefined ? ` → ${num(n)} intent${n === 1 ? "" : "s"} in the field` : ""}`);
+        // A rule's recipe (colony/rulerecipe.ts on the server): what it took on instead of agent intents.
+        for (const line of ruleRecipeLines(res, cmd.colony, c)) io.stdout(line);
         if (v) io.stdout(c.dim(`  Next: ft swarm ${cmd.colony} --agents 50   then   ft watch ${cmd.colony}`));
       }
       return 0;

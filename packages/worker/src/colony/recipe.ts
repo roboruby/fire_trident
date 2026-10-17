@@ -77,6 +77,17 @@ export interface RecipeColonyHost {
   withdraw(intentId: Id, reason: string, by: string): Promise<void>;
   /** An intent's status now, or null. */
   intentStatus(id: Id): string | null;
+  /** Target items that carry recipes (colony/rulerecipe.ts): told of every recipe's news after its landing is settled. */
+  afterNews?(record: RecipeRecord, landing?: Landing): Promise<void>;
+}
+
+/**
+ * Who else a declaration answers to (colony/rulerecipe.ts): `ruleId` makes the recipe's intent the rule's (source rule),
+ * and `declared` hears its intent and recipe ids once the intent is stored, before the trunk writer is asked.
+ */
+export interface RecipeDeclareOptions {
+  ruleId?: Id;
+  declared?(intentId: Id, recipeId: Id): void;
 }
 
 /**
@@ -84,7 +95,7 @@ export interface RecipeColonyHost {
  * human, its footprint the scope's fixed paths, `recipe` set), and hand it to the trunk writer, which lands batches for a
  * while before it answers. When the trunk writer refuses or fails, the intent is withdrawn and the error stands.
  */
-export async function declareRecipe(host: RecipeColonyHost, input: RecipeDeclare): Promise<{ intent: Intent; recipe: RecipeRecord }> {
+export async function declareRecipe(host: RecipeColonyHost, input: RecipeDeclare, opts: RecipeDeclareOptions = {}): Promise<{ intent: Intent; recipe: RecipeRecord }> {
   const parsed = parseRecipe(input, { modules: host.modules });
   if (!parsed.ok) throw ftError(400, parsed.error);
   const why = typeof input.why === "string" ? input.why.trim().slice(0, RECIPE_WHY_CHARS) : "";
@@ -95,13 +106,16 @@ export async function declareRecipe(host: RecipeColonyHost, input: RecipeDeclare
   const id = newId("rcp_");
   const now = host.now();
   const footprint = scopeFootprint(recipe.scope);
-  const intent: Intent = { id: newId("int_"), colonyId: host.colonyId, title, why, source: "human", footprint, priority: 1, status: "proposed", createdAt: now, createdBy: by, recipe: { ...recipe, id } };
+  const ruleId = typeof opts.ruleId === "string" && opts.ruleId !== "" ? opts.ruleId : null;
+  const intent: Intent = { id: newId("int_"), colonyId: host.colonyId, title, why, source: ruleId ? "rule" : "human", ...(ruleId ? { ruleId } : {}), footprint, priority: 1, status: "proposed", createdAt: now, createdBy: by, recipe: { ...recipe, id } };
   host.sql.exec(
     `INSERT INTO intents (id, title, why, source, rule_id, parent_id, footprint, acceptance, priority, status, created_at, created_by, assigned_to, violations, updated_at, ${RECIPE_COLUMN})
-     VALUES (?, ?, ?, 'human', NULL, NULL, ?, NULL, 1, 'proposed', ?, ?, NULL, 0, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, NULL, ?, NULL, 1, 'proposed', ?, ?, NULL, 0, ?, ?)`,
     intent.id,
     title,
     why,
+    intent.source,
+    ruleId,
     JSON.stringify(footprint),
     now,
     by,
@@ -110,6 +124,7 @@ export async function declareRecipe(host: RecipeColonyHost, input: RecipeDeclare
   );
   host.bump("intents", 1, now);
   host.publish([{ t: "intent", at: now, intentId: intent.id, status: "proposed", title, footprint }]);
+  opts.declared?.(intent.id, id);
   let record: RecipeRecord;
   try {
     record = await host.trunk().recipe({ id, intentId: intent.id, recipe, why, by });
@@ -130,6 +145,8 @@ export async function recipeNews(host: RecipeColonyHost, raw: unknown): Promise<
   if (p.landing && typeof p.landing.id === "string") await host.onLanding(p.landing);
   const r = p.record;
   if (!r || typeof r.intentId !== "string") return;
+  // Target items that carry recipes (colony/rulerecipe.ts): the mechanical share, and a rule's recipe counting its violations off.
+  if (host.afterNews) await host.afterNews(r, p.landing).catch((e: unknown) => console.warn(`recipe ${r.id}: rule follow-up failed: ${e instanceof Error ? e.message : String(e)}`));
   const status = host.intentStatus(r.intentId);
   if (status === null || status === "landed" || status === "withdrawn") return;
   const landed = Array.isArray(r.batches) && r.batches.length > 0;

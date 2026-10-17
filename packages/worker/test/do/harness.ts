@@ -668,6 +668,17 @@ export class TrunkDO extends DurableObject<Env> {
     return true;
   }
 
+  /**
+   * Recipes (trunk/recipes.ts): a recipe the colony declared, recorded and answered as running. Tests land its batches by
+   * changing files (commitExternal) and telling the colony (ColonyDO.recipeNews), as the real trunk writer does.
+   */
+  async recipe(p: { id: Id; intentId: Id; recipe: import("@fire_trident/core").Recipe; why: string; by: string }): Promise<import("@fire_trident/core").RecipeRecord> {
+    const asked = (await this.ctx.storage.get<unknown[]>("recipes")) ?? [];
+    await this.ctx.storage.put("recipes", [...asked, p]);
+    const now = Date.now();
+    return { id: p.id, colonyId: (await this.load()).colonyId, intentId: p.intentId, recipe: p.recipe, why: p.why, by: p.by, state: "running", at: now, updatedAt: now, cursor: null, batches: [], examined: 0, changed: 0, untransformed: [] };
+  }
+
   /** Erase this object (colony deletion), as the real TrunkDO does. */
   async destroy(): Promise<{ cleared: true }> {
     await this.ctx.storage.deleteAlarm();

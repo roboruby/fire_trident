@@ -116,6 +116,55 @@ export function parseRecipeCommand(v: Record<string, unknown>, p: string[]): Rec
   return `unknown recipe action "${word}". Usage: ${RECIPE_USAGE}`;
 }
 
+/** A rule's recipe as `ft rule ... --recipe` sends it (the server parses and pins it; its scope defaults to the rule's globs). */
+export interface RuleRecipe {
+  kind: "rename-identifier" | "replace-import" | "text-replace";
+  args: Record<string, string | boolean>;
+  scope?: string[];
+}
+
+/** How `--recipe` is written. */
+export const RULE_RECIPE_USAGE = "--recipe 'rename <old> <new>' | --recipe 'replace-import <from> <to> [prefix]' | --recipe 'text-replace <find> <replace>' [--recipe-scope <glob>]...";
+
+/**
+ * A rule's `--recipe '<kind> <args>'`, parsed: `rename <old> <new>` (or rename-identifier), `replace-import <from> <to>`
+ * with an optional `prefix`, or `text-replace <find> <replace>` (each one word). `scope`: the --recipe-scope globs, when
+ * given. A usage error as a string.
+ */
+export function parseRuleRecipe(text: string, scope: readonly string[]): RuleRecipe | string {
+  const words = text.trim().split(/\s+/).filter(Boolean);
+  const [kind, ...rest] = words;
+  const scoped = scope.length > 0 ? { scope: [...scope] } : {};
+  if (kind === "rename" || kind === "rename-identifier") {
+    if (rest.length !== 2) return `--recipe rename takes the old name and the new one: --recipe 'rename <old> <new>'`;
+    return { kind: "rename-identifier", args: { from: rest[0]!, to: rest[1]! }, ...scoped };
+  }
+  if (kind === "replace-import") {
+    const prefix = rest.length === 3 && rest[2] === "prefix";
+    if (rest.length !== 2 && !prefix) return `--recipe replace-import takes the old module specifier and the new one, then optionally prefix: --recipe 'replace-import <from> <to> [prefix]'`;
+    return { kind: "replace-import", args: { from: rest[0]!, to: rest[1]!, ...(prefix ? { prefix: true } : {}) }, ...scoped };
+  }
+  if (kind === "text-replace") {
+    if (rest.length !== 2) return `--recipe text-replace takes the exact text to find and its replacement, one word each (use ft recipe for longer text): --recipe 'text-replace <find> <replace>'`;
+    return { kind: "text-replace", args: { find: rest[0]!, replace: rest[1]! }, ...scoped };
+  }
+  return `unknown recipe "${kind ?? ""}": ${RULE_RECIPE_USAGE}`;
+}
+
+/** What `ft rule` prints of the rule's recipe from the server's answer (`recipe` on POST /rules), or nothing. */
+export function ruleRecipeLines(res: unknown, colony: string, c: Colors): string[] {
+  const r = res && typeof res === "object" ? (res as { recipe?: { id?: unknown; recipe?: { kind?: unknown; args?: Record<string, unknown> }; files?: unknown; violations?: unknown; skipped?: unknown } }).recipe : undefined;
+  if (!r || typeof r !== "object") return [];
+  const words = recipeWords(r.recipe);
+  if (typeof r.skipped === "string" && r.skipped !== "") return [`  ${c.yellow("recipe")} ${words}: ${plain(r.skipped)}`];
+  const v = typeof r.violations === "number" ? r.violations : 0;
+  const f = typeof r.files === "number" ? r.files : 0;
+  return [
+    `  ${c.cyan("recipe")} ${c.bold(plain(r.id))} ${words} takes ${v} violation${v === 1 ? "" : "s"} in ${f} file${f === 1 ? "" : "s"}: no agent intent for those, only for what it leaves`,
+    c.dim(`  Follow it: ft recipe ${colony} ${plain(r.id)}`),
+  ];
+}
+
 /** The recipe in a few words, as the server's core/recipe.ts recipeText says it. */
 export function recipeWords(r: { kind?: unknown; args?: Record<string, unknown> } | undefined): string {
   const a = r?.args ?? {};

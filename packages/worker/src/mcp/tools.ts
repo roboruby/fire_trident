@@ -20,6 +20,7 @@ import { isTwinAnswer, type DeclareAnswer } from "../colony/twins.ts";
 import { priorityAnswer } from "../colony/priority.ts";
 import { cleanDeclaredBy, heldNote, type DeclaredBy } from "../colony/chain.ts";
 import { foldPath } from "../decide/pathfold.ts";
+import { declaredRecipe } from "../decide/reproduce.ts";
 import { refuseWhilePaused } from "../colony/pause.ts";
 import { replayAnswer, replayedProposal } from "./replay.ts";
 import { withTests } from "./whytests.ts";
@@ -769,7 +770,7 @@ export class FireTridentTools {
    * evidence and shown to review). `lesson`, where the colony keeps a field guide (FT_FIELD_GUIDE), is
    * one surprising fact the agent learned; the answer says what became of it.
    */
-  async propose(a: { headSha?: string; files?: InlineFile[]; summary?: string; notVerified?: string; lesson?: string }): Promise<unknown> {
+  async propose(a: { headSha?: string; files?: InlineFile[]; summary?: string; notVerified?: string; lesson?: string; recipe?: unknown }): Promise<unknown> {
     // A retry after a lost reply (mcp/replay.ts): the first call gave up the session's intent, so the same change gets its proposal back.
     const replayed = await replayedProposal(await this.ctx.load(), a, this.ctx);
     if (replayed) return { ...replayAnswer(replayed), next: nextFor(replayed.status) };
@@ -824,6 +825,8 @@ export class FireTridentTools {
       // An agent that stated nothing gets FireTrident's sentence, marked as FireTrident's (notVerifiedBy), never as the agent's.
       evidence: stated === "" ? { notVerified: EXTERNAL_NOT_VERIFIED, notVerifiedBy: "platform" } : { notVerified: /^not verified/i.test(stated) ? stated : `Not verified: ${stated}` },
       ...(lesson ? { lesson } : {}),
+      // Review by reproduction (FT_REPRODUCE, decide/reproduce.ts): the recipe the agent says made the change.
+      ...(a.recipe !== undefined ? { recipe: declaredRecipe(a.recipe) } : {}),
       // Heads-up (FT_HEADS_UP, mcp/headsup.ts): what this session told the agent of landings under its files.
       ...(await this.proposalExtras(s)),
     });

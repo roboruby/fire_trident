@@ -18,6 +18,32 @@ export interface ReviewView {
   filesChanged: number;
   danger: Array<{ path: string; line: number; cls: string; pattern: string; label: string }>;
   residual: string[];
+  /**
+   * Review by reproduction (decide/reproduce.ts): the change declared a recipe and these lines equalled its replay, so
+   * `files` holds only the residual, each file shown against the replay where the recipe rewrote it. Absent otherwise.
+   */
+  reproduction?: ReviewReproduction;
+}
+
+/** What a review card says of a reproduction: the recipe (kind@version), what equalled its replay, what is left, and the line. */
+export interface ReviewReproduction {
+  recipe: string;
+  reproduced: { files: number; lines: number };
+  residual: { files: number; lines: number };
+  text: string;
+}
+
+/** A stored or sent reproduction read back field by field, as a spread (`{}` when there is none or it does not read as one). */
+export function reviewReproduction(raw: unknown): { reproduction?: ReviewReproduction } {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const o = raw as Record<string, unknown>;
+  const num = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) && v > 0 ? Math.floor(v) : 0);
+  const side = (v: unknown): { files: number; lines: number } => {
+    const s = v && typeof v === "object" ? (v as Record<string, unknown>) : {};
+    return { files: num(s.files), lines: num(s.lines) };
+  };
+  if (typeof o.recipe !== "string" || o.recipe === "" || typeof o.text !== "string") return {};
+  return { reproduction: { recipe: o.recipe.slice(0, 80), reproduced: side(o.reproduced), residual: side(o.residual), text: o.text.slice(0, 300) } };
 }
 
 /** One changed file as the view is built from it (old and new text; null when absent). */
@@ -86,7 +112,7 @@ export function maskHunks(path: Path, hunks: string, secretLines: ReadonlySet<nu
  * characters a file and 60,000 in all (`truncated` set where cut); danger hits with their labels
  * (a secret hit's excerpt masked); writes outside the footprint.
  */
-export function buildReviewView(x: { files: readonly ReviewFile[]; danger: readonly DangerHit[]; residual: readonly Path[] }): ReviewView {
+export function buildReviewView(x: { files: readonly ReviewFile[]; danger: readonly DangerHit[]; residual: readonly Path[]; reproduction?: ReviewReproduction }): ReviewView {
   const secret = new Map<Path, Set<number>>();
   for (const h of x.danger) {
     if (h.cls !== "secret" || h.line <= 0) continue;
@@ -110,7 +136,7 @@ export function buildReviewView(x: { files: readonly ReviewFile[]; danger: reado
     pattern: h.pattern,
     label: dangerLabel(h.cls === "secret" || looksLikeSecret(h.excerpt) ? { ...h, excerpt: "(masked)" } : h),
   }));
-  return { files, filesChanged: x.files.length, danger, residual: x.residual.slice(0, MAX_RESIDUAL) };
+  return { files, filesChanged: x.files.length, danger, residual: x.residual.slice(0, MAX_RESIDUAL), ...(x.reproduction ? { reproduction: x.reproduction } : {}) };
 }
 
 /** A stored view read back; null when it is missing or not a view (old or damaged data never throws). */
@@ -135,5 +161,6 @@ export function parseReviewView(text: string | null | undefined): ReviewView | n
       .filter((h): h is ReviewView["danger"][number] => !!h && typeof h === "object")
       .map((h) => ({ path: str(h.path), line: num(h.line), cls: str(h.cls), pattern: str(h.pattern), label: str(h.label) })),
     residual: v.residual.filter((p): p is string => typeof p === "string"),
+    ...reviewReproduction(v.reproduction),
   };
 }
