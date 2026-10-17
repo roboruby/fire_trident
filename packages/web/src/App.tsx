@@ -5,6 +5,7 @@ import { FirstScreen } from "./components/FirstScreen.tsx";
 import { Guide } from "./components/Guide.tsx";
 import { PauseBanner } from "./components/PauseBanner.tsx";
 import { PerfReadout } from "./components/PerfReadout.tsx";
+import { Picture } from "./components/Picture.tsx";
 import { ReplayBar } from "./components/ReplayBar.tsx";
 import { SidePanel, TABS, type PanelFocus, type Tab } from "./components/SidePanel.tsx";
 import { TopBar, TridentMark } from "./components/TopBar.tsx";
@@ -245,6 +246,8 @@ export function App({ route }: { route: ColonyRoute }) {
             <ColonyMap store={store} onPick={pick} onRenderer={setRenderer} director={director} onGuide={director || touring ? undefined : () => setGuideOpen(true)} />
             {/* The pause banner (pause.ts): who paused the agents and why, while they are paused. */}
             <PauseBanner store={store} />
+            {/* The picture panel (picture.ts): in a replay of a colony with mosaic.json, its grid at the newest landing of it. */}
+            {backend instanceof ReplayBackend ? <Picture store={store} /> : null}
             {backend instanceof ReplayBackend && !director && !touring ? <ReplayBar backend={backend} colonyId={route.colonyId} /> : null}
             {backend instanceof ReplayBackend && touring ? (
               <Suspense fallback={null}>

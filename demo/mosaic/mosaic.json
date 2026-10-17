@@ -1,0 +1,207 @@
+{
+  "title": "Mosaic",
+  "about": "A 10 by 10 picture, one line per tile. A blank line keeps each tile apart from the next: a line merge that follows git's rule treats edits on touching lines as a conflict.",
+  "rows": 10,
+  "cols": 10,
+  "tiles": [
+    {"r": 0, "c": 0, "color": null},
+
+    {"r": 0, "c": 1, "color": null},
+
+    {"r": 0, "c": 2, "color": null},
+
+    {"r": 0, "c": 3, "color": null},
+
+    {"r": 0, "c": 4, "color": null},
+
+    {"r": 0, "c": 5, "color": null},
+
+    {"r": 0, "c": 6, "color": null},
+
+    {"r": 0, "c": 7, "color": null},
+
+    {"r": 0, "c": 8, "color": null},
+
+    {"r": 0, "c": 9, "color": null},
+
+    {"r": 1, "c": 0, "color": null},
+
+    {"r": 1, "c": 1, "color": null},
+
+    {"r": 1, "c": 2, "color": null},
+
+    {"r": 1, "c": 3, "color": null},
+
+    {"r": 1, "c": 4, "color": null},
+
+    {"r": 1, "c": 5, "color": null},
+
+    {"r": 1, "c": 6, "color": null},
+
+    {"r": 1, "c": 7, "color": null},
+
+    {"r": 1, "c": 8, "color": null},
+
+    {"r": 1, "c": 9, "color": null},
+
+    {"r": 2, "c": 0, "color": null},
+
+    {"r": 2, "c": 1, "color": null},
+
+    {"r": 2, "c": 2, "color": null},
+
+    {"r": 2, "c": 3, "color": null},
+
+    {"r": 2, "c": 4, "color": null},
+
+    {"r": 2, "c": 5, "color": null},
+
+    {"r": 2, "c": 6, "color": null},
+
+    {"r": 2, "c": 7, "color": null},
+
+    {"r": 2, "c": 8, "color": null},
+
+    {"r": 2, "c": 9, "color": null},
+
+    {"r": 3, "c": 0, "color": null},
+
+    {"r": 3, "c": 1, "color": null},
+
+    {"r": 3, "c": 2, "color": null},
+
+    {"r": 3, "c": 3, "color": null},
+
+    {"r": 3, "c": 4, "color": null},
+
+    {"r": 3, "c": 5, "color": null},
+
+    {"r": 3, "c": 6, "color": null},
+
+    {"r": 3, "c": 7, "color": null},
+
+    {"r": 3, "c": 8, "color": null},
+
+    {"r": 3, "c": 9, "color": null},
+
+    {"r": 4, "c": 0, "color": null},
+
+    {"r": 4, "c": 1, "color": null},
+
+    {"r": 4, "c": 2, "color": null},
+
+    {"r": 4, "c": 3, "color": null},
+
+    {"r": 4, "c": 4, "color": null},
+
+    {"r": 4, "c": 5, "color": null},
+
+    {"r": 4, "c": 6, "color": null},
+
+    {"r": 4, "c": 7, "color": null},
+
+    {"r": 4, "c": 8, "color": null},
+
+    {"r": 4, "c": 9, "color": null},
+
+    {"r": 5, "c": 0, "color": null},
+
+    {"r": 5, "c": 1, "color": null},
+
+    {"r": 5, "c": 2, "color": null},
+
+    {"r": 5, "c": 3, "color": null},
+
+    {"r": 5, "c": 4, "color": null},
+
+    {"r": 5, "c": 5, "color": null},
+
+    {"r": 5, "c": 6, "color": null},
+
+    {"r": 5, "c": 7, "color": null},
+
+    {"r": 5, "c": 8, "color": null},
+
+    {"r": 5, "c": 9, "color": null},
+
+    {"r": 6, "c": 0, "color": null},
+
+    {"r": 6, "c": 1, "color": null},
+
+    {"r": 6, "c": 2, "color": null},
+
+    {"r": 6, "c": 3, "color": null},
+
+    {"r": 6, "c": 4, "color": null},
+
+    {"r": 6, "c": 5, "color": null},
+
+    {"r": 6, "c": 6, "color": null},
+
+    {"r": 6, "c": 7, "color": null},
+
+    {"r": 6, "c": 8, "color": null},
+
+    {"r": 6, "c": 9, "color": null},
+
+    {"r": 7, "c": 0, "color": null},
+
+    {"r": 7, "c": 1, "color": null},
+
+    {"r": 7, "c": 2, "color": null},
+
+    {"r": 7, "c": 3, "color": null},
+
+    {"r": 7, "c": 4, "color": null},
+
+    {"r": 7, "c": 5, "color": null},
+
+    {"r": 7, "c": 6, "color": null},
+
+    {"r": 7, "c": 7, "color": null},
+
+    {"r": 7, "c": 8, "color": null},
+
+    {"r": 7, "c": 9, "color": null},
+
+    {"r": 8, "c": 0, "color": null},
+
+    {"r": 8, "c": 1, "color": null},
+
+    {"r": 8, "c": 2, "color": null},
+
+    {"r": 8, "c": 3, "color": null},
+
+    {"r": 8, "c": 4, "color": null},
+
+    {"r": 8, "c": 5, "color": null},
+
+    {"r": 8, "c": 6, "color": null},
+
+    {"r": 8, "c": 7, "color": null},
+
+    {"r": 8, "c": 8, "color": null},
+
+    {"r": 8, "c": 9, "color": null},
+
+    {"r": 9, "c": 0, "color": null},
+
+    {"r": 9, "c": 1, "color": null},
+
+    {"r": 9, "c": 2, "color": null},
+
+    {"r": 9, "c": 3, "color": null},
+
+    {"r": 9, "c": 4, "color": null},
+
+    {"r": 9, "c": 5, "color": null},
+
+    {"r": 9, "c": 6, "color": null},
+
+    {"r": 9, "c": 7, "color": null},
+
+    {"r": 9, "c": 8, "color": null},
+
+    {"r": 9, "c": 9, "color": null}
+  ]
+}

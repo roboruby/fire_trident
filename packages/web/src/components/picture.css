@@ -1,0 +1,95 @@
+/* The picture panel over a replay's map (components/Picture.tsx): mosaic.json's grid at the newest landing of it. Shares the tokens in styles.css. */
+
+.picture {
+  position: absolute;
+  top: 68px;
+  right: 14px;
+  z-index: 5;
+  width: 228px;
+  padding: 10px 12px 9px;
+  border: 1px solid var(--line-2);
+  border-radius: 12px;
+  background: rgba(9, 12, 19, 0.88);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  font-size: 12px;
+  color: var(--text-2);
+  pointer-events: auto;
+}
+
+.picture-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.picture-k {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.picture-count {
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.picture-grid {
+  display: grid;
+  gap: 2px;
+}
+
+.picture-tile {
+  display: block;
+  min-width: 0;
+  aspect-ratio: 1;
+  border-radius: 2px;
+  /* An empty tile is hatched, so it never reads as a dark color. */
+  background-color: rgba(255, 255, 255, 0.02);
+  background-image: repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.09) 0 1px, transparent 1px 4px);
+  box-shadow: inset 0 0 0 1px var(--line-2);
+  transition: background-color 280ms ease, box-shadow 280ms ease;
+}
+
+.picture-tile.is-filled {
+  background-image: none;
+  box-shadow: none;
+}
+
+.picture-foot {
+  margin-top: 7px;
+  color: var(--text-3);
+}
+
+.picture-foot .mono {
+  color: var(--text-2);
+}
+
+.picture-error {
+  margin-top: 6px;
+  color: var(--failure);
+  overflow-wrap: anywhere;
+}
+
+.app.is-director .picture {
+  top: 76px;
+  right: 22px;
+  width: 340px;
+  padding: 14px 16px 12px;
+  font-size: 15px;
+}
+
+.app.is-director .picture-grid {
+  gap: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .picture-tile {
+    transition: none;
+  }
+}

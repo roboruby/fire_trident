@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mosaic</title>
+<style>
+  body { max-width: 40rem; margin: 3rem auto; padding: 0 1rem; font: 16px/1.55 system-ui, sans-serif; color: #22335c; background: #f4f7fb; }
+  h1 { margin-bottom: 0.25rem; }
+  code { font: 0.95em ui-monospace, Menlo, monospace; }
+</style>
+</head>
+<body>
+<h1>Mosaic</h1>
+<p>A picture of 100 tiles, laid by many agents at once. Each tile is one intent, "fill tile (r, c) with a color", and each change edits only that tile's line of <a href="mosaic.json"><code>mosaic.json</code></a>.</p>
+<p>Every tenth tile's agent also signs <a href="roll-call.md"><code>roll-call.md</code></a> with one line at its end, so ten changes add lines at the same place of one file.</p>
+<p>Every change is written against this first version of the files. FireTrident lands them all: edits to separate lines merge line by line, and lines added at the same place land together. The colony's replay draws the picture from <code>mosaic.json</code> as each change lands.</p>
+</body>
+</html>
