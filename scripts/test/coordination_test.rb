@@ -230,6 +230,23 @@ module Fixture
     ]
   end
 
+  # The `audit` of GET /api/colonies/<id>/metrics (definition 19), as packages/worker/src/colony/audit.ts writes it.
+  def self.audit
+    {
+      "rate" => 0.03, "every" => 5, "landed" => 400, "queued" => 13, "pending" => 1, "audited" => 12, "fine" => 12, "wrong" => 0, "wrongRate" => 0, "lo" => 0, "hi" => 0.242,
+      "line" => "audited 12 of 400 landings without a person: 0 should not have landed (0–24%); 1 waits for a person",
+      "layers" => {
+        "deterministic" => { "label" => "a deterministic proof", "landed" => 300, "queued" => 9, "audited" => 9, "wrong" => 0, "wrongRate" => 0, "lo" => 0, "hi" => 0.299 },
+        "reproduction" => { "label" => "reproduction by its recipe", "landed" => 0, "queued" => 0, "audited" => 0, "wrong" => 0, "wrongRate" => 0, "lo" => 0, "hi" => 1 },
+        "model" => { "label" => "a model's approval", "landed" => 100, "queued" => 4, "audited" => 3, "wrong" => 0, "wrongRate" => 0, "lo" => 0, "hi" => 0.562 }
+      },
+      "canaries" => { "on" => true, "rate" => 0.05, "made" => 6, "waiting" => 1, "discarded" => 0, "decided" => 5, "caught" => 4, "approved" => 1, "catchRate" => 0.8, "lo" => 0.376, "hi" => 0.964,
+                      "line" => "canaries: 4 of 5 caught (80%, 38–96%), 1 approved" },
+      "reviewers" => { "change" => 40, "line" => "approved 9 of 10 escalations (90%) in the last 2 weeks, 5 of 10 escalations (50%) in the 6 before: up 40 points",
+                       "weeks" => [{ "from" => T0, "to" => T0 + 1, "decisions" => 10, "approved" => 9, "approvalRate" => 0.9 }] }
+    }
+  end
+
   # The public API, in process: what Report asks of Coordination::Api.
   class FakeApi
     attr_reader :asked
@@ -247,7 +264,7 @@ module Fixture
     def agents(_id) = AGENTS
     def certifications(_id) = Fixture.certifications
     def certifications_page(_id) = { "colonyId" => "fx", "deployment" => true, "runner" => true, "policy" => { "enabled" => true }, "results" => Fixture.certifications }
-    def metrics(_id) = nil
+    def metrics(_id) = { "colonyId" => "fx", "audit" => Fixture.audit }
     def intent_spend(_id, _iid) = nil
 
     def proposal(_id, pid)
@@ -270,6 +287,7 @@ module Fixture
       when "/api/colonies/fx" then [200, snapshot]
       when "/api/colonies/fx/agents" then [200, { "agents" => AGENTS }]
       when "/api/colonies/fx/certifications" then [200, { "colonyId" => "fx", "results" => certifications }]
+      when "/api/colonies/fx/metrics" then [200, { "colonyId" => "fx", "audit" => audit }]
       when "/api/colonies/fx/events"
         after = params["after"].to_i
         page = after.zero? ? events.first(half) : events.drop(half)
@@ -1201,6 +1219,43 @@ class ResidueTest < Minitest::Test
                    oldest: [{ intent: "i4", title: "i4 title", status: "open", ageSeconds: 29.0 }, { intent: "i3", title: "i3 title", status: "claimed", ageSeconds: 26.0 }] }, r[:open])
     assert_equal "| Residue and review rounds | 2 landed intents: 1.50 proposals to land (p90 1.9), 1.50 review rounds; declared to landed p50 13.5 s, " \
                  "p90 18.7 s; 0.75 review rounds a change; 2 intents still open, the oldest 29.0 s old |", Coordination.residue_row(r)
+  end
+end
+
+# Definition 19: the audit sample, blind canaries and people's decisions, as the colony's metrics report serves them.
+class AuditSampleTest < Minitest::Test
+  def test_numbers_as_the_colony_computed_them
+    a = Coordination.audit_sample(Fixture.audit)
+    assert_equal({ landed: 400, queued: 13, audited: 12, wrong: 0, wrongRate: 0, lo: 0, hi: 0.242 }, a.slice(:landed, :queued, :audited, :wrong, :wrongRate, :lo, :hi))
+    assert_equal 0.03, a[:rate]
+    assert_equal({ landed: 100, queued: 4, audited: 3, wrong: 0, wrongRate: 0, lo: 0, hi: 0.562, label: "a model's approval" }, a[:layers]["model"])
+    assert_equal({ on: true, rate: 0.05, decided: 5, caught: 4, approved: 1, catchRate: 0.8, lo: 0.376, hi: 0.964, waiting: 1, line: "canaries: 4 of 5 caught (80%, 38–96%), 1 approved" }, a[:canaries])
+    assert_equal 40, a[:reviewers][:change]
+    assert_equal [{ from: Fixture::T0, decisions: 10, approved: 9, approvalRate: 0.9 }], a[:reviewers][:weeks]
+  end
+
+  def test_markdown_row
+    row = Coordination.audit_row(Coordination.audit_sample(Fixture.audit))
+    assert_equal "| Audit sample (3.0%) | audited 12 of 400 landings without a person: 0 should not have landed (0–24%); 1 waits for a person; " \
+                 "by layer: deterministic 9 of 300, 0 should not have (0–30%), model 3 of 100, 0 should not have (0–56%); " \
+                 "canaries: 4 of 5 caught (80%, 38–96%), 1 approved; people: approved 9 of 10 escalations (90%) in the last 2 weeks, " \
+                 "5 of 10 escalations (50%) in the 6 before: up 40 points |", row
+  end
+
+  def test_an_older_server_or_a_damaged_answer
+    a = Coordination.audit_sample({ "line" => "audit sample off", "layers" => { "model" => "x" }, "canaries" => nil })
+    assert_equal({}, a[:layers])
+    assert_equal 1, a[:hi]
+    assert_equal({ change: nil, line: "", weeks: [] }, a[:reviewers])
+  end
+
+  def test_the_report_reads_it_and_the_canary_agent_is_left_out_like_the_vaccine_agent
+    assert_equal 12, CoordinationTest.report.first[:audit][:audited]
+    assert_includes Coordination.markdown(CoordinationTest.report.first), "| Audit sample (3.0%) | audited 12 of 400"
+    agents = [{ "id" => "v", "name" => "vaccine", "model" => "vaccine" }, { "id" => "c", "name" => "synthetic-ab12-1", "model" => "canary" }, { "id" => "a", "name" => "synthetic-ab12-2", "model" => "m1" }]
+    assert_equal Set["v", "c"], Coordination.sealed_agents(agents)
+    assert Coordination.vaccine?(agents[1])
+    refute Coordination.vaccine?(agents[2])
   end
 end
 

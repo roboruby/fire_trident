@@ -23,11 +23,13 @@
 #                                           take counters of 12) and its model spend by model (17)
 #   GET /api/colonies/<id>/certifications   the newest certification results, with culprit suspects and first red (15),
 #                                           and whether certification runs (18)
-#   GET /api/colonies/<id>/metrics          the colony's own trunk health line, beside 18's
+#   GET /api/colonies/<id>/metrics          the colony's own trunk health line, beside 18's; the audit sample, blind canaries
+#                                           and people's decisions over time (19)
 #   GET /api/colonies/<id>/intents/<iid>/spend  what each repair intent's model calls cost (18)
 #   GET /api/colonies/<id>/events           the event record, every page: each proposal's status changes with their
 #                                           times and reasons, each intent's, landings, and people's decisions
-#   GET /api/colonies/<id>/agents?all=1     every agent's kind and model; the vaccine agent (name and model "vaccine")
+#   GET /api/colonies/<id>/agents?all=1     every agent's kind and model; the vaccine agent (name and model "vaccine") and
+#                                           the canary agent (model "canary")
 #   GET /api/colonies/<id>/proposals/<pid>  the write sets the notes do not hold (every proposal that did not land)
 #   git log --first-parent HEAD             FireTrident commits: from the first commit that carries this colony's note
 #                                           or an FT-Landing trailer the record knows, every commit with a note or an
@@ -38,7 +40,7 @@
 #                                           proposal, which counts only when the API says it landed in that landing.
 #   git blame, log --numstat, --name-status the lines and files below.
 #
-# Definitions (vaccine proposals and their intents are left out of every number)
+# Definitions (vaccine and canary proposals and their intents are left out of every number)
 #
 # 1. Merged fraction. A proposal's status is the status of its last event in the record. Made: every proposal in the
 #    record. Landed: status landed. Returned: status returned, except returns for a change of direction, whose reason
@@ -217,6 +219,15 @@
 #    per 100 landings, time red and its share, time to green p50, p90 and max, landings built on red, the repairs, the
 #    certified-within shares, and the colony's line; a colony with no verdict says why instead (no test this platform
 #    can run, certification off, no run yet).
+#
+# 19. Audit sample, blind canaries and people's decisions (packages/worker/src/colony/audit.ts), as the colony measures
+#    them (`audit` in GET /api/colonies/<id>/metrics; the record cannot rebuild them). Of the changes that landed without
+#    a person (a deterministic proof, a reproduction, a model's approval, earned autonomy), counted per confirming layer
+#    since sampling began: how many the stratified sample put in front of a person after they landed, how many a person
+#    answered, and how many of those should not have landed, with its Wilson 95% interval. Blind canaries (sealed
+#    known-bad changes put in the human queue while the policy's canaryRate is on): how many people decided, caught
+#    (rejected or returned) and approved, with the catch rate's Wilson 95% interval. People's decisions on escalations:
+#    the approval rate of the last 2 weeks against the 6 before, in points (none when either side has fewer than 5).
 require "fileutils"
 require "json"
 require "net/http"
@@ -1109,6 +1120,7 @@ module Coordination
         trunkHealth: trunk_health(record, lineage, culprits),
         residue: record && Coordination.residue(record),
         linesByModel: lines_by_model(lineage, attribution, record, agents, snapshot),
+        audit: audit_sample,
         agents: agent_table(agents, record, lineage, attribution),
         missing: @missing,
         warnings: @warnings
@@ -1132,7 +1144,7 @@ module Coordination
       @log.call("reading the colony, its agents and its event record from #{@api.base}")
       snapshot = attempt("the colony not read") { @api.colony(@colony) }
       agents = attempt("agents not read, so vaccine proposals could not be left out") { @api.agents(@colony) } || []
-      vaccine = agents.select { |a| a["name"] == "vaccine" && a["model"] == "vaccine" }.to_set { |a| a["id"] }
+      vaccine = Coordination.sealed_agents(agents)
       page = @api.events(@colony)
       [snapshot, Record.new(page, vaccine_agents: vaccine), agents]
     rescue ApiError => e
@@ -1509,6 +1521,18 @@ module Coordination
       h.merge(colonySays: colony_says).compact
     end
 
+    # Definition 19: the audit sample, the canaries and people's decisions, from the colony's metrics report.
+    def audit_sample
+      return missing("audit sample", "the colony's metrics could not be read (#{@api_note || 'no --url'})") unless @api
+
+      metrics = @api.metrics(@colony)
+      return missing("audit sample", "the colony's metrics carry no audit (it predates the audit sample, or they could not be read)") unless metrics.is_a?(Hash) && metrics["audit"].is_a?(Hash)
+
+      Coordination.audit_sample(metrics["audit"])
+    rescue ApiError => e
+      missing("audit sample", "the colony's metrics could not be read (#{e.message})")
+    end
+
     # The colony's own trunk health line (GET /metrics), or nil when it serves none.
     def colony_says
       text = @api&.metrics(@colony)&.dig("trunkHealth", "text")
@@ -1629,7 +1653,38 @@ module Coordination
   # An agent kind as the report names it (in-platform agents are "platform").
   def kind_label(kind) = kind.nil? ? "unknown" : KIND_LABELS.fetch(kind.to_s, kind.to_s)
 
-  def vaccine?(agent) = agent["name"] == "vaccine" && agent["model"] == "vaccine"
+  # An agent whose proposals are sealed tests, not work, left out of every number: the vaccine agent (name and model
+  # "vaccine") and the blind canaries' agent (model "canary", packages/worker/src/colony/audit.ts).
+  def vaccine?(agent) = agent.is_a?(Hash) && ((agent["name"] == "vaccine" && agent["model"] == "vaccine") || agent["model"] == "canary")
+
+  # The ids of those agents.
+  def sealed_agents(agents) = agents.select { |a| vaccine?(a) }.to_set { |a| a["id"] }
+
+  # Definition 19, from the `audit` of the colony's metrics report: numbers kept as the colony computed them.
+  def audit_sample(a)
+    n = ->(v) { v.is_a?(Numeric) ? v : 0 }
+    measure = ->(m) { { landed: n.(m["landed"]), queued: n.(m["queued"]), audited: n.(m["audited"]), wrong: n.(m["wrong"]), wrongRate: n.(m["wrongRate"]), lo: n.(m["lo"]), hi: m["hi"].is_a?(Numeric) ? m["hi"] : 1 } }
+    layers = (a["layers"].is_a?(Hash) ? a["layers"] : {}).select { |_, m| m.is_a?(Hash) }.to_h { |k, m| [k, measure.(m).merge(label: m["label"].to_s)] }
+    c = a["canaries"].is_a?(Hash) ? a["canaries"] : {}
+    r = a["reviewers"].is_a?(Hash) ? a["reviewers"] : {}
+    weeks = (r["weeks"].is_a?(Array) ? r["weeks"] : []).select { |w| w.is_a?(Hash) }.map { |w| { from: n.(w["from"]), decisions: n.(w["decisions"]), approved: n.(w["approved"]), approvalRate: n.(w["approvalRate"]) } }
+    measure.(a).merge(
+      rate: n.(a["rate"]), pending: n.(a["pending"]), line: a["line"].to_s, layers: layers,
+      canaries: { on: c["on"] == true, rate: n.(c["rate"]), decided: n.(c["decided"]), caught: n.(c["caught"]), approved: n.(c["approved"]),
+                  catchRate: n.(c["catchRate"]), lo: n.(c["lo"]), hi: c["hi"].is_a?(Numeric) ? c["hi"] : 1, waiting: n.(c["waiting"]), line: c["line"].to_s },
+      reviewers: { change: r["change"].is_a?(Numeric) ? r["change"] : nil, line: r["line"].to_s, weeks: weeks }
+    )
+  end
+
+  # The markdown row of definition 19.
+  def audit_row(a)
+    per = a[:layers].select { |_, m| m[:landed].positive? }.map do |k, m|
+      wrong = m[:audited].positive? ? ", #{num(m[:wrong])} should not have (#{(m[:lo] * 100).round}–#{(m[:hi] * 100).round}%)" : ""
+      "#{k} #{num(m[:audited])} of #{num(m[:landed])}#{wrong}"
+    end
+    layers = per.empty? ? "" : "; by layer: #{per.join(', ')}"
+    "| Audit sample (#{(a[:rate] * 100).round(1)}%) | #{a[:line]}#{layers}; #{a[:canaries][:line]}; people: #{a[:reviewers][:line]} |"
+  end
 
   # The most frequent value (ties to the larger), nil for none.
   def most(values) = values.compact.tally.max_by { |v, n| [n, v.to_s] }&.first
@@ -2588,6 +2643,7 @@ module Coordination
     out << trunk_health_row(r[:trunkHealth]) if r[:trunkHealth]
     out << residue_row(r[:residue]) if r[:residue]
     out << lines_row(r[:linesByModel]) if r[:linesByModel]
+    out << audit_row(r[:audit]) if r[:audit]
     notes = r[:missing] + r[:warnings].first(5).map { |w| "warning: #{w}" }
     notes << "#{r[:warnings].size - 5} more warnings in the JSON" if r[:warnings].size > 5
     out += [""] + notes.map { |x| "- #{x}" } unless notes.empty?
