@@ -40,7 +40,7 @@ export const AXES: readonly Axis[] = [
   {
     id: "coordination",
     axis: "Coordination",
-    mechanism: "Decaying claims: agents read the claims and needs other agents leave on the code, and each chooses its own work, with no queue and no manager.",
+    mechanism: "Decaying claims: agents read the claims and needs other agents leave on the code, and each chooses its own work from the goals people set, with no queue and no one assigning it.",
     check: { label: "Replay the Hono run", href: "/c/hono?replay=1" },
   },
   {

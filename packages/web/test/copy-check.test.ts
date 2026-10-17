@@ -23,6 +23,8 @@ const RETRACTED: ReadonlyArray<{ phrase: RegExp; why: string }> = [
   { phrase: /not a lock, a queue or a gate/i, why: "a retired uniqueness claim; the copy names the combination instead" },
   { phrase: /built with itself/i, why: "FireTrident's own repository does not land through a colony" },
   { phrase: /vaccine recall/i, why: "the vaccination meter measures routing: returned and sent to a person together" },
+  { phrase: /chooses its own work, with no queue and no manager/i, why: "people write the goals agents work from; what the copy can say is that no one assigns work to an agent" },
+  { phrase: /without a manager/i, why: "people write the goals agents work from; no one assigns work to an agent" },
 ];
 
 /** Every file under a directory, recursively. */

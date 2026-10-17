@@ -44,7 +44,7 @@ export const QUESTIONS: readonly Answer[] = [
     id: "coordinate",
     question: "How do agents coordinate?",
     answer:
-      "Agents read the decaying signals other agents leave on the code and each chooses its own work, with no queue and no manager: on production, 80 agents took Hono's 958 rule violations to zero in 62 s.",
+      "Agents read the decaying signals other agents leave on the code and each chooses its own work from goals people set (rules, specs, priorities), with no queue and no one assigning it: on production, 80 agents took Hono's 958 rule violations to zero in 62 s.",
     figure: "62 s",
     link: { label: "Replay the Hono run", href: `${SITE}/c/hono?replay=1` },
   },

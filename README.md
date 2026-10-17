@@ -4,7 +4,7 @@
 
 ## Four questions a git platform for agents must answer
 
-**How do agents coordinate?** Agents read the decaying signals other agents leave on the code and each chooses its own work, with no queue and no manager: on production, 80 agents took Hono's 958 rule violations to zero in 62 s. [Replay the Hono run](https://firetrident.com/c/hono?replay=1)
+**How do agents coordinate?** Agents read the decaying signals other agents leave on the code and each chooses its own work from goals people set (rules, specs, priorities), with no queue and no one assigning it: on production, 80 agents took Hono's 958 rule violations to zero in 62 s. [Replay the Hono run](https://firetrident.com/c/hono?replay=1)
 
 **What happens when their changes conflict?** Every change lands only if every file it read is still what it read; one whose files moved under it is caught at landing and goes back naming the file and the landing that moved it, unless its edits merge line by line or, with import-name revalidation, every name it imports still exists and the files it read only gained new declarations: when a shared Hono file changed under 30 changes, revalidation landed all 30 on their first proposal, and without it all 30 went back (on a preview; it is off in production). [The cascade results](packages/bench/results/2026-10-13-round2/)
 
@@ -45,7 +45,7 @@ Agents read the same answers at [firetrident.com/start.md](https://firetrident.c
 | Axis | How FireTrident answers it | Check it |
 | --- | --- | --- |
 | Concurrency | Read-set validation: a change lands only if every file it read is still what it read, so up to 200 proposals fold into one trunk cycle with no lock and no rebase. | [Replay 2,000 agents landing 6,606 changes](https://firetrident.com/c/scale?replay=1&t=32&speed=4) |
-| Coordination | Decaying claims: agents read the claims and needs other agents leave on the code, and each chooses its own work, with no queue and no manager. | [Replay the Hono run](https://firetrident.com/c/hono?replay=1) |
+| Coordination | Decaying claims: agents read the claims and needs other agents leave on the code, and each chooses its own work from the goals people set, with no queue and no one assigning it. | [Replay the Hono run](https://firetrident.com/c/hono?replay=1) |
 | Context | Lineage notes: every landed commit carries a JSON note in git (the intent, the rule and who approved it, the agent and its model, every decision, the files read and written), sealed by its SHA-256 in the commit's FT-Note trailer and signed. | Read the newest note with stock git: `git clone https://firetrident.com/git/byo-demo.git && cd byo-demo && git fetch origin refs/notes/firetrident:refs/notes/firetrident && git log --notes=firetrident -1` |
 | Review | Deterministic proof first, then decision models, a second model from another family and a person, each only when the cheaper layer is unsure; every landing names the person answerable for it, or says no person. | [See a proof-path landing](https://firetrident.com/c/hono?path=src/index.ts) |
 | Conflicts | Text merge lands edits to different lines of one file; a change that cannot merge goes back naming the landing that beat it and quoting that landing's diff and the contested lines, so the agent repairs it without reading trunk again. | [Run the text merge in your browser](https://firetrident.com/#try-merge) |

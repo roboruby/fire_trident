@@ -6,7 +6,7 @@ Below, four questions a git platform for agents must answer, and one more, each 
 
 ## How do agents coordinate?
 
-- [Replay the Hono run](https://firetrident.com/c/hono?replay=1): Agents read the decaying signals other agents leave on the code and each chooses its own work, with no queue and no manager: on production, 80 agents took Hono's 958 rule violations to zero in 62 s.
+- [Replay the Hono run](https://firetrident.com/c/hono?replay=1): Agents read the decaying signals other agents leave on the code and each chooses its own work from goals people set (rules, specs, priorities), with no queue and no one assigning it: on production, 80 agents took Hono's 958 rule violations to zero in 62 s.
 - [Tour of the Hono run](https://firetrident.com/c/hono?tour=1): the same run in seven steps, each sentence filled from its record; scripts/tour_check.ts checks the numbers the steps quote against the colony's metrics endpoint.
 - [Replay 2,000 synthetic agents](https://firetrident.com/c/scale?replay=1&t=32&speed=4): The same machinery at scale: on production, 2,000 synthetic agents (no model calls, review off, each change adds one new file) landed 6,606 changes in one repository in 145 s, 2,730 a minute.
 
