@@ -46,6 +46,43 @@
   ],
   "analytics_engine_datasets": [{ "binding": "METRICS", "dataset": "firetrident_metrics" }],
   "vars": { "FT_PUBLIC_URL": "https://firetrident.com", "FT_DEFAULT_MODEL": "@cf/moonshotai/kimi-k2.7-code", "FT_BULK_MODEL": "@cf/google/gemma-4-26b-a4b-it", "FT_REFLEX_MODEL": "@cf/cloudflare/clef", "FT_COCHANGE_WEIGHT": "5", "FT_PUBLIC_GIT": "hono,shortlinks,byo-demo,scale,order-backend,signed-notes,first-red", "FT_TRUNK_TESTS": "on", "FT_INLINE": "on", "FT_VIRTUAL_CHECKOUT": "on", "FT_CULPRITS": "on", "FT_BISECT": "on", "FT_DELETION_GUARD": "on", "FT_TEXT_MERGE": "on", "FT_PUBLIC_MCP": "hono,shortlinks,byo-demo,scale,order-backend,signed-notes,first-red", "FT_GOAL_CONFLICT": "on", "FT_MEGAFILE": "on", "FT_FIELD_GUIDE": "on", "FT_RESOLVER": "on", "FT_AGENT_CALL_BUDGET": "on", "FT_MERGE_INSERTIONS": "on", "FT_MODEL_STEPUP": "on", "FT_TWINS": "on", "FT_QUOTED_ACCEPTANCE": "on", "FT_A2A": "on", "FT_INTENT_SPEND": "on" },
+  "env": {
+    "staging": {
+      "workers_dev": false,
+      "preview_urls": false,
+      "routes": [{ "pattern": "staging.firetrident.com", "custom_domain": true }],
+      "vars": { "FT_PUBLIC_URL": "https://staging.firetrident.com", "FT_DEFAULT_MODEL": "@cf/moonshotai/kimi-k2.7-code", "FT_BULK_MODEL": "@cf/google/gemma-4-26b-a4b-it", "FT_REFLEX_MODEL": "@cf/cloudflare/clef", "FT_COCHANGE_WEIGHT": "5", "FT_PUBLIC_GIT": "hono,shortlinks,byo-demo,scale,order-backend,signed-notes,first-red", "FT_TRUNK_TESTS": "on", "FT_INLINE": "on", "FT_VIRTUAL_CHECKOUT": "on", "FT_CULPRITS": "on", "FT_BISECT": "on", "FT_DELETION_GUARD": "on", "FT_TEXT_MERGE": "on", "FT_PUBLIC_MCP": "hono,shortlinks,byo-demo,scale,order-backend,signed-notes,first-red", "FT_GOAL_CONFLICT": "on", "FT_MEGAFILE": "on", "FT_FIELD_GUIDE": "on", "FT_RESOLVER": "on", "FT_AGENT_CALL_BUDGET": "on", "FT_MERGE_INSERTIONS": "on", "FT_MODEL_STEPUP": "on", "FT_TWINS": "on", "FT_QUOTED_ACCEPTANCE": "on", "FT_A2A": "on", "FT_INTENT_SPEND": "on" },
+      "durable_objects": {
+        "bindings": [
+          { "name": "COLONY", "class_name": "ColonyDO" },
+          { "name": "REGION", "class_name": "RegionDO" },
+          { "name": "TRUNK", "class_name": "TrunkDO" },
+          { "name": "POOL", "class_name": "PoolDO" },
+          { "name": "AGENT", "class_name": "AgentDO" },
+          { "name": "MCP", "class_name": "FireTridentMcp" }
+        ]
+      },
+      "migrations": [
+        { "tag": "v1", "new_sqlite_classes": ["ColonyDO", "RegionDO", "TrunkDO", "PoolDO", "AgentDO", "FireTridentMcp"] }
+      ],
+      "artifacts": [
+        { "binding": "ARTIFACTS", "namespace": "ft-stg-trunk" },
+        { "binding": "WS0", "namespace": "ft-stg-ws-0" },
+        { "binding": "WS1", "namespace": "ft-stg-ws-1" },
+        { "binding": "WS2", "namespace": "ft-stg-ws-2" },
+        { "binding": "WS3", "namespace": "ft-stg-ws-3" },
+        { "binding": "SESSIONS", "namespace": "ft-stg-sessions" }
+      ],
+      "ai": { "binding": "AI" },
+      "version_metadata": { "binding": "CF_VERSION_METADATA" },
+      "worker_loaders": [{ "binding": "LOADER" }],
+      "workflows": [
+        { "name": "ft-stg-ingest", "binding": "INGEST", "class_name": "IngestWorkflow" },
+        { "name": "ft-stg-verify", "binding": "VERIFY", "class_name": "VerifyWorkflow" }
+      ],
+      "analytics_engine_datasets": [{ "binding": "METRICS", "dataset": "firetrident_staging_metrics" }]
+    }
+  },
   "previews": {
     "vars": { "FT_PUBLIC_URL": "https://firetrident.com", "FT_DEFAULT_MODEL": "@cf/moonshotai/kimi-k2.7-code", "FT_BULK_MODEL": "@cf/google/gemma-4-26b-a4b-it", "FT_REFLEX_MODEL": "@cf/cloudflare/clef", "FT_COCHANGE_WEIGHT": "5", "FT_PUBLIC_GIT": "hono,shortlinks,byo-demo", "FT_TRUNK_TESTS": "on" },
     "ai": { "binding": "AI" },
