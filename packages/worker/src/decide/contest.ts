@@ -1,6 +1,7 @@
 import type { Id, LineageNote, Path, Proposal, RepoRef, Sha } from "@fire_trident/core";
 import { residualPaths } from "@fire_trident/core";
 import type { Env } from "../env.ts";
+import { hedgeSummary, hedged, runAi, type Hedge, type HedgeRecord } from "../colony/hedge.ts";
 import { bindingReader, contentsReader, textOf, type BlobReader } from "../colony/innate.ts";
 import { DANGER_CHECK, type WhyAuthor } from "./danger.ts";
 import { fileDiff, type FileDiff } from "./diff.ts";
@@ -185,6 +186,8 @@ export interface PairVerdict {
   calls: number;
   /** The jury's members and how each voted, when a jury answered instead of one judge (FT_CONTEST_JURY, decide/jury.ts). */
   jury?: JuryMember[];
+  /** The hedged calls behind the verdict (FT_HEDGE, colony/hedge.ts): which copy answered each. */
+  hedged?: HedgeRecord[];
 }
 
 /** Compares two candidates (see pairJudge). */
@@ -356,17 +359,47 @@ export function parseJudgment(text: string | null): { better: "A" | "B" | "tie";
   return { better, reason: typeof raw.reason === "string" ? oneLine(raw.reason, 300) : "" };
 }
 
-/** Ask one model about one ordering (JSON schema output, one retry on an unparsable reply). Throttling is the caller's to handle. */
-export async function askJudge(ai: AiRunner, model: string, messages: Array<{ role: string; content: string }>, timeoutMs = JUDGE_TIMEOUT_MS): Promise<{ better: "A" | "B" | "tie"; reason: string }> {
+/**
+ * Ask one model about one ordering (JSON schema output, one retry on an unparsable reply). Throttling is the caller's to
+ * handle. With `hedge` (FT_HEDGE, colony/hedge.ts), a slow call goes out once more, and the answer says which copy answered.
+ */
+export async function askJudge(
+  ai: AiRunner,
+  model: string,
+  messages: Array<{ role: string; content: string }>,
+  timeoutMs = JUDGE_TIMEOUT_MS,
+  hedge?: Hedge | null,
+): Promise<{ better: "A" | "B" | "tie"; reason: string; hedged?: HedgeRecord[] }> {
   let last: string | null = null;
+  const copies: HedgeRecord[] = [];
   for (let attempt = 0; attempt < 2; attempt++) {
-    const input: Record<string, unknown> = { messages, max_tokens: 1_500, ...requestOptions(model) };
-    if (attempt === 0) input.response_format = { type: "json_schema", json_schema: { name: "judgment", schema: JUDGE_SCHEMA, strict: true } };
-    last = modelText(await withTimeout(ai.run(model, input), timeoutMs, model));
+    const input = (m: string): Record<string, unknown> => {
+      const x: Record<string, unknown> = { messages, max_tokens: 1_500, ...requestOptions(m) };
+      if (attempt === 0) x.response_format = { type: "json_schema", json_schema: { name: "judgment", schema: JUDGE_SCHEMA, strict: true } };
+      return x;
+    };
+    const r = await withTimeout(hedged((m, signal) => runAi(ai, m, input(m), signal), model, hedge), timeoutMs, model);
+    if (r.hedged) copies.push(r.hedged);
+    last = modelText(r.value);
     const answer = parseJudgment(last);
-    if (answer) return answer;
+    if (answer) return copies.length > 0 ? { ...answer, hedged: copies } : answer;
   }
   throw new Error(`${model} gave no parsable judgment: ${(last ?? "").slice(0, 120)}`);
+}
+
+/**
+ * The judge's and the jury's hedge (FT_HEDGE): the copy goes to the same model, since both orders of a pair are asked
+ * of one model, and through the shared limiter (no slot free at that moment: no copy). Null without a hedge.
+ */
+export function judgeHedge(hedge: Hedge | null | undefined, limiter: CallLimiter): Hedge | null {
+  if (!hedge) return null;
+  return { ...hedge, copyModel: undefined, admit: hedge.admit ?? ((m) => limiter.acquire(m, 0)) };
+}
+
+/** A verdict with the hedged calls behind it (FT_HEDGE): their records, and a clause on its why saying which copy answered. */
+export function withHedged<V extends { why: string }>(v: V, records: readonly HedgeRecord[]): V & { hedged?: HedgeRecord[] } {
+  const note = hedgeSummary(records);
+  return note ? { ...v, why: `${v.why} (${note})`, hedged: [...records] } : v;
 }
 
 /**
@@ -393,6 +426,8 @@ export interface JudgeOptions {
   now?: () => number;
   deadlineMs?: number;
   timeoutMs?: number;
+  /** Hedged calls (FT_HEDGE, colony/hedge.ts); absent or null, none. */
+  hedge?: Hedge | null;
 }
 
 /**
@@ -403,6 +438,7 @@ export interface JudgeOptions {
  */
 export function pairJudge(o: JudgeOptions): PairJudge {
   const now = o.now ?? Date.now;
+  const hedge = judgeHedge(o.hedge, o.limiter);
   return async (x, y) => {
     const vx = judgeView(x.diffs);
     const vy = judgeView(y.diffs);
@@ -410,6 +446,7 @@ export function pairJudge(o: JudgeOptions): PairJudge {
     const deadline = now() + (o.deadlineMs ?? JUDGE_DEADLINE_MS);
     let calls = 0;
     let error = "no judge model configured";
+    const copies: HedgeRecord[] = [];
     const ask = async (model: string, a: string, b: string): Promise<{ better: "A" | "B" | "tie"; reason: string }> => {
       for (let attempt = 0; ; attempt++) {
         const release = await o.limiter.acquire(model, deadline);
@@ -417,7 +454,9 @@ export function pairJudge(o: JudgeOptions): PairJudge {
         try {
           calls++;
           o.onCall?.(model);
-          return await askJudge(o.ai, model, judgeMessages(o.intent, a, b), o.timeoutMs ?? JUDGE_TIMEOUT_MS);
+          const answer = await askJudge(o.ai, model, judgeMessages(o.intent, a, b), o.timeoutMs ?? JUDGE_TIMEOUT_MS, hedge);
+          if (answer.hedged) copies.push(...answer.hedged);
+          return answer;
         } catch (err) {
           if (!isThrottled(err) || attempt + 1 >= JUDGE_ATTEMPTS) throw err;
           o.limiter.cooldown(model, 2_000 * 2 ** attempt);
@@ -430,13 +469,13 @@ export function pairJudge(o: JudgeOptions): PairJudge {
       try {
         const first = await ask(model, vx.text, vy.text);
         const second = await ask(model, vy.text, vx.text);
-        return { ...combine(first, second, model), model, calls };
+        return { ...withHedged(combine(first, second, model), copies), model, calls };
       } catch (err) {
         error = err instanceof Error ? err.message : String(err);
         if (err instanceof Unavailable) break;
       }
     }
-    return { better: "tie", why: `the judge was unavailable (${oneLine(error, 160)})`, calls };
+    return { ...withHedged({ better: "tie" as const, why: `the judge was unavailable (${oneLine(error, 160)})` }, copies), calls };
   };
 }
 

@@ -39,6 +39,20 @@ export interface Env {
   FT_DEFAULT_MODEL: string;
   FT_BULK_MODEL: string;
   FT_REFLEX_MODEL: string;
+  /**
+   * Optional: hedged model calls, "on", or a comma-separated list of colony ids; absent or "off" is off. Where it covers
+   * the colony, a model call with no answer after its call site's wait goes out once more (colony/hedge.ts): Clef, the
+   * second opinion (to its next candidate model), antibody minting, the contest judge and jury, the conflict resolver
+   * and in-platform agents. The first answer wins, the other copy is aborted, both copies' tokens count in the spend,
+   * and the decision record (`hedged`) and the model's check say which copy answered. Metrics `hedge.<site>.sent` and
+   * `hedge.<site>.copy` count copies sent and copies whose answer was used.
+   */
+  FT_HEDGE?: string;
+  /**
+   * Optional: the hedge's wait in ms, for every call site ("8000") or by site ("review=8000,agent=90000"; sites reflex,
+   * review, judge, antibody, resolver, agent), held to 1 s .. 10 minutes; absent, each site's own (HEDGE_AFTER_MS).
+   */
+  FT_HEDGE_MS?: string;
   /** Secret: bearer token for mutating API routes. */
   FT_ADMIN_TOKEN?: string;
   /**

@@ -22,7 +22,8 @@ import type { Env } from "../env.ts";
 import { prelandAlone, prelandReturn, prelandTexts, type PrelandOutcome } from "../certify/preland.ts";
 import { runInnateChecks, type InnateResult } from "../colony/innate.ts";
 import { errorText, ftError } from "../colony/errors.ts";
-import { meteredAi, spendCounters } from "../colony/spend.ts";
+import { lateDecideSpend, meteredAi, spendCounters } from "../colony/spend.ts";
+import { hedgeFor, hedgeText, type Hedge, type HedgeExtra, type HedgeRecord, type HedgeSite } from "../colony/hedge.ts";
 import { acceptanceCheck, acceptanceFor } from "./acceptance.ts";
 import { ANTIBODY_DIR, antibodyFile, antibodyPath, calibrateThreshold, cleanQuestion, deriveMatcher, fallbackQuestion, parseAntibodyFile, securityAntibody } from "./antibodies.ts";
 import { addedFromHunks, fileDiff, type FileDiff } from "./diff.ts";
@@ -227,6 +228,11 @@ export class DecideEngine {
     return this.host.env.AI as unknown as AiRunner;
   }
 
+  /** Hedged model calls (FT_HEDGE, colony/hedge.ts) at one call site of this colony, its copies counted in the metrics; null where the flag does not cover it. */
+  private hedge(site: HedgeSite, extra: HedgeExtra = {}): Hedge | null {
+    return hedgeFor(this.host.env, this.host.colony().id, site, { bump: (name, delta) => this.host.bump(name, delta), ...extra });
+  }
+
   private async decideOne(p: Proposal): Promise<void> {
     const policy = this.store.policy();
     const colony = this.host.colony();
@@ -370,8 +376,11 @@ export class DecideEngine {
       const skip = new Set(Object.entries(clefStates).filter(([, s]) => s === "off").map(([k]) => k));
       let clefMs = 0;
       let clefError = "";
+      let clefHedged: HedgeRecord | undefined;
       try {
-        const r = await askClef(this.ai(), policy.reflexModel, state, reflexQuestions(input.antibodies, skip));
+        // Hedged (FT_HEDGE): a losing copy that answers anyway counts where the winner's tokens do.
+        const r = await askClef(this.ai(), policy.reflexModel, state, reflexQuestions(input.antibodies, skip), undefined, this.hedge("reflex", { onLate: lateDecideSpend(this.host, "decide.clef", p.intentId) }));
+        clefHedged = r.hedged;
         reflex = readReflex(
           r.answers,
           matching.map((s) => ({ id: s.antibody.id, threshold: s.antibody.threshold, state: s.state, question: s.antibody.question, security: securityAntibody(s.antibody) })),
@@ -392,7 +401,7 @@ export class DecideEngine {
         name: `reflex: ${policy.reflexModel}`,
         ok: v1.action !== "escalate" && v1.detectors.length === 0,
         ms: clefMs,
-        detail: reflex ? `${reflexSummary(reflex)}; confidence ${v1.confidence}; ${coverageText(seen.reflex)}` : `unavailable: ${clefError}`,
+        detail: reflex ? `${reflexSummary(reflex)}; confidence ${v1.confidence}; ${coverageText(seen.reflex)}${clefHedged ? `; ${hedgeText(clefHedged)}` : ""}` : `unavailable: ${clefError}`,
       });
       // Only decisions a model made go into the funnel; a proof that only needed antibody screening is not one.
       const d1 =
@@ -411,6 +420,7 @@ export class DecideEngine {
                 confidence: v1.confidence,
                 coverage: seen.reflex,
                 ...destructiveRecord(destructive),
+                ...(clefHedged ? { hedged: clefHedged } : {}),
                 ...(vaccine ? { vaccine: true } : {}),
               },
               p: v1.p,
@@ -429,7 +439,7 @@ export class DecideEngine {
           name: `llm: ${so.model}`,
           ok: llm?.verdict === "approve",
           ms: so.ms,
-          detail: llm ? `${llm.verdict}, needs_human ${llm.needsHuman}: ${llm.reason}; ${coverageText(seen.llm)}` : `unavailable: ${so.error}`,
+          detail: llm ? `${llm.verdict}, needs_human ${llm.needsHuman}: ${llm.reason}; ${coverageText(seen.llm)}${so.hedgeNote ? `; ${so.hedgeNote}` : ""}` : `unavailable: ${so.error}`,
         });
         if (accepted) checks.push(acceptanceCheck(accepted));
         await this.host.recordDecision({
@@ -445,6 +455,7 @@ export class DecideEngine {
             damage: final.damage,
             coverage: seen.llm,
             ...destructiveRecord(destructive),
+            ...(so.hedged ? { hedged: so.hedged } : {}),
             ...(accepted ? { acceptance: accepted } : {}),
             ...(vaccine ? { vaccine: true } : {}),
           },
@@ -569,7 +580,11 @@ export class DecideEngine {
    * throttling it backs off (the model cools down for everyone) and then tries the next model.
    * A proposal waits at most LLM_DEADLINE_MS; nothing else waits behind it.
    */
-  private async secondOpinion(p: Proposal, input: ReflexInput, policy: DecidePolicy): Promise<{ opinion: SecondOpinion | null; model: string; ms: number; error: string }> {
+  private async secondOpinion(
+    p: Proposal,
+    input: ReflexInput,
+    policy: DecidePolicy,
+  ): Promise<{ opinion: SecondOpinion | null; model: string; ms: number; error: string; hedged?: HedgeRecord; hedgeNote?: string }> {
     this.limiter.configure(policy.llmConcurrency, policy.llmPerMinute);
     const models = secondOpinionCandidates(this.host.agent(p.agentId)?.model, policy.secondOpinionModels);
     const messages = secondOpinionMessages(input, p.evidence.notVerified);
@@ -583,14 +598,23 @@ export class DecideEngine {
         const release = await this.limiter.acquire(model, deadline);
         if (!release) return { opinion: null, model, ms: Date.now() - t0, error: `no ${model} slot within ${LLM_DEADLINE_MS / 1000} s (rate limits)` };
         try {
+          // Hedged (FT_HEDGE): the copy goes to the next candidate, the model a throttled call moves on to (the same
+          // model when there is none), through this limiter; a losing copy that answers anyway counts as the winner does.
+          const hedge = this.hedge("review", {
+            copyModel: models[models.indexOf(model) + 1] ?? model,
+            admit: (m) => this.limiter.acquire(m, 0),
+            onLate: lateDecideSpend(this.host, "decide.llm", p.intentId),
+          });
           // Quoted acceptance asks for one answer per acceptance line (FT_QUOTED_ACCEPTANCE).
-          const r = await askSecondOpinion(this.ai(), model, messages, undefined, askedLines(input.acceptance ?? []).length);
+          const r = await askSecondOpinion(this.ai(), model, messages, undefined, askedLines(input.acceptance ?? []).length, hedge);
+          // The model that answered (a hedge copy may have gone to the next candidate).
+          const used = r.model;
           this.host.bump("decide.llm.tokensIn", r.tokens.in);
           this.host.bump("decide.llm.tokensOut", r.tokens.out);
           // Per model too, for the colony's spend (colony/spend.ts).
-          for (const [name, delta] of spendCounters("decide.llm", model, { input: r.tokens.in, output: r.tokens.out })) this.host.bump(name, delta);
-          this.host.countIntentCall?.(p.intentId, "review", model, { input: r.tokens.in, output: r.tokens.out });
-          return { opinion: r.opinion, model, ms: Date.now() - t0, error: "" };
+          for (const [name, delta] of spendCounters("decide.llm", used, { input: r.tokens.in, output: r.tokens.out })) this.host.bump(name, delta);
+          this.host.countIntentCall?.(p.intentId, "review", used, { input: r.tokens.in, output: r.tokens.out });
+          return { opinion: r.opinion, model: used, ms: Date.now() - t0, error: "", ...(r.hedged ? { hedged: r.hedged, hedgeNote: hedgeText(r.hedged, model) } : {}) };
         } catch (err) {
           error = errorText(err);
           if (!isThrottled(err)) break;
@@ -696,12 +720,13 @@ export class DecideEngine {
       });
     }
     const model = pickSecondOpinion(this.host.agent(p.agentId)?.model, policy.secondOpinionModels);
-    const rephrased = this.host.env.AI ? await rephraseAsQuestion(ai, model, reason, intent?.title ?? p.declared.summary).catch(() => null) : null;
+    // Hedged (FT_HEDGE): `ai` counts every run, a losing copy's too.
+    const rephrased = this.host.env.AI ? await rephraseAsQuestion(ai, model, reason, intent?.title ?? p.declared.summary, undefined, this.hedge("antibody")).catch(() => null) : null;
     const question = cleanQuestion(rephrased) ?? fallbackQuestion(reason);
     let pSelf: number | null = null;
     if (this.host.env.AI) {
       try {
-        const r = await askClef(ai, policy.reflexModel, state, { self: { type: "noul", instructions: question, criteria: { true: "Yes: this change has that problem", false: "No: it does not" } } });
+        const r = await askClef(ai, policy.reflexModel, state, { self: { type: "noul", instructions: question, criteria: { true: "Yes: this change has that problem", false: "No: it does not" } } }, undefined, this.hedge("reflex"));
         pSelf = noul(r.answers, "self");
         if (!Number.isFinite(pSelf)) pSelf = null;
       } catch {

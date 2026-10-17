@@ -8,6 +8,7 @@ import type { CallLimiter } from "../decide/limiter.ts";
 import { isThrottled } from "../decide/reflex.ts";
 import { MODEL_USAGE_CHECK } from "../trunk/provenance.ts";
 import { errorText } from "./errors.ts";
+import { hedgeText } from "./hedge.ts";
 import type { SqlRunner } from "./inline.ts";
 import { checkMerged, cleanConflicts, cleanResolves, mergeSides, type ConflictedMerge } from "./resolver-merge.ts";
 import { markedText, parseResolveReply, resolveMaxTokens, resolveMessages } from "./resolver-prompt.ts";
@@ -580,7 +581,8 @@ export class Resolver {
         name: MODEL_USAGE_CHECK,
         ok: true,
         ms,
-        detail: `${used}: 1 call(s), ${reply.usage?.input ?? 0} input / ${reply.usage?.output ?? 0} output tokens${reply.usage?.cached ? ` (${reply.usage.cached} cached)` : ""}`,
+        // Hedged (FT_HEDGE, colony/hedge.ts): which copy answered.
+        detail: `${used}: 1 call(s), ${reply.usage?.input ?? 0} input / ${reply.usage?.output ?? 0} output tokens${reply.usage?.cached ? ` (${reply.usage.cached} cached)` : ""}${reply.hedged ? `; ${hedgeText(reply.hedged)}` : ""}`,
       },
       {
         name: "resolver: merge",
