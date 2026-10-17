@@ -1664,6 +1664,97 @@ a.signed-by:hover {
   color: var(--text-2);
 }
 
+/* Tests before approval (components/ReviewTests.tsx): the colony's tests on an escalated change lead its card. */
+.rtests {
+  margin: 10px 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line-2);
+  border-left: 3px solid var(--text-3);
+  border-radius: 0 6px 6px 0;
+  background: rgba(255, 255, 255, 0.02);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.rtests.is-failed {
+  border-left-color: var(--danger);
+  background: rgba(255, 46, 79, 0.06);
+}
+
+.rtests.is-passed {
+  border-left-color: var(--trail);
+  background: rgba(31, 224, 142, 0.05);
+}
+
+.rtests-lead {
+  font-weight: 600;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.rtests-failing {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rtests-fail + .rtests-fail {
+  margin-top: 4px;
+}
+
+.rtests-fail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  align-items: baseline;
+}
+
+.rtests-name {
+  color: var(--text);
+  font-size: 11.5px;
+  overflow-wrap: anywhere;
+}
+
+.rtests-file {
+  color: var(--text-3);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.rtests-on {
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+.rtests-on.is-passes {
+  color: #ff8a9b;
+  font-weight: 600;
+}
+
+.rtests-error {
+  flex-basis: 100%;
+  color: var(--text-2);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.rtests-trunk,
+.rtests-note {
+  margin-top: 6px;
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+
+.rtests-actions {
+  margin-top: 6px;
+}
+
+.rtests-actions .btn {
+  height: 26px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
 .residual {
   margin: 10px 0;
 }

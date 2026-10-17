@@ -1,6 +1,7 @@
 import type { Certification, CertificationStatus, ColonyEvent, FailingTest, FileVersion, FirstRed, Id, Landing, LineageNote, NoteCertification, Path, Proposal, Sha } from "@fire_trident/core";
 import { FirstRedSearch } from "./bisect.ts";
 import { PrelandChecks, prelandMatches, type PrelandOutcome, type PrelandReader } from "./preland.ts";
+import type { SealedRuns } from "./reviewtests.ts";
 import { TEST_FILE } from "./compile.ts";
 import { SUSPECT_MS, capSuspects, findSuspects, markFirstRed, publicSuspect, type FoundSuspect, type LandedOn, type SinceGreen } from "./culprit.ts";
 import { DEFAULT_CAPS, load, testFiles, type CompileMemo, type IndexedFile, type Loaded } from "./load.ts";
@@ -578,6 +579,25 @@ export class Certifier {
         this.memo.delete(k);
       }
     }
+  }
+
+  /**
+   * Tests before approval (reviewtests.ts): the test Worker run() uses, this colony's stored per-file results (exact keys),
+   * the compile memo and the per-test limit, for runs on escalated changes. Nothing those runs find is stored here.
+   */
+  sealedRuns(): SealedRuns {
+    return {
+      memo: this.memo,
+      run: (plan, timeoutMs) => this.run(plan, { ...this.policy(), timeoutMs }),
+      results: (keys) => this.cachedFiles(keys),
+      testTimeoutMs: () => this.policy().testTimeoutMs,
+      trim: () => {
+        for (const k of this.memo.keys()) {
+          if (this.memo.size <= MEMO_ENTRIES) break;
+          this.memo.delete(k);
+        }
+      },
+    };
   }
 
   /** Record a run that had nothing to judge. Published only when it changes what the colony shows. */

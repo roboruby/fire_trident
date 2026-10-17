@@ -17,6 +17,8 @@ import { mergeHoldOf } from "../mergehold.ts";
 import { cleanContested, cleanMoved } from "../moved.ts";
 import { AutonomyStrip } from "./AutonomyStrip.tsx";
 import { EvidenceChips } from "./SaidBy.tsx";
+import { ReviewTests } from "./ReviewTests.tsx";
+import { testsPending } from "../reviewtests.ts";
 
 const NONE: readonly string[] = [];
 
@@ -137,6 +139,14 @@ export function ReviewTab({ store, backend, director = false }: { store: ColonyS
     return () => window.clearInterval(timer);
   }, [load]);
 
+  // Tests before approval: while a card's run waits or goes, the queue is read every few seconds, so its result shows soon.
+  const testing = useMemo(() => testsPending(items ?? []), [items]);
+  useEffect(() => {
+    if (!testing) return;
+    const timer = window.setInterval(() => void load(), 3_000);
+    return () => window.clearInterval(timer);
+  }, [testing, load]);
+
   const reviewVersion = store.reviewVersion;
   useEffect(() => {
     const timer = window.setTimeout(() => void load(), 350);
@@ -256,6 +266,8 @@ export function ReviewTab({ store, backend, director = false }: { store: ColonyS
               <div className="card-meta">
                 by <span className="mono">{store.agentName(p.agentId)}</span> · wrote {fmtInt(p.writeSet?.length ?? 0)} · read {fmtInt(p.readSet?.length ?? 0)}
               </div>
+              {/* Tests before approval: the colony's tests on the change at its base lead what a person reads. */}
+              <ReviewTests item={p} backend={backend} readOnly={replay} director={director} onAsked={() => void load()} />
               {moved || contested ? <MovedByList moved={moved ?? []} contested={contested ?? []} agentName={(id) => store.agentName(id)} /> : null}
               {/* Merge locks: the merge a person is asked to approve, read before the change itself. */}
               {held ? <MergeHold files={held} /> : null}

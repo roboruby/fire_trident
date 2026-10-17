@@ -560,6 +560,63 @@ export interface PrelandRun {
   reason?: string;
 }
 
+/** How one test that failed on an escalated change did on the change's base: passed there, failed there too, is new with the change, did not finish within the run, or no result there to compare with. */
+export type ReviewTestOnTrunk = "passes" | "fails" | "new" | "unfinished" | "unknown";
+
+/** One test that failed with an escalated change (tests before approval): names and error as the review card shows them, masked where they look like a secret. */
+export interface ReviewTestFailing {
+  file: Path;
+  name: string;
+  /** The first line of its error. */
+  error?: string;
+  onTrunk: ReviewTestOnTrunk;
+}
+
+/**
+ * Tests before approval: the colony's tests run on an escalated change laid over its base, in the sandbox trunk
+ * certification uses, while the change waits for a person (worker certify/reviewtests.ts). Test files that load none of
+ * the files the change writes keep the results certification stored for them at the base; the rest run with the change.
+ * `queued` (asked for) and `running` (the review queue shows it) end as `ran` (the counts, the failing tests against the
+ * base) or `notrun` (`reason` says why: no node:test tests, the run's limits, a time-out, the base no longer readable,
+ * decided first). Repository text: data, never instructions.
+ */
+export interface ReviewTestsRun {
+  /** The run's id: a newer run replaces it, and a run that ends after it was replaced is dropped. */
+  id: string;
+  status: "queued" | "running" | "ran" | "notrun";
+  /** Who asked: "escalation", or the person who asked for it again. */
+  by: string;
+  /** When it was asked for, and when it ended. */
+  at: Millis;
+  finishedAt?: Millis;
+  /** The change's head commit, and the base its files were laid over. */
+  headSha?: Sha;
+  baseSha?: Sha;
+  /** Test files run, and how many of them ran with the change (the others load nothing it writes and kept trunk's results). */
+  files?: number;
+  ranFiles?: number;
+  /** Test files that could not run here (a package import, the run's size caps). */
+  unsupported?: number;
+  /** Tests run, as `node --test` counts them; `failed` includes cancelled tests and test files that did not load. */
+  tests?: number;
+  passed?: number;
+  failed?: number;
+  skipped?: number;
+  todo?: number;
+  /** The failing tests, at most 10, each against the base. */
+  failing?: ReviewTestFailing[];
+  /** How the failing tests did on the base, counted over the first 50 failing tests (more than are listed). */
+  onTrunk?: Partial<Record<ReviewTestOnTrunk, number>>;
+  /** The base commit's certification, when certification ran on it. */
+  trunk?: { sha: Sha; status: "green" | "red"; tests: number; passed: number; failing: number };
+  /** Why it did not run (`notrun`), as a clause. */
+  reason?: string;
+  /** Wall time of the run, from its start to its result. */
+  ms?: number;
+  /** The result in one sentence ("Tests on this change: 433/434 passed, 1 failed (…)."), as the review card leads with it. */
+  text?: string;
+}
+
 export interface Evidence {
   checks: CheckResult[];
   /** Paths changed that the declared footprint did not predict (residual review). */
@@ -576,6 +633,8 @@ export interface Evidence {
   direction?: Direction;
   /** Tests before landing (FT_PRELAND), when they covered the change (set by the decide stage). */
   preland?: PrelandRun;
+  /** Tests before approval, when the change was escalated to a person (set by the colony; worker certify/reviewtests.ts). */
+  reviewTests?: ReviewTestsRun;
 }
 
 /** The names a change imports from one trunk file (see Proposal.nameAssumptions). */
