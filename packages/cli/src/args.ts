@@ -3,6 +3,7 @@ import type { AgentKind, ColonyEvent } from "@fire_trident/core";
 import { CLONE_OPTIONS, cloneVerify, type CloneVerify } from "./clonecheck.ts";
 import { parseSpendCap } from "./spendcap.ts";
 import { isConnectColony } from "./connect.ts";
+import { parseSilentTtl } from "./closure.ts";
 
 /** Event types `ft watch --only` accepts. */
 export const EVENT_TYPES: ReadonlyArray<ColonyEvent["t"]> = [
@@ -60,7 +61,7 @@ export type Command =
   | { name: "vaccinate"; colony: string; count: number }
   | { name: "immune"; colony: string }
   | { name: "certify"; colony: string; action: "show" | "now" | "on" | "off" }
-  | { name: "policy"; colony: string; protect: string[]; unprotect: string[]; commentProof?: boolean }
+  | { name: "policy"; colony: string; protect: string[]; unprotect: string[]; commentProof?: boolean; silentTtl?: number | null }
   | { name: "intent-amend"; colony: string; intentId: string; title?: string; why?: string; footprint?: string[]; priority?: number; reason: string; by?: string }
   | { name: "intent-withdraw"; colony: string; intentId: string; reason: string; by?: string }
   | { name: "intent-show"; colony: string; intentId: string }
@@ -146,7 +147,7 @@ const COMMAND_OPTIONS: Record<string, Record<string, OptionSpec>> = {
   vaccinate: { count: { type: "string" } },
   immune: {},
   certify: { now: { type: "boolean" }, on: { type: "boolean" }, off: { type: "boolean" } },
-  policy: { protect: { type: "string", multiple: true }, unprotect: { type: "string", multiple: true }, "comment-proof": { type: "string" } },
+  policy: { protect: { type: "string", multiple: true }, unprotect: { type: "string", multiple: true }, "comment-proof": { type: "string" }, "silent-ttl": { type: "string" } },
   help: {},
 };
 
@@ -485,7 +486,7 @@ function build(word: string, v: Record<string, unknown>, p: string[]): Command {
       return { name: "certify", colony, action: picked[0] ?? "show" };
     }
     case "policy": {
-      const usage = "ft policy <colony> [--protect <glob>]... [--unprotect <glob>]... [--comment-proof on|off]";
+      const usage = "ft policy <colony> [--protect <glob>]... [--unprotect <glob>]... [--comment-proof on|off] | --silent-ttl <duration|default>";
       noExtras(p, 1, usage);
       const colony = colonyArg(p[0], usage);
       const globs = (flag: string): string[] => {
@@ -502,6 +503,14 @@ function build(word: string, v: Record<string, unknown>, p: string[]): Command {
       if (proof !== undefined) {
         if (proof !== "on" && proof !== "off") fail(`--comment-proof must be on or off, got "${proof}"`);
         cmd.commentProof = proof === "on";
+      }
+      // The silent-agent limit (closure.ts) has its own route, so it is set on its own.
+      const ttl = str(v["silent-ttl"]);
+      if (ttl !== undefined) {
+        if (protect.length > 0 || unprotect.length > 0 || cmd.commentProof !== undefined) fail(`--silent-ttl is set on its own: ft policy ${colony} --silent-ttl 90s`);
+        const seconds = parseSilentTtl(ttl);
+        if (typeof seconds === "string") fail(seconds);
+        cmd.silentTtl = seconds;
       }
       return cmd;
     }
@@ -789,7 +798,7 @@ Commands
   vaccinate <colony> --count <n>   Inject planted bad changes to test the immune layer
   immune <colony>                  Earned autonomy per region: what earned it, what revoked it
   certify <colony>                 Trunk certification: results, --now, --on/--off
-  policy <colony>                  Paths only a person may change; the comment-only proof
+  policy <colony>                  Paths only a person may change; the comment-only proof; silent agents
   why <colony> <path[:line]>       Show the lineage behind a file or line
   impact <colony> <path>...        What a change to a file reaches, and who works on it now
   verify <colony>                  Check the newest lineage notes on git against their commits
@@ -1239,6 +1248,7 @@ and --on change the colony's policy (the deployment's FT_TRUNK_TESTS must be
 `,
   policy: `
 ft policy <colony> [--protect <glob>]... [--unprotect <glob>]... [--comment-proof on|off]
+ft policy <colony> --silent-ttl <duration|default>
 
 Show or change how the colony reviews changes. Without options, show whether
 review runs, the deterministic proofs, and the protected paths.
@@ -1252,11 +1262,18 @@ review runs, the deterministic proofs, and the protected paths.
   --comment-proof on|off A change to existing .ts, .tsx, .js, .jsx, .mjs or .cjs
                          files that only changes comments and whitespace (no
                          directive comment) lands without a model. On by default
+  --silent-ttl <d>       How long an agent outside the platform (MCP or API) may
+                         be silent before the colony takes its claimed intents
+                         back, reopening them with a failure mark: 60s to 24h,
+                         such as 90s or 10m; default puts back ten minutes.
+                         In-platform agents keep at least ten minutes. Set on
+                         its own; the closures it causes are in the metrics
 
 Examples
   ft policy web --protect "src/auth/**" --protect db/migrations
   ft policy web --unprotect db/migrations
   ft policy web --comment-proof off
+  ft policy demo --silent-ttl 90s
 `,
   immune: `
 ft immune <colony>

@@ -26,6 +26,8 @@ import type { StuckAction, StuckItem, StuckKind, StuckRepairState } from "@fire_
 import type { MovedBy } from "@fire_trident/core";
 import type { ColonySpend, IntentSpendBrief } from "@fire_trident/core";
 import type { PauseState } from "@fire_trident/core";
+import type { IntentClosure } from "@fire_trident/core";
+import { closureFrom } from "./closure.ts";
 import { applyPauseEvent, parsePauses } from "./pause.ts";
 import { finite } from "./format.ts";
 import { movedByOf } from "./moved.ts";
@@ -140,6 +142,8 @@ export interface IntentView {
   contest?: number;
   /** What the intent must meet, line by line, when it was declared with acceptance (the snapshot says; live events do not). */
   acceptance?: string[];
+  /** Why it last closed or reopened while an agent held it (the closure ledger; closure.ts), from the snapshot or an intent event. */
+  closure?: IntentClosure;
 }
 
 export interface ProposalView {
@@ -728,6 +732,8 @@ export class ColonyStore {
       if (contest >= 2) view.contest = Math.min(4, Math.floor(contest));
       const acceptance = acceptanceOf(i.acceptance);
       if (acceptance) view.acceptance = acceptance;
+      const closure = closureFrom(i.closure);
+      if (closure) view.closure = closure;
       this.intents.set(i.id, view);
       tally(this.intentsByStatus, i.status, 1, INTENT_STATUSES);
       const esc = escalationOf(i.id, i.escalation, view.title, now);
@@ -1280,6 +1286,9 @@ export class ColonyStore {
     const contest = finite((ev as { contest?: unknown }).contest, 0);
     if (contest >= 2) it.contest = Math.min(4, Math.floor(contest));
     if (ev.status === "open") it.assignedTo = undefined;
+    // The closure ledger (closure.ts): a close or reopen of an intent an agent held carries its cause.
+    const closure = closureFrom(ev, ev.status);
+    if (closure) it.closure = closure;
     this.intentsVersion++;
   }
 

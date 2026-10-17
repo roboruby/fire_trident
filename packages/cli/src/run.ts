@@ -56,6 +56,7 @@ import { extractSpec, planNew } from "./spec.ts";
 import { formatMegafile } from "./megafile.ts";
 import { formatPause } from "./pause.ts";
 import { formatSpendCap } from "./spendcap.ts";
+import { formatSilentTtl, type SilentTtlView } from "./closure.ts";
 import { formatImpact } from "./impact.ts";
 import { autonomyLine, formatImmune } from "./immune.ts";
 import { signatureFailed } from "./signatures.ts";
@@ -546,6 +547,14 @@ async function policy(cmd: Extract<Command, { name: "policy" }>, ctx: Ctx): Prom
   const read: ApiRequest = { method: "GET", path: colonyPath(cmd.colony, "/decide/policy") };
   const proof = cmd.commentProof !== undefined ? { commentProof: cmd.commentProof } : {};
   const single = planRequest(cmd, ctx.by);
+  // The silent-agent limit (closure.ts): its own route and its own answer.
+  if (cmd.silentTtl !== undefined && single) {
+    if (ctx.flags.dryRun) return dryRun(ctx, [single]);
+    const res = await send<SilentTtlView | null>(ctx.http, single);
+    if (ctx.flags.json) printJson(ctx, res);
+    else io.stdout(formatSilentTtl(cmd.colony, res ?? {}, c));
+    return typeof res?.ms === "number" ? 0 : 1;
+  }
   if (single) {
     if (ctx.flags.dryRun) return dryRun(ctx, [single]);
     const res = await send<DecidePolicyView | null>(ctx.http, single);

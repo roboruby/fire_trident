@@ -5236,6 +5236,19 @@ html[data-emphasize="trunk"] .trunk {
   color: #ff9aa4;
 }
 
+/* The closure ledger: why an intent an agent held last reopened (reaped from a silent agent, given back, stopped). */
+.ibadge-closure {
+  border-color: rgba(201, 212, 229, 0.35);
+  color: #c9d4e5;
+  text-transform: none;
+}
+
+.ibadge-closure-reaped_silent,
+.ibadge-closure-stopped {
+  border-color: rgba(255, 196, 0, 0.45);
+  color: #ffd666;
+}
+
 .ibadge-moved {
   max-width: 220px;
   overflow: hidden;

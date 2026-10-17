@@ -409,6 +409,12 @@ class CoordinationTest < Minitest::Test
     assert_includes md, "| Critical path to the last landing | `int_10` (int_10 title) landed at +299.0 s in lnd_6 (1 change): no claim in the record"
   end
 
+  # The fixture's record predates the closure ledger: no intent event carries a cause.
+  def test_closures_of_a_record_before_the_ledger
+    assert_equal({ closures: 0, byKind: {}, reaped: { count: 0, medianGapMs: nil, maxGapMs: nil }, beforeLedger: 0 }, report[:closures])
+    assert_includes Coordination.markdown(report), "| Closures | none recorded |"
+  end
+
   # This record has no claim events, so every landed intent's clock starts at its first proposal.
   def test_where_the_time_went_from_the_colony_record
     t = report[:timeSplit]
@@ -632,6 +638,61 @@ class TimeSplitTest < Minitest::Test
     assert_equal 6, Coordination.covered([[0, 4], [2, 6], [8, 9]], 0, 7)
     assert_equal 0, Coordination.covered([], 0, 10)
     assert_equal 3, Coordination.covered([[5, 20]], 0, 8)
+  end
+end
+
+# Definition 10 on a small record: the closure ledger's causes per agent kind, the reaped agents' gaps, and the closes
+# recorded before the ledger.
+class ClosuresTest < Minitest::Test
+  AGENTS = [
+    { "id" => "agt_walk", "kind" => "external" }, { "id" => "agt_mcp", "kind" => "external" }, { "id" => "agt_in", "kind" => "internal" },
+    { "id" => "agt_syn", "kind" => "synthetic" }, { "id" => "agt_v", "kind" => "synthetic", "name" => "vaccine", "model" => "vaccine" }
+  ].freeze
+
+  def record
+    events = []
+    intent = lambda do |at, id, status, extra = {}|
+      events << { "t" => "intent", "at" => at, "intentId" => id, "status" => status, "title" => id, "footprint" => [] }.merge(extra)
+    end
+    intent.(1, "int_a", "open")
+    intent.(2, "int_a", "claimed")
+    intent.(100, "int_a", "open", "cause" => "reaped_silent", "agentId" => "agt_walk", "agentKind" => "external", "gapMs" => 97_000)
+    intent.(110, "int_a", "claimed")
+    intent.(120, "int_a", "landed", "cause" => "landed", "agentId" => "agt_syn", "agentKind" => "synthetic", "gapMs" => 1_000)
+    intent.(130, "int_b", "claimed")
+    intent.(140, "int_b", "open", "cause" => "released", "agentId" => "agt_mcp", "gapMs" => 0)
+    intent.(150, "int_c", "claimed")
+    intent.(160, "int_c", "open", "cause" => "reaped_silent", "agentId" => "agt_mcp", "agentKind" => "external", "gapMs" => 125_000)
+    intent.(170, "int_d", "claimed")
+    intent.(180, "int_d", "open", "cause" => "gave_up", "agentId" => "agt_in", "agentKind" => "internal", "gapMs" => 0)
+    # Before the ledger: a held intent reopened with no cause, and one that landed.
+    intent.(190, "int_e", "proposed")
+    intent.(200, "int_e", "open")
+    intent.(210, "int_f", "claimed")
+    intent.(220, "int_f", "landed")
+    # A vaccine's closure, and a cause the ledger does not know, are left out.
+    intent.(230, "int_v", "landed", "cause" => "landed", "agentId" => "agt_v", "agentKind" => "synthetic")
+    intent.(240, "int_g", "open", "cause" => "vanished", "agentId" => "agt_in")
+    Coordination::Record.new({ "source" => "recorded", "total" => events.size, "events" => events }, vaccine_agents: Set["agt_v"])
+  end
+
+  def test_shares_per_agent_kind_and_the_reaped_gaps
+    c = Coordination.closures(record, AGENTS)
+    assert_equal 5, c[:closures]
+    assert_equal 2, c[:beforeLedger]
+    assert_equal({ total: 3, counts: { "released" => 1, "reaped_silent" => 2 }, shares: { "released" => 0.3333, "reaped_silent" => 0.6667 } }, c[:byKind]["external"])
+    assert_equal({ total: 1, counts: { "gave_up" => 1 }, shares: { "gave_up" => 1.0 } }, c[:byKind]["internal"])
+    assert_equal({ total: 1, counts: { "landed" => 1 }, shares: { "landed" => 1.0 } }, c[:byKind]["synthetic"])
+    assert_equal({ count: 2, medianGapMs: 111_000.0, maxGapMs: 125_000 }, c[:reaped])
+  end
+
+  def test_markdown_row
+    row = Coordination.closure_row(Coordination.closures(record, AGENTS))
+    assert_equal "| Closures | 5 recorded: external 3 (released 1, 33.3%; reaped silent 2, 66.7%) · in-platform 1 (gave up 1, 100.0%) · " \
+                 "synthetic 1 (landed 1, 100.0%); 2 intents taken back from silent agents, median gap 1 min 51 s (largest 2 min 5 s); " \
+                 "2 closes recorded before the ledger, in no share |", row
+    assert_equal "| Closures | none recorded; 1 close recorded before the ledger, in no share |",
+                 Coordination.closure_row({ closures: 0, byKind: {}, reaped: { count: 0 }, beforeLedger: 1 })
   end
 end
 

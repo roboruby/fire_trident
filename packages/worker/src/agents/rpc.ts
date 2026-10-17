@@ -29,6 +29,7 @@ import type { ModelHint } from "../colony/stepup.ts";
 import type { DeclaredBy } from "../colony/chain.ts";
 import type { PauseView } from "../colony/pause.ts";
 import type { AgentCapAsk, CapSettle } from "../colony/spendcap.ts";
+import type { AbandonCause } from "../colony/closure.ts";
 
 /**
  * The RPC surfaces the agents and the MCP server call, typed from the contracts in
@@ -83,8 +84,11 @@ export interface ColonyRpc {
   getRule(id: Id): Promise<Rule | null>;
   /** One intent as it stands now (its current revision). */
   getIntent?(id: Id): Promise<Intent | null>;
-  /** Give back every intent the agent holds as claimed: it reopens, claims clear, a failure mark is left. */
-  abandon(agentId: Id, reason?: string): Promise<void>;
+  /**
+   * Give back every intent the agent holds as claimed: it reopens, claims clear, a failure mark is left. `cause` is the
+   * closure ledger's (colony/closure.ts): released, gave_up or stopped; a colony on the previous version ignores it.
+   */
+  abandon(agentId: Id, reason?: string, cause?: AbandonCause): Promise<void>;
   /** Take back the agent's own change while it is in flight (a directive changed its course); the agent keeps its intent. */
   recall?(agentId: Id, proposalId: Id, reason?: string): Promise<Proposal>;
   /** The agent's one-line "what I am doing now" (stored on the agent, shown live, recorded with its next proposal). */

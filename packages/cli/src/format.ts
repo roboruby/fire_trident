@@ -26,6 +26,8 @@ import type { Evidence, LandingTests } from "@fire_trident/core";
 import { bySpeaker, evidenceLines, landingAnswerable, notVerifiedSpeaker, notVerifiedWords } from "./answerable.ts";
 import { testsRows } from "./tests.ts";
 import type { IntentSpend } from "@fire_trident/core";
+import type { IntentClosure } from "@fire_trident/core";
+import { closureLine } from "./closure.ts";
 import { changeSize, dangerLines, lookHereFirst, parseHunks, reviewOf, visible, type DiffLine, type ReviewFile, type ReviewView } from "./review.ts";
 import { whySummary } from "./spec.ts";
 import { megafileLines } from "./megafile.ts";
@@ -1162,6 +1164,8 @@ export interface IntentShowResult {
   escalations?: IntentEscalation[];
   /** What its model calls cost, where the colony counts per intent (FT_INTENT_SPEND); servers before it, and intents nothing was counted for, send none. */
   spend?: IntentSpend;
+  /** Why it closed or reopened while agents held it, newest first (the closure ledger; servers before it send none). */
+  closures?: IntentClosure[];
 }
 
 const ANSWERED: Record<string, string> = { amend: "amended", withdraw: "withdrawn", dismiss: "dismissed" };
@@ -1185,6 +1189,10 @@ export function formatIntentShow(res: IntentShowResult, c: Colors, now: number):
   if (spent) out.push(`  ${c.dim("spend".padEnd(10))}${spent}${c.dim(` (${intentSpendDetail(res.spend).replace(/\.$/, "")})`)}`);
   const reports = res.escalations && res.escalations.length > 0 ? res.escalations : i.escalation ? [i.escalation] : [];
   for (const [n, e] of reports.slice(0, 5).entries()) out.push(`  ${c.dim((n === 0 ? "report" : "").padEnd(10))}${reportLine(e, c, now)}`);
+  // The closure ledger (closure.ts): why it closed or reopened while agents held it, newest first.
+  const closures = res.closures && res.closures.length > 0 ? res.closures : i.closure ? [i.closure] : [];
+  for (const [n, cl] of closures.slice(0, 5).entries()) out.push(`  ${c.dim((n === 0 ? "closed" : "").padEnd(10))}${closureLine(cl, c, now)}`);
+  if (closures.length > 5) out.push(`  ${"".padEnd(10)}${c.dim(`${closures.length - 5} earlier (--json lists them)`)}`);
   for (const r of res.revisions ?? []) {
     out.push(`  ${c.dim(`r${r.revision}`.padEnd(10))}${r.changed.join(", ")} changed by ${r.by} ${c.dim(ago(r.at, now))}: ${quote(r.reason, 80)}${r.substantive === false ? c.dim(" (priority only)") : ""}`);
     for (const f of r.changed) {

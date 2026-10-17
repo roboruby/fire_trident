@@ -34,6 +34,7 @@ import {
 import { REPEATED_RETURNS, type ColonyStore } from "../store.ts";
 import { useThrottledVersion } from "../useStore.ts";
 import { MovedBadge } from "./MovedBy.tsx";
+import { closureBadge } from "../closure.ts";
 
 /** Groups that start open: the most urgent few, decided once when each first appears (a person's clicks win after that). */
 const OPEN_AT_FIRST = 3;
@@ -267,6 +268,9 @@ function IntentRow({ item, store, book, now, lit, setLitEl, onPick, onFollow }: 
   // What its model calls cost, where the colony counts per intent (FT_INTENT_SPEND); nothing when nothing was counted.
   const spent = store.intentSpend.get(it.id) ?? null;
   const spentLine = intentSpendLine(spent);
+  // Why it last closed or reopened while an agent held it (the closure ledger); the report and returns badges say their own.
+  const repeated = item.returns >= REPEATED_RETURNS && it.status !== "landed" && it.status !== "withdrawn";
+  const closed = report || (repeated && it.closure?.cause === "returned") ? null : closureBadge(it.closure, (id) => store.agentName(id), now);
   return (
     <li
       ref={lit ? setLitEl : undefined}
@@ -311,6 +315,11 @@ function IntentRow({ item, store, book, now, lit, setLitEl, onPick, onFollow }: 
           </span>
         ) : null}
         {moved ? <MovedBadge moved={moved} agentName={(id) => store.agentName(id)} /> : null}
+        {closed ? (
+          <span className={`ibadge ibadge-closure ibadge-closure-${it.closure?.cause ?? "none"}`} title={closed.title}>
+            {closed.label}
+          </span>
+        ) : null}
         <span className="mono intent-path">{it.status === "withdrawn" && it.withdrawnReason ? it.withdrawnReason : (it.footprint[0] ?? "—")}</span>
         {it.status !== "withdrawn" && it.footprint.length > 1 ? <span className="intent-more">+{it.footprint.length - 1}</span> : null}
         {spentLine ? (

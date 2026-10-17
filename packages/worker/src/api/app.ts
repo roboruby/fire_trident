@@ -40,6 +40,7 @@ import { a2aRoutes } from "./a2a.ts";
 import { pauseRoutes } from "./pause.ts";
 import { spendCapRoutes } from "./spendcap.ts";
 import { skillRoutes } from "./skill.ts";
+import { silentTtlRoutes } from "./closure.ts";
 import { refuseWhilePaused } from "../colony/pause.ts";
 import { bearerMatches } from "./token.ts";
 
@@ -597,6 +598,7 @@ export function createApi(deps: ApiDeps): Hono<ApiEnv> {
   pauseRoutes(app, requireAdmin); // Pause: a person stops the agents of a colony or of the deployment, with a reason (api/pause.ts)
   spendCapRoutes(app, requireAdmin); // Spend cap: a person caps what this platform's model calls for a colony may cost (api/spendcap.ts)
   skillRoutes(app); // The colony's SKILL.md: how an agent connects and works there, its rules and protected paths (api/skill.ts)
+  silentTtlRoutes(app, requireAdmin); // Silent-agent limit: how long an outside agent may be silent before the colony takes its intents back (api/closure.ts)
 
   // Unknown API paths answer JSON here instead of falling through to the static UI.
   app.all("*", (c) => json({ error: `no route for ${c.req.method} ${c.req.path}` }, 404));

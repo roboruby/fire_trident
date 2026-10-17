@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 # A fake FireTrident deployment on 127.0.0.1 for the stage-script tests (beat_two_agents_test.rb, judge_path_test.rb,
-# warm_test.rb): an HTTP server with no dependencies beyond Ruby (one thread per connection, every request recorded with
+# warm_test.rb, walkaway_test.rb): an HTTP server with no dependencies beyond Ruby (one thread per connection, every request recorded with
 # its headers), stock git's smart HTTP through `git http-backend`, and a stateless JSON-RPC MCP endpoint answering as
 # /public/mcp does.
 require "json"

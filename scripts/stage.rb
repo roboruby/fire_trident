@@ -1,9 +1,9 @@
 # frozen_string_literal: true
 
-# What the stage scripts share (scripts/beat_two_agents.rb, scripts/judge_path.rb, scripts/warm.rb): the deployment's
-# base URL, the admin token, the Cloudflare Access service-token headers, HTTP with a hard time limit, child processes
-# with one, a narration clock, and redaction. Every line a script prints goes through Stage.redact, so no token, lease
-# token or Access secret is ever printed.
+# What the stage scripts share (scripts/beat_two_agents.rb, scripts/judge_path.rb, scripts/warm.rb, scripts/walkaway.rb):
+# the deployment's base URL, the admin token, the Cloudflare Access service-token headers, HTTP with a hard time limit,
+# child processes with one, a narration clock, and redaction. Every line a script prints goes through Stage.redact, so no
+# token, lease token or Access secret is ever printed.
 require "digest"
 require "json"
 require "net/http"

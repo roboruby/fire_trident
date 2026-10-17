@@ -8,6 +8,7 @@ import { useThrottledVersion } from "../useStore.ts";
 import { certCounts, certFirstRed, certTitle } from "../certs.ts";
 import { contestText, escalationText, firstLine, noticeText, revalidatedText } from "../eventText.ts";
 import { pauseEventText } from "../pause.ts";
+import { closureEventText, closureFrom } from "../closure.ts";
 
 /** Changing direction: amendments, withdrawals, retracted rules, reverted landings and human directives. */
 const DIRECTION_COLOR = "#c084fc";
@@ -90,7 +91,7 @@ function describe(le: LoggedEvent, store: ColonyStore): Line {
     case "mark":
       return { tag: e.kind, color: FIELD_COLOR[e.kind], text: `${e.kind} ${fmtFixed(e.value)}`, mono: e.path };
     case "intent":
-      return { tag: "intent", color: "#7cc4ff", text: `${e.status} · ${e.title}`, title: e.title };
+      return { tag: "intent", color: "#7cc4ff", text: `${e.status}${closureEventText(closureFrom(e, e.status))} · ${e.title}`, title: e.title };
     case "proposal": {
       const title = store.intents.get(e.intentId)?.title;
       const winner = store.superseded.get(e.proposalId);
