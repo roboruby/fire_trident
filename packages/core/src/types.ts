@@ -1649,6 +1649,69 @@ export interface Certification {
 /** A certification as the lineage note of the certified commit records it. */
 export type NoteCertification = Pick<Certification, "status" | "counts" | "failing" | "durationMs" | "reusedFrom" | "finishedAt"> & { runner: string };
 
+/**
+ * Trunk health: what certifying after landing costs, from what certification already records (GET
+ * /api/colonies/:id/metrics `trunkHealth`; worker certify/health.ts, and scripts/coordination.rb definition 18 from the
+ * public reads). A red episode runs from the first red result after a green one (or the first result kept) to the next
+ * green result. A commit is red from the episode's first red commit (the first-red search's answer, else the commit of
+ * its first red result) until the commit that fixed it: the first landing after the episode's last red result that
+ * carried a repair intent, else the commit the green result certified. `measured`: a result judged trunk green or red;
+ * `no-tests`: certification found no test this platform can run; `off`: certification does not run in this colony and
+ * keeps no verdict; `none`: no run judged trunk yet. Only `measured` carries numbers: the others say why instead.
+ */
+export type TrunkHealth = TrunkHealthMeasured | { status: "no-tests" | "off" | "none"; text: string; reason: string };
+
+/** Trunk health with its numbers (see TrunkHealth). Durations are in ms; shares are 0..1, null over nothing. */
+export interface TrunkHealthMeasured {
+  status: "measured";
+  /** The line the colony page and `ft status` show: "red 2 times in 400 landings, 3.4 min to green at p50, 0 landings built on red". */
+  text: string;
+  /** The rest in sentences: time red, landings built on red, repairs, certified within, culprit finding. */
+  detail: string[];
+  /** From the oldest result kept (or the landing that made its commit; the oldest landing kept, when the landing log was trimmed past it) to now: its landings and judged results. */
+  window: { from: Millis; to: Millis; landings: number; results: number };
+  /** Red episodes in the window (`open`: still red at its end), and per 100 landings in it. */
+  episodes: { count: number; open: number; per100Landings: number | null };
+  /** Time red in the window and its share; time to green over the episodes that ended (p50, p90, max); since when trunk is red, when it is. */
+  red: { ms: number; share: number | null; toGreen: { episodes: number; p50Ms: number | null; p90Ms: number | null; maxMs: number | null }; since?: Millis };
+  /**
+   * Landings whose parent commit was red: `landings` those that carried no repair intent (work stacked on a broken trunk),
+   * `afterRedKnown` of them the ones that landed after the episode's first red result was recorded, `repairs` the
+   * landings that carried a repair intent.
+   */
+  builtOnRed: { landings: number; afterRedKnown: number; repairs: number };
+  /**
+   * Repair intents certification declared in the window: how many, how long agents held them (claimed or proposed, from
+   * the event record), how many an agent holds now, and what their model calls cost where they were counted per intent.
+   */
+  repair: { intents: number; agentMs: number; held: number; spend?: { usd: number; calls: number; intents: number } };
+  /** Culprit finding against the first-red search (scripts/coordination.rb definition 15, the same rules). */
+  culprits: CulpritPrecision;
+  /** Landings that reached a green certification within each bound, over the landings that reached one or had that long. */
+  certifiedWithin: Array<{ minutes: number; landings: number; certified: number; share: number | null }>;
+}
+
+/**
+ * Where each first-red answer's landing stood among its result's culprit suspects (scripts/coordination.rb definition
+ * 15): every red result whose first-red search found a commit is one answer; `suspect` at any rank, `rank1` the first;
+ * the others: outside the import trace (none of the landing's proposals wrote what the failing tests load), not looked
+ * for (the result has no suspects), closure not recorded (an answer from before the search listed proposals), cut by a
+ * limit. `reused`: answers copied from an earlier result's search. `isolated`: answers that isolated one proposal, and of
+ * them the ones whose proposal a suspect names.
+ */
+export interface CulpritPrecision {
+  answers: number;
+  suspect: number;
+  rank1: number;
+  outsideImportTrace: number;
+  notLookedFor: number;
+  closureNotRecorded: number;
+  cutByLimit: number;
+  precision: number | null;
+  reused: number;
+  isolated: { answers: number; suspect: number };
+}
+
 // ---------------------------------------------------------------------------
 // Decide (reflex arc, immune review)
 // ---------------------------------------------------------------------------

@@ -148,6 +148,8 @@ import type { CertifyPolicy } from "../certify/repair.ts";
 import { LandingTestsReader, certificationOff, landingSpend, type LandingTestsTrunk } from "../certify/landingtests.ts";
 import { ReviewTests, type RetestAnswer, type ReviewTestsTrunk } from "../certify/reviewtests.ts";
 import type { LandingTests } from "@fire_trident/core";
+import type { TrunkHealth } from "@fire_trident/core";
+import { TrunkHealthBook } from "../certify/health.ts";
 import type { IntentLifecycle } from "@fire_trident/core";
 import { readLifecycle, type LifecycleTrunk } from "./lifecycle.ts";
 import { reviewPreview, type ReviewPreview } from "../agents/preview.ts";
@@ -4431,6 +4433,7 @@ export class ColonyDO extends DurableObject<Env> {
     intentSpend?: Record<Id, IntentSpendBrief>;
     closures?: ClosureReport;
     coordTokens?: CoordTokensReport;
+    trunkHealth?: TrunkHealth;
   }> {
     const colony = this.requireColony();
     const now = Date.now();
@@ -4458,7 +4461,27 @@ export class ColonyDO extends DurableObject<Env> {
     const closures = this.closureReport();
     // Coordination tokens per take (colony/coordtokens.ts), an estimate from the counters; absent before the first counted take.
     const coordTokens = coordTokensReport(metrics);
-    return { ...report, ...(spend ? { spend } : {}), ...(intentSpend ? { intentSpend } : {}), ...(closures ? { closures } : {}), ...(coordTokens ? { coordTokens } : {}) };
+    // Trunk health (certify/health.ts): red episodes, time red, landings built on red, repairs; absent when it cannot be computed.
+    const trunkHealth = this.trunkHealthReport(now);
+    return { ...report, ...(spend ? { spend } : {}), ...(intentSpend ? { intentSpend } : {}), ...(closures ? { closures } : {}), ...(coordTokens ? { coordTokens } : {}), ...(trunkHealth ? { trunkHealth } : {}) };
+  }
+
+  /** Trunk health (certify/health.ts), made on first use; undefined when it cannot be computed (logged). */
+  private trunkHealthRun: TrunkHealthBook | null = null;
+
+  private trunkHealthReport(now: number): TrunkHealth | undefined {
+    try {
+      this.trunkHealthRun ??= new TrunkHealthBook({
+        sql: this.sql,
+        off: () => certificationOff(this.certifier.state()),
+        spend: (ids) => landingSpend(ids, (id) => this.intentSpends().report(id)),
+        landingsKept: LANDINGS_KEEP,
+      });
+      return this.trunkHealthRun.report(now);
+    } catch (err) {
+      console.warn(`trunk health failed: ${errorText(err)}`);
+      return undefined;
+    }
   }
 
   /** What the colony's model calls cost so far (colony/spend.ts), for the status GET /api/colonies/:id serves; null before init. */
