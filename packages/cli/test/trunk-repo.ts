@@ -8,7 +8,7 @@ import { sealNote, withNoteDigest } from "../../worker/src/trunk/digest.ts";
 
 /** The trunk writer's signer (trunk/signature.ts): its published key, and the signature of a text. */
 export interface NoteSigner {
-  key: { id: string; alg: "Ed25519"; publicKey: string; since: string | null };
+  key: { id: string; alg: "Ed25519"; publicKey: string; since: string | null; until: string | null };
   sign(text: string): Promise<string>;
 }
 

@@ -3,8 +3,9 @@ import type { Colors } from "./format.ts";
 
 /**
  * Signed lineage notes in `ft verify` (FT_NOTE_KEY on the server): where the deployment signs notes, each note check
- * says whether its commit is signed by the deployment's published key (/.well-known/firetrident-keys.json). `ft verify`
- * counts them and lists each bad signature with why; a bad signature fails the command like an altered note.
+ * says whether its commit is signed by one of the deployment's published keys (/.well-known/firetrident-keys.json: the
+ * current key and each retired one, for the commits made while it signed). `ft verify` counts them and lists each bad
+ * signature with why; a bad signature fails the command like an altered note.
  */
 
 /** What `ft verify` says per signature status: its mark, its words, and its color. */
@@ -51,7 +52,7 @@ export function signatureLines(notes: NoteCheck[], c: Colors, now: number): stri
     out.push(`  ${c.red("✗")} ${plain(n.landingId)} ${plain(n.trunkSha).slice(0, 7) || "-"}${when}  bad signature: ${plain(n.signature?.detail) || "it does not verify with the published key"}`);
   }
   if (bad.length > LISTED) out.push(c.dim(`    +${(bad.length - LISTED).toLocaleString("en-US")} more`));
-  if (bad.length > 0) out.push(c.dim("  A bad signature means the trunk writer did not sign that commit with the key it publishes: history was rewritten, or its key changed."));
+  if (bad.length > 0) out.push(c.dim("  A bad signature means the trunk writer did not sign that commit with a key it publishes for that commit's time: history was rewritten, or its key was replaced without the old one listed as retired."));
   return out;
 }
 

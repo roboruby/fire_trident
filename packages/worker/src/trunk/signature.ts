@@ -19,6 +19,19 @@ import { sha256Hex } from "./digest.ts";
  * of the SHA-256 of the raw 32-byte public key, which GET /.well-known/firetrident-keys.json publishes; a checker
  * recomputes it, so a key id cannot name another key. Commits landed before signing, or while the secret is absent,
  * carry no signature line. The private key is never printed or logged.
+ *
+ * A key ring: FT_NOTE_KEYS_RETIRED (optional, public data) lists the keys the deployment signed with before, as a JSON
+ * array of {"x": <raw public key, base64url>, "since": <ISO 8601, optional>, "until": <ISO 8601>}. The keys document lists
+ * the current key (until null) and every retired one, and a signature checks out when its key is listed and the key's
+ * window, from since to until (each to the second, both ends included; an absent since is open), covers the commit's
+ * committer time. The current key's window is its "since" onward, so FT_NOTE_KEY's "since" must not be later than the
+ * first commit it signed. Rotating FT_NOTE_KEY leaves older signatures good once the old key is listed as retired. To
+ * rotate: add the current key's x to FT_NOTE_KEYS_RETIRED with its since and an until an hour or more after the switch
+ * (ssh-keygen reads git's local commit times an hour late in a time zone on daylight saving time, so the margin keeps
+ * the old key's last commits good for `git verify-commit` everywhere), set FT_NOTE_KEY to the new key with "since" at
+ * the switch, and deploy. A key that leaked is not retired but dropped: what it signed then reads as a bad signature.
+ *
+ * The same key also signs each commit the stock git way (trunk/gitsig.ts), so `git verify-commit` checks it too.
  */
 
 /** The trailer key of a commit's signature. */
@@ -34,6 +47,8 @@ const NOTE_LINE = /^FT-Note: sha256:([0-9a-f]{64})$/;
 /** 32 bytes as base64url without padding. */
 const KEY_BYTES = /^[A-Za-z0-9_-]{43}$/;
 const KEY_HELP = 'an Ed25519 private key as a JWK JSON string ({"kty":"OKP","crv":"Ed25519","d":"…","x":"…"})';
+const RETIRED_ENTRY = '{"x":"<public key, base64url>","since":"<ISO date, optional>","until":"<ISO date>"}';
+const RETIRED_HELP = `a JSON array of ${RETIRED_ENTRY}`;
 
 /** A public key as GET /.well-known/firetrident-keys.json lists it. */
 export interface PublishedKey {
@@ -44,12 +59,16 @@ export interface PublishedKey {
   publicKey: string;
   /** When the key started signing (ISO 8601, from FT_NOTE_KEY's "since"), or null when the secret does not say. */
   since: string | null;
+  /** When a retired key stopped signing (ISO 8601, from FT_NOTE_KEYS_RETIRED), or null for the key that signs now. */
+  until: string | null;
 }
 
-/** The trunk writer's signing key: its published half, and the signature of a text with its private half. */
+/** The trunk writer's signing key: its published half, and the signature of a text, or of bytes, with its private half. */
 export interface NoteSigner {
   key: PublishedKey;
   sign(text: string): Promise<string>;
+  /** The raw 64-byte Ed25519 signature of `data` (stock git signatures, trunk/gitsig.ts). */
+  signBytes(data: Uint8Array): Promise<Uint8Array>;
 }
 
 /** The text a commit's signature covers (see the module comment). */
@@ -81,18 +100,52 @@ export async function noteKeyId(secret: unknown): Promise<string | null> {
   return (await noteSigner(secret))?.key.id ?? null;
 }
 
-/** The keys a checker accepts: the one FT_NOTE_KEY holds, or none. */
-export async function publishedKeys(secret: unknown): Promise<PublishedKey[]> {
+/**
+ * The keys a checker accepts: the one FT_NOTE_KEY holds, first, then each key FT_NOTE_KEYS_RETIRED (`retired`) lists, the
+ * most recently retired first; none when the deployment has never signed. A retired entry for the current key is left out.
+ */
+export async function publishedKeys(secret: unknown, retired?: unknown): Promise<PublishedKey[]> {
   const signer = await noteSigner(secret);
-  return signer ? [signer.key] : [];
+  const out = signer ? [signer.key] : [];
+  for (const k of await retiredKeys(retired)) if (!out.some((o) => o.id === k.id)) out.push(k);
+  return out;
+}
+
+/** The retired keys FT_NOTE_KEYS_RETIRED last held, kept for the isolate's life like the signer. */
+let retiredLoaded: { value: string; keys: Promise<PublishedKey[]> } | null = null;
+
+/**
+ * The keys FT_NOTE_KEYS_RETIRED lists (see the module comment), the most recently retired first; none when it is absent.
+ * An entry that is not such a key is left out, said once in the log with its place in the list. Never throws.
+ */
+export function retiredKeys(value: unknown): Promise<PublishedKey[]> {
+  if (typeof value !== "string" || value.trim() === "") return Promise.resolve([]);
+  if (retiredLoaded?.value !== value) retiredLoaded = { value, keys: loadRetired(value).catch(() => []) };
+  return retiredLoaded.keys;
 }
 
 /**
- * GET /.well-known/firetrident-keys.json: {"keys":[{"id","alg","publicKey","since"}]}, an empty list when the deployment
- * does not sign. Public: any git client checks a commit's FT-Note-Signature with it (scripts/verify_note.mjs --keys).
+ * Why `key`'s window does not cover a commit made at `committedAt` (Unix seconds, the committer time), or null when it
+ * does. A key with neither since nor until covers every commit, also one whose time is not known.
  */
-export async function keysResponse(env: Pick<Env, "FT_NOTE_KEY">): Promise<Response> {
-  const body = `${JSON.stringify({ keys: await publishedKeys(env.FT_NOTE_KEY) }, null, 2)}\n`;
+export function windowProblem(key: Pick<PublishedKey, "id" | "since" | "until">, committedAt: unknown): string | null {
+  const since = key.since === null ? null : Math.floor(Date.parse(key.since) / 1000);
+  const until = key.until === null ? null : Math.floor(Date.parse(key.until) / 1000);
+  if (since === null && until === null) return null;
+  const span = `which signed from ${key.since ?? "its first commit"} until ${key.until ?? "now"}`;
+  if (typeof committedAt !== "number" || !Number.isFinite(committedAt)) return `the signature is by key ${key.id}, ${span}, and the commit's time is not known, so the window cannot be checked`;
+  const t = Math.floor(committedAt);
+  if ((since !== null && !(t >= since)) || (until !== null && !(t <= until))) return `the signature is by key ${key.id}, ${span}; this commit is dated ${new Date(t * 1000).toISOString()}, outside that window`;
+  return null;
+}
+
+/**
+ * GET /.well-known/firetrident-keys.json: {"keys":[{"id","alg","publicKey","since","until"}]}, the current key first
+ * (until null), then the retired ones; an empty list when the deployment does not sign. Public: any git client checks a
+ * commit's FT-Note-Signature with it (scripts/verify_note.mjs --keys).
+ */
+export async function keysResponse(env: Pick<Env, "FT_NOTE_KEY" | "FT_NOTE_KEYS_RETIRED">): Promise<Response> {
+  const body = `${JSON.stringify({ keys: await publishedKeys(env.FT_NOTE_KEY, env.FT_NOTE_KEYS_RETIRED) }, null, 2)}\n`;
   return new Response(body, {
     headers: { "content-type": "application/json; charset=utf-8", "cache-control": "public, max-age=300", "access-control-allow-origin": "*" },
   });
@@ -103,7 +156,7 @@ export async function keysResponse(env: Pick<Env, "FT_NOTE_KEY">): Promise<Respo
  * the caller then adds the FT-Note trailer as the last line (withNoteDigest). Unchanged when `signer` is null, and when
  * signing fails (logged once; the landing goes on unsigned).
  */
-export async function withSignature(message: string, signer: NoteSigner | null, p: { digest: string; tree: Sha; parents: readonly Sha[] }): Promise<string> {
+export async function withSignature(message: string, signer: Pick<NoteSigner, "key" | "sign"> | null, p: { digest: string; tree: Sha; parents: readonly Sha[] }): Promise<string> {
   if (!signer) return message;
   let signature: string;
   try {
@@ -118,9 +171,10 @@ export async function withSignature(message: string, signer: NoteSigner | null, 
 
 /**
  * A commit's signature against the published `keys`: `signed`, `bad-signature` with why, or `unsigned` (no signature line
- * just above a last-line FT-Note trailer). Null when it cannot be checked: the commit's parents are not known. Never throws.
+ * just above a last-line FT-Note trailer). Signed means by a listed key whose window covers the commit's `committedAt`
+ * (Unix seconds; see windowProblem). Null when it cannot be checked: the commit's parents are not known. Never throws.
  */
-export async function checkSignature(commit: { tree: string; message: string; parents?: readonly string[] }, keys: readonly PublishedKey[]): Promise<NoteSignatureCheck | null> {
+export async function checkSignature(commit: { tree: string; message: string; parents?: readonly string[]; committedAt?: number }, keys: readonly PublishedKey[]): Promise<NoteSignatureCheck | null> {
   const lines = typeof commit.message === "string" ? commit.message.replace(/\s+$/, "").split("\n") : [];
   const digest = NOTE_LINE.exec(lines[lines.length - 1] ?? "")?.[1];
   const line = lines.length >= 2 ? (lines[lines.length - 2] ?? "") : "";
@@ -131,8 +185,12 @@ export async function checkSignature(commit: { tree: string; message: string; pa
   if (!Array.isArray(commit.parents)) return null;
   const key = keys.find((k) => k.id === keyId);
   if (!key) return { status: "bad-signature", keyId, detail: `the signature names key ${keyId}, which this deployment does not publish` };
-  if (await verifyWith(key, signedText({ digest, tree: commit.tree, parents: commit.parents }), m[2]!)) return { status: "signed", keyId };
-  return { status: "bad-signature", keyId, detail: `the signature does not verify with key ${keyId}: the note digest, tree or parent this commit carries is not what the trunk writer signed` };
+  if (!(await verifyWith(key, signedText({ digest, tree: commit.tree, parents: commit.parents }), m[2]!))) {
+    return { status: "bad-signature", keyId, detail: `the signature does not verify with key ${keyId}: the note digest, tree or parent this commit carries is not what the trunk writer signed` };
+  }
+  // Key ring: a key counts only for commits made while it was signing.
+  const outside = windowProblem(key, commit.committedAt);
+  return outside ? { status: "bad-signature", keyId, detail: outside } : { status: "signed", keyId };
 }
 
 /** Public keys imported for checks, by their base64url bytes (only the deployment's own keys reach here). */
@@ -163,15 +221,63 @@ async function loadSigner(secret: string): Promise<NoteSigner | null> {
   } catch {
     return refuse("the runtime refused it as an Ed25519 private key");
   }
-  const sign = async (text: string): Promise<string> => toBase64url(new Uint8Array(await crypto.subtle.sign(ALG, privateKey, new TextEncoder().encode(text))));
-  const key: PublishedKey = { id: await keyIdOf(fromBase64url(parsed.x)), alg: "Ed25519", publicKey: parsed.x, since: parsed.since };
+  const signBytes = async (data: Uint8Array): Promise<Uint8Array> => new Uint8Array(await crypto.subtle.sign(ALG, privateKey, data));
+  const sign = async (text: string): Promise<string> => toBase64url(await signBytes(new TextEncoder().encode(text)));
+  const key: PublishedKey = { id: await keyIdOf(fromBase64url(parsed.x)), alg: "Ed25519", publicKey: parsed.x, since: parsed.since, until: null };
   try {
     const probe = signedText({ digest: "0".repeat(64), tree: "0".repeat(40), parents: [] });
-    if (await verifyWith(key, probe, await sign(probe))) return { key, sign };
+    if (await verifyWith(key, probe, await sign(probe))) return { key, sign, signBytes };
   } catch {
     // Falls through: a key that cannot sign is not used.
   }
   return refuse('its private half ("d") does not match its public half ("x")');
+}
+
+/** Read FT_NOTE_KEYS_RETIRED: each entry a public key that imports, with an until and a since no later than it. */
+async function loadRetired(value: string): Promise<PublishedKey[]> {
+  let list: unknown;
+  try {
+    list = JSON.parse(value);
+  } catch {
+    list = null;
+  }
+  if (!Array.isArray(list)) {
+    console.error(`FT_NOTE_KEYS_RETIRED is set but not used, so no retired key is published: it is not a JSON array. It must be ${RETIRED_HELP}.`);
+    return [];
+  }
+  const out: PublishedKey[] = [];
+  const problems: string[] = [];
+  for (const [i, entry] of list.entries()) {
+    const k = entry && typeof entry === "object" && !Array.isArray(entry) ? (entry as Record<string, unknown>) : {};
+    const at = (v: unknown): number => (typeof v === "string" ? Date.parse(v) : Number.NaN);
+    const since = at(k.since);
+    const until = at(k.until);
+    let why: string | null = null;
+    if (typeof k.x !== "string" || !KEY_BYTES.test(k.x)) why = 'it has no 32-byte public key ("x")';
+    else if (!Number.isFinite(until)) why = 'it has no "until" date';
+    else if (k.since !== undefined && k.since !== null && !Number.isFinite(since)) why = 'its "since" is not a date';
+    else if (Number.isFinite(since) && since > until) why = 'its "since" is after its "until"';
+    else if (!(await importable(k.x))) why = "the runtime refused it as an Ed25519 public key";
+    if (why !== null || typeof k.x !== "string") {
+      problems.push(`entry ${i + 1}: ${why ?? "it is not a key"}`);
+      continue;
+    }
+    const id = await keyIdOf(fromBase64url(k.x));
+    if (out.some((o) => o.id === id)) continue;
+    out.push({ id, alg: "Ed25519", publicKey: k.x, since: Number.isFinite(since) ? new Date(since).toISOString() : null, until: new Date(until).toISOString() });
+  }
+  if (problems.length > 0) console.error(`FT_NOTE_KEYS_RETIRED: ${problems.join("; ")}; those entries are not published. Each must be ${RETIRED_ENTRY}.`);
+  return out.sort((a, b) => Date.parse(b.until ?? "") - Date.parse(a.until ?? ""));
+}
+
+/** Whether a base64url public key imports as an Ed25519 key. */
+async function importable(x: string): Promise<boolean> {
+  try {
+    await crypto.subtle.importKey("raw", fromBase64url(x), { name: ALG }, false, ["verify"]);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** Say once why FT_NOTE_KEY is not used (never the secret itself), and sign nothing. */

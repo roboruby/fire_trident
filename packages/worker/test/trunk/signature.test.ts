@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { landingMessage } from "@fire_trident/core";
 import type { LineageNote, Proposal } from "@fire_trident/core";
 import { sealNote, trailerDigest, withNoteDigest } from "../../src/trunk/digest.ts";
-import { KEYS_PATH, SIGNATURE_TRAILER, checkSignature, keyIdOf, keysResponse, noteKeyId, noteSigner, publishedKeys, signedText, withSignature } from "../../src/trunk/signature.ts";
+import { KEYS_PATH, SIGNATURE_TRAILER, checkSignature, keyIdOf, keysResponse, noteKeyId, noteSigner, publishedKeys, retiredKeys, signedText, windowProblem, withSignature } from "../../src/trunk/signature.ts";
 
 /** Signed lineage notes: the trunk writer's FT-Note-Signature trailer, its published key, and the check of both. */
 
@@ -39,7 +39,7 @@ describe("signing a landing commit", () => {
     const signer = await noteSigner(secret);
     expect(signer).not.toBeNull();
     const key = signer!.key;
-    expect(key).toMatchObject({ alg: "Ed25519", publicKey: JSON.parse(secret).x, since: null });
+    expect(key).toMatchObject({ alg: "Ed25519", publicKey: JSON.parse(secret).x, since: null, until: null });
     expect(key.id).toMatch(/^[0-9a-f]{16}$/);
     expect(key.id).toBe(await keyIdOf(bytesOf(key.publicKey)));
 
@@ -163,7 +163,7 @@ describe("the published keys", () => {
     expect(res.headers.get("access-control-allow-origin")).toBe("*");
     const text = await res.text();
     const id = await noteKeyId(secret);
-    expect(JSON.parse(text)).toEqual({ keys: [{ id, alg: "Ed25519", publicKey: JSON.parse(secret).x, since: "2026-10-14T00:00:00.000Z" }] });
+    expect(JSON.parse(text)).toEqual({ keys: [{ id, alg: "Ed25519", publicKey: JSON.parse(secret).x, since: "2026-10-14T00:00:00.000Z", until: null }] });
     // The private half never leaves the Worker.
     expect(text).not.toContain(JSON.parse(secret).d);
     expect(KEYS_PATH).toBe("/.well-known/firetrident-keys.json");
@@ -186,5 +186,87 @@ describe("the published keys", () => {
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     expect(await (await keysResponse({})).json()).toEqual({ keys: [] });
     expect(await (await keysResponse({ FT_NOTE_KEY: "{}" })).json()).toEqual({ keys: [] });
+  });
+});
+
+describe("the key ring", () => {
+  const SWITCH = "2026-10-14T09:35:00.000Z";
+  const at = (iso: string): number => Math.floor(Date.parse(iso) / 1000);
+
+  it("publishes the current key first, then each retired key the most recently retired first, each with its window", async () => {
+    const now = await newKey({ since: SWITCH });
+    const older = JSON.parse(await newKey()) as Record<string, string>;
+    const old = JSON.parse(await newKey()) as Record<string, string>;
+    const retired = JSON.stringify([
+      { x: older.x, until: "2026-09-01T00:00:00Z" },
+      { x: old.x, since: "2026-09-01T00:00:00Z", until: SWITCH },
+      // The current key listed as retired too: it stays the current key, listed once.
+      { x: JSON.parse(now).x, since: "2026-01-01T00:00:00Z", until: "2026-02-01T00:00:00Z" },
+    ]);
+    const keys = await publishedKeys(now, retired);
+    expect(keys.map((k) => [k.publicKey, k.since, k.until])).toEqual([
+      [JSON.parse(now).x, SWITCH, null],
+      [old.x, "2026-09-01T00:00:00.000Z", SWITCH],
+      [older.x, null, "2026-09-01T00:00:00.000Z"],
+    ]);
+    for (const k of keys) expect(k.id).toBe(await keyIdOf(bytesOf(k.publicKey)));
+    const body = (await (await keysResponse({ FT_NOTE_KEY: now, FT_NOTE_KEYS_RETIRED: retired })).json()) as { keys: unknown[] };
+    expect(body.keys).toEqual(keys);
+    expect(JSON.stringify(body)).not.toContain(old.d);
+    // Retired keys are published even while the deployment signs with none, so what they signed still checks out.
+    expect((await publishedKeys(undefined, retired)).map((k) => k.until)).toEqual([SWITCH, "2026-09-01T00:00:00.000Z", "2026-02-01T00:00:00.000Z"]);
+  });
+
+  it("leaves out an entry that is not a retired key, says why once, and keeps the others", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const good = JSON.parse(await newKey()) as Record<string, string>;
+    expect(await retiredKeys("not json")).toEqual([]);
+    expect(await retiredKeys('{"x":"a"}')).toEqual([]);
+    const value = JSON.stringify([
+      { x: "short", until: SWITCH },
+      { x: good.x },
+      { x: good.x, since: "never", until: SWITCH },
+      { x: good.x, since: "2026-11-01T00:00:00Z", until: SWITCH },
+      "a string",
+      { x: good.x, until: SWITCH },
+    ]);
+    expect((await retiredKeys(value)).map((k) => k.publicKey)).toEqual([good.x]);
+    expect((await retiredKeys(value)).map((k) => k.publicKey)).toEqual([good.x]);
+    const said = log.mock.calls.map((c) => String(c[0]));
+    expect(said).toHaveLength(3);
+    expect(said[0]).toMatch(/^FT_NOTE_KEYS_RETIRED is set but not used, so no retired key is published: it is not a JSON array\./);
+    expect(said[2]).toBe(
+      'FT_NOTE_KEYS_RETIRED: entry 1: it has no 32-byte public key ("x"); entry 2: it has no "until" date; entry 3: its "since" is not a date; entry 4: its "since" is after its "until"; entry 5: it has no 32-byte public key ("x"); those entries are not published. Each must be {"x":"<public key, base64url>","since":"<ISO date, optional>","until":"<ISO date>"}.',
+    );
+    expect(await retiredKeys(undefined)).toEqual([]);
+  });
+
+  it("accepts a signature by a listed key only for commits made while that key was signing", async () => {
+    const oldSecret = await newKey({ since: "2026-09-01T00:00:00Z" });
+    const nowSecret = await newKey({ since: SWITCH });
+    const keys = await publishedKeys(nowSecret, JSON.stringify([{ x: JSON.parse(oldSecret).x, since: "2026-09-01T00:00:00Z", until: SWITCH }]));
+    const [now, old] = keys as [typeof keys[0], typeof keys[0]];
+    const byOld = await landingCommit(oldSecret);
+    const byNow = await landingCommit(nowSecret);
+    const check = (c: typeof byOld, committedAt?: number) => checkSignature({ tree: c.tree, parents: c.parents, message: c.message, ...(committedAt !== undefined ? { committedAt } : {}) }, keys);
+    // Both ends of a window count, to the second.
+    expect(await check(byOld, at("2026-10-01T00:00:00Z"))).toEqual({ status: "signed", keyId: old.id });
+    expect(await check(byOld, at(SWITCH))).toEqual({ status: "signed", keyId: old.id });
+    expect(await check(byOld, at("2026-09-01T00:00:00Z"))).toEqual({ status: "signed", keyId: old.id });
+    expect(await check(byOld, at(SWITCH) + 1)).toEqual({
+      status: "bad-signature",
+      keyId: old.id,
+      detail: `the signature is by key ${old.id}, which signed from 2026-09-01T00:00:00.000Z until ${SWITCH}; this commit is dated 2026-10-14T09:35:01.000Z, outside that window`,
+    });
+    expect(await check(byNow, at(SWITCH) + 1)).toEqual({ status: "signed", keyId: now.id });
+    expect((await check(byNow, at(SWITCH) - 1))?.status).toBe("bad-signature");
+    // A windowed key cannot vouch for a commit whose time is not known.
+    expect((await check(byOld))?.detail).toBe(`the signature is by key ${old.id}, which signed from 2026-09-01T00:00:00.000Z until ${SWITCH}, and the commit's time is not known, so the window cannot be checked`);
+    // A key with no window (no since, not retired) covers any commit, as before.
+    expect(windowProblem({ id: "k", since: null, until: null }, undefined)).toBeNull();
+    // Rotated without listing the old key: its signatures read bad, as before the key ring.
+    expect((await checkSignature({ tree: byOld.tree, parents: byOld.parents, message: byOld.message, committedAt: at("2026-10-01T00:00:00Z") }, await publishedKeys(nowSecret)))?.detail).toBe(
+      `the signature names key ${old.id}, which this deployment does not publish`,
+    );
   });
 });

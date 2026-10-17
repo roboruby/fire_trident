@@ -32,7 +32,7 @@ describe("formatVerify with signatures", () => {
       "  ✓ 3 intact",
       `  signatures ✓ 1 signed by key ${KEY} · ✗ 1 bad signature · - 1 unsigned (landed before signing)`,
       `  ✗ lnd_2 2222222 2m ago  bad signature: the signature does not verify with key ${KEY}: the note digest, tree or parent this commit carries is not what the trunk writer signed`,
-      "  A bad signature means the trunk writer did not sign that commit with the key it publishes: history was rewritten, or its key changed.",
+      "  A bad signature means the trunk writer did not sign that commit with a key it publishes for that commit's time: history was rewritten, or its key was replaced without the old one listed as retired.",
     ]);
   });
 

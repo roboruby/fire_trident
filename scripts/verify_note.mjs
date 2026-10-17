@@ -10,8 +10,15 @@
 //                                              must also carry a good FT-Note-Signature, just above FT-Note, the Ed25519
 //                                              signature of a key listed there (its id is the first 16 hex digits of the
 //                                              SHA-256 of the raw public key) over
-//                                              "firetrident-note-signature v1\n<note sha256>\n<tree>\n<parents>\n". Prints
-//                                              "intact, signed by <key id>", "bad signature" or "unsigned (landed before signing)".
+//                                              "firetrident-note-signature v1\n<note sha256>\n<tree>\n<parents>\n", by a key
+//                                              whose window (since to until, to the second, both ends included; null is
+//                                              open) covers the commit's committer time: the list holds the current key
+//                                              and every retired one, so a rotated key's signatures still check out. Prints
+//                                              "intact, signed by <key id>", "bad signature" (with why when the key was not
+//                                              signing at the commit's time) or "unsigned (landed before signing)".
+// The same commits carry a gpgsig header, an SSH signature by the same key, that stock git checks on its own:
+//   curl -s <deployment>/.well-known/firetrident-allowed-signers > allowed_signers
+//   git -c gpg.format=ssh -c gpg.ssh.allowedSignersFile=allowed_signers verify-commit <commit>
 //   --tamper [--tamper-field <path>]           copy the note in memory, change one field (a decision's approver, else a blob
 //                                              id the change read), and require the copy to fail against its commit.
 //                                              Nothing is written to git.
@@ -104,6 +111,17 @@ if (o.keys !== undefined) {
     process.exit(2);
   }
 }
+// Why key `id`, listed with since and until, was not signing at `time` (Unix seconds), or null when its window covers it.
+function windowWhy(id, since, until, time) {
+  const edge = (v) => (v === undefined || v === null ? null : typeof v === "string" && Number.isFinite(Date.parse(v)) ? Math.floor(Date.parse(v) / 1000) : undefined);
+  const from = edge(since), to = edge(until);
+  if (from === null && to === null) return null;
+  const span = `it signed from ${typeof since === "string" ? since : "its first commit"} until ${typeof until === "string" ? until : "now"}`;
+  if (from === undefined || to === undefined) return `key ${id} is listed with a window that cannot be read`;
+  if (typeof time !== "number" || !Number.isFinite(time)) return `key ${id} has a window, and this commit's time is not known`;
+  if ((from !== null && time < from) || (to !== null && time > to)) return `key ${id} was not signing on ${new Date(time * 1000).toISOString()}: ${span}`;
+  return null;
+}
 function signatureState(c, digest) {
   const lines = c.message.trimEnd().split("\n");
   const above = lines.length > 1 ? lines[lines.length - 2] : "";
@@ -116,11 +134,14 @@ function signatureState(c, digest) {
   if (!key) return { status: "bad" };
   try {
     const publicKey = createPublicKey({ key: { kty: "OKP", crv: "Ed25519", x: key.publicKey }, format: "jwk" });
-    if (verify(null, Buffer.from(`firetrident-note-signature v1\n${digest}\n${c.tree}\n${c.parents}\n`), publicKey, Buffer.from(sig[2], "base64url"))) return { status: "signed", keyId: sig[1] };
-  } catch {}
-  return { status: "bad" };
+    if (!verify(null, Buffer.from(`firetrident-note-signature v1\n${digest}\n${c.tree}\n${c.parents}\n`), publicKey, Buffer.from(sig[2], "base64url"))) return { status: "bad" };
+  } catch {
+    return { status: "bad" };
+  }
+  const why = windowWhy(sig[1], key.since, key.until, c.time);
+  return why === null ? { status: "signed", keyId: sig[1] } : { status: "bad", why };
 }
-const signatureWords = (s) => (s.status === "signed" ? `signed by ${s.keyId}` : s.status === "bad" ? "bad signature" : "unsigned (landed before signing)");
+const signatureWords = (s) => (s.status === "signed" ? `signed by ${s.keyId}` : s.status === "bad" ? (s.why ? `bad signature (${s.why})` : "bad signature") : "unsigned (landed before signing)");
 
 // Tamper: a copy in memory with one field changed must no longer match its commit's digest.
 function fieldPath(text) {
@@ -194,6 +215,12 @@ const parentsIn = (raw) =>
     .split("\n")
     .flatMap((l) => (l.startsWith("parent ") ? [l.slice(7).trim()] : []))
     .join(" ");
+// The committer time a raw commit object names, in Unix seconds, or null.
+const committedIn = (raw) => {
+  const line = (raw.split("\n\n")[0] ?? "").split("\n").find((l) => l.startsWith("committer "));
+  const m = line ? / (\d+) [+-]\d{4}$/.exec(line) : null;
+  return m ? Number(m[1]) : null;
+};
 function readObjects(ids) {
   const out = new Map();
   if (ids.length === 0) return out;
@@ -227,7 +254,7 @@ function walk(from, limit) {
     });
   // The parents a commit was built and signed with, from the object itself: git log shows none past a shallow boundary.
   const objects = readObjects(commits.map((c) => c.sha));
-  return commits.map((c) => ({ ...c, parents: parentsIn(objects.get(c.sha) ?? "") }));
+  return commits.map((c) => ({ ...c, parents: parentsIn(objects.get(c.sha) ?? ""), time: committedIn(objects.get(c.sha) ?? "") }));
 }
 function notesList() {
   const map = new Map();

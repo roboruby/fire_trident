@@ -1,5 +1,7 @@
 import { spawnSync } from "node:child_process";
+import { writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { serializeNote } from "@fire_trident/core";
@@ -239,6 +241,32 @@ describe("what fails", () => {
     const stranger = await signingKey(r.dir);
     const res2 = await both(r.dir, ["--all", "--keys", stranger.keysFile]);
     expect(res2.out.split("\n")[1]).toMatch(/^[0-9a-f]{12} {2}intact, bad signature, paths match \(1 file\)$/);
+  });
+
+  it("a rotated key's signature checks out while the keys list it as retired, for commits made inside its window", async () => {
+    const r = trunkRepo();
+    const old = await signingKey(r.dir);
+    const now = await signingKey(r.dir);
+    r.plain({ "README.md": "# demo\n" }, "Initial commit\n");
+    // Every commit of the test repository is made at 2026-10-16T12:00:00Z.
+    const at = await r.landing({ "x.txt": "1\n" }, { landingId: "lnd_k", proposals: [proposal({ id: "prp_k", writeSet: [{ path: "x.txt", blob: r.blob("1\n") }] })] }, { signer: old.signer });
+    const ring = (until: string): string => {
+      // Inside the repository's git directory, so it goes with the repository.
+      const file = join(r.dir, ".git", `keys-until-${until.replace(/\W/g, "")}.json`);
+      writeFileSync(file, JSON.stringify({ keys: [{ ...now.signer.key, since: "2026-10-16T12:30:00.000Z" }, { ...old.signer.key, until }] }));
+      return file;
+    };
+    expect((await both(r.dir, ["HEAD", "--keys", ring("2026-10-16T12:10:00.000Z")])).out.split("\n")[0]).toBe(`intact, signed by ${old.keyId}`);
+    // The window's last second still counts; one second earlier and the commit falls outside it.
+    expect((await both(r.dir, ["HEAD", "--keys", ring("2026-10-16T12:00:00.000Z")])).code).toBe(0);
+    expect(await both(r.dir, ["HEAD", "--keys", ring("2026-10-16T11:59:59.000Z")])).toEqual({
+      code: 1,
+      out: `bad signature (key ${old.keyId} was not signing on 2026-10-16T12:00:00.000Z: it signed from its first commit until 2026-10-16T11:59:59.000Z)`,
+    });
+    const all = await both(r.dir, ["--all", "--keys", ring("2026-10-16T11:59:59.000Z")]);
+    expect(all.out.split("\n")[0]).toBe(`${at.slice(0, 12)}  intact, bad signature (key ${old.keyId} was not signing on 2026-10-16T12:00:00.000Z: it signed from its first commit until 2026-10-16T11:59:59.000Z), paths match (1 file)`);
+    // Only the new key listed (rotated without the ring): the old signature is bad, as before.
+    expect((await both(r.dir, ["HEAD", "--keys", now.keysFile])).out).toBe("bad signature");
   });
 });
 

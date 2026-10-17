@@ -61,9 +61,27 @@ export interface Env {
    * the trunk writer signs each landing commit it builds (an FT-Note-Signature trailer just above FT-Note, over the note's
    * digest, the commit's tree and its parent: trunk/signature.ts), its public key is published at
    * /.well-known/firetrident-keys.json, GET /api/about names its key id, and the note checks say whether each commit is
-   * signed. Absent, or not such a key (logged once, never printed), landings stay unsigned and nothing fails.
+   * signed. The same key also signs each commit the stock git way (a gpgsig header holding an SSH signature, namespace
+   * "git": trunk/gitsig.ts), so `git verify-commit` with gpg.format=ssh and the allowed signers published at
+   * /.well-known/firetrident-allowed-signers checks it. Absent, or not such a key (logged once, never printed), landings
+   * stay unsigned and nothing fails.
    */
   FT_NOTE_KEY?: string;
+  /**
+   * Optional (public data, a var or a secret): the keys this deployment signed lineage notes with before FT_NOTE_KEY's,
+   * as a JSON array of {"x": <raw Ed25519 public key, base64url>, "since": <ISO date, optional>, "until": <ISO date>}
+   * (trunk/signature.ts). /.well-known/firetrident-keys.json and the allowed signers list each one with its window, and a
+   * signature checks out when its key is listed and the key was signing at the commit's time, so a rotated key's older
+   * signatures stay good. An entry that is not such a key is left out (logged once). Absent, only FT_NOTE_KEY is published.
+   */
+  FT_NOTE_KEYS_RETIRED?: string;
+  /**
+   * Optional: credit trailers on landing commits, "on", or a comma-separated list of colony ids; absent or "off" is off.
+   * Above the FT trailers, each agent whose change the commit lands is a `Co-authored-by:` (its name and a no-reply
+   * address made from its id and the colony, never a real mailbox), and each person who approved a change of it an
+   * `Approved-by:` (trunk/credits.ts). FT-Note-Signature and FT-Note stay the last two lines.
+   */
+  FT_CREDIT_TRAILERS?: string;
   /** Optional: co-change repulsion weight (see ColonyDO; the simulator favors 5). */
   FT_COCHANGE_WEIGHT?: string;
   /** Optional: lateral inhibition threshold as a fraction of a fresh claim, or "off". */

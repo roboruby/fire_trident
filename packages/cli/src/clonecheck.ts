@@ -9,7 +9,11 @@ import type { Colors } from "./format.ts";
  * ends with `FT-Note: sha256:<hex>`, the digest of its lineage note under refs/notes/firetrident (the note as the trunk
  * writer writes it: keys sorted at every depth, 2-space indent, one final newline, without `certification`), and, where
  * the deployment signs, `FT-Note-Signature: ed25519 <key id> <sig>` just above it, over
- * "firetrident-note-signature v1\n<note sha256>\n<tree>\n<parents>\n".
+ * "firetrident-note-signature v1\n<note sha256>\n<tree>\n<parents>\n", by a key the keys document lists whose window
+ * (`since` to `until`, to the second, both ends included; null is open) covers the commit's committer time: the current
+ * key and each retired one. Each such commit also carries a gpgsig header that stock git checks with the deployment's
+ * allowed signers (git -c gpg.format=ssh -c gpg.ssh.allowedSignersFile=<file> verify-commit <commit>, the file from
+ * /.well-known/firetrident-allowed-signers).
  *
  *   --commit <ref>     one commit's note: intact, altered, missing or no FT-Note trailer (HEAD by default)
  *   --all              trunk's first-parent chain from --from (the branch tip by default), one verdict per landing: the
@@ -180,8 +184,11 @@ export function isLandingMessage(message: string): boolean {
 // Signatures
 // ---------------------------------------------------------------------------
 
-/** A commit's signature against the published keys: signed by a key, bad, or unsigned (landed before signing). */
-export function signatureState(p: { message: string; digest: string; tree: string; parents: string; keys: unknown }): { status: "signed"; keyId: string } | { status: "bad" | "unsigned" } {
+/**
+ * A commit's signature against the published keys: signed by a key, bad (`why` when the key is listed but was not
+ * signing at the commit's `time`, Unix seconds), or unsigned (landed before signing).
+ */
+export function signatureState(p: { message: string; digest: string; tree: string; parents: string; keys: unknown; time?: number | null }): { status: "signed"; keyId: string } | { status: "bad"; why?: string } | { status: "unsigned" } {
   const lines = p.message.trimEnd().split("\n");
   const above = lines.length > 1 ? (lines[lines.length - 2] ?? "") : "";
   if (!above.startsWith("FT-Note-Signature:")) return { status: "unsigned" };
@@ -195,16 +202,34 @@ export function signatureState(p: { message: string; digest: string; tree: strin
   try {
     const publicKey = createPublicKey({ key: { kty: "OKP", crv: "Ed25519", x: key.publicKey as string }, format: "jwk" });
     const text = `firetrident-note-signature v1\n${p.digest}\n${p.tree}\n${p.parents}\n`;
-    if (verify(null, Buffer.from(text), publicKey, Buffer.from(sig[2]!, "base64url"))) return { status: "signed", keyId: sig[1]! };
+    if (!verify(null, Buffer.from(text), publicKey, Buffer.from(sig[2]!, "base64url"))) return { status: "bad" };
   } catch {
     // A key or signature that cannot be read does not verify.
+    return { status: "bad" };
   }
-  return { status: "bad" };
+  const outside = windowWhy(sig[1]!, key.since, key.until, p.time);
+  return outside === null ? { status: "signed", keyId: sig[1]! } : { status: "bad", why: outside };
 }
 
-/** What a signature state reads as, as the single-commit check has always printed it. */
+/**
+ * Why key `id`, listed with `since` and `until`, was not signing at `time` (Unix seconds), or null when its window covers
+ * it. A key with neither covers any commit; a window that cannot be read, or a commit whose time is not known, does not.
+ */
+function windowWhy(id: string, since: unknown, until: unknown, time: number | null | undefined): string | null {
+  const edge = (v: unknown): number | null | undefined => (v === undefined || v === null ? null : typeof v === "string" && Number.isFinite(Date.parse(v)) ? Math.floor(Date.parse(v) / 1000) : undefined);
+  const from = edge(since);
+  const to = edge(until);
+  if (from === null && to === null) return null;
+  const span = `it signed from ${typeof since === "string" ? since : "its first commit"} until ${typeof until === "string" ? until : "now"}`;
+  if (from === undefined || to === undefined) return `key ${id} is listed with a window that cannot be read`;
+  if (typeof time !== "number" || !Number.isFinite(time)) return `key ${id} has a window, and this commit's time is not known`;
+  if ((from !== null && time < from) || (to !== null && time > to)) return `key ${id} was not signing on ${new Date(time * 1000).toISOString()}: ${span}`;
+  return null;
+}
+
+/** What a signature state reads as, as the single-commit check has always printed it (with why, for a key outside its window). */
 export function signatureWords(s: ReturnType<typeof signatureState>): string {
-  return s.status === "signed" ? `signed by ${s.keyId}` : s.status === "bad" ? "bad signature" : "unsigned (landed before signing)";
+  return s.status === "signed" ? `signed by ${s.keyId}` : s.status === "bad" ? (s.why ? `bad signature (${s.why})` : "bad signature") : "unsigned (landed before signing)";
 }
 
 // ---------------------------------------------------------------------------
@@ -429,12 +454,14 @@ export function nodeGit(dir: string): Git {
   };
 }
 
-/** One commit of the walk: its parents as its commit object names them, space-separated (a shallow clone hides the oldest). */
+/** One commit of the walk: its parents as its commit object names them, space-separated (a shallow clone hides the oldest), and its committer time. */
 interface Walked {
   sha: string;
   tree: string;
   parents: string;
   message: string;
+  /** The committer time in Unix seconds, or null when the object does not say. */
+  time: number | null;
 }
 
 /** Commits on the first-parent chain from `from`, newest first (at most `limit`). */
@@ -454,7 +481,14 @@ function walk(git: Git, from: string, limit?: number): Walked[] {
     });
   // The parents a commit was built and signed with, from the object itself: git log shows none past a shallow boundary.
   const objects = readObjects(git, commits.map((c) => c.sha));
-  return commits.map((c) => ({ ...c, parents: parentsIn(objects.get(c.sha) ?? "") }));
+  return commits.map((c) => ({ ...c, parents: parentsIn(objects.get(c.sha) ?? ""), time: committedIn(objects.get(c.sha) ?? "") }));
+}
+
+/** The committer time a raw commit object names, in Unix seconds, or null. */
+function committedIn(raw: string): number | null {
+  const line = (raw.split("\n\n")[0] ?? "").split("\n").find((l) => l.startsWith("committer "));
+  const m = line ? / (\d+) [+-]\d{4}$/.exec(line) : null;
+  return m ? Number(m[1]) : null;
 }
 
 /** The parents a raw commit object names, space-separated. */
@@ -624,7 +658,7 @@ function checkOne(cmd: CloneVerify, git: Git, keys: unknown): CloneReport {
   const raw = blob !== undefined ? (readObjects(git, [blob]).get(blob) ?? null) : null;
   let verdict: string = digest === null ? "no FT-Note trailer" : noteState(raw, digest);
   if (keys !== undefined && verdict === "intact" && digest !== null) {
-    const s = signatureState({ message: c.message, digest, tree: c.tree, parents: c.parents, keys });
+    const s = signatureState({ message: c.message, digest, tree: c.tree, parents: c.parents, keys, time: c.time });
     verdict = s.status === "signed" ? `intact, ${signatureWords(s)}` : signatureWords(s);
   }
   const ok = verdict === "intact" || verdict.startsWith("intact, signed by ");
@@ -669,7 +703,7 @@ function checkAll(cmd: CloneVerify, git: Git, keys: unknown): CloneReport {
     if (digest === null) return { kind: "skip", sha: c.sha, unsealed: isLandingMessage(c.message) };
     const raw = rawOf(c.sha);
     const state = noteState(raw, digest);
-    const signature = keys !== undefined && state === "intact" ? signatureState({ message: c.message, digest, tree: c.tree, parents: c.parents, keys }) : null;
+    const signature = keys !== undefined && state === "intact" ? signatureState({ message: c.message, digest, tree: c.tree, parents: c.parents, keys, time: c.time }) : null;
     const paths = state === "intact" ? pathsVerdict(git, c, JSON.parse(raw as string) as Record<string, unknown>) : null;
     const who = state === "intact" && signature?.status !== "bad" ? answerableOf(raw) : null;
     return { kind: "landing", sha: c.sha, note: state, signature, paths, who };
