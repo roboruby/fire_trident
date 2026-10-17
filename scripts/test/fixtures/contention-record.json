@@ -1,0 +1,592 @@
+{
+  "note": "A hand-built record of one contended run for scripts/test/contention_test.rb: eight spec intents, a seed landing, a csv change merged over the format-options change (red, repaired), a basis-points change that broke the tips intent's test (red, still red at the end), returns of every cause, a held merge, an escalation still waiting and an agent's report. Times are the colony's clock in ms; the swarm was released at 1000000 and the record ends at 1080000.",
+  "release_at": 1000000,
+  "end_at": 1080000,
+  "spec_intents": {
+    "int_fmt": {
+      "id": "format-options",
+      "title": "format takes an options object",
+      "change": "signature",
+      "footprint": [
+        "src/core/money.ts",
+        "src/report.ts",
+        "test/format-options.test.ts"
+      ]
+    },
+    "int_split": {
+      "id": "split",
+      "title": "Split a bill",
+      "footprint": [
+        "src/core/money.ts",
+        "src/split.ts",
+        "test/split.test.ts"
+      ]
+    },
+    "int_csv": {
+      "id": "csv",
+      "title": "CSV export",
+      "footprint": [
+        "src/core/money.ts",
+        "src/csv.ts",
+        "test/csv.test.ts"
+      ]
+    },
+    "int_bp": {
+      "id": "basis-points",
+      "title": "Rates in basis points",
+      "change": "signature",
+      "footprint": [
+        "src/core/money.ts",
+        "src/discount.ts",
+        "src/tax.ts",
+        "test/basis-points.test.ts"
+      ]
+    },
+    "int_tips": {
+      "id": "tips",
+      "title": "Tip suggestions",
+      "footprint": [
+        "src/core/money.ts",
+        "src/tip.ts",
+        "test/tip.test.ts"
+      ]
+    },
+    "int_fx": {
+      "id": "fx",
+      "title": "Invoices in another currency",
+      "footprint": [
+        "src/core/money.ts",
+        "src/fx.ts",
+        "test/fx.test.ts"
+      ]
+    },
+    "int_loyalty": {
+      "id": "loyalty",
+      "title": "Loyalty points",
+      "footprint": [
+        "src/core/money.ts",
+        "src/loyalty.ts",
+        "test/loyalty.test.ts"
+      ]
+    },
+    "int_gift": {
+      "id": "gift-card",
+      "title": "Gift card payments",
+      "footprint": [
+        "src/core/money.ts",
+        "src/giftcard.ts",
+        "test/giftcard.test.ts"
+      ]
+    }
+  },
+  "pairs": [
+    {
+      "first": "format-options",
+      "second": "csv"
+    },
+    {
+      "first": "basis-points",
+      "second": "tips"
+    }
+  ],
+  "certifications": [
+    {
+      "trunkSha": "a7",
+      "status": "red",
+      "landingId": "lnd_7",
+      "startedAt": 1071000,
+      "finishedAt": 1072000,
+      "failing": [
+        {
+          "name": "tips: 15, 18 and 20 percent",
+          "file": "test/tip.test.ts"
+        }
+      ]
+    },
+    {
+      "trunkSha": "a6",
+      "status": "red",
+      "landingId": "lnd_6",
+      "startedAt": 1061000,
+      "finishedAt": 1062000,
+      "failing": [
+        {
+          "name": "tips: 15, 18 and 20 percent",
+          "file": "test/tip.test.ts"
+        }
+      ],
+      "firstRed": {
+        "status": "found",
+        "trunkSha": "a6",
+        "landingId": "lnd_6",
+        "proposals": [
+          {
+            "id": "p_bp2",
+            "intentId": "int_bp",
+            "paths": [
+              "src/core/money.ts"
+            ]
+          }
+        ],
+        "probes": 1,
+        "ms": 120
+      }
+    },
+    {
+      "trunkSha": "a5",
+      "status": "green",
+      "landingId": "lnd_5",
+      "startedAt": 1050500,
+      "finishedAt": 1051000
+    },
+    {
+      "trunkSha": "a4",
+      "status": "green",
+      "landingId": "lnd_4",
+      "startedAt": 1041000,
+      "finishedAt": 1042000
+    },
+    {
+      "trunkSha": "a3",
+      "status": "red",
+      "landingId": "lnd_3",
+      "startedAt": 1031000,
+      "finishedAt": 1032000,
+      "failing": [
+        {
+          "name": "csv rows",
+          "file": "test/csv.test.ts"
+        }
+      ]
+    },
+    {
+      "trunkSha": "s0",
+      "status": "green",
+      "landingId": "lnd_seed",
+      "startedAt": 994000,
+      "finishedAt": 995000
+    }
+  ],
+  "proposals": {
+    "p_fmt1": {
+      "id": "p_fmt1",
+      "intentId": "int_fmt",
+      "baseSha": "s0",
+      "writeSet": [
+        {
+          "path": "src/core/money.ts"
+        },
+        {
+          "path": "src/report.ts"
+        },
+        {
+          "path": "test/format-options.test.ts"
+        }
+      ],
+      "readSet": [
+        {
+          "path": "src/core/money.ts"
+        }
+      ]
+    },
+    "p_split1": {
+      "id": "p_split1",
+      "intentId": "int_split",
+      "baseSha": "s0",
+      "writeSet": [
+        {
+          "path": "src/core/money.ts"
+        }
+      ],
+      "readSet": []
+    },
+    "p_split2": {
+      "id": "p_split2",
+      "intentId": "int_split",
+      "baseSha": "a1",
+      "writeSet": [
+        {
+          "path": "src/core/money.ts"
+        },
+        {
+          "path": "src/split.ts"
+        }
+      ],
+      "readSet": [
+        {
+          "path": "src/invoice.ts"
+        }
+      ]
+    },
+    "p_csv1": {
+      "id": "p_csv1",
+      "intentId": "int_csv",
+      "baseSha": "s0",
+      "writeSet": [
+        {
+          "path": "src/core/money.ts"
+        },
+        {
+          "path": "src/csv.ts"
+        },
+        {
+          "path": "test/csv.test.ts"
+        }
+      ],
+      "readSet": [
+        {
+          "path": "src/core/money.ts"
+        },
+        {
+          "path": "src/invoice.ts"
+        }
+      ]
+    },
+    "p_bp1": {
+      "id": "p_bp1",
+      "intentId": "int_bp",
+      "baseSha": "s0",
+      "writeSet": [
+        {
+          "path": "src/core/money.ts"
+        }
+      ],
+      "readSet": []
+    },
+    "p_bp2": {
+      "id": "p_bp2",
+      "intentId": "int_bp",
+      "baseSha": "a5",
+      "writeSet": [
+        {
+          "path": "src/core/money.ts"
+        },
+        {
+          "path": "src/discount.ts"
+        },
+        {
+          "path": "src/tax.ts"
+        }
+      ],
+      "readSet": [
+        {
+          "path": "src/core/money.ts"
+        }
+      ]
+    },
+    "p_tips1": {
+      "id": "p_tips1",
+      "intentId": "int_tips",
+      "baseSha": "a4",
+      "writeSet": [
+        {
+          "path": "src/core/money.ts"
+        },
+        {
+          "path": "src/tip.ts"
+        },
+        {
+          "path": "test/tip.test.ts"
+        }
+      ],
+      "readSet": []
+    },
+    "p_loy3": {
+      "id": "p_loy3",
+      "intentId": "int_loyalty",
+      "baseSha": "a6",
+      "writeSet": [
+        {
+          "path": "src/core/money.ts"
+        },
+        {
+          "path": "src/loyalty.ts"
+        }
+      ],
+      "readSet": []
+    }
+  },
+  "agents": [
+    {
+      "id": "agt_seed",
+      "name": "seed-8",
+      "kind": "synthetic",
+      "model": "scripted",
+      "counters": {
+        "llmCalls": 0
+      }
+    },
+    {
+      "id": "agt_1",
+      "name": "internal-1",
+      "kind": "internal",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "counters": {
+        "llmCalls": 20,
+        "llmCalls:@cf/moonshotai/kimi-k2.7-code": 4
+      }
+    },
+    {
+      "id": "agt_2",
+      "name": "internal-2",
+      "kind": "internal",
+      "model": "@cf/moonshotai/kimi-k2.7-code",
+      "counters": {
+        "llmCalls": 10
+      }
+    }
+  ],
+  "metrics": {
+    "at": 1080000,
+    "metrics": {
+      "landings": 8,
+      "returned": 6
+    },
+    "spend": {
+      "usd": 0.5,
+      "byLayer": {
+        "agents": 0.45,
+        "review": 0.05,
+        "judge": 0,
+        "resolver": 0,
+        "other": 0
+      },
+      "perLandedIntent": 0.0714,
+      "landedIntents": 7,
+      "tokens": {
+        "input": 100000,
+        "output": 20000
+      },
+      "byModel": {
+        "@cf/google/gemma-4-26b-a4b-it": {
+          "input": 60000,
+          "output": 8000,
+          "usd": 0.1
+        },
+        "@cf/moonshotai/kimi-k2.7-code": {
+          "input": 40000,
+          "output": 12000,
+          "usd": 0.4
+        }
+      },
+      "unpriced": {},
+      "priceDate": "2026-10-12",
+      "cap": {
+        "usd": 15,
+        "reviewReserveUsd": 1.5,
+        "spentUsd": 0.5,
+        "inFlightUsd": 0,
+        "state": "open",
+        "setBy": "contention",
+        "setAt": 999000
+      }
+    },
+    "intentSpend": {
+      "int_fmt": {
+        "usd": 0.02,
+        "byLayer": {
+          "agents": {
+            "usd": 0.018,
+            "calls": 2
+          },
+          "review": {
+            "usd": 0.002,
+            "calls": 1
+          }
+        }
+      },
+      "int_split": {
+        "usd": 0.05,
+        "byLayer": {
+          "agents": {
+            "usd": 0.045,
+            "calls": 5
+          },
+          "review": {
+            "usd": 0.005,
+            "calls": 2
+          }
+        }
+      },
+      "int_csv": {
+        "usd": 0.03,
+        "byLayer": {
+          "agents": {
+            "usd": 0.028,
+            "calls": 3
+          },
+          "review": {
+            "usd": 0.002,
+            "calls": 1
+          }
+        }
+      },
+      "int_bp": {
+        "usd": 0.08,
+        "byLayer": {
+          "agents": {
+            "usd": 0.075,
+            "calls": 6
+          },
+          "review": {
+            "usd": 0.005,
+            "calls": 2
+          }
+        }
+      },
+      "int_tips": {
+        "usd": 0.02,
+        "byLayer": {
+          "agents": {
+            "usd": 0.018,
+            "calls": 2
+          },
+          "review": {
+            "usd": 0.002,
+            "calls": 1
+          }
+        }
+      },
+      "int_loyalty": {
+        "usd": 0.1,
+        "byLayer": {
+          "agents": {
+            "usd": 0.09,
+            "calls": 8
+          },
+          "review": {
+            "usd": 0.01,
+            "calls": 3
+          }
+        }
+      },
+      "int_fx": {
+        "usd": 0.09,
+        "byLayer": {
+          "agents": {
+            "usd": 0.08,
+            "calls": 6
+          },
+          "review": {
+            "usd": 0.01,
+            "calls": 3
+          }
+        }
+      },
+      "int_gift": {
+        "usd": 0.04,
+        "byLayer": {
+          "agents": {
+            "usd": 0.038,
+            "calls": 4
+          },
+          "review": {
+            "usd": 0.002,
+            "calls": 1
+          }
+        }
+      }
+    }
+  },
+  "snapshot": {
+    "colony": {
+      "id": "contention-test-8",
+      "trunkSha": "a7"
+    },
+    "intents": [
+      {
+        "id": "int_repair",
+        "source": "certify",
+        "status": "landed"
+      },
+      {
+        "id": "int_repair2",
+        "source": "certify",
+        "status": "open"
+      },
+      {
+        "id": "int_fx",
+        "source": "human",
+        "status": "proposed"
+      },
+      {
+        "id": "int_gift",
+        "source": "human",
+        "status": "open"
+      },
+      {
+        "id": "int_split_money",
+        "source": "system",
+        "status": "open"
+      }
+    ]
+  },
+  "events": [
+    { "seq": 1, "t": "proposal", "at": 980000, "proposalId": "p_seed", "intentId": "int_seed", "agentId": "agt_seed", "status": "pending" },
+    { "seq": 2, "t": "landing", "at": 990000, "landingId": "lnd_seed", "trunkSha": "s0", "proposalIds": ["p_seed"], "paths": ["src/core/money.ts", "src/report.ts", "src/discount.ts", "src/tax.ts", "test/money.test.ts"] },
+    { "seq": 3, "t": "proposal", "at": 990000, "proposalId": "p_seed", "intentId": "int_seed", "agentId": "agt_seed", "status": "landed" },
+    { "seq": 4, "t": "certify", "at": 995000, "trunkSha": "s0", "status": "green", "landingId": "lnd_seed" },
+    { "seq": 5, "t": "intent", "at": 1000500, "intentId": "int_fmt", "status": "claimed", "title": "format takes an options object", "footprint": ["src/core/money.ts", "src/report.ts", "test/format-options.test.ts"] },
+    { "seq": 6, "t": "intent", "at": 1000600, "intentId": "int_split", "status": "claimed", "title": "Split a bill", "footprint": ["src/core/money.ts", "src/split.ts", "test/split.test.ts"] },
+    { "seq": 7, "t": "intent", "at": 1000700, "intentId": "int_csv", "status": "claimed", "title": "CSV export", "footprint": ["src/core/money.ts", "src/csv.ts", "test/csv.test.ts"] },
+    { "seq": 10, "t": "proposal", "at": 1001000, "proposalId": "p_fmt1", "intentId": "int_fmt", "agentId": "agt_1", "status": "pending" },
+    { "seq": 10.1, "t": "intent", "at": 1001000, "intentId": "int_fmt", "status": "proposed", "title": "format takes an options object", "footprint": ["src/core/money.ts", "src/report.ts", "test/format-options.test.ts"] },
+    { "seq": 11, "t": "proposal", "at": 1002000, "proposalId": "p_split1", "intentId": "int_split", "agentId": "agt_2", "status": "pending" },
+    { "seq": 11.1, "t": "intent", "at": 1002000, "intentId": "int_split", "status": "proposed", "title": "Split a bill", "footprint": ["src/core/money.ts", "src/split.ts", "test/split.test.ts"] },
+    { "seq": 12, "t": "proposal", "at": 1003000, "proposalId": "p_csv1", "intentId": "int_csv", "agentId": "agt_3", "status": "pending" },
+    { "seq": 12.1, "t": "intent", "at": 1003000, "intentId": "int_csv", "status": "proposed", "title": "CSV export", "footprint": ["src/core/money.ts", "src/csv.ts", "test/csv.test.ts"] },
+    { "seq": 13, "t": "proposal", "at": 1004000, "proposalId": "p_bp1", "intentId": "int_bp", "agentId": "agt_4", "status": "pending" },
+    { "seq": 14, "t": "proposal", "at": 1005000, "proposalId": "p_fx1", "intentId": "int_fx", "agentId": "agt_5", "status": "pending" },
+    { "seq": 15, "t": "proposal", "at": 1006000, "proposalId": "p_loy1", "intentId": "int_loyalty", "agentId": "agt_6", "status": "pending" },
+    { "seq": 16, "t": "landing", "at": 1010000, "landingId": "lnd_1", "trunkSha": "a1", "proposalIds": ["p_fmt1"], "paths": ["src/core/money.ts", "src/report.ts", "test/format-options.test.ts"] },
+    { "seq": 17, "t": "proposal", "at": 1010000, "proposalId": "p_fmt1", "intentId": "int_fmt", "agentId": "agt_1", "status": "landed" },
+    { "seq": 17.1, "t": "intent", "at": 1010000, "intentId": "int_fmt", "status": "landed", "title": "format takes an options object", "footprint": ["src/core/money.ts", "src/report.ts", "test/format-options.test.ts"] },
+    { "seq": 18, "t": "proposal", "at": 1011000, "proposalId": "p_split1", "intentId": "int_split", "agentId": "agt_2", "status": "returned", "reason": "stale: src/core/money.ts changed under it (landing lnd_1)" },
+    { "seq": 18.1, "t": "intent", "at": 1011000, "intentId": "int_split", "status": "open", "title": "Split a bill", "footprint": ["src/core/money.ts", "src/split.ts", "test/split.test.ts"], "cause": "returned" },
+    { "seq": 19, "t": "proposal", "at": 1012000, "proposalId": "p_bp1", "intentId": "int_bp", "agentId": "agt_4", "status": "returned", "reason": "stale: text merge of src/core/money.ts: 2 conflicting hunks (lines 40-52)" },
+    { "seq": 20, "t": "proposal", "at": 1013000, "proposalId": "p_fx1", "intentId": "int_fx", "agentId": "agt_5", "status": "returned", "reason": "llm: convert ignores the currency argument" },
+    { "seq": 21, "t": "proposal", "at": 1014000, "proposalId": "p_loy1", "intentId": "int_loyalty", "agentId": "agt_6", "status": "returned", "reason": "deterministic: violation of rule Relative imports name the .ts file in src/loyalty.ts" },
+    { "seq": 21.5, "t": "intent", "at": 1014000, "intentId": "int_split", "status": "claimed", "title": "Split a bill", "footprint": ["src/core/money.ts", "src/split.ts", "test/split.test.ts"] },
+    { "seq": 22, "t": "proposal", "at": 1015000, "proposalId": "p_split2", "intentId": "int_split", "agentId": "agt_2", "status": "pending" },
+    { "seq": 22.1, "t": "intent", "at": 1015000, "intentId": "int_split", "status": "proposed", "title": "Split a bill", "footprint": ["src/core/money.ts", "src/split.ts", "test/split.test.ts"] },
+    { "seq": 23, "t": "landing", "at": 1020000, "landingId": "lnd_2", "trunkSha": "a2", "proposalIds": ["p_split2"], "paths": ["src/core/money.ts", "src/split.ts", "test/split.test.ts"] },
+    { "seq": 24, "t": "proposal", "at": 1020000, "proposalId": "p_split2", "intentId": "int_split", "agentId": "agt_2", "status": "landed" },
+    { "seq": 24.1, "t": "intent", "at": 1020000, "intentId": "int_split", "status": "landed", "title": "Split a bill", "footprint": ["src/core/money.ts", "src/split.ts", "test/split.test.ts"] },
+    { "seq": 25, "t": "proposal", "at": 1020500, "proposalId": "p_fx2", "intentId": "int_fx", "agentId": "agt_5", "status": "pending" },
+    { "seq": 26, "t": "proposal", "at": 1021000, "proposalId": "p_loy2", "intentId": "int_loyalty", "agentId": "agt_6", "status": "pending" },
+    { "seq": 27, "t": "proposal", "at": 1025000, "proposalId": "p_fx2", "intentId": "int_fx", "agentId": "agt_5", "status": "returned", "reason": "reflex: the change removes a test of convert" },
+    { "seq": 28, "t": "proposal", "at": 1026000, "proposalId": "p_loy2", "intentId": "int_loyalty", "agentId": "agt_6", "status": "returned", "reason": "Tests before landing: the test \"pointsFor\" in test/loyalty.test.ts passed on trunk and fails with this change. Fix the change so it passes again (the test is the specification), then propose again." },
+    { "seq": 29, "t": "landing", "at": 1030000, "landingId": "lnd_3", "trunkSha": "a3", "proposalIds": ["p_csv1"], "paths": ["src/core/money.ts", "src/csv.ts", "test/csv.test.ts"] },
+    { "seq": 30, "t": "proposal", "at": 1030000, "proposalId": "p_csv1", "intentId": "int_csv", "agentId": "agt_3", "status": "landed" },
+    { "seq": 30.1, "t": "intent", "at": 1030000, "intentId": "int_csv", "status": "landed", "title": "CSV export", "footprint": ["src/core/money.ts", "src/csv.ts", "test/csv.test.ts"] },
+    { "seq": 31, "t": "proposal", "at": 1030500, "proposalId": "p_fx3", "intentId": "int_fx", "agentId": "agt_5", "status": "pending" },
+    { "seq": 32, "t": "proposal", "at": 1031000, "proposalId": "p_fx3", "intentId": "int_fx", "agentId": "agt_5", "status": "escalated", "reason": "llm: an acceptance line is unclear; a person decides" },
+    { "seq": 33, "t": "certify", "at": 1032000, "trunkSha": "a3", "status": "red", "landingId": "lnd_3", "failing": [{ "name": "csv rows", "file": "test/csv.test.ts" }] },
+    { "seq": 34, "t": "proposal", "at": 1032000, "proposalId": "p_rep1", "intentId": "int_repair", "agentId": "agt_7", "status": "pending" },
+    { "seq": 35, "t": "bisect", "at": 1033000, "trunkSha": "a3", "firstRed": { "status": "found", "trunkSha": "a3", "landingId": "lnd_3", "proposals": [{ "id": "p_csv1", "intentId": "int_csv", "paths": ["src/csv.ts"] }], "probes": 2, "ms": 300 } },
+    { "seq": 36, "t": "landing", "at": 1040000, "landingId": "lnd_4", "trunkSha": "a4", "proposalIds": ["p_rep1"], "paths": ["src/csv.ts"] },
+    { "seq": 37, "t": "proposal", "at": 1040000, "proposalId": "p_rep1", "intentId": "int_repair", "agentId": "agt_7", "status": "landed" },
+    { "seq": 38, "t": "proposal", "at": 1041000, "proposalId": "p_tips1", "intentId": "int_tips", "agentId": "agt_8", "status": "pending" },
+    { "seq": 39, "t": "certify", "at": 1042000, "trunkSha": "a4", "status": "green", "landingId": "lnd_4" },
+    { "seq": 40, "t": "proposal", "at": 1043000, "proposalId": "p_gift1", "intentId": "int_gift", "agentId": "agt_1", "status": "pending" },
+    { "seq": 41, "t": "proposal", "at": 1045000, "proposalId": "p_gift1", "intentId": "int_gift", "agentId": "agt_1", "status": "escalated", "reason": "A person approved this change against an older trunk; trunk has since changed src/core/money.ts, so the merge waits for a person." },
+    { "seq": 42, "t": "decision", "at": 1049000, "decisionId": "dec_1", "kind": "review", "layer": "human", "p": 1, "action": "return", "subject": "p_gift1" },
+    { "seq": 43, "t": "proposal", "at": 1049000, "proposalId": "p_gift1", "intentId": "int_gift", "agentId": "agt_1", "status": "returned", "reason": "the merged money.ts drops takeUpTo" },
+    { "seq": 44, "t": "landing", "at": 1050000, "landingId": "lnd_5", "trunkSha": "a5", "proposalIds": ["p_tips1"], "paths": ["src/core/money.ts", "src/tip.ts", "test/tip.test.ts"] },
+    { "seq": 45, "t": "proposal", "at": 1050000, "proposalId": "p_tips1", "intentId": "int_tips", "agentId": "agt_8", "status": "landed" },
+    { "seq": 46, "t": "proposal", "at": 1050500, "proposalId": "p_gift2", "intentId": "int_gift", "agentId": "agt_1", "status": "pending" },
+    { "seq": 47, "t": "certify", "at": 1051000, "trunkSha": "a5", "status": "green", "landingId": "lnd_5" },
+    { "seq": 48, "t": "proposal", "at": 1052000, "proposalId": "p_bp2", "intentId": "int_bp", "agentId": "agt_4", "status": "pending" },
+    { "seq": 49, "t": "proposal", "at": 1054000, "proposalId": "p_gift2", "intentId": "int_gift", "agentId": "agt_1", "status": "returned", "reason": "stale: src/core/money.ts changed under it (landing lnd_5)" },
+    { "seq": 50, "t": "escalation", "at": 1055000, "intentId": "int_gift", "agentId": "agt_1", "kind": "unclear", "report": "redeem's due is ambiguous", "title": "Gift card payments" },
+    { "seq": 51, "t": "stuck", "at": 1056000, "item": { "key": "returns:int_gift:1", "kind": "returns", "since": 1054000, "text": "Gift card payments came back three times", "action": "intent" } },
+    { "seq": 52, "t": "escalation", "at": 1058000, "intentId": "int_gift", "agentId": "agt_1", "kind": "unclear", "report": "redeem's due is ambiguous", "title": "Gift card payments", "resolved": { "by": "a-person", "at": 1058000, "decision": "dismiss", "note": "" } },
+    { "seq": 53, "t": "landing", "at": 1060000, "landingId": "lnd_6", "trunkSha": "a6", "proposalIds": ["p_bp2"], "paths": ["src/core/money.ts", "src/discount.ts", "src/tax.ts", "test/basis-points.test.ts"] },
+    { "seq": 54, "t": "proposal", "at": 1060000, "proposalId": "p_bp2", "intentId": "int_bp", "agentId": "agt_4", "status": "landed" },
+    { "seq": 55, "t": "certify", "at": 1062000, "trunkSha": "a6", "status": "red", "landingId": "lnd_6", "failing": [{ "name": "tips: 15, 18 and 20 percent", "file": "test/tip.test.ts" }] },
+    { "seq": 56, "t": "proposal", "at": 1063000, "proposalId": "p_loy3", "intentId": "int_loyalty", "agentId": "agt_6", "status": "pending" },
+    { "seq": 57, "t": "landing", "at": 1070000, "landingId": "lnd_7", "trunkSha": "a7", "proposalIds": ["p_loy3"], "paths": ["src/core/money.ts", "src/loyalty.ts", "test/loyalty.test.ts"] },
+    { "seq": 58, "t": "proposal", "at": 1070000, "proposalId": "p_loy3", "intentId": "int_loyalty", "agentId": "agt_6", "status": "landed" },
+    { "seq": 59, "t": "certify", "at": 1072000, "trunkSha": "a7", "status": "red", "landingId": "lnd_7", "failing": [{ "name": "tips: 15, 18 and 20 percent", "file": "test/tip.test.ts" }] }
+  ]
+}
