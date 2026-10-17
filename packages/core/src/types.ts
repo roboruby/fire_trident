@@ -243,6 +243,11 @@ export interface Intent {
    * intent; a person resolves it (amend, withdraw or dismiss).
    */
   escalation?: IntentEscalation;
+  /**
+   * The closure ledger (worker colony/closure.ts): why the intent last closed or reopened while an agent held it, with
+   * that agent and how long it had been silent. Absent for an intent no agent has let go of since the ledger began.
+   */
+  closure?: IntentClosure;
 }
 
 /**
@@ -262,6 +267,51 @@ export interface IntentEscalation {
   at: Millis;
   /** The person's answer; absent while the intent waits for one. */
   resolved?: { by: string; at: Millis; decision: "amend" | "withdraw" | "dismiss"; note: string };
+}
+
+/**
+ * Why an intent an agent held closed or reopened (the closure ledger, worker colony/closure.ts): `landed` (its change
+ * landed), `released` (the agent gave it back), `escalated` (the agent reported it to a person), `withdrawn` (a person
+ * or a change of direction called it off), `gave_up` (an in-platform agent's loop gave up on it), `reaped_silent` (the
+ * agent was silent past the colony's limit and the colony took it back), `returned` (review or a person sent its change
+ * back, or rejected it) and `stopped` (a person stopped the agent, or the colony was deleted).
+ */
+export type ClosureCause = "landed" | "released" | "escalated" | "withdrawn" | "gave_up" | "reaped_silent" | "returned" | "stopped";
+
+/** One close or reopen of an intent an agent held, as the closure ledger keeps it. */
+export interface IntentClosure {
+  cause: ClosureCause;
+  at: Millis;
+  /** What the intent became: open (reopened for the next taker), landed or withdrawn. */
+  status: IntentStatus;
+  /** The agent that held it, and its kind. */
+  agentId?: Id;
+  agentKind?: AgentKind;
+  /**
+   * How long the agent had been silent when it closed or reopened: from its last sign of life the colony recorded (a
+   * heartbeat or a call) to then. 0 when the agent's own call closed it (released, escalated, gave_up).
+   */
+  gapMs?: number;
+}
+
+/** One agent kind's closures in the ledger: how many, and per cause the count and its share of them. */
+export interface ClosureKindShare {
+  total: number;
+  counts: Partial<Record<ClosureCause, number>>;
+  shares: Partial<Record<ClosureCause, number>>;
+}
+
+/** The closure ledger in the colony's metrics report (GET /api/colonies/:id/metrics). */
+export interface ClosureReport {
+  /** Closures counted since the ledger began in this colony. */
+  total: number;
+  /** Per agent kind (internal: in-platform, external: MCP and API agents, synthetic). */
+  byKind: Partial<Record<AgentKind, ClosureKindShare>>;
+  /** Intents the colony took back from silent agents: how many, and how long those agents had been silent. */
+  reaped: { count: number; medianGapMs: number | null; maxGapMs: number | null };
+  /** The colony's silent-agent limit now (an agent outside the platform silent this long loses its intents), and whether it is the default. */
+  silentTtlMs: number;
+  silentTtlDefault: boolean;
 }
 
 /** Intent fields an amendment may change. */
@@ -1209,7 +1259,11 @@ export interface PauseState {
 export type ColonyEvent =
   | { t: "agent"; at: Millis; agentId: Id; kind: AgentKind; state: AgentState; intentId?: Id; paths?: Path[] }
   | { t: "mark"; at: Millis; region: string; path: Path; kind: MarkKind; value: number }
-  | { t: "intent"; at: Millis; intentId: Id; status: IntentStatus; title: string; footprint: Path[] }
+  /**
+   * An intent changed status. A close or reopen of an intent an agent held also carries the closure ledger's cause, the
+   * agent, its kind and how long it had been silent (IntentClosure); events recorded before the ledger have none.
+   */
+  | { t: "intent"; at: Millis; intentId: Id; status: IntentStatus; title: string; footprint: Path[]; cause?: ClosureCause; agentId?: Id; agentKind?: AgentKind; gapMs?: number }
   | { t: "proposal"; at: Millis; proposalId: Id; intentId: Id; agentId: Id; status: ProposalStatus; reason?: string; movedBy?: MovedBy[] }
   | { t: "landing"; at: Millis; landingId: Id; trunkSha: Sha; proposalIds: Id[]; paths: Path[] }
   | { t: "decision"; at: Millis; decisionId: Id; kind: DecisionKind; layer: DecisionLayer; p: number; action: string; subject: Id }

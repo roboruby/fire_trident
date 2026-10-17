@@ -1651,7 +1651,8 @@ function finishJob(deps: LoopDeps, cfg: AgentConfig, job: Job, outcome: Outcome,
 
 async function abandon(deps: LoopDeps, cfg: AgentConfig, job: Job, reason: string): Promise<StepResult> {
   try {
-    await deps.colony.abandon(cfg.agentId, reason);
+    // Closure ledger (colony/closure.ts): the loop's own give-up.
+    await deps.colony.abandon(cfg.agentId, reason, "gave_up");
   } catch (e) {
     if (e instanceof Halt) throw e;
     deps.journal.log({ at: deps.now(), intentId: job.intentId, step: "abandon", ok: false, ms: 0, detail: errorMessage(e) });
@@ -1743,7 +1744,7 @@ export async function stopAgent(deps: Pick<LoopDeps, "colony" | "journal" | "now
     deps.journal.setJob(null);
     if (job.step !== "await") {
       try {
-        await deps.colony.abandon(c.agentId, `agent stopped: ${reason}`);
+        await deps.colony.abandon(c.agentId, `agent stopped: ${reason}`, "stopped");
       } catch {
         // Best effort: the colony reaps silent agents anyway.
       }

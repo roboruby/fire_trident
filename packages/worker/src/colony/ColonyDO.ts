@@ -179,6 +179,8 @@ import { hedgeFor } from "./hedge.ts";
 import type { ColonySpend, IntentSpendBrief, SpendCap } from "@fire_trident/core";
 import { IntentSpendBook, intentSpendEnabled, type IntentSpendAnswer } from "./intentspend.ts";
 import { SPEND_CAP_ACTOR, SpendCapBook, agentReserve, agentSettle, bookUsd, cappedAi, cappedClient, localGate, type AgentCapAsk, type CapSettle, type CapUse, type SpendCapAnswer } from "./spendcap.ts";
+import { ClosureLedger, abandonCause, closureOf, eventFields, reapCutoffs, silentTtlMs, type AbandonCause, type ClosureEventFields, type SilentTtlView } from "./closure.ts";
+import type { ClosureCause, ClosureReport, IntentClosure } from "@fire_trident/core";
 
 /**
  * Result of ColonyDO.take: an assignment, or advice to wait and retry. `review`: what review will
@@ -268,7 +270,7 @@ const PUSHED_STATES: ReadonlySet<string> = new Set(["landed", "returned", "rejec
 const PICK_ATTEMPTS = 8;
 /** Heartbeats refresh claim marks at most this often (claims decay with tau = 5 min). */
 const CLAIM_REFRESH_MS = 15_000;
-/** Agents silent for this long are declared dead and their claimed intents reopened. */
+/** Agents silent for this long are declared dead and their claimed intents reopened (the default: a person may set the colony's own limit, colony/closure.ts). */
 const AGENT_TTL_MS = 10 * 60_000;
 const REAP_EVERY_MS = 30_000;
 /** A held lease is handed back on a repeated take only while its token has this much life left. */
@@ -448,6 +450,8 @@ type IntentRow = {
   /** What an agent asked for when the cap lowered its priority, and which cap (priority.ts migrates older tables). */
   requested_priority?: number | null;
   priority_cap?: string | null;
+  /** The intent's latest closure (IntentClosure JSON; closure.ts migrates older tables). */
+  closure?: string | null;
 };
 
 type RuleRow = {
@@ -1277,7 +1281,7 @@ export class ColonyDO extends DurableObject<Env> {
    * One intent with its revision history (oldest first), the directives about it (newest first), and
    * the reports agents made on it with the answers (newest first).
    */
-  async intentHistory(id: Id): Promise<{ intent: Intent; revisions: IntentRevision[]; directives: Directive[]; escalations: IntentEscalation[] } | null> {
+  async intentHistory(id: Id): Promise<{ intent: Intent; revisions: IntentRevision[]; directives: Directive[]; escalations: IntentEscalation[]; closures?: IntentClosure[] } | null> {
     const colony = this.requireColony();
     const row = this.intentRow(id);
     if (!row) return null;
@@ -1285,7 +1289,8 @@ export class ColonyDO extends DurableObject<Env> {
       .exec<DirectiveRow>("SELECT * FROM directives WHERE intent_id = ? ORDER BY at DESC LIMIT 100", id)
       .toArray()
       .map((r) => toDirective(r, colony.id));
-    return { intent: this.toIntent(row, colony.id), revisions: this.revisionRows(id).map(toRevision), directives, escalations: this.escalationHistory(id) };
+    // The closure ledger (colony/closure.ts): every close and reopen while an agent held it, newest first.
+    return { intent: this.toIntent(row, colony.id), revisions: this.revisionRows(id).map(toRevision), directives, escalations: this.escalationHistory(id), ...this.closureHistory(id) };
   }
 
   /** Amending or withdrawing needs an intent that is still live: not landed, withdrawn or sealed. */
@@ -1307,9 +1312,11 @@ export class ColonyDO extends DurableObject<Env> {
     for (const p of inflight) perIntent.set(p.intentId, (perIntent.get(p.intentId) ?? 0) + 1);
     for (const row of rows) {
       const fp = this.footprintOf(row.id, row.footprint);
+      // Closure ledger (colony/closure.ts): an intent an agent held was called off.
+      const why = row.assigned_to && (row.status === "claimed" || row.status === "proposed") ? this.closedBy(row, "withdrawn", "withdrawn", now, row.assigned_to, reason) : {};
       this.sql.exec("UPDATE intents SET status = 'withdrawn', withdrawn_reason = ?, assigned_to = NULL, updated_at = ? WHERE id = ?", reason, now, row.id);
       fx.batch.clear(fp, { intentId: row.id, kind: "need" }).clear(fp, { intentId: row.id, kind: "claim" });
-      fx.events.push({ t: "intent", at: now, intentId: row.id, status: "withdrawn", title: row.title, footprint: fp });
+      fx.events.push({ t: "intent", at: now, intentId: row.id, status: "withdrawn", title: row.title, footprint: fp, ...why });
     }
     for (const prev of inflight) {
       const next: Proposal = { ...prev, status: "returned", reason: withdrawnReturn(reason) };
@@ -1592,6 +1599,8 @@ export class ColonyDO extends DurableObject<Env> {
     const escalation: IntentEscalation = { kind, report, by: agentId, at: now };
     const fp = this.footprintOf(row.id, row.footprint);
     const fx = this.effects(colony.regionDepth);
+    // Closure ledger (colony/closure.ts): the agent reported it to a person.
+    const why = this.closedBy(row, "escalated", "open", now, { id: agentId, kind: agent.kind, lastSeen: agent.last_seen }, kind);
     // Open, unassigned and waiting for a person: take() skips intents whose report is open.
     this.sql.exec("UPDATE intents SET status = 'open', assigned_to = NULL, escalation = ?, escalation_open = 1, updated_at = ? WHERE id = ?", JSON.stringify(escalation), now, row.id);
     this.sql.exec("INSERT OR REPLACE INTO intent_escalations (intent_id, at, agent_id, kind, report, resolved) VALUES (?, ?, ?, ?, ?, NULL)", row.id, now, agentId, kind, report);
@@ -1611,7 +1620,7 @@ export class ColonyDO extends DurableObject<Env> {
       this.writeProposal(next, now);
       this.transition(next, prev.status, now, fx);
     }
-    fx.events.push({ t: "intent", at: now, intentId: row.id, status: "open", title: row.title, footprint: fp });
+    fx.events.push({ t: "intent", at: now, intentId: row.id, status: "open", title: row.title, footprint: fp, ...why });
     fx.events.push({ t: "escalation", at: now, intentId: row.id, agentId, kind, report, title: row.title });
     await this.flushEffects(fx);
     const fresh = this.intentRow(row.id);
@@ -2060,18 +2069,24 @@ export class ColonyDO extends DurableObject<Env> {
     );
   }
 
-  /** Give up a claimed intent: it reopens, claims are cleared and a failure mark is left. */
-  async abandon(agentId: Id, reason = "abandoned by agent"): Promise<void> {
+  /**
+   * Give up a claimed intent: it reopens, claims are cleared and a failure mark is left. `cause` is the closure ledger's
+   * (colony/closure.ts): released (an outside agent's release), gave_up (the agent loop's own give-up) or stopped; a
+   * caller that names none gets the one the agent's kind implies.
+   */
+  async abandon(agentId: Id, reason = "abandoned by agent", cause?: AbandonCause): Promise<void> {
     const colony = this.requireColony();
     const agent = this.requireAgent(agentId);
     const now = Date.now();
     const fx = this.effects(colony.regionDepth);
     const held = this.sql.exec<IntentRow>("SELECT * FROM intents WHERE assigned_to = ? AND status = 'claimed'", agentId).toArray();
+    const closing = abandonCause(cause, agent.kind);
     for (const row of held) {
       const fp = this.footprintOf(row.id, row.footprint);
+      const why = this.closedBy(row, closing, "open", now, { id: agentId, kind: agent.kind, lastSeen: agent.last_seen }, reason);
       this.sql.exec("UPDATE intents SET status = 'open', assigned_to = NULL, updated_at = ? WHERE id = ?", now, row.id);
       fx.batch.clear(fp, { agentId, intentId: row.id, kind: "claim" }).deposit("failure", fp, FAILURE_STRENGTH, now, { agentId, intentId: row.id });
-      fx.events.push({ t: "intent", at: now, intentId: row.id, status: "open", title: row.title, footprint: fp });
+      fx.events.push({ t: "intent", at: now, intentId: row.id, status: "open", title: row.title, footprint: fp, ...why });
     }
     // Contest mode: a seat on an intent another contestant holds is given back the same way.
     this.contestGiveBack(agent, held, now, fx);
@@ -4215,6 +4230,7 @@ export class ColonyDO extends DurableObject<Env> {
     answerable: AnswerableMeter;
     spend?: ColonySpend;
     intentSpend?: Record<Id, IntentSpendBrief>;
+    closures?: ClosureReport;
   }> {
     const colony = this.requireColony();
     const now = Date.now();
@@ -4238,7 +4254,9 @@ export class ColonyDO extends DurableObject<Env> {
     const spend = await this.spendReport(now, metrics);
     // Spend per intent (colony/intentspend.ts), for the Intents tab's rows; absent when nothing was counted per intent.
     const intentSpend = this.intentSpendMap();
-    return { ...report, ...(spend ? { spend } : {}), ...(intentSpend ? { intentSpend } : {}) };
+    // The closure ledger (colony/closure.ts): closures per agent kind and cause, the reaped agents' gaps, the silent-agent limit.
+    const closures = this.closureReport();
+    return { ...report, ...(spend ? { spend } : {}), ...(intentSpend ? { intentSpend } : {}), ...(closures ? { closures } : {}) };
   }
 
   /** What the colony's model calls cost so far (colony/spend.ts), for the status GET /api/colonies/:id serves; null before init. */
@@ -4428,9 +4446,11 @@ export class ColonyDO extends DurableObject<Env> {
       out.push(id);
       for (const h of this.sql.exec<IntentRow>("SELECT * FROM intents WHERE assigned_to = ? AND status = 'claimed'", id).toArray()) {
         const fp = this.footprintOf(h.id, h.footprint);
+        // Closure ledger (colony/closure.ts): a person stopped the agent that held it.
+        const why = this.closedBy(h, "stopped", "open", now, { id, kind: agent.kind, lastSeen: agent.last_seen }, reason);
         this.sql.exec("UPDATE intents SET status = 'open', assigned_to = NULL, updated_at = ? WHERE id = ?", now, h.id);
         fx.batch.clear(fp, { agentId: id, intentId: h.id, kind: "claim" }).deposit("failure", fp, FAILURE_STRENGTH, now, { agentId: id, intentId: h.id });
-        fx.events.push({ t: "intent", at: now, intentId: h.id, status: "open", title: h.title, footprint: fp });
+        fx.events.push({ t: "intent", at: now, intentId: h.id, status: "open", title: h.title, footprint: fp, ...why });
       }
       const proposing = this.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM intents WHERE assigned_to = ? AND status = 'proposed'", id).one().n > 0;
       if (proposing) {
@@ -4495,6 +4515,8 @@ export class ColonyDO extends DurableObject<Env> {
     this.pauseSwitch = null;
     // And the spend cap's.
     this.spendCapRun = null;
+    // And the closure ledger's (its tables and the silent-agent limit are gone).
+    this.closureLedger = null;
     await this.ctx.storage.deleteAlarm();
     await this.ctx.storage.deleteAll();
     this.colonyCache = null;
@@ -5452,12 +5474,21 @@ export class ColonyDO extends DurableObject<Env> {
     return out;
   }
 
-  /** Declare silent agents dead and reopen the intents they claimed (throttled). */
+  /**
+   * Declare silent agents dead and reopen the intents they claimed (throttled), each with a failure mark and the closure
+   * ledger's reaped_silent (colony/closure.ts). Silent means past the colony's limit: a person's setting for agents outside
+   * the platform, at least the default for in-platform ones; with no setting, AGENT_TTL_MS for every agent.
+   */
   private maybeReap(now: number): void {
     if (now - this.lastReap < REAP_EVERY_MS) return;
     this.lastReap = now;
+    const cut = reapCutoffs(this.silentLimitMs(), now);
     const stale = this.sql
-      .exec<{ id: string; kind: string }>("SELECT id, kind FROM agents WHERE state != 'dead' AND last_seen < ?", now - AGENT_TTL_MS)
+      .exec<{ id: string; kind: string; last_seen: number }>(
+        "SELECT id, kind, last_seen FROM agents WHERE state != 'dead' AND ((kind = 'external' AND last_seen < ?) OR (kind != 'external' AND last_seen < ?))",
+        cut.external,
+        cut.inPlatform,
+      )
       .toArray()
       .filter((a) => !this.taking.has(a.id));
     if (stale.length === 0) return;
@@ -5466,9 +5497,12 @@ export class ColonyDO extends DurableObject<Env> {
     for (const a of stale) {
       for (const h of this.sql.exec<IntentRow>("SELECT * FROM intents WHERE assigned_to = ? AND status = 'claimed'", a.id).toArray()) {
         const fp = this.footprintOf(h.id, h.footprint);
+        // Closure ledger: taken back from a silent agent, with how long it had been silent.
+        const why = this.closedBy(h, "reaped_silent", "open", now, { id: a.id, kind: a.kind, lastSeen: a.last_seen });
         this.sql.exec("UPDATE intents SET status = 'open', assigned_to = NULL, updated_at = ? WHERE id = ?", now, h.id);
-        fx.batch.clear(fp, { agentId: a.id, intentId: h.id, kind: "claim" });
-        fx.events.push({ t: "intent", at: now, intentId: h.id, status: "open", title: h.title, footprint: fp });
+        // The failure mark an abandon leaves, so the next taker sees that work stopped there.
+        fx.batch.clear(fp, { agentId: a.id, intentId: h.id, kind: "claim" }).deposit("failure", fp, FAILURE_STRENGTH, now, { agentId: a.id, intentId: h.id });
+        fx.events.push({ t: "intent", at: now, intentId: h.id, status: "open", title: h.title, footprint: fp, ...why });
       }
       this.sql.exec("UPDATE agents SET state = 'dead', intent_id = NULL, workspace = NULL WHERE id = ?", a.id);
       // A dead agent's claims stop counting in the takes that follow (they inhibit; see takeFor).
@@ -5479,6 +5513,90 @@ export class ColonyDO extends DurableObject<Env> {
     }
     // ...and every claim they still hold in any region is removed, not left to decay.
     this.ctx.waitUntil(this.flushEffects(fx).then(() => this.clearAgentClaims(stale.map((a) => a.id))));
+  }
+
+  // =========================================================================
+  // Closure ledger (colony/closure.ts): why intents agents held closed or
+  // reopened, and the colony's silent-agent limit.
+  // =========================================================================
+
+  /** The closure ledger, made on first use (it creates its tables then). */
+  private closureLedger: ClosureLedger | null = null;
+
+  private closures(): ClosureLedger {
+    return (this.closureLedger ??= new ClosureLedger(this.sql));
+  }
+
+  /**
+   * Record why an intent an agent held closed or reopened, and return the fields its intent event carries. `agent` is the
+   * holder as its row stood before the close, or its id (read here). Vaccine intents and closes with no holder are not
+   * recorded. Fails open: a failure is logged and the close goes on without a cause.
+   */
+  private closedBy(row: IntentRow, cause: ClosureCause, status: IntentStatus, now: number, agent: { id: Id; kind: string | null; lastSeen: number | null } | Id | null | undefined, detail?: string): ClosureEventFields {
+    if (!agent || row.created_by === "vaccine") return {};
+    try {
+      const known = typeof agent === "string" ? this.agentRow(agent) : undefined;
+      const who = typeof agent === "string" ? { id: agent, kind: known?.kind ?? null, lastSeen: known?.last_seen ?? null } : agent;
+      return eventFields(this.closures().record({ intentId: row.id, cause, status, at: now, agent: who, ...(detail ? { detail } : {}) }));
+    } catch (err) {
+      console.warn(`closure of intent ${row.id} (${cause}) not recorded: ${errorText(err)}`);
+      return {};
+    }
+  }
+
+  /** The silent-agent limit the reaper applies (the default when the ledger cannot be read). */
+  private silentLimitMs(): number {
+    try {
+      return this.closures().ttl().ms;
+    } catch (err) {
+      console.warn(`silent-agent limit not read, using the default: ${errorText(err)}`);
+      return AGENT_TTL_MS;
+    }
+  }
+
+  /** An intent's closures for its history, newest first; nothing when it has none or the ledger cannot be read. */
+  private closureHistory(intentId: Id): { closures?: IntentClosure[] } {
+    try {
+      const list = this.closures().history(intentId);
+      return list.length > 0 ? { closures: list } : {};
+    } catch (err) {
+      console.warn(`closures of intent ${intentId} not read: ${errorText(err)}`);
+      return {};
+    }
+  }
+
+  /** The metrics report's closures; undefined when the ledger cannot be read (the rest of the report stands). */
+  private closureReport(): ClosureReport | undefined {
+    try {
+      return this.closures().report();
+    } catch (err) {
+      console.warn(`closure report not computed: ${errorText(err)}`);
+      return undefined;
+    }
+  }
+
+  /** The colony's silent-agent limit (GET /api/colonies/:id/silent-ttl). */
+  async silentTtl(): Promise<SilentTtlView> {
+    this.requireColony();
+    return this.closures().ttl();
+  }
+
+  /**
+   * A person sets the silent-agent limit (POST /api/colonies/:id/silent-ttl): `seconds` from 60 to 86,400, or null for the
+   * default ten minutes. An agent outside the platform silent this long loses its claimed intents at the reaper's next
+   * look (at most every 30 s); in-platform agents keep at least ten minutes.
+   */
+  async setSilentTtl(p: { seconds: number | null; by?: string }): Promise<SilentTtlView> {
+    this.requireColony();
+    let ms: number | null;
+    try {
+      ms = silentTtlMs(p?.seconds);
+    } catch (err) {
+      throw ftError(400, err instanceof Error ? err.message : String(err));
+    }
+    const view = this.closures().setTtl(ms, typeof p?.by === "string" ? p.by : "unknown", Date.now());
+    console.log(`colony silent-agent limit set to ${view.seconds} s${view.default ? " (the default)" : ""} by ${view.setBy ?? "unknown"}`);
+    return view;
   }
 
   /**
@@ -5600,8 +5718,10 @@ export class ColonyDO extends DurableObject<Env> {
         const row = this.intentRow(intentId);
         if (!row) return null;
         if ((row.status !== "proposed" && row.status !== "claimed") || row.assigned_to !== agentId) return row.status;
+        // Closure ledger (colony/closure.ts): the resolver could not merge the change back, so it goes back.
+        const why = this.closedBy(row, "returned", "open", now, agentId, "the conflict resolver gave it back");
         this.sql.exec("UPDATE intents SET status = 'open', assigned_to = NULL, updated_at = ? WHERE id = ?", now, intentId);
-        this.publish({ t: "intent", at: now, intentId, status: "open", title: row.title, footprint: this.footprintOf(row.id, row.footprint) });
+        this.publish({ t: "intent", at: now, intentId, status: "open", title: row.title, footprint: this.footprintOf(row.id, row.footprint), ...why });
         return "open";
       },
       proposal: (id) => this.getProposalSync(id),
@@ -5689,8 +5809,10 @@ export class ColonyDO extends DurableObject<Env> {
         // on keeps its intent, held for the resolver, instead of reopening it; everything else of the return happens.
         const resolving = p.status === "returned" && this.resolver().hold(p, intent ?? null, fx.events);
         if (!resolving && intent && (intent.status === "proposed" || intent.status === "claimed") && (intent.assigned_to === p.agentId || intent.assigned_to === null)) {
+          // Closure ledger (colony/closure.ts): review or a person sent the holder's change back, or rejected it.
+          const why = this.closedBy(intent, "returned", "open", now, p.agentId, p.status);
           this.sql.exec("UPDATE intents SET status = 'open', assigned_to = NULL, updated_at = ? WHERE id = ?", now, intent.id);
-          fx.events.push({ t: "intent", at: now, intentId: intent.id, status: "open", title: intent.title, footprint: fp });
+          fx.events.push({ t: "intent", at: now, intentId: intent.id, status: "open", title: intent.title, footprint: fp, ...why });
         }
         fx.batch
           .clear(fp, { agentId: p.agentId, intentId: p.intentId, kind: "claim" })
@@ -5717,7 +5839,7 @@ export class ColonyDO extends DurableObject<Env> {
             this.sql.exec("UPDATE agents SET thresholds = ? WHERE id = ?", thresholds, agent.id);
           }
         }
-        this.landIntent(p.intentId, now, fx);
+        this.landIntent(p.intentId, now, fx, p.agentId);
         this.bump("landedProposals", 1, now);
         break;
       }
@@ -5736,7 +5858,7 @@ export class ColonyDO extends DurableObject<Env> {
    * intent shows landed when its change landed first (the trunk writer's cycle had read the old
    * direction); the withdrawal's answer names that landing (the direction fence).
    */
-  private landIntent(intentId: Id, now: number, fx: Effects): void {
+  private landIntent(intentId: Id, now: number, fx: Effects, agentId?: Id): void {
     const row = this.intentRow(intentId);
     if (!row || row.status === "landed") return;
     const missed = this.landingMissed?.intentId === intentId ? this.landingMissed : null;
@@ -5744,10 +5866,12 @@ export class ColonyDO extends DurableObject<Env> {
       this.keepRevised(row, missed, now, fx);
       return;
     }
+    // Closure ledger (colony/closure.ts): the holder's change landed (the landing agent, else the intent's holder).
+    const why = this.closedBy(row, "landed", "landed", now, agentId ?? row.assigned_to);
     this.sql.exec("UPDATE intents SET status = 'landed', updated_at = ? WHERE id = ?", now, intentId);
     const fp = this.footprintOf(row.id, row.footprint);
     fx.batch.clear(fp, { intentId: row.id, kind: "need" });
-    fx.events.push({ t: "intent", at: now, intentId: row.id, status: "landed", title: row.title, footprint: fp });
+    fx.events.push({ t: "intent", at: now, intentId: row.id, status: "landed", title: row.title, footprint: fp, ...why });
     this.bump("landedIntents", 1, now);
     if (row.rule_id && row.violations > 0) {
       this.sql.exec("UPDATE rules SET open_violations = MAX(0, open_violations - ?) WHERE id = ?", row.violations, row.rule_id);
@@ -6221,6 +6345,9 @@ export class ColonyDO extends DurableObject<Env> {
     if (requested !== undefined) intent.requestedPriority = requested;
     const cap = requested !== undefined ? priorityCapOf(r.priority_cap) : undefined;
     if (cap) intent.priorityCap = cap;
+    // The closure ledger (colony/closure.ts): why it last closed or reopened while an agent held it.
+    const closure = closureOf(r.closure);
+    if (closure) intent.closure = closure;
     return intent;
   }
 

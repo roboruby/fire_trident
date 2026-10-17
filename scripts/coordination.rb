@@ -118,6 +118,14 @@
 #    human); unknown when the note does not record the intent's source (notes written before 2026-10-16); else none. A
 #    landing is none when a change of it is none, else unknown when one is unknown, else person. Reported over the
 #    landing commits read from notes: how many, and how many of each, with the share no person answers for.
+#
+# 10. Closures (the closure ledger, packages/worker/src/colony/closure.ts). Every intent event that carries a cause: why
+#    an intent an agent held closed or reopened (landed, released, escalated, withdrawn, gave_up, reaped_silent, returned,
+#    stopped), with the agent and the gap since its last sign of life. Per agent kind (the event's agentKind, else the
+#    agent's kind from the agents list): the closures, each cause's count and its share of the kind's closures. With it:
+#    the intents taken back from silent agents (reaped_silent), with the median and largest gap; and the closes recorded
+#    before the ledger (an intent event that moves an intent from claimed or proposed to open, landed or withdrawn with
+#    no cause), counted apart and in no share. Vaccine agents are left out.
 require "fileutils"
 require "json"
 require "net/http"
@@ -142,6 +150,10 @@ module Coordination
   TEXT_MERGE = /\btext merge of \S.*?: \d+ conflicting hunks?\b/
   STALE = /\A(?:stale:|conflicts with )/
   IN_FLIGHT = %w[pending checking ready escalated].freeze
+  # Definition 10: the closure ledger's causes, and the moves an intent event makes that close or reopen a held intent.
+  CLOSURE_CAUSES = %w[landed released escalated withdrawn gave_up reaped_silent returned stopped].freeze
+  HELD = %w[claimed proposed].freeze
+  CLOSED = %w[open landed withdrawn].freeze
   PHASES = %i[agentWork review waitingToLand rework].freeze
   EVENTS_PAGE = 5_000
   FETCH_CAP = 10_000
@@ -591,7 +603,7 @@ module Coordination
   # The event record reduced to proposals and intents, vaccines left out.
   class Record
     attr_reader :proposals, :intents, :landing_ids, :human_returns, :t0, :t_last, :source, :total, :vaccine_proposals,
-                :claims, :declared, :human_decisions, :landings, :first_at
+                :claims, :declared, :human_decisions, :landings, :first_at, :closures, :uncaused_closures
 
     def initialize(page, vaccine_agents: Set.new)
       @source = page["source"]
@@ -605,6 +617,9 @@ module Coordination
       @declared = {}
       @human_decisions = Hash.new { |h, k| h[k] = [] }
       @landings = []
+      # Definition 10: intent events with a cause, and closes of held intents recorded before the ledger.
+      @closures = []
+      @uncaused_closures = 0
       vaccine_ids = Set.new
       vaccine_intents = Set.new
       events = (page["events"] || []).each_with_index.sort_by { |e, i| [e["seq"] || i, i] }.map(&:first)
@@ -627,7 +642,16 @@ module Coordination
             p[:return_reason] = e["reason"]
           end
         when "intent"
+          prev = @intents.dig(e["intentId"], :status)
           (@intents[e["intentId"]] ||= { id: e["intentId"], title: e["title"] })[:status] = e["status"]
+          if CLOSURE_CAUSES.include?(e["cause"])
+            unless vaccine_agents.include?(e["agentId"])
+              @closures << { intent: e["intentId"], at: e["at"], status: e["status"], cause: e["cause"], agent: e["agentId"], kind: e["agentKind"],
+                             gap_ms: e["gapMs"].is_a?(Numeric) ? e["gapMs"] : nil }
+            end
+          elsif HELD.include?(prev) && CLOSED.include?(e["status"])
+            @uncaused_closures += 1
+          end
           @declared[e["intentId"]] ||= e["at"]
           @claims[e["intentId"]] << e["at"] if e["status"] == "claimed" && e["at"].is_a?(Numeric)
         when "landing"
@@ -883,6 +907,7 @@ module Coordination
         linesPerIntent: lines_per_intent(lineage, attribution),
         answerable: answerable(lineage),
         timeSplit: record && Coordination.time_split(record),
+        closures: record && Coordination.closures(record, agents),
         agents: agent_table(agents, record, lineage, attribution),
         missing: @missing,
         warnings: @warnings
@@ -1223,6 +1248,28 @@ module Coordination
   end
 
   # Specialization from landed proposals given as [agent, region] pairs in landing order (definition 3).
+  # Definition 10: closures per agent kind and cause, the reaped agents' gaps, and the closes that predate the ledger.
+  def closures(record, agents)
+    kinds = agents.to_h { |a| [a["id"], a["kind"]] }
+    counts = Hash.new { |h, k| h[k] = Hash.new(0) }
+    gaps = []
+    reaped = 0
+    record.closures.each do |c|
+      counts[c[:kind] || kinds[c[:agent]] || "unknown"][c[:cause]] += 1
+      next unless c[:cause] == "reaped_silent"
+
+      reaped += 1
+      gaps << c[:gap_ms] if c[:gap_ms]
+    end
+    by_kind = counts.sort.to_h do |kind, by|
+      total = by.values.sum
+      shown = CLOSURE_CAUSES.select { |cause| by[cause].positive? }
+      [kind, { total: total, counts: shown.to_h { |cause| [cause, by[cause]] }, shares: shown.to_h { |cause| [cause, rounded(ratio(by[cause], total))] } }]
+    end
+    { closures: record.closures.size, byKind: by_kind, reaped: { count: reaped, medianGapMs: median(gaps), maxGapMs: gaps.max },
+      beforeLedger: record.uncaused_closures }
+  end
+
   def specialization(landed, shuffles: SHUFFLES, seed: SEED)
     agents = landed.map(&:first)
     labels = landed.map(&:last)
@@ -1402,6 +1449,35 @@ module Coordination
     rows
   end
 
+  # "1 min 37 s": a gap as a person reads it.
+  def gap_text(ms)
+    s = (ms / 1000.0).round
+    return "#{s} s" if s < 60
+
+    m, rest = s.divmod(60)
+    return rest.zero? ? "#{m} min" : "#{m} min #{rest} s" if m < 60
+
+    h, m = m.divmod(60)
+    m.zero? ? "#{h} h" : "#{h} h #{m} min"
+  end
+
+  # The markdown row of definition 10.
+  def closure_row(c)
+    before = c[:beforeLedger].positive? ? "; #{many(c[:beforeLedger], 'close')} recorded before the ledger, in no share" : ""
+    return "| Closures | none recorded#{before} |" if c[:closures].zero?
+
+    kinds = c[:byKind].map do |kind, k|
+      label = { "internal" => "in-platform", "external" => "external", "synthetic" => "synthetic" }.fetch(kind, kind)
+      "#{label} #{num(k[:total])} (#{k[:counts].map { |cause, n| "#{cause.tr('_', ' ')} #{num(n)}, #{pct(k[:shares][cause])}" }.join('; ')})"
+    end
+    rp = c[:reaped]
+    reaped = if rp[:count].zero? then "none taken back from a silent agent"
+             elsif rp[:medianGapMs] then "#{many(rp[:count], 'intent')} taken back from silent agents, median gap #{gap_text(rp[:medianGapMs])} (largest #{gap_text(rp[:maxGapMs])})"
+             else "#{many(rp[:count], 'intent')} taken back from silent agents"
+             end
+    "| Closures | #{num(c[:closures])} recorded: #{kinds.join(' · ')}; #{reaped}#{before} |"
+  end
+
   # The short markdown table for stdout.
   def markdown(r)
     t = r[:trunk]
@@ -1460,6 +1536,7 @@ module Coordination
              "#{num(a[:person])} a person answers for, #{num(a[:unknown])} unknown (notes from before who asked was recorded) |"
     end
     out.concat(r[:timeSplit] ? time_rows(r[:timeSplit]) : ["| Where the time went | not computed: no event record |"])
+    out << closure_row(r[:closures]) if r[:closures]
     notes = r[:missing] + r[:warnings].first(5).map { |w| "warning: #{w}" }
     notes << "#{r[:warnings].size - 5} more warnings in the JSON" if r[:warnings].size > 5
     out += [""] + notes.map { |x| "- #{x}" } unless notes.empty?

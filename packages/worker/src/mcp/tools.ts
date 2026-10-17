@@ -568,6 +568,8 @@ export class FireTridentTools {
         ruleId: intent.ruleId ?? null,
         parentId: intent.parentId ?? null,
         ...(s.declaredBy ? { declaredBy: s.declaredBy } : {}),
+        // The closure ledger (colony/closure.ts): why it last came back, such as an agent that went silent holding it.
+        ...(intent.closure && intent.closure.cause !== "landed" ? { closure: intent.closure } : {}),
       },
       rule: ruleBrief(s.rule),
       ...(review ? { review } : {}),
@@ -955,7 +957,8 @@ export class FireTridentTools {
   async release(a: { reason?: string }): Promise<unknown> {
     const s = await this.joined();
     const reason = (a.reason ?? "").trim().slice(0, 500) || "released by an external agent";
-    await this.ctx.colony(s.colonyId).abandon(s.agentId, reason);
+    // Closure ledger (colony/closure.ts): the agent gave it back.
+    await this.ctx.colony(s.colonyId).abandon(s.agentId, reason, "released");
     const held = s.intent ? { intentId: s.intent.id, title: s.intent.title } : null;
     await this.update((x) => dropHeld(x));
     return { released: held, next: "Call take for other work." };

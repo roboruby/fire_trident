@@ -2,6 +2,7 @@ import type { Colony, Rule } from "@fire_trident/core";
 import type { Command } from "./args.ts";
 import { pauseRequest } from "./pause.ts";
 import { spendCapRequest } from "./spendcap.ts";
+import { silentTtlRequest } from "./closure.ts";
 
 /**
  * HTTP contract the CLI assumes (routes in packages/worker/src/api/routes.ts).
@@ -210,6 +211,8 @@ export function planRequest(cmd: Command, by: string): ApiRequest | null {
       if (cmd.action === "on" || cmd.action === "off") return { method: "POST", path: colonyPath(cmd.colony, "/certify/policy"), body: { enabled: cmd.action === "on" } };
       return { method: "GET", path: `${colonyPath(cmd.colony, "/certifications")}?limit=10` };
     case "policy":
+      // The silent-agent limit has its own route (closure.ts).
+      if (cmd.silentTtl !== undefined) return silentTtlRequest(cmd.colony, cmd.silentTtl, by, colonyPath);
       // Adding or removing protected paths reads the list first (see run.ts).
       if (cmd.protect.length > 0 || cmd.unprotect.length > 0) return null;
       if (cmd.commentProof !== undefined) return { method: "POST", path: colonyPath(cmd.colony, "/decide/policy"), body: { commentProof: cmd.commentProof } };
