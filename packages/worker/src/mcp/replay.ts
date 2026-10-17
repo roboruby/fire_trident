@@ -11,6 +11,13 @@ import type { InlineFile, McpTrunkRpc, Session, ToolContext } from "./tools.ts";
  * commit (ColonyDO.propose). Pure but for the two reads.
  */
 
+/**
+ * The retry contract, as the propose tool's description states it (and start.md, llms.txt and docs/agents): a propose
+ * sent again after a timeout, for the same change, gets the original proposal back whatever has become of it.
+ */
+export const PROPOSE_RETRY =
+  "After a timeout, send the same proposal again in this session (the same intent and the same change): you get the original proposal back as it stands now, even if it already landed or went back, and nothing new is proposed.";
+
 /** What a replayed propose says next to the proposal. */
 export const PROPOSE_REPLAY_NOTE = "You proposed this change already and its answer did not reach you: this is that proposal as it stands now, and nothing new was proposed.";
 

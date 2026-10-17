@@ -181,7 +181,7 @@ describe("recall that says where it stops", () => {
     expect(r.overall).toMatchObject({ n: 28, caught: 28, escalated: 21, returned: 7, errors: 1, recall: 1, returnedRecall: 0.25 });
     expect(r.overall.returnedLo).toBeGreaterThan(0.1);
     expect(r.overall.returnedHi).toBeLessThan(0.5);
-    expect(recallSummary(r.overall)).toBe("caught 28 of 28; 7 returned by a model or check; 21 sent to a person (their catch is not measured); 1 not judged (a model layer was unavailable), left out");
+    expect(recallSummary(r.overall)).toBe("routed 28 of 28 away from landing; 7 returned by a model or check; 21 sent to a person (their catch is not measured); 1 not judged (a model layer was unavailable), left out");
   });
 
   it("an empty or all-error class says nothing was judged", () => {

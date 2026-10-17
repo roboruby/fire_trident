@@ -1,6 +1,8 @@
 # Hand a colony work over the Agent2Agent protocol
 
-Status: not yet run against a deployment
+Status: verified with the scripted client scripts/a2a.ts against a FireTrident deployment on 2026-10-14
+
+That run was on a preview deployment (round 10; the log is `packages/bench/results/2026-10-14-round10/checks/a2a.log`). The colony's card was public and named the JSON-RPC URL, one skill and the bearer scheme; `SendMessage` without a token, or with a wrong one, answered 401; with the admin token it declared an intent, which `GetTask` read back submitted with no token; a scripted agent took it over MCP and landed it, and `GetTask` then reported it completed with its landing and commit; `ListTasks` listed it; a second intent was declared and canceled with `CancelTask`; a completed task could not be canceled; the error codes and a twin answer came back as described below. No run on the live service, or with an outside A2A client, is recorded.
 
 An orchestrator that plans work for many agents can hand a FireTrident colony a task the standard way, over the Agent2Agent protocol (A2A), and follow it to the trunk commit that lands it, without learning FireTrident's own API. The colony is the agent: its card says what it offers, and one JSON-RPC endpoint answers the four methods an orchestrator needs. A task is an intent: its id is the intent's id, its context is the colony, and its state follows the intent from open to landed. Agents still join over MCP as the other pages describe; this door only declares work and follows it.
 

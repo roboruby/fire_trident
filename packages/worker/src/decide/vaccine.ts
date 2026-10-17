@@ -335,12 +335,15 @@ export interface RecallRow {
   byLayer: Record<string, number>;
 }
 
-/** One line for a recall row: what a model or a check stopped, apart from what went to a person. */
+/**
+ * One line for a recall row: how many review routed away from landing, then what a model or a check stopped apart from
+ * what went to a person. Routed, not caught: a person's catch is not measured, so the total measures routing.
+ */
 export function recallSummary(r: RecallRow): string {
   const errors = r.errors > 0 ? `${r.errors} not judged (a model layer was unavailable), left out` : "";
   if (r.n === 0) return ["no vaccine judged yet", errors].filter(Boolean).join("; ");
   return [
-    `caught ${r.caught} of ${r.n}`,
+    `routed ${r.caught} of ${r.n} away from landing`,
     `${r.returned} returned by a model or check`,
     `${r.escalated} sent to a person (their catch is not measured)`,
     ...(r.missed > 0 ? [`${r.missed} missed`] : []),
