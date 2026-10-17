@@ -143,6 +143,7 @@ import { bisectEnabled } from "../certify/bisect.ts";
 import { prelandEnabled, prelandReader } from "../certify/preland.ts";
 import type { CertifyPolicy } from "../certify/repair.ts";
 import { LandingTestsReader, certificationOff, landingSpend, type LandingTestsTrunk } from "../certify/landingtests.ts";
+import { ReviewTests, type RetestAnswer, type ReviewTestsTrunk } from "../certify/reviewtests.ts";
 import type { LandingTests } from "@fire_trident/core";
 import { reviewPreview, type ReviewPreview } from "../agents/preview.ts";
 import { RETURN_PATHS, extractUsage, returnReason, type LastReturn } from "../agents/prompt.ts";
@@ -2475,6 +2476,11 @@ export class ColonyDO extends DurableObject<Env> {
       // Escalated before views were kept: build one in the background, for the next read.
       else if (backfills++ < REVIEW_BACKFILLS) this.ctx.waitUntil(engine.backfillReview(p.id).catch((err) => console.warn(`review view of ${p.id} not built: ${errorText(err)}`)));
     }
+    // Tests before approval (certify/reviewtests.ts): what the colony's tests said of each change, or why they did not run.
+    for (const p of queue) {
+      const tests = this.reviewTests().view(p);
+      if (tests) Object.assign(p, { reviewTests: tests });
+    }
     // What beat the intent's last change (colony/movedby.ts): the landings this one was redone on, for its reviewer.
     for (const p of queue.slice(0, REVIEW_MOVED)) {
       const last = this.lastReturn(p.intentId);
@@ -2554,6 +2560,8 @@ export class ColonyDO extends DurableObject<Env> {
     const engine = this.decider();
     if (d === "approve" && engine.store.vaccineByIntent(p.intentId)) throw ftError(409, "vaccine proposals are sealed and can never land");
     const now = Date.now();
+    // Tests before approval (certify/reviewtests.ts): what the colony's tests said when the person decided, for the decision and the lineage note.
+    const tested = this.reviewTests().decided(p);
     // The human decision continues the proposal's decision chain and is bound to its head commit.
     const prior = this.sql.exec<{ id: string }>("SELECT id FROM decisions WHERE subject = ? ORDER BY at DESC LIMIT 1", proposalId).toArray()[0]?.id;
     this.storeDecision(
@@ -2563,7 +2571,7 @@ export class ColonyDO extends DurableObject<Env> {
         kind: "triage",
         subject: proposalId,
         layer: "human",
-        answers: { decision: d, reason, by, head: p.headSha },
+        answers: { decision: d, reason, by, head: p.headSha, ...(tested.line ? { tests: tested.line } : {}) },
         p: 1,
         action: d,
         at: now,
@@ -2586,9 +2594,9 @@ export class ColonyDO extends DurableObject<Env> {
         }
         return;
       }
-      await this.updateProposals([{ id: proposalId, patch: { status: "ready", approvedAt: now, mergeHold: undefined } }]);
+      await this.updateProposals([{ id: proposalId, patch: { status: "ready", approvedAt: now, mergeHold: undefined, ...(tested.evidence ? { evidence: tested.evidence } : {}) } }]);
     } else {
-      await this.updateProposals([{ id: proposalId, patch: { status: d === "reject" ? "rejected" : "returned", reason: reason || `${d} by ${by}` } }]);
+      await this.updateProposals([{ id: proposalId, patch: { status: d === "reject" ? "rejected" : "returned", reason: reason || `${d} by ${by}`, ...(tested.evidence ? { evidence: tested.evidence } : {}) } }]);
     }
   }
 
@@ -3776,6 +3784,42 @@ export class ColonyDO extends DurableObject<Env> {
       off: () => certificationOff(this.certifier.state()),
       // The model calls counted for the landing's intents (colony/intentspend.ts), summed.
       spend: (ids) => landingSpend(ids, (id) => this.intentSpends().report(id)),
+    }));
+  }
+
+  /**
+   * Tests before approval (POST /api/colonies/:id/proposals/:pid/tests; certify/reviewtests.ts): run the colony's tests on
+   * an escalated change again. The queued run, or why none started: 404 for an unknown proposal, 409 when it no longer
+   * waits for a person, its run is already going, or tests cannot run in this colony.
+   */
+  async retestProposal(proposalId: Id, by = "api"): Promise<Extract<RetestAnswer, { started: true }>> {
+    this.requireColony();
+    const answer = this.reviewTests().request(proposalId, by);
+    if (!answer.started) throw ftError(answer.status, answer.reason);
+    return answer;
+  }
+
+  /** Tests before approval (certify/reviewtests.ts), made on first use. */
+  private reviewTestsRun: ReviewTests | null = null;
+
+  private reviewTests(): ReviewTests {
+    return (this.reviewTestsRun ??= new ReviewTests({
+      // As certifyHost reads the switch and the runner, without reading the latest result (each queue item may ask).
+      off: () => certificationOff({ deployment: this.env.FT_TRUNK_TESTS === "on", runner: this.env.LOADER !== undefined, policy: this.certifier.policy() }),
+      trunk: () => this.trunkStub() as unknown as ReviewTestsTrunk,
+      sandbox: () => this.certifier.sealedRuns(),
+      certification: (sha) => this.certifier.get(sha),
+      proposal: (id) => this.withContents(this.getProposalSync(id)),
+      reader: (p) => prelandReader(this.env, p),
+      // Evidence only, not a change of state: the row keeps its status and updated_at (replays and stuck checks read it).
+      save: (id, run, replaces) => {
+        const cur = this.getProposalSync(id);
+        if (!cur || cur.status !== "escalated") return false;
+        if (replaces !== null && cur.evidence?.reviewTests?.id !== replaces) return false;
+        const next: Proposal = { ...cur, evidence: { ...cur.evidence, reviewTests: run } };
+        this.sql.exec("UPDATE proposals SET data = ? WHERE id = ? AND status = 'escalated'", JSON.stringify(next), id);
+        return true;
+      },
     }));
   }
 
@@ -5710,6 +5754,8 @@ export class ColonyDO extends DurableObject<Env> {
         // Contest mode: a ready change for a contest intent waits for its contest instead of its lane.
         if (p.status === "ready" && !this.contestHold(p, now)) fx.enqueue.push({ proposal: p, region, priority });
         if (p.status === "escalated") this.bump("escalated", 1, now);
+        // Tests before approval (certify/reviewtests.ts): the colony's tests run on the change while it waits for a person.
+        if (p.status === "escalated" && prev !== "escalated") this.reviewTests().escalated(p);
         break;
       }
       case "returned":

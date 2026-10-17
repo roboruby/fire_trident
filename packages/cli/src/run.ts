@@ -64,6 +64,7 @@ import { firstLandings, readRows, testsRequest } from "./tests.ts";
 import type { IntentBody, SpecPolicy } from "./spec.ts";
 import type { GuideLesson, Intent, Landing, LandingTests, LineageNote, Proposal, Rule } from "@fire_trident/core";
 import { connectInfo, connectText } from "./connect.ts";
+import { retestText } from "./reviewtests.ts";
 
 /** Everything the CLI touches outside itself, injectable for tests. */
 export interface Io {
@@ -305,6 +306,12 @@ async function execute(cmd: Command, ctx: Ctx): Promise<number> {
       const [res, snap] = await Promise.all([send<unknown>(ctx.http, req), ctx.flags.json ? undefined : tryGet<SnapshotLike>(ctx, snapReq)]);
       if (ctx.flags.json) printJson(ctx, res);
       else io.stdout(formatReview(asArray<Proposal>(res, ["proposals", "queue"]), snap?.intents, c, io.now(), { diff: cmd.diff, colony: cmd.colony }));
+      return 0;
+    }
+    case "review-retest": {
+      const res = await send<unknown>(ctx.http, req);
+      if (ctx.flags.json) printJson(ctx, res);
+      else io.stdout(retestText(cmd.proposalId, cmd.colony, res, c));
       return 0;
     }
     case "review-decide": {

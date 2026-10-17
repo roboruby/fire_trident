@@ -31,6 +31,8 @@ export interface Backend {
   why(path: string, line?: number): Promise<WhyEntry[]>;
   review(): Promise<Proposal[]>;
   decide(proposalId: string, decision: ReviewDecision, reason: string, by?: string): Promise<void>;
+  /** Run the colony's tests on an escalated change again (tests before approval; POST /proposals/:pid/tests); absent in the simulator and replays. */
+  retestProposal?(proposalId: string, by?: string): Promise<void>;
   /** Answer an agent's report that an intent cannot be done as written. */
   resolveEscalation(intentId: string, decision: EscalationDecision, note: string, by?: string, amend?: IntentAmend): Promise<void>;
   /** Freeze the colony's clock (the simulator and replays; a live colony keeps running). */
@@ -365,6 +367,10 @@ export class HttpBackend implements Backend {
 
   async decide(proposalId: string, decision: ReviewDecision, reason: string, by?: string): Promise<void> {
     await this.post(`/review/${encodeURIComponent(proposalId)}`, { decision, reason, ...(by ? { by } : {}) });
+  }
+
+  async retestProposal(proposalId: string, by?: string): Promise<void> {
+    await this.post(`/proposals/${encodeURIComponent(proposalId)}/tests`, by ? { by } : {});
   }
 
   async resolveEscalation(intentId: string, decision: EscalationDecision, note: string, by?: string, amend?: IntentAmend): Promise<void> {

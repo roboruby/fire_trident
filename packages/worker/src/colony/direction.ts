@@ -559,7 +559,10 @@ export function noteDecision(r: DecisionRow): NoteDecision {
   } else if (r.layer === "human") {
     d.question = "human review";
     if (typeof a.by === "string") d.by = a.by;
-    d.answer = oneLine(`${text(a.decision) || r.action}${text(a.reason) ? `: ${text(a.reason)}` : ""}`, ANSWER_CHARS);
+    // Tests before approval (certify/reviewtests.ts): what the colony's tests said of the change when the person decided.
+    const decision = text(a.decision) || r.action;
+    const tests = text(a.tests) ? ` (tests before ${decision === "approve" ? "approval" : "the decision"}: ${text(a.tests)})` : "";
+    d.answer = oneLine(`${decision}${tests}${text(a.reason) ? `: ${text(a.reason)}` : ""}`, ANSWER_CHARS);
   }
   if (!d.answer) delete d.answer;
   return d;

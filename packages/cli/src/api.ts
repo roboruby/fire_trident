@@ -16,6 +16,7 @@ import { spendCapRequest } from "./spendcap.ts";
  *   GET  /api/colonies/:id/impact       ?path=&path=&depth=  -> ImpactReport (importers, claims on them, landings)
  *   GET  /api/colonies/:id/review       Proposal[] (escalated)
  *   POST /api/colonies/:id/review/:pid  { decision: "approve" | "reject" | "return", reason, by }
+ *   POST /api/colonies/:id/proposals/:pid/tests  { by } -> { started, run } (tests before approval, run again)
  *   GET  /api/colonies/:id/live         WebSocket of ColonyEvent JSON (one event or an array per message)
  *   GET  /api/colonies                  { colonies: [{ id, name, source?, createdAt, trunkSha, lastLandingAt, counters }] }
  *   GET  /api/colonies/:id/agents       { total, byState, agents: [AgentInfo + intentTitle?, step?, running?, ...] }  (?all=1, ?journal=0)
@@ -175,6 +176,8 @@ export function planRequest(cmd: Command, by: string): ApiRequest | null {
         path: colonyPath(cmd.colony, `/review/${encodeURIComponent(cmd.proposalId)}`),
         body: { decision: cmd.decision, reason: cmd.reason, by: cmd.by ?? by },
       };
+    case "review-retest":
+      return { method: "POST", path: colonyPath(cmd.colony, `/proposals/${encodeURIComponent(cmd.proposalId)}/tests`), body: { by: cmd.by ?? by } };
     case "colonies":
       return { method: "GET", path: `/api/colonies${cmd.scan ? "?scan=1" : ""}` };
     case "pause":

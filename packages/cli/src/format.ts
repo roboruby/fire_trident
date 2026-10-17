@@ -37,6 +37,7 @@ import { acceptanceRows } from "./acceptance.ts";
 import { contestLines } from "./contest.ts";
 import { prelandLine } from "./preland.ts";
 import { heldLines } from "./mergehold.ts";
+import { reviewTestsLines } from "./reviewtests.ts";
 
 /** ANSI styling functions; identity functions when color is off. */
 export interface Colors {
@@ -1330,6 +1331,8 @@ export function formatReview(proposals: Proposal[], intents: Intent[] | undefine
     out.push("");
     out.push(`${c.magenta(p.id)}  ${intent ? quote(intent.title, 60) : p.intentId}  ${c.dim(`${p.agentId} · ${p.writeSet.length} file(s) · ${ago(p.createdAt, now)}`)}`);
     if (p.declared?.summary) out.push(`  ${c.dim("summary ")} ${p.declared.summary.replace(/\s+/g, " ").trim()}`);
+    // Tests before approval: the colony's tests on the change at its base lead what a person reads.
+    out.push(...reviewTestsLines(p, c, colony));
     // Merge locks: the merge a person is asked to approve, before the change itself.
     out.push(...heldLines(p, c, (l) => diffText(l, c)));
     if (view) out.push(...lookLines(view, colony, opts.diff === true, c));
