@@ -10,6 +10,7 @@ import { deploymentPause } from "./api/pause.ts";
 import { frontDoor } from "./front/door.ts";
 import { responseHeaders } from "./front/headers.ts";
 import { KEYS_PATH, keysResponse, noteKeyId } from "./trunk/signature.ts";
+import { ALLOWED_SIGNERS_PATH, allowedSignersResponse } from "./trunk/gitsig.ts";
 
 export { ColonyDO } from "./colony/ColonyDO.ts";
 export { RegionDO } from "./region/RegionDO.ts";
@@ -31,6 +32,7 @@ app.route("/api", api);
 app.get("/healthz", (c) => c.json({ ok: true, service: "firetrident" }));
 // The public key that signs lineage notes, for any git client to check a commit's FT-Note-Signature (in run_worker_first).
 app.get(KEYS_PATH, (c) => keysResponse(c.env));
+app.get(ALLOWED_SIGNERS_PATH, (c) => allowedSignersResponse(c.env));
 // MCP for external agents: Streamable HTTP at /mcp, legacy SSE at /sse (one Durable Object per session, binding MCP).
 const mcpHttp = FireTridentMcp.serve("/mcp", { binding: "MCP" });
 const mcpSse = FireTridentMcp.serveSSE("/sse", { binding: "MCP" });

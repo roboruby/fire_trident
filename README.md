@@ -238,6 +238,15 @@ git log --notes=firetrident -3
 
 Each landed commit shows its `FT-*` trailers and, under `Notes (firetrident):`, the JSON lineage note. A commit landed since notes were sealed ends with an `FT-Note` trailer, the SHA-256 of that note as FireTrident wrote it (without `certification`, which certification adds later), so anyone can check that the note was not edited after landing: from a FireTrident checkout, `node scripts/verify_note.mjs <commit>` run inside the clone prints `intact`, `altered`, `missing` or `no FT-Note trailer`. Landings on the showcase trunks since sealing carry the trailer; the showcase runs themselves landed before it, so the script reports `no FT-Note trailer` for their commits.
 
+Commits the trunk writer built since signatures carry a standard git signature by the deployment's key, so stock git checks them with no FireTrident tool, and `verify_note.mjs` can check every landing on trunk at once and show that an edited note is caught:
+
+```sh
+curl -fsSL https://firetrident.com/.well-known/firetrident-allowed-signers -o ../allowed_signers
+git -c gpg.format=ssh -c gpg.ssh.allowedSignersFile=../allowed_signers log --format='%h %G? %s' -5   # G = good signature
+node ../verify_note.mjs --all --keys https://firetrident.com/.well-known/firetrident-keys.json   # every landing: note, signature, files
+node ../verify_note.mjs HEAD --tamper   # an edited copy of the newest note is caught
+```
+
 `ruby scripts/coordination.rb --url <deployment> --colony <id>` measures how a colony's agents coordinated from that same public record (plain git, the notes, public reads): proposals and intents merged, code sharing (the share of each file other agents wrote), specialization against a shuffled baseline, returns over time, the hottest file, sprawl, lines per landed intent, and where the time went (agent work, review, waiting to land, rework) with the critical path to the last landing. Its header defines each. `git notes --ref=firetrident show <commit>` prints a note on its own. On your own deployment, list the colonies to share in `FT_PUBLIC_GIT` (see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#plain-git-access)).
 
 ### Ask it with your own agent
