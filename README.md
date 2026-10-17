@@ -91,6 +91,8 @@ Review reads one policy per colony; its defaults are `DEFAULT_POLICY` in `packag
 | `dangerAllow` | none | Danger classes a person allows without sending each such change to a person, optionally under some paths; a second confirmation is still needed |
 | `protectedPaths` | none | Paths only a person may change, at most 50 globs |
 
+**How a colony decides.** The colony page names a colony's policy as one of four presets: local development, central development (the defaults above), pre-production or production, or custom with the values that differ, each with one sentence on what lands without a person. Beside it are the last 30 days of landed changes by what confirmed them (deterministic proof, a model, earned autonomy, a person), and every landing card names the rule that confirmed it with the values it used, such as `R3: confidence 0.93 ≥ 0.9, p(needs_human) 0.04 < 0.2, approved landings 23 ≥ 20`. Read it at `GET /api/colonies/hono/decides`; `ft status` prints the preset and the split, and `ft why` the rule. When a change goes to a person, the colony's tests run on it at its base first, and the review card leads with the result against trunk (`ft review <colony> --retest <id>` runs them again).
+
 ## How git's ideas map
 
 | Git platform | FireTrident |
@@ -339,7 +341,7 @@ Then ask for one thing: *"Join the FireTrident colony `my-colony`, take one inte
 | `why` | Shows the lineage of a path or line: landing, intent, agent, model, read and write sets, review checks, who is answerable, and the landing's tests at its base against the certified commit. |
 | `impact` | Lists a file's importers up to three levels, the live claims on them and the whys of recent landings on them. |
 
-Every tool call heartbeats your claim, so a slow agent keeps its work. An agent silent for ten minutes loses its intent to the colony.
+Every tool call heartbeats your claim, so a slow agent keeps its work. An agent silent past the colony's limit (ten minutes unless a person sets one with `ft policy --silent-ttl`; in-platform agents keep ten) loses its intent to the colony, which leaves a failure mark on its files for the next taker.
 
 Try it end to end. `scripts/mcp_join.rb` imports a small repo, declares a rule, runs Claude Code headless as the external agent, and releases an in-platform agent next to it:
 
@@ -410,7 +412,7 @@ A colony sits beside your forge, not in place of it: there are no accounts, pull
 - The goal-conflict check (`FT_GOAL_CONFLICT`) compares lines, not meaning: a change that undoes another intent's behavior while rewriting other lines passes it, and it runs on the decide path, so a colony with review off is not checked. Rule intents, certification repairs and the colony's own splits are never checked.
 - The field guide's gate certifies the change a lesson came with, not the lesson itself, and an active lesson stays until its landing is reverted or a person rejects it.
 - Text agents write (intent whys, lessons) reaches other agents, labeled as data with its author and model, and is a channel through which agents could coordinate among themselves; nothing reads it for that.
-- An agent that keeps calling tools without working holds its claims: every call renews them, and only ten minutes of silence takes its intent back. The stuck-work detector reports an intent held for 10 minutes with no change, but only a person stops the agent (`ft stop <colony> <agentId>`).
+- An agent that keeps calling tools without working holds its claims: every call renews them, and only silence past the colony's limit (ten minutes by default) takes its intent back. The stuck-work detector reports an intent held for 10 minutes with no change, but only a person stops the agent (`ft stop <colony> <agentId>`).
 - The conflict resolver asks a model for whole files (up to 64 KB, 60 s) and refuses files with many repeated lines. Its merge must keep every line either change added in the conflicting hunks and must pass review, but two edits can still be wrong together, as with text merge.
 - The megafile alarm's thresholds are fixed (600 lines, 25% growth and 4 writers in 30 minutes, or 6 returns); a change already inside a trunk cycle when a hold begins still lands.
 - Asynchronous publishing trades freshness for shorter trunk cycles: trunk in git, and the base a lease starts from, run up to about one push behind the landings the trunk writer has recorded. A take whose files a recorded landing changed waits until it is published; other agents may still build on a base a moment old, and their change comes back stale if a file they read moved. It is off unless a colony is listed in `FT_ASYNC_PUBLISH`. At 5,000 synthetic agents it shortened the trunk writer's cycle (1.8 to 2.5 s against 2.8 s) and median time to land (about 8 s against 10.7 s) but did not raise landings a minute (2,759 and 3,776 against 3,842), and the slowest landings waited longer ([results](packages/bench/results/2026-10-13-round4/)); production lists no colony.

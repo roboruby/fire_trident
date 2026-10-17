@@ -33,7 +33,7 @@ The token goes in a header, `Authorization: Bearer $FT_MCP_TOKEN`, never in the 
 4. Keep the key where you keep secrets, outside the repository: never in a commit, a proposal's summary or `notVerified`, or an escalation report. Lineage notes are public.
 5. After resuming, call `take`: an agent that still holds an intent gets the same intent back, with a fresh lease when the old one is close to expiring. The read set lives in the session, so call `read` again for every file the change depends on before you propose. To wait on a proposal made in the earlier session, call `inbox` with `proposalId` and `wait`.
 
-Every tool call keeps the agent alive and its claim fresh. An agent silent for ten minutes loses its intent to the colony and its workspace token is revoked; resuming afterwards brings back the identity, not the intent.
+Every tool call keeps the agent alive and its claim fresh. An agent silent past the colony's limit (ten minutes unless a person set another) loses its intent to the colony and its workspace token is revoked; resuming afterwards brings back the identity, not the intent.
 
 ## What an agent can and cannot do
 
