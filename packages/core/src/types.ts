@@ -735,6 +735,30 @@ export interface Evidence {
   preland?: PrelandRun;
   /** Tests before approval, when the change was escalated to a person (set by the colony; worker certify/reviewtests.ts). */
   reviewTests?: ReviewTestsRun;
+  /**
+   * Review by reproduction (worker decide/reproduce.ts): the recipe the change said it was made by, replayed on its base
+   * files, and what equalled the replay (set by the decide stage when the change declared a recipe).
+   */
+  reproduction?: NoteReproduction;
+}
+
+/**
+ * Review by reproduction (worker decide/reproduce.ts, FT_REPRODUCE): a change that declared the recipe it was made by
+ * (Proposal.recipe) had it replayed on its base files in scope, twice. `reproduced`: the files whose text equals the
+ * replay, proven by it (no model, no person); `residual`: the rest of the change, each file with why, which went through
+ * the reflex arc as a change of its own (a file the recipe rewrote is shown against the replay, so only what differs).
+ * `applied` false: nothing was replayed (an unknown, unpinned or module recipe, a replay that differed between its two
+ * runs, nothing that equalled it, or the flag off), and the whole change had ordinary review; `reason` says why. Lines
+ * are changed lines (a file's added or removed lines, whichever are more). Paths are listed up to 200.
+ */
+export interface NoteReproduction {
+  recipe: Recipe;
+  applied: boolean;
+  reason?: string;
+  reproduced: { files: number; lines: number; paths: Path[] };
+  residual: { files: number; lines: number; paths: Array<{ path: Path; why: string }> };
+  /** The line a check and a card show: "3,999 lines reproduced by rename-identifier@1, 1 line to review". */
+  text: string;
 }
 
 /** The names a change imports from one trunk file (see Proposal.nameAssumptions). */
@@ -952,6 +976,13 @@ export interface Proposal {
    * trunk writer builds it without reading the agent's workspace. Its headSha is then its changesetId.
    */
   contents?: Record<Sha, string>;
+  /**
+   * Review by reproduction (worker decide/reproduce.ts, FT_REPRODUCE): the recipe the agent says made this change (a
+   * built-in kind, its pinned version, arguments and scope). The decide stage replays it on the change's base files: the
+   * files that equal the replay need no other review, and the rest goes through the reflex arc. Unknown, unpinned,
+   * module and text-replace recipes get ordinary review. Absent on every other change.
+   */
+  recipe?: Recipe;
 }
 
 /** One trunk commit produced by a lane cycle. */
@@ -1895,6 +1926,20 @@ export interface ColonySpend {
   agentsUnread?: number;
   /** The colony's spend cap (colony/spendcap.ts), when a person set one; absent means no cap. */
   cap?: SpendCap;
+  /** The work that landed with no model call (worker colony/rulerecipe.ts), at $0; absent when there was none. */
+  mechanical?: MechanicalShare;
+}
+
+/**
+ * The mechanical share of a colony's work, which costs no model call (the spend card shows it at $0): recipe batches
+ * landed and the files they rewrote, the rule violations rules' recipes fixed, and the changed lines review by
+ * reproduction proved in changes that landed (worker decide/reproduce.ts).
+ */
+export interface MechanicalShare {
+  landings: number;
+  files: number;
+  violations: number;
+  reproducedLines: number;
 }
 
 /**

@@ -1,5 +1,5 @@
 import { PRICE_DATE, SPEND_LAYERS } from "@fire_trident/core";
-import type { ColonySpend, Id, IntentSpendBrief, ModelSpend, SpendCap, SpendLayer } from "@fire_trident/core";
+import type { ColonySpend, Id, IntentSpendBrief, MechanicalShare, ModelSpend, SpendCap, SpendLayer } from "@fire_trident/core";
 
 /**
  * A colony's model spend as the server reports it (`spend` on GET /api/colonies/:id and /metrics), read defensively:
@@ -48,6 +48,7 @@ export function parseSpend(raw: unknown): ColonySpend | null {
   const per = raw.perLandedIntent;
   const unread = num(raw.agentsUnread);
   const cap = parseSpendCap(raw.cap);
+  const mechanical = parseMechanical(raw.mechanical);
   return {
     usd: num(raw.usd),
     byLayer,
@@ -59,7 +60,29 @@ export function parseSpend(raw: unknown): ColonySpend | null {
     priceDate: typeof raw.priceDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(raw.priceDate) ? raw.priceDate : PRICE_DATE,
     ...(unread > 0 ? { agentsUnread: unread } : {}),
     ...(cap ? { cap } : {}),
+    ...(mechanical ? { mechanical } : {}),
   };
+}
+
+/** The mechanical share in `raw` (`spend.mechanical`: work that landed with no model call), or null when there is none. */
+export function parseMechanical(raw: unknown): MechanicalShare | null {
+  if (!isObj(raw)) return null;
+  const m = { landings: Math.floor(num(raw.landings)), files: Math.floor(num(raw.files)), violations: Math.floor(num(raw.violations)), reproducedLines: Math.floor(num(raw.reproducedLines)) };
+  return m.landings + m.files + m.violations + m.reproducedLines > 0 ? m : null;
+}
+
+/**
+ * The mechanical share in one line, at $0 of model calls: "$0 mechanical: 212 files by 3 recipe landings, 340 rule violations fixed,
+ * 3,999 lines reproduced", each part only when it is above zero; null when there is none.
+ */
+export function mechanicalLine(m: MechanicalShare | null | undefined): string | null {
+  if (!m) return null;
+  const n = (x: number): string => Math.floor(x).toLocaleString("en-US");
+  const parts: string[] = [];
+  if (m.files > 0 || m.landings > 0) parts.push(`${n(m.files)} ${m.files === 1 ? "file" : "files"} by ${n(m.landings)} recipe ${m.landings === 1 ? "landing" : "landings"}`);
+  if (m.violations > 0) parts.push(`${n(m.violations)} rule ${m.violations === 1 ? "violation" : "violations"} fixed`);
+  if (m.reproducedLines > 0) parts.push(`${n(m.reproducedLines)} ${m.reproducedLines === 1 ? "line" : "lines"} reproduced`);
+  return parts.length > 0 ? `$0 mechanical: ${parts.join(", ")}` : null;
 }
 
 /** An intent's spend in its short form (IntentSpendBrief), read defensively, or null when `raw` is not one. */

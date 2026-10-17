@@ -13,7 +13,7 @@ import { presetOf } from "./presets.ts";
 
 /** What the record reads besides the verdict: the gate's input (with the reflex and second opinion as asked), the policy, and the region's approved landings. */
 export interface RuleContext {
-  input: Pick<GateInput, "mechanical" | "antibodies" | "reflex" | "llm" | "whyBy" | "alerts" | "protected">;
+  input: Pick<GateInput, "mechanical" | "antibodies" | "reflex" | "llm" | "whyBy" | "alerts" | "protected" | "reproduction">;
   policy: DecidePolicy;
   /** The region's approved landings since its last revocation, as the gate's earned autonomy read them; asked only for R3. */
   approvals: () => number;
@@ -41,6 +41,16 @@ function landingValues(code: string, v: GateVerdict, ctx: RuleContext): GateValu
       { name: "proof", value: proofClause(input) },
       { name: "antibodies to screen", value: input.antibodies ?? 0 },
       { name: "destructive change", value: false },
+    ];
+  }
+  // D5: what the replay of the declared recipe reproduced, and that nothing was left to review.
+  if (code === "D5") {
+    const r = input.reproduction;
+    return [
+      { name: "recipe", value: r?.label ?? "unknown" },
+      { name: "lines reproduced", value: r?.reproduced.lines ?? 0 },
+      { name: "files reproduced", value: r?.reproduced.files ?? 0 },
+      { name: "lines to review", value: r?.residual.lines ?? 0 },
     ];
   }
   if (code === "M1") {
@@ -99,5 +109,8 @@ function otherValues(v: GateVerdict, ctx: RuleContext): GateValue[] {
 export function gateRecord(v: GateVerdict, ctx: RuleContext): GateRecord {
   const code = v.rule.split(" ")[0] ?? "";
   const values = v.action === "land" ? landingValues(code, v, ctx) : otherValues(v, ctx);
+  // Review by reproduction: a residual a model or autonomy landed says how much of the change the replay proved.
+  const r = ctx.input.reproduction;
+  if (r && code !== "D5" && v.action === "land") values.push({ name: `lines reproduced by ${r.label}`, value: r.reproduced.lines }, { name: "residual lines reviewed", value: r.residual.lines });
   return { rule: v.rule, preset: presetOf(ctx.policy).preset, values };
 }

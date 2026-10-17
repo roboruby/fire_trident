@@ -148,11 +148,11 @@ export function planRequest(cmd: Command, by: string): ApiRequest | null {
       if (cmd.exclude.length > 0) spec.exclude = cmd.exclude;
       spec.hint = cmd.hint;
       if (cmd.replacement !== undefined) spec.replacement = cmd.replacement;
-      return { method: "POST", path: colonyPath(cmd.colony, "/rules"), body: ruleBody(cmd.colony, "forbid-pattern", spec, cmd.description, cmd.by ?? by) };
+      return { method: "POST", path: colonyPath(cmd.colony, "/rules"), body: { ...ruleBody(cmd.colony, "forbid-pattern", spec, cmd.description, cmd.by ?? by), ...(cmd.recipe ? { recipe: cmd.recipe } : {}) } };
     }
     case "rule-import-boundary": {
       const spec = { from: cmd.from, module: cmd.module, hint: cmd.hint };
-      return { method: "POST", path: colonyPath(cmd.colony, "/rules"), body: ruleBody(cmd.colony, "forbid-import", spec, cmd.description, cmd.by ?? by) };
+      return { method: "POST", path: colonyPath(cmd.colony, "/rules"), body: { ...ruleBody(cmd.colony, "forbid-import", spec, cmd.description, cmd.by ?? by), ...(cmd.recipe ? { recipe: cmd.recipe } : {}) } };
     }
     case "swarm": {
       const body: Record<string, unknown> = { agents: cmd.agents };

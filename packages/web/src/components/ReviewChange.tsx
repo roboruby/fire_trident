@@ -128,8 +128,21 @@ export const ReviewChange = memo(function ReviewChange({ view, declared }: { vie
   const size = useMemo(() => changeSize(view), [view]);
   const files = view.filesChanged;
   const left = view.filesChanged - view.files.length;
+  const repro = view.reproduction;
   return (
     <div className="change">
+      {repro ? (
+        <section className="look">
+          <div className="k card-k">Reproduced by recipe</div>
+          <div className="spot-head">
+            <span className="spot-what">{visible(repro.text)}</span>
+          </div>
+          <div className="look-more">
+            {fmtInt(repro.reproduced.files)} {repro.reproduced.files === 1 ? "file" : "files"} ({fmtInt(repro.reproduced.lines)} {repro.reproduced.lines === 1 ? "line" : "lines"}) equal <span className="mono">{visible(repro.recipe)}</span> replayed on their base and are not shown. What
+            follows is the residual: each file the recipe rewrote is shown against its output.
+          </div>
+        </section>
+      ) : null}
       {look.danger.length || look.residual.length ? (
         <section className="look">
           <div className="k card-k">Look here first</div>
@@ -151,7 +164,7 @@ export const ReviewChange = memo(function ReviewChange({ view, declared }: { vie
       {files > 0 ? (
         <section className="full">
           <div className="k card-k">
-            Full change · {fmtInt(files)} {files === 1 ? "file" : "files"} ·{" "}
+            {repro ? "Residual to review" : "Full change"} · {fmtInt(files)} {files === 1 ? "file" : "files"} ·{" "}
             <span className="file-stat">
               <b>+{fmtInt(size.added)}</b> <i>−{fmtInt(size.removed)}</i>
             </span>

@@ -5,7 +5,7 @@ import { parseSpendCap } from "./spendcap.ts";
 import { isConnectColony } from "./connect.ts";
 import { parseSilentTtl } from "./closure.ts";
 import type { HookCommand } from "./hook.ts";
-import { RECIPE_OPTIONS, parseRecipeCommand, type RecipeCommand } from "./recipe.ts";
+import { RECIPE_OPTIONS, RULE_RECIPE_USAGE, parseRecipeCommand, parseRuleRecipe, type RecipeCommand, type RuleRecipe } from "./recipe.ts";
 
 /** Event types `ft watch --only` accepts. */
 export const EVENT_TYPES: ReadonlyArray<ColonyEvent["t"]> = [
@@ -43,8 +43,8 @@ export type Command =
   | { name: "version" }
   | { name: "import"; url: string; colonyName: string; branch?: string; pool?: number; regionDepth?: number; wait: boolean; timeoutSec: number }
   | { name: "status"; colony: string }
-  | { name: "rule-add"; colony: string; pattern: string; flags?: string; include: string[]; exclude: string[]; hint: string; description: string; replacement?: string; by?: string }
-  | { name: "rule-import-boundary"; colony: string; from: string[]; module: string; hint: string; description: string; by?: string }
+  | { name: "rule-add"; colony: string; pattern: string; flags?: string; include: string[]; exclude: string[]; hint: string; description: string; replacement?: string; by?: string; recipe?: RuleRecipe }
+  | { name: "rule-import-boundary"; colony: string; from: string[]; module: string; hint: string; description: string; by?: string; recipe?: RuleRecipe }
   | { name: "swarm"; colony: string; agents: number; model?: string; kind?: Extract<AgentKind, "internal" | "synthetic"> }
   | { name: "why"; colony: string; path: string; line?: number }
   | { name: "impact"; colony: string; paths: string[]; depth?: number }
@@ -122,6 +122,8 @@ const COMMAND_OPTIONS: Record<string, Record<string, OptionSpec>> = {
     replacement: { type: "string" },
     by: { type: "string" },
     reason: { type: "string" },
+    recipe: { type: "string" },
+    "recipe-scope": { type: "string", multiple: true },
   },
   intent: {
     title: { type: "string" },
@@ -746,12 +748,25 @@ function buildIntent(v: Record<string, unknown>, p: string[]): Command {
   return fail(sub ? `unknown intent subcommand "${sub}" (expected amend, withdraw or show)` : "missing intent subcommand: amend, withdraw or show");
 }
 
+/** A rule's `--recipe` (and `--recipe-scope`), parsed (recipe.ts parseRuleRecipe); undefined when none was given. */
+function ruleRecipeFlag(v: Record<string, unknown>): RuleRecipe | undefined {
+  const text = str(v.recipe);
+  const scope = list(v["recipe-scope"]).map((g) => g.trim()).filter(Boolean);
+  if (text === undefined) {
+    if (scope.length > 0) fail(`--recipe-scope goes with --recipe: ${RULE_RECIPE_USAGE}`);
+    return undefined;
+  }
+  const parsed = parseRuleRecipe(text, scope);
+  if (typeof parsed === "string") fail(parsed);
+  return parsed;
+}
+
 function buildRule(v: Record<string, unknown>, p: string[]): Command {
   const sub = p[0];
   if (sub === "add") {
     const usage = "ft rule add <colony> --pattern <regex> [--flags <f>] [--include <glob>]... [--exclude <glob>]... --hint <text> --description <text>";
     noExtras(p, 2, usage);
-    onlyFlags(v, ["pattern", "flags", "include", "exclude", "hint", "description", "replacement", "by"], "rule add");
+    onlyFlags(v, ["pattern", "flags", "include", "exclude", "hint", "description", "replacement", "by", "recipe", "recipe-scope"], "rule add");
     const colony = colonyArg(p[1], usage);
     const pattern = required(v.pattern, "pattern");
     const flags = str(v.flags);
@@ -770,12 +785,14 @@ function buildRule(v: Record<string, unknown>, p: string[]): Command {
     if (replacement !== undefined) cmd.replacement = replacement;
     const by = str(v.by)?.trim();
     if (by) cmd.by = by;
+    const recipe = ruleRecipeFlag(v);
+    if (recipe) cmd.recipe = recipe;
     return cmd;
   }
   if (sub === "import-boundary") {
     const usage = "ft rule import-boundary <colony> --from <glob>... --module <regex> --hint <text> --description <text>";
     noExtras(p, 2, usage);
-    onlyFlags(v, ["from", "module", "hint", "description", "by"], "rule import-boundary");
+    onlyFlags(v, ["from", "module", "hint", "description", "by", "recipe", "recipe-scope"], "rule import-boundary");
     const colony = colonyArg(p[1], usage);
     const from = list(v.from);
     if (from.length === 0) fail("missing --from <glob> (repeat it for several globs)");
@@ -791,6 +808,8 @@ function buildRule(v: Record<string, unknown>, p: string[]): Command {
     };
     const by = str(v.by)?.trim();
     if (by) cmd.by = by;
+    const recipe = ruleRecipeFlag(v);
+    if (recipe) cmd.recipe = recipe;
     return cmd;
   }
   if (sub === "retract") {
@@ -944,8 +963,9 @@ what to do about it. The last row is the build the server runs.
   rule: `
 ft rule add <colony> --pattern <regex> [--flags <f>] [--include <glob>]... [--exclude <glob>]...
                      --hint <text> --description <text> [--replacement <text>] [--by <name>]
+                     [--recipe '<kind> <args>' [--recipe-scope <glob>]...]
 ft rule import-boundary <colony> --from <glob>... --module <regex>
-                     --hint <text> --description <text> [--by <name>]
+                     --hint <text> --description <text> [--by <name>] [--recipe '<kind> <args>']
 ft rule retract <colony> <ruleId> --reason <text> [--by <name>]
 
 Declare an architecture rule. FireTrident scans trunk; every violation becomes a
@@ -953,6 +973,13 @@ need in the field and an intent the swarm can take. --hint tells agents how to
 fix a violation. --replacement is an optional deterministic fix for synthetic
 agents: a RegExp replacement string ($1 allowed) applied to each violating line.
 --by records who approved the rule (default $FT_USER).
+
+--recipe names a deterministic fix for the rule's violations: 'rename <old> <new>',
+'replace-import <from> <to> [prefix]' or 'text-replace <find> <replace>'. The colony
+lands it directly (a recipe landing, answerable to the rule's approver) instead of
+one agent intent per violating file, and declares intents only for what it leaves:
+files it cannot transform or that still violate the rule after it. Its scope is the
+rule's --include (or --from) globs unless --recipe-scope names others.
 
 retract takes a rule back: it stays in history but is no longer checked, its
 open violations stop counting, and every intent it created that has not landed
@@ -966,6 +993,8 @@ Examples
     --description "No console calls outside the logger"
   ft rule import-boundary web --from "src/ui/**" --module "^\\\\.\\\\./db/" \\
     --hint "Import from src/api instead" --description "UI never touches the database"
+  ft rule add web --pattern "\\\\bcompose\\\\b" --include "src/**" --hint "Call it assemble" \\
+    --description "No identifier compose in src" --recipe 'rename compose assemble'
 `,
   swarm: `
 ft swarm <colony> --agents <n> [--model <id>] [--kind internal|synthetic]

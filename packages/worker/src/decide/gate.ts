@@ -3,6 +3,7 @@ import type { WhyAuthor } from "./danger.ts";
 import { autonomyRefusal, proofRefusal, type DestructiveFact } from "./destructive.ts";
 import type { DecidePolicy, DetectorState } from "./policy.ts";
 import { acceptanceGate, type AcceptanceAnswer } from "./quotes.ts";
+import type { ReproductionSignal } from "./reproduce.ts";
 import type { DamageSignals, ProtectedHit } from "./signals.ts";
 import { damageLabels } from "./signals.ts";
 
@@ -32,6 +33,9 @@ import { damageLabels } from "./signals.ts";
  *      alert budget cannot bounce it), or return a change failing its checks first
  * - D2 innate checks fail and there is no damage               → return (deterministic)
  * - D3 mechanical proof, no antibody to screen, not destructive → land (deterministic)
+ * - D5 every file equals the recipe the change declared, replayed on its base (decide/reproduce.ts), innate checks pass,
+ *      no damage, no antibody to screen, nothing destructive the recipe does not explain → land (deterministic: the
+ *      reproduction is both confirmations, like a proof). With a residual, only the residual is screened (D4).
  * - P2 an earlier proposal for this intent had a security finding → a person instead of a model:
  *      escalate (deterministic; the alert budget cannot bounce it), or return a change failing its checks
  * - D4 anything else                                            → screen with System 1
@@ -111,6 +115,8 @@ export interface GateInput {
   damage: DamageSignals;
   /** Deterministic stage; absent counts as inconclusive. */
   mechanical?: MechanicalSignal;
+  /** Review by reproduction (decide/reproduce.ts): what equalled the declared recipe's replay and what is left; absent when nothing was replayed. */
+  reproduction?: ReproductionSignal;
   /**
    * Danger patterns (decide/danger.ts): `mustHuman` hits (auth, secrets, unrequested capabilities
    * not explicitly allowed) always go to a human; `signals` count as damage.
@@ -412,6 +418,11 @@ export function gate(input: GateInput): GateVerdict {
     if (gated) return gated;
     if (!input.innate.ok && facts.length === 0) return verdict("return", "deterministic", "D2 innate", 1, input.innate.failures.map((f) => `innate: ${f}`), []);
     if (mech === "pass" && facts.length === 0 && (input.antibodies ?? 0) === 0 && !unproven) return verdict("land", "deterministic", "D3 innate+proof", 1, [`deterministic proof: ${proof}`], [], ["innate", "deterministic"]);
+    // D5: every file of the change equals its declared recipe replayed on its base: the reproduction is both confirmations.
+    const replay = input.reproduction;
+    if (replay && replay.reproduced.files > 0 && replay.residual.files === 0 && input.innate.ok && facts.length === 0 && (input.antibodies ?? 0) === 0 && !unproven) {
+      return verdict("land", "deterministic", "D5 reproduced by recipe", 1, [`reproduced by recipe: ${replay.text}`], [], ["innate", "reproduction"]);
+    }
     // P2: after a security return, this intent's proposals go to a person instead of a model (a proof needs neither).
     if (input.probation) {
       const was = `an earlier proposal for this intent had a security finding${input.probation.classes.length > 0 ? ` (${input.probation.classes.join(", ")})` : ""}`;
@@ -419,7 +430,8 @@ export function gate(input: GateInput): GateVerdict {
       risk = 3;
       return escalate("deterministic", "P2 security finding", 1, [`${was}: a person reviews this one instead of a model`], ["intent:security-finding"], []);
     }
-    return verdict("screen", "deterministic", "D4 screen", 1, [mech === "pass" ? (unproven ?? "proof holds; matching antibodies need System 1") : `deterministic stage inconclusive: ${proof || "no proof attempted"}`], []);
+    const residual = input.reproduction ? [`reproduced by recipe: ${input.reproduction.text}; the residual goes to review`] : [];
+    return verdict("screen", "deterministic", "D4 screen", 1, [mech === "pass" ? (unproven ?? "proof holds; matching antibodies need System 1") : `deterministic stage inconclusive: ${proof || "no proof attempted"}`, ...residual], []);
   }
 
   if (!consulted) {

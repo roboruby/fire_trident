@@ -1,4 +1,5 @@
 import { spendCapLine, spendDetail, spendParts, usdText, type ColonySpend } from "@fire_trident/core";
+import { mechanicalLine } from "../spend.ts";
 
 /**
  * The colony's model spend beside the funnel: what the model calls this platform made cost so far, that over each
@@ -11,7 +12,9 @@ import { spendCapLine, spendDetail, spendParts, usdText, type ColonySpend } from
 export function SpendNote({ spend }: { spend: ColonySpend | null }) {
   const parts = spendParts(spend);
   const cap = spendCapLine(spend?.cap);
-  if (!parts && !cap) return null;
+  // The mechanical share: work that landed with no model call (recipes, review by reproduction), at $0.
+  const mechanical = mechanicalLine(spend?.mechanical);
+  if (!parts && !cap && !mechanical) return null;
   const state = spend?.cap?.state;
   // The figure and the words after it ("of model calls this platform made"), which narrow top bars leave to the title.
   const figure = parts && spend ? usdText(spend.usd) : null;
@@ -28,6 +31,7 @@ export function SpendNote({ spend }: { spend: ColonySpend | null }) {
       )}
       {parts?.perIntent ? <div className="stat-sub spend-per">{parts.perIntent}</div> : null}
       {spend?.cap ? <div className="stat-sub spend-cap">{`${usdText(spend.cap.spentUsd)} of ${usdText(spend.cap.usd)} cap`}</div> : null}
+      {mechanical ? <div className="stat-sub spend-mechanical">{mechanical}</div> : null}
     </div>
   );
 }
