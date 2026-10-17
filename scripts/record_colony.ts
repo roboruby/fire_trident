@@ -303,6 +303,11 @@ export async function recordColony(opts: RecordOptions): Promise<RecordResult> {
     await phase([...pairs.values()].map(({ id, path }) => `${colony}/landings/${encodeURIComponent(id)}/diff?path=${encodeURIComponent(path)}`));
     log(`changes: ${pairs.size.toLocaleString("en-US")} files of landings`);
   }
+  // Each landing card's test row (landings/:ref/tests) and each intent's lifecycle strip (intents/:iid/lifecycle).
+  await phase([...ids].map((id) => `${colony}/landings/${encodeURIComponent(id)}/tests`));
+  const intentIds = [...new Set((snap.intents ?? []).map((i) => i.id))];
+  await phase(intentIds.map((iid) => `${colony}/intents/${encodeURIComponent(iid)}/lifecycle`));
+  log(`test rows: ${ids.size.toLocaleString("en-US")} landings; lifecycles: ${intentIds.length.toLocaleString("en-US")} intents`);
   await phase(others.map(whyPath));
 
   const recording: Recording = {
