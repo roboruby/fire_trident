@@ -19,7 +19,9 @@
 # (given an existing --clone), the numbers that need the record are reported as not computed, with the reason.
 #
 # Where the numbers come from
-#   GET /api/colonies/<id>                  region depth, trunk head, and the colony's own counters (a cross-check)
+#   GET /api/colonies/<id>                  region depth, trunk head, the colony's own counters (a cross-check, and the
+#                                           take counters of 12) and its model spend by model (17)
+#   GET /api/colonies/<id>/certifications   the newest certification results, with culprit suspects and first red (15)
 #   GET /api/colonies/<id>/events           the event record, every page: each proposal's status changes with their
 #                                           times and reasons, each intent's, landings, and people's decisions
 #   GET /api/colonies/<id>/agents?all=1     every agent's kind and model; the vaccine agent (name and model "vaccine")
@@ -132,6 +134,66 @@
 #    <hh:mm:ss> UTC, <gap> before you proposed.") or could not have known (a sentence ending "you could not have
 #    known."); the other returns carry none (another kind of return, or an agent the heads-up never served). With them,
 #    the colony's own counters headsUp.warned and headsUp.unwarned from GET /api/colonies/<id> (a cross-check).
+#
+# 12. Coordination tokens per take, an ESTIMATE: tokens = characters / 4. What a take hands an agent beyond its intent and
+#    lease, as the colony counts it when it hands the take (packages/worker/src/colony/coordtokens.ts, the coord.*
+#    counters in GET /api/colonies/<id>): the characters of the JSON of its why-context, field guide lessons, last return
+#    and review preview (antibody questions and rules), and apart, the heads-ups with something to say the colony computed
+#    while agents held intents (they come on later replies, so they are spread over all takes and kept out of the
+#    buckets). A take hands no field reading (sense is a separate call the region objects answer): none is counted. Per
+#    take = characters / takes. Read everything, the counterfactual: at each take, the characters of every landed intent's
+#    why and every active lesson the colony holds; per take likewise. Against agent count: the same per bucket of the
+#    agents active at the take (1, 2-3, 4-7, ...); flat = tokens per take in the largest bucket / in the smallest, beside
+#    the same ratio for read everything. Rebuilt from the record and notes for every record (and the only numbers for runs
+#    before the counters): each take in the record (an agent event that sets an agent working on an intent, with its
+#    footprint) with the why-context the colony would pick (agents/landed.ts: of the landings at or before the take, the
+#    newest 3 per path, an exact footprint path reading its own and a directory or glob the first 300 of them under it in
+#    path order; of those its footprint covers, grouped by landing and intent, the newest 3 groups, each with its
+#    intent's title cut to 200 characters and why cut to 300, one line each, from the notes, and up to 10 paths) and its
+#    last return (the newest earlier proposal of the intent, as its status stood at the take, that came back for a reason
+#    other than a change of direction, unless one landed after it: its reason and up to 20 written paths from the API's
+#    copy). Guide, review preview and heads-up cannot be rebuilt, so the rebuilt numbers are a lower bound; read
+#    everything rebuilt is the whys of the intents landed at or before the take. Agents active at a rebuilt take: agents
+#    whose last agent event before it is not dead. In a reconstructed record the take times are estimates: it says so.
+#
+# 13. Access by model and by agent kind (platform = in-platform, external, synthetic). Agents: the agents list (vaccine
+#    apart) and any agent the record or notes name, each with the model and kind the list gives (else its notes'). Per
+#    group: share of agents = its agents / all agents; share of landings = its landed proposals / all landed proposals;
+#    claim to landing, p50 and p90 over its landed proposals, from the intent's latest claim at or before the proposal was
+#    made (the proposal itself when the record holds none) to its landed event; returns per proposal (returns as in 1,
+#    over proposals made); routed to a person = proposals with an escalated event / proposals made; top agent = the
+#    agent with the most landed proposals in the group, and its share of the group's; next cycle = over consecutive
+#    landing cycles (the record's landing events that carry a proposal it holds, in time order), the share of the group's
+#    agents landing in one cycle that land in the next.
+#
+# 14. Return to reland. For each return (as in 1: redirects apart): whether its intent landed afterwards (a proposal of
+#    the intent landed at or after the return), how long after, and whether the same agent landed it. Per agent kind, per
+#    return class (as in 4), and per kind and class: returns, the share relanded, p50 and p90 seconds to reland.
+#
+# 15. Culprit precision against first red. Every red certification whose first-red search (FT_BISECT) found a commit,
+#    from GET /api/colonies/<id>/certifications (the newest 500 results; else the record's certify and bisect events,
+#    whose suspects stop at 5). The landing found is, first match wins: a suspect at rank r (its place in the result's
+#    suspect list, newest first, from 1); outside the import trace (none of its proposals wrote what the failing tests
+#    load: the answer's proposals are empty); not looked for (the result has no suspects: culprit finding off or out of
+#    time); closure not recorded (an answer from before the search listed the landing's proposals); in the closure but
+#    cut by a limit (it wrote what they load and is not a suspect: the newest-landings limits).
+#    With them: the rank 1 share, and for an answer that isolated one proposal, whether a suspect names that proposal.
+#    Answers copied from an earlier result's search (reusedFrom) count, and are counted apart too.
+#
+# 16. Residue and review rounds. Per landed intent: the proposals it took to land (its proposals made up to the one that
+#    landed, that one included, as in 8), its review rounds (decision events of any layer whose subject is one of those
+#    proposals), and declared to landed (its first intent event to its landing). Per change: decision events per
+#    proposal, over every proposal and over the landed ones. Residue: the intents open, claimed or proposed at the
+#    record's last event, with their ages then and the five oldest.
+#
+# 17. Lines alive on trunk, by model and by agent kind. Added: the lines each landed proposal added on trunk (`git log
+#    --numstat` of its landing commit, per file: a file one proposal wrote goes to it; a file several wrote, by the steps
+#    of 2; else unattributed). Alive: the lines at HEAD given to each agent in 2. An agent's model and kind: those of its
+#    landed proposals' notes (the most frequent), else the agents list. Per model and per kind: landed proposals, lines
+#    added, lines alive and alive / added, returns (as in 1), reverted proposals (revert notes: the proposal named, else
+#    every proposal of the landing undone), and per model what this platform's model calls with it cost (spend.byModel in
+#    GET /api/colonies/<id>: in-platform agents and review; external agents' own models are not in it). Spend under a
+#    model no agent names (a review model, or an agent listed by its model class) is listed apart, never guessed.
 require "fileutils"
 require "json"
 require "net/http"
@@ -167,6 +229,23 @@ module Coordination
   EVENTS_PAGE = 5_000
   FETCH_CAP = 10_000
   THREADS = 8
+  # Definition 12: the estimate, the parts a take hands (as the colony's counters name them), and the why-context and
+  # last return as the colony builds them (agents/landed.ts, agents/prompt.ts).
+  CHARS_PER_TOKEN = 4
+  TAKE_PARTS = %w[context guide lastReturn review].freeze
+  WHY_LANDINGS = 3
+  WHY_PER_PATH = 3
+  WHY_FOOTPRINT = 20
+  WHY_RANGE_ROWS = 300
+  WHY_CHARS = 300
+  WHY_PATHS = 10
+  TITLE_CHARS = 200
+  RETURN_PATHS = 20
+  RETURN_REASON_CHARS = 2_000
+  GLOB = /[*?{]/
+  # Definitions 13, 14 and 17: agent kinds as the report names them. Definition 15: certification results the colony keeps.
+  KIND_LABELS = { "internal" => "platform", "external" => "external", "synthetic" => "synthetic" }.freeze
+  CERTIFICATIONS_KEPT = 500
 
   module_function
 
@@ -476,6 +555,20 @@ module Coordination
       out
     end
 
+    # Lines each first-parent commit in `range` added per text file: sha => {path => added} (definition 17).
+    def numstat_files(range)
+      out = {}
+      current = nil
+      text("log", "--first-parent", "--no-renames", "--numstat", "--format=%x01%H", range).each_line(chomp: true) do |line|
+        if line.start_with?("\x01")
+          current = out[line[1..]] = {}
+        elsif current && (m = /\A(\d+)\t\d+\t(.+)\z/.match(line))
+          current[m[2]] = current.fetch(m[2], 0) + m[1].to_i
+        end
+      end
+      out
+    end
+
     # Every line of `path` at `rev`: [commit, line number in that commit's version], and the boundary commits.
     def blame(rev, path)
       lines = []
@@ -599,6 +692,9 @@ module Coordination
 
     def agents(id) = get!("/colonies/#{id}/agents", { all: 1, journal: 0 })["agents"] || []
 
+    # The newest certification results, as many as the colony keeps (definition 15).
+    def certifications(id) = get!("/colonies/#{id}/certifications", { limit: CERTIFICATIONS_KEPT })["results"] || []
+
     # One proposal, or nil when the colony does not know it.
     def proposal(id, pid)
       code, body = get("/colonies/#{id}/proposals/#{URI.encode_www_form_component(pid)}")
@@ -612,9 +708,19 @@ module Coordination
   # The event record reduced to proposals and intents, vaccines left out.
   class Record
     attr_reader :proposals, :intents, :landing_ids, :human_returns, :t0, :t_last, :source, :total, :vaccine_proposals,
-                :claims, :declared, :human_decisions, :landings, :first_at, :closures, :uncaused_closures
+                :claims, :declared, :human_decisions, :landings, :first_at, :closures, :uncaused_closures,
+                :takes, :decisions, :certify, :bisects, :last_at
 
     def initialize(page, vaccine_agents: Set.new)
+      # Definition 12: takes (agent events that set an agent working on an intent, with its footprint) and the agents
+      # whose last agent event is not dead. Definition 16: decisions of any layer per subject. Definition 15: each
+      # commit's certification result and first-red answer.
+      @takes = []
+      @states = {}
+      @alive = 0
+      @decisions = Hash.new(0)
+      @certify = {}
+      @bisects = {}
       @source = page["source"]
       @total = page["total"]
       @proposals = {}
@@ -669,9 +775,17 @@ module Coordination
         when "decision"
           @human_returns << e["subject"] if e["layer"] == "human" && e["action"] == "return"
           @human_decisions[e["subject"]] << e["at"] if e["layer"] == "human" && e["at"].is_a?(Numeric)
+          @decisions[e["subject"]] += 1 if e["subject"]
+        when "agent"
+          agent_event(e) unless vaccine_agents.include?(e["agentId"])
+        when "certify"
+          @certify[e["trunkSha"]] = e if e["trunkSha"].is_a?(String) && e["status"].is_a?(String)
+        when "bisect"
+          @bisects[e["trunkSha"]] = e["firstRed"] if e["trunkSha"].is_a?(String) && e["firstRed"].is_a?(Hash)
         end
       end
       @first_at = events.filter_map { |e| e["at"] if e["at"].is_a?(Numeric) }.min
+      @last_at = events.filter_map { |e| e["at"] if e["at"].is_a?(Numeric) }.max
       @vaccine_proposals = vaccine_ids.size
       ours = @proposals.values.to_set { |p| p[:intent] }
       (vaccine_intents - ours).each { |id| @intents.delete(id) }
@@ -680,12 +794,27 @@ module Coordination
       @t0 = times.min
       @t_last = times.max
     end
+
+    private
+
+    # One agent event: the agent's state, and a take when it sets the agent working on an intent with its footprint.
+    def agent_event(e)
+      id = e["agentId"]
+      was = @states[id]
+      now = e["state"]
+      @alive += 1 if (was.nil? || was == "dead") && now != "dead"
+      @alive -= 1 if !was.nil? && was != "dead" && now == "dead"
+      @states[id] = now
+      return unless now == "working" && e["intentId"] && e["paths"].is_a?(Array) && e["at"].is_a?(Numeric)
+
+      @takes << { at: e["at"], agent: id, kind: e["kind"], intent: e["intentId"], footprint: e["paths"].grep(String), active: @alive }
+    end
   end
 
   # The trunk as git shows it: FireTrident commits, the proposals each landed, and how each is known.
   class Lineage
-    Prop = Struct.new(:id, :agent, :kind, :model, :intent, :paths, :blobs, keyword_init: true)
-    Commit = Struct.new(:sha, :parent, :at, :landing, :kind, :source, :props, :intents, :changes, :answer, keyword_init: true)
+    Prop = Struct.new(:id, :agent, :kind, :model, :intent, :paths, :blobs, :title, :why, keyword_init: true)
+    Commit = Struct.new(:sha, :parent, :at, :landing, :kind, :source, :props, :intents, :changes, :answer, :revert, keyword_init: true)
 
     attr_reader :head, :commits, :ft, :base, :notes, :shallow, :changes, :warnings
 
@@ -743,7 +872,7 @@ module Coordination
       end
       Commit.new(sha: c[:sha], parent: c[:parent], at: c[:at], landing: note["landingId"] || c[:landing],
                  kind: system ? "system" : "landing", source: "note", props: props, intents: props.map(&:intent).compact.uniq,
-                 answer: Coordination.landing_answer(note))
+                 answer: Coordination.landing_answer(note), revert: note["revert"].is_a?(Hash) ? note["revert"] : nil)
     end
 
     # A FireTrident commit with no note: a system commit without FT-Proposal trailers, else a landing whose proposals
@@ -768,8 +897,10 @@ module Coordination
 
     def prop(p, intent)
       writes = (p["writeSet"] || []).select { |w| w.is_a?(Hash) && w["path"].is_a?(String) }
+      about = p["intent"].is_a?(Hash) ? p["intent"] : {}
       Prop.new(id: p["id"], agent: p["agentId"], kind: p["agentKind"], model: p["model"], intent: intent,
-               paths: writes.map { |w| w["path"] }, blobs: writes.to_h { |w| [w["path"], w["blob"]] })
+               paths: writes.map { |w| w["path"] }, blobs: writes.to_h { |w| [w["path"], w["blob"]] },
+               title: about["title"].is_a?(String) ? about["title"] : nil, why: about["why"].is_a?(String) ? about["why"] : nil)
     end
   end
 
@@ -794,6 +925,14 @@ module Coordination
       log.call("blaming #{text_paths.size} agent-touched files at #{lineage.head[0, 7]}") unless text_paths.empty?
       blames = Coordination.pmap(text_paths) { |p| git.blame(lineage.head, p) }
       @files = text_paths.zip(blames).map { |path, blame| attribute(path, blame) }
+    end
+
+    # Definition 17: the lines of the commit's version of `path` each writer's step added, by proposal id; nil when the
+    # steps cannot be rebuilt from the clone.
+    def added_by(c, path, writers)
+      key = [c.sha, path]
+      @splits[key] = split(c, path, writers) unless @splits.key?(key)
+      @splits[key]&.compact&.tally&.transform_keys { |i| writers[i].id }
     end
 
     private
@@ -875,7 +1014,8 @@ module Coordination
 
   # The whole report: every number as a Hash (`build`); `Coordination.markdown` turns it into the short table.
   class Report
-    RECORD_METRICS = ["merged fraction", "conflicts over time", "hottest file", "where the time went"].freeze
+    RECORD_METRICS = ["merged fraction", "conflicts over time", "hottest file", "where the time went", "access by model and kind",
+                      "return to reland", "residue and review rounds"].freeze
 
     def initialize(colony:, git:, api: nil, url: nil, api_note: nil, log: ->(_m) {})
       @colony = colony
@@ -918,6 +1058,12 @@ module Coordination
         timeSplit: record && Coordination.time_split(record),
         closures: record && Coordination.closures(record, agents),
         headsUp: record && Coordination.heads_up(record, snapshot),
+        takeTokens: take_tokens(snapshot, record, lineage, others),
+        access: record && Coordination.access(record, agents, notes_agents(lineage)),
+        relands: record && Coordination.relands(record, agents, notes_agents(lineage)),
+        culpritPrecision: culprit_precision(record),
+        residue: record && Coordination.residue(record),
+        linesByModel: lines_by_model(lineage, attribution, record, agents, snapshot),
         agents: agent_table(agents, record, lineage, attribution),
         missing: @missing,
         warnings: @warnings
@@ -1242,6 +1388,86 @@ module Coordination
       }
     end
 
+    # Definition 12: the colony's counters, and the takes rebuilt from the record and notes.
+    def take_tokens(snapshot, record, lineage, others)
+      rebuilt = record && Coordination.rebuild_takes(record, **take_inputs(record, lineage, others))
+      result = Coordination.take_tokens(snapshot&.dig("metrics"), rebuilt)
+      missing("coordination tokens per take", "the colony has no take counters and no record of takes could be read") if result[:source].nil?
+      result
+    end
+
+    # What a rebuilt take reads: each landed path with its landing and intent, the landed intents' titles and whys, and
+    # the paths each proposal that did not land wrote (the API's copies).
+    def take_inputs(record, lineage, others)
+      at_of = record.landings.to_h { |l| [l[:id], l[:at]] }
+      rows = []
+      texts = {}
+      whys = {}
+      lineage.landings.each do |c|
+        at = at_of[c.landing] || c.at
+        c.props.each do |p|
+          if p.intent
+            texts[p.intent] ||= { title: p.title.to_s, why: p.why.to_s }
+            whys[p.intent] ||= [at, p.why.to_s.length]
+          end
+          p.paths.each { |path| rows << { path: path, at: at, landing: c.landing, intent: p.intent, sha: c.sha } }
+        end
+      end
+      writes = others.transform_values { |p| p.is_a?(Hash) ? (p["writeSet"] || []).filter_map { |w| w["path"] if w.is_a?(Hash) && w["path"].is_a?(String) } : [] }
+      { rows: rows, texts: texts, whys: whys.values, writes: writes }
+    end
+
+    # Each agent's kind and model from its landed proposals' notes (the most frequent).
+    def notes_agents(lineage)
+      lineage.landed.group_by(&:agent).transform_values { |props| { kind: Coordination.most(props.map(&:kind)), model: Coordination.most(props.map(&:model)) } }
+    end
+
+    # Definition 15: the certification results, else the record's certify and bisect events.
+    def culprit_precision(record)
+      certs = @api ? attempt("certifications not read, so culprit precision comes from the record's events") { @api.certifications(@colony) } : nil
+      source = "certifications"
+      if certs.nil?
+        return missing("culprit precision", "neither the certifications nor the event record could be read") unless record
+
+        certs = Coordination.certifications_from(record)
+        source = "events: suspects stop at 5"
+      end
+      Coordination.culprit_precision(certs).merge(source: source)
+    end
+
+    # Definition 17: lines each landed proposal added (numstat per file, split by the steps of 2 where several wrote a
+    # file), the lines alive at HEAD per agent, returns, reverted proposals and the platform's spend by model.
+    def lines_by_model(lineage, attribution, record, agents, snapshot)
+      return missing("lines alive by model", "the trunk has no landing commits") if lineage.landings.empty?
+
+      stats = @git.numstat_files(lineage.base ? "#{lineage.base}..#{lineage.head}" : lineage.head)
+      added = Hash.new(0)
+      unattributed = 0
+      lineage.landings.each do |c|
+        (stats[c.sha] || {}).each do |path, n|
+          writers = c.props.select { |p| p.paths.include?(path) }
+          split = writers.size > 1 ? attribution.added_by(c, path, writers) : nil
+          if writers.size == 1
+            added[writers.first.id] += n
+          elsif split
+            split.each { |id, k| added[id] += k }
+            unattributed += [n - split.values.sum, 0].max
+          else
+            unattributed += n
+          end
+        end
+      end
+      alive = Hash.new(0)
+      attribution.files.each { |f| f[:byAgent].each { |agent, n| alive[agent] += n } }
+      returns = record ? record.proposals.values.select { |p| p[:status] == "returned" && !Coordination.redirect?(p[:reason]) }.map { |p| p[:agent] }.tally : {}
+      by_landing = lineage.landings.to_h { |c| [c.landing, c] }
+      reverted = lineage.ft_commits.filter_map(&:revert).flat_map do |r|
+        r["proposal"].is_a?(String) ? [r["proposal"]] : (by_landing[r["of"]]&.props || []).map(&:id)
+      end.uniq
+      Coordination.lines_by_model(landed: lineage.landed, added: added, alive: alive, returns: returns, reverted: reverted, agents: agents,
+                                  spend: snapshot&.dig("spend", "byModel"), unattributed: unattributed)
+    end
+
     def agent_table(agents, record, lineage, attribution)
       info = agents.to_h { |a| [a["id"], a] }
       landed = lineage.landed.group_by(&:agent)
@@ -1301,6 +1527,463 @@ module Coordination
 
     "| Heads-up before returns | #{num(h[:warned])} warned and proposed anyway, #{num(h[:unwarned])} could not have known " \
       "(of #{many(h[:returns], 'return')}; #{num(h[:none])} with no heads-up) |"
+  end
+
+  # Estimated tokens: characters / CHARS_PER_TOKEN, to one decimal.
+  def tokens(chars) = chars.nil? ? nil : (chars.to_f / CHARS_PER_TOKEN).round(1)
+
+  # An agent kind as the report names it (in-platform agents are "platform").
+  def kind_label(kind) = kind.nil? ? "unknown" : KIND_LABELS.fetch(kind.to_s, kind.to_s)
+
+  def vaccine?(agent) = agent["name"] == "vaccine" && agent["model"] == "vaccine"
+
+  # The most frequent value (ties to the larger), nil for none.
+  def most(values) = values.compact.tally.max_by { |v, n| [n, v.to_s] }&.first
+
+  # The bucket of a count of active agents: the largest power of two at or below it, 1 below 2 (colony/coordtokens.ts).
+  def agent_bucket(n)
+    b = 1
+    b *= 2 while b * 2 <= n.to_i
+    b
+  end
+
+  def bucket_label(from) = from == 1 ? "1" : "#{from}-#{(from * 2) - 1}"
+
+  # Characters of a value's JSON (0 for nil), as the colony measures a take's parts.
+  def json_chars(value) = value.nil? ? 0 : JSON.generate(value).length
+
+  # Text on one line, cut to `max` characters with an ellipsis (agents/landed.ts shortTitle and shortWhy).
+  def cut(text, max)
+    t = text.to_s.gsub(/\s+/, " ").strip
+    t.length > max ? "#{t[0, max - 1]}…" : t
+  end
+
+  # Whether a footprint entry covers a path (core footprintCovers): the path itself, a directory, or a glob.
+  def covers?(entry, path)
+    e = entry.delete_prefix("./")
+    return false if e.empty?
+    return true if e == path
+    return path.start_with?(e) if e.end_with?("/")
+
+    File.fnmatch?(e, path, File::FNM_PATHNAME | File::FNM_EXTGLOB | File::FNM_DOTMATCH)
+  end
+
+  # Each agent's kind and model: the agents list's first (`prefer: :list`) or the notes' first (`prefer: :notes`).
+  def profiles(agents, notes, prefer: :list)
+    list = agents.to_h { |a| [a["id"], { kind: a["kind"], model: a["model"] }] }
+    (list.keys + notes.keys).uniq.to_h do |id|
+      first, second = prefer == :list ? [list[id] || {}, notes[id] || {}] : [notes[id] || {}, list[id] || {}]
+      [id, { kind: first[:kind] || second[:kind], model: first[:model] || second[:model] }]
+    end
+  end
+
+  # The colony's per-path landing index as a take reads it (agents/landed.ts), rebuilt from the notes (definition 12).
+  class LandedIndex
+    # `rows`: {path:, at:, landing:, intent:, sha:}, one per path a landed proposal wrote.
+    def initialize(rows)
+      @by_path = rows.group_by { |r| r[:path] }.transform_values { |list| list.sort_by { |r| [r[:at], r[:landing].to_s] } }
+      @paths = @by_path.keys.sort
+    end
+
+    # The why-context of a take at `at` for `footprint`, or nil. The index holds the newest WHY_PER_PATH landings of each
+    # path at or before `at`; an exact path reads its own, a directory or glob the first WHY_RANGE_ROWS rows under its
+    # literal head in path order (as the colony's range query returns them). Of the rows a footprint entry covers, the
+    # newest WHY_LANDINGS groups of landing and intent, each with its intent's title and why (`texts`) and its paths.
+    def context(footprint, at, texts)
+      entries = footprint.first(WHY_FOOTPRINT)
+      groups = {}
+      entries.flat_map { |entry| rows_for(entry, at) }.each do |r|
+        next unless entries.any? { |e| Coordination.covers?(e, r[:path]) }
+
+        g = groups[[r[:landing], r[:intent]]] ||= { landingId: r[:landing], at: r[:at], sha: r[:sha], intentId: r[:intent], paths: Set.new }
+        g[:at] = [g[:at], r[:at]].max
+        g[:paths] << r[:path]
+      end
+      # Newest first, then the larger landing id, then the order found (the colony's sort is stable).
+      ranked = groups.values.each_with_index.sort { |(a, i), (b, j)| ([b[:at], b[:landingId].to_s] <=> [a[:at], a[:landingId].to_s]).nonzero? || (i <=> j) }
+      picked = ranked.map(&:first).first(WHY_LANDINGS)
+      return nil if picked.empty?
+
+      picked.map do |g|
+        t = texts[g[:intentId]] || {}
+        out = { landingId: g[:landingId], at: g[:at], title: Coordination.cut(t[:title], TITLE_CHARS), why: Coordination.cut(t[:why], WHY_CHARS),
+                paths: g[:paths].to_a.sort.first(WHY_PATHS) }
+        out[:trunkSha] = g[:sha] if g[:sha]
+        out[:intentId] = g[:intentId] if g[:intentId]
+        out
+      end
+    end
+
+    private
+
+    # The index rows one footprint entry reads at `at` (agents/landed.ts indexRange): an exact path's own, or the first
+    # WHY_RANGE_ROWS rows under a directory's or a glob's literal head, in path order; none for an entry with no head.
+    def rows_for(entry, at)
+      e = entry.delete_prefix("./")
+      return [] if e.empty?
+      return held(e, at) unless e.match?(GLOB) || e.end_with?("/")
+
+      head = e.match?(GLOB) ? e[0...(e =~ GLOB)] : e
+      return [] unless head.include?("/")
+
+      prefix = head[0..head.rindex("/")]
+      out = []
+      i = @paths.bsearch_index { |p| p >= prefix } || @paths.size
+      while out.size < WHY_RANGE_ROWS && i < @paths.size && @paths[i].start_with?(prefix)
+        out.concat(held(@paths[i], at))
+        i += 1
+      end
+      out.first(WHY_RANGE_ROWS)
+    end
+
+    # The rows the index held for a path at `at`: its newest WHY_PER_PATH landings at or before it, oldest first.
+    def held(path, at)
+      list = @by_path[path] or return []
+      upto = list.bsearch_index { |r| r[:at] > at } || list.size
+      list[[upto - WHY_PER_PATH, 0].max...upto]
+    end
+  end
+
+  # Definition 12: coordination tokens per take from the colony's counters (`metrics`, nil when not read) and as rebuilt.
+  def take_tokens(metrics, rebuilt)
+    counted = counted_takes(metrics || {})
+    source = if counted then "counters"
+             elsif rebuilt && rebuilt[:takes].positive? then "rebuilt"
+             end
+    { estimate: "tokens = characters / #{CHARS_PER_TOKEN}, an ESTIMATE", source: source, counted: counted, rebuilt: rebuilt }
+  end
+
+  # Definition 12 from the coord.* counters (colony/coordtokens.ts), or nil before the first counted take.
+  def counted_takes(m)
+    n = ->(name) { m[name].is_a?(Numeric) ? m[name].to_f : 0.0 }
+    takes = n.("coord.takes")
+    return nil unless takes.positive?
+
+    chars = TAKE_PARTS.to_h { |part| [part, n.("coord.chars.#{part}")] }
+    heads_up = n.("coord.chars.headsUp")
+    at_take = chars.values.sum
+    froms = m.keys.filter_map { |k| k[/\Acoord\.byAgents\.(\d+)\.takes\z/, 1]&.to_i }.uniq.sort
+    buckets = froms.filter_map do |from|
+      t = n.("coord.byAgents.#{from}.takes")
+      next unless t.positive?
+
+      { agents: bucket_label(from), from: from, takes: t.to_i, tokensPerTake: tokens(n.("coord.byAgents.#{from}.chars") / t),
+        readEverythingTokensPerTake: tokens(n.("coord.byAgents.#{from}.everything") / t) }
+    end
+    { takes: takes.to_i, perTake: chars.transform_values { |c| tokens(c / takes) }.merge("headsUp" => tokens(heads_up / takes)),
+      tokensPerTake: tokens((at_take + heads_up) / takes), atTakeTokensPerTake: tokens(at_take / takes),
+      readEverythingTokensPerTake: tokens(n.("coord.everything") / takes), agentsPerTake: rounded(n.("coord.agents") / takes, 1),
+      headsUps: n.("coord.headsUps").to_i, byAgents: buckets, flat: flatness(buckets) }
+  end
+
+  # Tokens per take in the largest bucket of active agents over the smallest, for what takes hand and for reading everything.
+  def flatness(buckets)
+    return nil if buckets.size < 2
+
+    a = buckets.first
+    b = buckets.last
+    { from: a[:agents], to: b[:agents], takes: rounded(ratio(b[:tokensPerTake], a[:tokensPerTake]), 2),
+      readEverything: rounded(ratio(b[:readEverythingTokensPerTake], a[:readEverythingTokensPerTake]), 2) }
+  end
+
+  # Definition 12 rebuilt: each take in the record with the why-context and last return the colony would have handed it.
+  # `rows`: {path:, at:, landing:, intent:, sha:} per landed path; `texts`: intent => {title:, why:}; `whys`: [at, chars]
+  # per landed intent; `writes`: proposal id => the paths it wrote.
+  def rebuild_takes(record, rows:, texts:, whys:, writes:)
+    index = LandedIndex.new(rows)
+    landed = whys.sort
+    sums = landed.each_with_object([0]) { |(_at, n), acc| acc << (acc.last + n) }
+    by_intent = record.proposals.values.group_by { |p| p[:intent] }
+    list = record.takes.map do |t|
+      upto = landed.bsearch_index { |(at, _n)| at > t[:at] } || landed.size
+      { at: t[:at], agent: t[:agent], intent: t[:intent], active: t[:active], context: json_chars(index.context(t[:footprint], t[:at], texts)),
+        lastReturn: json_chars(last_return_at(by_intent[t[:intent]] || [], t[:at], writes)), everything: sums[upto] }
+    end
+    summarize_takes(list).merge(estimatedTimes: record.source == "reconstructed")
+  end
+
+  # The last return a take at `at` would have carried for an intent with these proposals (ColonyDO.lastReturn), or nil.
+  def last_return_at(props, at, writes)
+    props.select { |p| p[:first_at].is_a?(Numeric) && p[:first_at] < at }.sort_by { |p| [-p[:first_at], p[:id].to_s] }.each do |p|
+      ev = p[:events].select { |t, _s| t.is_a?(Numeric) && t <= at }.last
+      next unless ev
+      return nil if ev[1] == "landed"
+      next unless %w[returned rejected].include?(ev[1])
+
+      reason = (ev[1] == "returned" ? p[:return_reason] : p[:reason]).to_s.strip
+      next if reason.empty? || redirect?(reason)
+
+      paths = writes[p[:id]] || []
+      out = { proposalId: p[:id], status: ev[1], at: ev[0], reason: reason.length > RETURN_REASON_CHARS ? "#{reason[0, RETURN_REASON_CHARS - 1]}…" : reason,
+              paths: paths.first(RETURN_PATHS) }
+      out[:morePaths] = paths.size - RETURN_PATHS if paths.size > RETURN_PATHS
+      return out
+    end
+    nil
+  end
+
+  # The rebuilt takes summed: tokens per take, by bucket of active agents, and the counterfactual.
+  def summarize_takes(list)
+    left_out = "guide lessons, review preview and heads-up cannot be rebuilt from the record, so this is a lower bound"
+    return { takes: 0, leftOut: left_out } if list.empty?
+
+    n = list.size.to_f
+    per = list.map { |t| t[:context] + t[:lastReturn] }.sort
+    buckets = list.group_by { |t| agent_bucket(t[:active]) }.sort.map do |from, ts|
+      { agents: bucket_label(from), from: from, takes: ts.size, tokensPerTake: tokens(ts.sum { |t| t[:context] + t[:lastReturn] } / ts.size.to_f),
+        readEverythingTokensPerTake: tokens(ts.sum { |t| t[:everything] } / ts.size.to_f) }
+    end
+    { takes: list.size, perTake: { "context" => tokens(list.sum { |t| t[:context] } / n), "lastReturn" => tokens(list.sum { |t| t[:lastReturn] } / n) },
+      tokensPerTake: tokens(per.sum / n), p50: tokens(quantile(per, 0.5)), p90: tokens(quantile(per, 0.9)), max: tokens(per.last),
+      readEverythingTokensPerTake: tokens(list.sum { |t| t[:everything] } / n), agentsPerTake: rounded(list.sum { |t| t[:active] } / n, 1),
+      byAgents: buckets, flat: flatness(buckets), leftOut: left_out }
+  end
+
+  # Definition 13: access by agent kind and by model. `notes`: agent => {kind:, model:} from its notes.
+  def access(record, agents, notes = {})
+    agents = agents.reject { |a| vaccine?(a) }
+    profile = profiles(agents, notes)
+    per = Hash.new { |h, k| h[k] = { proposals: 0, landed: 0, returns: 0, escalated: 0, waits: [] } }
+    agents.each { |a| per[a["id"]] }
+    record.proposals.each_value do |p|
+      x = per[p[:agent]]
+      x[:proposals] += 1
+      x[:returns] += 1 if p[:status] == "returned" && !redirect?(p[:reason])
+      x[:escalated] += 1 if p[:events].any? { |_t, s| s == "escalated" }
+      next unless p[:status] == "landed" && p[:landed_at].is_a?(Numeric)
+
+      x[:landed] += 1
+      made = p[:first_at].is_a?(Numeric) ? p[:first_at] : p[:landed_at]
+      claim = record.claims[p[:intent]].select { |t| t <= made }.max || made
+      x[:waits] << [(p[:landed_at] - claim) / 1000.0, 0].max
+    end
+    agent_of = record.proposals.transform_values { |p| p[:agent] }
+    cycles = record.landings.sort_by { |l| [l[:at], l[:id].to_s] }.map { |l| l[:proposals].filter_map { |id| agent_of[id] }.to_set }.reject(&:empty?)
+    total_landed = per.values.sum { |x| x[:landed] }
+    group = lambda do |key|
+      per.group_by { |id, _x| key.call(id) }.sort_by { |k, _| k.to_s }.to_h do |name, members|
+        ids = members.to_set(&:first)
+        xs = members.map(&:last)
+        made = xs.sum { |x| x[:proposals] }
+        landed = xs.sum { |x| x[:landed] }
+        waits = xs.flat_map { |x| x[:waits] }.sort
+        top_id, top = members.min_by { |id, x| [-x[:landed], id.to_s] }
+        [name, { agents: ids.size, agentShare: rounded(ratio(ids.size, per.size)), landed: landed, landingShare: rounded(ratio(landed, total_landed)),
+                 claimToLanding: { p50: rounded(quantile(waits, 0.5), 3), p90: rounded(quantile(waits, 0.9), 3) },
+                 proposals: made, returnsPerProposal: rounded(ratio(xs.sum { |x| x[:returns] }, made)), toPerson: rounded(ratio(xs.sum { |x| x[:escalated] }, made)),
+                 topAgent: landed.positive? ? { agent: top_id, landed: top[:landed], share: rounded(ratio(top[:landed], landed)) } : nil,
+                 nextCycle: next_cycle(cycles, ids) }]
+      end
+    end
+    { agents: per.size, landed: total_landed, cycles: cycles.size,
+      all: group.call(->(_id) { "all" })["all"],
+      byKind: group.call(->(id) { kind_label(profile.dig(id, :kind)) }),
+      byModel: group.call(->(id) { profile.dig(id, :model) || "unknown" }) }
+  end
+
+  # Of the landings by agents in `ids` in one cycle, the share whose agent lands again in the next cycle (definition 13).
+  def next_cycle(cycles, ids)
+    landed = 0
+    again = 0
+    cycles.each_cons(2) do |a, b|
+      mine = a & ids
+      landed += mine.size
+      again += (mine & b).size
+    end
+    { landed: landed, again: again, share: rounded(ratio(again, landed)) }
+  end
+
+  # Definition 14: each return's reland, per agent kind and return class.
+  def relands(record, agents, notes = {})
+    profile = profiles(agents.reject { |a| vaccine?(a) }, notes)
+    landed = record.proposals.values.select { |p| p[:status] == "landed" && p[:landed_at].is_a?(Numeric) }.group_by { |p| p[:intent] }
+    landed.each_value { |list| list.sort_by! { |p| [p[:landed_at], p[:id].to_s] } }
+    returns = record.proposals.values.select { |p| p[:status] == "returned" && !redirect?(p[:reason]) && p[:returned_at].is_a?(Numeric) }
+    rows = returns.sort_by { |p| [p[:returned_at], p[:id].to_s] }.map do |p|
+      after = (landed[p[:intent]] || []).find { |l| l[:landed_at] >= p[:returned_at] }
+      { proposal: p[:id], kind: kind_label(profile.dig(p[:agent], :kind)), class: classify(p[:return_reason], human: record.human_returns.include?(p[:id])),
+        relanded: !after.nil?, seconds: after && ((after[:landed_at] - p[:returned_at]) / 1000.0), sameAgent: !after.nil? && after[:agent] == p[:agent] }
+    end
+    summary = lambda do |list|
+      secs = list.filter_map { |r| r[:seconds] }.sort
+      relanded = list.count { |r| r[:relanded] }
+      { returns: list.size, relanded: relanded, rate: rounded(ratio(relanded, list.size)), sameAgent: list.count { |r| r[:sameAgent] },
+        p50: rounded(quantile(secs, 0.5), 3), p90: rounded(quantile(secs, 0.9), 3) }
+    end
+    by = ->(f) { rows.group_by(&f).sort.to_h { |k, list| [k, summary.call(list)] } }
+    { all: summary.call(rows), byKind: by.call(->(r) { r[:kind] }), byClass: by.call(->(r) { r[:class] }),
+      byKindAndClass: by.call(->(r) { "#{r[:kind]} #{r[:class]}" }) }
+  end
+
+  # Definition 15 from the record alone: each certify event's result with its bisect event's first-red answer.
+  def certifications_from(record) = record.certify.map { |sha, c| record.bisects[sha] ? c.merge("firstRed" => record.bisects[sha]) : c }
+
+  # Definition 15: where each first-red answer's landing stood among the result's culprit suspects.
+  def culprit_precision(certs)
+    found = certs.select do |c|
+      c.is_a?(Hash) && c["status"] == "red" && c["firstRed"].is_a?(Hash) && c["firstRed"]["status"] == "found" && c["firstRed"]["landingId"]
+    end
+    rows = found.map do |c|
+      fr = c["firstRed"]
+      suspects = c["suspects"].is_a?(Array) ? c["suspects"].select { |s| s.is_a?(Hash) } : []
+      at = suspects.index { |s| s["landingId"] == fr["landingId"] }
+      verdict = if at then "suspect"
+                elsif fr["proposals"].is_a?(Array) && fr["proposals"].empty? then "outside the import trace"
+                elsif suspects.empty? then "not looked for"
+                elsif !fr["proposals"].is_a?(Array) then "closure not recorded"
+                else "cut by a limit"
+                end
+      isolated = fr.dig("isolated", "status") == "isolated" ? fr.dig("isolated", "culprit", "id") : nil
+      { trunkSha: c["trunkSha"], landing: fr["landingId"], verdict: verdict, rank: at && (at + 1), suspects: suspects.size, reused: !fr["reusedFrom"].nil?,
+        isolated: isolated, isolatedIsSuspect: isolated ? suspects.any? { |s| s["proposalId"] == isolated } : nil }
+    end
+    counts = rows.map { |r| r[:verdict] }.tally
+    ranks = rows.filter_map { |r| r[:rank] }
+    isolated = rows.select { |r| r[:isolated] }
+    { answers: rows.size, suspect: counts.fetch("suspect", 0), outsideImportTrace: counts.fetch("outside the import trace", 0),
+      notLookedFor: counts.fetch("not looked for", 0), cutByLimit: counts.fetch("cut by a limit", 0), closureNotRecorded: counts.fetch("closure not recorded", 0),
+      precision: rounded(ratio(counts.fetch("suspect", 0), rows.size)), rank1: rounded(ratio(ranks.count(1), rows.size)),
+      ranks: ranks.tally.sort.to_h, meanRank: rounded(ratio(ranks.sum, ranks.size), 2), reused: rows.count { |r| r[:reused] },
+      isolated: { answers: isolated.size, suspect: isolated.count { |r| r[:isolatedIsSuspect] } }, list: rows }
+  end
+
+  # A count's distribution: mean, p50, p90, max, and how many of each value (4 and more together).
+  def count_dist(values)
+    s = values.sort
+    { n: s.size, mean: rounded(ratio(s.sum, s.size), 2), p50: rounded(quantile(s, 0.5), 3), p90: rounded(quantile(s, 0.9), 3), max: s.last,
+      histogram: s.group_by { |v| v >= 4 ? "4+" : v.to_s }.transform_values(&:size).sort.to_h }
+  end
+
+  # Definition 16: proposals and review rounds per landed intent, decisions per change, and the intents left open.
+  def residue(record)
+    rows = record.proposals.values.group_by { |p| p[:intent] }.filter_map do |intent, props|
+      l = props.select { |p| p[:landed_at].is_a?(Numeric) }.min_by { |p| [p[:landed_at], p[:id].to_s] }
+      next unless l
+
+      tried = props.select { |p| p.equal?(l) || (p[:first_at].is_a?(Numeric) && l[:first_at].is_a?(Numeric) && p[:first_at] < l[:first_at]) }
+      declared = record.declared[intent]
+      { intent: intent, proposals: tried.size, rounds: tried.sum { |p| record.decisions[p[:id]] },
+        declaredToLanded: declared.is_a?(Numeric) ? [(l[:landed_at] - declared) / 1000.0, 0].max : nil }
+    end
+    waits = rows.filter_map { |r| r[:declaredToLanded] }.sort
+    open = record.intents.filter_map do |id, i|
+      next unless %w[open claimed proposed].include?(i[:status])
+
+      declared = record.declared[id]
+      { intent: id, title: i[:title], status: i[:status], ageSeconds: declared.is_a?(Numeric) && record.last_at ? ((record.last_at - declared) / 1000.0).round(3) : nil }
+    end
+    ages = open.filter_map { |o| o[:ageSeconds] }.sort
+    {
+      landedIntents: rows.size, proposalsToLand: count_dist(rows.map { |r| r[:proposals] }), reviewRoundsPerIntent: count_dist(rows.map { |r| r[:rounds] }),
+      declaredToLanded: { p50: rounded(quantile(waits, 0.5), 3), p90: rounded(quantile(waits, 0.9), 3) },
+      reviewRoundsPerChange: { all: count_dist(record.proposals.keys.map { |id| record.decisions[id] }),
+                               landed: count_dist(record.proposals.values.select { |p| p[:status] == "landed" }.map { |p| record.decisions[p[:id]] }) },
+      open: { intents: open.size, byStatus: open.map { |o| o[:status] }.tally.sort.to_h, p50AgeSeconds: rounded(quantile(ages, 0.5), 3), maxAgeSeconds: ages.last,
+              oldest: open.sort_by { |o| [-(o[:ageSeconds] || 0), o[:intent].to_s] }.first(5) }
+    }
+  end
+
+  # Definition 17: per model and per agent kind, lines added through landings and alive at HEAD, beside landings,
+  # returns, reverts and spend. `landed`: the trunk's landed proposals; `added`: proposal id => lines added; `alive`:
+  # agent => lines at HEAD; `returns`: agent => returns; `reverted`: reverted proposal ids; `spend`: model => spend.
+  def lines_by_model(landed:, added:, alive:, returns:, reverted:, agents:, spend:, unattributed:)
+    notes = landed.group_by(&:agent).transform_values { |ps| { kind: most(ps.map(&:kind)), model: most(ps.map(&:model)) } }
+    profile = profiles(agents.reject { |a| vaccine?(a) }, notes, prefer: :notes)
+    agent_of = landed.to_h { |p| [p.id, p.agent] }
+    group = lambda do |key|
+      out = Hash.new { |h, k| h[k] = { landed: 0, added: 0, alive: 0, returns: 0, reverted: 0 } }
+      landed.each do |p|
+        out[key.call(p.agent)][:landed] += 1
+        out[key.call(p.agent)][:added] += added.fetch(p.id, 0)
+      end
+      alive.each { |agent, n| out[key.call(agent)][:alive] += n }
+      returns.each { |agent, n| out[key.call(agent)][:returns] += n }
+      reverted.each { |id| out[key.call(agent_of[id])][:reverted] += 1 }
+      out.sort_by { |k, _| k.to_s }.to_h { |k, x| [k, x.merge(aliveShare: rounded(ratio(x[:alive], x[:added])))] }
+    end
+    by_model = group.call(->(agent) { (agent && profile.dig(agent, :model)) || "unknown" })
+    by_model.each do |model, x|
+      s = spend.is_a?(Hash) ? spend[model] : nil
+      x[:spend] = s.is_a?(Hash) ? { usd: s["usd"], input: s["input"], output: s["output"] } : nil
+    end
+    # Spend under a model no agent names (review models, or an agent listed by its model class): shown apart, never guessed.
+    unmatched = spend.is_a?(Hash) ? spend.reject { |m, _x| by_model.key?(m) }.transform_values { |x| x.is_a?(Hash) ? x["usd"] : nil }.sort.to_h : {}
+    { byModel: by_model, byKind: group.call(->(agent) { kind_label(agent && profile.dig(agent, :kind)) }), unattributedAdded: unattributed, spendNotMatched: unmatched,
+      spendNote: "spend: the model calls this platform made with the model (in-platform agents and review); external agents' own models are not in it" }
+  end
+
+  # The markdown row of definition 12.
+  def take_tokens_row(t)
+    c = t[:source] == "counters" ? t[:counted] : t[:rebuilt]
+    return "| Coordination tokens per take (ESTIMATE) | not computed: no take counted or in the record |" if c.nil? || t[:source].nil?
+
+    by = c[:byAgents].map { |b| "#{b[:agents]}: #{dec(b[:tokensPerTake])}" }.join(", ")
+    flat = c[:flat] ? "; largest bucket over smallest: ×#{fmt(c[:flat][:takes], 2)} at take, ×#{fmt(c[:flat][:readEverything], 2)} to read everything" : ""
+    p = c[:perTake]
+    if t[:source] == "counters"
+      "| Coordination tokens per take (ESTIMATE, chars / #{CHARS_PER_TOKEN}) | #{dec(c[:atTakeTokensPerTake])} at take (why-context #{dec(p['context'])}, " \
+        "guide #{dec(p['guide'])}, last return #{dec(p['lastReturn'])}, review #{dec(p['review'])}) and #{dec(p['headsUp'])} of heads-up, over " \
+        "#{many(c[:takes], 'take')} with #{dec(c[:agentsPerTake])} agents active on average; reading everything #{dec(c[:readEverythingTokensPerTake])}; " \
+        "by active agents #{by}#{flat} |"
+    else
+      "| Coordination tokens per take (ESTIMATE, rebuilt) | #{dec(c[:tokensPerTake])} (why-context #{dec(p['context'])}, last return " \
+        "#{dec(p['lastReturn'])}; p90 #{dec(c[:p90])}) over #{many(c[:takes], 'take')} in the record, a lower bound (no guide, review or heads-up); " \
+        "reading everything #{dec(c[:readEverythingTokensPerTake])}; by active agents #{by}#{flat} |"
+    end
+  end
+
+  # The markdown rows of definition 13: by kind, and by model (the six with the most landings).
+  def access_rows(a)
+    cell = lambda do |name, g|
+      top = g[:topAgent] ? ", top agent #{pct(g[:topAgent][:share])}" : ""
+      "#{name} #{pct(g[:agentShare])} of agents, #{pct(g[:landingShare])} of landings, claim to landing p50 #{dec(g[:claimToLanding][:p50])} s " \
+        "p90 #{dec(g[:claimToLanding][:p90])} s, #{fmt(g[:returnsPerProposal], 2)} returns a proposal, #{pct(g[:toPerson])} to a person#{top}, " \
+        "next cycle #{pct(g[:nextCycle][:share])}"
+    end
+    models = a[:byModel].sort_by { |m, g| [-g[:landed], m.to_s] }.first(6)
+    more = a[:byModel].size > 6 ? " · #{a[:byModel].size - 6} more models in the JSON" : ""
+    ["| Access by agent kind | #{a[:byKind].map { |k, g| cell.call(k, g) }.join(' · ')} |",
+     "| Access by model | #{models.map { |m, g| cell.call(m, g) }.join(' · ')}#{more} |"]
+  end
+
+  # The markdown row of definition 14.
+  def relands_row(r)
+    a = r[:all]
+    return "| Return to reland | no returns |" if a[:returns].zero?
+
+    part = ->(h) { h.map { |k, s| "#{k.tr('_', ' ')} #{num(s[:relanded])}/#{num(s[:returns])}" }.join(", ") }
+    "| Return to reland | #{num(a[:relanded])} of #{many(a[:returns], 'return')} relanded (#{pct(a[:rate])}, #{num(a[:sameAgent])} by the same agent), " \
+      "p50 #{dec(a[:p50])} s, p90 #{dec(a[:p90])} s; by kind #{part.call(r[:byKind])}; by cause #{part.call(r[:byClass])} |"
+  end
+
+  # The markdown row of definition 15.
+  def culprit_row(c)
+    return "| Culprit precision against first red | no first-red answer found a commit (#{c[:source]}) |" if c[:answers].zero?
+
+    ranks = c[:ranks].map { |r, n| "rank #{r}: #{n}" }.join(", ")
+    "| Culprit precision against first red | #{num(c[:suspect])} of #{many(c[:answers], 'first-red answer')} among the suspects " \
+      "(#{pct(c[:precision])}#{ranks.empty? ? '' : "; #{ranks}"}), #{num(c[:outsideImportTrace])} outside the import trace, " \
+      "#{num(c[:cutByLimit])} in the closure but cut by a limit, #{num(c[:notLookedFor])} with no suspects#{c[:closureNotRecorded].positive? ? ", #{num(c[:closureNotRecorded])} closure not recorded" : ''} (#{c[:source]}) |"
+  end
+
+  # The markdown row of definition 16.
+  def residue_row(r)
+    o = r[:open]
+    oldest = o[:maxAgeSeconds] ? ", the oldest #{dec(o[:maxAgeSeconds])} s old" : ""
+    "| Residue and review rounds | #{many(r[:landedIntents], 'landed intent')}: #{fmt(r[:proposalsToLand][:mean], 2)} proposals to land " \
+      "(p90 #{dec(r[:proposalsToLand][:p90])}), #{fmt(r[:reviewRoundsPerIntent][:mean], 2)} review rounds; declared to landed p50 " \
+      "#{dec(r[:declaredToLanded][:p50])} s, p90 #{dec(r[:declaredToLanded][:p90])} s; #{fmt(r[:reviewRoundsPerChange][:all][:mean], 2)} review rounds a change; " \
+      "#{many(o[:intents], 'intent')} still open#{oldest} |"
+  end
+
+  # The markdown row of definition 17 (the six models with the most lines added).
+  def lines_row(l)
+    models = l[:byModel].sort_by { |m, x| [-x[:added], m.to_s] }.first(6).map do |m, x|
+      usd = x[:spend] && x[:spend][:usd] ? format(", $%.4f", x[:spend][:usd]) : ""
+      "#{m} #{num(x[:alive])} of #{num(x[:added])} added lines alive (#{pct(x[:aliveShare])}), #{many(x[:landed], 'landing')}, " \
+        "#{many(x[:returns], 'return')}, #{num(x[:reverted])} reverted#{usd}"
+    end
+    "| Lines alive on trunk by model | #{models.join(' · ')}#{l[:unattributedAdded].positive? ? "; #{num(l[:unattributedAdded])} added lines unattributed" : ''} |"
   end
 
   def specialization(landed, shuffles: SHUFFLES, seed: SEED)
@@ -1572,6 +2255,12 @@ module Coordination
     out << closure_row(r[:closures]) if r[:closures]
     heads_up = heads_up_row(r[:headsUp])
     out << heads_up if heads_up
+    out << take_tokens_row(r[:takeTokens]) if r[:takeTokens]
+    out.concat(access_rows(r[:access])) if r[:access]
+    out << relands_row(r[:relands]) if r[:relands]
+    out << culprit_row(r[:culpritPrecision]) if r[:culpritPrecision]
+    out << residue_row(r[:residue]) if r[:residue]
+    out << lines_row(r[:linesByModel]) if r[:linesByModel]
     notes = r[:missing] + r[:warnings].first(5).map { |w| "warning: #{w}" }
     notes << "#{r[:warnings].size - 5} more warnings in the JSON" if r[:warnings].size > 5
     out += [""] + notes.map { |x| "- #{x}" } unless notes.empty?

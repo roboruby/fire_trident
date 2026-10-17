@@ -70,7 +70,7 @@ module Fixture
 
   def self.prop(id, agent, intent, writes)
     { "id" => id, "agentId" => agent, "agentKind" => "internal", "model" => "model-#{agent}",
-      "intent" => { "id" => intent, "title" => "#{intent} title", "why" => "" },
+      "intent" => { "id" => intent, "title" => "#{intent} title", "why" => "Because #{intent} matters." },
       "writeSet" => writes.map { |path, blob| { "path" => path, "blob" => blob } }, "readSet" => [], "decisions" => [], "evidence" => { "checks" => [] } }
   end
 
@@ -139,6 +139,13 @@ module Fixture
       add.(at, { "t" => "landing", "landingId" => lnd, "trunkSha" => "", "proposalIds" => props.map(&:first), "paths" => [] })
     end
     %w[int_1 int_2 int_3 int_4 int_5 int_6 int_7 int_8 int_9 int_10 int_12 int_13 int_14 int_15 int_16 int_17 int_18 int_19 int_21].each { |i| intent.(1, i, "open") }
+    # Definition 12: the agents join, three takes (an agent set working on an intent with its footprint), and agt_4 is reaped.
+    agent = ->(at, id, state, intent_id = nil, paths = nil) { add.(at, { "t" => "agent", "agentId" => id, "kind" => "internal", "state" => state }.merge(intent_id ? { "intentId" => intent_id, "paths" => paths } : {})) }
+    %w[agt_1 agt_2 agt_3 agt_4 agt_v].each { |id| agent.(1, id, "idle") }
+    agent.(5, "agt_4", "working", "int_5", ["src/a.ts"])
+    agent.(205, "agt_2", "working", "int_5", ["src/a.ts"])
+    agent.(250, "agt_4", "dead")
+    agent.(295, "agt_3", "working", "int_10", ["src/"])
     prop.(10, "prp_11", "int_5", "agt_4", "checking")
     prop.(30, "prp_11", "int_5", "agt_4", "returned", "stale: 1 path changed on trunk since read: src/a.ts (expected 1111111111, trunk 2222222222)")
     prop.(15, "prp_9", "int_9", "agt_3", "checking")
@@ -202,7 +209,26 @@ module Fixture
                             "writeSet" => [{ "path" => "src/d.ts", "blob" => d6 }], "readSet" => [] })
   end
 
-  def self.snapshot(head) = { "colony" => { "id" => "fx", "regionDepth" => 1, "trunkSha" => head }, "metrics" => { "proposals" => 20, "landedProposals" => 9 } }
+  def self.snapshot(head) = { "colony" => { "id" => "fx", "regionDepth" => 1, "trunkSha" => head }, "metrics" => { "proposals" => 20, "landedProposals" => 9 },
+                               "spend" => { "usd" => 0.0012, "byModel" => { "model-agt_1" => { "input" => 100, "output" => 50, "usd" => 0.0012 }, "llm-review" => { "input" => 40, "output" => 4, "usd" => 0.0004 } } } }
+
+  # Certification results, newest first (definition 15): a first red at rank 2 whose isolated proposal a suspect names,
+  # one outside the import trace, one cut by a limit, one with no suspects (copied from an earlier search), and three
+  # that do not count (inconclusive, green, red with no search).
+  def self.certifications
+    found = ->(landing, proposals, extra = {}) { { "status" => "found", "landingId" => landing, "proposals" => proposals, "probes" => 3, "ms" => 900 }.merge(extra) }
+    suspect = ->(landing, extra = {}) { { "landingId" => landing, "paths" => ["src/a.ts"], "files" => ["test/a.test.ts"], "at" => T0 }.merge(extra) }
+    [
+      { "trunkSha" => "a" * 40, "status" => "red", "startedAt" => T0, "suspects" => [suspect.("lnd_5"), suspect.("lnd_4", "proposalId" => "prp_6")],
+        "firstRed" => found.("lnd_4", [{ "id" => "prp_6", "paths" => ["src/a.ts"] }], "isolated" => { "status" => "isolated", "reason" => "x", "culprit" => { "id" => "prp_6", "paths" => [] }, "runs" => [], "candidates" => 2, "probes" => 2, "ms" => 1 }) },
+      { "trunkSha" => "b" * 40, "status" => "red", "startedAt" => T0, "suspects" => [suspect.("lnd_3")], "firstRed" => found.("lnd_2", []) },
+      { "trunkSha" => "c" * 40, "status" => "red", "startedAt" => T0, "suspects" => [suspect.("lnd_3")], "firstRed" => found.("lnd_1", [{ "id" => "prp_1", "paths" => ["src/a.ts"] }]) },
+      { "trunkSha" => "d" * 40, "status" => "red", "startedAt" => T0, "firstRed" => found.("lnd_1", [{ "id" => "prp_1", "paths" => ["src/a.ts"] }], "reusedFrom" => "c" * 40) },
+      { "trunkSha" => "e" * 40, "status" => "red", "startedAt" => T0, "suspects" => [suspect.("lnd_3")], "firstRed" => { "status" => "inconclusive", "reason" => "flaky", "probes" => 1, "ms" => 1 } },
+      { "trunkSha" => "f" * 40, "status" => "green", "startedAt" => T0 },
+      { "trunkSha" => "0" * 40, "status" => "red", "startedAt" => T0, "suspects" => [suspect.("lnd_3")] }
+    ]
+  end
 
   # The public API, in process: what Report asks of Coordination::Api.
   class FakeApi
@@ -219,6 +245,7 @@ module Fixture
     def colony(_id) = @snapshot
     def events(_id) = { "source" => "recorded", "total" => @events.size, "events" => @events }
     def agents(_id) = AGENTS
+    def certifications(_id) = Fixture.certifications
 
     def proposal(_id, pid)
       @asked << pid
@@ -239,6 +266,7 @@ module Fixture
       case path
       when "/api/colonies/fx" then [200, snapshot]
       when "/api/colonies/fx/agents" then [200, { "agents" => AGENTS }]
+      when "/api/colonies/fx/certifications" then [200, { "colonyId" => "fx", "results" => certifications }]
       when "/api/colonies/fx/events"
         after = params["after"].to_i
         page = after.zero? ? events.first(half) : events.drop(half)
@@ -415,6 +443,69 @@ class CoordinationTest < Minitest::Test
     assert_includes Coordination.markdown(report), "| Closures | none recorded |"
   end
 
+  # Definition 12 rebuilt: the fixture's colony has no take counters, so its three takes are rebuilt from the record and
+  # notes. The first comes before any landing; the second gets lnd_1's why and the stale return of prp_11; the third's
+  # footprint is a directory, whose newest three landing groups are both of lnd_4 and lnd_3's.
+  def test_coordination_tokens_rebuilt_from_the_record_and_notes
+    t = report[:takeTokens]
+    assert_equal ["rebuilt", nil], t.values_at(:source, :counted)
+    why = lambda do |lnd, at, intent, paths|
+      { landingId: lnd, at: Fixture::T0 + (at * 1000), title: "#{intent} title", why: "Because #{intent} matters.", paths: paths, trunkSha: "0" * 40, intentId: intent }
+    end
+    stale = "stale: 1 path changed on trunk since read: src/a.ts (expected 1111111111, trunk 2222222222)"
+    second = JSON.generate([why.("lnd_1", 42, "int_1", ["src/a.ts"])]).length +
+             JSON.generate({ proposalId: "prp_11", status: "returned", at: Fixture::T0 + 30_000, reason: stale, paths: ["src/a.ts"] }).length
+    third = JSON.generate([why.("lnd_4", 210, "int_5", ["src/a.ts"]), why.("lnd_4", 210, "int_6", ["src/a.ts"]), why.("lnd_3", 160, "int_4", ["src/c.ts"])]).length
+    r = t[:rebuilt]
+    assert_equal 3, r[:takes]
+    assert_equal ((second + third) / 12.0).round(1), r[:tokensPerTake]
+    # Read everything: no landed why at the first take, four (88 characters) at the second, eight (176) at the third.
+    assert_equal 22.0, r[:readEverythingTokensPerTake]
+    assert_equal 3.7, r[:agentsPerTake]
+    assert_equal [{ agents: "2-3", from: 2, takes: 1, tokensPerTake: (third / 4.0).round(1), readEverythingTokensPerTake: 44.0 },
+                  { agents: "4-7", from: 4, takes: 2, tokensPerTake: (second / 8.0).round(1), readEverythingTokensPerTake: 11.0 }], r[:byAgents]
+    assert_match(/lower bound/, r[:leftOut])
+    assert_includes Coordination.markdown(report), "| Coordination tokens per take (ESTIMATE, rebuilt) | #{format('%.1f', r[:tokensPerTake])} (why-context"
+  end
+
+  # Definition 15 from the certification results the fake API serves.
+  def test_culprit_precision_against_first_red
+    c = report[:culpritPrecision]
+    assert_equal "certifications", c[:source]
+    assert_equal [4, 1, 1, 1, 1, 0], c.values_at(:answers, :suspect, :outsideImportTrace, :cutByLimit, :notLookedFor, :closureNotRecorded)
+    assert_equal [0.25, 0.0, { 2 => 1 }, 2.0, 1], c.values_at(:precision, :rank1, :ranks, :meanRank, :reused)
+    assert_equal({ answers: 1, suspect: 1 }, c[:isolated])
+    assert_equal [["lnd_4", "suspect", 2], ["lnd_2", "outside the import trace", nil], ["lnd_1", "cut by a limit", nil], ["lnd_1", "not looked for", nil]],
+                 c[:list].map { |r| r.values_at(:landing, :verdict, :rank) }
+    assert_includes Coordination.markdown(report), "| Culprit precision against first red | 1 of 4 first-red answers among the suspects (25.0%; rank 2: 1), " \
+                                                   "1 outside the import trace, 1 in the closure but cut by a limit, 1 with no suspects (certifications) |"
+  end
+
+  # Definition 17: lnd_4's two writers of src/a.ts split by their steps (one line each); lnd_5's cannot be split, so
+  # its two lines are unattributed; lnd_6 (no note) is vouched for by the API. Kinds and models come from the notes.
+  def test_lines_alive_on_trunk_by_model_and_kind
+    l = report[:linesByModel]
+    assert_equal({ landed: 3, added: 5, alive: 4, returns: 1, reverted: 0, aliveShare: 0.8, spend: { usd: 0.0012, input: 100, output: 50 } }, l[:byModel]["model-agt_1"])
+    assert_equal({ landed: 3, added: 5, alive: 3, returns: 2, reverted: 1, aliveShare: 0.6, spend: nil }, l[:byModel]["model-agt_2"])
+    assert_equal({ landed: 3, added: 6, alive: 6, returns: 1, reverted: 0, aliveShare: 1.0, spend: nil }, l[:byModel]["model-agt_3"])
+    assert_equal({ landed: 0, added: 0, alive: 0, returns: 2, reverted: 0, aliveShare: nil, spend: nil }, l[:byModel]["declared-4"])
+    assert_equal 2, l[:unattributedAdded]
+    assert_equal({ "llm-review" => 0.0004 }, l[:spendNotMatched])
+    assert_equal({ landed: 9, added: 16, alive: 13, returns: 4, reverted: 1, aliveShare: 0.8125 }, l[:byKind]["platform"])
+    assert_equal({ landed: 0, added: 0, alive: 0, returns: 2, reverted: 0, aliveShare: nil }, l[:byKind]["external"])
+    assert_includes Coordination.markdown(report), "| Lines alive on trunk by model | model-agt_3 6 of 6 added lines alive (100.0%), 3 landings, 1 return, 0 reverted · " \
+                                                   "model-agt_1 4 of 5 added lines alive (80.0%), 3 landings, 1 return, 0 reverted, $0.0012 ·"
+  end
+
+  # Definitions 13, 14 and 16 on the fixture's record: one row each in the table.
+  def test_markdown_rows_of_access_relands_and_residue
+    md = Coordination.markdown(report)
+    assert_includes md, "| Access by agent kind | external 50.0% of agents, 33.3% of landings,"
+    assert_includes md, "| Access by model | declared-3 25.0% of agents, 33.3% of landings,"
+    assert_includes md, "| Return to reland | 1 of 6 returns relanded (16.7%, 0 by the same agent), p50 180.0 s, p90 180.0 s;"
+    assert_includes md, "| Residue and review rounds | 9 landed intents: 1.11 proposals to land (p90 1.2), 0.00 review rounds;"
+  end
+
   # This record has no claim events, so every landed intent's clock starts at its first proposal.
   def test_where_the_time_went_from_the_colony_record
     t = report[:timeSplit]
@@ -437,7 +528,7 @@ class CoordinationTest < Minitest::Test
       assert_includes stdout, "| Proposals merged | 9 of 19 (0.474)"
       assert_includes stderr, "no lineage notes from #{url}/git/fx.git"
       r = JSON.parse(File.read(json), symbolize_names: true)
-      %i[mergedFraction conflicts specialization sprawl linesPerIntent timeSplit].each { |k| assert_equal JSON.parse(JSON.generate(report[k]), symbolize_names: true), r[k], k }
+      %i[mergedFraction conflicts specialization sprawl linesPerIntent timeSplit takeTokens access relands culpritPrecision residue linesByModel].each { |k| assert_equal JSON.parse(JSON.generate(report[k]), symbolize_names: true), r[k], k }
       assert_equal report[:codeSharing][:lines], r[:codeSharing][:lines]
       assert_equal "src/a.ts", r[:hottestFile][:path]
     end
@@ -470,6 +561,15 @@ class CoordinationTest < Minitest::Test
       assert_nil r[:timeSplit]
       assert_includes stdout, "| Where the time went | not computed: no event record |"
       assert_includes stdout, "- where the time went: not computed, the event record could not be read"
+      # Definitions 12 to 17: what needs the record or the API is not computed; lines by model come from git alone, with the
+      # same seven unattributed lines (and no returns or spend).
+      assert_nil r[:takeTokens][:source]
+      assert_nil r[:culpritPrecision]
+      %i[access relands residue].each { |k| assert_nil r[k], k }
+      assert_includes stdout, "- coordination tokens per take: not computed"
+      assert_includes stdout, "- culprit precision: not computed"
+      assert_equal 7, r[:linesByModel][:unattributedAdded]
+      assert_equal 0, r[:linesByModel][:byModel].values.sum { |x| x[:returns] }
     end
   end
 end
@@ -721,6 +821,257 @@ class HeadsUpTest < Minitest::Test
   def test_no_row_without_a_heads_up
     assert_nil Coordination.heads_up_row({ returns: 3, warned: 0, unwarned: 0, none: 3, colonyCounters: {} })
     assert_nil Coordination.heads_up_row(nil)
+  end
+end
+
+# Small event records for definitions 13 to 16, times in seconds; events keep the order they are written in.
+module Small
+  def self.record(&block)
+    events = []
+    Builder.new(events).instance_eval(&block)
+    page = { "source" => "recorded", "total" => events.size, "events" => events.each_with_index.map { |e, i| e.merge("seq" => i + 1) } }
+    Coordination::Record.new(page, vaccine_agents: Set["v"])
+  end
+
+  # What a test writes into a record.
+  class Builder
+    def initialize(events)
+      @events = events
+    end
+
+    def intent(at, id, status) = add(at, "t" => "intent", "intentId" => id, "status" => status, "title" => "#{id} title", "footprint" => [])
+    def landing(at, id, *proposals) = add(at, "t" => "landing", "landingId" => id, "trunkSha" => "", "proposalIds" => proposals, "paths" => [])
+    def decision(at, subject, layer, action) = add(at, "t" => "decision", "decisionId" => "dec_#{@events.size}", "kind" => "triage", "layer" => layer, "p" => 1, "action" => action, "subject" => subject)
+    def certify(at, sha, status, suspects = nil) = add(at, { "t" => "certify", "trunkSha" => sha, "status" => status }.merge(suspects ? { "suspects" => suspects } : {}))
+    def bisect(at, sha, first_red) = add(at, "t" => "bisect", "trunkSha" => sha, "firstRed" => first_red)
+
+    def prop(at, id, intent, agent, status, reason = nil)
+      add(at, { "t" => "proposal", "proposalId" => id, "intentId" => intent, "agentId" => agent, "status" => status }.merge(reason ? { "reason" => reason } : {}))
+    end
+
+    private
+
+    def add(at, event) = @events << event.merge("at" => at * 1000)
+  end
+end
+
+# Definition 12 from the colony's counters, and the landing index a rebuilt take reads.
+class TakeTokensTest < Minitest::Test
+  # The counters of three takes (colony/coordtokens.ts): two with 2 or 3 agents active, one with 8 to 15, and one heads-up.
+  COUNTERS = {
+    "coord.takes" => 3, "coord.chars.context" => 1_000, "coord.chars.guide" => 800, "coord.chars.lastReturn" => 200, "coord.chars.headsUp" => 1_200,
+    "coord.headsUps" => 1, "coord.agents" => 14, "coord.everything" => 50_000, "coord.byAgents.2.takes" => 2, "coord.byAgents.2.chars" => 800,
+    "coord.byAgents.2.everything" => 10_000, "coord.byAgents.8.takes" => 1, "coord.byAgents.8.chars" => 1_200, "coord.byAgents.8.everything" => 40_000, "takes" => 3
+  }.freeze
+
+  def test_tokens_per_take_from_the_colony_counters
+    t = Coordination.take_tokens(COUNTERS, { takes: 5 })
+    assert_equal "counters", t[:source]
+    assert_match(/ESTIMATE/, t[:estimate])
+    c = t[:counted]
+    assert_equal({ "context" => 83.3, "guide" => 66.7, "lastReturn" => 16.7, "review" => 0.0, "headsUp" => 100.0 }, c[:perTake])
+    assert_equal [3, 166.7, 266.7, 4_166.7, 4.7, 1], c.values_at(:takes, :atTakeTokensPerTake, :tokensPerTake, :readEverythingTokensPerTake, :agentsPerTake, :headsUps)
+    assert_equal [{ agents: "2-3", from: 2, takes: 2, tokensPerTake: 100.0, readEverythingTokensPerTake: 1_250.0 },
+                  { agents: "8-15", from: 8, takes: 1, tokensPerTake: 300.0, readEverythingTokensPerTake: 10_000.0 }], c[:byAgents]
+    assert_equal({ from: "2-3", to: "8-15", takes: 3.0, readEverything: 8.0 }, c[:flat])
+    assert_equal "| Coordination tokens per take (ESTIMATE, chars / 4) | 166.7 at take (why-context 83.3, guide 66.7, last return 16.7, review 0.0) " \
+                 "and 100.0 of heads-up, over 3 takes with 4.7 agents active on average; reading everything 4,166.7; by active agents 2-3: 100.0, " \
+                 "8-15: 300.0; largest bucket over smallest: ×3.00 at take, ×8.00 to read everything |", Coordination.take_tokens_row(t)
+  end
+
+  def test_no_counters_and_no_takes
+    t = Coordination.take_tokens({ "takes" => 9 }, { takes: 0 })
+    assert_nil t[:source]
+    assert_equal "| Coordination tokens per take (ESTIMATE) | not computed: no take counted or in the record |", Coordination.take_tokens_row(t)
+    assert_nil Coordination.take_tokens(nil, nil)[:source]
+    assert_equal [1, 1, 2, 2, 4, 64], [0, 1, 2, 3, 7, 80].map { |n| Coordination.agent_bucket(n) }
+  end
+
+  def test_the_landing_index_picks_the_newest_three_groups_of_the_paths_a_footprint_covers
+    row = ->(path, at, landing, intent, sha = landing[-1] * 40) { { path: path, at: at, landing: landing, intent: intent, sha: sha } }
+    index = Coordination::LandedIndex.new([
+                                            row.("src/a.ts", 10, "L1", "i1"), row.("src/a.ts", 20, "L2", "i2"), row.("src/a.ts", 30, "L3", "i3"),
+                                            row.("src/a.ts", 40, "L4", "i4"), row.("src/lib/b.ts", 35, "L4", "i4"), row.("src/lib/b.ts", 50, "L5", "i5", nil),
+                                            row.("srcx/c.ts", 45, "L6", "i6"), row.("docs/x.md", 5, "L0", nil)
+                                          ])
+    texts = { "i4" => { title: "T" * 250, why: "line one\n  line two" } }
+    # A directory at 45: lnd L4 joins its two paths and keeps its newest time; srcx/ is not under src/.
+    got = index.context(["src/"], 45, texts)
+    assert_equal [["L4", 40, %w[src/a.ts src/lib/b.ts]], ["L3", 30, ["src/a.ts"]], ["L2", 20, ["src/a.ts"]]], got.map { |g| g.values_at(:landingId, :at, :paths) }
+    assert_equal ["#{'T' * 199}…", "line one line two", "4" * 40, "i4"], got.first.values_at(:title, :why, :trunkSha, :intentId)
+    # A glob: L5 (no commit known) is newest; each path keeps its newest three landings.
+    assert_equal %w[L5 L4 L3], index.context(["src/**/*.ts"], 100, texts).map { |g| g[:landingId] }
+    refute index.context(["src/**/*.ts"], 100, texts).first.key?(:trunkSha)
+    # A literal path; a landing outside an intent has no intentId; "**" has no directory to search.
+    assert_equal [{ landingId: "L0", at: 5, title: "", why: "", paths: ["docs/x.md"], trunkSha: "0" * 40 }], index.context(["**", "docs/x.md"], 100, texts)
+    assert_equal ["L1"], index.context(["./src/a.ts"], 15, texts).map { |g| g[:landingId] }
+    assert_nil index.context(["src/a.ts"], 5, texts)
+    # A directory reads the first 300 index rows under it in path order, as the colony's range query does: of 150 paths
+    # with three landings each, the first 100, so the newest groups it finds are those of big/p099.
+    rows = (0...150).flat_map { |i| (0...3).map { |k| row.(format("big/p%03d.ts", i), (i * 10) + k, format("B%03d-%d", i, k), "i") } }
+    assert_equal %w[B099-2 B099-1 B099-0], Coordination::LandedIndex.new(rows).context(["big/"], 10_000, {}).map { |g| g[:landingId] }
+    assert_equal %w[B149-2 B149-1 B149-0], Coordination::LandedIndex.new(rows).context(["big/p149.ts"], 10_000, {}).map { |g| g[:landingId] }
+  end
+end
+
+# Definition 13 on a small record: two in-platform agents, two external ones (one never proposed), and one known only
+# from its notes; a1 lands in two cycles running.
+class AccessTest < Minitest::Test
+  AGENTS = [
+    { "id" => "a1", "kind" => "internal", "model" => "m-fast" }, { "id" => "a2", "kind" => "internal", "model" => "m-fast" },
+    { "id" => "a3", "kind" => "external", "model" => "m-ext" }, { "id" => "a4", "kind" => "external", "model" => "m-ext" },
+    { "id" => "v", "kind" => "synthetic", "name" => "vaccine", "model" => "vaccine" }
+  ].freeze
+
+  def record
+    Small.record do
+      intent(0, "i1", "claimed")
+      prop(10, "p1", "i1", "a1", "checking")
+      prop(12, "p1", "i1", "a1", "escalated")
+      prop(30, "p1", "i1", "a1", "landed")
+      landing(30, "L1", "p1")
+      intent(5, "i2", "claimed")
+      prop(15, "p2", "i2", "a3", "checking")
+      prop(20, "p2", "i2", "a3", "returned", "stale: src/a.ts (expected a, trunk has b)")
+      intent(21, "i2", "claimed")
+      prop(25, "p3", "i2", "a3", "checking")
+      intent(31, "i4", "claimed")
+      prop(32, "p5", "i4", "a1", "checking")
+      prop(40, "p5", "i4", "a1", "landed")
+      landing(40, "L2", "p5")
+      prop(35, "p4", "i3", "a2", "checking")
+      prop(50, "p3", "i2", "a3", "landed")
+      landing(50, "L3", "p3")
+      prop(60, "p4", "i3", "a2", "landed")
+      landing(60, "L4", "p4")
+      prop(61, "p6", "i5", "a1", "checking")
+      prop(62, "p6", "i5", "a1", "returned", "withdrawn: no longer needed")
+      prop(63, "p7", "i6", "a5", "checking")
+      prop(3, "pv", "iv", "v", "checking")
+      prop(4, "pv", "iv", "v", "rejected")
+    end
+  end
+
+  def test_shares_waits_returns_and_the_next_cycle_per_kind_and_model
+    a = Coordination.access(record, AGENTS, { "a5" => { kind: "synthetic", model: "m-syn" } })
+    assert_equal [5, 4, 4], a.values_at(:agents, :landed, :cycles)
+    platform = { agents: 2, agentShare: 0.4, landed: 3, landingShare: 0.75, claimToLanding: { p50: 25.0, p90: 29.0 }, proposals: 4, returnsPerProposal: 0.0,
+                 toPerson: 0.25, topAgent: { agent: "a1", landed: 2, share: 0.6667 }, nextCycle: { landed: 2, again: 1, share: 0.5 } }
+    external = { agents: 2, agentShare: 0.4, landed: 1, landingShare: 0.25, claimToLanding: { p50: 29.0, p90: 29.0 }, proposals: 2, returnsPerProposal: 0.5,
+                 toPerson: 0.0, topAgent: { agent: "a3", landed: 1, share: 1.0 }, nextCycle: { landed: 1, again: 0, share: 0.0 } }
+    synthetic = { agents: 1, agentShare: 0.2, landed: 0, landingShare: 0.0, claimToLanding: { p50: nil, p90: nil }, proposals: 1, returnsPerProposal: 0.0,
+                  toPerson: 0.0, topAgent: nil, nextCycle: { landed: 0, again: 0, share: nil } }
+    assert_equal({ "external" => external, "platform" => platform, "synthetic" => synthetic }, a[:byKind])
+    assert_equal({ "m-ext" => external, "m-fast" => platform, "m-syn" => synthetic }, a[:byModel])
+    assert_equal({ landed: 3, again: 1, share: 0.3333 }, a[:all][:nextCycle])
+    assert_equal({ agent: "a1", landed: 2, share: 0.5 }, a[:all][:topAgent])
+    rows = Coordination.access_rows(a)
+    assert_includes rows[0], "platform 40.0% of agents, 75.0% of landings, claim to landing p50 25.0 s p90 29.0 s, 0.00 returns a proposal, 25.0% to a person, " \
+                             "top agent 66.7%, next cycle 50.0%"
+    assert rows[1].start_with?("| Access by model | m-fast 40.0% of agents")
+  end
+end
+
+# Definition 14 on a small record: two returns that relanded (one by the same agent), two that did not, and a redirect.
+class RelandsTest < Minitest::Test
+  AGENTS = [{ "id" => "a1", "kind" => "internal" }, { "id" => "a2", "kind" => "external" }, { "id" => "a3", "kind" => "external" }].freeze
+
+  def record
+    Small.record do
+      prop(5, "p1", "i1", "a1", "checking")
+      prop(10, "p1", "i1", "a1", "returned", "stale: src/a.ts (expected a, trunk has b)")
+      prop(30, "p2", "i1", "a1", "checking")
+      prop(40, "p2", "i1", "a1", "landed")
+      prop(15, "p3", "i2", "a2", "checking")
+      prop(20, "p3", "i2", "a2", "returned", "llm: the change does not do what the intent asks")
+      prop(25, "p4", "i2", "a3", "checking")
+      prop(30, "p4", "i2", "a3", "landed")
+      prop(45, "p5", "i3", "a2", "checking")
+      prop(50, "p5", "i3", "a2", "returned", "stale: src/b.ts (expected c, trunk has d)")
+      prop(52, "p6", "i4", "a1", "checking")
+      prop(55, "p6", "i4", "a1", "returned", "superseded: contest for i4 won by p9 (smaller diff)")
+      prop(57, "p7", "i5", "a1", "checking")
+      prop(60, "p7", "i5", "a1", "returned", "please split this change")
+      decision(60, "p7", "human", "return")
+    end
+  end
+
+  def test_reland_rate_and_time_per_kind_and_cause
+    r = Coordination.relands(record, AGENTS)
+    assert_equal({ returns: 4, relanded: 2, rate: 0.5, sameAgent: 1, p50: 20.0, p90: 28.0 }, r[:all])
+    assert_equal({ "external" => { returns: 2, relanded: 1, rate: 0.5, sameAgent: 0, p50: 10.0, p90: 10.0 },
+                   "platform" => { returns: 2, relanded: 1, rate: 0.5, sameAgent: 1, p50: 30.0, p90: 30.0 } }, r[:byKind])
+    assert_equal({ "review" => { returns: 2, relanded: 1, rate: 0.5, sameAgent: 0, p50: 10.0, p90: 10.0 },
+                   "stale" => { returns: 2, relanded: 1, rate: 0.5, sameAgent: 1, p50: 30.0, p90: 30.0 } }, r[:byClass])
+    assert_equal({ returns: 1, relanded: 0, rate: 0.0, sameAgent: 0, p50: nil, p90: nil }, r[:byKindAndClass]["platform review"])
+    assert_equal %w[external\ review external\ stale platform\ review platform\ stale], r[:byKindAndClass].keys
+    assert_equal "| Return to reland | 2 of 4 returns relanded (50.0%, 1 by the same agent), p50 20.0 s, p90 28.0 s; by kind external 1/2, platform 1/2; " \
+                 "by cause review 1/2, stale 1/2 |", Coordination.relands_row(r)
+  end
+end
+
+# Definition 15: each verdict, and the record's certify and bisect events when the certifications cannot be read.
+class CulpritPrecisionTest < Minitest::Test
+  def test_a_first_red_answer_with_no_closure_recorded
+    certs = [{ "status" => "red", "trunkSha" => "a" * 40, "suspects" => [{ "landingId" => "lnd_9" }], "firstRed" => { "status" => "found", "landingId" => "lnd_1" } }]
+    c = Coordination.culprit_precision(certs)
+    assert_equal [1, 0, 1], c.values_at(:answers, :suspect, :closureNotRecorded)
+    assert_includes Coordination.culprit_row(c.merge(source: "certifications")), ", 1 closure not recorded (certifications) |"
+    assert_equal "| Culprit precision against first red | no first-red answer found a commit (events: suspects stop at 5) |",
+                 Coordination.culprit_row(Coordination.culprit_precision([]).merge(source: "events: suspects stop at 5"))
+  end
+
+  def test_from_the_record_events
+    record = Small.record do
+      certify(10, "a" * 40, "running")
+      certify(20, "a" * 40, "red", [{ "landingId" => "lnd_2" }, { "landingId" => "lnd_1" }])
+      certify(25, "b" * 40, "red")
+      bisect(30, "a" * 40, { "status" => "found", "landingId" => "lnd_1", "proposals" => [{ "id" => "prp_1", "paths" => ["a.ts"] }] })
+      bisect(31, "b" * 40, { "status" => "found", "landingId" => "lnd_3", "proposals" => [] })
+    end
+    c = Coordination.culprit_precision(Coordination.certifications_from(record))
+    assert_equal [2, 1, 1, { 2 => 1 }], c.values_at(:answers, :suspect, :outsideImportTrace, :ranks)
+  end
+end
+
+# Definition 16 on a small record: i1 landed on its second proposal after three decisions, i2 on its first with none;
+# i3 (claimed) and i4 (open) are left at the record's last event.
+class ResidueTest < Minitest::Test
+  def record
+    Small.record do
+      intent(0, "i1", "open")
+      intent(1, "i4", "open")
+      intent(2, "i2", "open")
+      intent(4, "i3", "open")
+      prop(5, "p1", "i1", "a1", "checking")
+      decision(7, "p1", "llm", "return")
+      prop(8, "p1", "i1", "a1", "returned", "llm: no")
+      prop(3, "p3", "i2", "a2", "checking")
+      prop(9, "p3", "i2", "a2", "landed")
+      intent(9, "i2", "landed")
+      intent(6, "i3", "claimed")
+      prop(10, "p2", "i1", "a1", "checking")
+      decision(11, "p2", "reflex", "escalate")
+      decision(12, "p2", "human", "approve")
+      prop(12, "p2", "i1", "a1", "ready")
+      prop(20, "p2", "i1", "a1", "landed")
+      intent(20, "i1", "landed")
+      prop(30, "p4", "i5", "a1", "checking")
+    end
+  end
+
+  def test_proposals_and_review_rounds_to_land_and_the_intents_left_open
+    r = Coordination.residue(record)
+    assert_equal 2, r[:landedIntents]
+    assert_equal({ n: 2, mean: 1.5, p50: 1.5, p90: 1.9, max: 2, histogram: { "1" => 1, "2" => 1 } }, r[:proposalsToLand])
+    assert_equal({ n: 2, mean: 1.5, p50: 1.5, p90: 2.7, max: 3, histogram: { "0" => 1, "3" => 1 } }, r[:reviewRoundsPerIntent])
+    assert_equal({ p50: 13.5, p90: 18.7 }, r[:declaredToLanded])
+    assert_equal({ n: 4, mean: 0.75, p50: 0.5, p90: 1.7, max: 2, histogram: { "0" => 2, "1" => 1, "2" => 1 } }, r[:reviewRoundsPerChange][:all])
+    assert_equal({ n: 2, mean: 1.0, p50: 1.0, p90: 1.8, max: 2, histogram: { "0" => 1, "2" => 1 } }, r[:reviewRoundsPerChange][:landed])
+    assert_equal({ intents: 2, byStatus: { "claimed" => 1, "open" => 1 }, p50AgeSeconds: 27.5, maxAgeSeconds: 29.0,
+                   oldest: [{ intent: "i4", title: "i4 title", status: "open", ageSeconds: 29.0 }, { intent: "i3", title: "i3 title", status: "claimed", ageSeconds: 26.0 }] }, r[:open])
+    assert_equal "| Residue and review rounds | 2 landed intents: 1.50 proposals to land (p90 1.9), 1.50 review rounds; declared to landed p50 13.5 s, " \
+                 "p90 18.7 s; 0.75 review rounds a change; 2 intents still open, the oldest 29.0 s old |", Coordination.residue_row(r)
   end
 end
 

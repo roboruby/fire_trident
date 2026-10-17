@@ -191,6 +191,7 @@ import { IntentSpendBook, intentSpendEnabled, type IntentSpendAnswer } from "./i
 import { SPEND_CAP_ACTOR, SpendCapBook, agentReserve, agentSettle, bookUsd, cappedAi, cappedClient, localGate, type AgentCapAsk, type CapSettle, type CapUse, type SpendCapAnswer } from "./spendcap.ts";
 import { ClosureLedger, abandonCause, closureOf, eventFields, reapCutoffs, silentTtlMs, type AbandonCause, type ClosureEventFields, type SilentTtlView } from "./closure.ts";
 import type { ClosureCause, ClosureReport, IntentClosure } from "@fire_trident/core";
+import { CoordMeter, coordTokensReport, headsUpBumps, type CoordTokensReport } from "./coordtokens.ts";
 
 /**
  * Result of ColonyDO.take: an assignment, or advice to wait and retry. `review`: what review will
@@ -4348,6 +4349,7 @@ export class ColonyDO extends DurableObject<Env> {
     spend?: ColonySpend;
     intentSpend?: Record<Id, IntentSpendBrief>;
     closures?: ClosureReport;
+    coordTokens?: CoordTokensReport;
   }> {
     const colony = this.requireColony();
     const now = Date.now();
@@ -4373,7 +4375,9 @@ export class ColonyDO extends DurableObject<Env> {
     const intentSpend = this.intentSpendMap();
     // The closure ledger (colony/closure.ts): closures per agent kind and cause, the reaped agents' gaps, the silent-agent limit.
     const closures = this.closureReport();
-    return { ...report, ...(spend ? { spend } : {}), ...(intentSpend ? { intentSpend } : {}), ...(closures ? { closures } : {}) };
+    // Coordination tokens per take (colony/coordtokens.ts), an estimate from the counters; absent before the first counted take.
+    const coordTokens = coordTokensReport(metrics);
+    return { ...report, ...(spend ? { spend } : {}), ...(intentSpend ? { intentSpend } : {}), ...(closures ? { closures } : {}), ...(coordTokens ? { coordTokens } : {}) };
   }
 
   /** What the colony's model calls cost so far (colony/spend.ts), for the status GET /api/colonies/:id serves; null before init. */
@@ -5105,6 +5109,8 @@ export class ColonyDO extends DurableObject<Env> {
     const model = this.modelStepup(intent);
     // Who declared the intent (colony/chain.ts): its source, the declarer and its model, and the chain depth.
     const declared = this.declaredBy(intent);
+    // Coordination tokens (colony/coordtokens.ts): what this take hands beyond the intent, counted for the coordination report.
+    for (const [name, delta] of this.coordMeter().take({ context, guide, lastReturn, review })) this.bump(name, delta, Date.now());
     return { intent, lease, ...(rule ? { rule: this.toRule(rule, intent.colonyId) } : {}), ...(review ? { review } : {}), ...(context ? { context } : {}), ...(lastReturn ? { lastReturn } : {}), ...(guide ? { guide } : {}), ...(model ? { model } : {}), ...(declared ? { declaredBy: declared } : {}) };
   }
 
@@ -5162,7 +5168,17 @@ export class ColonyDO extends DurableObject<Env> {
     } catch (err) {
       console.warn(`heads-up: why-context index not caught up: ${errorText(err)}`);
     }
-    return (this.headsUpBook ??= new HeadsUpBook(this.sql)).answer(agentId, q ?? {});
+    const answer = (this.headsUpBook ??= new HeadsUpBook(this.sql)).answer(agentId, q ?? {});
+    // Coordination tokens (colony/coordtokens.ts): a heads-up with something to say counts its characters.
+    for (const [name, delta] of headsUpBumps(answer.report)) this.bump(name, delta, Date.now());
+    return answer;
+  }
+
+  /** The coordination-token meter (colony/coordtokens.ts), made on first use. */
+  private coordRun: CoordMeter | null = null;
+
+  private coordMeter(): CoordMeter {
+    return (this.coordRun ??= new CoordMeter({ sql: this.sql, now: () => Date.now() }));
   }
 
   // =========================================================================
