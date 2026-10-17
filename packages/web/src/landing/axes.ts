@@ -60,7 +60,7 @@ export const AXES: readonly Axis[] = [
     id: "conflicts",
     axis: "Conflicts",
     mechanism:
-      "Text merge lands edits to different lines of one file; a change that cannot merge goes back naming the landing that beat it and, with return hunks on (FT_RETURN_HUNKS), quoting that landing's diff.",
+      "Text merge lands edits to different lines of one file; a change that cannot merge goes back naming the landing that beat it and quoting that landing's diff and the contested lines, so the agent repairs it without reading trunk again.",
     check: { label: "Run the text merge in your browser", href: "/#try-merge" },
   },
 ];
