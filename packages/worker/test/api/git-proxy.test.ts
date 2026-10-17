@@ -3,6 +3,7 @@ import {
   ArtifactsTrunkAccess,
   MAX_REQUEST_BYTES,
   PUSH_REFUSED,
+  pushRefused,
   READ_TOKEN_MARGIN_MS,
   READ_TOKEN_TTL_S,
   handleGitRequest,
@@ -176,7 +177,11 @@ describe("handleGitRequest", () => {
       const res = await handleGitRequest(req, PUBLIC, f.deps);
       expect(res.status).toBe(403);
       expect(res.headers.get("content-type")).toBe("text/plain; charset=utf-8");
-      expect(await res.text()).toBe(`${PUSH_REFUSED}\n`);
+      // The helpful answer (test/api/git-push.test.ts reads it through stock git): the colony, its page, how to connect.
+      const body = await res.text();
+      expect(body).toBe(`${pushRefused(new URL(BASE), "hono")}\n`);
+      expect(body).toContain(`${BASE}/c/hono`);
+      expect(body).not.toContain(PUSH_REFUSED);
     }
     expect(f.calls).toHaveLength(0);
     expect(f.stats.tokens).toBe(0);

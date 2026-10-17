@@ -39,6 +39,7 @@ import { rootRoutes } from "./root.ts";
 import { a2aRoutes } from "./a2a.ts";
 import { pauseRoutes } from "./pause.ts";
 import { spendCapRoutes } from "./spendcap.ts";
+import { skillRoutes } from "./skill.ts";
 import { refuseWhilePaused } from "../colony/pause.ts";
 import { bearerMatches } from "./token.ts";
 
@@ -216,6 +217,7 @@ async function requireColony(env: Env, colonyId: Id): Promise<void> {
  *   POST   /colonies/:id/a2a                Agent2Agent JSON-RPC: SendMessage and CancelTask (admin token), GetTask, ListTasks (api/a2a.ts)
  *   POST   /colonies/:id/pause | /resume    a person pauses or resumes the colony's agents; POST /pause and /resume the deployment's (api/pause.ts)
  *   GET    /colonies/:id/spend-cap          the colony's spend cap on the model calls this platform makes; POST sets, raises or removes it (api/spendcap.ts)
+ *   GET    /colonies/:id/skill              the colony's SKILL.md for an agent: connect, arrive, work, leave, come back (api/skill.ts)
  * POST routes require the admin bearer token when FT_ADMIN_TOKEN is set; DELETE always does.
  */
 export function createApi(deps: ApiDeps): Hono<ApiEnv> {
@@ -594,6 +596,7 @@ export function createApi(deps: ApiDeps): Hono<ApiEnv> {
   a2aRoutes(app, requireAdmin); // Agent2Agent: an orchestrator declares intents and follows them as tasks (FT_A2A; api/a2a.ts)
   pauseRoutes(app, requireAdmin); // Pause: a person stops the agents of a colony or of the deployment, with a reason (api/pause.ts)
   spendCapRoutes(app, requireAdmin); // Spend cap: a person caps what this platform's model calls for a colony may cost (api/spendcap.ts)
+  skillRoutes(app); // The colony's SKILL.md: how an agent connects and works there, its rules and protected paths (api/skill.ts)
 
   // Unknown API paths answer JSON here instead of falling through to the static UI.
   app.all("*", (c) => json({ error: `no route for ${c.req.method} ${c.req.path}` }, 404));

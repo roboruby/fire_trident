@@ -1,0 +1,169 @@
+/* Connect your agent: the /connect page, the landing page's MCP column and the colony page's links. Shares the tokens in styles.css. */
+
+.cx-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 18px;
+}
+
+.cx-tab {
+  height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.cx-tab:hover {
+  border-color: #3a475e;
+  color: var(--text);
+}
+
+.cx-tab.is-on {
+  border-color: var(--accent);
+  color: var(--text);
+  background: rgba(243, 128, 32, 0.1);
+}
+
+.cx-panel {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+}
+
+.cx-panel[hidden] {
+  display: none;
+}
+
+.cx-compact .cx-panel {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 18px;
+}
+
+.cx-variant {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.cx-head {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.cx-public .cx-head::before {
+  content: "1";
+}
+
+.cx-token .cx-head::before {
+  content: "2";
+}
+
+.cx-head::before {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin-right: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #05070b;
+  font-size: 12px;
+  vertical-align: 1px;
+}
+
+.cx-note {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--text-2);
+}
+
+.cx-link {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cx-link .l-btn {
+  align-self: flex-start;
+  height: 38px;
+  font-size: 14px;
+}
+
+.cx-link pre {
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.cx-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 28px;
+}
+
+.cx-grid .run-text {
+  min-height: 0;
+}
+
+.cx-skill {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.cx-warn {
+  margin: 12px 0 0;
+  font-size: 14px;
+  color: var(--need);
+}
+
+.cx-page code {
+  font-family: var(--mono);
+}
+
+/* The colony page: under the colony's name, the connect page and the SKILL.md. */
+.brand-connect {
+  display: flex;
+  gap: 6px;
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--text-4);
+  white-space: nowrap;
+}
+
+.brand-connect a {
+  color: var(--text-3);
+  text-decoration: none;
+}
+
+.brand-connect a:hover {
+  color: var(--text);
+}
+
+@media (max-width: 900px) {
+  .cx-panel,
+  .cx-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* A prompt reads as prose: it wraps instead of scrolling. */
+.cx-wrap pre {
+  white-space: pre-wrap;
+}
+
+.cx-skill .l-btn {
+  flex: none;
+  height: 40px;
+  white-space: nowrap;
+}

@@ -1,3 +1,4 @@
+import { pushRefusal } from "@fire_trident/core";
 import type { Env } from "../env.ts";
 import { authHeaders, dispose, getRepoIfExists, mintToken, TokenCache } from "../artifacts/git.ts";
 import { trunkRepoName } from "../artifacts/shards.ts";
@@ -11,6 +12,11 @@ import { trunkRepoName } from "../artifacts/shards.ts";
  * Both go to the colony's trunk repo (`<colony>--trunk` in ft-trunk) with a read token the Worker
  * mints and keeps; the client never sees it. Pushes (git-receive-pack) get 403 and anything else
  * 404. Only colonies named in FT_PUBLIC_GIT are served; when it is empty or unset the proxy is off.
+ *
+ * A push is answered with a plain-text 403 because stock git prints each line of such a body as
+ * "remote: <line>" before it gives up (an ERR packet in the advertisement prints as one "fatal: remote
+ * error:" line instead): the colony's page, how a change reaches trunk, the command that adds the MCP
+ * server that proposes, and the page with every client (pushRefused).
  */
 
 /** Largest upload-pack request body accepted, in bytes, both as sent and after gzip decoding. */
@@ -22,8 +28,21 @@ export const READ_TOKEN_MARGIN_MS = 5 * 60_000;
 /** How long a request waits for a trunk that is still being created or imported. */
 const TRUNK_WAIT_MS = 10_000;
 
-/** What git prints (as "remote: ...") when someone tries to push. */
+/** What git prints (as "remote: ...") when someone tries to push and the helpful answer cannot be built. */
 export const PUSH_REFUSED = "This is a read-only view of a FireTrident colony. Changes land through the colony's agents, not git push.";
+
+/**
+ * The body of the 403 a push gets, one "remote:" line each in git's output (core/connect.ts pushRefusal), for the
+ * deployment the request reached; PUSH_REFUSED when its origin is not one a command can carry.
+ */
+export function pushRefused(url: URL, colony: string): string {
+  try {
+    return pushRefusal(url.origin, colony).join("\n");
+  } catch {
+    return PUSH_REFUSED;
+  }
+}
+
 const NOT_FOUND = "Repository not found.";
 const TOO_LARGE = "Request body too large.";
 const UNREADABLE = "Could not read the request body.";
@@ -107,7 +126,7 @@ export interface GitProxyDeps {
 export async function handleGitRequest(req: Request, publicGit: string | undefined, deps: GitProxyDeps): Promise<Response> {
   const route = routeGitRequest(req.method, new URL(req.url));
   if (route.kind === "none" || !publicColonies(publicGit).has(route.colony)) return plain(404, NOT_FOUND);
-  if (route.kind === "push") return plain(403, PUSH_REFUSED);
+  if (route.kind === "push") return plain(403, pushRefused(new URL(req.url), route.colony));
   const body = route.kind === "upload-pack" ? forwardBody(req) : null;
   if (body !== null && "refuse" in body) return body.refuse;
   let remote: string | null;
