@@ -58,6 +58,7 @@ import { formatPause } from "./pause.ts";
 import { formatImpact } from "./impact.ts";
 import { autonomyLine, formatImmune } from "./immune.ts";
 import { signatureFailed } from "./signatures.ts";
+import { checkClone, colorLines, keysReader, nodeGit, rootRow, type CloneVerify } from "./clonecheck.ts";
 import type { IntentBody, SpecPolicy } from "./spec.ts";
 import type { GuideLesson, Intent, Landing, LineageNote, Proposal, Rule } from "@fire_trident/core";
 
@@ -175,6 +176,23 @@ function dryRun(ctx: Ctx, requests: ApiRequest[]): number {
   return 0;
 }
 
+/**
+ * `ft verify` on a git clone (clonecheck.ts): stock git in the clone, no server; only --keys reads a URL or a file.
+ * Exits 1 when a check fails, 2 when the clone or the keys cannot be read.
+ */
+async function verifyClone(cmd: CloneVerify, ctx: Ctx): Promise<number> {
+  let report: Awaited<ReturnType<typeof checkClone>>;
+  try {
+    report = await checkClone(cmd, nodeGit(cmd.dir ?? process.cwd()), keysReader(ctx.io.fetch, ctx.io.readFile));
+  } catch (e) {
+    ctx.io.stderr(`ft: ${e instanceof Error ? e.message : String(e)}`);
+    return 2;
+  }
+  if (ctx.flags.json) printJson(ctx, { lines: report.lines, failed: report.failed });
+  else for (const line of colorLines(report, ctx.c)) ctx.io.stdout(line);
+  return report.failed ? 1 : 0;
+}
+
 async function tryGet<T>(ctx: Ctx, req: ApiRequest): Promise<T | undefined> {
   try {
     return await send<T>(ctx.http, req);
@@ -188,6 +206,7 @@ async function execute(cmd: Command, ctx: Ctx): Promise<number> {
   if (cmd.name === "new") return newColony(cmd, ctx);
   if (cmd.name === "revert") return revert(cmd, ctx);
   if (cmd.name === "policy") return policy(cmd, ctx);
+  if (cmd.name === "verify-clone") return verifyClone(cmd, ctx);
   const req = planRequest(cmd, ctx.by);
   if (!req) throw new Error(`nothing to do for ${cmd.name}`);
   if (ctx.flags.dryRun) return dryRun(ctx, [req]);
@@ -208,6 +227,9 @@ async function execute(cmd: Command, ctx: Ctx): Promise<number> {
         // Earned autonomy in one line (immune.ts); a server that predates the immune report shows none.
         const autonomy = autonomyLine(await tryGet<unknown>(ctx, { method: "GET", path: colonyPath(cmd.colony, "/immune") }), cmd.colony, c);
         if (autonomy) io.stdout(autonomy);
+        // The colony's root commit, which pins a clone (clonecheck.ts); a server that predates GET /root shows none.
+        const root = rootRow(await tryGet<unknown>(ctx, { method: "GET", path: colonyPath(cmd.colony, "/root") }), c);
+        if (root) io.stdout(root);
         // The build the server runs, last (about.ts); a server that predates GET /api/about shows none.
         const build = buildRow(await tryGet<AboutLike>(ctx, ABOUT_REQUEST), ctx.http.baseUrl, c, io.now());
         if (build) io.stdout(build);

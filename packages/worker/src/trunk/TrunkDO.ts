@@ -1,6 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 import { blobId, landingMessage, mergeContentProblem, newId, regionOf, revalidationCandidate, revalidationEnabled, serializeNote, textMergeCandidate, validateProposal } from "@fire_trident/core";
 import type { AgentKind, ColonyEvent, ColonySnapshot, Decision, ExportSurface, FileVersion, Id, Landing, LineageNote, NoteResolves, NotesVerification, OccResult, Path, Proposal, RepoRef, Revalidated, Sha, TextMerged, TrunkPublish } from "@fire_trident/core";
+import type { TrunkRoot } from "@fire_trident/core";
 import type { TreeEntry } from "isomorphic-git";
 import type { Env } from "../env.ts";
 import {
@@ -49,6 +50,7 @@ import { noteProvenance } from "./provenance.ts";
 import { intentWho, landingAnswer, noteIntentWho, type IntentWho } from "./answerable.ts";
 import { bindingSource, checkLandings, layered, localSource, summarize, verifyLimit } from "./verify.ts";
 import { findLanding, landingOf, landingRow, storedNote, verifyOne } from "./landing-note.ts";
+import { ROOT_META, findRoot, rootAnswer } from "./root.ts";
 import { BoundedMap, applyTreeChangesDeferred, writePending, type PendingObject } from "./surgery.ts";
 import { commitContent, objectId } from "./objects.ts";
 import { pushPack } from "./push.ts";
@@ -684,6 +686,27 @@ export class TrunkDO extends DurableObject<Env> {
     const st = this.state();
     const found = findLanding(this.sql, String(ref ?? ""));
     return found ? { landing: landingOf(found, st.colonyId), note: storedNote(this.sql, found.id) } : null;
+  }
+
+  /**
+   * The colony's root commit (trunk/root.ts; GET /api/colonies/:id/root): the first commit of trunk, first parent from the
+   * published tip, read through the binding once and kept in ft_meta, so a history rewritten later does not move it.
+   */
+  async rootCommit(): Promise<TrunkRoot> {
+    const st = this.state();
+    const head = this.publishedHead() ?? st.trunkSha;
+    return rootAnswer({
+      colonyId: st.colonyId,
+      trunk: st.trunk.name,
+      kept: this.meta(ROOT_META),
+      // Kept only while the trunk it was read from is still this object's (it can be replaced while the log is read).
+      keep: (value) => {
+        const now = this.meta("trunk");
+        if (now !== null && (JSON.parse(now) as RepoRef).name === st.trunk.name) this.setMeta(ROOT_META, value);
+      },
+      walk: () => withRepo(this.trunkBinding(st.trunk), st.trunk.name, (repo) => findRoot(repo, head)),
+      now: Date.now,
+    });
   }
 
   /**

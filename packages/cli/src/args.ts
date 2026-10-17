@@ -1,5 +1,6 @@
 import { parseArgs } from "node:util";
 import type { AgentKind, ColonyEvent } from "@fire_trident/core";
+import { CLONE_OPTIONS, cloneVerify, type CloneVerify } from "./clonecheck.ts";
 
 /** Event types `ft watch --only` accepts. */
 export const EVENT_TYPES: ReadonlyArray<ColonyEvent["t"]> = [
@@ -43,6 +44,7 @@ export type Command =
   | { name: "why"; colony: string; path: string; line?: number }
   | { name: "impact"; colony: string; paths: string[]; depth?: number }
   | { name: "verify"; colony: string; limit?: number }
+  | CloneVerify
   | { name: "review-list"; colony: string; diff: boolean }
   | { name: "review-decide"; colony: string; proposalId: string; decision: ReviewDecision; reason: string; by?: string }
   | { name: "watch"; colony: string; only: string[] }
@@ -124,7 +126,7 @@ const COMMAND_OPTIONS: Record<string, Record<string, OptionSpec>> = {
   swarm: { agents: { type: "string" }, model: { type: "string" }, kind: { type: "string" } },
   why: {},
   impact: { depth: { type: "string" } },
-  verify: { limit: { type: "string" } },
+  verify: { limit: { type: "string" }, ...CLONE_OPTIONS },
   review: { reason: { type: "string" }, by: { type: "string" }, diff: { type: "boolean" } },
   revert: { reason: { type: "string" }, by: { type: "string" }, "no-redo": { type: "boolean" } },
   watch: { only: { type: "string", multiple: true } },
@@ -351,6 +353,10 @@ function build(word: string, v: Record<string, unknown>, p: string[]): Command {
       return cmd;
     }
     case "verify": {
+      // A git clone instead of the server (--all, --commit, --tamper, --colony, ...; clonecheck.ts).
+      const clone = cloneVerify(v, p);
+      if (typeof clone === "string") fail(clone);
+      if (clone) return clone;
       const usage = "ft verify <colony> [--limit <n>]";
       noExtras(p, 1, usage);
       const cmd: Command = { name: "verify", colony: colonyArg(p[0], usage) };
@@ -763,6 +769,7 @@ Commands
   why <colony> <path[:line]>       Show the lineage behind a file or line
   impact <colony> <path>...        What a change to a file reaches, and who works on it now
   verify <colony>                  Check the newest lineage notes on git against their commits
+  verify --all                     Check every landing of a git clone with stock git, no server
   review <colony> [--diff]         List proposals escalated to a human, code first
   review <colony> <id> <decision>  Approve, reject, or return a proposal
   revert <colony> <landing|prp>    Undo a landing or one proposal of it unless work landed on top
@@ -917,6 +924,8 @@ Examples
 `,
   verify: `
 ft verify <colony> [--limit <n>]
+ft verify --all [--from <ref>] [--limit <n>] [--keys <url or file>] [--colony <root sha>] [--tamper]
+ft verify [--commit <ref>] [--keys <url or file>] [--tamper [--tamper-field <path>]] [--colony <root sha>]
 
 Check the newest lineage notes on the trunk repository against their commits.
 Each landing commit's last line is an FT-Note trailer: the sha256 of its note as
@@ -930,10 +939,34 @@ notes, each commit is also signed by the key it publishes at
 has a bad signature. Exits 1 when a note is altered or missing, or a
 signature is bad.
 
-  --limit <n>    Landings to check, newest first (default 20, at most 200)
+In a git clone of the colony (after git fetch origin
+refs/notes/firetrident:refs/notes/firetrident) the same checks run with stock
+git and no server. --commit checks one commit's note (HEAD by default). --all
+walks trunk's first-parent chain and checks each landing: its note intact, its
+signature good (with --keys), and the commit changing exactly the files and
+blob ids its note's write sets name. Commits that are not landings are listed
+and skipped. --tamper copies the newest note in memory, changes one field (a
+decision's approver, else a blob id the change read) and requires the copy to
+fail against its commit; nothing is written to git. --colony pins the colony
+by its root commit, which ft status shows: a clone whose first commit is
+another fails. scripts/verify_note.mjs does the same with Node alone.
 
-Example
+  --limit <n>           Landings to check, newest first (default 20, at most
+                        200); with --all, commits to walk
+  --all                 Check every landing on the first-parent chain of a clone
+  --from <ref>          Where --all starts (default HEAD, the branch tip)
+  --commit <ref>        The commit to check in a clone (default HEAD)
+  --keys <url|file>     A deployment's /.well-known/firetrident-keys.json:
+                        check each commit's signature too
+  --tamper              Show that an edited copy of the newest note is caught
+  --tamper-field <p>    The field --tamper changes, e.g. proposals[0].decisions[1].by
+  --colony <root>       The colony's root commit (40 hex): any other history fails
+  --dir <path>          The clone (default the current directory)
+
+Examples
   ft verify web --limit 50
+  ft verify --all --keys https://firetrident.com/.well-known/firetrident-keys.json
+  ft verify --tamper --colony <root sha from ft status>
 `,
   review: `
 ft review <colony> [--diff]
