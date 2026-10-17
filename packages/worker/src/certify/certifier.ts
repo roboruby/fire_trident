@@ -3,7 +3,8 @@ import { FirstRedSearch } from "./bisect.ts";
 import { PrelandChecks, prelandMatches, type PrelandOutcome, type PrelandReader } from "./preland.ts";
 import type { SealedRuns } from "./reviewtests.ts";
 import { TEST_FILE } from "./compile.ts";
-import { SUSPECT_MS, capSuspects, findSuspects, markFirstRed, publicSuspect, type FoundSuspect, type LandedOn, type SinceGreen } from "./culprit.ts";
+import { SUSPECTS_MAX, SUSPECT_MS, capSuspects, findSuspects, markFirstRed, publicSuspect, type FoundSuspect, type LandedOn, type SinceGreen } from "./culprit.ts";
+import { markIsolated } from "./isolate.ts";
 import { DEFAULT_CAPS, load, testFiles, type CompileMemo, type IndexedFile, type Loaded } from "./load.ts";
 import { RUNNER_FAILED, RUNNER_VERSION, buildPlan, closureOf, type Plan } from "./plan.ts";
 import { DEFAULT_POLICY, isOpen, mergePolicy, repairAction, repairIntent, type CertifyPolicy, type RepairIntentInput, type RepairRow } from "./repair.ts";
@@ -800,6 +801,8 @@ export class Certifier {
     s.cert.firstRed = firstRed;
     // Culprit finding's suspect in the landing it found is marked `first-red` (the suspects were recorded before the search ended).
     if (firstRed.status === "found" && firstRed.landingId && Array.isArray(s.cert.suspects)) s.cert.suspects = markFirstRed(s.cert.suspects, firstRed.landingId);
+    // Proposal isolation (isolate.ts): the proposal isolated inside that landing is marked `isolated`, within the suspects' cap.
+    if (firstRed.status === "found" && firstRed.landingId && firstRed.isolated && Array.isArray(s.cert.suspects)) s.cert.suspects = capSuspects(markIsolated(s.cert.suspects, firstRed.landingId, firstRed.isolated), SUSPECTS_MAX);
     this.store(s);
     return s.cert;
   }
