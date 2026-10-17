@@ -34,9 +34,12 @@ export interface SourceEntry {
   type: string;
 }
 
-/** Git objects by id from one place; null when that place does not have the object. `parents`: where the place says. */
+/**
+ * Git objects by id from one place; null when that place does not have the object. `parents`: where the place says;
+ * `committedAt`: the committer time in Unix seconds, where the place says (a retired key's window is checked against it).
+ */
 export interface ObjectSource {
-  commit(oid: string): Promise<{ tree: string; message: string; parents?: string[] } | null>;
+  commit(oid: string): Promise<{ tree: string; message: string; parents?: string[]; committedAt?: number } | null>;
   tree(oid: string): Promise<SourceEntry[] | null>;
   blob(oid: string): Promise<Uint8Array | null>;
 }
@@ -55,7 +58,7 @@ export function localSource(repo: GitRepo): ObjectSource {
   };
   const at = { fs: repo.fs, dir: repo.dir, cache: repo.cache };
   return {
-    commit: (oid) => git.readCommit({ ...at, oid }).then((r) => ({ tree: r.commit.tree, message: r.commit.message, parents: r.commit.parent }), absent),
+    commit: (oid) => git.readCommit({ ...at, oid }).then((r) => ({ tree: r.commit.tree, message: r.commit.message, parents: r.commit.parent, committedAt: r.commit.committer.timestamp }), absent),
     tree: (oid) => git.readTree({ ...at, oid }).then((r) => r.tree.map((e) => ({ name: e.path, oid: e.oid, type: e.type })), absent),
     blob: (oid) => git.readBlob({ ...at, oid }).then((r) => r.blob, absent),
   };
@@ -66,7 +69,7 @@ export function bindingSource(open: () => Promise<ArtifactsRepo>): ObjectSource 
   return {
     async commit(oid) {
       const c = await (await open()).readCommit(oid);
-      return c ? { tree: c.treeHash, message: c.message, ...(Array.isArray(c.parents) ? { parents: c.parents } : {}) } : null;
+      return c ? { tree: c.treeHash, message: c.message, ...(Array.isArray(c.parents) ? { parents: c.parents } : {}), ...(typeof c.committedAt === "number" ? { committedAt: c.committedAt } : {}) } : null;
     },
     async tree(oid) {
       const t = await (await open()).readTree(oid);
@@ -141,8 +144,9 @@ export async function checkLandings(rows: LandingRow[], p: { src: ObjectSource; 
     }
     const message = commit?.message ?? null;
     if (commit === null || message === null) return { ...base, status: "unreadable", detail: "the commit could not be read" };
-    // Signed lineage notes (trunk/signature.ts): where the deployment signs, whether this commit is signed by its key.
-    const signature = p.keys && p.keys.length > 0 ? await checkSignature(commit, p.keys) : null;
+    // Signed lineage notes (trunk/signature.ts): where the deployment signs, whether this commit is signed by one of its
+    // keys that was signing at the commit's time (the commit's own committer time, else when the landing was recorded).
+    const signature = p.keys && p.keys.length > 0 ? await checkSignature({ ...commit, committedAt: commit.committedAt ?? Math.floor(r.at / 1000) }, p.keys) : null;
     const read = signature ? { ...base, signature } : base;
     const trailer = trailerDigest(message);
     if (trailer === null) return { ...read, status: "no-trailer", detail: "the commit carries no FT-Note trailer (it landed before notes were sealed)" };

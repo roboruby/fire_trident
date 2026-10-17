@@ -1,13 +1,17 @@
 /**
  * Live check of signed lineage notes (trunk/signature.ts) on a deployment with FT_NOTE_KEY set, as a scripted external
  * agent over MCP plus the admin API, then a stock git clone:
- * - GET /.well-known/firetrident-keys.json lists one Ed25519 key whose id is the first 16 hex digits of the SHA-256 of
- *   its raw public key, and GET /api/about names the same key id;
+ * - GET /.well-known/firetrident-keys.json lists the current Ed25519 key first (until null; retired keys after it, each
+ *   with an until), whose id is the first 16 hex digits of the SHA-256 of its raw public key, and GET /api/about names
+ *   the same key id; GET /.well-known/firetrident-allowed-signers lists each of them for git under lanes@firetrident.dev;
  * - in a new colony listed in FT_PUBLIC_GIT, an agent lands one change, and the note check of that landing
  *   (GET /api/colonies/:id/notes/verify?landing=) finds its note intact and its commit signed by that key;
  * - in a stock `git clone` of /git/<colony>.git with the notes fetched, the landing commit ends with the
  *   FT-Note-Signature and FT-Note trailers; scripts/verify_note.mjs prints "intact" without --keys, as before, and
- *   "intact, signed by <key id>" with --keys <deployment>/.well-known/firetrident-keys.json;
+ *   "intact, signed by <key id>" with --keys <deployment>/.well-known/firetrident-keys.json; stock
+ *   `git verify-commit` with gpg.format=ssh and the deployment's allowed signers says Good, and a copy of the commit
+ *   with its message changed under the same gpgsig header fails it; where GET /api/about lists FT_CREDIT_TRAILERS, the
+ *   commit names the agent in a Co-authored-by trailer above FT-Landing (needs ssh-keygen, which git runs);
  * - the note edited in the clone: "altered"; the history rewritten to match it (the same tree and parent, the FT-Note
  *   trailer recomputed for the edited note): "intact" without --keys, which the digest alone cannot catch, and
  *   "bad signature" with them.
@@ -41,6 +45,7 @@ if (!URL_BASE || !COLONY || !MCP_TOKEN || !ADMIN_TOKEN) {
 
 const VERIFY_NOTE = fileURLToPath(new URL("./verify_note.mjs", import.meta.url));
 const KEYS_URL = `${URL_BASE}/.well-known/firetrident-keys.json`;
+const SIGNERS_URL = `${URL_BASE}/.well-known/firetrident-allowed-signers`;
 const FILE = "notes/signed.md";
 
 let failed = false;
@@ -115,13 +120,25 @@ async function main(): Promise<void> {
   // The published key, and the key id GET /api/about names.
   const keys = await read("/.well-known/firetrident-keys.json");
   const key = keys.data?.keys?.[0];
-  check(`${KEYS_URL} lists one Ed25519 key (${keys.status}, ${short(key)})`, keys.status === 200 && keys.type.includes("application/json") && keys.data?.keys?.length === 1 && key?.alg === "Ed25519");
+  const retired: any[] = Array.isArray(keys.data?.keys) ? keys.data.keys.slice(1) : [];
+  check(
+    `${KEYS_URL} lists the current Ed25519 key first, then ${retired.length} retired (${keys.status}, ${short(key)})`,
+    keys.status === 200 && keys.type.includes("application/json") && key?.alg === "Ed25519" && key?.until === null && retired.every((k) => k?.alg === "Ed25519" && typeof k?.until === "string"),
+  );
   const keyId: string = typeof key?.id === "string" ? key.id : "";
   check(`its id ${keyId} is the first 16 hex digits of the SHA-256 of its public key`, typeof key?.publicKey === "string" && /^[A-Za-z0-9_-]{43}$/.test(key.publicKey) && keyIdOf(key.publicKey) === keyId);
   check(`it says since when it signs (${short(key?.since)})`, key?.since === null || (typeof key?.since === "string" && Number.isFinite(Date.parse(key.since))));
   const about = await read("/api/about");
   check(`GET /api/about names the same key (${short(about.data?.noteKey)})`, about.status === 200 && about.data?.noteKey === keyId);
   if (!keyId) throw new Error("the deployment publishes no signing key: set FT_NOTE_KEY on it");
+  const signers = await fetch(SIGNERS_URL);
+  const signersText = await signers.text();
+  const signerLines = signersText.split("\n").filter((l) => l !== "" && !l.startsWith("#"));
+  check(
+    `${SIGNERS_URL} lists each published key for git under lanes@firetrident.dev (${signers.status}, ${signerLines.length} lines)`,
+    signers.status === 200 && signerLines.length === keys.data.keys.length && signerLines.every((l) => /^lanes@firetrident\.dev namespaces="git"(,valid-after="\d{14}Z")?(,valid-before="\d{14}Z")? ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI[A-Za-z0-9+/]{43}$/.test(l)),
+  );
+  const credits = Array.isArray(about.data?.flags) && about.data.flags.includes("FT_CREDIT_TRAILERS");
 
   // One landing in a new public colony.
   const made = await rest("POST", "/api/colonies", { name: COLONY, poolTarget: 4 });
@@ -201,6 +218,24 @@ async function main(): Promise<void> {
     check(`the history rewritten to match (${forged.slice(0, 7)}): the digest alone says intact (${r.out}, exit ${r.code})`, r.out === "intact" && r.code === 0);
     r = verifyNote(forged, true);
     check(`and with --keys it prints bad signature (${r.out}, exit ${r.code})`, r.out === "bad signature" && r.code === 1);
+
+    // Stock git's own signature check, with the allowed signers the deployment publishes.
+    const signersFile = join(dir, ".git", "allowed_signers");
+    writeFileSync(signersFile, signersText);
+    const verifyCommit = (commit: string) => spawnSync("git", ["-C", dir, "-c", "gpg.format=ssh", "-c", `gpg.ssh.allowedSignersFile=${signersFile}`, "verify-commit", commit], { encoding: "utf8" });
+    let g = verifyCommit(sha);
+    check(`git verify-commit ${sha.slice(0, 7)} with the allowed signers says Good (${short(g.stderr.trim())}, exit ${g.status})`, g.status === 0 && /^Good "git" signature for lanes@firetrident\.dev with ED25519 key SHA256:/.test(g.stderr.trim()));
+    const raw = execFileSync("git", ["-C", dir, "cat-file", "commit", sha]);
+    const copy = execFileSync("git", ["-C", dir, "hash-object", "-t", "commit", "-w", "--stdin"], { input: Buffer.from(raw.toString("utf8").replace("Add ", "Edit ")), encoding: "utf8" }).trim();
+    g = verifyCommit(copy);
+    check(`a copy with its message changed under the same signature (${copy.slice(0, 7)}) fails git verify-commit (exit ${g.status})`, copy !== sha && g.status !== 0);
+    g = verifyCommit(forged);
+    check(`the rewritten history (${forged.slice(0, 7)}) has no git signature, and fails it (exit ${g.status})`, g.status !== 0);
+
+    // Credit trailers, where the deployment turns them on.
+    const coauthor = lines.find((l) => l.startsWith("Co-authored-by: "));
+    if (credits) check(`FT_CREDIT_TRAILERS: the commit names its agent above FT-Landing (${short(coauthor)})`, /^Co-authored-by: signed-notes-check <agt_[^@\s]+@[a-z0-9-]+\.noreply\.firetrident\.dev>$/.test(coauthor ?? "") && lines.indexOf(coauthor ?? "") < lines.findIndex((l) => l.startsWith("FT-Landing: ")));
+    else check(`FT_CREDIT_TRAILERS is off: no Co-authored-by trailer (${short(coauthor)})`, coauthor === undefined);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

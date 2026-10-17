@@ -116,6 +116,7 @@ import { importNeighbors, type ImportLinks } from "../trunk/imports.ts";
 import type { RevertResult } from "../trunk/revert.ts";
 import { agentClaims, answerableBumps, answerableMeter, intentWho, type AnswerableMeter, type IntentWho } from "../trunk/answerable.ts";
 import { asyncPublishEnabled } from "../trunk/publish.ts";
+import { creditsEnabled } from "../trunk/credits.ts";
 import {
   BUCKET_MS,
   COUNTER_SERIES,
@@ -1794,7 +1795,7 @@ export class ColonyDO extends DurableObject<Env> {
    */
   async landContext(intentIds: Id[], agentIds: Id[], proposalIds: Id[] = []): Promise<{
     intents: Record<Id, { title: string; why: string; ruleId?: Id; parentId?: Id; priority?: number; requestedPriority?: number } & DirectionInfo & IntentWho>;
-    agents: Record<Id, { kind: AgentKind; model?: string; resumeKey?: boolean }>;
+    agents: Record<Id, { kind: AgentKind; model?: string; resumeKey?: boolean; name?: string }>;
     decisions: Record<Id, NoteDecision[]>;
     alternatives?: Record<Id, ContestAlternative[]>;
     resolves?: Record<Id, NoteResolves>;
@@ -1823,14 +1824,16 @@ export class ColonyDO extends DurableObject<Env> {
       }
       intents[id] = entry;
     }
-    const agents: Record<Id, { kind: AgentKind; model?: string; resumeKey?: boolean }> = {};
+    const agents: Record<Id, { kind: AgentKind; model?: string; resumeKey?: boolean; name?: string }> = {};
+    // Credit trailers (trunk/credits.ts): where FT_CREDIT_TRAILERS covers the colony, each agent's name for its Co-authored-by.
+    const named = creditsEnabled(this.env.FT_CREDIT_TRAILERS, colonyId);
     for (const id of new Set(agentIds)) {
       const row = this.agentRow(id);
       if (!row) continue;
       const a = this.toAgent(row, colonyId, false);
       // External agents: whether the agent joined over MCP and holds a resume key (lineage provenance names how it was authenticated).
       const resumeKey = a.kind === "external" ? this.sql.exec("SELECT 1 AS x FROM agent_keys WHERE agent_id = ?", id).toArray().length > 0 : undefined;
-      agents[id] = { kind: a.kind, ...(a.model ? { model: a.model } : {}), ...(resumeKey !== undefined ? { resumeKey } : {}) };
+      agents[id] = { kind: a.kind, ...(a.model ? { model: a.model } : {}), ...(resumeKey !== undefined ? { resumeKey } : {}), ...(named && a.name ? { name: a.name } : {}) };
     }
     const wanted = [...new Set(Array.isArray(proposalIds) ? proposalIds : [])].slice(0, 500);
     const decisions =

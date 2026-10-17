@@ -34,7 +34,6 @@ import {
   sleep,
   withArtifactsRetry,
   withRepo,
-  writeCommitObject,
   writeLocalBlob,
   type GitRepo,
   type MintedToken,
@@ -46,6 +45,8 @@ import { maskNote } from "./mask.ts";
 import { addNotes } from "./notes.ts";
 import { sealNote, withNoteDigest } from "./digest.ts";
 import { noteSigner, publishedKeys, withSignature } from "./signature.ts";
+import { signCommit, writeTrunkCommit } from "./gitsig.ts";
+import { creditLines, creditsEnabled, withCredits } from "./credits.ts";
 import { noteProvenance } from "./provenance.ts";
 import { intentWho, landingAnswer, noteIntentWho, type IntentWho } from "./answerable.ts";
 import { bindingSource, checkLandings, layered, localSource, summarize, verifyLimit } from "./verify.ts";
@@ -155,8 +156,11 @@ export interface LandContext {
    * granted (colony/priority.ts); who declared it and who approved its rule (trunk/answerable.ts IntentWho) when the colony says.
    */
   intents?: Record<Id, { title: string; why?: string; ruleId?: Id; parentId?: Id; priority?: number; requestedPriority?: number } & IntentWho>;
-  /** `resumeKey`: an external agent holds an MCP resume key (it joined over MCP), for the note's provenance. */
-  agents?: Record<Id, { kind: AgentKind; model?: string; resumeKey?: boolean }>;
+  /**
+   * `resumeKey`: an external agent holds an MCP resume key (it joined over MCP), for the note's provenance. `name`: the
+   * agent's name, sent where FT_CREDIT_TRAILERS covers the colony, for its Co-authored-by trailer (trunk/credits.ts).
+   */
+  agents?: Record<Id, { kind: AgentKind; model?: string; resumeKey?: boolean; name?: string }>;
   decisions?: Record<Id, Array<Pick<Decision, "kind" | "layer" | "p" | "action">>>;
   /** Contest mode: the other attempts at a winner's intent and why each lost (keyed by the winner's proposal id). */
   alternatives?: Record<Id, ContestAlternative[]>;
@@ -165,7 +169,7 @@ export interface LandContext {
 }
 
 type IntentInfo = { title: string; why: string; ruleId?: Id; parentId?: Id; priority?: number; requestedPriority?: number } & IntentWho;
-type AgentLite = { kind: AgentKind; model?: string; resumeKey?: boolean };
+type AgentLite = { kind: AgentKind; model?: string; resumeKey?: boolean; name?: string };
 type StagedChange = { blob: Sha; mode: string; size: number; before: Sha | null } | { blob: null; before: Sha | null };
 
 /** Everything needed to record a landing, journaled before the trunk push. */
@@ -656,7 +660,7 @@ export class TrunkDO extends DurableObject<Env> {
     try {
       const notes = await checkLandings(
         rows.map((r) => ({ landingId: r.id, trunkSha: r.trunk_sha, at: r.at, note: r.note, waiting: due.has(r.id) })),
-        { src: layered(localSource(this.repo()), remote), tip, keys: await publishedKeys(this.env.FT_NOTE_KEY) },
+        { src: layered(localSource(this.repo()), remote), tip, keys: await publishedKeys(this.env.FT_NOTE_KEY, this.env.FT_NOTE_KEYS_RETIRED) },
       );
       return summarize(st.colonyId, tip, notes, Date.now());
     } finally {
@@ -676,7 +680,7 @@ export class TrunkDO extends DurableObject<Env> {
     const opened: { repo?: Promise<ArtifactsRepo> } = {};
     const remote = bindingSource(() => (opened.repo ??= this.trunkBinding(st.trunk).get(st.trunk.name)));
     try {
-      return await verifyOne(landingRow(this.sql, found), { colonyId: st.colonyId, tip: () => this.remoteNotesTip(), src: layered(localSource(this.repo()), remote), keys: await publishedKeys(this.env.FT_NOTE_KEY) });
+      return await verifyOne(landingRow(this.sql, found), { colonyId: st.colonyId, tip: () => this.remoteNotesTip(), src: layered(localSource(this.repo()), remote), keys: await publishedKeys(this.env.FT_NOTE_KEY, this.env.FT_NOTE_KEYS_RETIRED) });
     } finally {
       if (opened.repo) dispose(await opened.repo.catch(() => null));
     }
@@ -1673,6 +1677,8 @@ export class TrunkDO extends DurableObject<Env> {
     const chained = new Map<Path, { blob: Sha; mode: string } | null>();
     // Signed lineage notes (trunk/signature.ts): FT_NOTE_KEY's signer, or null, and the commits are built as before.
     const signer = await noteSigner(this.env.FT_NOTE_KEY);
+    // Credit trailers (trunk/credits.ts): where FT_CREDIT_TRAILERS covers the colony, the agents and approvers.
+    const credits = creditsEnabled(this.env.FT_CREDIT_TRAILERS, st.colonyId);
     for (let i = 0; i < accepted.length; i++) {
       const proposals = accepted[i]!;
       if (proposals.length === 0) continue;
@@ -1707,8 +1713,11 @@ export class TrunkDO extends DurableObject<Env> {
       const built = buildNote({ id, colonyId: st.colonyId }, proposals, info, ctx, revalidated, merges.merged);
       const note = await sealNote(built);
       lap("note");
-      const message = withNoteDigest(await withSignature(landingMessage({ id, intentIds }, proposals, info.titles), signer, { digest: note.digest, tree, parents: [parent] }), note.digest);
-      const content = commitContent({ tree, parents: [parent], message, name: LANDING_IDENTITY.name, email: LANDING_IDENTITY.email, timestamp: Math.floor(at / 1000) });
+      const titled = landingMessage({ id, intentIds }, proposals, info.titles);
+      const credited = credits ? withCredits(titled, creditLines(built, (agentId) => info.agents.get(agentId)?.name)) : titled;
+      const message = withNoteDigest(await withSignature(credited, signer, { digest: note.digest, tree, parents: [parent] }), note.digest);
+      // Signed the stock git way too (trunk/gitsig.ts), with the same key: a gpgsig header that git verify-commit checks.
+      const content = await signCommit(commitContent({ tree, parents: [parent], message, name: LANDING_IDENTITY.name, email: LANDING_IDENTITY.email, timestamp: Math.floor(at / 1000) }), signer);
       const commit = objectId("commit", content);
       pending.set(commit, { type: "commit", content });
       this.commitTrees.set(commit, tree);
@@ -2091,7 +2100,8 @@ export class TrunkDO extends DurableObject<Env> {
       // Signed like a landing too, when FT_NOTE_KEY holds a key (trunk/signature.ts).
       const signer = await noteSigner(this.env.FT_NOTE_KEY);
       const message = withNoteDigest(await withSignature(`${p.message.replace(/\s+$/, "")}\nFT-Landing: ${id}`, signer, { digest: note.digest, tree, parents: [parent] }), note.digest);
-      const commit = await writeCommitObject(g, { tree, parents: [parent], message, at });
+      // With the key, the commit is also signed the stock git way (trunk/gitsig.ts); without it, written as before.
+      const commit = await writeTrunkCommit(g, { tree, parents: [parent], message, at }, signer);
       const paths = [...changes.keys()].sort();
       const landing: Landing = {
         id,
@@ -2628,7 +2638,7 @@ export class TrunkDO extends DurableObject<Env> {
 
   private async lineageInfo(proposals: Proposal[], ctx: LandContext, colonyId: Id): Promise<{ titles: Record<Id, string>; intents: Map<Id, IntentInfo>; agents: Map<Id, AgentLite> }> {
     for (const [id, i] of Object.entries(ctx.intents ?? {})) this.intentCache.set(id, { title: i.title, why: i.why ?? "", ruleId: i.ruleId, parentId: i.parentId, ...notePriority(i), ...noteIntentWho(i) });
-    for (const [id, a] of Object.entries(ctx.agents ?? {})) this.agentCache.set(id, { kind: a.kind, model: a.model, ...(typeof a.resumeKey === "boolean" ? { resumeKey: a.resumeKey } : {}) });
+    for (const [id, a] of Object.entries(ctx.agents ?? {})) this.agentCache.set(id, { kind: a.kind, model: a.model, ...(typeof a.resumeKey === "boolean" ? { resumeKey: a.resumeKey } : {}), ...(typeof a.name === "string" ? { name: a.name } : {}) });
     const missing = proposals.some((p) => !this.intentCache.has(p.intentId) || !this.agentCache.has(p.agentId));
     if (missing) await this.loadColonyContext(colonyId);
     const intents = new Map<Id, IntentInfo>();
@@ -2659,7 +2669,7 @@ export class TrunkDO extends DurableObject<Env> {
         this.intentCache.set(i.id, { title: i.title, why: i.why, ruleId: i.ruleId, parentId: i.parentId, ...notePriority(i), ...noteIntentWho({ ...intentWho(i, (id) => approvers.get(id)), ruleId: i.ruleId }) });
       }
       // A snapshot does not say who holds a resume key: keep what a land context said.
-      for (const a of snap.agents ?? []) this.agentCache.set(a.id, { ...this.agentCache.get(a.id), kind: a.kind, model: a.model });
+      for (const a of snap.agents ?? []) this.agentCache.set(a.id, { ...this.agentCache.get(a.id), kind: a.kind, model: a.model, ...(typeof a.name === "string" ? { name: a.name } : {}) });
     } catch {
       // lineage falls back to proposal summaries
     }

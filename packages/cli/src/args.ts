@@ -958,10 +958,14 @@ write to the repository could rewrite a note, but not the commit that carries
 its digest. Each note is intact, altered, missing, not pushed yet, or from a
 commit that predates the trailer; for an altered or missing note, ft verify
 says whether FireTrident's own copy still matches. Where the deployment signs
-notes, each commit is also signed by the key it publishes at
-/.well-known/firetrident-keys.json, unsigned (it landed before signing), or
-has a bad signature. Exits 1 when a note is altered or missing, or a
-signature is bad.
+notes, each commit is also signed by a key it publishes at
+/.well-known/firetrident-keys.json (the current key and each retired one,
+each good for the commits made while it signed), unsigned (it landed before
+signing), or has a bad signature. Exits 1 when a note is altered or missing,
+or a signature is bad. The same commits carry a standard git signature by the
+same key, which stock git checks with no FireTrident code: save
+/.well-known/firetrident-allowed-signers to a file F, then run
+  git -c gpg.format=ssh -c gpg.ssh.allowedSignersFile=F verify-commit <commit>
 
 In a git clone of the colony (after git fetch origin
 refs/notes/firetrident:refs/notes/firetrident) the same checks run with stock
@@ -981,7 +985,8 @@ another fails. scripts/verify_note.mjs does the same with Node alone.
   --from <ref>          Where --all starts (default HEAD, the branch tip)
   --commit <ref>        The commit to check in a clone (default HEAD)
   --keys <url|file>     A deployment's /.well-known/firetrident-keys.json:
-                        check each commit's signature too
+                        check each commit's signature too, by any key it
+                        lists whose window covers the commit's time
   --tamper              Show that an edited copy of the newest note is caught
   --tamper-field <p>    The field --tamper changes, e.g. proposals[0].decisions[1].by
   --colony <root>       The colony's root commit (40 hex): any other history fails
