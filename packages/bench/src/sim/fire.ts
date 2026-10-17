@@ -10,10 +10,12 @@
  *    with core validateProposal against current trunk, core selectBatch picks the batch, and the
  *    trunk writer lands it; the next tick waits core laneIntervalMs(flux) times
  *    inhibitionFactor(sigma), with sigma from recorded causes (returns are never parents).
- *  - there is ONE trunk writer per colony (TrunkDO, a serial chain): every lane's batch is one
- *    commit, served first-come first-served, and each batch is re-validated when its turn comes.
- *  - "firetrident-group" (PROPOSED, not built): the trunk writer folds every batch waiting in its
- *    queue into the commit it is building (group commit), still re-validating each proposal.
+ *  - there is ONE trunk writer per colony (TrunkDO). In "firetrident" it is a serial chain: every
+ *    lane's batch is one commit, served first-come first-served, and each batch is re-validated
+ *    when its turn comes.
+ *  - "firetrident-group" is the trunk writer as deployed (TrunkDO, trunk/plan.ts): it folds every
+ *    batch waiting in its queue into the commit it is building (group commit), still re-validating
+ *    each proposal.
  *  - ANALYSIS options, off by default: `assumptions` lands a proposal that is stale only through files
  *    it read when its assumptions held (not built), and `onReturn` reports what sent each proposal back.
  */
@@ -178,7 +180,7 @@ function prune(times: number[], since: number): number {
   return times.length;
 }
 
-/** FireTrident as deployed (or with the proposed group commit). */
+/** FireTrident: as deployed, with group commit ("firetrident-group"), or with the serial trunk writer before it ("firetrident"). */
 export class FireSim extends SimBase {
   private readonly group: boolean;
   private readonly initial: (path: string) => string | null;

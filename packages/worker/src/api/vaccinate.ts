@@ -5,6 +5,7 @@ import type { Env } from "../env.ts";
 import { decodeError, ftError } from "../colony/errors.ts";
 import { policyProblems } from "../decide/policy.ts";
 import { VACCINE_CLASSES } from "../decide/vaccine.ts";
+import { bearerMatches } from "./token.ts";
 
 /**
  * Decide-prong routes (mounted on the API root):
@@ -26,22 +27,11 @@ function json(body: unknown, status = 200, headers: Record<string, string> = {})
   return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json; charset=utf-8", ...headers } });
 }
 
-/** Constant-time comparison of two secrets (SHA-256 digests). */
-async function sameSecret(a: string, b: string): Promise<boolean> {
-  const enc = new TextEncoder();
-  const [da, db] = await Promise.all([crypto.subtle.digest("SHA-256", enc.encode(a)), crypto.subtle.digest("SHA-256", enc.encode(b))]);
-  const x = new Uint8Array(da);
-  const y = new Uint8Array(db);
-  let diff = x.length ^ y.length;
-  for (let i = 0; i < x.length && i < y.length; i++) diff |= (x[i] ?? 0) ^ (y[i] ?? 0);
-  return diff === 0;
-}
-
 const adminOnly: MiddlewareHandler<DecideEnv> = async (c, next) => {
   const expected = c.env.FT_ADMIN_TOKEN;
   if (expected) {
     const m = /^Bearer\s+(\S+)\s*$/i.exec(c.req.header("Authorization") ?? "");
-    if (!m || !(await sameSecret(m[1] ?? "", expected))) return json({ error: "unauthorized" }, 401, { "WWW-Authenticate": "Bearer" });
+    if (!m || !(await bearerMatches(m[1] ?? "", expected))) return json({ error: "unauthorized" }, 401, { "WWW-Authenticate": "Bearer" });
   } else if (c.env.FT_OPEN_WRITES !== "1") {
     return json({ error: "forbidden: writes need FT_ADMIN_TOKEN configured on the server" }, 403);
   }

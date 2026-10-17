@@ -156,8 +156,8 @@ const PRESENCE_CHECK = /[!=]==?\s*(?:""|''|``|null|undefined)(?![\w$])|(?<![\w$]
 const UNION_MEMBER = /^\s*\|\s*['"`][\w-]+['"`]\s*;?\s*$/;
 const PLACEHOLDER = /^(?:<[^>]*>|\$\{[^}]*\}|x+|\*+|\.+|change[-_]?me|replace[-_]?me|your[-_].*|example.*|placeholder|todo|tbd|redacted|dummy|sample.*|test.*|fake.*|none|null|undefined|string|secret|password|token)$/i;
 const PRIVATE_KEY = /-----BEGIN [A-Z ]*PRIVATE KEY-----/;
-const TOKEN_FORMAT_SOURCE = String.raw`\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{20,}|sk-(?:live-|proj-|ant-)?[A-Za-z0-9_-]{20,}|xox[abprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{35}|art_v1_[0-9a-f]{20,}|eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})`;
-/** Known token formats: code-host and model-API tokens, chat-app and cloud keys, Artifacts tokens, JWTs. */
+const TOKEN_FORMAT_SOURCE = String.raw`\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{20,}|sk-(?:live-|proj-|ant-)?[A-Za-z0-9_-]{20,}|xox[abprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{35}|art_v\d+_[A-Za-z0-9_]{20,}|eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})`;
+/** Known token formats: code-host and model-API tokens, chat-app and cloud keys, Artifacts tokens (any `art_v<n>_` version), JWTs. */
 const TOKEN_FORMAT = new RegExp(TOKEN_FORMAT_SOURCE);
 /** A credential-named key set to a bare (unquoted) literal that looks like a secret (`api_key: s3cr3tv4lu3x`, `TOKEN=ab12…`). */
 const UNQUOTED_CREDENTIAL = /\b\w*(?:secret|passw(?:or)?d|api[_-]?key|apikey|private[_-]?key|access[_-]?key|token)\w*["']?\s*[:=]\s*(?=[A-Za-z0-9_\-+/=]*\d)(?=[A-Za-z0-9_\-+/=]*[A-Za-z])[A-Za-z0-9_\-+/=]{12,}\s*,?\s*$/i;

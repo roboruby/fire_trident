@@ -40,6 +40,7 @@ import { a2aRoutes } from "./a2a.ts";
 import { pauseRoutes } from "./pause.ts";
 import { spendCapRoutes } from "./spendcap.ts";
 import { refuseWhilePaused } from "../colony/pause.ts";
+import { bearerMatches } from "./token.ts";
 
 /** Hono environment of the API. */
 export type ApiEnv = { Bindings: Env };
@@ -68,16 +69,8 @@ function json(body: unknown, status = 200, headers: Record<string, string> = {})
   return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json; charset=utf-8", ...headers } });
 }
 
-/** Constant-time comparison of two secrets (compares SHA-256 digests). */
-export async function tokensEqual(a: string, b: string): Promise<boolean> {
-  const enc = new TextEncoder();
-  const [da, db] = await Promise.all([crypto.subtle.digest("SHA-256", enc.encode(a)), crypto.subtle.digest("SHA-256", enc.encode(b))]);
-  const x = new Uint8Array(da);
-  const y = new Uint8Array(db);
-  let diff = x.length ^ y.length;
-  for (let i = 0; i < x.length && i < y.length; i++) diff |= (x[i] ?? 0) ^ (y[i] ?? 0);
-  return diff === 0;
-}
+// Bearer checks against the deployment's secrets go through api/token.ts, which drops a configured secret's line break.
+export { tokensEqual } from "./token.ts";
 
 /**
  * Mutating routes need `Authorization: Bearer <FT_ADMIN_TOKEN>`. Without that secret they refuse
@@ -87,7 +80,7 @@ export const requireAdmin: MiddlewareHandler<ApiEnv> = async (c, next) => {
   const expected = c.env.FT_ADMIN_TOKEN;
   if (expected) {
     const m = /^Bearer\s+(\S+)\s*$/i.exec(c.req.header("Authorization") ?? "");
-    if (!m || !(await tokensEqual(m[1] ?? "", expected))) return json({ error: "unauthorized" }, 401, { "WWW-Authenticate": "Bearer" });
+    if (!m || !(await bearerMatches(m[1] ?? "", expected))) return json({ error: "unauthorized" }, 401, { "WWW-Authenticate": "Bearer" });
   } else if (c.env.FT_OPEN_WRITES !== "1") {
     return json({ error: "forbidden: writes need FT_ADMIN_TOKEN configured on the server" }, 403);
   }
@@ -99,7 +92,7 @@ export async function isAdminRequest(c: Context<ApiEnv>): Promise<boolean> {
   const expected = c.env.FT_ADMIN_TOKEN;
   if (!expected) return false;
   const m = /^Bearer\s+(\S+)\s*$/i.exec(c.req.header("Authorization") ?? "");
-  return !!m && (await tokensEqual(m[1] ?? "", expected));
+  return !!m && (await bearerMatches(m[1] ?? "", expected));
 }
 
 /** An Artifacts remote's host names the account: public readers get `artifacts://<namespace>/<repo>.git` instead. */
