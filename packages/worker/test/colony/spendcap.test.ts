@@ -13,6 +13,7 @@ import {
   agentCapGate,
   agentReserve,
   agentSettle,
+  callText,
   capPrice,
   cappedAi,
   cappedClient,
@@ -351,13 +352,79 @@ describe("lifting the cap's pause", () => {
     await h.cap.set({ usd: 1, by: "maya" });
     await h.pause.resume({ by: "lee" });
     expect(h.cap.resumeNote("web")).toBe(
-      "The spend cap is still reached (spend cap: $0.950 of $1.00 spent on model calls this platform made): the next model call pauses the agents again. Raise the cap first: ft spend-cap web <usd>.",
+      "The spend cap is reached: $0.950 of $1.00 spent on model calls this platform made, so it will pause again at the next call. Raise the cap or remove it: ft spend-cap web <usd> (or off).",
     );
     expect(h.cap.reserve({ use: "agents", usd: 0.01 }).ok).toBe(false);
     await h.settled();
     expect(h.pause.own()).toMatchObject({ by: SPEND_CAP_ACTOR });
     await h.cap.set({ usd: 2, by: "lee" });
     expect(h.cap.resumeNote("web")).toBeNull();
+  });
+});
+
+describe("a cap that trips below its amount", () => {
+  // As on staging: a $0.0268 cap keeping $0.005 for review, $0.0072 spent, and an agent's write to kimi (12,000
+  // characters of prompt, 16,000 output tokens) that needs up to $0.068.
+  const KIMI_WRITE = { model: KIMI, chars: 12_000, maxTokens: 16_000, copies: 1 };
+  const SIZE = "up to $0.068 for @cf/moonshotai/kimi-k2.7-code with up to 16,000 output tokens";
+
+  async function tripped() {
+    const h = harness();
+    h.state.book = 0.0072;
+    await h.cap.set({ usd: 0.0268, reviewReserveUsd: 0.005, by: "maya" });
+    expect(h.pause.own()).toBeNull();
+    let err: unknown;
+    try {
+      agentReserve(h.cap, KIMI_WRITE, (m) => m);
+    } catch (e) {
+      err = e;
+    }
+    await h.settled();
+    return { h, err };
+  }
+
+  it("names what sized the call in the pause's reason: its model and its output limit", async () => {
+    const { h, err } = await tripped();
+    const reason = `spend cap: $0.0072 of $0.027 spent on model calls this platform made, and the next call (${SIZE}) does not fit in the $0.015 left to agents`;
+    expect(h.pause.own()).toMatchObject({ by: SPEND_CAP_ACTOR, reason });
+    expect((err as Error).message).toBe(`[ft:409] ${pausedSentence({ by: SPEND_CAP_ACTOR, reason })}`);
+    // A call in the colony names its request's model and max_tokens too, and a hedged one says it holds two copies.
+    const c = harness();
+    c.state.book = 0.0072;
+    await c.cap.set({ usd: 0.0268, reviewReserveUsd: 0.005, by: "maya" });
+    await expect(cappedAi(new SlowAi({ input: 0, output: 0 }), c.cap, "judge").run(GPT, request(300, 40_000))).rejects.toThrow(SHARE_REFUSAL);
+    await c.settled();
+    expect(c.pause.own()!.reason).toContain(`(up to $0.030 for ${GPT} with up to 40,000 output tokens) does not fit`);
+    expect(callText(0.136, { model: KIMI, maxTokens: 16_000 }, 2)).toBe("up to $0.136 for @cf/moonshotai/kimi-k2.7-code with up to 16,000 output tokens, twice for a hedged copy");
+    expect(callText(0.02, { model: GPT, maxTokens: null })).toBe(`up to $0.020 for ${GPT} with no output limit (held at 4,000 output tokens)`);
+    expect(callText(0.02, null)).toBe("up to $0.020");
+  });
+
+  it("tells a person who resumes that it will pause again at the next call, though the spend is under the cap", async () => {
+    const { h } = await tripped();
+    await h.pause.resume({ by: "lee" });
+    expect(h.cap.resumeNote("web")).toBe(
+      `The spend cap still leaves $0.015, less than the next model call may need (${SIZE}): it will pause again at the next call. Raise the cap or remove it: ft spend-cap web <usd> (or off).`,
+    );
+    // And it does: the same call trips the pause again.
+    expect(() => agentReserve(h.cap, KIMI_WRITE, (m) => m)).toThrow(/spend cap: \$0\.0072 of \$0\.027/);
+    await h.settled();
+    expect(h.pause.own()).toMatchObject({ by: SPEND_CAP_ACTOR });
+  });
+
+  it("says the same when a raise lifts the pause but still leaves less than that call, and nothing once there is room", async () => {
+    const { h } = await tripped();
+    const short = await h.cap.set({ usd: 0.05, by: "lee" });
+    expect(short.lifted).toBe(true);
+    expect(short.note).toContain(`The pause the cap had tripped is lifted: agents may work again. The spend cap still leaves $0.038, less than the next model call may need (${SIZE}): it will pause again at the next call.`);
+    expect(h.cap.resumeNote("web")).toContain("it will pause again at the next call");
+    const enough = await h.cap.set({ usd: 0.1, by: "lee" });
+    expect(enough.note).not.toContain("pause again");
+    expect(h.cap.resumeNote("web")).toBeNull();
+    expect(agentReserve(h.cap, KIMI_WRITE, (m) => m).hold).toMatch(/^hld_/);
+    // Removing the cap forgets the call that did not fit.
+    await h.cap.clear({ by: "lee" });
+    expect(h.sql.exec("SELECT COUNT(*) AS n FROM spend_cap_need").toArray()).toEqual([{ n: 0 }]);
   });
 });
 

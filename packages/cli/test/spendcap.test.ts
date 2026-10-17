@@ -80,7 +80,7 @@ describe("the cap in ft status and in a resume", () => {
   });
 
   it("tells a person who resumed while the spend is still at the cap that the next call pauses again", () => {
-    const note = "The spend cap is still reached (spend cap: $0.950 of $1.00 spent on model calls this platform made): the next model call pauses the agents again. Raise the cap first: ft spend-cap web <usd>.";
+    const note = "The spend cap still leaves $0.015, less than the next model call may need (up to $0.068 for @cf/moonshotai/kimi-k2.7-code with up to 16,000 output tokens): it will pause again at the next call. Raise the cap or remove it: ft spend-cap web <usd> (or off).";
     const out = formatPause({ name: "resume", colony: "web" }, { resumed: { by: "lee" }, pauses: [], spendCap: note }, c);
     expect(out.split("\n")).toEqual(["Resumed the colony web: agents may work again, and the lanes land what waited in them.", `  ${note}`]);
   });
