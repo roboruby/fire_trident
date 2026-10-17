@@ -7,6 +7,7 @@ import type { MapRenderer } from "../map/renderer.ts";
 import type { ColonyStore } from "../store.ts";
 import { KIND_INDEX, decayed } from "../theme.ts";
 import { useThrottledVersion } from "../useStore.ts";
+import { beatLimit, beatWaits, moveOnLine, watchBeat } from "./beat.ts";
 import raw from "./script.json";
 
 /** One scene of the director script (see script.json for the field reference). */
@@ -27,12 +28,14 @@ export interface Scene {
   code?: boolean;
   /** Data the scene needs (vaccine, landing, review, sigma, direction, mcp); scenes without it are skipped. */
   requires?: string;
+  /** The longest this beat waits for what it shows before the director moves on, in ms (beat.ts; BEAT_MAX_MS when absent). */
+  maxMs?: number;
 }
 
 const TABS: ReadonlySet<string> = new Set(["events", "intents", "review", "why"]);
 
 /** Scenes from the JSON, keeping only well-formed ones. */
-function loadScenes(data: unknown): Scene[] {
+export function loadScenes(data: unknown): Scene[] {
   const list = (data as { scenes?: unknown })?.scenes;
   if (!Array.isArray(list)) return [];
   const strs = (x: unknown): string | string[] | undefined => (typeof x === "string" ? x : Array.isArray(x) ? x.filter((s): s is string => typeof s === "string") : undefined);
@@ -52,6 +55,7 @@ function loadScenes(data: unknown): Scene[] {
       ...(typeof s.emphasize === "string" ? { emphasize: s.emphasize } : {}),
       ...(s.code === true ? { code: true } : {}),
       ...(typeof s.requires === "string" ? { requires: s.requires } : {}),
+      ...(typeof s.maxMs === "number" && Number.isFinite(s.maxMs) && s.maxMs > 0 ? { maxMs: s.maxMs } : {}),
     }));
 }
 
@@ -61,6 +65,10 @@ const PANEL_W = 540;
 /** Height of the caption block the camera keeps a focused region clear of. */
 const CAPTION_H = 250;
 const MAX_HIGHLIGHT = 3000;
+/** How long the camera takes to frame a scene. */
+const FOCUS_MS = 1600;
+/** A read the side panel shows that has not answered yet (the Why tab's lineage skeleton). */
+const READING = ".side.is-open .skeleton";
 
 const asList = (x: string | string[] | undefined | null): string[] => (x === undefined || x === null ? [] : Array.isArray(x) ? x : [x]);
 
@@ -232,10 +240,45 @@ interface Props {
   panelOpen: boolean;
 }
 
+/** What the current beat still waits for, set when its scene is applied (see beat.ts). */
+export interface Awaiting {
+  /** The scene's select targets named no file yet. */
+  select: boolean;
+  /** The focus the camera could not frame yet, with the insets it was asked with. */
+  focus: string | string[] | null;
+  insets: { top: number; left: number; right: number; bottom: number };
+  /** When the scene was applied (performance.now()). */
+  appliedAt: number;
+}
+
+/**
+ * One look at what the current beat waits for (beat.ts): a file to select that has appeared since the scene began (a
+ * landing) is selected, a camera target that is on the map now is framed once the first move has settled, and what is
+ * still missing comes back as clauses (empty when the beat waits for nothing). `reading`: a read on screen has not answered.
+ */
+export function probeBeat(scene: Scene, store: ColonyStore, w: Awaiting, renderer: MapRenderer | null, reading: boolean, now: number): string[] {
+  if (scene.title) return [];
+  if (w.select) {
+    const path = resolveSelect(scene.select, store);
+    if (path) {
+      store.select(path);
+      w.select = false;
+    }
+  }
+  if (w.focus !== null && renderer && now - w.appliedAt > FOCUS_MS && renderer.focus(w.focus, { insets: w.insets, duration: FOCUS_MS })) w.focus = null;
+  return beatWaits({
+    requires: available(scene, store) ? null : (scene.requires ?? null),
+    select: w.select ? asList(scene.select) : null,
+    focus: w.focus === null ? null : asList(w.focus),
+    reading,
+  });
+}
+
 /**
  * Director mode (?director=1): scene-by-scene captions over the live map for recording at
  * 1920×1080. Each scene can zoom the camera into a region, outline files, open a side-panel
- * tab, and select a file. → next, ← previous, space pause, z zoom, c captions.
+ * tab, and select a file. → next, ← previous, space pause, z zoom, c captions. A scene still
+ * waiting for what it shows when its limit runs out (maxMs, beat.ts) moves on by itself.
  */
 export function Director({ store, backend, renderer, onTab, onPanel, panelOpen }: Props) {
   useThrottledVersion(store, 500);
@@ -246,6 +289,7 @@ export function Director({ store, backend, renderer, onTab, onPanel, panelOpen }
   const [startedAt, setStartedAt] = useState(() => performance.now());
   const [, setTick] = useState(0);
   const pausedAt = useRef(0);
+  const awaiting = useRef<Awaiting>({ select: false, focus: null, insets: { top: 0, left: 0, right: 0, bottom: 0 }, appliedAt: 0 });
   const scene = SCENES[index];
   const total = SCENES.length;
   const loaded = store.loaded;
@@ -265,18 +309,22 @@ export function Director({ store, backend, renderer, onTab, onPanel, panelOpen }
 
   // Apply a scene: panel and tab, selection, outlines, then the camera (which keeps clear of the panel and captions).
   useEffect(() => {
+    awaiting.current = { select: false, focus: null, insets: { top: 0, left: 0, right: 0, bottom: 0 }, appliedAt: performance.now() };
     if (!scene || !loaded) return;
     const wantPanel = !!scene.tab && !scene.title;
     if (scene.tab) onTab(scene.tab);
     onPanel(wantPanel);
     if (scene.title) return;
-    store.select(resolveSelect(scene.select, store));
+    const picked = resolveSelect(scene.select, store);
+    store.select(picked);
     store.setHighlight(resolveHighlight(scene.highlight, store));
     const focus = zoomOn && scene.focus !== undefined ? scene.focus : null;
     // A region stays clear of the captions; the whole map runs full-bleed under them (beside the panel when it is open).
     const insets = { top: 0, left: 0, right: wantPanel ? PANEL_W : 0, bottom: focus !== null && captions ? CAPTION_H : 0 };
-    renderer?.focus(focus, { insets, duration: 1600 });
-    // Scene changes only; live data inside a scene does not move the camera.
+    const framed = renderer?.focus(focus, { insets, duration: FOCUS_MS }) ?? false;
+    // What the beat still waits for: the beat's watch below selects and frames it once it appears, or moves on.
+    awaiting.current = { select: asList(scene.select).length > 0 && picked === null, focus: focus !== null && !framed ? focus : null, insets, appliedAt: performance.now() };
+    // Scene changes only; live data inside a scene does not move the camera (except to frame what the beat waited for).
   }, [index, renderer, loaded, zoomOn, captions]);
 
   // A scene can bring one top-bar widget forward; the rest of the bar recedes.
@@ -300,6 +348,24 @@ export function Director({ store, backend, renderer, onTab, onPanel, panelOpen }
       setStartedAt((t) => t + held);
     }
   }, [paused, backend]);
+
+  // The hard timeout per beat (beat.ts): a scene still waiting for what it shows after its limit moves on, live or
+  // recorded alike. A held beat (space) has no clock; the colony loading has none either (the overlay says why).
+  useEffect(() => {
+    const sc = SCENES[index];
+    if (!sc || sc.title || !loaded || paused) return;
+    const limitMs = beatLimit(sc);
+    return watchBeat({
+      from: Math.max(startedAt, awaiting.current.appliedAt),
+      limitMs,
+      now: () => performance.now(),
+      probe: () => probeBeat(sc, store, awaiting.current, renderer, document.querySelector(READING) !== null, performance.now()),
+      onExpire: (waits) => {
+        console.warn(moveOnLine(index, total, sc.id, limitMs, waits));
+        go(1);
+      },
+    });
+  }, [index, loaded, paused, startedAt, total, go, renderer, store]);
 
   // Auto-advance for scenes with a duration; a 250ms tick also refreshes live caption values.
   useEffect(() => {

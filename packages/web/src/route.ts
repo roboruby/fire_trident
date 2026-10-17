@@ -20,6 +20,11 @@ export type Route =
       tour: boolean;
       /** ?tour=<id>: another colony's tour script to play on this one (a preview run of the same demo); null for the colony's own. */
       tourScript: string | null;
+      /**
+       * ?recording=<name>: play a recorded run with no network, from recordings/<name>.json.gz (or .json) bundled with
+       * the page (playback/recording.ts); an empty value offers to pick or drop a recording file. Implies a replay; null otherwise.
+       */
+      recording: string | null;
     };
 
 function flag(params: URLSearchParams, key: string): boolean {
@@ -47,7 +52,9 @@ export function parseRoute(pathname: string, search: string): Route {
   // ?tour=1 (or true, on, yes) is the colony's own tour; any other value names another colony's tour script.
   const tourRaw = params.get("tour") ?? "";
   const tourScript = tour && !/^(1|true|on|yes)$/i.test(tourRaw) ? tourRaw : null;
-  const replay = !mock && (flag(params, "replay") || tour) ? { source, speed: num("speed", 1), offsetS: num("t", 0), delayS: num("delay", 0) } : null;
+  // A recording is a finished run played without the network, so it implies a replay too.
+  const recording = !mock && params.has("recording") ? (params.get("recording") ?? "").trim() : null;
+  const replay = !mock && (flag(params, "replay") || tour || recording !== null) ? { source, speed: num("speed", 1), offsetS: num("t", 0), delayS: num("delay", 0) } : null;
   const m = pathname.match(/^\/c\/([^/]+)/);
   if (m?.[1]) {
     let colonyId = m[1];
@@ -56,14 +63,18 @@ export function parseRoute(pathname: string, search: string): Route {
     } catch {
       // keep the raw segment
     }
-    return { kind: "colony", colonyId, mock, director, debug, replay, tour, tourScript };
+    return { kind: "colony", colonyId, mock, director, debug, replay, tour, tourScript, recording };
   }
-  if (mock || director) return { kind: "colony", colonyId: "demo", mock: true, director, debug, replay: null, tour: false, tourScript: null };
+  if (mock || director) return { kind: "colony", colonyId: "demo", mock: true, director, debug, replay: null, tour: false, tourScript: null, recording: null };
   return { kind: "landing" };
 }
 
-/** Link to a colony page (live, the simulator, a replay of its finished run, or the tour of that replay: `tour: true` for its own, a name for another colony's script). */
-export function colonyHref(colonyId: string, opts: { mock?: boolean; replay?: boolean; tour?: boolean | string } = {}): string {
+/**
+ * Link to a colony page (live, the simulator, a replay of its finished run, or the tour of that replay: `tour: true` for its own, a name for another colony's script).
+ * `recording` plays the replay or the tour from a recording bundled with the page, with no network (?recording=<name>).
+ */
+export function colonyHref(colonyId: string, opts: { mock?: boolean; replay?: boolean; tour?: boolean | string; recording?: string } = {}): string {
   const tour = typeof opts.tour === "string" && opts.tour ? `?tour=${encodeURIComponent(opts.tour)}` : opts.tour ? "?tour=1" : "";
-  return `/c/${encodeURIComponent(colonyId)}${opts.mock ? "?mock=1" : tour || (opts.replay ? "?replay=1" : "")}`;
+  const href = `/c/${encodeURIComponent(colonyId)}${opts.mock ? "?mock=1" : tour || (opts.replay || opts.recording ? "?replay=1" : "")}`;
+  return opts.recording && !opts.mock ? `${href}&recording=${encodeURIComponent(opts.recording)}` : href;
 }
