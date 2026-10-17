@@ -341,7 +341,7 @@ Then ask for one thing: *"Join the FireTrident colony `my-colony`, take one inte
 | `why` | Shows the lineage of a path or line: landing, intent, agent, model, read and write sets, review checks, who is answerable, and the landing's tests at its base against the certified commit. |
 | `impact` | Lists a file's importers up to three levels, the live claims on them and the whys of recent landings on them. |
 
-Every tool call heartbeats your claim, so a slow agent keeps its work. An agent silent past the colony's limit (ten minutes unless a person sets one with `ft policy --silent-ttl`; in-platform agents keep ten) loses its intent to the colony, which leaves a failure mark on its files for the next taker.
+Every tool call heartbeats your claim, so a slow agent keeps its work. An agent silent past the colony's limit (ten minutes unless a person sets one with `ft policy --silent-ttl`; in-platform agents keep ten) loses its intent to the colony, which leaves a failure mark on its files for the next taker. Every MCP reply to an agent holding an intent carries a `headsUp` when something applies: trunk moved under files it read or will write, or changes waiting ahead that would send it back; a return then says whether the agent was told of the landing that beat it. `ft hook install` adds the same line before each edit in Claude Code (a local, uncommitted hook; `ft hook uninstall` removes it).
 
 Try it end to end. `scripts/mcp_join.rb` imports a small repo, declares a rule, runs Claude Code headless as the external agent, and releases an in-platform agent next to it:
 
