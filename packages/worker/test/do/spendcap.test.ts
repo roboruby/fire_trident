@@ -77,7 +77,9 @@ describe("the spend cap", () => {
     // A person resumes while the spend is still at the cap: told so, and the next call pauses the agents again.
     const resumed = await api<{ resumed: unknown; spendCap?: string }>("POST", `/colonies/${c.id}/resume`, { by: "lee" });
     expect(resumed.status).toBe(200);
-    expect(resumed.body.spendCap).toBe(`The spend cap is still reached (${reason}): the next model call pauses the agents again. Raise the cap first: ft spend-cap ${c.id} <usd>.`);
+    expect(resumed.body.spendCap).toBe(
+      `The spend cap is reached: $0.800 of $1.00 spent on model calls this platform made, so it will pause again at the next call. Raise the cap or remove it: ft spend-cap ${c.id} <usd> (or off).`,
+    );
     expect((await colony(c.id).pauseState()).paused).toBe(false);
     expect(await refused(colony(c.id).spendReserve(ASK))).toBe(`[ft:409] ${pausedSentence({ by: SPEND_CAP_ACTOR, reason })}`);
     expect((await colony(c.id).pauseState()).pauses[0]).toMatchObject({ by: SPEND_CAP_ACTOR, reason });
@@ -96,6 +98,25 @@ describe("the spend cap", () => {
       ["paused", SPEND_CAP_ACTOR],
       ["resumed", "lee"],
     ]);
+  });
+
+  it("trips below its amount when the next call does not fit, says why, and a resume answer says it will pause again", async () => {
+    const c = await newColony();
+    await api("POST", `/colonies/${c.id}/spend-cap`, { usd: 0.0268, reviewReserveUsd: 0.005 });
+    // $0.0072 spent: 20,572 input tokens on gpt-oss-120b.
+    const { hold } = await colony(c.id).spendReserve(ASK);
+    await colony(c.id).spendSettle({ hold: hold!, model: GPT, usage: { input: 20_572, output: 0 } });
+    expect((await colony(c.id).pauseState()).paused).toBe(false);
+    // An agent's write to kimi: 12,000 characters of prompt and 16,000 output tokens need up to $0.068.
+    const write = { model: "@cf/moonshotai/kimi-k2.7-code", chars: 12_000, maxTokens: 16_000, copies: 1 };
+    const size = "up to $0.068 for @cf/moonshotai/kimi-k2.7-code with up to 16,000 output tokens";
+    const reason = `spend cap: $0.0072 of $0.027 spent on model calls this platform made, and the next call (${size}) does not fit in the $0.015 left to agents`;
+    expect(await refused(colony(c.id).spendReserve(write))).toBe(`[ft:409] ${pausedSentence({ by: SPEND_CAP_ACTOR, reason })}`);
+    expect((await colony(c.id).pauseState()).pauses[0]).toMatchObject({ by: SPEND_CAP_ACTOR, reason });
+    const resumed = await api<{ spendCap?: string }>("POST", `/colonies/${c.id}/resume`, { by: "lee" });
+    expect(resumed.body.spendCap).toBe(
+      `The spend cap still leaves $0.015, less than the next model call may need (${size}): it will pause again at the next call. Raise the cap or remove it: ft spend-cap ${c.id} <usd> (or off).`,
+    );
   });
 
   it("is removed with usd null, which lifts the pause it tripped", async () => {

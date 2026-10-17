@@ -35,8 +35,9 @@ import { counterUsage, type AgentModelUsage, type ReviewConfig } from "./spend.t
  * flight still get their deterministic proof, and review may call from the reserve. When the reserve has no room
  * either, review makes no model call: the decide stage reads the refusal as the model being unavailable, and the gate
  * sends the change to a person (rule L8, decide/gate.ts), never to its lane. Raising the cap past the spend, or removing
- * it, lifts the pause the cap tripped; a person who resumes while the spend is still at the cap is told that the next
- * model call pauses the agents again.
+ * it, lifts the pause the cap tripped; a person who resumes while the cap would pause the agents again at the next call
+ * (the spend is at the share, or the room left is less than the last call that did not fit) is told so. Every reason
+ * and note names what sized the call that did not fit: its model and its output limit.
  *
  * Stored in the colony's own storage (`spend_cap`, one row; `spend_cap_holds`): it survives a restart.
  */
@@ -145,6 +146,26 @@ export function capReason(spentUsd: number, capUsd: number): string {
   return `spend cap: ${usdText(spentUsd)} of ${usdText(capUsd)} spent on model calls this platform made`;
 }
 
+/** What sized a call's reservation: its model and its output limit (null: none, held at DEFAULT_OUTPUT_TOKENS). */
+export interface CallSize {
+  model: string;
+  maxTokens: number | null;
+}
+
+/** Longest model id the cap's sentences name (a pause reason holds 300 characters). */
+const MAX_MODEL_TEXT = 80;
+
+/**
+ * What a call may need, and why, for a person: "up to $0.068 for @cf/moonshotai/kimi-k2.7-code with up to 16,000
+ * output tokens" (and ", twice for a hedged copy"). Without a size, the amount alone.
+ */
+export function callText(usd: number, size?: CallSize | null, copies = 1): string {
+  if (!size) return `up to ${usdText(usd)}`;
+  const model = size.model.replace(/\s+/g, " ").trim().slice(0, MAX_MODEL_TEXT) || "an unnamed model";
+  const out = size.maxTokens === null ? `no output limit (held at ${DEFAULT_OUTPUT_TOKENS.toLocaleString("en-US")} output tokens)` : `up to ${Math.floor(amount(size.maxTokens)).toLocaleString("en-US")} output tokens`;
+  return `up to ${usdText(usd)} for ${model} with ${out}${copies > 1 ? ", twice for a hedged copy" : ""}`;
+}
+
 /** The colony's spend as it last counted it, in USD: the agents' usage as last read and its own counters (colony/spend.ts). */
 export function bookUsd(agents: readonly AgentModelUsage[], metrics: Readonly<Record<string, number>>, review: ReviewConfig): number {
   const usage: LayerUsage[] = [...agents.map((u) => ({ layer: "agents" as const, model: u.model, input: u.input, output: u.output })), ...counterUsage(metrics, review)];
@@ -160,6 +181,8 @@ export function migrateSpendCap(sql: SqlRunner): void {
     "CREATE TABLE IF NOT EXISTS spend_cap (id INTEGER PRIMARY KEY CHECK (id = 1), usd REAL NOT NULL, reserve_usd REAL NOT NULL, baseline_usd REAL NOT NULL, settled_usd REAL NOT NULL, set_by TEXT NOT NULL, set_at INTEGER NOT NULL)",
   );
   sql.exec("CREATE TABLE IF NOT EXISTS spend_cap_holds (id TEXT PRIMARY KEY, use TEXT NOT NULL, usd REAL NOT NULL, unit_usd REAL NOT NULL, at INTEGER NOT NULL)");
+  // The last call the agents' share could not fit (one row): what the next call may need, for a resume answer.
+  sql.exec("CREATE TABLE IF NOT EXISTS spend_cap_need (id INTEGER PRIMARY KEY CHECK (id = 1), usd REAL NOT NULL, model TEXT, max_tokens INTEGER, copies INTEGER NOT NULL, at INTEGER NOT NULL)");
 }
 
 /** What the cap uses of its colony (ColonyDO builds it; tests fake it). */
@@ -306,7 +329,9 @@ export class SpendCapBook {
         : own?.by === SPEND_CAP_ACTOR
           ? " The cap is still reached, so the agents stay paused; raise it further to let them go on."
           : "";
-    return { cap: this.state(), lifted, tripped, note: head + tail };
+    // Room under the new cap, but less than the call that last did not fit: it will pause again at that call.
+    const again = tripped ? null : this.again(r, now);
+    return { cap: this.state(), lifted, tripped, note: head + tail + (again && !again.over ? ` ${again.text}` : "") };
   }
 
   /** Remove the cap: calls go on with no limit, and a pause the cap tripped is lifted. */
@@ -314,6 +339,7 @@ export class SpendCapBook {
     const had = this.row() !== null;
     this.host.sql.exec("DELETE FROM spend_cap");
     this.host.sql.exec("DELETE FROM spend_cap_holds");
+    this.host.sql.exec("DELETE FROM spend_cap_need");
     let lifted = false;
     if (this.host.ownPause()?.by === SPEND_CAP_ACTOR) {
       await this.host.lift(cleanBy(p?.by), "spend cap removed");
@@ -330,7 +356,7 @@ export class SpendCapBook {
    * calls in flight settle is `busy`: it waits and nothing trips. Otherwise the pause trips (a review refusal trips it
    * only once the agents' share is spent).
    */
-  reserve(p: { use: CapUse; usd: number; copies?: number }): CapHold {
+  reserve(p: { use: CapUse; usd: number; copies?: number; size?: CallSize | null }): CapHold {
     const r = this.row();
     if (!r) return { ok: true, hold: null };
     const now = this.host.now();
@@ -344,7 +370,8 @@ export class SpendCapBook {
     }
     const unit = amount(p.usd);
     // One call, or two when a hedged copy may go out.
-    const want = unit * Math.min(2, Math.max(1, Math.floor(amount(p.copies) || 1)));
+    const copies = Math.min(2, Math.max(1, Math.floor(amount(p.copies) || 1)));
+    const want = unit * copies;
     const spent = this.spent(r, now);
     const held = this.inFlight(now);
     const share = r.usd - r.reserve_usd;
@@ -356,7 +383,20 @@ export class SpendCapBook {
     }
     // It fits once the calls in flight settle: it waits for them (they may cost less than they hold).
     if (held > 0 && spent + want <= limit + EPSILON) return { ok: false, reason: BUSY_REFUSAL, busy: true };
-    const reason = spent >= share - EPSILON ? capReason(spent, r.usd) : `${capReason(spent, r.usd)}, and the next call (up to ${usdText(want)}) does not fit in the ${usdText(Math.max(0, share - spent))} left to agents`;
+    // The reason says what sized the reservation, so a cap that trips well below its amount reads plainly.
+    const reason =
+      spent >= share - EPSILON ? capReason(spent, r.usd) : `${capReason(spent, r.usd)}, and the next call (${callText(want, p.size, copies)}) does not fit in the ${usdText(Math.max(0, share - spent))} left to agents`;
+    if (p.use !== "review") {
+      // What the next call may need, for a resume answer (colony/spendcap.ts again).
+      this.host.sql.exec(
+        "INSERT OR REPLACE INTO spend_cap_need (id, usd, model, max_tokens, copies, at) VALUES (1, ?, ?, ?, ?, ?)",
+        want,
+        p.size?.model ?? null,
+        p.size ? p.size.maxTokens : null,
+        copies,
+        now,
+      );
+    }
     if (p.use !== "review" || spent >= share - EPSILON) this.trip(reason);
     return { ok: false, reason, busy: false };
   }
@@ -381,15 +421,32 @@ export class SpendCapBook {
   }
 
   /**
-   * What a resume answer adds while the spend is still at the agents' share: that the next model call pauses the agents
-   * again, and what to do instead. Null when the cap has room (or there is none).
+   * Whether the cap will pause the agents again at the next call: the spend is at the agents' share (`over`), or the
+   * room left there (the share less the spend and the calls in flight) is smaller than the last call that did not fit.
+   * Null when the next call may go on.
+   */
+  private again(r: CapRow, now: number): { over: boolean; text: string } | null {
+    const spent = this.spent(r, now, true);
+    const share = r.usd - r.reserve_usd;
+    if (spent >= share - EPSILON) return { over: true, text: `The spend cap is reached: ${usdText(spent)} of ${usdText(r.usd)} spent on model calls this platform made, so it will pause again at the next call.` };
+    const need = this.host.sql.exec("SELECT usd, model, max_tokens, copies FROM spend_cap_need WHERE id = 1").toArray()[0] as
+      | { usd: number; model: string | null; max_tokens: number | null; copies: number }
+      | undefined;
+    const room = Math.max(0, share - spent - this.inFlight(now));
+    if (!need || room + EPSILON >= amount(need.usd)) return null;
+    const size = need.model === null ? null : { model: need.model, maxTokens: need.max_tokens };
+    return { over: false, text: `The spend cap still leaves ${usdText(room)}, less than the next model call may need (${callText(amount(need.usd), size, need.copies)}): it will pause again at the next call.` };
+  }
+
+  /**
+   * What a resume answer adds while the cap will pause the agents again at the next call (see again): why, and what to
+   * do instead. Null when the next call may go on (or there is no cap).
    */
   resumeNote(colonyId: Id): string | null {
     const r = this.row();
     if (!r) return null;
-    const spent = this.spent(r, this.host.now(), true);
-    if (spent < r.usd - r.reserve_usd - EPSILON) return null;
-    return `The spend cap is still reached (${capReason(spent, r.usd)}): the next model call pauses the agents again. Raise the cap first: ft spend-cap ${colonyId} <usd>.`;
+    const again = this.again(r, this.host.now());
+    return again ? `${again.text} Raise the cap or remove it: ft spend-cap ${colonyId} <usd> (or off).` : null;
   }
 
   /** Trip the pause (as SPEND_CAP_ACTOR), unless one of the colony's own is in force already. Never throws. */
@@ -432,7 +489,7 @@ export function cappedAi(ai: AiRunner, cap: Pick<SpendCapBook, "reserve" | "sett
       const call = (): Promise<unknown> => (options === undefined ? ai.run(model, input) : ai.run(model, input, options));
       // Clef answers typed questions and reports no output tokens; any other call with no limit is held at the default.
       const maxTokens = typeof input?.max_tokens === "number" ? input.max_tokens : model.includes("/clef") ? 0 : null;
-      const held = cap.reserve({ use, usd: estimateUsd(model, requestChars(input), maxTokens) });
+      const held = cap.reserve({ use, usd: estimateUsd(model, requestChars(input), maxTokens), size: { model, maxTokens } });
       if (!held.ok) throw refusal(held, use);
       if (held.hold === null) return call();
       const hold = held.hold;
@@ -512,7 +569,8 @@ export function cappedClient(client: ModelClient, gate: CapGate, copies = 1): Mo
 export function localGate(cap: Pick<SpendCapBook, "reserve" | "settle">, use: CapUse, resolve: (model: string) => string): CapGate {
   return {
     reserve: async (a) => {
-      const held = cap.reserve({ use, usd: estimateUsd(resolve(a.model), a.chars, amount(a.maxTokens) || null), copies: a.copies });
+      const size = { model: resolve(a.model), maxTokens: amount(a.maxTokens) || null };
+      const held = cap.reserve({ use, usd: estimateUsd(size.model, a.chars, size.maxTokens), copies: a.copies, size });
       if (!held.ok) throw refusal(held, use);
       return { hold: held.hold };
     },
@@ -533,7 +591,8 @@ export interface AgentCapAsk extends CapAsk {
  */
 export function agentReserve(cap: SpendCapBook, a: AgentCapAsk, resolve: (model: string) => string): { hold: Id | null; capped: boolean } {
   const model = resolve(typeof a?.model === "string" ? a.model : "");
-  const held = cap.reserve({ use: "agents", usd: estimateUsd(model, amount(a?.chars), amount(a?.maxTokens) || null), copies: amount(a?.copies) || 1 });
+  const size = { model, maxTokens: amount(a?.maxTokens) || null };
+  const held = cap.reserve({ use: "agents", usd: estimateUsd(model, amount(a?.chars), size.maxTokens), copies: amount(a?.copies) || 1, size });
   if (!held.ok) throw held.busy ? ftError(BUSY_STATUS, BUSY_REFUSAL) : pauseError({ by: SPEND_CAP_ACTOR, reason: held.reason });
   return { hold: held.hold, capped: held.hold !== null };
 }
