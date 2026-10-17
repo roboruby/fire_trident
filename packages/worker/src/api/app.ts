@@ -36,6 +36,8 @@ import { megafileRoutes } from "./megafile.ts";
 import { landingRoutes, verifyLanding } from "./landing.ts";
 import { impactRoutes } from "./impact.ts";
 import { a2aRoutes } from "./a2a.ts";
+import { pauseRoutes } from "./pause.ts";
+import { refuseWhilePaused } from "../colony/pause.ts";
 
 /** Hono environment of the API. */
 export type ApiEnv = { Bindings: Env };
@@ -216,6 +218,7 @@ async function requireColony(env: Env, colonyId: Id): Promise<void> {
  *   GET    /colonies/:id/impact             ?path=&depth=: what a change reaches through imports, and who works on it now (api/impact.ts)
  *   GET    /colonies/:id/.well-known/agent-card.json  the colony's Agent2Agent card (FT_A2A; api/a2a.ts)
  *   POST   /colonies/:id/a2a                Agent2Agent JSON-RPC: SendMessage and CancelTask (admin token), GetTask, ListTasks (api/a2a.ts)
+ *   POST   /colonies/:id/pause | /resume    a person pauses or resumes the colony's agents; POST /pause and /resume the deployment's (api/pause.ts)
  * POST routes require the admin bearer token when FT_ADMIN_TOKEN is set; DELETE always does.
  */
 export function createApi(deps: ApiDeps): Hono<ApiEnv> {
@@ -577,6 +580,8 @@ export function createApi(deps: ApiDeps): Hono<ApiEnv> {
     const colonyId = colonyParam(c);
     const b = await body(c, SwarmBody);
     await requireColony(c.env, colonyId);
+    // Pause (colony/pause.ts): no in-platform agent starts while the colony's agents are paused.
+    await refuseWhilePaused(colonyStub(c.env, colonyId));
     const count = b.count ?? b.agents ?? 1;
     const res = await deps.spawnSwarm(c.env, colonyId, { count, ...(b.kind ? { kind: b.kind } : {}), ...(b.model ? { model: b.model } : {}) });
     return json(res ?? { ok: true }, 202);
@@ -589,6 +594,7 @@ export function createApi(deps: ApiDeps): Hono<ApiEnv> {
   landingRoutes(app); // One landing's change to a file, for public colonies (api/landing.ts)
   impactRoutes(app); // Impact: what a change to a file reaches through imports, and who works on those files now (api/impact.ts)
   a2aRoutes(app, requireAdmin); // Agent2Agent: an orchestrator declares intents and follows them as tasks (FT_A2A; api/a2a.ts)
+  pauseRoutes(app, requireAdmin); // Pause: a person stops the agents of a colony or of the deployment, with a reason (api/pause.ts)
 
   // Unknown API paths answer JSON here instead of falling through to the static UI.
   app.all("*", (c) => json({ error: `no route for ${c.req.method} ${c.req.path}` }, 404));

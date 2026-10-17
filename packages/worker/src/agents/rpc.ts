@@ -27,6 +27,7 @@ import type { LandedWhy } from "./landed.ts";
 import type { ReviewPreview } from "./preview.ts";
 import type { ModelHint } from "../colony/stepup.ts";
 import type { DeclaredBy } from "../colony/chain.ts";
+import type { PauseView } from "../colony/pause.ts";
 
 /**
  * The RPC surfaces the agents and the MCP server call, typed from the contracts in
@@ -94,6 +95,8 @@ export interface ColonyRpc {
    * spec, an impossible ask): the intent waits for a person, and the agent's claim and lease are released.
    */
   escalate?(agentId: Id, p: { intentId?: Id; kind: EscalationKind; report: string }): Promise<{ intent: Intent; escalation: IntentEscalation }>;
+  /** The pauses in force and the sentence a write meets (colony/pause.ts); a colony on the previous version has none. */
+  pauseState?(): Promise<PauseView>;
 }
 
 /** RegionDO methods used for sensing. */

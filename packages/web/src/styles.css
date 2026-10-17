@@ -5675,3 +5675,53 @@ html[data-emphasize="trunk"] .trunk {
   margin: 0;
   transform: translateY(-50%);
 }
+
+/* ------------------------------------------------------------------ pause banner (components/PauseBanner.tsx) */
+
+.pause-banner {
+  position: absolute;
+  left: 50%;
+  bottom: 46px;
+  z-index: 7;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  width: max-content;
+  max-width: calc(100% - 24px);
+  padding: 10px 14px;
+  border: 1px solid rgba(255, 46, 79, 0.55);
+  border-radius: 11px;
+  background: rgba(24, 6, 10, 0.94);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  color: var(--text);
+  font-size: 13px;
+  transform: translateX(-50%);
+}
+
+.pause-k {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--danger);
+}
+
+.pause-headline {
+  font-weight: 700;
+}
+
+.pause-detail {
+  flex-basis: 100%;
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.pause-command {
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+.pause-command code {
+  color: var(--text);
+}

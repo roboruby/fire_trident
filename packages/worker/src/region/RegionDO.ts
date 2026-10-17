@@ -20,6 +20,7 @@ import { errorText } from "../colony/errors.ts";
 import { coalesceEvents } from "../colony/events.ts";
 import { isRedirect, splitByDirection } from "../colony/direction.ts";
 import { isProtectStop, splitByProtection } from "../colony/protect.ts";
+import { LANE_PAUSE_RECHECK_MS, laneHold, pausedIn } from "../colony/pause.ts";
 import type { ClearFilter, FieldOps } from "../colony/logic.ts";
 import { settleLane, suspects } from "../trunk/outcome.ts";
 import { textMergeEnabled, type LandResult } from "../trunk/plan.ts";
@@ -932,6 +933,11 @@ export class RegionDO extends DurableObject<Env> {
     }
     if (proposals.length === 0) return null;
 
+    // 0. Pause (colony/pause.ts): while a person has paused the colony's agents (or the deployment's), the lane holds.
+    //    It reads nothing, lands nothing and sends nothing back, and asks again shortly; a resume lets it go on.
+    const hold = await laneHold(this.env, colonyId);
+    if (hold !== null) return hold;
+
     // 1. Trunk state: current blobs for every path read or written, and base blobs per distinct base.
     const trunk = this.trunkStub(colonyId);
     const allPaths = [...new Set(proposals.flatMap(proposalPaths))];
@@ -977,6 +983,8 @@ export class RegionDO extends DurableObject<Env> {
             .landContext(valid.map((p) => p.intentId), valid.map((p) => p.agentId), valid.map((p) => p.id))
             .catch(() => undefined)
         : undefined;
+    // A pause that began during this tick holds the lane too, before anything reaches the trunk writer.
+    if (pausedIn(ctx)) return LANE_PAUSE_RECHECK_MS;
     const direction = splitByDirection(valid, ctx?.intents);
     // Protected paths (colony/protect.ts): a change that writes a path protected after a person last approved it goes to a person.
     const guarded = splitByProtection(direction.keep, ctx?.protect, ctx?.decisions);

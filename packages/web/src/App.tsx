@@ -2,6 +2,7 @@ import { Suspense, lazy, useCallback, useEffect, useLayoutEffect, useRef, useSta
 import { HttpBackend, saveToken, type Backend } from "./api.ts";
 import { Guide } from "./components/Guide.tsx";
 import { NeedsYou } from "./components/NeedsYou.tsx";
+import { PauseBanner } from "./components/PauseBanner.tsx";
 import { PerfReadout } from "./components/PerfReadout.tsx";
 import { ReplayBar } from "./components/ReplayBar.tsx";
 import { SidePanel, TABS, type PanelFocus, type Tab } from "./components/SidePanel.tsx";
@@ -240,6 +241,8 @@ export function App({ route }: { route: ColonyRoute }) {
           <div className="map-col">
             <ColonyMap store={store} onPick={pick} onRenderer={setRenderer} director={director} onGuide={director || touring ? undefined : () => setGuideOpen(true)} />
             {director ? null : <NeedsYou store={store} onGo={go} />}
+            {/* The pause banner (pause.ts): who paused the agents and why, while they are paused. */}
+            <PauseBanner store={store} />
             {backend instanceof ReplayBackend && !director && !touring ? <ReplayBar backend={backend} colonyId={route.colonyId} /> : null}
             {backend instanceof ReplayBackend && touring ? (
               <Suspense fallback={null}>

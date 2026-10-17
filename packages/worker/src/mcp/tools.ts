@@ -19,6 +19,7 @@ import { isTwinAnswer, type DeclareAnswer } from "../colony/twins.ts";
 import { priorityAnswer } from "../colony/priority.ts";
 import { cleanDeclaredBy, heldNote, type DeclaredBy } from "../colony/chain.ts";
 import { foldPath } from "../decide/pathfold.ts";
+import { refuseWhilePaused } from "../colony/pause.ts";
 
 /** What one MCP session remembers (stored in the session's Durable Object). */
 export interface Session {
@@ -559,6 +560,8 @@ export class FireTridentTools {
    */
   async take(a: { wait?: number } = {}): Promise<unknown> {
     const s = await this.joined();
+    // Pause (colony/pause.ts): refused at once while the colony's agents are paused; the colony checks again inside.
+    await refuseWhilePaused(this.ctx.colony(s.colonyId));
     const colony = this.ctx.colony(s.colonyId);
     const deadline = this.ctx.now() + waitSeconds(a.wait) * 1000;
     let res: TakeResult = await colony.take(s.agentId);
@@ -617,6 +620,8 @@ export class FireTridentTools {
    */
   async declare(a: { title: string; why: string; footprint: string[]; acceptance?: string[]; priority?: number; parentId?: string; force?: boolean }): Promise<unknown> {
     const s = await this.joined();
+    // Pause (colony/pause.ts): refused at once while the colony's agents are paused; the colony checks again inside.
+    await refuseWhilePaused(this.ctx.colony(s.colonyId));
     const footprint = a.footprint.map((p) => p.trim()).filter((p) => p !== "" && !p.split("/").includes(".."));
     if (footprint.length === 0) fail(400, "footprint needs at least one path");
     const input: Omit<Intent, "id" | "status" | "createdAt"> = {
@@ -717,6 +722,8 @@ export class FireTridentTools {
    */
   async propose(a: { headSha?: string; files?: InlineFile[]; summary?: string; notVerified?: string; lesson?: string }): Promise<unknown> {
     const s = await this.leased();
+    // Pause (colony/pause.ts): refused at once while the colony's agents are paused; the colony checks again inside.
+    await refuseWhilePaused(this.ctx.colony(s.colonyId));
     const head = typeof a.headSha === "string" ? a.headSha.trim().toLowerCase() : "";
     if ((head !== "") === (a.files !== undefined)) fail(400, "pass exactly one of headSha (a commit pushed to your workspace) and files (each changed file's path and new content)");
     const { lease, intent } = s;
@@ -924,6 +931,8 @@ export class FireTridentTools {
    */
   async escalate(a: { intentId?: string; kind: string; report: string }): Promise<unknown> {
     const s = await this.joined();
+    // Pause (colony/pause.ts): refused at once while the colony's agents are paused; the colony checks again inside.
+    await refuseWhilePaused(this.ctx.colony(s.colonyId));
     const kind = (ESCALATION_KINDS as readonly string[]).includes(a.kind) ? (a.kind as EscalationKind) : null;
     if (!kind) fail(400, `kind must be one of ${ESCALATION_KINDS.join(", ")}`);
     const report = (a.report ?? "").trim();

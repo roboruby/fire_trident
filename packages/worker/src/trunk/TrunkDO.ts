@@ -90,6 +90,7 @@ import { DIRECTION_TABLE, FENCE_WAIT_MS, directionReturns, fenceAnswer, mergeDir
 import { PUBLISH_BOUND, addedObjects, asyncPublishEnabled, publishBackoffMs, publishChain, settlePublish, withinBound, type PublishBound, type RecordedCommit } from "./publish.ts";
 import { PROTECT_TABLE, keepProtect, protectReturns } from "./protect.ts";
 import { keepHolds, mergeLocks } from "./mergelock.ts";
+import { cyclePause, keepPause } from "./pause.ts";
 import { landingRange as rangeOfLandings, type LandingRange, type RangeQuery } from "../certify/range.ts";
 import { FoldedIndex, cycleCollisions, structureProblem, submoduleProblems, type SubmoduleOutcome } from "./structure.ts";
 import { readTreeCached } from "./surgery.ts";
@@ -483,6 +484,19 @@ export class TrunkDO extends DurableObject<Env> {
     this.state();
     keepProtect(this.sql, p?.record, Date.now());
     return this.direction({ intents: {}, proposalIds: Array.isArray(p?.proposalIds) ? p.proposalIds : [] });
+  }
+
+  /**
+   * The pause (trunk/pause.ts): the colony's pauses as it worked them out, kept when newer than the writer's own. Every
+   * later cycle reads it before it builds and, while a pause is in force, defers each change it was handed. Then waits
+   * for the cycles that may have read the old record (the serial chain as it stands, at most FENCE_WAIT_MS): `settled`
+   * says they finished, so trunk stays where it is from the answer on while the pause holds.
+   */
+  async pause(p: { record: unknown }): Promise<{ paused: boolean; settled: boolean }> {
+    this.state();
+    const kept = keepPause(this.sql, p?.record);
+    const settled = await settlesWithin(this.chain, FENCE_WAIT_MS);
+    return { paused: kept?.paused === true, settled };
   }
 
   /**
@@ -1373,6 +1387,14 @@ export class TrunkDO extends DurableObject<Env> {
     if (guarded.size > 0) {
       for (const [id, reason] of guarded) outcome.set(id, { kind: "returned", reason });
       live = live.filter((e) => !guarded.has(e.p.id));
+    }
+
+    // 2d. Pause (trunk/pause.ts), the same commit point: while a person has paused the colony's agents (or the
+    //     deployment's), every change waits in its lane, deferred with the pause's sentence. One read per cycle.
+    const paused = cyclePause(this.sql, reqs.map((r) => r.ctx));
+    if (paused !== null) {
+      for (const e of live) outcome.set(e.p.id, { kind: "deferred", reason: paused });
+      live = [];
     }
 
     // 3. Screen against current trunk with local reads (base blobs, OCC, structure); stale ones never pull.
