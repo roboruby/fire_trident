@@ -369,6 +369,35 @@ class ContentionTest < Minitest::Test
     end
   end
 
+  def test_a_stalled_run_says_stalled_with_what_holds_the_open_intents
+    fake = FakeContention.new(land_per_poll: 2, stall_after: 10)
+    run_script("--agents", "8", "--stall-report", "0.3", "--stall", "1.5", fake: fake) do |out, err, code, _reqs, files, _|
+      assert_equal 1, code, out + err
+      line = out.lines.find { |l| l.include?("STALLED") }
+      refute_nil line, out
+      assert_match(/STALLED: no intent moved for [\d.]+ s with intents open \(6 open, 0 claimed, 0 proposed\): /, line)
+      assert_includes line, "2 changes wait for a person in the review queue"
+      assert_includes line, "trunk certification is error at "
+      assert_includes line, "the test runner failed: Identifier 'assert' has already been declared"
+      assert_includes line, "claims on the open intents' files: src/core/money.ts claim 2.4 (need 31.0)"
+      assert_includes line, "agents: 2 proposing, 6 waiting, 2 waiting on their own changes"
+      run = JSON.parse(files.fetch("contention.json"))["runs"].first
+      assert_equal "stall", run["stop"]
+      assert_match(%r{\Anothing landed for 1\.5 s \(10/16 landed\); stalled: 2 changes wait for a person}, run["stop_detail"])
+      assert_operator run["stalls"].size, :>=, 1
+      assert_equal({ "open" => 6, "claimed" => 0, "proposed" => 0 }, run["stalls"].first["open"])
+      assert_match(/^\| Stalled \(no intent moved, intents open\) \| \d+ reports?, longest [\d.]+ s: 2 changes wait for a person/, files["README.md"])
+    end
+  end
+
+  def test_a_run_that_keeps_moving_never_says_stalled
+    run_script("--agents", "8", "--stall-report", "0.3", fake: FakeContention.new(land_per_poll: 16)) do |out, err, code, _reqs, files, _|
+      assert_equal 0, code, out + err
+      refute_includes out, "STALLED"
+      assert_includes files["README.md"], "| Stalled (no intent moved, intents open) | no |"
+    end
+  end
+
   def test_the_colonys_own_cap_tripping_is_a_spend_stop_too
     fake = FakeContention.new(land_per_poll: 1, spend_per_poll: 0.95)
     run_script("--agents", "8", "--max-usd", "2", fake: fake) do |out, _err, code, reqs, files, _|

@@ -14,6 +14,8 @@ import { OutcomeBox, regionNames, type ClaimRefresher, type PushedOutcome } from
 import { colonyStub, errorMessage, trunkBlobsStub } from "./rpc.ts";
 import type { AgentStartParams } from "./rpc.ts";
 import { SHARED_OBJECTS, VirtualReads, trunkObjects, virtualCheckoutEnabled } from "./virtual.ts";
+import { personWaitOn } from "../colony/personwait.ts";
+import { recordLeftOutcome } from "./personwait.ts";
 
 /** Re-arm time set at the start of every tick, so a killed tick resumes within a minute. */
 const WATCHDOG_MS = 60_000;
@@ -114,6 +116,8 @@ export class AgentDO extends DurableObject<Env> {
       virtual: { on: virtualCheckoutEnabled(this.env.FT_VIRTUAL_CHECKOUT, colonyId), reads: new VirtualReads(objects, SHARED_OBJECTS) },
       // Spend per intent (colony/intentspend.ts): each call counted under the job's intent too, where the flag covers the colony.
       intentSpend: intentSpendEnabled(this.env.FT_INTENT_SPEND, colonyId),
+      // Changes waiting for a person hold no files (colony/personwait.ts), where the flag covers the colony.
+      personWait: personWaitOn(this.env.FT_PERSON_WAIT, colonyId),
     };
   }
 
@@ -125,6 +129,8 @@ export class AgentDO extends DurableObject<Env> {
   async outcome(o: PushedOutcome): Promise<{ accepted: boolean }> {
     const job = this.journal.job();
     const cfg = this.journal.config();
+    // A change this agent left with a person (agents/personwait.ts): its final outcome is recorded in the journal.
+    if (job?.proposalId !== o?.proposalId && recordLeftOutcome(this.journal, o, Date.now())) return { accepted: true };
     if (!cfg?.running || !job || job.proposalId !== o?.proposalId) return { accepted: false };
     if (!this.outcomes.put(o, Date.now())) return { accepted: false };
     if (this.ticking) this.wake = true;

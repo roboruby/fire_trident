@@ -176,6 +176,7 @@ import { reviewReproduction } from "../decide/review.ts";
 import { answerBatch, escalationBatchOn, EscalationBatches, markQueueBatches, type BatchAnswer, type BatchDecision } from "../decide/batch.ts";
 import { isCanary } from "../decide/canary.ts";
 import { revalidationEnabled as flagCovers } from "@fire_trident/core";
+import { dropWaiting, personWaitOn } from "./personwait.ts";
 import type { RecipeRecord } from "@fire_trident/core";
 import { A2A_ACTOR, ColonyPause, DEPLOYMENT_PAUSE_KEY, type PauseAnswer, type PauseView, type ResumeAnswer, type WriterPause } from "./pause.ts";
 import type { MegafileHold, MegafileReport } from "@fire_trident/core";
@@ -2092,6 +2093,8 @@ export class ColonyDO extends DurableObject<Env> {
     const held = this.sql
       .exec<{ id: string; footprint: string }>("SELECT id, footprint FROM intents WHERE assigned_to = ? AND status IN ('claimed', 'proposed')", agentId)
       .toArray();
+    // A change waiting for a person holds no files (colony/personwait.ts, FT_PERSON_WAIT): its claims are not refreshed.
+    if (this.personWait()) dropWaiting(this.sql, agentId, held);
     // Contest mode: a seat on a contest intent another agent holds keeps its claims fresh too.
     held.push(...this.contestHeld(agentId, held));
     if (held.length === 0) return;
@@ -5273,6 +5276,11 @@ export class ColonyDO extends DurableObject<Env> {
     return (Number.isFinite(f) && f >= 0 ? f : LATERAL_INHIBITION) * CLAIM_STRENGTH;
   }
 
+  /** Changes waiting for a person hold no files in this colony (FT_PERSON_WAIT, colony/personwait.ts). */
+  private personWait(): boolean {
+    return personWaitOn(this.env.FT_PERSON_WAIT, this.requireColony().id);
+  }
+
   /**
    * The open intents self-assignment considers (highest priority, then oldest; CANDIDATE_CAP of
    * them). Under load (BUSY_TAKES takes in flight or more) concurrent takes share one list for
@@ -5876,6 +5884,8 @@ export class ColonyDO extends DurableObject<Env> {
   private ownClaims(agentId: Id, depth: number): Map<string, Map<Path, number>> {
     const out = new Map<string, Map<Path, number>>();
     const held = this.sql.exec<{ id: string; footprint: string }>("SELECT id, footprint FROM intents WHERE assigned_to = ? AND status IN ('claimed', 'proposed')", agentId).toArray();
+    // A change waiting for a person has no claims left to discount (colony/personwait.ts, FT_PERSON_WAIT).
+    if (this.personWait()) dropWaiting(this.sql, agentId, held);
     if (held.length === 0) return out;
     const now = Date.now();
     const value = markValue({ id: "", kind: "claim", path: "", strength: CLAIM_STRENGTH, at: this.lastRefresh.get(agentId) ?? now }, now);
@@ -6218,6 +6228,10 @@ export class ColonyDO extends DurableObject<Env> {
         if (p.status === "escalated" && prev !== "escalated") this.reviewTests().escalated(p);
         // Blind canaries (colony/audit.ts): with the colony's canaryRate on, an escalation may bring a canary into the queue.
         if (p.status === "escalated" && prev !== "escalated") this.audits().escalated(p, now);
+        // A change waiting for a person holds no files (colony/personwait.ts, FT_PERSON_WAIT): its agent's claim on them goes.
+        if (p.status === "escalated" && this.personWait()) {
+          fx.batch.clear(intent ? this.footprintOf(intent.id, intent.footprint) : p.declared.footprint, { agentId: p.agentId, intentId: p.intentId, kind: "claim" });
+        }
         break;
       }
       case "returned":

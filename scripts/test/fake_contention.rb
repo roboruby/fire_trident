@@ -6,7 +6,9 @@
 # new trunk commit, and a swarm that works the spec intents a few per poll of the snapshot: some of their first
 # proposals go back stale, every proposal adds model calls and spend, and the run's events, metrics, agents and
 # certifications read back as the real routes answer them. The grading change (files under test/accept/) is certified
-# red for the hidden test files named in `grade_fail`.
+# red for the hidden test files named in `grade_fail`. With `stall_after`, the swarm stops once that many spec intents
+# landed, the way a staging run stalled: two changes wait for a person, trunk certification is an error, claims sit on
+# the shared module (GET /field), and the agents wait on their changes.
 require "digest"
 require "json"
 require_relative "fake_deployment"
@@ -19,8 +21,10 @@ class FakeContention
   # `flags`: what /api/about lists. `land_per_poll`: spec intents worked per snapshot read. `return_every`: the first
   # proposal of every k-th spec intent goes back stale (0: none). `spend_per_poll`: USD the swarm spends per snapshot
   # read. `cap_404`: the spend cap route is missing (an older build). `grade_fail`: intent ids whose hidden test fails.
+  # `stall_after`: spec intents that land before the swarm stalls (nil: it never does).
   def initialize(flags: %w[FT_BISECT FT_CULPRITS FT_INLINE FT_INTENT_SPEND FT_TRUNK_TESTS], land_per_poll: 4, return_every: 3,
-                 spend_per_poll: 0.002, cap_404: false, grade_fail: [])
+                 spend_per_poll: 0.002, cap_404: false, grade_fail: [], stall_after: nil)
+    @stall_after = stall_after
     @flags = flags
     @land_per_poll = land_per_poll
     @return_every = return_every
@@ -58,6 +62,9 @@ class FakeContention
       c[:deleted] = true
       json(200, { ok: true })
     in ["GET", "/metrics"] then json(200, metrics(c))
+    in ["GET", "/field"]
+      claim = stalled?(c) ? { "src/core/money.ts" => { claim: 2.4, need: 31.0 } } : {}
+      json(200, [{ region: "src", at: now, totals: {}, byPath: claim, agents: [], sigma: 0, admission: { open: true, landingsPerMin: 0, activeAgents: 0 } }])
     in ["GET", "/events"]
       after = q["after"].to_i
       limit = [q["limit"].to_i, 1].max
@@ -216,11 +223,15 @@ class FakeContention
     groups.select { |_, k| k.positive? }
   end
 
+  # The swarm stalled (stall_after): enough spec intents landed and nothing more moves.
+  def stalled?(c) = !@stall_after.nil? && c[:swarm] && c[:intents].values.count { |i| i[:spec] && i[:status] == "landed" } >= @stall_after
+
   # The swarm works a few spec intents per snapshot read: the first proposal of every k-th intent goes back stale.
   def advance(c)
     return unless c[:swarm] && !c[:swarm_stopped] && !c[:paused]
 
     c[:spend] += @spend_per_poll
+    return if stalled?(c)
     workers = c[:agents].values.select { |a| a[:kind] == "internal" }
     spec = c[:intents].values.select { |i| i[:spec] }
     spec.reject { |i| i[:status] == "landed" }.first(@land_per_poll).each_with_index do |i, k|
@@ -246,8 +257,14 @@ class FakeContention
 
   def snapshot(c)
     cert = c[:certs].last
+    stall = stalled?(c)
+    cert = { trunkSha: c[:head], status: "error", detail: "the test runner failed: Identifier 'assert' has already been declared" } if stall
+    agents = c[:agents].values.select { |a| a[:kind] == "internal" }.each_with_index.map do |a, k|
+      note = stall && k < 2 ? { note: "waiting on prop_#{k} (escalated) for a change" } : {}
+      { id: a[:id], kind: "internal", name: a[:name], state: stall ? (k < 2 ? "proposing" : "waiting") : "working" }.merge(note)
+    end
     { colony: { id: c[:id], trunkSha: c[:head], certification: cert }, intents: c[:intents].values.map { |i| i.reject { |k, _| %i[taken spec calls returned].include?(k) } },
-      files: c[:files].keys.map { |p| { path: p, size: c[:files][p].to_s.bytesize } }, rules: [] }
+      files: c[:files].keys.map { |p| { path: p, size: c[:files][p].to_s.bytesize } }, rules: [], agents: agents }
   end
 
   def metrics(c)
@@ -262,6 +279,6 @@ class FakeContention
     intent_spend = c[:intents].values.select { |i| i[:spec] }.to_h do |i|
       [i[:id], { usd: 0.001 * i[:calls].to_i, byLayer: { agents: { usd: 0.001 * i[:calls].to_i, calls: i[:calls].to_i }, review: { usd: 0, calls: i[:status] == "landed" ? 1 : 0 } } }]
     end
-    { colonyId: c[:id], at: now, metrics: { landings: c[:landings].size, returned: returned, reviewQueue: 0 }, spend: spend, intentSpend: intent_spend }
+    { colonyId: c[:id], at: now, metrics: { landings: c[:landings].size, returned: returned, reviewQueue: stalled?(c) ? 2 : 0 }, spend: spend, intentSpend: intent_spend }
   end
 end

@@ -11,7 +11,10 @@
 #   3. switch review on, add the spec's rule, set the colony's spend cap to --max-usd, and declare the sixteen intents
 #      (source human, equal priority), each with its acceptance lines and the spec's conventions as context
 #   4. release N agents (POST /swarm, --model mix) and follow every --poll seconds until every intent landed and trunk
-#      is certified green (or --settle runs out), or --timeout, or nothing lands for --stall, or the spend stop
+#      is certified green (or --settle runs out), or --timeout, or nothing lands for --stall, or the spend stop. When
+#      no intent moves (no status or holder changes) for --stall-report seconds while intents are open, say STALLED
+#      with what can be seen holding them (changes waiting for a person, a certification error or red trunk, claims
+#      on the open intents' files from GET /field, what the agents are doing), again every --stall-report seconds
 #   5. stop the agents, let the changes in flight settle (at most 120 s), read the colony's record and compute the
 #      report (scripts/contention_report.rb): intents landed; returns by cause and the cause-repeat rate; rounds and
 #      model calls to land, per intent and by cause; semantic-conflict pairs that landed; red-trunk episodes and time
@@ -31,7 +34,8 @@
 #
 # Usage:
 #   FT_TOKEN=<admin token> ruby scripts/contention.rb --base https://staging.firetrident.com [--agents 8 | --sweep 8,16]
-#     [--solo] [--solo-model M] [--model SPEC] [--max-usd 15] [--timeout 2400] [--settle 600] [--stall 900] [--poll 5]
+#     [--solo] [--solo-model M] [--model SPEC] [--max-usd 15] [--timeout 2400] [--settle 600] [--stall 900]
+#     [--stall-report 300] [--poll 5]
 #     [--step-timeout 180] [--approve] [--no-grade] [--keep] [--name PREFIX] [--out DIR] [--note TEXT] [--dry-run]
 #
 # --model takes one model id or a mix as `ft swarm` does ("a=1,b=2,c": a and b pinned, the rest on c). --approve answers
@@ -80,6 +84,10 @@ module Contention
   OPEN = %w[open claimed proposed].freeze
   # Consecutive failed polls before a run gives up following (with its agents stopped).
   POLL_FAILURES = 12
+  # A claim value on a file of an open intent worth naming when a run stalls (a fresh claim is worth 1).
+  STALL_CLAIM = 0.05
+  # Files with claims a stall report names at most.
+  STALL_FILES = 4
   # How long a finished run waits for the changes in flight to settle before reading its record.
   DRAIN_S = 120
   # What a run's results keep of each proposal (not the file texts an inline change carries).
@@ -387,6 +395,9 @@ module Contention
       done_at = nil
       failures = 0
       @approved = Set.new
+      moved = nil
+      moved_at = Stage.now
+      stall_said_at = nil
       loop do
         sleep(@opts[:poll])
         snap, metrics = begin
@@ -416,6 +427,18 @@ module Contention
           last_progress = Stage.now
         end
         approve_escalations if @opts[:approve] && metrics.dig("metrics", "reviewQueue").to_i.positive?
+        # Movement: one of the run's intents changing status or holder. None for a while with intents open is a stall.
+        now_moved = Array(snap["intents"]).select { |i| @intents.key?(i["id"]) }.map { |i| [i["id"], i["status"], i["assignedTo"]] }.sort
+        if now_moved != moved
+          moved = now_moved
+          moved_at = Stage.now
+          stall_said_at = nil
+        end
+        still = Stage.now - moved_at
+        if statuses.values_at(*OPEN).sum(&:to_i).positive? && still >= @opts[:stall_report] && (stall_said_at.nil? || Stage.now - stall_said_at >= @opts[:stall_report])
+          stall_said_at = Stage.now
+          stalled(snap, metrics, statuses, still)
+        end
         if landed >= total
           done_at ||= Stage.now
           if @opts[:settle].zero? || certified_green?(snap)
@@ -439,6 +462,7 @@ module Contention
 
         @stop = "stall"
         @detail = "nothing landed for #{Stage.seconds(@opts[:stall])} s (#{landed}/#{total} landed)"
+        @detail += "; stalled: #{@result[:stalls].last[:reasons].join('; ')}" if @result[:stalls]&.any?
         break
       end
     end
@@ -451,6 +475,68 @@ module Contention
       @clock.say(format("landed %2d/%d  claimed %d  proposed %d  open %d | landings %d, returned %d, review queue %d | trunk %s %s | $%.4f",
                         landed, total, statuses["claimed"].to_i, statuses["proposed"].to_i, statuses["open"].to_i,
                         m["landings"].to_i, m["returned"].to_i, m["reviewQueue"].to_i, short(head), cert, spent))
+    end
+
+    # No intent moved for `still` seconds with intents open: say STALLED with what can be seen holding them, and keep it
+    # in the run's result.
+    def stalled(snap, metrics, statuses, still)
+      reasons = stall_reasons(snap, metrics)
+      open = OPEN.map { |k| "#{statuses[k].to_i} #{k}" }.join(", ")
+      @clock.say("STALLED: no intent moved for #{Stage.seconds(still.round(1))} s with intents open (#{open}): #{reasons.join('; ')}")
+      (@result[:stalls] ||= []) << { at_s: (Stage.now - @released_mono).round, for_s: still.round(1), open: OPEN.to_h { |k| [k, statuses[k].to_i] }, reasons: reasons }
+    end
+
+    # What can hold the open intents, as far as the snapshot, the metrics and the field show it.
+    def stall_reasons(snap, metrics)
+      reasons = []
+      queue = metrics.dig("metrics", "reviewQueue").to_i
+      reasons << "#{queue} change#{queue == 1 ? '' : 's'} wait#{queue == 1 ? 's' : ''} for a person in the review queue" if queue.positive?
+      c = snap.dig("colony", "certification")
+      if c.is_a?(Hash) && c["status"] == "error"
+        reasons << "trunk certification is error at #{short(c['trunkSha'])}: #{c['detail'].to_s[0, 200]}"
+      elsif c.is_a?(Hash) && c["status"] == "red"
+        repair = Array(snap["intents"]).find { |i| i["id"] == c["repairIntentId"] }
+        reasons << "trunk is red at #{short(c['trunkSha'])} (#{Array(c['failing']).size} failing)#{repair ? ", its repair intent #{repair['status']}" : ''}"
+      end
+      claims = stall_claims(snap)
+      reasons << claims if claims
+      agents = Array(snap["agents"]).select { |a| a["kind"] == "internal" }
+      unless agents.empty?
+        states = agents.map { |a| a["state"] }.tally.map { |k, v| "#{v} #{k}" }.join(", ")
+        waiting = agents.count { |a| a["note"].to_s.match?(/\Awaiting on /) }
+        reasons << "agents: #{states}#{waiting.positive? ? ", #{waiting} waiting on their own changes" : ''}"
+      end
+      reasons << "nothing visible holds them: the open intents are not being taken" if reasons.empty?
+      reasons
+    end
+
+    # Claims (and needs) on the open intents' files from GET /field, or nil when there are none or the field cannot be read.
+    def stall_claims(snap)
+      paths = Array(snap["intents"]).select { |i| @intents.key?(i["id"]) && i["status"] == "open" }.flat_map { |i| Array(i["footprint"]) }.uniq
+      return nil if paths.empty?
+
+      res, = step("the field") { api(:get, "/colonies/#{@colony}/field") }
+      return nil unless res.ok? && res.json.is_a?(Array)
+
+      sum = Hash.new { |h, k| h[k] = { claim: 0.0, need: 0.0 } }
+      res.json.each do |r|
+        by = r.is_a?(Hash) ? r["byPath"] : nil
+        next unless by.is_a?(Hash)
+
+        paths.each do |p|
+          v = by[p]
+          next unless v.is_a?(Hash)
+
+          sum[p][:claim] += v["claim"].to_f
+          sum[p][:need] += v["need"].to_f
+        end
+      end
+      held = sum.select { |_, v| v[:claim] >= STALL_CLAIM }.sort_by { |_, v| -v[:claim] }
+      return nil if held.empty?
+
+      "claims on the open intents' files: #{held.first(STALL_FILES).map { |p, v| format('%s claim %.1f (need %.1f)', p, v[:claim], v[:need]) }.join(', ')}"
+    rescue Failure, Stage::StepTimeout
+      nil
     end
 
     # What the colony counts as spent: its spend, or the cap's count when that is ahead (it settles every call).
@@ -857,6 +943,7 @@ module Contention
       lines << "| Models | #{runs.map { |r| (r[:models] || {}).map { |m, k| "#{m.split('/').last}×#{k}" }.join(', ') }.join(' | ')} |"
       lines << "| Review | #{runs.map { |r| r.dig(:review, :enabled) ? "on (reflex #{r.dig(:review, :reflexModel).to_s.split('/').last})" : 'n/a' }.join(' | ')} |"
       lines << "| How the run ended | #{runs.map { |r| [r[:stop], r[:stop_detail]].compact.join(': ').gsub('|', '/') }.join(' | ')} |"
+      lines << "| Stalled (no intent moved, intents open) | #{runs.map { |r| stalls_cell(r[:stalls]) }.join(' | ')} |"
       row.call("Intents landed") { |x| "#{x[:intents][:landed]} of #{x[:intents][:total]}" }
       row.call("Intents held at once, peak (mean)") { |x| "#{x[:concurrency][:peak_in_flight]} (#{n(x[:concurrency][:mean_in_flight], 2)})" }
       row.call("Intents the colony or agents declared") { |x| x[:concurrency][:colony_intents].empty? ? "none" : x[:concurrency][:colony_intents].map { |src, st| "#{src}: #{st.map { |k, v| "#{v} #{k}" }.join(', ')}" }.join("; ") }
@@ -888,6 +975,15 @@ module Contention
       lines << "- Models answer differently between runs: a second run of the same command will not give the same numbers."
       lines << ""
       lines.join("\n")
+    end
+
+    # A run's stall reports in one cell: how many, the longest, and what held the intents then.
+    def stalls_cell(stalls)
+      list = Array(stalls)
+      return "no" if list.empty?
+
+      worst = list.max_by { |x| x[:for_s].to_f }
+      "#{list.size} report#{list.size == 1 ? '' : 's'}, longest #{Stage.seconds(worst[:for_s])} s: #{Array(worst[:reasons]).join('; ')}".gsub("|", "/")
     end
 
     def run_section(r)
@@ -959,7 +1055,7 @@ module Contention
 
   def self.parse(argv)
     opts = { base: nil, agents: 8, sweep: nil, solo: false, solo_model: SOLO_MODEL, model: DEFAULT_MODEL, max_usd: 15.0,
-             timeout: 2400.0, settle: 600.0, stall: 900.0, poll: 5.0, step_timeout: 180.0, approve: false, no_grade: false,
+             timeout: 2400.0, settle: 600.0, stall: 900.0, stall_report: 300.0, poll: 5.0, step_timeout: 180.0, approve: false, no_grade: false,
              keep: false, name: "contention-#{Time.now.utc.strftime('%m%d-%H%M%S')}", out: nil, dry: false }
     OptionParser.new do |o|
       o.banner = "Usage: FT_TOKEN=... ruby scripts/contention.rb --base <url> [options]"
@@ -973,6 +1069,7 @@ module Contention
       o.on("--timeout S", Float, "Stop following a run after S seconds from its release (default 2400)") { |v| opts[:timeout] = v }
       o.on("--settle S", Float, "After every intent landed, wait up to S seconds for trunk to be certified green (default 600; 0 skips)") { |v| opts[:settle] = v }
       o.on("--stall S", Float, "Stop when nothing lands for S seconds (default 900)") { |v| opts[:stall] = v }
+      o.on("--stall-report S", Float, "Say STALLED, with what holds the open intents, when no intent moves for S seconds (default 300)") { |v| opts[:stall_report] = v }
       o.on("--poll S", Float, "Seconds between polls (default 5)") { |v| opts[:poll] = v }
       o.on("--step-timeout S", Float, "Hard time limit of each setup step and read (default 180)") { |v| opts[:step_timeout] = v }
       o.on("--approve", "Approve escalated changes as the human reviewer (default: they wait)") { opts[:approve] = true }

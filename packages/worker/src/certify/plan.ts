@@ -48,6 +48,8 @@ export interface Plan {
   bytes: number;
   /** Each test file had its own module copy; false when they shared one (a file's results then depend on the others). */
   isolated: boolean;
+  /** The limits the harness was built with (a run rebuilt after a failed start keeps them, within what time is left: startfail.ts). */
+  config: RunConfig;
 }
 
 /** The modules a test file reaches through relative imports (itself first), resolved exactly. */
@@ -104,7 +106,7 @@ export function buildPlan(p: PlanInput): Plan {
   modules[MAIN_MODULE] = { js: harnessSource(files, p.config) };
   let bytes = 0;
   for (const m of Object.values(modules)) bytes += "js" in m ? m.js.length : JSON.stringify(m.json ?? null).length;
-  return { mainModule: MAIN_MODULE, modules, files, bytes, isolated: isolate };
+  return { mainModule: MAIN_MODULE, modules, files, bytes, isolated: isolate, config: p.config };
 }
 
 /** The harness module: runs each file's tests in order and answers one JSON report. */

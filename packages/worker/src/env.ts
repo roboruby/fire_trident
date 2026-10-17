@@ -212,6 +212,15 @@ export interface Env {
    */
   FT_ESCALATION_BATCH?: string;
   /**
+   * Optional: changes waiting for a person hold no files, "on", or a comma-separated list of colony ids; absent or "off"
+   * is off. When a change is escalated to a person, or held for one under a merge lock, its agent's claim on the intent's
+   * files is cleared and no heartbeat refreshes it, so open intents on those files are taken as if nobody held them. An
+   * in-platform agent whose inline change waits for a person ends that job and takes other work; when the person
+   * decides, the change lands, goes back or is held again under the merge lock by the ordinary rules
+   * (colony/personwait.ts). Claims of work being written and of changes in review or in a lane are unchanged.
+   */
+  FT_PERSON_WAIT?: string;
+  /**
    * Optional: quoted acceptance, "on", or a comma-separated list of colony ids; absent or "off" is off. For a change whose
    * intent carries an acceptance list (and was not written by trunk certification or the colony itself), the second
    * opinion answers each line as met, not met or unclear, and each "met" names a file and quotes a line of the diff it

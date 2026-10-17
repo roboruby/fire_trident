@@ -12,6 +12,7 @@ import type { LandingRange, RangeQuery } from "./range.ts";
 import { countsLine, isReport, readBounded, summarize, type RunReport } from "./report.ts";
 import { fileKeyText, mergeResults, splitReport, type FileResult } from "./cache.ts";
 import { CertifySchedule } from "./schedule.ts";
+import { afterFailedStart } from "./startfail.ts";
 import {
   MAX_LOST,
   acceptInBaseline,
@@ -209,6 +210,9 @@ function errorText(e: unknown): string {
 function clip(s: string | undefined, n: number): string | undefined {
   return s === undefined ? undefined : s.length > n ? `${s.slice(0, n - 1)}…` : s;
 }
+
+/** An error a run raised itself (its limits, its checks of the answer), as opposed to one from the runtime. */
+class RunError extends Error {}
 
 function withTimeout<T>(p: Promise<T>, ms: number, message: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -508,10 +512,28 @@ export class Certifier {
     return this.finish(cert, inputs, testKey, judged);
   }
 
-  /** Load the plan into a Dynamic Worker and run it. */
+  /**
+   * Load the plan into a Dynamic Worker and run it. A Worker that does not start because a module of the plan does not
+   * compile starts again with that module failing the test files that load it (startfail.ts), within the same limit.
+   */
   private async run(plan: Plan, policy: CertifyPolicy): Promise<RunReport> {
+    const deadline = Date.now() + policy.timeoutMs;
+    try {
+      return await this.runIn(plan, policy);
+    } catch (err) {
+      // Errors the run raised itself, and the runtime's limits, say nothing about a module that does not compile.
+      const loader = this.host.loader();
+      const fromRuntime = loader !== undefined && !(err instanceof RunError) && !/cpu|exceeded|memory/i.test(errorText(err));
+      const again = fromRuntime ? await afterFailedStart(plan, loader, { deadline, compatibilityDate: RUNNER_COMPAT_DATE, maxCpuMs: MAX_CPU_MS }) : null;
+      if (!again) throw err;
+      return this.runIn(again, { ...policy, timeoutMs: deadline - Date.now() });
+    }
+  }
+
+  /** Load the plan into a Dynamic Worker and run it. */
+  private async runIn(plan: Plan, policy: CertifyPolicy): Promise<RunReport> {
     const loader = this.host.loader();
-    if (!loader) throw new Error("no Worker Loader binding");
+    if (!loader) throw new RunError("no Worker Loader binding");
     const worker = loader.load({
       compatibilityDate: RUNNER_COMPAT_DATE,
       compatibilityFlags: ["nodejs_compat"],
@@ -535,18 +557,18 @@ export class Certifier {
     }
     if (!res.ok) {
       const head = await readBounded(res.body, MAX_FAILED_BODY_BYTES, deadline);
-      throw new Error(`the test Worker answered ${res.status}: ${head.text.slice(0, 300)}`);
+      throw new RunError(`the test Worker answered ${res.status}: ${head.text.slice(0, 300)}`);
     }
     // The answer is written by code from the repository: refuse one too large to parse safely here.
     const body = await readBounded(res.body, MAX_REPORT_BYTES, deadline);
-    if (body.over === "time") throw new Error(late);
-    if (body.over === "size") throw new Error(`the test Worker's report is over the ${MAX_REPORT_BYTES / 1024 / 1024} MB limit`);
+    if (body.over === "time") throw new RunError(late);
+    if (body.over === "size") throw new RunError(`the test Worker's report is over the ${MAX_REPORT_BYTES / 1024 / 1024} MB limit`);
     const report = JSON.parse(body.text) as unknown;
-    if (!isReport(report)) throw new Error("the test Worker answered without a report");
+    if (!isReport(report)) throw new RunError("the test Worker answered without a report");
     // The first file's runner loads before any code from the repository runs: when it cannot start,
     // the runner itself is broken, which says nothing about the code (an error, not a red run).
     const first = report.files[0];
-    if (first && typeof first.loadError === "string" && first.loadError.startsWith(RUNNER_FAILED)) throw new Error(`it could not start: ${first.loadError.slice(RUNNER_FAILED.length)}`);
+    if (first && typeof first.loadError === "string" && first.loadError.startsWith(RUNNER_FAILED)) throw new RunError(`it could not start: ${first.loadError.slice(RUNNER_FAILED.length)}`);
     return report;
   }
 

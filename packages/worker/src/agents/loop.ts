@@ -19,6 +19,7 @@ import { cleanModelHint, stepupCheck, type ModelHint } from "../colony/stepup.ts
 import { hedgeSummary, type HedgeRecord } from "../colony/hedge.ts";
 import { cleanDeclaredBy, type DeclaredBy } from "../colony/chain.ts";
 import { PAUSE_WAIT_MS, isPauseRefusal, pauseViewOf } from "../colony/pause.ts";
+import { AWAITING_PERSON, holdsNoFiles, leavesToPerson } from "./personwait.ts";
 
 /**
  * The in-platform agent loop as a journaled state machine.
@@ -47,9 +48,10 @@ import { PAUSE_WAIT_MS, isPauseRefusal, pauseViewOf } from "../colony/pause.ts";
 export type JobStep = "deps" | "fetch" | "read" | "produce" | "commit" | "push" | "propose" | "await";
 /**
  * `redirected`: the intent was revised under the job (it restarts from the new revision); `withdrawn`: called off;
- * `escalated`: the model reported that the intent cannot be done as written, and the intent waits for a person.
+ * `escalated`: the model reported that the intent cannot be done as written, and the intent waits for a person;
+ * `awaiting_person`: the job's inline change waits for a person, and the agent went on to other work (agents/personwait.ts).
  */
-export type Outcome = "landed" | "returned" | "rejected" | "abandoned" | "timeout" | "lost" | "redirected" | "withdrawn" | "escalated";
+export type Outcome = "landed" | "returned" | "rejected" | "abandoned" | "timeout" | "lost" | "redirected" | "withdrawn" | "escalated" | "awaiting_person";
 
 /** Persistent configuration of one agent. `epoch` changes on every start/stop. */
 export interface AgentConfig {
@@ -364,6 +366,8 @@ export interface LoopDeps {
   virtual?: { on: boolean; reads: VirtualReads };
   /** Spend per intent (FT_INTENT_SPEND for the colony): count each model call under the job's intent in the journal too. */
   intentSpend?: boolean;
+  /** Changes waiting for a person hold no files (FT_PERSON_WAIT for the colony, agents/personwait.ts): an inline one ends its job. */
+  personWait?: boolean;
 }
 
 export const MAX_STEP_ATTEMPTS = 4;
@@ -1572,6 +1576,8 @@ async function awaitStep(deps: LoopDeps, cfg: AgentConfig, job: Job): Promise<St
   const p = await deps.colony.getProposal(id);
   if (!p) return finishJob(deps, cfg, job, "lost", "the colony no longer knows this proposal");
   if (TERMINAL_STATUSES.has(p.status)) return finishJob(deps, cfg, job, p.status as Outcome, p.reason);
+  // An inline change waiting for a person needs nothing more of this agent (agents/personwait.ts): it takes other work.
+  if (leavesToPerson(deps.personWait, job, p.status)) return finishJob(deps, cfg, job, AWAITING_PERSON, p.reason);
   const now = deps.now();
   if (now - (job.proposedAt ?? now) > AWAIT_TIMEOUT_MS) return finishJob(deps, cfg, job, "timeout", `still ${p.status} after ${AWAIT_TIMEOUT_MS / 60_000} minutes`);
   const prev = job.pollMs ?? FIRST_POLL_MS;
@@ -1704,8 +1710,9 @@ async function maybeHeartbeat(deps: LoopDeps, cfg: AgentConfig, job: Job): Promi
   job.lastHeartbeatAt = now;
   try {
     if (deps.refreshClaims) {
-      // Claims are refreshed in their regions directly; the colony only needs to know the agent is alive.
-      await deps.refreshClaims(job);
+      // Claims are refreshed in their regions directly; the colony only needs to know the agent is alive. A change
+      // waiting for a person holds no files (agents/personwait.ts): its claims are left to go.
+      if (!holdsNoFiles(deps.personWait, job)) await deps.refreshClaims(job);
       if (now - (job.lastColonyBeatAt ?? job.takenAt) >= COLONY_BEAT_EVERY_MS) {
         job.lastColonyBeatAt = now;
         await deps.colony.heartbeat(cfg.agentId, { claims: false });
