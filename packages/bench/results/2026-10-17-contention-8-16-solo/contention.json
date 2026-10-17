@@ -1,0 +1,2562 @@
+{
+  "kind": "contention-smoke-test",
+  "label": "MEASURED",
+  "command": "ruby scripts/contention.rb --base https://staging.firetrident.com --sweep 8,16 --solo --note 'FT_LATERAL_INHIBITION=off, FT_MEGAFILE=off (staging deploy overrides); FT_PERSON_WAIT on'",
+  "base": "https://staging.firetrident.com",
+  "note": "FT_LATERAL_INHIBITION=off, FT_MEGAFILE=off (staging deploy overrides); FT_PERSON_WAIT on",
+  "spec": {
+    "name": "tally",
+    "shared": "src/core/money.ts",
+    "intents": [
+      "split",
+      "free-shipping",
+      "refund",
+      "fx",
+      "format-options",
+      "csv",
+      "parse-options",
+      "import",
+      "basis-points",
+      "tips",
+      "late-fee",
+      "loyalty",
+      "gift-card",
+      "currency-symbols",
+      "rounding",
+      "price-range"
+    ],
+    "pairs": [
+      "format-options -> csv",
+      "parse-options -> import",
+      "basis-points -> tips",
+      "basis-points -> late-fee"
+    ]
+  },
+  "runs": [
+    {
+      "label": "8",
+      "agents": 8,
+      "model": "@cf/moonshotai/kimi-k2.7-code=1,@cf/zai-org/glm-5.3-flash=1,@cf/openai/gpt-oss-120b=2,@cf/google/gemma-4-26b-a4b-it",
+      "colony": "contention-1017-101855-8",
+      "build": "9803729",
+      "flags": [
+        "FT_A2A",
+        "FT_AGENT_CALL_BUDGET",
+        "FT_BISECT",
+        "FT_CREDIT_TRAILERS",
+        "FT_CULPRITS",
+        "FT_DELETION_GUARD",
+        "FT_ESCALATION_BATCH",
+        "FT_FIELD_GUIDE",
+        "FT_GOAL_CONFLICT",
+        "FT_HEADS_UP",
+        "FT_HEDGE",
+        "FT_INLINE",
+        "FT_INTENT_SPEND",
+        "FT_LESSON_SCOPE",
+        "FT_MERGE_INSERTIONS",
+        "FT_MODEL_STEPUP",
+        "FT_PERSON_WAIT",
+        "FT_PUBLIC_GIT",
+        "FT_PUBLIC_MCP",
+        "FT_QUOTED_ACCEPTANCE",
+        "FT_REPRODUCE",
+        "FT_RESOLVER",
+        "FT_RETURN_HUNKS",
+        "FT_TEXT_MERGE",
+        "FT_TRUNK_TESTS",
+        "FT_TWINS",
+        "FT_VIRTUAL_CHECKOUT"
+      ],
+      "seed": {
+        "files": 20,
+        "digest": "4ff227736e2fb3b682545343f730f26293511b0ad55ca3da6c411cd083342d58",
+        "landing": "lnd_mvc8v7o7a5y6qh",
+        "tests": 23
+      },
+      "review": {
+        "enabled": true,
+        "reflexModel": "@cf/cloudflare/clef",
+        "secondOpinionModels": [
+          "@cf/google/gemma-4-26b-a4b-it",
+          "@cf/openai/gpt-oss-120b",
+          "@cf/zai-org/glm-4.7-flash"
+        ]
+      },
+      "cap_set": true,
+      "models": {
+        "@cf/moonshotai/kimi-k2.7-code": 1,
+        "@cf/zai-org/glm-5.3-flash": 1,
+        "@cf/openai/gpt-oss-120b": 2,
+        "@cf/google/gemma-4-26b-a4b-it": 4
+      },
+      "started": 8,
+      "released_at": "2026-10-17T10:19:13Z",
+      "stalls": [
+        {
+          "at_s": 1907,
+          "for_s": 304.2,
+          "open": {
+            "open": 0,
+            "claimed": 0,
+            "proposed": 2
+          },
+          "reasons": [
+            "2 changes wait for a person in the review queue",
+            "trunk is red at 11a231d (13 failing)",
+            "agents: 8 waiting, 7 waiting on their own changes"
+          ]
+        },
+        {
+          "at_s": 2208,
+          "for_s": 605.5,
+          "open": {
+            "open": 0,
+            "claimed": 0,
+            "proposed": 2
+          },
+          "reasons": [
+            "2 changes wait for a person in the review queue",
+            "trunk is red at 11a231d (13 failing)",
+            "agents: 8 waiting, 7 waiting on their own changes"
+          ]
+        }
+      ],
+      "stop": "timeout",
+      "stop_detail": "14/16 intents landed after 2400 s",
+      "report": {
+        "intents": {
+          "total": 16,
+          "landed": 14,
+          "not_landed": [
+            "format-options",
+            "parse-options"
+          ],
+          "per_intent": [
+            {
+              "id": "split",
+              "intent": "int_mvc8v8y0pt0kww",
+              "title": "Split a bill evenly between people",
+              "change": "adds",
+              "status": "landed",
+              "proposals": 1,
+              "rounds": 1,
+              "returns": {},
+              "model_calls": 5,
+              "usd": 0.03463752,
+              "landed_at_s": 260.2,
+              "hidden": "pass"
+            },
+            {
+              "id": "free-shipping",
+              "intent": "int_mvc8v90rrit19m",
+              "title": "Free shipping on orders of $75 or more",
+              "change": "adds",
+              "status": "landed",
+              "proposals": 3,
+              "rounds": 3,
+              "returns": {
+                "review": 2
+              },
+              "model_calls": 23,
+              "usd": 0.12375876,
+              "landed_at_s": 1348.6,
+              "hidden": "pass"
+            },
+            {
+              "id": "refund",
+              "intent": "int_mvc8v948y6lgfr",
+              "title": "Credit notes for refunds",
+              "change": "adds",
+              "status": "landed",
+              "proposals": 1,
+              "rounds": 1,
+              "returns": {},
+              "model_calls": 8,
+              "usd": 0.00529919,
+              "landed_at_s": 378.1,
+              "hidden": "pass"
+            },
+            {
+              "id": "fx",
+              "intent": "int_mvc8v96dvx25uc",
+              "title": "Invoices in another currency",
+              "change": "adds",
+              "status": "landed",
+              "proposals": 1,
+              "rounds": 1,
+              "returns": {},
+              "model_calls": 6,
+              "usd": 0.01026239,
+              "landed_at_s": 112.1,
+              "hidden": "pass"
+            },
+            {
+              "id": "format-options",
+              "intent": "int_mvc8v98q4njy0g",
+              "title": "format takes an options object",
+              "change": "signature",
+              "status": "proposed",
+              "proposals": 1,
+              "rounds": null,
+              "returns": {},
+              "model_calls": 6,
+              "usd": 0.0098185,
+              "landed_at_s": null,
+              "hidden": "fail"
+            },
+            {
+              "id": "csv",
+              "intent": "int_mvc8v9b0ujudhm",
+              "title": "CSV export of an invoice",
+              "change": "adds",
+              "status": "landed",
+              "proposals": 2,
+              "rounds": 2,
+              "returns": {
+                "review": 1
+              },
+              "model_calls": 11,
+              "usd": 0.01511828,
+              "landed_at_s": 434.1,
+              "hidden": "pass"
+            },
+            {
+              "id": "parse-options",
+              "intent": "int_mvc8v9d4cyzqg9",
+              "title": "parse takes an options object and reads currency symbols",
+              "change": "signature",
+              "status": "proposed",
+              "proposals": 2,
+              "rounds": null,
+              "returns": {
+                "review": 1
+              },
+              "model_calls": 11,
+              "usd": 0.02216238,
+              "landed_at_s": null,
+              "hidden": "fail"
+            },
+            {
+              "id": "import",
+              "intent": "int_mvc8v9fc37i8bf",
+              "title": "Price list import with a currency per line",
+              "change": "adds",
+              "status": "landed",
+              "proposals": 1,
+              "rounds": 1,
+              "returns": {},
+              "model_calls": 6,
+              "usd": 0.00628625,
+              "landed_at_s": 684.3,
+              "hidden": "fail"
+            },
+            {
+              "id": "basis-points",
+              "intent": "int_mvc8v9jer0ajxg",
+              "title": "Rates in basis points",
+              "change": "signature",
+              "status": "landed",
+              "proposals": 1,
+              "rounds": 1,
+              "returns": {},
+              "model_calls": 6,
+              "usd": 0.00561697,
+              "landed_at_s": 669.5,
+              "hidden": "pass"
+            },
+            {
+              "id": "tips",
+              "intent": "int_mvc8v9llhczq1l",
+              "title": "Tip suggestions",
+              "change": "adds",
+              "status": "landed",
+              "proposals": 3,
+              "rounds": 3,
+              "returns": {
+                "review": 2
+              },
+              "model_calls": 16,
+              "usd": 0.04526661,
+              "landed_at_s": 1249.8,
+              "hidden": "pass"
+            },
+            {
+              "id": "late-fee",
+              "intent": "int_mvc8v9nn4ramqd",
+              "title": "Late fees on overdue invoices",
+              "change": "adds",
+              "status": "landed",
+              "proposals": 1,
+              "rounds": 1,
+              "returns": {},
+              "model_calls": 8,
+              "usd": 0.0164826,
+              "landed_at_s": 855.2,
+              "hidden": "pass"
+            },
+            {
+              "id": "loyalty",
+              "intent": "int_mvc8v9pq8bexsu",
+              "title": "Loyalty points",
+              "change": "adds",
+              "status": "landed",
+              "proposals": 1,
+              "rounds": 1,
+              "returns": {},
+              "model_calls": 5,
+              "usd": 0.00310535,
+              "landed_at_s": 762.6,
+              "hidden": "pass"
+            },
+            {
+              "id": "gift-card",
+              "intent": "int_mvc8v9rs9oi4u8",
+              "title": "Gift card payments",
+              "change": "adds",
+              "status": "landed",
+              "proposals": 2,
+              "rounds": 2,
+              "returns": {
+                "review": 1
+              },
+              "model_calls": 12,
+              "usd": 0.01091095,
+              "landed_at_s": 1046.7,
+              "hidden": "pass"
+            },
+            {
+              "id": "currency-symbols",
+              "intent": "int_mvc8v9twwjauxb",
+              "title": "Symbols for more currencies",
+              "change": "behavior",
+              "status": "landed",
+              "proposals": 1,
+              "rounds": 1,
+              "returns": {},
+              "model_calls": 5,
+              "usd": 0.00862791,
+              "landed_at_s": 1145.3,
+              "hidden": "pass"
+            },
+            {
+              "id": "rounding",
+              "intent": "int_mvc8v9y0qpvarv",
+              "title": "Rounding modes for multiply",
+              "change": "behavior",
+              "status": "landed",
+              "proposals": 1,
+              "rounds": 1,
+              "returns": {},
+              "model_calls": 9,
+              "usd": 0.01067683,
+              "landed_at_s": 1444.9,
+              "hidden": "pass"
+            },
+            {
+              "id": "price-range",
+              "intent": "int_mvc8va04zh0sjh",
+              "title": "Price range of the catalog",
+              "change": "adds",
+              "status": "landed",
+              "proposals": 1,
+              "rounds": 1,
+              "returns": {},
+              "model_calls": 16,
+              "usd": 0.02495714,
+              "landed_at_s": 1596.7,
+              "hidden": "fail"
+            }
+          ]
+        },
+        "concurrency": {
+          "peak_in_flight": 6,
+          "mean_in_flight": 3.49,
+          "colony_intents": {}
+        },
+        "returns": {
+          "proposals": 23,
+          "landed": 14,
+          "returned": 7,
+          "redirects": 0,
+          "rejected": 0,
+          "escalated_now": 2,
+          "in_flight": 0,
+          "by_cause": {
+            "stale": 0,
+            "text_merge": 0,
+            "review": 7,
+            "rule": 0,
+            "other": 0
+          },
+          "labels": {
+            "stale": "stale read",
+            "text_merge": "text-merge conflict",
+            "review": "review",
+            "rule": "rule",
+            "other": "other"
+          },
+          "other": {}
+        },
+        "cause_repeat": {
+          "rate": 0.3333,
+          "repeats": 2,
+          "eligible": 6,
+          "by_cause": {
+            "stale": {
+              "repeats": 0,
+              "eligible": 0,
+              "rate": null
+            },
+            "text_merge": {
+              "repeats": 0,
+              "eligible": 0,
+              "rate": null
+            },
+            "review": {
+              "repeats": 2,
+              "eligible": 6,
+              "rate": 0.3333
+            },
+            "rule": {
+              "repeats": 0,
+              "eligible": 0,
+              "rate": null
+            },
+            "other": {
+              "repeats": 0,
+              "eligible": 0,
+              "rate": null
+            }
+          }
+        },
+        "rounds": {
+          "landed": 14,
+          "median_rounds": 1.0,
+          "max_rounds": 3,
+          "median_calls": 8.0,
+          "calls_counted": true,
+          "by_cause": {
+            "stale": {
+              "intents": 0,
+              "median_rounds": null,
+              "median_calls": null,
+              "rounds": 0,
+              "calls": 0
+            },
+            "text_merge": {
+              "intents": 0,
+              "median_rounds": null,
+              "median_calls": null,
+              "rounds": 0,
+              "calls": 0
+            },
+            "review": {
+              "intents": 4,
+              "median_rounds": 2.5,
+              "median_calls": 14.0,
+              "rounds": 10,
+              "calls": 62
+            },
+            "rule": {
+              "intents": 0,
+              "median_rounds": null,
+              "median_calls": null,
+              "rounds": 0,
+              "calls": 0
+            },
+            "other": {
+              "intents": 0,
+              "median_rounds": null,
+              "median_calls": null,
+              "rounds": 0,
+              "calls": 0
+            },
+            "first try": {
+              "intents": 10,
+              "median_rounds": 1.0,
+              "median_calls": 6.0,
+              "rounds": 10,
+              "calls": 74
+            }
+          }
+        },
+        "red": {
+          "certifications": 15,
+          "red_results": 12,
+          "errors": 0,
+          "episodes": 1,
+          "open_at_end": 1,
+          "median_time_to_green_s": null,
+          "max_time_to_green_s": null,
+          "time_red_s": 2024.2,
+          "repair_intents": {
+            "declared": 1,
+            "landed": 0
+          },
+          "list": [
+            {
+              "red_sha": "2f70b9e44faa83a34ff73cf3ad1264c0b831d27d",
+              "red_at_s": 378.2,
+              "failing": [
+                "test/refund.test.ts"
+              ],
+              "green_sha": null,
+              "time_to_green_s": null,
+              "time_red_s": 2024.2,
+              "landings_during": 11,
+              "culprit": {
+                "by": "first red",
+                "landing": "lnd_mvc93dzn6n02aj",
+                "proposals": [
+                  {
+                    "id": "prp_mvc92xzv0z8fgp",
+                    "intent": "refund"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "semantic": {
+          "pairs_landed": 0,
+          "observed": [],
+          "own_mistakes": 1,
+          "designed": [
+            {
+              "first": "format-options",
+              "second": "csv",
+              "first_landed": false,
+              "second_landed": true,
+              "hidden_first": "fail",
+              "hidden_second": "pass"
+            },
+            {
+              "first": "parse-options",
+              "second": "import",
+              "first_landed": false,
+              "second_landed": true,
+              "hidden_first": "fail",
+              "hidden_second": "fail"
+            },
+            {
+              "first": "basis-points",
+              "second": "tips",
+              "first_landed": true,
+              "second_landed": true,
+              "landed_second": "tips",
+              "second_built_before_first_landed": false,
+              "next_certification": "red",
+              "found_as_pair": false,
+              "hidden_first": "pass",
+              "hidden_second": "pass"
+            },
+            {
+              "first": "basis-points",
+              "second": "late-fee",
+              "first_landed": true,
+              "second_landed": true,
+              "landed_second": "late-fee",
+              "second_built_before_first_landed": false,
+              "next_certification": "red",
+              "found_as_pair": false,
+              "hidden_first": "pass",
+              "hidden_second": "pass"
+            }
+          ]
+        },
+        "human_queue": {
+          "escalations": 2,
+          "held_merges": 0,
+          "agent_reports": 1,
+          "stuck": {},
+          "audit_items": null,
+          "audit_note": "this build keeps no audit queue",
+          "total": 3,
+          "waiting_at_end": 3,
+          "median_time_in_queue_s": 1829.1,
+          "max_time_in_queue_s": 2198.9,
+          "items": [
+            {
+              "kind": "review escalation",
+              "subject": "prp_mvc8zch1c5sfus",
+              "intent": "format-options",
+              "answer": null,
+              "opened_at_s": 203.5,
+              "time_in_queue_s": 2198.9
+            },
+            {
+              "kind": "review escalation",
+              "subject": "prp_mvc97xogs8j2y3",
+              "intent": "parse-options",
+              "answer": null,
+              "opened_at_s": 602.5,
+              "time_in_queue_s": 1799.9
+            },
+            {
+              "kind": "agent report",
+              "subject": "int_mvc93egp8g23kt",
+              "intent": "int_mvc93egp8g23kt",
+              "report_kind": "broken-test",
+              "opened_at_s": 573.3,
+              "time_in_queue_s": 1829.1
+            }
+          ]
+        },
+        "spend": {
+          "usd": 0.36626494,
+          "by_layer": {
+            "agents": 0.3249956,
+            "review": 0.04126934,
+            "judge": 0,
+            "resolver": 0,
+            "other": 0
+          },
+          "by_model": {
+            "@cf/google/gemma-4-26b-a4b-it": {
+              "usd": 0.0458989,
+              "input": 273952,
+              "output": 61679,
+              "agents": 4,
+              "agent_calls": 49
+            },
+            "@cf/moonshotai/kimi-k2.7-code": {
+              "usd": 0.17695685,
+              "input": 59083,
+              "output": 30207,
+              "agents": 1,
+              "agent_calls": 14
+            },
+            "@cf/openai/gpt-oss-120b": {
+              "usd": 0.12121055,
+              "input": 185383,
+              "output": 75102,
+              "agents": 2,
+              "agent_calls": 39
+            },
+            "@cf/zai-org/glm-5.3-flash": {
+              "usd": 0.0060864,
+              "input": 22086,
+              "output": 5547,
+              "agents": 1,
+              "agent_calls": 6
+            },
+            "@cf/cloudflare/clef": {
+              "usd": 0.01362792,
+              "input": 56783,
+              "output": 0,
+              "agents": 0,
+              "agent_calls": 0
+            },
+            "@cf/zai-org/glm-4.7-flash": {
+              "usd": 0.00248432,
+              "input": 16640,
+              "output": 3694,
+              "agents": 0,
+              "agent_calls": 0
+            }
+          },
+          "unpriced": {},
+          "agent_calls": 108,
+          "review_calls": 46,
+          "model_calls": 154,
+          "per_landed_intent": 0.026162,
+          "colony_per_landed_intent": 0.02441766,
+          "cap": {
+            "usd": 15,
+            "reviewReserveUsd": 1.5,
+            "spentUsd": 0.48947324,
+            "state": "open"
+          }
+        },
+        "wall": {
+          "release_to_last_landing_s": null,
+          "last_landing_so_far_s": 1596.7,
+          "release_to_green_s": null,
+          "run_s": 2402.4
+        }
+      },
+      "end_at": 1792234756051,
+      "release_at": 1792232353664,
+      "grade": {
+        "status": "red",
+        "trunk_sha": "65904d6774b1abaceae53a1e13599d7ac86ac5c8",
+        "counts": {
+          "tests": 154,
+          "pass": 134,
+          "fail": 20,
+          "cancelled": 0,
+          "skipped": 0,
+          "todo": 0,
+          "suites": 6
+        },
+        "files": {
+          "split": "pass",
+          "free-shipping": "pass",
+          "refund": "pass",
+          "fx": "pass",
+          "format-options": "fail",
+          "csv": "pass",
+          "parse-options": "fail",
+          "import": "fail",
+          "basis-points": "pass",
+          "tips": "pass",
+          "late-fee": "pass",
+          "loyalty": "pass",
+          "gift-card": "pass",
+          "currency-symbols": "pass",
+          "rounding": "pass",
+          "price-range": "fail"
+        },
+        "passed": 12,
+        "failed": 4,
+        "other": 0,
+        "failing": [
+          {
+            "file": "test/accept/format-options.test.ts",
+            "name": "format-options: symbol and grouping",
+            "error": "AssertionError (strictEqual): actual '$1234567.89', expected '$1,234,567.89' (at test/accept/format-options.test.ts:8)"
+          },
+          {
+            "file": "test/accept/import.test.ts",
+            "name": "import: each line's price is in its own currency",
+            "error": "ReferenceError: isCurrencyCode is not defined (at src/import.ts:23)"
+          },
+          {
+            "file": "test/accept/import.test.ts",
+            "name": "import: malformed lines are refused",
+            "error": "AssertionError: The error is expected to be an instance of \"SyntaxError\". Received \"ReferenceError\" Error message: isCurrencyCode is not defined (at test/accept/import.test.ts:24)"
+          },
+          {
+            "file": "test/accept/parse-options.test.ts",
+            "name": "parse-options: a leading symbol names the currency",
+            "error": "SyntaxError: parse: \"$12.34\" is not an amount (at src/core/money.ts:170)"
+          },
+          {
+            "file": "test/accept/parse-options.test.ts",
+            "name": "parse-options: the currency option",
+            "error": "AssertionError (deepStrictEqual): actual { cents: 1234, currency: { currency: 'EUR' } }, expected { cents: 1234, currency: 'EUR' } (at test/accept/parse-options.test.ts:14)"
+          },
+          {
+            "file": "test/accept/parse-options.test.ts",
+            "name": "parse-options: the catalog reads prices with or without a symbol",
+            "error": "SyntaxError: parse: \"$4.50\" is not an amount (at src/core/money.ts:170)"
+          },
+          {
+            "file": "test/accept/price-range.test.ts",
+            "name": "test/accept/price-range.test.ts",
+            "error": "ReferenceError: src is not defined (at src/pricerange.ts:1)"
+          }
+        ]
+      },
+      "deleted": true
+    },
+    {
+      "label": "16",
+      "agents": 16,
+      "model": "@cf/moonshotai/kimi-k2.7-code=1,@cf/zai-org/glm-5.3-flash=1,@cf/openai/gpt-oss-120b=2,@cf/google/gemma-4-26b-a4b-it",
+      "colony": "contention-1017-101855-16",
+      "build": "9803729",
+      "flags": [
+        "FT_A2A",
+        "FT_AGENT_CALL_BUDGET",
+        "FT_BISECT",
+        "FT_CREDIT_TRAILERS",
+        "FT_CULPRITS",
+        "FT_DELETION_GUARD",
+        "FT_ESCALATION_BATCH",
+        "FT_FIELD_GUIDE",
+        "FT_GOAL_CONFLICT",
+        "FT_HEADS_UP",
+        "FT_HEDGE",
+        "FT_INLINE",
+        "FT_INTENT_SPEND",
+        "FT_LESSON_SCOPE",
+        "FT_MERGE_INSERTIONS",
+        "FT_MODEL_STEPUP",
+        "FT_PERSON_WAIT",
+        "FT_PUBLIC_GIT",
+        "FT_PUBLIC_MCP",
+        "FT_QUOTED_ACCEPTANCE",
+        "FT_REPRODUCE",
+        "FT_RESOLVER",
+        "FT_RETURN_HUNKS",
+        "FT_TEXT_MERGE",
+        "FT_TRUNK_TESTS",
+        "FT_TWINS",
+        "FT_VIRTUAL_CHECKOUT"
+      ],
+      "seed": {
+        "files": 20,
+        "digest": "4ff227736e2fb3b682545343f730f26293511b0ad55ca3da6c411cd083342d58",
+        "landing": "lnd_mvcabnip5b22i9",
+        "tests": 23
+      },
+      "review": {
+        "enabled": true,
+        "reflexModel": "@cf/cloudflare/clef",
+        "secondOpinionModels": [
+          "@cf/google/gemma-4-26b-a4b-it",
+          "@cf/openai/gpt-oss-120b",
+          "@cf/zai-org/glm-4.7-flash"
+        ]
+      },
+      "cap_set": true,
+      "models": {
+        "@cf/moonshotai/kimi-k2.7-code": 1,
+        "@cf/zai-org/glm-5.3-flash": 1,
+        "@cf/openai/gpt-oss-120b": 2,
+        "@cf/google/gemma-4-26b-a4b-it": 12
+      },
+      "started": 16,
+      "released_at": "2026-10-17T11:00:02Z",
+      "stalls": [
+        {
+          "at_s": 1670,
+          "for_s": 300.6,
+          "open": {
+            "open": 0,
+            "claimed": 0,
+            "proposed": 2
+          },
+          "reasons": [
+            "2 changes wait for a person in the review queue",
+            "trunk is red at 0798db0 (20 failing)",
+            "agents: 16 waiting, 1 dead, 10 waiting on their own changes"
+          ]
+        },
+        {
+          "at_s": 1971,
+          "for_s": 602.3,
+          "open": {
+            "open": 0,
+            "claimed": 0,
+            "proposed": 2
+          },
+          "reasons": [
+            "2 changes wait for a person in the review queue",
+            "trunk is red at 0798db0 (20 failing)",
+            "agents: 16 waiting, 1 dead, 10 waiting on their own changes"
+          ]
+        },
+        {
+          "at_s": 2272,
+          "for_s": 902.7,
+          "open": {
+            "open": 0,
+            "claimed": 0,
+            "proposed": 2
+          },
+          "reasons": [
+            "2 changes wait for a person in the review queue",
+            "trunk is red at 0798db0 (20 failing)",
+            "agents: 16 waiting, 1 dead, 10 waiting on their own changes"
+          ]
+        }
+      ],
+      "stop": "stall",
+      "stop_detail": "nothing landed for 900 s (14/16 landed); stalled: 2 changes wait for a person in the review queue; trunk is red at 0798db0 (20 failing); agents: 16 waiting, 1 dead, 10 waiting on their own changes",
+      "report": {
+        "intents": {
+          "total": 16,
+          "landed": 14,
+          "not_landed": [
+            "free-shipping",
+            "fx"
+          ],
+          "per_intent": [
+            {
+              "id": "split",
+              "intent": "int_mvcabpkb0evf15",
+              "title": "Split a bill evenly between people",
+              "change": "adds",
+              "status": "landed",
+              "proposals": 1,
+              "rounds": 1,
+              "returns": {},
+              "model_calls": 5,
+              "usd": 0.04267019,
+              "landed_at_s": 253.5,
+              "hidden": "pass"
+            },
+            {
+              "id": "free-shipping",
+              "intent": "int_mvcabpvzrj92ol",
+              "title": "Free shipping on orders of $75 or more",
+              "change": "adds",
+              "status": "proposed",
+              "proposals": 1,
+              "rounds": null,
+              "returns": {},
+              "model_calls": 5,
+              "usd": 0.00336769,
+              "landed_at_s": null,
+              "hidden": "fail"
+            },
+            {
+              "id": "refund",
+              "intent": "int_mvcabpymb4l5qd",
+              "title": "Credit notes for refunds",
+              "change": "adds",
+              "status": "landed",
+              "proposals": 1,
+              "rounds": 1,
+              "returns": {},
+              "model_calls": 12,
+              "usd": 0.00804012,
+              "landed_at_s": 269.6,
+              "hidden": "pass"
+            },
+            {
+              "id": "fx",
+              "intent": "int_mvcabq17wcjxg6",
+              "title": "Invoices in another currency",
+              "change": "adds",
+              "status": "proposed",
+              "proposals": 1,
+              "rounds": null,
+              "returns": {},
+              "model_calls": 6,
+              "usd": 0.00354599,
+              "landed_at_s": null,
+              "hidden": "fail"
+            },
+            {
+              "id": "format-options",
+              "intent": "int_mvcabq432pakpr",
+              "title": "format takes an options object",
+              "change": "signature",
+              "status": "landed",
+              "proposals": 1,
+              "rounds": 1,
+              "returns": {},
+              "model_calls": 9,
+              "usd": 0.00517612,
+              "landed_at_s": 350.5,
+              "hidden": "pass"
+            },
+            {
+              "id": "csv",
+              "intent": "int_mvcabq72xxjuyz",
+              "title": "CSV export of an invoice",
+              "change": "adds",
+              "status": "landed",
+              "proposals": 1,
+              "rounds": 1,
+              "returns": {},
+              "model_calls": 7,
+              "usd": 0.0073921,
+              "landed_at_s": 419.7,
+              "hidden": "pass"
+            },
+            {
+              "id": "parse-options",
+              "intent": "int_mvcabqag4wd4ht",
+              "title": "parse takes an options object and reads currency symbols",
+              "change": "signature",
+              "status": "landed",
+              "proposals": 2,
+              "rounds": 2,
+              "returns": {
+                "review": 1
+              },
+              "model_calls": 10,
+              "usd": 0.01166165,
+              "landed_at_s": 680.4,
+              "hidden": "fail"
+            },
+            {
+              "id": "import",
+              "intent": "int_mvcabqd1nfkyfi",
+              "title": "Price list import with a currency per line",
+              "change": "adds",
+              "status": "landed",
+              "proposals": 1,
+              "rounds": 1,
+              "returns": {},
+              "model_calls": 11,
+              "usd": 0.00876364,
+              "landed_at_s": 666.6,
+              "hidden": "fail"
+            },
+            {
+              "id": "basis-points",
+              "intent": "int_mvcabqg44qzy5l",
+              "title": "Rates in basis points",
+              "change": "signature",
+              "status": "landed",
+              "proposals": 1,
+              "rounds": 1,
+              "returns": {},
+              "model_calls": 7,
+              "usd": 0.00493605,
+              "landed_at_s": 794.9,
+              "hidden": "pass"
+            },
+            {
+              "id": "tips",
+              "intent": "int_mvcabqjgu6ixbc",
+              "title": "Tip suggestions",
+              "change": "adds",
+              "status": "landed",
+              "proposals": 1,
+              "rounds": 1,
+              "returns": {},
+              "model_calls": 13,
+              "usd": 0.00954728,
+              "landed_at_s": 651.8,
+              "hidden": "fail"
+            },
+            {
+              "id": "late-fee",
+              "intent": "int_mvcabqmitm8nwf",
+              "title": "Late fees on overdue invoices",
+              "change": "adds",
+              "status": "landed",
+              "proposals": 3,
+              "rounds": 3,
+              "returns": {
+                "text_merge": 1,
+                "review": 1
+              },
+              "model_calls": 27,
+              "usd": 0.09334678,
+              "landed_at_s": 1364.1,
+              "hidden": "pass"
+            },
+            {
+              "id": "loyalty",
+              "intent": "int_mvcabqq4bdsh0q",
+              "title": "Loyalty points",
+              "change": "adds",
+              "status": "landed",
+              "proposals": 1,
+              "rounds": 1,
+              "returns": {},
+              "model_calls": 7,
+              "usd": 0.04226882,
+              "landed_at_s": 444.6,
+              "hidden": "pass"
+            },
+            {
+              "id": "gift-card",
+              "intent": "int_mvcabqsufza3tp",
+              "title": "Gift card payments",
+              "change": "adds",
+              "status": "landed",
+              "proposals": 1,
+              "rounds": 1,
+              "returns": {},
+              "model_calls": 6,
+              "usd": 0.00388872,
+              "landed_at_s": 335.7,
+              "hidden": "pass"
+            },
+            {
+              "id": "currency-symbols",
+              "intent": "int_mvcabqvnlgvcft",
+              "title": "Symbols for more currencies",
+              "change": "behavior",
+              "status": "landed",
+              "proposals": 1,
+              "rounds": 1,
+              "returns": {},
+              "model_calls": 5,
+              "usd": 0.00390853,
+              "landed_at_s": 809.6,
+              "hidden": "pass"
+            },
+            {
+              "id": "rounding",
+              "intent": "int_mvcabr3tbx6cp8",
+              "title": "Rounding modes for multiply",
+              "change": "behavior",
+              "status": "landed",
+              "proposals": 2,
+              "rounds": 2,
+              "returns": {
+                "review": 1
+              },
+              "model_calls": 11,
+              "usd": 0.01027217,
+              "landed_at_s": 1015.2,
+              "hidden": "pass"
+            },
+            {
+              "id": "price-range",
+              "intent": "int_mvcabr6tewc9j7",
+              "title": "Price range of the catalog",
+              "change": "adds",
+              "status": "landed",
+              "proposals": 2,
+              "rounds": 2,
+              "returns": {
+                "review": 1
+              },
+              "model_calls": 22,
+              "usd": 0.04643807,
+              "landed_at_s": 1144.1,
+              "hidden": "pass"
+            }
+          ]
+        },
+        "concurrency": {
+          "peak_in_flight": 7,
+          "mean_in_flight": 3.61,
+          "colony_intents": {}
+        },
+        "returns": {
+          "proposals": 21,
+          "landed": 14,
+          "returned": 5,
+          "redirects": 0,
+          "rejected": 0,
+          "escalated_now": 2,
+          "in_flight": 0,
+          "by_cause": {
+            "stale": 0,
+            "text_merge": 1,
+            "review": 4,
+            "rule": 0,
+            "other": 0
+          },
+          "labels": {
+            "stale": "stale read",
+            "text_merge": "text-merge conflict",
+            "review": "review",
+            "rule": "rule",
+            "other": "other"
+          },
+          "other": {}
+        },
+        "cause_repeat": {
+          "rate": 0.0,
+          "repeats": 0,
+          "eligible": 5,
+          "by_cause": {
+            "stale": {
+              "repeats": 0,
+              "eligible": 0,
+              "rate": null
+            },
+            "text_merge": {
+              "repeats": 0,
+              "eligible": 1,
+              "rate": 0.0
+            },
+            "review": {
+              "repeats": 0,
+              "eligible": 4,
+              "rate": 0.0
+            },
+            "rule": {
+              "repeats": 0,
+              "eligible": 0,
+              "rate": null
+            },
+            "other": {
+              "repeats": 0,
+              "eligible": 0,
+              "rate": null
+            }
+          }
+        },
+        "rounds": {
+          "landed": 14,
+          "median_rounds": 1.0,
+          "max_rounds": 3,
+          "median_calls": 9.5,
+          "calls_counted": true,
+          "by_cause": {
+            "stale": {
+              "intents": 0,
+              "median_rounds": null,
+              "median_calls": null,
+              "rounds": 0,
+              "calls": 0
+            },
+            "text_merge": {
+              "intents": 1,
+              "median_rounds": 3,
+              "median_calls": 27,
+              "rounds": 3,
+              "calls": 27
+            },
+            "review": {
+              "intents": 4,
+              "median_rounds": 2.0,
+              "median_calls": 16.5,
+              "rounds": 9,
+              "calls": 70
+            },
+            "rule": {
+              "intents": 0,
+              "median_rounds": null,
+              "median_calls": null,
+              "rounds": 0,
+              "calls": 0
+            },
+            "other": {
+              "intents": 0,
+              "median_rounds": null,
+              "median_calls": null,
+              "rounds": 0,
+              "calls": 0
+            },
+            "first try": {
+              "intents": 10,
+              "median_rounds": 1.0,
+              "median_calls": 7.0,
+              "rounds": 10,
+              "calls": 82
+            }
+          }
+        },
+        "red": {
+          "certifications": 15,
+          "red_results": 12,
+          "errors": 0,
+          "episodes": 1,
+          "open_at_end": 1,
+          "median_time_to_green_s": null,
+          "max_time_to_green_s": null,
+          "time_red_s": 1935.7,
+          "repair_intents": {
+            "declared": 1,
+            "landed": 0
+          },
+          "list": [
+            {
+              "red_sha": "26f17a98c812924625d7272ea45b1e2dfb367e80",
+              "red_at_s": 336.0,
+              "failing": [
+                "test/giftcard.test.ts"
+              ],
+              "green_sha": null,
+              "time_to_green_s": null,
+              "time_red_s": 1935.7,
+              "landings_during": 11,
+              "culprit": {
+                "by": "first red",
+                "landing": "lnd_mvcaiz28io8dyf",
+                "proposals": [
+                  {
+                    "id": "prp_mvcaig408fhocz",
+                    "intent": "gift-card"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "semantic": {
+          "pairs_landed": 0,
+          "observed": [],
+          "own_mistakes": 1,
+          "designed": [
+            {
+              "first": "format-options",
+              "second": "csv",
+              "first_landed": true,
+              "second_landed": true,
+              "landed_second": "csv",
+              "second_built_before_first_landed": false,
+              "next_certification": "red",
+              "found_as_pair": false,
+              "hidden_first": "pass",
+              "hidden_second": "pass"
+            },
+            {
+              "first": "parse-options",
+              "second": "import",
+              "first_landed": true,
+              "second_landed": true,
+              "landed_second": "parse-options",
+              "second_built_before_first_landed": true,
+              "next_certification": "red",
+              "found_as_pair": false,
+              "hidden_first": "fail",
+              "hidden_second": "fail"
+            },
+            {
+              "first": "basis-points",
+              "second": "tips",
+              "first_landed": true,
+              "second_landed": true,
+              "landed_second": "basis-points",
+              "second_built_before_first_landed": false,
+              "next_certification": "red",
+              "found_as_pair": false,
+              "hidden_first": "pass",
+              "hidden_second": "fail"
+            },
+            {
+              "first": "basis-points",
+              "second": "late-fee",
+              "first_landed": true,
+              "second_landed": true,
+              "landed_second": "late-fee",
+              "second_built_before_first_landed": false,
+              "next_certification": "red",
+              "found_as_pair": false,
+              "hidden_first": "pass",
+              "hidden_second": "pass"
+            }
+          ]
+        },
+        "human_queue": {
+          "escalations": 2,
+          "held_merges": 0,
+          "agent_reports": 1,
+          "stuck": {},
+          "audit_items": null,
+          "audit_note": "this build keeps no audit queue",
+          "total": 3,
+          "waiting_at_end": 3,
+          "median_time_in_queue_s": 2104.6,
+          "max_time_in_queue_s": 2184.0,
+          "items": [
+            {
+              "kind": "review escalation",
+              "subject": "prp_mvcad9o3w76kpg",
+              "intent": "fx",
+              "answer": null,
+              "opened_at_s": 87.7,
+              "time_in_queue_s": 2184.0
+            },
+            {
+              "kind": "review escalation",
+              "subject": "prp_mvcaf7he8xpdbt",
+              "intent": "free-shipping",
+              "answer": null,
+              "opened_at_s": 167.1,
+              "time_in_queue_s": 2104.6
+            },
+            {
+              "kind": "agent report",
+              "subject": "int_mvcaizmm8iaw66",
+              "intent": "int_mvcaizmm8iaw66",
+              "report_kind": "broken-test",
+              "opened_at_s": 382.0,
+              "time_in_queue_s": 1889.7
+            }
+          ]
+        },
+        "spend": {
+          "usd": 0.33452487,
+          "by_layer": {
+            "agents": 0.2836808,
+            "review": 0.03126542,
+            "judge": 0,
+            "resolver": 0.01957865,
+            "other": 0
+          },
+          "by_model": {
+            "@cf/google/gemma-4-26b-a4b-it": {
+              "usd": 0.0723181,
+              "input": 452224,
+              "output": 90319,
+              "agents": 12,
+              "agent_calls": 84
+            },
+            "@cf/moonshotai/kimi-k2.7-code": {
+              "usd": 0.18302225,
+              "input": 64335,
+              "output": 30476,
+              "agents": 2,
+              "agent_calls": 14
+            },
+            "@cf/openai/gpt-oss-120b": {
+              "usd": 0.04766065,
+              "input": 80219,
+              "output": 26112,
+              "agents": 2,
+              "agent_calls": 11
+            },
+            "@cf/zai-org/glm-5.3-flash": {
+              "usd": 0.0140733,
+              "input": 53852,
+              "output": 11991,
+              "agents": 1,
+              "agent_calls": 13
+            },
+            "@cf/cloudflare/clef": {
+              "usd": 0.01289304,
+              "input": 53721,
+              "output": 0,
+              "agents": 0,
+              "agent_calls": 0
+            },
+            "@cf/zai-org/glm-4.7-flash": {
+              "usd": 0.00455753,
+              "input": 34703,
+              "output": 6145,
+              "agents": 0,
+              "agent_calls": 0
+            }
+          },
+          "unpriced": {},
+          "agent_calls": 122,
+          "review_calls": 42,
+          "model_calls": 164,
+          "per_landed_intent": 0.023895,
+          "colony_per_landed_intent": 0.02230166,
+          "cap": {
+            "usd": 15,
+            "reviewReserveUsd": 1.5,
+            "spentUsd": 0.41793347,
+            "state": "open"
+          }
+        },
+        "wall": {
+          "release_to_last_landing_s": null,
+          "last_landing_so_far_s": 1364.1,
+          "release_to_green_s": null,
+          "run_s": 2271.7
+        }
+      },
+      "end_at": 1792237074492,
+      "release_at": 1792234802791,
+      "grade": {
+        "status": "red",
+        "trunk_sha": "0401ff8cd1b4bc3daee41b5e63ae5afd16403390",
+        "counts": {
+          "tests": 174,
+          "pass": 148,
+          "fail": 26,
+          "cancelled": 0,
+          "skipped": 0,
+          "todo": 0,
+          "suites": 8
+        },
+        "files": {
+          "split": "pass",
+          "free-shipping": "fail",
+          "refund": "pass",
+          "fx": "fail",
+          "format-options": "pass",
+          "csv": "pass",
+          "parse-options": "fail",
+          "import": "fail",
+          "basis-points": "pass",
+          "tips": "fail",
+          "late-fee": "pass",
+          "loyalty": "pass",
+          "gift-card": "pass",
+          "currency-symbols": "pass",
+          "rounding": "pass",
+          "price-range": "pass"
+        },
+        "passed": 11,
+        "failed": 5,
+        "other": 0,
+        "failing": [
+          {
+            "file": "test/accept/free-shipping.test.ts",
+            "name": "test/accept/free-shipping.test.ts",
+            "error": "SyntaxError: The requested module '../../src/shipping.ts' does not provide an export named 'FREE_SHIPPING_OVER_CENTS'"
+          },
+          {
+            "file": "test/accept/fx.test.ts",
+            "name": "test/accept/fx.test.ts",
+            "error": "Error: No such module \"t5/src/fx.ts\". imported from \"t5/test/accept/fx.test.ts\""
+          },
+          {
+            "file": "test/accept/import.test.ts",
+            "name": "import: each line's price is in its own currency",
+            "error": "AssertionError (deepStrictEqual): actual { sku: 'TEA', name: 'Green tea', price: { cents: 450, currency: 'USD' } }, expected { sku: 'TEA', name: 'Green tea', price: { cents: 450, currency: 'EUR' } } ("
+          },
+          {
+            "file": "test/accept/parse-options.test.ts",
+            "name": "parse-options: a leading symbol names the currency",
+            "error": "SyntaxError: parse: \"€3\" is EUR, not USD (at src/core/money.ts:208)"
+          },
+          {
+            "file": "test/accept/tips.test.ts",
+            "name": "tips: 15, 18 and 20 percent",
+            "error": "AssertionError (deepStrictEqual): actual [ { cents: 8, currency: 'USD' }, { cents: 9, currency: 'USD' }, { cents: 10, currency: 'USD' } ], expected [ { cents: 750, currency: 'USD' }, { cents: 900, cur"
+          },
+          {
+            "file": "test/accept/tips.test.ts",
+            "name": "tips: the total with a tip, rounded up to a whole unit",
+            "error": "AssertionError (deepStrictEqual): actual { cents: 4400, currency: 'USD' }, expected { cents: 5100, currency: 'USD' } (at test/accept/tips.test.ts:24)"
+          }
+        ]
+      },
+      "deleted": true
+    },
+    {
+      "label": "solo",
+      "agents": 1,
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "colony": "contention-1017-101855-solo",
+      "build": "9803729",
+      "flags": [
+        "FT_A2A",
+        "FT_AGENT_CALL_BUDGET",
+        "FT_BISECT",
+        "FT_CREDIT_TRAILERS",
+        "FT_CULPRITS",
+        "FT_DELETION_GUARD",
+        "FT_ESCALATION_BATCH",
+        "FT_FIELD_GUIDE",
+        "FT_GOAL_CONFLICT",
+        "FT_HEADS_UP",
+        "FT_HEDGE",
+        "FT_INLINE",
+        "FT_INTENT_SPEND",
+        "FT_LESSON_SCOPE",
+        "FT_MERGE_INSERTIONS",
+        "FT_MODEL_STEPUP",
+        "FT_PERSON_WAIT",
+        "FT_PUBLIC_GIT",
+        "FT_PUBLIC_MCP",
+        "FT_QUOTED_ACCEPTANCE",
+        "FT_REPRODUCE",
+        "FT_RESOLVER",
+        "FT_RETURN_HUNKS",
+        "FT_TEXT_MERGE",
+        "FT_TRUNK_TESTS",
+        "FT_TWINS",
+        "FT_VIRTUAL_CHECKOUT"
+      ],
+      "seed": {
+        "files": 20,
+        "digest": "4ff227736e2fb3b682545343f730f26293511b0ad55ca3da6c411cd083342d58",
+        "landing": "lnd_mvcbpbmsyswzyx",
+        "tests": 23
+      },
+      "review": {
+        "enabled": true,
+        "reflexModel": "@cf/cloudflare/clef",
+        "secondOpinionModels": [
+          "@cf/google/gemma-4-26b-a4b-it",
+          "@cf/openai/gpt-oss-120b",
+          "@cf/zai-org/glm-4.7-flash"
+        ]
+      },
+      "cap_set": true,
+      "models": {
+        "@cf/google/gemma-4-26b-a4b-it": 1
+      },
+      "started": 1,
+      "released_at": "2026-10-17T11:38:39Z",
+      "stalls": [
+        {
+          "at_s": 1039,
+          "for_s": 304.1,
+          "open": {
+            "open": 13,
+            "claimed": 0,
+            "proposed": 1
+          },
+          "reasons": [
+            "1 change waits for a person in the review queue",
+            "trunk is red at 5e0c885 (2 failing)",
+            "claims on the open intents' files: src/core/money.ts claim 1.0 (need 52.0)",
+            "agents: 1 working"
+          ]
+        }
+      ],
+      "stop": "timeout",
+      "stop_detail": "7/16 intents landed after 2400 s",
+      "report": {
+        "intents": {
+          "total": 16,
+          "landed": 7,
+          "not_landed": [
+            "split",
+            "parse-options",
+            "tips",
+            "late-fee",
+            "loyalty",
+            "gift-card",
+            "currency-symbols",
+            "rounding",
+            "price-range"
+          ],
+          "per_intent": [
+            {
+              "id": "split",
+              "intent": "int_mvcbpebi9akqv9",
+              "title": "Split a bill evenly between people",
+              "change": "adds",
+              "status": "proposed",
+              "proposals": 1,
+              "rounds": null,
+              "returns": {},
+              "model_calls": 22,
+              "usd": 0.01858716,
+              "landed_at_s": null,
+              "hidden": "fail"
+            },
+            {
+              "id": "free-shipping",
+              "intent": "int_mvcbpedry4u48i",
+              "title": "Free shipping on orders of $75 or more",
+              "change": "adds",
+              "status": "landed",
+              "proposals": 1,
+              "rounds": 1,
+              "returns": {},
+              "model_calls": 5,
+              "usd": 0.00264913,
+              "landed_at_s": 630.4,
+              "hidden": "pass"
+            },
+            {
+              "id": "refund",
+              "intent": "int_mvcbpeg1g9p7xf",
+              "title": "Credit notes for refunds",
+              "change": "adds",
+              "status": "landed",
+              "proposals": 1,
+              "rounds": 1,
+              "returns": {},
+              "model_calls": 11,
+              "usd": 0.00711206,
+              "landed_at_s": 729.5,
+              "hidden": "pass"
+            },
+            {
+              "id": "fx",
+              "intent": "int_mvcbpeia8dla95",
+              "title": "Invoices in another currency",
+              "change": "adds",
+              "status": "landed",
+              "proposals": 1,
+              "rounds": 1,
+              "returns": {},
+              "model_calls": 10,
+              "usd": 0.00678459,
+              "landed_at_s": 1463.8,
+              "hidden": "pass"
+            },
+            {
+              "id": "format-options",
+              "intent": "int_mvcbpekgixqchs",
+              "title": "format takes an options object",
+              "change": "signature",
+              "status": "landed",
+              "proposals": 1,
+              "rounds": 1,
+              "returns": {},
+              "model_calls": 10,
+              "usd": 0.00608792,
+              "landed_at_s": 1616.5,
+              "hidden": "pass"
+            },
+            {
+              "id": "csv",
+              "intent": "int_mvcbpeodkrmqoa",
+              "title": "CSV export of an invoice",
+              "change": "adds",
+              "status": "landed",
+              "proposals": 1,
+              "rounds": 1,
+              "returns": {},
+              "model_calls": 11,
+              "usd": 0.00807,
+              "landed_at_s": 1807.0,
+              "hidden": "pass"
+            },
+            {
+              "id": "parse-options",
+              "intent": "int_mvcbpeqg2lzhb7",
+              "title": "parse takes an options object and reads currency symbols",
+              "change": "signature",
+              "status": "proposed",
+              "proposals": 1,
+              "rounds": null,
+              "returns": {},
+              "model_calls": 6,
+              "usd": 0.003962,
+              "landed_at_s": null,
+              "hidden": "fail"
+            },
+            {
+              "id": "import",
+              "intent": "int_mvcbpesmlsk1lj",
+              "title": "Price list import with a currency per line",
+              "change": "adds",
+              "status": "landed",
+              "proposals": 2,
+              "rounds": 2,
+              "returns": {
+                "review": 1
+              },
+              "model_calls": 11,
+              "usd": 0.01026413,
+              "landed_at_s": 2137.3,
+              "hidden": "fail"
+            },
+            {
+              "id": "basis-points",
+              "intent": "int_mvcbpeur0ejutq",
+              "title": "Rates in basis points",
+              "change": "signature",
+              "status": "landed",
+              "proposals": 1,
+              "rounds": 1,
+              "returns": {},
+              "model_calls": 6,
+              "usd": 0.00331954,
+              "landed_at_s": 2232.5,
+              "hidden": "pass"
+            },
+            {
+              "id": "tips",
+              "intent": "int_mvcbpexf7rk9db",
+              "title": "Tip suggestions",
+              "change": "adds",
+              "status": "open",
+              "proposals": 0,
+              "rounds": null,
+              "returns": {},
+              "model_calls": 8,
+              "usd": 0.0058086,
+              "landed_at_s": null,
+              "hidden": "fail"
+            },
+            {
+              "id": "late-fee",
+              "intent": "int_mvcbpezj67oznz",
+              "title": "Late fees on overdue invoices",
+              "change": "adds",
+              "status": "open",
+              "proposals": 0,
+              "rounds": null,
+              "returns": {},
+              "model_calls": 0,
+              "usd": null,
+              "landed_at_s": null,
+              "hidden": "fail"
+            },
+            {
+              "id": "loyalty",
+              "intent": "int_mvcbpf34q2meih",
+              "title": "Loyalty points",
+              "change": "adds",
+              "status": "open",
+              "proposals": 0,
+              "rounds": null,
+              "returns": {},
+              "model_calls": 0,
+              "usd": null,
+              "landed_at_s": null,
+              "hidden": "fail"
+            },
+            {
+              "id": "gift-card",
+              "intent": "int_mvcbpf59u48o2e",
+              "title": "Gift card payments",
+              "change": "adds",
+              "status": "open",
+              "proposals": 0,
+              "rounds": null,
+              "returns": {},
+              "model_calls": 0,
+              "usd": null,
+              "landed_at_s": null,
+              "hidden": "fail"
+            },
+            {
+              "id": "currency-symbols",
+              "intent": "int_mvcbpf7e0zq2w6",
+              "title": "Symbols for more currencies",
+              "change": "behavior",
+              "status": "open",
+              "proposals": 0,
+              "rounds": null,
+              "returns": {},
+              "model_calls": 0,
+              "usd": null,
+              "landed_at_s": null,
+              "hidden": "fail"
+            },
+            {
+              "id": "rounding",
+              "intent": "int_mvcbpf9h4tpi14",
+              "title": "Rounding modes for multiply",
+              "change": "behavior",
+              "status": "open",
+              "proposals": 0,
+              "rounds": null,
+              "returns": {},
+              "model_calls": 0,
+              "usd": null,
+              "landed_at_s": null,
+              "hidden": "fail"
+            },
+            {
+              "id": "price-range",
+              "intent": "int_mvcbpfbjfpwoob",
+              "title": "Price range of the catalog",
+              "change": "adds",
+              "status": "open",
+              "proposals": 0,
+              "rounds": null,
+              "returns": {},
+              "model_calls": 0,
+              "usd": null,
+              "landed_at_s": null,
+              "hidden": "fail"
+            }
+          ]
+        },
+        "concurrency": {
+          "peak_in_flight": 3,
+          "mean_in_flight": 1.7,
+          "colony_intents": {}
+        },
+        "returns": {
+          "proposals": 10,
+          "landed": 7,
+          "returned": 1,
+          "redirects": 0,
+          "rejected": 0,
+          "escalated_now": 2,
+          "in_flight": 0,
+          "by_cause": {
+            "stale": 0,
+            "text_merge": 0,
+            "review": 1,
+            "rule": 0,
+            "other": 0
+          },
+          "labels": {
+            "stale": "stale read",
+            "text_merge": "text-merge conflict",
+            "review": "review",
+            "rule": "rule",
+            "other": "other"
+          },
+          "other": {}
+        },
+        "cause_repeat": {
+          "rate": 0.0,
+          "repeats": 0,
+          "eligible": 1,
+          "by_cause": {
+            "stale": {
+              "repeats": 0,
+              "eligible": 0,
+              "rate": null
+            },
+            "text_merge": {
+              "repeats": 0,
+              "eligible": 0,
+              "rate": null
+            },
+            "review": {
+              "repeats": 0,
+              "eligible": 1,
+              "rate": 0.0
+            },
+            "rule": {
+              "repeats": 0,
+              "eligible": 0,
+              "rate": null
+            },
+            "other": {
+              "repeats": 0,
+              "eligible": 0,
+              "rate": null
+            }
+          }
+        },
+        "rounds": {
+          "landed": 7,
+          "median_rounds": 1,
+          "max_rounds": 2,
+          "median_calls": 10,
+          "calls_counted": true,
+          "by_cause": {
+            "stale": {
+              "intents": 0,
+              "median_rounds": null,
+              "median_calls": null,
+              "rounds": 0,
+              "calls": 0
+            },
+            "text_merge": {
+              "intents": 0,
+              "median_rounds": null,
+              "median_calls": null,
+              "rounds": 0,
+              "calls": 0
+            },
+            "review": {
+              "intents": 1,
+              "median_rounds": 2,
+              "median_calls": 11,
+              "rounds": 2,
+              "calls": 11
+            },
+            "rule": {
+              "intents": 0,
+              "median_rounds": null,
+              "median_calls": null,
+              "rounds": 0,
+              "calls": 0
+            },
+            "other": {
+              "intents": 0,
+              "median_rounds": null,
+              "median_calls": null,
+              "rounds": 0,
+              "calls": 0
+            },
+            "first try": {
+              "intents": 6,
+              "median_rounds": 1.0,
+              "median_calls": 10.0,
+              "rounds": 6,
+              "calls": 53
+            }
+          }
+        },
+        "red": {
+          "certifications": 9,
+          "red_results": 6,
+          "errors": 0,
+          "episodes": 2,
+          "open_at_end": 1,
+          "median_time_to_green_s": 658.9,
+          "max_time_to_green_s": 658.9,
+          "time_red_s": 1443.3,
+          "repair_intents": {
+            "declared": 2,
+            "landed": 1
+          },
+          "list": [
+            {
+              "red_sha": "09fe1870d3b88824b5a7c98e11a5b8c25d744d74",
+              "red_at_s": 630.6,
+              "failing": [
+                "test/free-shipping.test.ts"
+              ],
+              "green_sha": "12f9a083bf8e76ce055b744f981b21bb109ba972",
+              "time_to_green_s": 658.9,
+              "time_red_s": 658.9,
+              "landings_during": 2,
+              "culprit": {
+                "by": "first red",
+                "landing": "lnd_mvcc2y5lauucv0",
+                "proposals": [
+                  {
+                    "id": "prp_mvcc2ecb85uw72",
+                    "intent": "free-shipping"
+                  }
+                ]
+              }
+            },
+            {
+              "red_sha": "e49b83f4367b985aea9dcb4816ead04511c715ab",
+              "red_at_s": 1617.2,
+              "failing": [
+                "test/format-options.test.ts"
+              ],
+              "green_sha": null,
+              "time_to_green_s": null,
+              "time_red_s": 784.4,
+              "landings_during": 3,
+              "culprit": {
+                "by": "first red",
+                "landing": "lnd_mvcco2owhklfns",
+                "proposals": [
+                  {
+                    "id": "prp_mvccnj7j65uch4",
+                    "intent": "format-options"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "semantic": {
+          "pairs_landed": 0,
+          "observed": [],
+          "own_mistakes": 2,
+          "designed": [
+            {
+              "first": "format-options",
+              "second": "csv",
+              "first_landed": true,
+              "second_landed": true,
+              "landed_second": "csv",
+              "second_built_before_first_landed": false,
+              "next_certification": "red",
+              "found_as_pair": false,
+              "hidden_first": "pass",
+              "hidden_second": "pass"
+            },
+            {
+              "first": "parse-options",
+              "second": "import",
+              "first_landed": false,
+              "second_landed": true,
+              "hidden_first": "fail",
+              "hidden_second": "fail"
+            },
+            {
+              "first": "basis-points",
+              "second": "tips",
+              "first_landed": true,
+              "second_landed": false,
+              "hidden_first": "pass",
+              "hidden_second": "fail"
+            },
+            {
+              "first": "basis-points",
+              "second": "late-fee",
+              "first_landed": true,
+              "second_landed": false,
+              "hidden_first": "pass",
+              "hidden_second": "fail"
+            }
+          ]
+        },
+        "human_queue": {
+          "escalations": 2,
+          "held_merges": 0,
+          "agent_reports": 1,
+          "stuck": {},
+          "audit_items": null,
+          "audit_note": "this build keeps no audit queue",
+          "total": 3,
+          "waiting_at_end": 3,
+          "median_time_in_queue_s": 536.1,
+          "max_time_in_queue_s": 1919.3,
+          "items": [
+            {
+              "kind": "review escalation",
+              "subject": "prp_mvcbz0g9r7gho8",
+              "intent": "split",
+              "answer": null,
+              "opened_at_s": 482.4,
+              "time_in_queue_s": 1919.3
+            },
+            {
+              "kind": "review escalation",
+              "subject": "prp_mvccv0t15vgy5o",
+              "intent": "parse-options",
+              "answer": null,
+              "opened_at_s": 1961.2,
+              "time_in_queue_s": 440.4
+            },
+            {
+              "kind": "agent report",
+              "subject": "int_mvcco3y9q08mze",
+              "intent": "int_mvcco3y9q08mze",
+              "report_kind": "broken-test",
+              "opened_at_s": 1865.5,
+              "time_in_queue_s": 536.1
+            }
+          ]
+        },
+        "spend": {
+          "usd": 0.14800072,
+          "by_layer": {
+            "agents": 0.1335719,
+            "review": 0.01442882,
+            "judge": 0,
+            "resolver": 0,
+            "other": 0
+          },
+          "by_model": {
+            "@cf/google/gemma-4-26b-a4b-it": {
+              "usd": 0.0588698,
+              "input": 348833,
+              "output": 79955,
+              "agents": 1,
+              "agent_calls": 81
+            },
+            "@cf/moonshotai/kimi-k2.7-code": {
+              "usd": 0.0747021,
+              "input": 19278,
+              "output": 14097,
+              "agents": 0,
+              "agent_calls": 5
+            },
+            "@cf/cloudflare/clef": {
+              "usd": 0.00660504,
+              "input": 27521,
+              "output": 0,
+              "agents": 0,
+              "agent_calls": 0
+            },
+            "@cf/openai/gpt-oss-120b": {
+              "usd": 0.0027769,
+              "input": 3584,
+              "output": 2030,
+              "agents": 0,
+              "agent_calls": 0
+            },
+            "@cf/zai-org/glm-4.7-flash": {
+              "usd": 0.00504688,
+              "input": 32841,
+              "output": 7650,
+              "agents": 0,
+              "agent_calls": 0
+            }
+          },
+          "unpriced": {},
+          "agent_calls": 86,
+          "review_calls": 20,
+          "model_calls": 106,
+          "per_landed_intent": 0.021143,
+          "colony_per_landed_intent": 0.01644452,
+          "cap": {
+            "usd": 15,
+            "reviewReserveUsd": 1.5,
+            "spentUsd": 0.14853942,
+            "state": "open"
+          }
+        },
+        "wall": {
+          "release_to_last_landing_s": null,
+          "last_landing_so_far_s": 2232.5,
+          "release_to_green_s": null,
+          "run_s": 2401.6
+        }
+      },
+      "end_at": 1792239521270,
+      "release_at": 1792237119629,
+      "grade": {
+        "status": "red",
+        "trunk_sha": "04e9f5fca1a6c55226e3d3d2deb5b01ec1cf1c25",
+        "counts": {
+          "tests": 83,
+          "pass": 63,
+          "fail": 20,
+          "cancelled": 0,
+          "skipped": 0,
+          "todo": 0,
+          "suites": 2
+        },
+        "files": {
+          "split": "fail",
+          "free-shipping": "pass",
+          "refund": "pass",
+          "fx": "pass",
+          "format-options": "pass",
+          "csv": "pass",
+          "parse-options": "fail",
+          "import": "fail",
+          "basis-points": "pass",
+          "tips": "fail",
+          "late-fee": "fail",
+          "loyalty": "fail",
+          "gift-card": "fail",
+          "currency-symbols": "fail",
+          "rounding": "fail",
+          "price-range": "fail"
+        },
+        "passed": 6,
+        "failed": 10,
+        "other": 0,
+        "failing": [
+          {
+            "file": "test/accept/currency-symbols.test.ts",
+            "name": "test/accept/currency-symbols.test.ts",
+            "error": "Error: No such module \"t2/src/currencies.ts\". imported from \"t2/test/accept/currency-symbols.test.ts\""
+          },
+          {
+            "file": "test/accept/gift-card.test.ts",
+            "name": "test/accept/gift-card.test.ts",
+            "error": "Error: No such module \"t6/src/giftcard.ts\". imported from \"t6/test/accept/gift-card.test.ts\""
+          },
+          {
+            "file": "test/accept/import.test.ts",
+            "name": "import: each line's price is in its own currency",
+            "error": "ReferenceError: isCurrencyCode is not defined (at src/import.ts:28)"
+          },
+          {
+            "file": "test/accept/import.test.ts",
+            "name": "import: malformed lines are refused",
+            "error": "AssertionError: The error is expected to be an instance of \"SyntaxError\". Received \"ReferenceError\" Error message: isCurrencyCode is not defined (at test/accept/import.test.ts:24)"
+          },
+          {
+            "file": "test/accept/late-fee.test.ts",
+            "name": "test/accept/late-fee.test.ts",
+            "error": "Error: No such module \"t8/src/latefee.ts\". imported from \"t8/test/accept/late-fee.test.ts\""
+          },
+          {
+            "file": "test/accept/loyalty.test.ts",
+            "name": "test/accept/loyalty.test.ts",
+            "error": "Error: No such module \"t9/src/loyalty.ts\". imported from \"t9/test/accept/loyalty.test.ts\""
+          },
+          {
+            "file": "test/accept/parse-options.test.ts",
+            "name": "parse-options: a leading symbol names the currency",
+            "error": "SyntaxError: parse: \"$12.34\" is not an amount (at src/core/money.ts:130)"
+          },
+          {
+            "file": "test/accept/parse-options.test.ts",
+            "name": "parse-options: the currency option",
+            "error": "AssertionError (deepStrictEqual): actual { cents: 1234, currency: { currency: 'EUR' } }, expected { cents: 1234, currency: 'EUR' } (at test/accept/parse-options.test.ts:14)"
+          },
+          {
+            "file": "test/accept/parse-options.test.ts",
+            "name": "parse-options: the catalog reads prices with or without a symbol",
+            "error": "SyntaxError: parse: \"$4.50\" is not an amount (at src/core/money.ts:130)"
+          },
+          {
+            "file": "test/accept/price-range.test.ts",
+            "name": "test/accept/price-range.test.ts",
+            "error": "Error: No such module \"t11/src/pricerange.ts\". imported from \"t11/test/accept/price-range.test.ts\""
+          },
+          {
+            "file": "test/accept/rounding.test.ts",
+            "name": "test/accept/rounding.test.ts",
+            "error": "Error: No such module \"t13/src/rounding.ts\". imported from \"t13/test/accept/rounding.test.ts\""
+          },
+          {
+            "file": "test/accept/split.test.ts",
+            "name": "test/accept/split.test.ts",
+            "error": "Error: No such module \"t14/src/split.ts\". imported from \"t14/test/accept/split.test.ts\""
+          },
+          {
+            "file": "test/accept/tips.test.ts",
+            "name": "test/accept/tips.test.ts",
+            "error": "Error: No such module \"t15/src/tip.ts\". imported from \"t15/test/accept/tips.test.ts\""
+          }
+        ]
+      },
+      "deleted": true
+    }
+  ],
+  "transitions": [
+    {
+      "matrix": {
+        "after returns -> first try": 1,
+        "first try -> after returns": 2,
+        "first try -> first try": 3,
+        "first try -> not landed": 1,
+        "not landed -> after returns": 2,
+        "not landed -> first try": 6,
+        "not landed -> not landed": 1
+      },
+      "hidden": {
+        "fail -> fail": 3,
+        "fail -> pass": 7,
+        "pass -> fail": 1,
+        "pass -> pass": 5
+      },
+      "median_rounds_delta": 0.0,
+      "median_calls_delta": 5.0,
+      "intents": [
+        {
+          "id": "basis-points",
+          "solo": "first try",
+          "concurrent": "first try",
+          "solo_hidden": "pass",
+          "concurrent_hidden": "pass",
+          "rounds_delta": 0,
+          "calls_delta": 0
+        },
+        {
+          "id": "csv",
+          "solo": "first try",
+          "concurrent": "after returns",
+          "solo_hidden": "pass",
+          "concurrent_hidden": "pass",
+          "rounds_delta": 1,
+          "calls_delta": 0
+        },
+        {
+          "id": "currency-symbols",
+          "solo": "not landed",
+          "concurrent": "first try",
+          "solo_hidden": "fail",
+          "concurrent_hidden": "pass",
+          "rounds_delta": null,
+          "calls_delta": 5
+        },
+        {
+          "id": "format-options",
+          "solo": "first try",
+          "concurrent": "not landed",
+          "solo_hidden": "pass",
+          "concurrent_hidden": "fail",
+          "rounds_delta": null,
+          "calls_delta": -4
+        },
+        {
+          "id": "free-shipping",
+          "solo": "first try",
+          "concurrent": "after returns",
+          "solo_hidden": "pass",
+          "concurrent_hidden": "pass",
+          "rounds_delta": 2,
+          "calls_delta": 18
+        },
+        {
+          "id": "fx",
+          "solo": "first try",
+          "concurrent": "first try",
+          "solo_hidden": "pass",
+          "concurrent_hidden": "pass",
+          "rounds_delta": 0,
+          "calls_delta": -4
+        },
+        {
+          "id": "gift-card",
+          "solo": "not landed",
+          "concurrent": "after returns",
+          "solo_hidden": "fail",
+          "concurrent_hidden": "pass",
+          "rounds_delta": null,
+          "calls_delta": 12
+        },
+        {
+          "id": "import",
+          "solo": "after returns",
+          "concurrent": "first try",
+          "solo_hidden": "fail",
+          "concurrent_hidden": "fail",
+          "rounds_delta": -1,
+          "calls_delta": -5
+        },
+        {
+          "id": "late-fee",
+          "solo": "not landed",
+          "concurrent": "first try",
+          "solo_hidden": "fail",
+          "concurrent_hidden": "pass",
+          "rounds_delta": null,
+          "calls_delta": 8
+        },
+        {
+          "id": "loyalty",
+          "solo": "not landed",
+          "concurrent": "first try",
+          "solo_hidden": "fail",
+          "concurrent_hidden": "pass",
+          "rounds_delta": null,
+          "calls_delta": 5
+        },
+        {
+          "id": "parse-options",
+          "solo": "not landed",
+          "concurrent": "not landed",
+          "solo_hidden": "fail",
+          "concurrent_hidden": "fail",
+          "rounds_delta": null,
+          "calls_delta": 5
+        },
+        {
+          "id": "price-range",
+          "solo": "not landed",
+          "concurrent": "first try",
+          "solo_hidden": "fail",
+          "concurrent_hidden": "fail",
+          "rounds_delta": null,
+          "calls_delta": 16
+        },
+        {
+          "id": "refund",
+          "solo": "first try",
+          "concurrent": "first try",
+          "solo_hidden": "pass",
+          "concurrent_hidden": "pass",
+          "rounds_delta": 0,
+          "calls_delta": -3
+        },
+        {
+          "id": "rounding",
+          "solo": "not landed",
+          "concurrent": "first try",
+          "solo_hidden": "fail",
+          "concurrent_hidden": "pass",
+          "rounds_delta": null,
+          "calls_delta": 9
+        },
+        {
+          "id": "split",
+          "solo": "not landed",
+          "concurrent": "first try",
+          "solo_hidden": "fail",
+          "concurrent_hidden": "pass",
+          "rounds_delta": null,
+          "calls_delta": -17
+        },
+        {
+          "id": "tips",
+          "solo": "not landed",
+          "concurrent": "after returns",
+          "solo_hidden": "fail",
+          "concurrent_hidden": "pass",
+          "rounds_delta": null,
+          "calls_delta": 8
+        }
+      ],
+      "agents": 8
+    },
+    {
+      "matrix": {
+        "after returns -> first try": 1,
+        "first try -> first try": 4,
+        "first try -> not landed": 2,
+        "not landed -> after returns": 4,
+        "not landed -> first try": 5
+      },
+      "hidden": {
+        "fail -> fail": 3,
+        "fail -> pass": 7,
+        "pass -> fail": 2,
+        "pass -> pass": 4
+      },
+      "median_rounds_delta": 0,
+      "median_calls_delta": 2.5,
+      "intents": [
+        {
+          "id": "basis-points",
+          "solo": "first try",
+          "concurrent": "first try",
+          "solo_hidden": "pass",
+          "concurrent_hidden": "pass",
+          "rounds_delta": 0,
+          "calls_delta": 1
+        },
+        {
+          "id": "csv",
+          "solo": "first try",
+          "concurrent": "first try",
+          "solo_hidden": "pass",
+          "concurrent_hidden": "pass",
+          "rounds_delta": 0,
+          "calls_delta": -4
+        },
+        {
+          "id": "currency-symbols",
+          "solo": "not landed",
+          "concurrent": "first try",
+          "solo_hidden": "fail",
+          "concurrent_hidden": "pass",
+          "rounds_delta": null,
+          "calls_delta": 5
+        },
+        {
+          "id": "format-options",
+          "solo": "first try",
+          "concurrent": "first try",
+          "solo_hidden": "pass",
+          "concurrent_hidden": "pass",
+          "rounds_delta": 0,
+          "calls_delta": -1
+        },
+        {
+          "id": "free-shipping",
+          "solo": "first try",
+          "concurrent": "not landed",
+          "solo_hidden": "pass",
+          "concurrent_hidden": "fail",
+          "rounds_delta": null,
+          "calls_delta": 0
+        },
+        {
+          "id": "fx",
+          "solo": "first try",
+          "concurrent": "not landed",
+          "solo_hidden": "pass",
+          "concurrent_hidden": "fail",
+          "rounds_delta": null,
+          "calls_delta": -4
+        },
+        {
+          "id": "gift-card",
+          "solo": "not landed",
+          "concurrent": "first try",
+          "solo_hidden": "fail",
+          "concurrent_hidden": "pass",
+          "rounds_delta": null,
+          "calls_delta": 6
+        },
+        {
+          "id": "import",
+          "solo": "after returns",
+          "concurrent": "first try",
+          "solo_hidden": "fail",
+          "concurrent_hidden": "fail",
+          "rounds_delta": -1,
+          "calls_delta": 0
+        },
+        {
+          "id": "late-fee",
+          "solo": "not landed",
+          "concurrent": "after returns",
+          "solo_hidden": "fail",
+          "concurrent_hidden": "pass",
+          "rounds_delta": null,
+          "calls_delta": 27
+        },
+        {
+          "id": "loyalty",
+          "solo": "not landed",
+          "concurrent": "first try",
+          "solo_hidden": "fail",
+          "concurrent_hidden": "pass",
+          "rounds_delta": null,
+          "calls_delta": 7
+        },
+        {
+          "id": "parse-options",
+          "solo": "not landed",
+          "concurrent": "after returns",
+          "solo_hidden": "fail",
+          "concurrent_hidden": "fail",
+          "rounds_delta": null,
+          "calls_delta": 4
+        },
+        {
+          "id": "price-range",
+          "solo": "not landed",
+          "concurrent": "after returns",
+          "solo_hidden": "fail",
+          "concurrent_hidden": "pass",
+          "rounds_delta": null,
+          "calls_delta": 22
+        },
+        {
+          "id": "refund",
+          "solo": "first try",
+          "concurrent": "first try",
+          "solo_hidden": "pass",
+          "concurrent_hidden": "pass",
+          "rounds_delta": 0,
+          "calls_delta": 1
+        },
+        {
+          "id": "rounding",
+          "solo": "not landed",
+          "concurrent": "after returns",
+          "solo_hidden": "fail",
+          "concurrent_hidden": "pass",
+          "rounds_delta": null,
+          "calls_delta": 11
+        },
+        {
+          "id": "split",
+          "solo": "not landed",
+          "concurrent": "first try",
+          "solo_hidden": "fail",
+          "concurrent_hidden": "pass",
+          "rounds_delta": null,
+          "calls_delta": -17
+        },
+        {
+          "id": "tips",
+          "solo": "not landed",
+          "concurrent": "first try",
+          "solo_hidden": "fail",
+          "concurrent_hidden": "fail",
+          "rounds_delta": null,
+          "calls_delta": 5
+        }
+      ],
+      "agents": 16
+    }
+  ]
+}

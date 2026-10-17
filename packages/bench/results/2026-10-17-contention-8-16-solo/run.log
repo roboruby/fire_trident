@@ -1,0 +1,1406 @@
+[   0.0s] plan: 3 runs of 16 intents on src/core/money.ts (demo/contention/spec.md), each on a fresh colony
+[   0.0s]   run 8      8 agents: @cf/moonshotai/kimi-k2.7-code×1, @cf/zai-org/glm-5.3-flash×1, @cf/openai/gpt-oss-120b×2, @cf/google/gemma-4-26b-a4b-it×4; ESTIMATE about 88 model calls and 24 changes reviewed, $0.25 (stop at $15.00)
+[   0.0s]   run 16    16 agents: @cf/moonshotai/kimi-k2.7-code×1, @cf/zai-org/glm-5.3-flash×1, @cf/openai/gpt-oss-120b×2, @cf/google/gemma-4-26b-a4b-it×12; ESTIMATE about 118 model calls and 32 changes reviewed, $0.23 (stop at $15.00)
+[   0.0s]   run solo   1 agent : @cf/google/gemma-4-26b-a4b-it×1; ESTIMATE about 59 model calls and 16 changes reviewed, $0.06 (stop at $15.00)
+[   0.0s]   ESTIMATE for all runs: $0.54 (at most $45.00 with every run at its stop)
+[   0.2s] run 8: 8 agents on @cf/moonshotai/kimi-k2.7-code=1,@cf/zai-org/glm-5.3-flash=1,@cf/openai/gpt-oss-120b=2,@cf/google/gemma-4-26b-a4b-it at https://staging.firetrident.com (build 9803729)
+[  12.8s] created colony contention-1017-101855-8 (12.5 s); certification is on, review is off until the seed lands
+[  15.1s] seeded 20 files in one landing (2.3 s), digest 4ff227736e2f
+[  15.8s] the seed is certified green: 23/23 tests at 03dd62c (0.8 s)
+[  16.1s] review is on (reflex @cf/cloudflare/clef); spend cap $15.00 with $1.50 kept for review
+[  17.5s] declared 16 intents, source human, priority 3, every one writing src/core/money.ts (1.4 s)
+[  18.4s] released 8 agents: @cf/moonshotai/kimi-k2.7-code×1, @cf/zai-org/glm-5.3-flash×1, @cf/openai/gpt-oss-120b×2, @cf/google/gemma-4-26b-a4b-it×4
+[  23.5s] landed  0/16  claimed 3  proposed 0  open 13 | landings 1, returned 0, review queue 0 | trunk 03dd62c green | $0.0000
+[  28.6s] landed  0/16  claimed 3  proposed 0  open 13 | landings 1, returned 0, review queue 0 | trunk 03dd62c green | $0.0000
+[  34.2s] landed  0/16  claimed 3  proposed 0  open 13 | landings 1, returned 0, review queue 0 | trunk 03dd62c green | $0.0000
+[  39.4s] landed  0/16  claimed 3  proposed 0  open 13 | landings 1, returned 0, review queue 0 | trunk 03dd62c green | $0.0000
+[  44.6s] landed  0/16  claimed 3  proposed 0  open 13 | landings 1, returned 0, review queue 0 | trunk 03dd62c green | $0.0000
+[  50.3s] landed  0/16  claimed 3  proposed 0  open 13 | landings 1, returned 0, review queue 0 | trunk 03dd62c green | $0.0000
+[  55.4s] landed  0/16  claimed 3  proposed 0  open 13 | landings 1, returned 0, review queue 0 | trunk 03dd62c green | $0.0000
+[  60.5s] landed  0/16  claimed 3  proposed 0  open 13 | landings 1, returned 0, review queue 0 | trunk 03dd62c green | $0.0025
+[  66.1s] landed  0/16  claimed 3  proposed 0  open 13 | landings 1, returned 0, review queue 0 | trunk 03dd62c green | $0.0025
+[  71.3s] landed  0/16  claimed 3  proposed 0  open 13 | landings 1, returned 0, review queue 0 | trunk 03dd62c green | $0.0041
+[  76.4s] landed  0/16  claimed 3  proposed 0  open 13 | landings 1, returned 0, review queue 0 | trunk 03dd62c green | $0.0041
+[  81.9s] landed  0/16  claimed 3  proposed 0  open 13 | landings 1, returned 0, review queue 0 | trunk 03dd62c green | $0.0041
+[  87.1s] landed  0/16  claimed 3  proposed 0  open 13 | landings 1, returned 0, review queue 0 | trunk 03dd62c green | $0.0041
+[  92.2s] landed  0/16  claimed 3  proposed 0  open 13 | landings 1, returned 0, review queue 0 | trunk 03dd62c green | $0.0068
+[  98.1s] landed  0/16  claimed 3  proposed 0  open 13 | landings 1, returned 0, review queue 0 | trunk 03dd62c green | $0.0068
+[ 103.2s] landed  0/16  claimed 3  proposed 0  open 13 | landings 1, returned 0, review queue 0 | trunk 03dd62c green | $0.0068
+[ 108.4s] landed  0/16  claimed 3  proposed 0  open 13 | landings 1, returned 0, review queue 0 | trunk 03dd62c green | $0.0068
+[ 113.5s] landed  0/16  claimed 2  proposed 1  open 13 | landings 1, returned 0, review queue 0 | trunk 03dd62c green | $0.0098
+[ 118.7s] landed  0/16  claimed 2  proposed 1  open 13 | landings 1, returned 0, review queue 0 | trunk 03dd62c green | $0.0098
+[ 123.9s] landed  0/16  claimed 2  proposed 1  open 13 | landings 1, returned 0, review queue 0 | trunk 03dd62c green | $0.0098
+[ 129.3s] landed  0/16  claimed 2  proposed 1  open 13 | landings 1, returned 0, review queue 0 | trunk 03dd62c green | $0.0098
+[ 134.5s] landed  1/16  claimed 3  proposed 0  open 12 | landings 2, returned 0, review queue 0 | trunk 8501a31 green | $0.0103
+[ 139.6s] landed  1/16  claimed 3  proposed 0  open 12 | landings 2, returned 0, review queue 0 | trunk 8501a31 green | $0.0103
+[ 145.1s] landed  1/16  claimed 3  proposed 0  open 12 | landings 2, returned 0, review queue 0 | trunk 8501a31 green | $0.0103
+[ 150.2s] landed  1/16  claimed 3  proposed 0  open 12 | landings 2, returned 0, review queue 0 | trunk 8501a31 green | $0.0372
+[ 155.4s] landed  1/16  claimed 3  proposed 0  open 12 | landings 2, returned 0, review queue 0 | trunk 8501a31 green | $0.0372
+[ 161.1s] landed  1/16  claimed 3  proposed 0  open 12 | landings 2, returned 0, review queue 0 | trunk 8501a31 green | $0.0372
+[ 166.3s] landed  1/16  claimed 3  proposed 0  open 12 | landings 2, returned 0, review queue 0 | trunk 8501a31 green | $0.0372
+[ 171.5s] landed  1/16  claimed 3  proposed 0  open 12 | landings 2, returned 0, review queue 0 | trunk 8501a31 green | $0.0372
+[ 177.1s] landed  1/16  claimed 3  proposed 0  open 12 | landings 2, returned 0, review queue 0 | trunk 8501a31 green | $0.0372
+[ 182.3s] landed  1/16  claimed 3  proposed 0  open 12 | landings 2, returned 0, review queue 0 | trunk 8501a31 green | $0.0404
+[ 187.4s] landed  1/16  claimed 3  proposed 0  open 12 | landings 2, returned 0, review queue 0 | trunk 8501a31 green | $0.0404
+[ 193.3s] landed  1/16  claimed 3  proposed 0  open 12 | landings 2, returned 0, review queue 0 | trunk 8501a31 green | $0.0404
+[ 198.5s] landed  1/16  claimed 3  proposed 0  open 12 | landings 2, returned 0, review queue 0 | trunk 8501a31 green | $0.0404
+[ 203.6s] landed  1/16  claimed 3  proposed 0  open 12 | landings 2, returned 0, review queue 0 | trunk 8501a31 green | $0.0443
+[ 208.9s] landed  1/16  claimed 2  proposed 1  open 12 | landings 2, returned 0, review queue 0 | trunk 8501a31 green | $0.0465
+[ 214.1s] landed  1/16  claimed 2  proposed 1  open 12 | landings 2, returned 0, review queue 0 | trunk 8501a31 green | $0.0647
+[ 219.3s] landed  1/16  claimed 2  proposed 1  open 12 | landings 2, returned 0, review queue 0 | trunk 8501a31 green | $0.0647
+[ 224.5s] landed  1/16  claimed 3  proposed 1  open 11 | landings 2, returned 0, review queue 1 | trunk 8501a31 green | $0.0701
+[ 229.8s] landed  1/16  claimed 3  proposed 1  open 11 | landings 2, returned 0, review queue 1 | trunk 8501a31 green | $0.0701
+[ 235.0s] landed  1/16  claimed 3  proposed 1  open 11 | landings 2, returned 0, review queue 1 | trunk 8501a31 green | $0.0701
+[ 240.6s] landed  1/16  claimed 3  proposed 1  open 11 | landings 2, returned 0, review queue 1 | trunk 8501a31 green | $0.0701
+[ 245.7s] landed  1/16  claimed 3  proposed 1  open 11 | landings 2, returned 0, review queue 1 | trunk 8501a31 green | $0.0701
+[ 250.9s] landed  1/16  claimed 3  proposed 1  open 11 | landings 2, returned 0, review queue 1 | trunk 8501a31 green | $0.0709
+[ 256.5s] landed  1/16  claimed 3  proposed 1  open 11 | landings 2, returned 0, review queue 1 | trunk 8501a31 green | $0.0714
+[ 261.7s] landed  1/16  claimed 3  proposed 1  open 11 | landings 2, returned 0, review queue 1 | trunk 8501a31 green | $0.0714
+[ 267.0s] landed  1/16  claimed 2  proposed 2  open 11 | landings 2, returned 0, review queue 1 | trunk 8501a31 green | $0.0824
+[ 272.5s] landed  1/16  claimed 2  proposed 2  open 11 | landings 2, returned 0, review queue 1 | trunk 8501a31 green | $0.0824
+[ 277.7s] landed  1/16  claimed 2  proposed 2  open 11 | landings 2, returned 0, review queue 1 | trunk 8501a31 green | $0.0830
+[ 282.9s] landed  2/16  claimed 3  proposed 1  open 10 | landings 3, returned 0, review queue 1 | trunk 3fd9c79 green | $0.0836
+[ 288.1s] landed  2/16  claimed 3  proposed 1  open 10 | landings 3, returned 0, review queue 1 | trunk 3fd9c79 green | $0.0836
+[ 293.3s] landed  2/16  claimed 3  proposed 1  open 10 | landings 3, returned 0, review queue 1 | trunk 3fd9c79 green | $0.0836
+[ 298.4s] landed  2/16  claimed 3  proposed 1  open 10 | landings 3, returned 0, review queue 1 | trunk 3fd9c79 green | $0.0855
+[ 304.0s] landed  2/16  claimed 3  proposed 1  open 10 | landings 3, returned 0, review queue 1 | trunk 3fd9c79 green | $0.0855
+[ 309.1s] landed  2/16  claimed 3  proposed 1  open 10 | landings 3, returned 0, review queue 1 | trunk 3fd9c79 green | $0.0882
+[ 314.3s] landed  2/16  claimed 3  proposed 1  open 10 | landings 3, returned 0, review queue 1 | trunk 3fd9c79 green | $0.0882
+[ 319.9s] landed  2/16  claimed 3  proposed 1  open 10 | landings 3, returned 0, review queue 1 | trunk 3fd9c79 green | $0.0882
+[ 325.1s] landed  2/16  claimed 3  proposed 1  open 10 | landings 3, returned 0, review queue 1 | trunk 3fd9c79 green | $0.0882
+[ 330.3s] landed  2/16  claimed 3  proposed 1  open 10 | landings 3, returned 0, review queue 1 | trunk 3fd9c79 green | $0.0882
+[ 335.6s] landed  2/16  claimed 3  proposed 1  open 10 | landings 3, returned 0, review queue 1 | trunk 3fd9c79 green | $0.0906
+[ 340.9s] landed  2/16  claimed 3  proposed 1  open 10 | landings 3, returned 0, review queue 1 | trunk 3fd9c79 green | $0.0916
+[ 346.1s] landed  2/16  claimed 3  proposed 1  open 10 | landings 3, returned 0, review queue 1 | trunk 3fd9c79 green | $0.0921
+[ 351.4s] landed  2/16  claimed 3  proposed 1  open 10 | landings 3, returned 0, review queue 1 | trunk 3fd9c79 green | $0.0921
+[ 356.6s] landed  2/16  claimed 3  proposed 1  open 10 | landings 3, returned 0, review queue 1 | trunk 3fd9c79 green | $0.0921
+[ 361.9s] landed  2/16  claimed 3  proposed 1  open 10 | landings 3, returned 0, review queue 1 | trunk 3fd9c79 green | $0.0921
+[ 367.1s] landed  2/16  claimed 2  proposed 2  open 10 | landings 3, returned 0, review queue 1 | trunk 3fd9c79 green | $0.0956
+[ 372.3s] landed  2/16  claimed 2  proposed 2  open 10 | landings 3, returned 0, review queue 1 | trunk 3fd9c79 green | $0.0956
+[ 377.6s] landed  2/16  claimed 1  proposed 3  open 10 | landings 3, returned 0, review queue 1 | trunk 3fd9c79 green | $0.0970
+[ 382.8s] landed  2/16  claimed 2  proposed 2  open 10 | landings 3, returned 1, review queue 1 | trunk 3fd9c79 green | $0.0975
+[ 388.1s] landed  2/16  claimed 2  proposed 2  open 10 | landings 3, returned 1, review queue 1 | trunk 3fd9c79 green | $0.0975
+[ 393.3s] landed  2/16  claimed 2  proposed 2  open 10 | landings 3, returned 1, review queue 1 | trunk 3fd9c79 green | $0.0975
+[ 398.7s] landed  3/16  claimed 3  proposed 1  open 9 | landings 4, returned 1, review queue 1 | trunk 2f70b9e red | $0.0980
+[ 403.9s] landed  3/16  claimed 3  proposed 1  open 9 | landings 4, returned 1, review queue 1 | trunk 2f70b9e red | $0.0980
+[ 409.2s] landed  3/16  claimed 3  proposed 1  open 9 | landings 4, returned 1, review queue 1 | trunk 2f70b9e red | $0.0991
+[ 414.5s] landed  3/16  claimed 3  proposed 1  open 9 | landings 4, returned 1, review queue 1 | trunk 2f70b9e red | $0.0991
+[ 419.7s] landed  3/16  claimed 3  proposed 1  open 9 | landings 4, returned 1, review queue 1 | trunk 2f70b9e red | $0.1007
+[ 424.9s] landed  3/16  claimed 3  proposed 1  open 9 | landings 4, returned 1, review queue 1 | trunk 2f70b9e red | $0.1007
+[ 430.2s] landed  3/16  claimed 3  proposed 1  open 9 | landings 4, returned 1, review queue 1 | trunk 2f70b9e red | $0.1014
+[ 435.4s] landed  3/16  claimed 3  proposed 1  open 9 | landings 4, returned 1, review queue 1 | trunk 2f70b9e red | $0.1028
+[ 440.6s] landed  3/16  claimed 3  proposed 1  open 9 | landings 4, returned 1, review queue 1 | trunk 2f70b9e red | $0.1028
+[ 445.9s] landed  3/16  claimed 2  proposed 2  open 9 | landings 4, returned 1, review queue 1 | trunk 2f70b9e red | $0.1041
+[ 451.1s] landed  3/16  claimed 2  proposed 2  open 9 | landings 4, returned 1, review queue 1 | trunk 2f70b9e red | $0.1041
+[ 456.3s] landed  4/16  claimed 3  proposed 1  open 8 | landings 5, returned 1, review queue 1 | trunk b36711a red | $0.1116
+[ 461.6s] landed  4/16  claimed 3  proposed 1  open 8 | landings 5, returned 1, review queue 1 | trunk b36711a red | $0.1116
+[ 466.8s] landed  4/16  claimed 3  proposed 1  open 8 | landings 5, returned 1, review queue 1 | trunk b36711a red | $0.1127
+[ 472.1s] landed  4/16  claimed 3  proposed 1  open 8 | landings 5, returned 1, review queue 1 | trunk b36711a red | $0.1132
+[ 477.3s] landed  4/16  claimed 3  proposed 1  open 8 | landings 5, returned 1, review queue 1 | trunk b36711a red | $0.1171
+[ 482.6s] landed  4/16  claimed 3  proposed 1  open 8 | landings 5, returned 1, review queue 1 | trunk b36711a red | $0.1171
+[ 487.8s] landed  4/16  claimed 3  proposed 1  open 8 | landings 5, returned 1, review queue 1 | trunk b36711a red | $0.1205
+[ 493.1s] landed  4/16  claimed 3  proposed 1  open 8 | landings 5, returned 1, review queue 1 | trunk b36711a red | $0.1212
+[ 498.3s] landed  4/16  claimed 3  proposed 1  open 8 | landings 5, returned 1, review queue 1 | trunk b36711a red | $0.1212
+[ 503.5s] landed  4/16  claimed 2  proposed 2  open 8 | landings 5, returned 1, review queue 1 | trunk b36711a red | $0.1241
+[ 508.8s] landed  4/16  claimed 2  proposed 2  open 8 | landings 5, returned 1, review queue 1 | trunk b36711a red | $0.1241
+[ 514.1s] landed  4/16  claimed 1  proposed 2  open 9 | landings 5, returned 2, review queue 1 | trunk b36711a red | $0.1262
+[ 519.2s] landed  4/16  claimed 1  proposed 2  open 9 | landings 5, returned 2, review queue 1 | trunk b36711a red | $0.1262
+[ 524.5s] landed  4/16  claimed 1  proposed 2  open 9 | landings 5, returned 2, review queue 1 | trunk b36711a red | $0.1262
+[ 529.7s] landed  4/16  claimed 1  proposed 2  open 9 | landings 5, returned 2, review queue 1 | trunk b36711a red | $0.1262
+[ 535.0s] landed  4/16  claimed 1  proposed 2  open 9 | landings 5, returned 2, review queue 1 | trunk b36711a red | $0.1262
+[ 540.2s] landed  4/16  claimed 2  proposed 1  open 9 | landings 5, returned 3, review queue 1 | trunk b36711a red | $0.1293
+[ 545.5s] landed  4/16  claimed 2  proposed 1  open 9 | landings 5, returned 3, review queue 1 | trunk b36711a red | $0.1293
+[ 550.7s] landed  4/16  claimed 2  proposed 1  open 9 | landings 5, returned 3, review queue 1 | trunk b36711a red | $0.1293
+[ 556.1s] landed  4/16  claimed 2  proposed 1  open 9 | landings 5, returned 3, review queue 1 | trunk b36711a red | $0.1293
+[ 561.2s] landed  4/16  claimed 2  proposed 1  open 9 | landings 5, returned 3, review queue 1 | trunk b36711a red | $0.1293
+[ 566.4s] landed  4/16  claimed 2  proposed 1  open 9 | landings 5, returned 3, review queue 1 | trunk b36711a red | $0.1293
+[ 571.7s] landed  4/16  claimed 2  proposed 1  open 9 | landings 5, returned 3, review queue 1 | trunk b36711a red | $0.1341
+[ 576.9s] landed  4/16  claimed 2  proposed 1  open 9 | landings 5, returned 3, review queue 1 | trunk b36711a red | $0.1341
+[ 582.1s] landed  4/16  claimed 2  proposed 1  open 9 | landings 5, returned 3, review queue 1 | trunk b36711a red | $0.1341
+[ 587.4s] landed  4/16  claimed 2  proposed 1  open 9 | landings 5, returned 3, review queue 1 | trunk b36711a red | $0.1341
+[ 592.7s] landed  4/16  claimed 3  proposed 1  open 8 | landings 5, returned 3, review queue 1 | trunk b36711a red | $0.1498
+[ 597.9s] landed  4/16  claimed 3  proposed 1  open 8 | landings 5, returned 3, review queue 1 | trunk b36711a red | $0.1512
+[ 603.2s] landed  4/16  claimed 3  proposed 1  open 8 | landings 5, returned 3, review queue 1 | trunk b36711a red | $0.1534
+[ 608.5s] landed  4/16  claimed 2  proposed 2  open 8 | landings 5, returned 3, review queue 1 | trunk b36711a red | $0.1556
+[ 613.7s] landed  4/16  claimed 2  proposed 2  open 8 | landings 5, returned 3, review queue 1 | trunk b36711a red | $0.1561
+[ 618.9s] landed  4/16  claimed 2  proposed 2  open 8 | landings 5, returned 3, review queue 1 | trunk b36711a red | $0.1561
+[ 624.2s] landed  4/16  claimed 3  proposed 2  open 7 | landings 5, returned 3, review queue 2 | trunk b36711a red | $0.1566
+[ 629.4s] landed  4/16  claimed 3  proposed 2  open 7 | landings 5, returned 3, review queue 2 | trunk b36711a red | $0.1577
+[ 634.6s] landed  4/16  claimed 3  proposed 2  open 7 | landings 5, returned 3, review queue 2 | trunk b36711a red | $0.1582
+[ 639.8s] landed  4/16  claimed 3  proposed 2  open 7 | landings 5, returned 3, review queue 2 | trunk b36711a red | $0.1589
+[ 645.1s] landed  4/16  claimed 3  proposed 2  open 7 | landings 5, returned 3, review queue 2 | trunk b36711a red | $0.1596
+[ 650.4s] landed  4/16  claimed 3  proposed 2  open 7 | landings 5, returned 3, review queue 2 | trunk b36711a red | $0.1606
+[ 655.6s] landed  4/16  claimed 3  proposed 2  open 7 | landings 5, returned 3, review queue 2 | trunk b36711a red | $0.1610
+[ 660.8s] landed  4/16  claimed 1  proposed 4  open 7 | landings 5, returned 3, review queue 2 | trunk b36711a red | $0.1637
+[ 666.1s] landed  4/16  claimed 1  proposed 4  open 7 | landings 5, returned 3, review queue 2 | trunk b36711a red | $0.1643
+[ 671.3s] landed  4/16  claimed 2  proposed 3  open 7 | landings 5, returned 4, review queue 2 | trunk b36711a red | $0.1655
+[ 676.5s] landed  4/16  claimed 1  proposed 4  open 7 | landings 5, returned 4, review queue 2 | trunk b36711a red | $0.1661
+[ 681.8s] landed  4/16  claimed 1  proposed 4  open 7 | landings 5, returned 4, review queue 2 | trunk b36711a red | $0.1661
+[ 687.0s] landed  4/16  claimed 1  proposed 4  open 7 | landings 5, returned 4, review queue 2 | trunk b36711a red | $0.1661
+[ 692.3s] landed  5/16  claimed 2  proposed 3  open 6 | landings 6, returned 4, review queue 2 | trunk 6eb32d5 red | $0.1685
+[ 697.5s] landed  5/16  claimed 2  proposed 3  open 6 | landings 6, returned 4, review queue 2 | trunk 6eb32d5 red | $0.1712
+[ 702.8s] landed  6/16  claimed 2  proposed 2  open 6 | landings 7, returned 4, review queue 2 | trunk 4424e50 red at 6eb32d5 | $0.1712
+[ 708.0s] landed  6/16  claimed 4  proposed 2  open 4 | landings 7, returned 4, review queue 2 | trunk 4424e50 red | $0.1712
+[ 713.3s] landed  6/16  claimed 4  proposed 2  open 4 | landings 7, returned 4, review queue 2 | trunk 4424e50 red | $0.1712
+[ 718.5s] landed  6/16  claimed 4  proposed 2  open 4 | landings 7, returned 4, review queue 2 | trunk 4424e50 red | $0.1712
+[ 723.7s] landed  6/16  claimed 4  proposed 2  open 4 | landings 7, returned 4, review queue 2 | trunk 4424e50 red | $0.1712
+[ 729.0s] landed  6/16  claimed 4  proposed 2  open 4 | landings 7, returned 4, review queue 2 | trunk 4424e50 red | $0.1742
+[ 734.2s] landed  6/16  claimed 4  proposed 2  open 4 | landings 7, returned 4, review queue 2 | trunk 4424e50 red | $0.1742
+[ 739.5s] landed  6/16  claimed 4  proposed 2  open 4 | landings 7, returned 4, review queue 2 | trunk 4424e50 red | $0.1742
+[ 744.7s] landed  6/16  claimed 4  proposed 2  open 4 | landings 7, returned 4, review queue 2 | trunk 4424e50 red | $0.1785
+[ 749.9s] landed  6/16  claimed 4  proposed 2  open 4 | landings 7, returned 4, review queue 2 | trunk 4424e50 red | $0.1821
+[ 755.2s] landed  6/16  claimed 4  proposed 2  open 4 | landings 7, returned 4, review queue 2 | trunk 4424e50 red | $0.1821
+[ 760.5s] landed  6/16  claimed 4  proposed 2  open 4 | landings 7, returned 4, review queue 2 | trunk 4424e50 red | $0.1842
+[ 765.7s] landed  6/16  claimed 3  proposed 3  open 4 | landings 7, returned 4, review queue 2 | trunk 4424e50 red | $0.1875
+[ 770.9s] landed  6/16  claimed 3  proposed 3  open 4 | landings 7, returned 4, review queue 2 | trunk 4424e50 red | $0.1895
+[ 776.2s] landed  6/16  claimed 3  proposed 3  open 4 | landings 7, returned 4, review queue 2 | trunk 4424e50 red | $0.1915
+[ 781.5s] landed  7/16  claimed 3  proposed 2  open 4 | landings 8, returned 4, review queue 2 | trunk 054a07d red | $0.1919
+[ 786.7s] landed  7/16  claimed 3  proposed 2  open 4 | landings 8, returned 4, review queue 2 | trunk 054a07d red | $0.1919
+[ 791.9s] landed  7/16  claimed 3  proposed 2  open 4 | landings 8, returned 4, review queue 2 | trunk 054a07d red | $0.1919
+[ 797.1s] landed  7/16  claimed 3  proposed 2  open 4 | landings 8, returned 4, review queue 2 | trunk 054a07d red | $0.1942
+[ 802.4s] landed  7/16  claimed 3  proposed 2  open 4 | landings 8, returned 4, review queue 2 | trunk 054a07d red | $0.1942
+[ 807.6s] landed  7/16  claimed 3  proposed 2  open 4 | landings 8, returned 4, review queue 2 | trunk 054a07d red | $0.1974
+[ 812.8s] landed  7/16  claimed 3  proposed 2  open 4 | landings 8, returned 4, review queue 2 | trunk 054a07d red | $0.1974
+[ 818.1s] landed  7/16  claimed 3  proposed 2  open 4 | landings 8, returned 4, review queue 2 | trunk 054a07d red | $0.1974
+[ 823.3s] landed  7/16  claimed 3  proposed 2  open 4 | landings 8, returned 4, review queue 2 | trunk 054a07d red | $0.2006
+[ 828.6s] landed  7/16  claimed 3  proposed 2  open 4 | landings 8, returned 4, review queue 2 | trunk 054a07d red | $0.2021
+[ 833.9s] landed  7/16  claimed 3  proposed 2  open 4 | landings 8, returned 4, review queue 2 | trunk 054a07d red | $0.2076
+[ 839.1s] landed  7/16  claimed 3  proposed 2  open 4 | landings 8, returned 4, review queue 2 | trunk 054a07d red | $0.2076
+[ 844.3s] landed  7/16  claimed 3  proposed 2  open 4 | landings 8, returned 4, review queue 2 | trunk 054a07d red | $0.2076
+[ 849.5s] landed  7/16  claimed 2  proposed 3  open 4 | landings 8, returned 4, review queue 2 | trunk 054a07d red | $0.2135
+[ 854.8s] landed  7/16  claimed 2  proposed 3  open 4 | landings 8, returned 4, review queue 2 | trunk 054a07d red | $0.2135
+[ 860.0s] landed  7/16  claimed 2  proposed 3  open 4 | landings 8, returned 4, review queue 2 | trunk 054a07d red | $0.2154
+[ 865.3s] landed  7/16  claimed 2  proposed 3  open 4 | landings 8, returned 4, review queue 2 | trunk 054a07d red | $0.2154
+[ 870.5s] landed  7/16  claimed 2  proposed 3  open 4 | landings 8, returned 4, review queue 2 | trunk 054a07d red | $0.2154
+[ 875.8s] landed  8/16  claimed 3  proposed 2  open 3 | landings 9, returned 4, review queue 2 | trunk 3118c87 red | $0.2160
+[ 881.0s] landed  8/16  claimed 3  proposed 2  open 3 | landings 9, returned 4, review queue 2 | trunk 3118c87 red | $0.2184
+[ 886.3s] landed  8/16  claimed 3  proposed 2  open 3 | landings 9, returned 4, review queue 2 | trunk 3118c87 red | $0.2184
+[ 891.5s] landed  8/16  claimed 3  proposed 2  open 3 | landings 9, returned 4, review queue 2 | trunk 3118c87 red | $0.2184
+[ 896.7s] landed  8/16  claimed 3  proposed 2  open 3 | landings 9, returned 4, review queue 2 | trunk 3118c87 red | $0.2184
+[ 902.0s] landed  8/16  claimed 2  proposed 3  open 3 | landings 9, returned 4, review queue 2 | trunk 3118c87 red | $0.2216
+[ 907.2s] landed  8/16  claimed 2  proposed 3  open 3 | landings 9, returned 4, review queue 2 | trunk 3118c87 red | $0.2216
+[ 912.5s] landed  8/16  claimed 3  proposed 2  open 3 | landings 9, returned 5, review queue 2 | trunk 3118c87 red | $0.2233
+[ 917.9s] landed  8/16  claimed 3  proposed 2  open 3 | landings 9, returned 5, review queue 2 | trunk 3118c87 red | $0.2238
+[ 923.1s] landed  8/16  claimed 3  proposed 2  open 3 | landings 9, returned 5, review queue 2 | trunk 3118c87 red | $0.2243
+[ 928.3s] landed  8/16  claimed 3  proposed 2  open 3 | landings 9, returned 5, review queue 2 | trunk 3118c87 red | $0.2243
+[ 933.6s] landed  8/16  claimed 3  proposed 2  open 3 | landings 9, returned 5, review queue 2 | trunk 3118c87 red | $0.2243
+[ 938.8s] landed  8/16  claimed 3  proposed 2  open 3 | landings 9, returned 5, review queue 2 | trunk 3118c87 red | $0.2243
+[ 944.0s] landed  8/16  claimed 2  proposed 3  open 3 | landings 9, returned 5, review queue 2 | trunk 3118c87 red | $0.2257
+[ 949.2s] landed  8/16  claimed 2  proposed 3  open 3 | landings 9, returned 5, review queue 2 | trunk 3118c87 red | $0.2272
+[ 954.4s] landed  8/16  claimed 2  proposed 3  open 3 | landings 9, returned 5, review queue 2 | trunk 3118c87 red | $0.2272
+[ 959.6s] landed  8/16  claimed 2  proposed 3  open 3 | landings 9, returned 5, review queue 2 | trunk 3118c87 red | $0.2272
+[ 964.9s] landed  8/16  claimed 2  proposed 3  open 3 | landings 9, returned 5, review queue 2 | trunk 3118c87 red | $0.2272
+[ 970.3s] landed  8/16  claimed 2  proposed 3  open 3 | landings 9, returned 5, review queue 2 | trunk 3118c87 red | $0.2272
+[ 975.4s] landed  8/16  claimed 3  proposed 2  open 3 | landings 9, returned 6, review queue 2 | trunk 3118c87 red | $0.2304
+[ 980.6s] landed  8/16  claimed 3  proposed 2  open 3 | landings 9, returned 6, review queue 2 | trunk 3118c87 red | $0.2304
+[ 985.9s] landed  8/16  claimed 3  proposed 2  open 3 | landings 9, returned 6, review queue 2 | trunk 3118c87 red | $0.2304
+[ 991.1s] landed  8/16  claimed 3  proposed 2  open 3 | landings 9, returned 6, review queue 2 | trunk 3118c87 red | $0.2431
+[ 996.4s] landed  8/16  claimed 3  proposed 2  open 3 | landings 9, returned 6, review queue 2 | trunk 3118c87 red | $0.2431
+[1001.6s] landed  8/16  claimed 3  proposed 2  open 3 | landings 9, returned 6, review queue 2 | trunk 3118c87 red | $0.2503
+[1006.8s] landed  8/16  claimed 3  proposed 2  open 3 | landings 9, returned 6, review queue 2 | trunk 3118c87 red | $0.2503
+[1012.2s] landed  8/16  claimed 3  proposed 2  open 3 | landings 9, returned 6, review queue 2 | trunk 3118c87 red | $0.2503
+[1017.4s] landed  8/16  claimed 3  proposed 2  open 3 | landings 9, returned 6, review queue 2 | trunk 3118c87 red | $0.2503
+[1022.6s] landed  8/16  claimed 3  proposed 2  open 3 | landings 9, returned 6, review queue 2 | trunk 3118c87 red | $0.2514
+[1028.1s] landed  8/16  claimed 3  proposed 2  open 3 | landings 9, returned 6, review queue 2 | trunk 3118c87 red | $0.2525
+[1033.5s] landed  8/16  claimed 2  proposed 3  open 3 | landings 9, returned 6, review queue 2 | trunk 3118c87 red | $0.2532
+[1038.7s] landed  8/16  claimed 2  proposed 3  open 3 | landings 9, returned 6, review queue 2 | trunk 3118c87 red | $0.2539
+[1043.9s] landed  8/16  claimed 2  proposed 3  open 3 | landings 9, returned 6, review queue 2 | trunk 3118c87 red | $0.2554
+[1049.2s] landed  8/16  claimed 2  proposed 3  open 3 | landings 9, returned 6, review queue 2 | trunk 3118c87 red | $0.2561
+[1054.5s] landed  8/16  claimed 2  proposed 3  open 3 | landings 9, returned 6, review queue 2 | trunk 3118c87 red | $0.2561
+[1059.8s] landed  8/16  claimed 2  proposed 3  open 3 | landings 9, returned 6, review queue 2 | trunk 3118c87 red | $0.2561
+[1065.4s] landed  8/16  claimed 2  proposed 3  open 3 | landings 10, returned 6, review queue 2 | trunk 3118c87 red | $0.2567
+[1070.7s] landed  9/16  claimed 3  proposed 2  open 2 | landings 10, returned 6, review queue 2 | trunk 7e5de9b red | $0.2576
+[1075.9s] landed  9/16  claimed 3  proposed 2  open 2 | landings 10, returned 6, review queue 2 | trunk 7e5de9b red | $0.2576
+[1081.2s] landed  9/16  claimed 3  proposed 2  open 2 | landings 10, returned 6, review queue 2 | trunk 7e5de9b red | $0.2576
+[1086.4s] landed  9/16  claimed 3  proposed 2  open 2 | landings 10, returned 6, review queue 2 | trunk 7e5de9b red | $0.2576
+[1091.7s] landed  9/16  claimed 3  proposed 2  open 2 | landings 10, returned 6, review queue 2 | trunk 7e5de9b red | $0.2576
+[1096.9s] landed  9/16  claimed 3  proposed 2  open 2 | landings 10, returned 6, review queue 2 | trunk 7e5de9b red | $0.2714
+[1102.1s] landed  9/16  claimed 3  proposed 2  open 2 | landings 10, returned 6, review queue 2 | trunk 7e5de9b red | $0.2714
+[1107.4s] landed  9/16  claimed 3  proposed 2  open 2 | landings 10, returned 6, review queue 2 | trunk 7e5de9b red | $0.2846
+[1112.6s] landed  9/16  claimed 2  proposed 3  open 2 | landings 10, returned 6, review queue 2 | trunk 7e5de9b red | $0.2862
+[1117.9s] landed  9/16  claimed 2  proposed 3  open 2 | landings 10, returned 6, review queue 2 | trunk 7e5de9b red | $0.2896
+[1123.1s] landed  9/16  claimed 3  proposed 2  open 2 | landings 10, returned 7, review queue 2 | trunk 7e5de9b red | $0.2901
+[1128.4s] landed  9/16  claimed 3  proposed 2  open 2 | landings 10, returned 7, review queue 2 | trunk 7e5de9b red | $0.2920
+[1133.6s] landed  9/16  claimed 3  proposed 2  open 2 | landings 10, returned 7, review queue 2 | trunk 7e5de9b red | $0.2920
+[1139.4s] landed  9/16  claimed 3  proposed 2  open 2 | landings 10, returned 7, review queue 2 | trunk 7e5de9b red | $0.2920
+[1144.6s] landed  9/16  claimed 3  proposed 2  open 2 | landings 10, returned 7, review queue 2 | trunk 7e5de9b red | $0.2920
+[1149.8s] landed  9/16  claimed 2  proposed 3  open 2 | landings 10, returned 7, review queue 2 | trunk 7e5de9b red | $0.2948
+[1155.4s] landed  9/16  claimed 2  proposed 3  open 2 | landings 10, returned 7, review queue 2 | trunk 7e5de9b red | $0.2948
+[1160.6s] landed  9/16  claimed 2  proposed 3  open 2 | landings 10, returned 7, review queue 2 | trunk 7e5de9b red | $0.3091
+[1165.8s] landed 10/16  claimed 3  proposed 2  open 1 | landings 11, returned 7, review queue 2 | trunk b99999f red | $0.3097
+[1171.0s] landed 10/16  claimed 3  proposed 2  open 1 | landings 11, returned 7, review queue 2 | trunk b99999f red | $0.3097
+[1176.2s] landed 10/16  claimed 3  proposed 2  open 1 | landings 11, returned 7, review queue 2 | trunk b99999f red | $0.3273
+[1181.4s] landed 10/16  claimed 3  proposed 2  open 1 | landings 11, returned 7, review queue 2 | trunk b99999f red | $0.3273
+[1186.7s] landed 10/16  claimed 3  proposed 2  open 1 | landings 11, returned 7, review queue 2 | trunk b99999f red | $0.3273
+[1192.0s] landed 10/16  claimed 3  proposed 2  open 1 | landings 11, returned 7, review queue 2 | trunk b99999f red | $0.3273
+[1197.2s] landed 10/16  claimed 3  proposed 2  open 1 | landings 11, returned 7, review queue 2 | trunk b99999f red | $0.3273
+[1202.5s] landed 10/16  claimed 3  proposed 2  open 1 | landings 11, returned 7, review queue 2 | trunk b99999f red | $0.3273
+[1207.7s] landed 10/16  claimed 3  proposed 2  open 1 | landings 11, returned 7, review queue 2 | trunk b99999f red | $0.3284
+[1212.9s] landed 10/16  claimed 3  proposed 2  open 1 | landings 11, returned 7, review queue 2 | trunk b99999f red | $0.3434
+[1218.1s] landed 10/16  claimed 3  proposed 2  open 1 | landings 11, returned 7, review queue 2 | trunk b99999f red | $0.3588
+[1223.3s] landed 10/16  claimed 3  proposed 2  open 1 | landings 11, returned 7, review queue 2 | trunk b99999f red | $0.3745
+[1228.6s] landed 10/16  claimed 3  proposed 2  open 1 | landings 11, returned 7, review queue 2 | trunk b99999f red | $0.3812
+[1233.8s] landed 10/16  claimed 3  proposed 2  open 1 | landings 11, returned 7, review queue 2 | trunk b99999f red | $0.3812
+[1239.2s] landed 10/16  claimed 3  proposed 2  open 1 | landings 11, returned 7, review queue 2 | trunk b99999f red | $0.3812
+[1244.4s] landed 10/16  claimed 3  proposed 2  open 1 | landings 11, returned 7, review queue 2 | trunk b99999f red | $0.3823
+[1249.7s] landed 10/16  claimed 3  proposed 2  open 1 | landings 11, returned 7, review queue 2 | trunk b99999f red | $0.3823
+[1254.9s] landed 10/16  claimed 2  proposed 3  open 1 | landings 11, returned 7, review queue 2 | trunk b99999f red | $0.3927
+[1260.2s] landed 10/16  claimed 2  proposed 3  open 1 | landings 11, returned 7, review queue 2 | trunk b99999f red | $0.3927
+[1265.4s] landed 10/16  claimed 2  proposed 3  open 1 | landings 11, returned 7, review queue 2 | trunk b99999f red | $0.4009
+[1270.6s] landed 11/16  claimed 3  proposed 2  open 0 | landings 12, returned 7, review queue 2 | trunk 8ed956e red | $0.4043
+[1275.8s] landed 11/16  claimed 3  proposed 2  open 0 | landings 12, returned 7, review queue 2 | trunk 8ed956e red | $0.4043
+[1281.0s] landed 11/16  claimed 3  proposed 2  open 0 | landings 12, returned 7, review queue 2 | trunk 8ed956e red | $0.4043
+[1286.2s] landed 11/16  claimed 3  proposed 2  open 0 | landings 12, returned 7, review queue 2 | trunk 8ed956e red | $0.4043
+[1291.5s] landed 11/16  claimed 3  proposed 2  open 0 | landings 12, returned 7, review queue 2 | trunk 8ed956e red | $0.4043
+[1296.8s] landed 11/16  claimed 3  proposed 2  open 0 | landings 12, returned 7, review queue 2 | trunk 8ed956e red | $0.4043
+[1302.0s] landed 11/16  claimed 3  proposed 2  open 0 | landings 12, returned 7, review queue 2 | trunk 8ed956e red | $0.4043
+[1307.2s] landed 11/16  claimed 3  proposed 2  open 0 | landings 12, returned 7, review queue 2 | trunk 8ed956e red | $0.4043
+[1312.5s] landed 11/16  claimed 3  proposed 2  open 0 | landings 12, returned 7, review queue 2 | trunk 8ed956e red | $0.4043
+[1317.7s] landed 11/16  claimed 3  proposed 2  open 0 | landings 12, returned 7, review queue 2 | trunk 8ed956e red | $0.4055
+[1323.0s] landed 11/16  claimed 3  proposed 2  open 0 | landings 12, returned 7, review queue 2 | trunk 8ed956e red | $0.4055
+[1328.2s] landed 11/16  claimed 3  proposed 2  open 0 | landings 12, returned 7, review queue 2 | trunk 8ed956e red | $0.4076
+[1333.4s] landed 11/16  claimed 3  proposed 2  open 0 | landings 12, returned 7, review queue 2 | trunk 8ed956e red | $0.4244
+[1338.6s] landed 11/16  claimed 3  proposed 2  open 0 | landings 12, returned 7, review queue 2 | trunk 8ed956e red | $0.4252
+[1343.9s] landed 11/16  claimed 3  proposed 2  open 0 | landings 12, returned 7, review queue 2 | trunk 8ed956e red | $0.4252
+[1349.1s] landed 11/16  claimed 3  proposed 2  open 0 | landings 12, returned 7, review queue 2 | trunk 8ed956e red | $0.4252
+[1354.3s] landed 11/16  claimed 3  proposed 2  open 0 | landings 12, returned 7, review queue 2 | trunk 8ed956e red | $0.4262
+[1359.6s] landed 11/16  claimed 3  proposed 2  open 0 | landings 12, returned 7, review queue 2 | trunk 8ed956e red | $0.4262
+[1365.0s] landed 11/16  claimed 2  proposed 3  open 0 | landings 12, returned 7, review queue 2 | trunk 8ed956e red | $0.4553
+[1370.2s] landed 12/16  claimed 2  proposed 2  open 0 | landings 13, returned 7, review queue 2 | trunk 5364557 red | $0.4584
+[1375.4s] landed 12/16  claimed 2  proposed 2  open 0 | landings 13, returned 7, review queue 2 | trunk 5364557 red | $0.4584
+[1380.6s] landed 12/16  claimed 2  proposed 2  open 0 | landings 13, returned 7, review queue 2 | trunk 5364557 red | $0.4584
+[1385.9s] landed 12/16  claimed 2  proposed 2  open 0 | landings 13, returned 7, review queue 2 | trunk 5364557 red | $0.4584
+[1391.1s] landed 12/16  claimed 2  proposed 2  open 0 | landings 13, returned 7, review queue 2 | trunk 5364557 red | $0.4584
+[1396.4s] landed 12/16  claimed 2  proposed 2  open 0 | landings 13, returned 7, review queue 2 | trunk 5364557 red | $0.4584
+[1401.6s] landed 12/16  claimed 2  proposed 2  open 0 | landings 13, returned 7, review queue 2 | trunk 5364557 red | $0.4584
+[1406.9s] landed 12/16  claimed 2  proposed 2  open 0 | landings 13, returned 7, review queue 2 | trunk 5364557 red | $0.4584
+[1412.1s] landed 12/16  claimed 2  proposed 2  open 0 | landings 13, returned 7, review queue 2 | trunk 5364557 red | $0.4597
+[1417.3s] landed 12/16  claimed 2  proposed 2  open 0 | landings 13, returned 7, review queue 2 | trunk 5364557 red | $0.4615
+[1422.6s] landed 12/16  claimed 2  proposed 2  open 0 | landings 13, returned 7, review queue 2 | trunk 5364557 red | $0.4630
+[1427.8s] landed 12/16  claimed 2  proposed 2  open 0 | landings 13, returned 7, review queue 2 | trunk 5364557 red | $0.4630
+[1433.1s] landed 12/16  claimed 2  proposed 2  open 0 | landings 13, returned 7, review queue 2 | trunk 5364557 red | $0.4630
+[1438.3s] landed 12/16  claimed 2  proposed 2  open 0 | landings 13, returned 7, review queue 2 | trunk 5364557 red | $0.4630
+[1443.6s] landed 12/16  claimed 1  proposed 3  open 0 | landings 13, returned 7, review queue 2 | trunk 5364557 red | $0.4655
+[1448.8s] landed 12/16  claimed 1  proposed 3  open 0 | landings 13, returned 7, review queue 2 | trunk 5364557 red | $0.4655
+[1454.0s] landed 12/16  claimed 1  proposed 3  open 0 | landings 13, returned 7, review queue 2 | trunk 5364557 red | $0.4655
+[1459.3s] landed 12/16  claimed 1  proposed 3  open 0 | landings 13, returned 7, review queue 2 | trunk 5364557 red | $0.4664
+[1464.5s] landed 13/16  claimed 1  proposed 2  open 0 | landings 14, returned 7, review queue 2 | trunk 0829799 red | $0.4691
+[1469.8s] landed 13/16  claimed 1  proposed 2  open 0 | landings 14, returned 7, review queue 2 | trunk 0829799 red | $0.4691
+[1475.0s] landed 13/16  claimed 1  proposed 2  open 0 | landings 14, returned 7, review queue 2 | trunk 0829799 red | $0.4691
+[1480.4s] landed 13/16  claimed 1  proposed 2  open 0 | landings 14, returned 7, review queue 2 | trunk 0829799 red | $0.4727
+[1485.6s] landed 13/16  claimed 1  proposed 2  open 0 | landings 14, returned 7, review queue 2 | trunk 0829799 red | $0.4727
+[1490.8s] landed 13/16  claimed 1  proposed 2  open 0 | landings 14, returned 7, review queue 2 | trunk 0829799 red | $0.4763
+[1496.0s] landed 13/16  claimed 1  proposed 2  open 0 | landings 14, returned 7, review queue 2 | trunk 0829799 red | $0.4763
+[1501.2s] landed 13/16  claimed 1  proposed 2  open 0 | landings 14, returned 7, review queue 2 | trunk 0829799 red | $0.4763
+[1506.5s] landed 13/16  claimed 1  proposed 2  open 0 | landings 14, returned 7, review queue 2 | trunk 0829799 red | $0.4763
+[1511.7s] landed 13/16  claimed 1  proposed 2  open 0 | landings 14, returned 7, review queue 2 | trunk 0829799 red | $0.4763
+[1517.0s] landed 13/16  claimed 1  proposed 2  open 0 | landings 14, returned 7, review queue 2 | trunk 0829799 red | $0.4763
+[1522.2s] landed 13/16  claimed 1  proposed 2  open 0 | landings 14, returned 7, review queue 2 | trunk 0829799 red | $0.4763
+[1527.4s] landed 13/16  claimed 1  proposed 2  open 0 | landings 14, returned 7, review queue 2 | trunk 0829799 red | $0.4763
+[1532.7s] landed 13/16  claimed 1  proposed 2  open 0 | landings 14, returned 7, review queue 2 | trunk 0829799 red | $0.4763
+[1537.9s] landed 13/16  claimed 1  proposed 2  open 0 | landings 14, returned 7, review queue 2 | trunk 0829799 red | $0.4763
+[1543.2s] landed 13/16  claimed 1  proposed 2  open 0 | landings 14, returned 7, review queue 2 | trunk 0829799 red | $0.4807
+[1548.5s] landed 13/16  claimed 1  proposed 2  open 0 | landings 14, returned 7, review queue 2 | trunk 0829799 red | $0.4807
+[1553.7s] landed 13/16  claimed 1  proposed 2  open 0 | landings 14, returned 7, review queue 2 | trunk 0829799 red | $0.4830
+[1558.9s] landed 13/16  claimed 1  proposed 2  open 0 | landings 14, returned 7, review queue 2 | trunk 0829799 red | $0.4830
+[1564.2s] landed 13/16  claimed 1  proposed 2  open 0 | landings 14, returned 7, review queue 2 | trunk 0829799 red | $0.4830
+[1569.5s] landed 13/16  claimed 1  proposed 2  open 0 | landings 14, returned 7, review queue 2 | trunk 0829799 red | $0.4830
+[1574.7s] landed 13/16  claimed 1  proposed 2  open 0 | landings 14, returned 7, review queue 2 | trunk 0829799 red | $0.4857
+[1579.9s] landed 13/16  claimed 1  proposed 2  open 0 | landings 14, returned 7, review queue 2 | trunk 0829799 red | $0.4857
+[1585.4s] landed 13/16  claimed 1  proposed 2  open 0 | landings 14, returned 7, review queue 2 | trunk 0829799 red | $0.4857
+[1599.3s] landed 13/16  claimed 1  proposed 2  open 0 | landings 14, returned 7, review queue 2 | trunk 0829799 red | $0.4883
+[1604.5s] landed 13/16  claimed 0  proposed 3  open 0 | landings 14, returned 7, review queue 2 | trunk 0829799 red | $0.4889
+[1609.7s] landed 13/16  claimed 0  proposed 3  open 0 | landings 14, returned 7, review queue 2 | trunk 0829799 red | $0.4889
+[1615.5s] landed 13/16  claimed 0  proposed 3  open 0 | landings 15, returned 7, review queue 2 | trunk 0829799 red | $0.4895
+[1620.9s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1626.1s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1631.3s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1636.5s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1641.7s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1647.2s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1652.3s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1657.6s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1662.8s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1668.0s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1673.2s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1678.4s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1683.6s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1688.9s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1694.2s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1699.4s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1704.6s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1709.9s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1715.1s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1720.4s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1725.6s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1730.8s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1736.1s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1741.4s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1746.6s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1751.8s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1757.2s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1762.3s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1767.5s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1772.8s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1778.0s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1783.3s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1788.5s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1793.8s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1799.0s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1804.3s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1809.5s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1814.7s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1820.0s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1825.2s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1830.5s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1835.7s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1840.9s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1846.2s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1851.5s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1856.7s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1861.9s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1867.2s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1872.4s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1877.6s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1882.9s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1888.1s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1893.3s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1898.6s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1903.8s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1909.1s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1914.3s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1919.6s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1925.0s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1925.0s] STALLED: no intent moved for 304.2 s with intents open (0 open, 0 claimed, 2 proposed): 2 changes wait for a person in the review queue; trunk is red at 11a231d (13 failing); agents: 8 waiting, 7 waiting on their own changes
+[1930.3s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1935.5s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1940.6s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1945.8s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1951.0s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1956.3s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1961.5s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1966.8s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1972.0s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1977.2s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1982.5s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1987.7s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1993.0s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[1998.2s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2003.4s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2008.6s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2013.8s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2019.1s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2024.3s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2029.6s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2034.8s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2040.2s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2045.4s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2050.7s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2055.9s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2061.2s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2066.4s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2071.6s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2076.9s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2082.1s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2089.5s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2094.7s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2099.9s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2105.3s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2110.5s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2115.7s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2120.9s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2126.3s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2131.5s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2136.7s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2141.9s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2147.1s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2152.4s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2157.6s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2162.8s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2168.1s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2173.3s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2178.6s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2183.8s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2189.1s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2194.3s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2199.5s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2204.8s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2210.0s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2215.8s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2221.0s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2226.4s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2226.4s] STALLED: no intent moved for 605.5 s with intents open (0 open, 0 claimed, 2 proposed): 2 changes wait for a person in the review queue; trunk is red at 11a231d (13 failing); agents: 8 waiting, 7 waiting on their own changes
+[2231.6s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2236.8s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2242.0s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2247.3s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2252.5s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2257.7s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2263.0s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2268.2s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2273.5s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2278.7s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2283.9s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2289.2s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2294.4s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2299.7s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2305.0s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2310.3s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2315.5s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2321.0s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2326.2s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2331.5s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2336.7s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2342.0s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2347.2s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2352.4s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2357.7s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2362.9s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2368.2s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2373.4s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2378.7s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2383.9s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2389.1s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2394.4s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2399.6s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2404.9s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2410.1s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2415.4s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2420.7s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 7, review queue 2 | trunk 11a231d red | $0.4895
+[2421.7s] stopped the agents (run finished)
+[2427.1s] graded at 65904d6 (3.1 s): hidden tests pass for 12 of 16 intents, fail for 4
+
+run 8: 14/16 intents landed (timeout: 14/16 intents landed after 2400 s); intents held at once: peak 6, mean 3.49
+  returns 7 of 23 proposals: stale read 0, text-merge conflict 0, review 7, rule 0, other 0; cause repeats 2/6
+  rounds to land: median 1.0, max 3; model calls to land: median 8.0
+  semantic-conflict pairs landed: 0; red episodes 1 (1 open at the end), median time to green n/a s
+  human queue: 2 escalations, 0 held merges, 1 agent reports
+  spend $0.3663, $0.0262 per landed intent; wall n/a s to the last landing
+
+[2437.6s] deleted colony contention-1017-101855-8
+[2437.6s] run 16: 16 agents on @cf/moonshotai/kimi-k2.7-code=1,@cf/zai-org/glm-5.3-flash=1,@cf/openai/gpt-oss-120b=2,@cf/google/gemma-4-26b-a4b-it at https://staging.firetrident.com (build 9803729)
+[2459.2s] created colony contention-1017-101855-16 (21.4 s); certification is on, review is off until the seed lands
+[2462.0s] seeded 20 files in one landing (2.9 s), digest 4ff227736e2f
+[2462.9s] the seed is certified green: 23/23 tests at 9c557b7 (0.9 s)
+[2463.2s] review is on (reflex @cf/cloudflare/clef); spend cap $15.00 with $1.50 kept for review
+[2465.9s] declared 16 intents, source human, priority 3, every one writing src/core/money.ts (2.7 s)
+[2467.8s] released 16 agents: @cf/moonshotai/kimi-k2.7-code×1, @cf/zai-org/glm-5.3-flash×1, @cf/openai/gpt-oss-120b×2, @cf/google/gemma-4-26b-a4b-it×12
+[2473.0s] landed  0/16  claimed 3  proposed 0  open 13 | landings 1, returned 0, review queue 0 | trunk 9c557b7 green | $0.0000
+[2478.7s] landed  0/16  claimed 3  proposed 0  open 13 | landings 1, returned 0, review queue 0 | trunk 9c557b7 green | $0.0000
+[2483.8s] landed  0/16  claimed 3  proposed 0  open 13 | landings 1, returned 0, review queue 0 | trunk 9c557b7 green | $0.0000
+[2489.0s] landed  0/16  claimed 3  proposed 0  open 13 | landings 1, returned 0, review queue 0 | trunk 9c557b7 green | $0.0000
+[2494.6s] landed  0/16  claimed 3  proposed 0  open 13 | landings 1, returned 0, review queue 0 | trunk 9c557b7 green | $0.0012
+[2499.8s] landed  0/16  claimed 3  proposed 0  open 13 | landings 1, returned 0, review queue 0 | trunk 9c557b7 green | $0.0012
+[2505.0s] landed  0/16  claimed 3  proposed 0  open 13 | landings 1, returned 0, review queue 0 | trunk 9c557b7 green | $0.0012
+[2510.6s] landed  0/16  claimed 3  proposed 0  open 13 | landings 1, returned 0, review queue 0 | trunk 9c557b7 green | $0.0012
+[2516.4s] landed  0/16  claimed 3  proposed 0  open 13 | landings 1, returned 0, review queue 0 | trunk 9c557b7 green | $0.0018
+[2521.6s] landed  0/16  claimed 3  proposed 0  open 13 | landings 1, returned 0, review queue 0 | trunk 9c557b7 green | $0.0018
+[2527.2s] landed  0/16  claimed 3  proposed 0  open 13 | landings 1, returned 0, review queue 0 | trunk 9c557b7 green | $0.0018
+[2532.4s] landed  0/16  claimed 3  proposed 0  open 13 | landings 1, returned 0, review queue 0 | trunk 9c557b7 green | $0.0018
+[2537.6s] landed  0/16  claimed 2  proposed 1  open 13 | landings 1, returned 0, review queue 0 | trunk 9c557b7 green | $0.0026
+[2545.0s] landed  0/16  claimed 2  proposed 1  open 13 | landings 1, returned 0, review queue 0 | trunk 9c557b7 green | $0.0041
+[2550.2s] landed  0/16  claimed 2  proposed 1  open 13 | landings 1, returned 0, review queue 0 | trunk 9c557b7 green | $0.0041
+[2555.4s] landed  0/16  claimed 2  proposed 1  open 13 | landings 1, returned 0, review queue 1 | trunk 9c557b7 green | $0.0045
+[2561.0s] landed  0/16  claimed 3  proposed 1  open 12 | landings 1, returned 0, review queue 1 | trunk 9c557b7 green | $0.0045
+[2566.5s] landed  0/16  claimed 3  proposed 1  open 12 | landings 1, returned 0, review queue 1 | trunk 9c557b7 green | $0.0045
+[2571.7s] landed  0/16  claimed 3  proposed 1  open 12 | landings 1, returned 0, review queue 1 | trunk 9c557b7 green | $0.0058
+[2576.9s] landed  0/16  claimed 3  proposed 1  open 12 | landings 1, returned 0, review queue 1 | trunk 9c557b7 green | $0.0063
+[2582.1s] landed  0/16  claimed 3  proposed 1  open 12 | landings 1, returned 0, review queue 1 | trunk 9c557b7 green | $0.0063
+[2587.3s] landed  0/16  claimed 3  proposed 1  open 12 | landings 1, returned 0, review queue 1 | trunk 9c557b7 green | $0.0063
+[2592.9s] landed  0/16  claimed 3  proposed 1  open 12 | landings 1, returned 0, review queue 1 | trunk 9c557b7 green | $0.0063
+[2598.1s] landed  0/16  claimed 3  proposed 1  open 12 | landings 1, returned 0, review queue 1 | trunk 9c557b7 green | $0.0063
+[2603.2s] landed  0/16  claimed 3  proposed 1  open 12 | landings 1, returned 0, review queue 1 | trunk 9c557b7 green | $0.0063
+[2608.9s] landed  0/16  claimed 3  proposed 1  open 12 | landings 1, returned 0, review queue 1 | trunk 9c557b7 green | $0.0070
+[2614.1s] landed  0/16  claimed 3  proposed 1  open 12 | landings 1, returned 0, review queue 1 | trunk 9c557b7 green | $0.0070
+[2619.4s] landed  0/16  claimed 3  proposed 1  open 12 | landings 1, returned 0, review queue 1 | trunk 9c557b7 green | $0.0070
+[2625.0s] landed  0/16  claimed 3  proposed 1  open 12 | landings 1, returned 0, review queue 1 | trunk 9c557b7 green | $0.0078
+[2630.2s] landed  0/16  claimed 2  proposed 2  open 12 | landings 1, returned 0, review queue 1 | trunk 9c557b7 green | $0.0091
+[2635.4s] landed  0/16  claimed 3  proposed 2  open 11 | landings 1, returned 0, review queue 2 | trunk 9c557b7 green | $0.0104
+[2641.6s] landed  0/16  claimed 3  proposed 2  open 11 | landings 1, returned 0, review queue 2 | trunk 9c557b7 green | $0.0104
+[2646.8s] landed  0/16  claimed 3  proposed 2  open 11 | landings 1, returned 0, review queue 2 | trunk 9c557b7 green | $0.0304
+[2651.9s] landed  0/16  claimed 3  proposed 2  open 11 | landings 1, returned 0, review queue 2 | trunk 9c557b7 green | $0.0304
+[2657.6s] landed  0/16  claimed 3  proposed 2  open 11 | landings 1, returned 0, review queue 2 | trunk 9c557b7 green | $0.0360
+[2663.0s] landed  0/16  claimed 3  proposed 2  open 11 | landings 1, returned 0, review queue 2 | trunk 9c557b7 green | $0.0365
+[2668.2s] landed  0/16  claimed 3  proposed 2  open 11 | landings 1, returned 0, review queue 2 | trunk 9c557b7 green | $0.0365
+[2674.0s] landed  0/16  claimed 3  proposed 2  open 11 | landings 1, returned 0, review queue 2 | trunk 9c557b7 green | $0.0365
+[2679.2s] landed  0/16  claimed 3  proposed 2  open 11 | landings 1, returned 0, review queue 2 | trunk 9c557b7 green | $0.0372
+[2684.4s] landed  0/16  claimed 3  proposed 2  open 11 | landings 1, returned 0, review queue 2 | trunk 9c557b7 green | $0.0372
+[2689.6s] landed  0/16  claimed 3  proposed 2  open 11 | landings 1, returned 0, review queue 2 | trunk 9c557b7 green | $0.0379
+[2694.8s] landed  0/16  claimed 3  proposed 2  open 11 | landings 1, returned 0, review queue 2 | trunk 9c557b7 green | $0.0383
+[2699.9s] landed  0/16  claimed 3  proposed 2  open 11 | landings 1, returned 0, review queue 2 | trunk 9c557b7 green | $0.0383
+[2705.5s] landed  0/16  claimed 3  proposed 2  open 11 | landings 1, returned 0, review queue 2 | trunk 9c557b7 green | $0.0391
+[2710.7s] landed  0/16  claimed 3  proposed 2  open 11 | landings 1, returned 0, review queue 2 | trunk 9c557b7 green | $0.0396
+[2715.9s] landed  0/16  claimed 2  proposed 3  open 11 | landings 1, returned 0, review queue 2 | trunk 9c557b7 green | $0.0574
+[2721.6s] landed  1/16  claimed 1  proposed 3  open 11 | landings 2, returned 0, review queue 2 | trunk 7535e2d green at 9c557b7 | $0.0594
+[2726.8s] landed  1/16  claimed 2  proposed 3  open 10 | landings 2, returned 0, review queue 2 | trunk 7535e2d green | $0.0594
+[2732.0s] landed  1/16  claimed 2  proposed 3  open 10 | landings 2, returned 0, review queue 2 | trunk 7535e2d green | $0.0599
+[2737.6s] landed  2/16  claimed 2  proposed 2  open 10 | landings 3, returned 0, review queue 2 | trunk eb0dd34 green at 7535e2d | $0.0603
+[2742.8s] landed  2/16  claimed 3  proposed 2  open 9 | landings 3, returned 0, review queue 2 | trunk eb0dd34 green | $0.0612
+[2747.9s] landed  2/16  claimed 3  proposed 2  open 9 | landings 3, returned 0, review queue 2 | trunk eb0dd34 green | $0.0612
+[2753.7s] landed  2/16  claimed 3  proposed 2  open 9 | landings 3, returned 0, review queue 2 | trunk eb0dd34 green | $0.0612
+[2759.0s] landed  2/16  claimed 3  proposed 2  open 9 | landings 3, returned 0, review queue 2 | trunk eb0dd34 green | $0.0622
+[2764.1s] landed  2/16  claimed 3  proposed 2  open 9 | landings 3, returned 0, review queue 2 | trunk eb0dd34 green | $0.0627
+[2769.7s] landed  2/16  claimed 4  proposed 2  open 8 | landings 3, returned 0, review queue 2 | trunk eb0dd34 green | $0.0646
+[2774.9s] landed  2/16  claimed 4  proposed 2  open 8 | landings 3, returned 0, review queue 2 | trunk eb0dd34 green | $0.0760
+[2780.0s] landed  2/16  claimed 3  proposed 3  open 8 | landings 3, returned 0, review queue 2 | trunk eb0dd34 green | $0.0774
+[2785.2s] landed  2/16  claimed 2  proposed 4  open 8 | landings 3, returned 0, review queue 2 | trunk eb0dd34 green | $0.0784
+[2790.4s] landed  2/16  claimed 2  proposed 4  open 8 | landings 3, returned 0, review queue 2 | trunk eb0dd34 green | $0.0896
+[2795.6s] landed  2/16  claimed 2  proposed 4  open 8 | landings 3, returned 0, review queue 2 | trunk eb0dd34 green | $0.0944
+[2800.9s] landed  2/16  claimed 2  proposed 4  open 8 | landings 3, returned 0, review queue 2 | trunk eb0dd34 green | $0.0954
+[2806.5s] landed  3/16  claimed 2  proposed 3  open 8 | landings 4, returned 0, review queue 2 | trunk 26f17a9 red | $0.0960
+[2811.7s] landed  3/16  claimed 2  proposed 3  open 8 | landings 4, returned 0, review queue 2 | trunk 26f17a9 red | $0.0972
+[2817.0s] landed  3/16  claimed 2  proposed 3  open 8 | landings 4, returned 0, review queue 2 | trunk 26f17a9 red | $0.0972
+[2822.3s] landed  4/16  claimed 3  proposed 2  open 7 | landings 5, returned 0, review queue 2 | trunk 77dd2c1 red | $0.0972
+[2827.5s] landed  4/16  claimed 3  proposed 2  open 7 | landings 5, returned 0, review queue 2 | trunk 77dd2c1 red | $0.0972
+[2832.8s] landed  4/16  claimed 3  proposed 2  open 7 | landings 5, returned 0, review queue 2 | trunk 77dd2c1 red | $0.0972
+[2838.0s] landed  4/16  claimed 3  proposed 2  open 7 | landings 5, returned 0, review queue 2 | trunk 77dd2c1 red | $0.1072
+[2843.2s] landed  4/16  claimed 3  proposed 2  open 7 | landings 5, returned 0, review queue 2 | trunk 77dd2c1 red | $0.1072
+[2848.5s] landed  4/16  claimed 3  proposed 2  open 7 | landings 5, returned 0, review queue 2 | trunk 77dd2c1 red | $0.1083
+[2853.7s] landed  4/16  claimed 4  proposed 2  open 6 | landings 5, returned 0, review queue 2 | trunk 77dd2c1 red | $0.1180
+[2859.0s] landed  4/16  claimed 4  proposed 2  open 6 | landings 5, returned 0, review queue 2 | trunk 77dd2c1 red | $0.1299
+[2864.2s] landed  4/16  claimed 4  proposed 2  open 6 | landings 5, returned 0, review queue 2 | trunk 77dd2c1 red | $0.1443
+[2869.5s] landed  4/16  claimed 4  proposed 2  open 6 | landings 5, returned 0, review queue 2 | trunk 77dd2c1 red | $0.1450
+[2874.7s] landed  4/16  claimed 3  proposed 3  open 6 | landings 5, returned 0, review queue 2 | trunk 77dd2c1 red | $0.1528
+[2879.9s] landed  4/16  claimed 3  proposed 3  open 6 | landings 5, returned 0, review queue 2 | trunk 77dd2c1 red | $0.1528
+[2885.2s] landed  4/16  claimed 3  proposed 3  open 6 | landings 5, returned 0, review queue 2 | trunk 77dd2c1 red | $0.1528
+[2890.4s] landed  5/16  claimed 3  proposed 2  open 6 | landings 6, returned 0, review queue 2 | trunk d43bb33 red | $0.1555
+[2895.6s] landed  5/16  claimed 3  proposed 2  open 6 | landings 6, returned 0, review queue 2 | trunk d43bb33 red | $0.1555
+[2900.9s] landed  5/16  claimed 3  proposed 2  open 6 | landings 6, returned 0, review queue 2 | trunk d43bb33 red | $0.1555
+[2906.2s] landed  5/16  claimed 3  proposed 2  open 6 | landings 6, returned 0, review queue 2 | trunk d43bb33 red | $0.1565
+[2911.6s] landed  5/16  claimed 2  proposed 3  open 6 | landings 6, returned 0, review queue 2 | trunk d43bb33 red | $0.1655
+[2916.9s] landed  6/16  claimed 4  proposed 2  open 4 | landings 7, returned 0, review queue 2 | trunk 6a7ac9e red | $0.1767
+[2922.1s] landed  6/16  claimed 4  proposed 2  open 4 | landings 7, returned 0, review queue 2 | trunk 6a7ac9e red | $0.1767
+[2927.3s] landed  6/16  claimed 4  proposed 2  open 4 | landings 7, returned 0, review queue 2 | trunk 6a7ac9e red | $0.1783
+[2932.6s] landed  6/16  claimed 4  proposed 2  open 4 | landings 7, returned 0, review queue 2 | trunk 6a7ac9e red | $0.1783
+[2938.2s] landed  6/16  claimed 4  proposed 2  open 4 | landings 7, returned 0, review queue 2 | trunk 6a7ac9e red | $0.1795
+[2943.4s] landed  6/16  claimed 4  proposed 2  open 4 | landings 7, returned 0, review queue 2 | trunk 6a7ac9e red | $0.1795
+[2948.7s] landed  6/16  claimed 4  proposed 2  open 4 | landings 7, returned 0, review queue 2 | trunk 6a7ac9e red | $0.1795
+[2953.9s] landed  6/16  claimed 4  proposed 2  open 4 | landings 7, returned 0, review queue 2 | trunk 6a7ac9e red | $0.1795
+[2959.1s] landed  6/16  claimed 4  proposed 2  open 4 | landings 7, returned 0, review queue 2 | trunk 6a7ac9e red | $0.1795
+[2964.4s] landed  6/16  claimed 4  proposed 2  open 4 | landings 7, returned 0, review queue 2 | trunk 6a7ac9e red | $0.1823
+[2969.6s] landed  6/16  claimed 4  proposed 2  open 4 | landings 7, returned 0, review queue 2 | trunk 6a7ac9e red | $0.1846
+[2974.8s] landed  6/16  claimed 4  proposed 2  open 4 | landings 7, returned 0, review queue 2 | trunk 6a7ac9e red | $0.1866
+[2980.1s] landed  6/16  claimed 4  proposed 2  open 4 | landings 7, returned 0, review queue 2 | trunk 6a7ac9e red | $0.1880
+[2985.3s] landed  6/16  claimed 3  proposed 3  open 4 | landings 7, returned 0, review queue 2 | trunk 6a7ac9e red | $0.1900
+[2990.6s] landed  6/16  claimed 3  proposed 3  open 4 | landings 7, returned 0, review queue 2 | trunk 6a7ac9e red | $0.1908
+[2995.9s] landed  6/16  claimed 3  proposed 2  open 5 | landings 7, returned 1, review queue 2 | trunk 6a7ac9e red | $0.1930
+[3001.2s] landed  6/16  claimed 3  proposed 2  open 5 | landings 7, returned 1, review queue 2 | trunk 6a7ac9e red | $0.1939
+[3006.4s] landed  6/16  claimed 3  proposed 2  open 5 | landings 7, returned 1, review queue 2 | trunk 6a7ac9e red | $0.1957
+[3011.7s] landed  6/16  claimed 3  proposed 2  open 5 | landings 7, returned 1, review queue 2 | trunk 6a7ac9e red | $0.1957
+[3016.9s] landed  6/16  claimed 3  proposed 2  open 5 | landings 7, returned 1, review queue 2 | trunk 6a7ac9e red | $0.1966
+[3022.1s] landed  6/16  claimed 3  proposed 2  open 5 | landings 7, returned 1, review queue 2 | trunk 6a7ac9e red | $0.1983
+[3027.4s] landed  6/16  claimed 3  proposed 2  open 5 | landings 7, returned 1, review queue 2 | trunk 6a7ac9e red | $0.1983
+[3032.6s] landed  6/16  claimed 3  proposed 2  open 5 | landings 7, returned 1, review queue 2 | trunk 6a7ac9e red | $0.1992
+[3037.9s] landed  6/16  claimed 3  proposed 2  open 5 | landings 7, returned 1, review queue 2 | trunk 6a7ac9e red | $0.1992
+[3043.1s] landed  6/16  claimed 3  proposed 2  open 5 | landings 7, returned 1, review queue 2 | trunk 6a7ac9e red | $0.1992
+[3048.3s] landed  6/16  claimed 3  proposed 2  open 5 | landings 7, returned 1, review queue 2 | trunk 6a7ac9e red | $0.1992
+[3053.6s] landed  6/16  claimed 3  proposed 2  open 5 | landings 7, returned 1, review queue 2 | trunk 6a7ac9e red | $0.1992
+[3059.1s] landed  6/16  claimed 3  proposed 2  open 5 | landings 7, returned 1, review queue 2 | trunk 6a7ac9e red | $0.2003
+[3064.3s] landed  6/16  claimed 3  proposed 2  open 5 | landings 7, returned 1, review queue 2 | trunk 6a7ac9e red | $0.2026
+[3069.4s] landed  6/16  claimed 3  proposed 2  open 5 | landings 7, returned 1, review queue 2 | trunk 6a7ac9e red | $0.2046
+[3074.7s] landed  6/16  claimed 3  proposed 2  open 5 | landings 7, returned 1, review queue 2 | trunk 6a7ac9e red | $0.2058
+[3079.9s] landed  6/16  claimed 2  proposed 3  open 5 | landings 7, returned 1, review queue 2 | trunk 6a7ac9e red | $0.2081
+[3085.1s] landed  6/16  claimed 2  proposed 3  open 5 | landings 7, returned 1, review queue 2 | trunk 6a7ac9e red | $0.2081
+[3090.3s] landed  6/16  claimed 1  proposed 4  open 5 | landings 7, returned 1, review queue 2 | trunk 6a7ac9e red | $0.2089
+[3095.6s] landed  6/16  claimed 1  proposed 4  open 5 | landings 7, returned 1, review queue 2 | trunk 6a7ac9e red | $0.2102
+[3100.8s] landed  6/16  claimed 0  proposed 5  open 5 | landings 7, returned 1, review queue 2 | trunk 6a7ac9e red | $0.2115
+[3106.4s] landed  6/16  claimed 0  proposed 5  open 5 | landings 7, returned 1, review queue 2 | trunk 6a7ac9e red | $0.2115
+[3112.2s] landed  6/16  claimed 0  proposed 5  open 5 | landings 7, returned 1, review queue 2 | trunk 6a7ac9e red | $0.2115
+[3117.4s] landed  6/16  claimed 0  proposed 5  open 5 | landings 7, returned 1, review queue 2 | trunk 6a7ac9e red | $0.2115
+[3122.9s] landed  7/16  claimed 1  proposed 4  open 4 | landings 8, returned 1, review queue 2 | trunk c7ac26e red | $0.2124
+[3128.1s] landed  7/16  claimed 1  proposed 4  open 4 | landings 8, returned 1, review queue 2 | trunk c7ac26e red | $0.2124
+[3133.3s] landed  7/16  claimed 1  proposed 4  open 4 | landings 8, returned 1, review queue 2 | trunk c7ac26e red | $0.2124
+[3138.7s] landed  8/16  claimed 3  proposed 3  open 2 | landings 9, returned 1, review queue 2 | trunk 47c7804 red | $0.2156
+[3143.9s] landed  8/16  claimed 3  proposed 3  open 2 | landings 9, returned 1, review queue 2 | trunk 47c7804 red | $0.2156
+[3149.1s] landed  9/16  claimed 4  proposed 2  open 1 | landings 10, returned 1, review queue 2 | trunk f99313b red | $0.2185
+[3154.3s] landed  9/16  claimed 5  proposed 2  open 0 | landings 10, returned 1, review queue 2 | trunk f99313b red | $0.2185
+[3159.5s] landed  9/16  claimed 5  proposed 2  open 0 | landings 10, returned 1, review queue 2 | trunk f99313b red | $0.2185
+[3165.1s] landed  9/16  claimed 5  proposed 2  open 0 | landings 10, returned 1, review queue 2 | trunk f99313b red | $0.2185
+[3170.4s] landed  9/16  claimed 5  proposed 2  open 0 | landings 10, returned 1, review queue 2 | trunk f99313b red | $0.2185
+[3175.6s] landed  9/16  claimed 5  proposed 2  open 0 | landings 10, returned 1, review queue 2 | trunk f99313b red | $0.2197
+[3180.9s] landed  9/16  claimed 5  proposed 2  open 0 | landings 10, returned 1, review queue 2 | trunk f99313b red | $0.2210
+[3186.2s] landed  9/16  claimed 5  proposed 2  open 0 | landings 10, returned 1, review queue 2 | trunk f99313b red | $0.2233
+[3191.4s] landed  9/16  claimed 5  proposed 2  open 0 | landings 10, returned 1, review queue 2 | trunk f99313b red | $0.2233
+[3196.6s] landed  9/16  claimed 5  proposed 2  open 0 | landings 10, returned 1, review queue 2 | trunk f99313b red | $0.2246
+[3201.8s] landed  9/16  claimed 5  proposed 2  open 0 | landings 10, returned 1, review queue 2 | trunk f99313b red | $0.2265
+[3207.1s] landed  9/16  claimed 5  proposed 2  open 0 | landings 10, returned 1, review queue 2 | trunk f99313b red | $0.2270
+[3212.3s] landed  9/16  claimed 5  proposed 2  open 0 | landings 10, returned 1, review queue 2 | trunk f99313b red | $0.2283
+[3217.7s] landed  9/16  claimed 5  proposed 2  open 0 | landings 10, returned 1, review queue 2 | trunk f99313b red | $0.2309
+[3222.9s] landed  9/16  claimed 5  proposed 2  open 0 | landings 10, returned 1, review queue 2 | trunk f99313b red | $0.2315
+[3228.2s] landed  9/16  claimed 5  proposed 2  open 0 | landings 10, returned 1, review queue 2 | trunk f99313b red | $0.2337
+[3233.4s] landed  9/16  claimed 5  proposed 2  open 0 | landings 10, returned 1, review queue 2 | trunk f99313b red | $0.2343
+[3238.6s] landed  9/16  claimed 4  proposed 3  open 0 | landings 10, returned 1, review queue 2 | trunk f99313b red | $0.2356
+[3243.9s] landed  9/16  claimed 3  proposed 4  open 0 | landings 10, returned 1, review queue 2 | trunk f99313b red | $0.2381
+[3249.2s] landed  9/16  claimed 2  proposed 5  open 0 | landings 10, returned 1, review queue 2 | trunk f99313b red | $0.2399
+[3254.4s] landed  9/16  claimed 2  proposed 5  open 0 | landings 10, returned 1, review queue 2 | trunk f99313b red | $0.2407
+[3259.6s] landed  9/16  claimed 2  proposed 5  open 0 | landings 10, returned 1, review queue 2 | trunk f99313b red | $0.2407
+[3264.9s] landed 10/16  claimed 2  proposed 4  open 0 | landings 11, returned 1, review queue 2 | trunk 5cb25fb red | $0.2436
+[3270.1s] landed 10/16  claimed 2  proposed 3  open 1 | landings 11, returned 2, review queue 2 | trunk 5cb25fb red | $0.2441
+[3275.3s] landed 10/16  claimed 2  proposed 3  open 1 | landings 11, returned 2, review queue 2 | trunk 5cb25fb red | $0.2441
+[3280.6s] landed 11/16  claimed 3  proposed 2  open 0 | landings 12, returned 2, review queue 2 | trunk ddf4f45 red | $0.2450
+[3285.8s] landed 11/16  claimed 3  proposed 2  open 0 | landings 12, returned 2, review queue 2 | trunk ddf4f45 red | $0.2477
+[3291.6s] landed 11/16  claimed 2  proposed 3  open 0 | landings 12, returned 2, review queue 2 | trunk ddf4f45 red | $0.2486
+[3296.9s] landed 11/16  claimed 2  proposed 3  open 0 | landings 12, returned 2, review queue 2 | trunk ddf4f45 red | $0.2492
+[3302.1s] landed 11/16  claimed 2  proposed 3  open 0 | landings 12, returned 2, review queue 2 | trunk ddf4f45 red | $0.2492
+[3307.3s] landed 11/16  claimed 2  proposed 3  open 0 | landings 12, returned 2, review queue 2 | trunk ddf4f45 red | $0.2492
+[3312.6s] landed 11/16  claimed 2  proposed 3  open 0 | landings 12, returned 3, review queue 2 | trunk ddf4f45 red | $0.2510
+[3317.8s] landed 11/16  claimed 2  proposed 3  open 0 | landings 12, returned 3, review queue 2 | trunk ddf4f45 red | $0.2510
+[3323.0s] landed 11/16  claimed 2  proposed 3  open 0 | landings 12, returned 3, review queue 2 | trunk ddf4f45 red | $0.2510
+[3328.4s] landed 11/16  claimed 2  proposed 3  open 0 | landings 12, returned 3, review queue 2 | trunk ddf4f45 red | $0.2524
+[3333.9s] landed 11/16  claimed 2  proposed 3  open 0 | landings 12, returned 3, review queue 2 | trunk ddf4f45 red | $0.2538
+[3339.1s] landed 11/16  claimed 2  proposed 3  open 0 | landings 12, returned 3, review queue 2 | trunk ddf4f45 red | $0.2538
+[3344.4s] landed 11/16  claimed 2  proposed 3  open 0 | landings 12, returned 3, review queue 2 | trunk ddf4f45 red | $0.2544
+[3349.7s] landed 11/16  claimed 2  proposed 3  open 0 | landings 12, returned 3, review queue 2 | trunk ddf4f45 red | $0.2544
+[3354.9s] landed 11/16  claimed 2  proposed 3  open 0 | landings 12, returned 3, review queue 2 | trunk ddf4f45 red | $0.2544
+[3360.3s] landed 11/16  claimed 2  proposed 3  open 0 | landings 12, returned 3, review queue 2 | trunk ddf4f45 red | $0.2544
+[3365.6s] landed 11/16  claimed 2  proposed 3  open 0 | landings 12, returned 3, review queue 2 | trunk ddf4f45 red | $0.2544
+[3370.8s] landed 11/16  claimed 2  proposed 3  open 0 | landings 12, returned 3, review queue 2 | trunk ddf4f45 red | $0.2561
+[3376.1s] landed 11/16  claimed 2  proposed 3  open 0 | landings 12, returned 3, review queue 2 | trunk ddf4f45 red | $0.2561
+[3381.3s] landed 11/16  claimed 2  proposed 3  open 0 | landings 12, returned 3, review queue 2 | trunk ddf4f45 red | $0.2561
+[3386.9s] landed 11/16  claimed 2  proposed 3  open 0 | landings 12, returned 3, review queue 2 | trunk ddf4f45 red | $0.2561
+[3392.2s] landed 11/16  claimed 3  proposed 2  open 0 | landings 12, returned 4, review queue 2 | trunk ddf4f45 red | $0.2580
+[3397.5s] landed 11/16  claimed 3  proposed 2  open 0 | landings 12, returned 4, review queue 2 | trunk ddf4f45 red | $0.2580
+[3402.7s] landed 11/16  claimed 3  proposed 2  open 0 | landings 12, returned 4, review queue 2 | trunk ddf4f45 red | $0.2580
+[3408.0s] landed 11/16  claimed 3  proposed 2  open 0 | landings 12, returned 4, review queue 2 | trunk ddf4f45 red | $0.2588
+[3413.2s] landed 11/16  claimed 3  proposed 2  open 0 | landings 12, returned 4, review queue 2 | trunk ddf4f45 red | $0.2628
+[3418.5s] landed 11/16  claimed 3  proposed 2  open 0 | landings 12, returned 4, review queue 2 | trunk ddf4f45 red | $0.2647
+[3423.7s] landed 11/16  claimed 3  proposed 2  open 0 | landings 12, returned 4, review queue 2 | trunk ddf4f45 red | $0.2647
+[3428.9s] landed 11/16  claimed 3  proposed 2  open 0 | landings 12, returned 4, review queue 2 | trunk ddf4f45 red | $0.2657
+[3434.2s] landed 11/16  claimed 3  proposed 2  open 0 | landings 12, returned 4, review queue 2 | trunk ddf4f45 red | $0.2657
+[3439.5s] landed 11/16  claimed 3  proposed 2  open 0 | landings 12, returned 4, review queue 2 | trunk ddf4f45 red | $0.2657
+[3444.7s] landed 11/16  claimed 3  proposed 2  open 0 | landings 12, returned 4, review queue 2 | trunk ddf4f45 red | $0.2703
+[3449.9s] landed 11/16  claimed 3  proposed 2  open 0 | landings 12, returned 4, review queue 2 | trunk ddf4f45 red | $0.2920
+[3455.2s] landed 11/16  claimed 3  proposed 2  open 0 | landings 12, returned 4, review queue 2 | trunk ddf4f45 red | $0.2929
+[3460.4s] landed 11/16  claimed 3  proposed 2  open 0 | landings 12, returned 4, review queue 2 | trunk ddf4f45 red | $0.2974
+[3465.6s] landed 11/16  claimed 3  proposed 2  open 0 | landings 12, returned 4, review queue 2 | trunk ddf4f45 red | $0.2974
+[3471.0s] landed 11/16  claimed 2  proposed 3  open 0 | landings 12, returned 4, review queue 2 | trunk ddf4f45 red | $0.3016
+[3476.2s] landed 11/16  claimed 1  proposed 4  open 0 | landings 12, returned 4, review queue 2 | trunk ddf4f45 red | $0.3033
+[3481.4s] landed 11/16  claimed 1  proposed 4  open 0 | landings 12, returned 4, review queue 2 | trunk ddf4f45 red | $0.3056
+[3487.1s] landed 12/16  claimed 1  proposed 3  open 0 | landings 13, returned 4, review queue 2 | trunk 7e37735 red | $0.3090
+[3492.4s] landed 12/16  claimed 2  proposed 2  open 0 | landings 13, returned 5, review queue 2 | trunk 7e37735 red | $0.3118
+[3497.7s] landed 12/16  claimed 2  proposed 2  open 0 | landings 13, returned 5, review queue 2 | trunk 7e37735 red | $0.3118
+[3502.9s] landed 12/16  claimed 2  proposed 2  open 0 | landings 13, returned 5, review queue 2 | trunk 7e37735 red | $0.3118
+[3508.1s] landed 12/16  claimed 2  proposed 2  open 0 | landings 13, returned 5, review queue 2 | trunk 7e37735 red | $0.3118
+[3513.3s] landed 12/16  claimed 2  proposed 2  open 0 | landings 13, returned 5, review queue 2 | trunk 7e37735 red | $0.3118
+[3518.6s] landed 12/16  claimed 2  proposed 2  open 0 | landings 13, returned 5, review queue 2 | trunk 7e37735 red | $0.3118
+[3523.8s] landed 12/16  claimed 2  proposed 2  open 0 | landings 13, returned 5, review queue 2 | trunk 7e37735 red | $0.3118
+[3529.1s] landed 12/16  claimed 2  proposed 2  open 0 | landings 13, returned 5, review queue 2 | trunk 7e37735 red | $0.3118
+[3534.4s] landed 12/16  claimed 2  proposed 2  open 0 | landings 13, returned 5, review queue 2 | trunk 7e37735 red | $0.3162
+[3539.6s] landed 12/16  claimed 2  proposed 2  open 0 | landings 13, returned 5, review queue 2 | trunk 7e37735 red | $0.3162
+[3544.8s] landed 12/16  claimed 2  proposed 2  open 0 | landings 13, returned 5, review queue 2 | trunk 7e37735 red | $0.3162
+[3550.1s] landed 12/16  claimed 2  proposed 2  open 0 | landings 13, returned 5, review queue 2 | trunk 7e37735 red | $0.3162
+[3555.3s] landed 12/16  claimed 2  proposed 2  open 0 | landings 13, returned 5, review queue 2 | trunk 7e37735 red | $0.3209
+[3560.5s] landed 12/16  claimed 2  proposed 2  open 0 | landings 13, returned 5, review queue 2 | trunk 7e37735 red | $0.3209
+[3565.8s] landed 12/16  claimed 2  proposed 2  open 0 | landings 13, returned 5, review queue 2 | trunk 7e37735 red | $0.3235
+[3571.0s] landed 12/16  claimed 2  proposed 2  open 0 | landings 13, returned 5, review queue 2 | trunk 7e37735 red | $0.3258
+[3576.3s] landed 12/16  claimed 2  proposed 2  open 0 | landings 13, returned 5, review queue 2 | trunk 7e37735 red | $0.3417
+[3581.9s] landed 12/16  claimed 2  proposed 2  open 0 | landings 13, returned 5, review queue 2 | trunk 7e37735 red | $0.3417
+[3587.1s] landed 12/16  claimed 2  proposed 2  open 0 | landings 13, returned 5, review queue 2 | trunk 7e37735 red | $0.3447
+[3592.3s] landed 12/16  claimed 2  proposed 2  open 0 | landings 13, returned 5, review queue 2 | trunk 7e37735 red | $0.3447
+[3597.8s] landed 12/16  claimed 2  proposed 2  open 0 | landings 13, returned 5, review queue 2 | trunk 7e37735 red | $0.3475
+[3603.1s] landed 12/16  claimed 1  proposed 3  open 0 | landings 13, returned 5, review queue 2 | trunk 7e37735 red | $0.3574
+[3608.4s] landed 12/16  claimed 1  proposed 3  open 0 | landings 13, returned 5, review queue 2 | trunk 7e37735 red | $0.3574
+[3613.6s] landed 13/16  claimed 1  proposed 2  open 0 | landings 14, returned 5, review queue 2 | trunk 02a68f9 red | $0.3579
+[3618.8s] landed 13/16  claimed 1  proposed 2  open 0 | landings 14, returned 5, review queue 2 | trunk 02a68f9 red | $0.3579
+[3624.0s] landed 13/16  claimed 1  proposed 2  open 0 | landings 14, returned 5, review queue 2 | trunk 02a68f9 red | $0.3579
+[3629.3s] landed 13/16  claimed 1  proposed 2  open 0 | landings 14, returned 5, review queue 2 | trunk 02a68f9 red | $0.3579
+[3634.5s] landed 13/16  claimed 1  proposed 2  open 0 | landings 14, returned 5, review queue 2 | trunk 02a68f9 red | $0.3579
+[3639.7s] landed 13/16  claimed 1  proposed 2  open 0 | landings 14, returned 5, review queue 2 | trunk 02a68f9 red | $0.3579
+[3645.1s] landed 13/16  claimed 1  proposed 2  open 0 | landings 14, returned 5, review queue 2 | trunk 02a68f9 red | $0.3579
+[3650.3s] landed 13/16  claimed 1  proposed 2  open 0 | landings 14, returned 5, review queue 2 | trunk 02a68f9 red | $0.3712
+[3655.5s] landed 13/16  claimed 1  proposed 2  open 0 | landings 14, returned 5, review queue 2 | trunk 02a68f9 red | $0.3712
+[3660.7s] landed 13/16  claimed 1  proposed 2  open 0 | landings 14, returned 5, review queue 2 | trunk 02a68f9 red | $0.3712
+[3665.9s] landed 13/16  claimed 1  proposed 2  open 0 | landings 14, returned 5, review queue 2 | trunk 02a68f9 red | $0.3712
+[3671.2s] landed 13/16  claimed 1  proposed 2  open 0 | landings 14, returned 5, review queue 2 | trunk 02a68f9 red | $0.3712
+[3676.8s] landed 13/16  claimed 1  proposed 2  open 0 | landings 14, returned 5, review queue 2 | trunk 02a68f9 red | $0.3712
+[3682.1s] landed 13/16  claimed 1  proposed 2  open 0 | landings 14, returned 5, review queue 2 | trunk 02a68f9 red | $0.3712
+[3687.3s] landed 13/16  claimed 1  proposed 2  open 0 | landings 14, returned 5, review queue 2 | trunk 02a68f9 red | $0.3712
+[3692.7s] landed 13/16  claimed 1  proposed 2  open 0 | landings 14, returned 5, review queue 2 | trunk 02a68f9 red | $0.3712
+[3697.9s] landed 13/16  claimed 1  proposed 2  open 0 | landings 14, returned 5, review queue 2 | trunk 02a68f9 red | $0.3712
+[3703.2s] landed 13/16  claimed 1  proposed 2  open 0 | landings 14, returned 5, review queue 2 | trunk 02a68f9 red | $0.3712
+[3708.8s] landed 13/16  claimed 1  proposed 2  open 0 | landings 14, returned 5, review queue 2 | trunk 02a68f9 red | $0.3712
+[3714.1s] landed 13/16  claimed 1  proposed 2  open 0 | landings 14, returned 5, review queue 2 | trunk 02a68f9 red | $0.3712
+[3719.3s] landed 13/16  claimed 1  proposed 2  open 0 | landings 14, returned 5, review queue 2 | trunk 02a68f9 red | $0.3712
+[3724.5s] landed 13/16  claimed 1  proposed 2  open 0 | landings 14, returned 5, review queue 2 | trunk 02a68f9 red | $0.3712
+[3729.8s] landed 13/16  claimed 1  proposed 2  open 0 | landings 14, returned 5, review queue 2 | trunk 02a68f9 red | $0.3712
+[3735.0s] landed 13/16  claimed 1  proposed 2  open 0 | landings 14, returned 5, review queue 2 | trunk 02a68f9 red | $0.3966
+[3740.3s] landed 13/16  claimed 1  proposed 2  open 0 | landings 14, returned 5, review queue 2 | trunk 02a68f9 red | $0.3966
+[3745.5s] landed 13/16  claimed 1  proposed 2  open 0 | landings 14, returned 5, review queue 2 | trunk 02a68f9 red | $0.3966
+[3750.8s] landed 13/16  claimed 1  proposed 2  open 0 | landings 14, returned 5, review queue 2 | trunk 02a68f9 red | $0.4036
+[3756.8s] landed 13/16  claimed 1  proposed 2  open 0 | landings 14, returned 5, review queue 2 | trunk 02a68f9 red | $0.4036
+[3762.0s] landed 13/16  claimed 1  proposed 2  open 0 | landings 14, returned 5, review queue 2 | trunk 02a68f9 red | $0.4036
+[3767.2s] landed 13/16  claimed 1  proposed 2  open 0 | landings 14, returned 5, review queue 2 | trunk 02a68f9 red | $0.4036
+[3772.5s] landed 13/16  claimed 1  proposed 2  open 0 | landings 14, returned 5, review queue 2 | trunk 02a68f9 red | $0.4036
+[3777.7s] landed 13/16  claimed 1  proposed 2  open 0 | landings 14, returned 5, review queue 2 | trunk 02a68f9 red | $0.4036
+[3782.9s] landed 13/16  claimed 1  proposed 2  open 0 | landings 14, returned 5, review queue 2 | trunk 02a68f9 red | $0.4036
+[3788.1s] landed 13/16  claimed 1  proposed 2  open 0 | landings 14, returned 5, review queue 2 | trunk 02a68f9 red | $0.4036
+[3793.3s] landed 13/16  claimed 1  proposed 2  open 0 | landings 14, returned 5, review queue 2 | trunk 02a68f9 red | $0.4036
+[3798.6s] landed 13/16  claimed 1  proposed 2  open 0 | landings 14, returned 5, review queue 2 | trunk 02a68f9 red | $0.4036
+[3804.7s] landed 13/16  claimed 1  proposed 2  open 0 | landings 14, returned 5, review queue 2 | trunk 02a68f9 red | $0.4036
+[3809.9s] landed 13/16  claimed 1  proposed 2  open 0 | landings 14, returned 5, review queue 2 | trunk 02a68f9 red | $0.4036
+[3815.1s] landed 13/16  claimed 1  proposed 2  open 0 | landings 14, returned 5, review queue 2 | trunk 02a68f9 red | $0.4169
+[3820.5s] landed 13/16  claimed 0  proposed 3  open 0 | landings 14, returned 5, review queue 2 | trunk 02a68f9 red | $0.4174
+[3825.7s] landed 13/16  claimed 0  proposed 3  open 0 | landings 14, returned 5, review queue 2 | trunk 02a68f9 red | $0.4174
+[3831.0s] landed 13/16  claimed 0  proposed 3  open 0 | landings 14, returned 5, review queue 2 | trunk 02a68f9 red | $0.4179
+[3836.4s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[3841.6s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[3846.8s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[3852.1s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[3857.3s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[3862.5s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[3868.0s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[3873.2s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[3878.4s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[3883.6s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[3888.8s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[3894.0s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[3899.3s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[3904.6s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[3909.8s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[3915.4s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[3920.6s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[3925.8s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[3931.1s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[3936.3s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[3941.6s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[3947.3s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[3952.5s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[3957.8s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[3963.1s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[3968.3s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[3973.5s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[3978.8s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[3984.0s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[3989.3s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[3994.6s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[3999.9s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4005.1s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4010.4s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4015.6s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4020.8s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4026.6s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4031.9s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4037.1s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4042.4s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4047.6s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4052.9s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4058.1s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4063.4s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4068.6s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4073.8s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4079.0s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4084.3s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4089.6s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4094.8s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4100.0s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4105.3s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4110.5s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4115.7s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4121.0s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4126.5s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4131.7s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4137.0s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4137.0s] STALLED: no intent moved for 300.6 s with intents open (0 open, 0 claimed, 2 proposed): 2 changes wait for a person in the review queue; trunk is red at 0798db0 (20 failing); agents: 16 waiting, 1 dead, 10 waiting on their own changes
+[4142.2s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4147.4s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4152.7s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4157.9s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4163.3s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4168.6s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4173.8s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4179.1s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4184.3s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4189.6s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4194.9s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4201.2s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4206.5s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4211.7s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4217.0s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4222.2s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4227.5s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4232.7s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4238.0s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4243.3s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4248.9s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4254.1s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4259.3s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4265.0s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4270.3s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4275.6s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4281.2s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4286.5s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4291.7s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4297.0s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4302.3s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4307.5s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4312.7s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4318.0s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4323.2s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4328.5s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4333.7s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4339.0s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4344.3s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4349.6s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4354.8s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4360.2s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4365.4s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4370.6s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4375.8s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4381.0s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4386.3s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4391.7s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4396.9s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4402.1s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4407.3s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4412.5s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4417.7s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4423.0s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4428.2s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4433.4s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4438.7s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4438.7s] STALLED: no intent moved for 602.3 s with intents open (0 open, 0 claimed, 2 proposed): 2 changes wait for a person in the review queue; trunk is red at 0798db0 (20 failing); agents: 16 waiting, 1 dead, 10 waiting on their own changes
+[4443.9s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4449.2s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4454.5s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4459.7s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4464.9s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4470.4s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4475.6s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4480.8s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4486.1s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4491.3s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4496.5s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4501.8s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4507.1s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4512.3s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4517.6s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4522.8s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4528.2s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4533.7s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4538.9s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4544.1s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4549.4s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4554.6s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4559.8s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4565.1s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4570.3s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4575.6s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4581.1s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4586.4s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4591.6s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4596.9s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4602.2s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4607.4s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4612.6s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4617.9s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4623.2s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4628.5s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4633.8s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4639.0s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4644.3s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4649.5s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4654.7s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4660.0s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4665.2s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4670.4s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4675.7s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4680.9s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4686.6s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4691.8s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4697.0s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4702.3s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4707.8s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4713.0s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4718.2s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4723.5s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4728.7s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4733.8s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4739.1s] landed 14/16  claimed 0  proposed 2  open 0 | landings 15, returned 5, review queue 2 | trunk 0798db0 red | $0.4179
+[4739.1s] STALLED: no intent moved for 902.7 s with intents open (0 open, 0 claimed, 2 proposed): 2 changes wait for a person in the review queue; trunk is red at 0798db0 (20 failing); agents: 16 waiting, 1 dead, 10 waiting on their own changes
+[4740.1s] stopped the agents (run finished)
+[4747.0s] graded at 0401ff8 (4.9 s): hidden tests pass for 11 of 16 intents, fail for 5
+
+run 16: 14/16 intents landed (stall: nothing landed for 900 s (14/16 landed); stalled: 2 changes wait for a person in the review queue; trunk is red at 0798db0 (20 failing); agents: 16 waiting, 1 dead, 10 waiting on their own changes); intents held at once: peak 7, mean 3.61
+  returns 5 of 21 proposals: stale read 0, text-merge conflict 1, review 4, rule 0, other 0; cause repeats 0/5
+  rounds to land: median 1.0, max 3; model calls to land: median 9.5
+  semantic-conflict pairs landed: 0; red episodes 1 (1 open at the end), median time to green n/a s
+  human queue: 2 escalations, 0 held merges, 1 agent reports
+  spend $0.3345, $0.0239 per landed intent; wall n/a s to the last landing
+
+[4762.0s] deleted colony contention-1017-101855-16
+[4762.1s] run solo: 1 agent on @cf/google/gemma-4-26b-a4b-it at https://staging.firetrident.com (build 9803729)
+[4776.5s] created colony contention-1017-101855-solo (14.3 s); certification is on, review is off until the seed lands
+[4779.1s] seeded 20 files in one landing (2.5 s), digest 4ff227736e2f
+[4781.7s] the seed is certified green: 23/23 tests at 1a5904d (2.7 s)
+[4782.0s] review is on (reflex @cf/cloudflare/clef); spend cap $15.00 with $1.50 kept for review
+[4783.4s] declared 16 intents, source human, priority 3, every one writing src/core/money.ts (1.4 s)
+[4784.3s] released 1 agents: @cf/google/gemma-4-26b-a4b-it×1
+[4789.4s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0000
+[4794.6s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0000
+[4799.9s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0000
+[4805.1s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0000
+[4810.3s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0000
+[4815.5s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0000
+[4820.7s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0000
+[4825.9s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0000
+[4831.2s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0000
+[4836.6s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0000
+[4841.8s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0000
+[4847.1s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0000
+[4852.3s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0000
+[4857.5s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0000
+[4862.8s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0000
+[4868.0s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0017
+[4873.3s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0017
+[4878.5s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0017
+[4883.8s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0017
+[4889.2s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0017
+[4894.4s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0030
+[4899.5s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0034
+[4904.7s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0034
+[4910.0s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0034
+[4915.9s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0041
+[4921.1s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0041
+[4926.3s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0041
+[4931.5s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0041
+[4936.7s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0049
+[4941.9s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0049
+[4947.2s] landed  0/16  claimed 0  proposed 0  open 16 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0056
+[4952.4s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0056
+[4957.6s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0056
+[4962.8s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0056
+[4968.0s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0056
+[4973.2s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0056
+[4978.5s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0056
+[4983.9s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0065
+[4989.0s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0069
+[4994.3s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0069
+[4999.5s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0069
+[5004.7s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0069
+[5009.9s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0076
+[5015.2s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0076
+[5020.5s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0084
+[5025.7s] landed  0/16  claimed 0  proposed 0  open 16 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0093
+[5031.0s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0093
+[5036.2s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0093
+[5041.5s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0093
+[5046.7s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0093
+[5052.0s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0093
+[5057.3s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0093
+[5062.6s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0093
+[5067.9s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0093
+[5073.1s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0093
+[5078.3s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0093
+[5083.5s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0093
+[5088.7s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0093
+[5094.0s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0093
+[5099.3s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0109
+[5104.5s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0109
+[5109.7s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0109
+[5115.0s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0109
+[5120.2s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0122
+[5125.4s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0127
+[5130.7s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0127
+[5135.9s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0127
+[5141.2s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0134
+[5146.4s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0134
+[5151.7s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0141
+[5156.9s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0141
+[5162.2s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0141
+[5167.4s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0141
+[5172.6s] landed  0/16  claimed 0  proposed 0  open 16 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0148
+[5178.0s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0148
+[5183.3s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0148
+[5188.4s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0148
+[5193.6s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0148
+[5198.8s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0148
+[5204.1s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0148
+[5209.3s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0148
+[5214.6s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0148
+[5219.8s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0148
+[5225.1s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0163
+[5230.3s] landed  0/16  claimed 1  proposed 0  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0163
+[5235.5s] landed  0/16  claimed 0  proposed 1  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0179
+[5240.8s] landed  0/16  claimed 0  proposed 1  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0179
+[5246.0s] landed  0/16  claimed 0  proposed 1  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0179
+[5251.3s] landed  0/16  claimed 0  proposed 1  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0179
+[5256.6s] landed  0/16  claimed 0  proposed 1  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0179
+[5261.7s] landed  0/16  claimed 0  proposed 1  open 15 | landings 1, returned 0, review queue 0 | trunk 1a5904d green | $0.0179
+[5267.0s] landed  0/16  claimed 0  proposed 1  open 15 | landings 1, returned 0, review queue 1 | trunk 1a5904d green | $0.0186
+[5272.2s] landed  0/16  claimed 1  proposed 1  open 14 | landings 1, returned 0, review queue 1 | trunk 1a5904d green | $0.0186
+[5277.5s] landed  0/16  claimed 1  proposed 1  open 14 | landings 1, returned 0, review queue 1 | trunk 1a5904d green | $0.0186
+[5282.7s] landed  0/16  claimed 1  proposed 1  open 14 | landings 1, returned 0, review queue 1 | trunk 1a5904d green | $0.0186
+[5288.0s] landed  0/16  claimed 1  proposed 1  open 14 | landings 1, returned 0, review queue 1 | trunk 1a5904d green | $0.0186
+[5293.2s] landed  0/16  claimed 1  proposed 1  open 14 | landings 1, returned 0, review queue 1 | trunk 1a5904d green | $0.0193
+[5298.4s] landed  0/16  claimed 1  proposed 1  open 14 | landings 1, returned 0, review queue 1 | trunk 1a5904d green | $0.0193
+[5303.7s] landed  0/16  claimed 1  proposed 1  open 14 | landings 1, returned 0, review queue 1 | trunk 1a5904d green | $0.0197
+[5308.9s] landed  0/16  claimed 1  proposed 1  open 14 | landings 1, returned 0, review queue 1 | trunk 1a5904d green | $0.0197
+[5314.2s] landed  0/16  claimed 1  proposed 1  open 14 | landings 1, returned 0, review queue 1 | trunk 1a5904d green | $0.0197
+[5319.4s] landed  0/16  claimed 1  proposed 1  open 14 | landings 1, returned 0, review queue 1 | trunk 1a5904d green | $0.0197
+[5324.7s] landed  0/16  claimed 1  proposed 1  open 14 | landings 1, returned 0, review queue 1 | trunk 1a5904d green | $0.0204
+[5329.9s] landed  0/16  claimed 1  proposed 1  open 14 | landings 1, returned 0, review queue 1 | trunk 1a5904d green | $0.0212
+[5335.2s] landed  0/16  claimed 1  proposed 1  open 14 | landings 1, returned 0, review queue 1 | trunk 1a5904d green | $0.0212
+[5340.4s] landed  0/16  claimed 1  proposed 1  open 14 | landings 1, returned 0, review queue 1 | trunk 1a5904d green | $0.0212
+[5345.6s] landed  0/16  claimed 1  proposed 1  open 14 | landings 1, returned 0, review queue 1 | trunk 1a5904d green | $0.0212
+[5350.9s] landed  0/16  claimed 1  proposed 1  open 14 | landings 1, returned 0, review queue 1 | trunk 1a5904d green | $0.0220
+[5356.1s] landed  0/16  claimed 1  proposed 1  open 14 | landings 1, returned 0, review queue 1 | trunk 1a5904d green | $0.0220
+[5361.3s] landed  0/16  claimed 1  proposed 1  open 14 | landings 1, returned 0, review queue 1 | trunk 1a5904d green | $0.0220
+[5366.6s] landed  0/16  claimed 1  proposed 1  open 14 | landings 1, returned 0, review queue 1 | trunk 1a5904d green | $0.0220
+[5371.8s] landed  0/16  claimed 1  proposed 1  open 14 | landings 1, returned 0, review queue 1 | trunk 1a5904d green | $0.0220
+[5377.1s] landed  0/16  claimed 1  proposed 1  open 14 | landings 1, returned 0, review queue 1 | trunk 1a5904d green | $0.0231
+[5382.3s] landed  0/16  claimed 1  proposed 1  open 14 | landings 1, returned 0, review queue 1 | trunk 1a5904d green | $0.0231
+[5387.6s] landed  0/16  claimed 1  proposed 1  open 14 | landings 1, returned 0, review queue 1 | trunk 1a5904d green | $0.0231
+[5392.8s] landed  0/16  claimed 0  proposed 2  open 14 | landings 1, returned 0, review queue 1 | trunk 1a5904d green | $0.0242
+[5398.1s] landed  0/16  claimed 0  proposed 2  open 14 | landings 1, returned 0, review queue 1 | trunk 1a5904d green | $0.0242
+[5403.3s] landed  0/16  claimed 0  proposed 2  open 14 | landings 1, returned 0, review queue 1 | trunk 1a5904d green | $0.0242
+[5408.6s] landed  0/16  claimed 0  proposed 2  open 14 | landings 1, returned 0, review queue 1 | trunk 1a5904d green | $0.0242
+[5413.8s] landed  0/16  claimed 0  proposed 2  open 14 | landings 1, returned 0, review queue 1 | trunk 1a5904d green | $0.0242
+[5419.0s] landed  1/16  claimed 1  proposed 1  open 13 | landings 2, returned 0, review queue 1 | trunk 09fe187 red | $0.0247
+[5424.3s] landed  1/16  claimed 1  proposed 1  open 13 | landings 2, returned 0, review queue 1 | trunk 09fe187 red | $0.0247
+[5429.5s] landed  1/16  claimed 1  proposed 1  open 13 | landings 2, returned 0, review queue 1 | trunk 09fe187 red | $0.0247
+[5434.8s] landed  1/16  claimed 1  proposed 1  open 13 | landings 2, returned 0, review queue 1 | trunk 09fe187 red | $0.0247
+[5440.0s] landed  1/16  claimed 1  proposed 1  open 13 | landings 2, returned 0, review queue 1 | trunk 09fe187 red | $0.0247
+[5445.4s] landed  1/16  claimed 1  proposed 1  open 13 | landings 2, returned 0, review queue 1 | trunk 09fe187 red | $0.0255
+[5450.5s] landed  1/16  claimed 1  proposed 1  open 13 | landings 2, returned 0, review queue 1 | trunk 09fe187 red | $0.0259
+[5455.7s] landed  1/16  claimed 1  proposed 1  open 13 | landings 2, returned 0, review queue 1 | trunk 09fe187 red | $0.0259
+[5461.0s] landed  1/16  claimed 1  proposed 1  open 13 | landings 2, returned 0, review queue 1 | trunk 09fe187 red | $0.0259
+[5466.2s] landed  1/16  claimed 1  proposed 1  open 13 | landings 2, returned 0, review queue 1 | trunk 09fe187 red | $0.0266
+[5471.5s] landed  1/16  claimed 1  proposed 1  open 13 | landings 2, returned 0, review queue 1 | trunk 09fe187 red | $0.0266
+[5476.7s] landed  1/16  claimed 1  proposed 1  open 13 | landings 2, returned 0, review queue 1 | trunk 09fe187 red | $0.0266
+[5482.0s] landed  1/16  claimed 0  proposed 2  open 13 | landings 2, returned 0, review queue 1 | trunk 09fe187 red | $0.0279
+[5487.2s] landed  1/16  claimed 0  proposed 2  open 13 | landings 2, returned 0, review queue 1 | trunk 09fe187 red | $0.0279
+[5492.5s] landed  1/16  claimed 0  proposed 2  open 13 | landings 2, returned 0, review queue 1 | trunk 09fe187 red | $0.0279
+[5497.7s] landed  1/16  claimed 0  proposed 2  open 13 | landings 2, returned 0, review queue 1 | trunk 09fe187 red | $0.0279
+[5502.9s] landed  1/16  claimed 0  proposed 2  open 13 | landings 2, returned 0, review queue 1 | trunk 09fe187 red | $0.0279
+[5508.2s] landed  1/16  claimed 0  proposed 2  open 13 | landings 2, returned 0, review queue 1 | trunk 09fe187 red | $0.0279
+[5513.4s] landed  1/16  claimed 0  proposed 2  open 13 | landings 2, returned 0, review queue 1 | trunk 09fe187 red | $0.0283
+[5518.6s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 0, review queue 1 | trunk 5e0c885 red | $0.0283
+[5523.9s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 0, review queue 1 | trunk 5e0c885 red | $0.0283
+[5529.1s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 0, review queue 1 | trunk 5e0c885 red | $0.0283
+[5534.4s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 0, review queue 1 | trunk 5e0c885 red | $0.0283
+[5539.6s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 0, review queue 1 | trunk 5e0c885 red | $0.0283
+[5544.9s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 0, review queue 1 | trunk 5e0c885 red | $0.0283
+[5550.1s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 0, review queue 1 | trunk 5e0c885 red | $0.0283
+[5555.4s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 0, review queue 1 | trunk 5e0c885 red | $0.0283
+[5560.6s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 0, review queue 1 | trunk 5e0c885 red | $0.0283
+[5565.8s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 0, review queue 1 | trunk 5e0c885 red | $0.0283
+[5571.1s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 0, review queue 1 | trunk 5e0c885 red | $0.0283
+[5576.3s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 0, review queue 1 | trunk 5e0c885 red | $0.0283
+[5581.6s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 0, review queue 1 | trunk 5e0c885 red | $0.0283
+[5586.8s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 0, review queue 1 | trunk 5e0c885 red | $0.0283
+[5592.0s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 0, review queue 1 | trunk 5e0c885 red | $0.0283
+[5597.4s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 0, review queue 1 | trunk 5e0c885 red | $0.0283
+[5602.6s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 0, review queue 1 | trunk 5e0c885 red | $0.0283
+[5607.8s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 0, review queue 1 | trunk 5e0c885 red | $0.0283
+[5613.0s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 0, review queue 1 | trunk 5e0c885 red | $0.0283
+[5618.3s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 0, review queue 1 | trunk 5e0c885 red | $0.0283
+[5623.5s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 0, review queue 1 | trunk 5e0c885 red | $0.0283
+[5628.8s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 0, review queue 1 | trunk 5e0c885 red | $0.0283
+[5634.0s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 0, review queue 1 | trunk 5e0c885 red | $0.0283
+[5639.2s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 0, review queue 1 | trunk 5e0c885 red | $0.0283
+[5644.5s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 0, review queue 1 | trunk 5e0c885 red | $0.0283
+[5649.7s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 0, review queue 1 | trunk 5e0c885 red | $0.0283
+[5655.1s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 0, review queue 1 | trunk 5e0c885 red | $0.0283
+[5660.3s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 0, review queue 1 | trunk 5e0c885 red | $0.0283
+[5665.6s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 0, review queue 1 | trunk 5e0c885 red | $0.0283
+[5670.8s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 0, review queue 1 | trunk 5e0c885 red | $0.0283
+[5675.9s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 0, review queue 1 | trunk 5e0c885 red | $0.0283
+[5681.2s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 0, review queue 1 | trunk 5e0c885 red | $0.0283
+[5686.4s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 0, review queue 1 | trunk 5e0c885 red | $0.0283
+[5691.7s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 0, review queue 1 | trunk 5e0c885 red | $0.0283
+[5696.9s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 0, review queue 1 | trunk 5e0c885 red | $0.0283
+[5702.1s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 0, review queue 1 | trunk 5e0c885 red | $0.0283
+[5707.4s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 0, review queue 1 | trunk 5e0c885 red | $0.0283
+[5712.8s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 0, review queue 1 | trunk 5e0c885 red | $0.0283
+[5718.0s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 0, review queue 1 | trunk 5e0c885 red | $0.0283
+[5723.2s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 0, review queue 1 | trunk 5e0c885 red | $0.0283
+[5728.4s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 0, review queue 1 | trunk 5e0c885 red | $0.0283
+[5733.6s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 0, review queue 1 | trunk 5e0c885 red | $0.0283
+[5738.8s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 0, review queue 1 | trunk 5e0c885 red | $0.0283
+[5744.1s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 0, review queue 1 | trunk 5e0c885 red | $0.0283
+[5749.3s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 0, review queue 1 | trunk 5e0c885 red | $0.0283
+[5754.6s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 0, review queue 1 | trunk 5e0c885 red | $0.0283
+[5759.8s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 0, review queue 1 | trunk 5e0c885 red | $0.0283
+[5765.1s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 0, review queue 1 | trunk 5e0c885 red | $0.0283
+[5770.3s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 0, review queue 1 | trunk 5e0c885 red | $0.0283
+[5775.6s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 0, review queue 1 | trunk 5e0c885 red | $0.0283
+[5780.8s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 0, review queue 1 | trunk 5e0c885 red | $0.0283
+[5786.0s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 0, review queue 1 | trunk 5e0c885 red | $0.0283
+[5791.3s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 0, review queue 1 | trunk 5e0c885 red | $0.0283
+[5796.5s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 0, review queue 1 | trunk 5e0c885 red | $0.0283
+[5801.8s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 0, review queue 1 | trunk 5e0c885 red | $0.0283
+[5807.0s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 0, review queue 1 | trunk 5e0c885 red | $0.0283
+[5812.2s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 0, review queue 1 | trunk 5e0c885 red | $0.0283
+[5817.5s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 0, review queue 1 | trunk 5e0c885 red | $0.0470
+[5822.7s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 0, review queue 1 | trunk 5e0c885 red | $0.0470
+[5823.4s] STALLED: no intent moved for 304.1 s with intents open (13 open, 0 claimed, 1 proposed): 1 change waits for a person in the review queue; trunk is red at 5e0c885 (2 failing); claims on the open intents' files: src/core/money.ts claim 1.0 (need 52.0); agents: 1 working
+[5828.5s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 0, review queue 1 | trunk 5e0c885 red | $0.0470
+[5833.7s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 0, review queue 1 | trunk 5e0c885 red | $0.0470
+[5839.0s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 0, review queue 1 | trunk 5e0c885 red | $0.0470
+[5844.2s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 0, review queue 1 | trunk 5e0c885 red | $0.0470
+[5849.5s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 0, review queue 1 | trunk 5e0c885 red | $0.0470
+[5854.7s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 0, review queue 1 | trunk 5e0c885 red | $0.0552
+[5859.9s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 0, review queue 1 | trunk 5e0c885 red | $0.0552
+[5865.2s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 0, review queue 1 | trunk 5e0c885 red | $0.0552
+[5870.5s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 1, review queue 1 | trunk 5e0c885 red | $0.0553
+[5875.7s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 1, review queue 1 | trunk 5e0c885 red | $0.0553
+[5880.9s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 1, review queue 1 | trunk 5e0c885 red | $0.0553
+[5886.2s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 1, review queue 1 | trunk 5e0c885 red | $0.0553
+[5891.4s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 1, review queue 1 | trunk 5e0c885 red | $0.0553
+[5896.6s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 1, review queue 1 | trunk 5e0c885 red | $0.0553
+[5901.9s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 1, review queue 1 | trunk 5e0c885 red | $0.0553
+[5907.1s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 1, review queue 1 | trunk 5e0c885 red | $0.0553
+[5912.4s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 1, review queue 1 | trunk 5e0c885 red | $0.0553
+[5917.6s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 1, review queue 1 | trunk 5e0c885 red | $0.0553
+[5922.8s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 1, review queue 1 | trunk 5e0c885 red | $0.0553
+[5928.1s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 1, review queue 1 | trunk 5e0c885 red | $0.0553
+[5933.3s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 1, review queue 1 | trunk 5e0c885 red | $0.0553
+[5938.6s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 1, review queue 1 | trunk 5e0c885 red | $0.0553
+[5943.8s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 1, review queue 1 | trunk 5e0c885 red | $0.0553
+[5949.1s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 1, review queue 1 | trunk 5e0c885 red | $0.0553
+[5954.3s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 1, review queue 1 | trunk 5e0c885 red | $0.0553
+[5959.6s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 1, review queue 1 | trunk 5e0c885 red | $0.0553
+[5964.8s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 1, review queue 1 | trunk 5e0c885 red | $0.0553
+[5970.0s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 1, review queue 1 | trunk 5e0c885 red | $0.0553
+[5975.3s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 1, review queue 1 | trunk 5e0c885 red | $0.0553
+[5980.5s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 1, review queue 1 | trunk 5e0c885 red | $0.0553
+[5985.8s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 1, review queue 1 | trunk 5e0c885 red | $0.0553
+[5991.0s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 1, review queue 1 | trunk 5e0c885 red | $0.0553
+[5996.3s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 1, review queue 1 | trunk 5e0c885 red | $0.0553
+[6001.5s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 1, review queue 1 | trunk 5e0c885 red | $0.0553
+[6006.7s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 1, review queue 1 | trunk 5e0c885 red | $0.0553
+[6012.0s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 1, review queue 1 | trunk 5e0c885 red | $0.0553
+[6017.2s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 1, review queue 1 | trunk 5e0c885 red | $0.0553
+[6022.5s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 1, review queue 1 | trunk 5e0c885 red | $0.0553
+[6027.7s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 1, review queue 1 | trunk 5e0c885 red | $0.0553
+[6032.9s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 1, review queue 1 | trunk 5e0c885 red | $0.0553
+[6038.2s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 1, review queue 1 | trunk 5e0c885 red | $0.0816
+[6043.4s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 1, review queue 1 | trunk 5e0c885 red | $0.0816
+[6048.7s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 1, review queue 1 | trunk 5e0c885 red | $0.0816
+[6053.9s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 1, review queue 1 | trunk 5e0c885 red | $0.0816
+[6059.2s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 1, review queue 1 | trunk 5e0c885 red | $0.0899
+[6064.4s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 1, review queue 1 | trunk 5e0c885 red | $0.0899
+[6069.7s] landed  2/16  claimed 0  proposed 1  open 13 | landings 3, returned 1, review queue 1 | trunk 5e0c885 red | $0.0899
+[6074.9s] landed  2/16  claimed 0  proposed 1  open 13 | landings 4, returned 1, review queue 1 | trunk 12f9a08 green | $0.0900
+[6080.1s] landed  2/16  claimed 1  proposed 1  open 12 | landings 4, returned 1, review queue 1 | trunk 12f9a08 green | $0.0900
+[6085.4s] landed  2/16  claimed 1  proposed 1  open 12 | landings 4, returned 1, review queue 1 | trunk 12f9a08 green | $0.0900
+[6090.6s] landed  2/16  claimed 1  proposed 1  open 12 | landings 4, returned 1, review queue 1 | trunk 12f9a08 green | $0.0900
+[6095.9s] landed  2/16  claimed 1  proposed 1  open 12 | landings 4, returned 1, review queue 1 | trunk 12f9a08 green | $0.0900
+[6101.1s] landed  2/16  claimed 1  proposed 1  open 12 | landings 4, returned 1, review queue 1 | trunk 12f9a08 green | $0.0900
+[6106.4s] landed  2/16  claimed 1  proposed 1  open 12 | landings 4, returned 1, review queue 1 | trunk 12f9a08 green | $0.0909
+[6111.6s] landed  2/16  claimed 1  proposed 1  open 12 | landings 4, returned 1, review queue 1 | trunk 12f9a08 green | $0.0913
+[6116.8s] landed  2/16  claimed 1  proposed 1  open 12 | landings 4, returned 1, review queue 1 | trunk 12f9a08 green | $0.0913
+[6122.1s] landed  2/16  claimed 1  proposed 1  open 12 | landings 4, returned 1, review queue 1 | trunk 12f9a08 green | $0.0913
+[6127.3s] landed  2/16  claimed 1  proposed 1  open 12 | landings 4, returned 1, review queue 1 | trunk 12f9a08 green | $0.0913
+[6132.6s] landed  2/16  claimed 1  proposed 1  open 12 | landings 4, returned 1, review queue 1 | trunk 12f9a08 green | $0.0913
+[6137.8s] landed  2/16  claimed 1  proposed 1  open 12 | landings 4, returned 1, review queue 1 | trunk 12f9a08 green | $0.0921
+[6143.1s] landed  2/16  claimed 1  proposed 1  open 12 | landings 4, returned 1, review queue 1 | trunk 12f9a08 green | $0.0921
+[6148.3s] landed  2/16  claimed 1  proposed 1  open 12 | landings 4, returned 1, review queue 1 | trunk 12f9a08 green | $0.0921
+[6153.7s] landed  2/16  claimed 1  proposed 1  open 12 | landings 4, returned 1, review queue 1 | trunk 12f9a08 green | $0.0929
+[6158.9s] landed  2/16  claimed 1  proposed 1  open 12 | landings 4, returned 1, review queue 1 | trunk 12f9a08 green | $0.0929
+[6164.1s] landed  2/16  claimed 0  proposed 1  open 13 | landings 4, returned 1, review queue 1 | trunk 12f9a08 green | $0.0937
+[6169.3s] landed  2/16  claimed 1  proposed 1  open 12 | landings 4, returned 1, review queue 1 | trunk 12f9a08 green | $0.0937
+[6174.5s] landed  2/16  claimed 1  proposed 1  open 12 | landings 4, returned 1, review queue 1 | trunk 12f9a08 green | $0.0937
+[6179.8s] landed  2/16  claimed 1  proposed 1  open 12 | landings 4, returned 1, review queue 1 | trunk 12f9a08 green | $0.0937
+[6185.1s] landed  2/16  claimed 1  proposed 1  open 12 | landings 4, returned 1, review queue 1 | trunk 12f9a08 green | $0.0937
+[6190.3s] landed  2/16  claimed 1  proposed 1  open 12 | landings 4, returned 1, review queue 1 | trunk 12f9a08 green | $0.0937
+[6195.5s] landed  2/16  claimed 1  proposed 1  open 12 | landings 4, returned 1, review queue 1 | trunk 12f9a08 green | $0.0937
+[6200.7s] landed  2/16  claimed 1  proposed 1  open 12 | landings 4, returned 1, review queue 1 | trunk 12f9a08 green | $0.0946
+[6205.9s] landed  2/16  claimed 1  proposed 1  open 12 | landings 4, returned 1, review queue 1 | trunk 12f9a08 green | $0.0951
+[6211.2s] landed  2/16  claimed 1  proposed 1  open 12 | landings 4, returned 1, review queue 1 | trunk 12f9a08 green | $0.0951
+[6216.4s] landed  2/16  claimed 1  proposed 1  open 12 | landings 4, returned 1, review queue 1 | trunk 12f9a08 green | $0.0951
+[6221.7s] landed  2/16  claimed 1  proposed 1  open 12 | landings 4, returned 1, review queue 1 | trunk 12f9a08 green | $0.0951
+[6227.4s] landed  2/16  claimed 1  proposed 1  open 12 | landings 4, returned 1, review queue 1 | trunk 12f9a08 green | $0.0958
+[6232.6s] landed  2/16  claimed 0  proposed 2  open 12 | landings 4, returned 1, review queue 1 | trunk 12f9a08 green | $0.0964
+[6238.1s] landed  2/16  claimed 0  proposed 2  open 12 | landings 4, returned 1, review queue 1 | trunk 12f9a08 green | $0.0964
+[6243.4s] landed  2/16  claimed 0  proposed 2  open 12 | landings 4, returned 1, review queue 1 | trunk 12f9a08 green | $0.0964
+[6248.7s] landed  3/16  claimed 0  proposed 1  open 12 | landings 5, returned 1, review queue 1 | trunk 4f893bd green at 12f9a08 | $0.0968
+[6253.9s] landed  3/16  claimed 1  proposed 1  open 11 | landings 5, returned 1, review queue 1 | trunk 4f893bd green | $0.0968
+[6259.1s] landed  3/16  claimed 1  proposed 1  open 11 | landings 5, returned 1, review queue 1 | trunk 4f893bd green | $0.0968
+[6264.3s] landed  3/16  claimed 1  proposed 1  open 11 | landings 5, returned 1, review queue 1 | trunk 4f893bd green | $0.0968
+[6269.5s] landed  3/16  claimed 1  proposed 1  open 11 | landings 5, returned 1, review queue 1 | trunk 4f893bd green | $0.0968
+[6274.7s] landed  3/16  claimed 1  proposed 1  open 11 | landings 5, returned 1, review queue 1 | trunk 4f893bd green | $0.0968
+[6279.9s] landed  3/16  claimed 1  proposed 1  open 11 | landings 5, returned 1, review queue 1 | trunk 4f893bd green | $0.0977
+[6285.1s] landed  3/16  claimed 1  proposed 1  open 11 | landings 5, returned 1, review queue 1 | trunk 4f893bd green | $0.0981
+[6290.4s] landed  3/16  claimed 1  proposed 1  open 11 | landings 5, returned 1, review queue 1 | trunk 4f893bd green | $0.0981
+[6295.8s] landed  3/16  claimed 1  proposed 1  open 11 | landings 5, returned 1, review queue 1 | trunk 4f893bd green | $0.0981
+[6301.0s] landed  3/16  claimed 1  proposed 1  open 11 | landings 5, returned 1, review queue 1 | trunk 4f893bd green | $0.0987
+[6306.2s] landed  3/16  claimed 1  proposed 1  open 11 | landings 5, returned 1, review queue 1 | trunk 4f893bd green | $0.0993
+[6311.5s] landed  3/16  claimed 1  proposed 1  open 11 | landings 5, returned 1, review queue 1 | trunk 4f893bd green | $0.0993
+[6316.7s] landed  3/16  claimed 1  proposed 1  open 11 | landings 5, returned 1, review queue 1 | trunk 4f893bd green | $0.0993
+[6321.9s] landed  3/16  claimed 0  proposed 1  open 12 | landings 5, returned 1, review queue 1 | trunk 4f893bd green | $0.1000
+[6327.1s] landed  3/16  claimed 1  proposed 1  open 11 | landings 5, returned 1, review queue 1 | trunk 4f893bd green | $0.1000
+[6332.3s] landed  3/16  claimed 1  proposed 1  open 11 | landings 5, returned 1, review queue 1 | trunk 4f893bd green | $0.1000
+[6337.6s] landed  3/16  claimed 1  proposed 1  open 11 | landings 5, returned 1, review queue 1 | trunk 4f893bd green | $0.1000
+[6342.8s] landed  3/16  claimed 1  proposed 1  open 11 | landings 5, returned 1, review queue 1 | trunk 4f893bd green | $0.1000
+[6348.0s] landed  3/16  claimed 1  proposed 1  open 11 | landings 5, returned 1, review queue 1 | trunk 4f893bd green | $0.1000
+[6353.3s] landed  3/16  claimed 1  proposed 1  open 11 | landings 5, returned 1, review queue 1 | trunk 4f893bd green | $0.1000
+[6358.5s] landed  3/16  claimed 1  proposed 1  open 11 | landings 5, returned 1, review queue 1 | trunk 4f893bd green | $0.1000
+[6363.8s] landed  3/16  claimed 1  proposed 1  open 11 | landings 5, returned 1, review queue 1 | trunk 4f893bd green | $0.1000
+[6369.0s] landed  3/16  claimed 1  proposed 1  open 11 | landings 5, returned 1, review queue 1 | trunk 4f893bd green | $0.1013
+[6374.3s] landed  3/16  claimed 1  proposed 1  open 11 | landings 5, returned 1, review queue 1 | trunk 4f893bd green | $0.1018
+[6379.5s] landed  3/16  claimed 0  proposed 2  open 11 | landings 5, returned 1, review queue 1 | trunk 4f893bd green | $0.1024
+[6384.8s] landed  3/16  claimed 0  proposed 2  open 11 | landings 5, returned 1, review queue 1 | trunk 4f893bd green | $0.1024
+[6390.0s] landed  3/16  claimed 0  proposed 2  open 11 | landings 5, returned 1, review queue 1 | trunk 4f893bd green | $0.1024
+[6395.2s] landed  3/16  claimed 0  proposed 2  open 11 | landings 5, returned 1, review queue 1 | trunk 4f893bd green | $0.1024
+[6400.5s] landed  3/16  claimed 0  proposed 2  open 11 | landings 5, returned 1, review queue 1 | trunk 4f893bd green | $0.1029
+[6405.7s] landed  4/16  claimed 1  proposed 1  open 10 | landings 6, returned 1, review queue 1 | trunk e49b83f red | $0.1029
+[6411.0s] landed  4/16  claimed 1  proposed 1  open 10 | landings 6, returned 1, review queue 1 | trunk e49b83f red | $0.1029
+[6416.2s] landed  4/16  claimed 1  proposed 1  open 10 | landings 6, returned 1, review queue 1 | trunk e49b83f red | $0.1029
+[6421.4s] landed  4/16  claimed 1  proposed 1  open 10 | landings 6, returned 1, review queue 1 | trunk e49b83f red | $0.1029
+[6426.7s] landed  4/16  claimed 1  proposed 1  open 10 | landings 6, returned 1, review queue 1 | trunk e49b83f red | $0.1029
+[6431.9s] landed  4/16  claimed 1  proposed 1  open 10 | landings 6, returned 1, review queue 1 | trunk e49b83f red | $0.1029
+[6437.2s] landed  4/16  claimed 1  proposed 1  open 10 | landings 6, returned 1, review queue 1 | trunk e49b83f red | $0.1029
+[6442.4s] landed  4/16  claimed 1  proposed 1  open 10 | landings 6, returned 1, review queue 1 | trunk e49b83f red | $0.1038
+[6447.6s] landed  4/16  claimed 1  proposed 1  open 10 | landings 6, returned 1, review queue 1 | trunk e49b83f red | $0.1038
+[6452.9s] landed  4/16  claimed 1  proposed 1  open 10 | landings 6, returned 1, review queue 1 | trunk e49b83f red | $0.1044
+[6458.1s] landed  4/16  claimed 1  proposed 1  open 10 | landings 6, returned 1, review queue 1 | trunk e49b83f red | $0.1050
+[6463.4s] landed  4/16  claimed 1  proposed 1  open 10 | landings 6, returned 1, review queue 1 | trunk e49b83f red | $0.1050
+[6468.6s] landed  4/16  claimed 1  proposed 1  open 10 | landings 6, returned 1, review queue 1 | trunk e49b83f red | $0.1050
+[6473.8s] landed  4/16  claimed 1  proposed 1  open 10 | landings 6, returned 1, review queue 1 | trunk e49b83f red | $0.1058
+[6479.1s] landed  4/16  claimed 1  proposed 1  open 10 | landings 6, returned 1, review queue 1 | trunk e49b83f red | $0.1058
+[6484.4s] landed  4/16  claimed 1  proposed 1  open 10 | landings 6, returned 1, review queue 1 | trunk e49b83f red | $0.1058
+[6489.6s] landed  4/16  claimed 0  proposed 1  open 11 | landings 6, returned 1, review queue 1 | trunk e49b83f red | $0.1065
+[6494.8s] landed  4/16  claimed 1  proposed 1  open 10 | landings 6, returned 1, review queue 1 | trunk e49b83f red | $0.1065
+[6500.1s] landed  4/16  claimed 1  proposed 1  open 10 | landings 6, returned 1, review queue 1 | trunk e49b83f red | $0.1065
+[6505.3s] landed  4/16  claimed 1  proposed 1  open 10 | landings 6, returned 1, review queue 1 | trunk e49b83f red | $0.1065
+[6510.5s] landed  4/16  claimed 1  proposed 1  open 10 | landings 6, returned 1, review queue 1 | trunk e49b83f red | $0.1065
+[6515.8s] landed  4/16  claimed 1  proposed 1  open 10 | landings 6, returned 1, review queue 1 | trunk e49b83f red | $0.1065
+[6521.0s] landed  4/16  claimed 1  proposed 1  open 10 | landings 6, returned 1, review queue 1 | trunk e49b83f red | $0.1065
+[6526.3s] landed  4/16  claimed 1  proposed 1  open 10 | landings 6, returned 1, review queue 1 | trunk e49b83f red | $0.1075
+[6531.5s] landed  4/16  claimed 1  proposed 1  open 10 | landings 6, returned 1, review queue 1 | trunk e49b83f red | $0.1080
+[6536.7s] landed  4/16  claimed 1  proposed 1  open 10 | landings 6, returned 1, review queue 1 | trunk e49b83f red | $0.1088
+[6542.0s] landed  4/16  claimed 1  proposed 1  open 10 | landings 6, returned 1, review queue 1 | trunk e49b83f red | $0.1088
+[6547.3s] landed  4/16  claimed 1  proposed 1  open 10 | landings 6, returned 1, review queue 1 | trunk e49b83f red | $0.1088
+[6552.5s] landed  4/16  claimed 1  proposed 1  open 10 | landings 6, returned 1, review queue 1 | trunk e49b83f red | $0.1088
+[6557.8s] landed  4/16  claimed 1  proposed 1  open 10 | landings 6, returned 1, review queue 1 | trunk e49b83f red | $0.1088
+[6563.0s] landed  4/16  claimed 1  proposed 1  open 10 | landings 6, returned 1, review queue 1 | trunk e49b83f red | $0.1088
+[6568.2s] landed  4/16  claimed 0  proposed 2  open 10 | landings 6, returned 1, review queue 1 | trunk e49b83f red | $0.1104
+[6573.5s] landed  4/16  claimed 0  proposed 2  open 10 | landings 6, returned 1, review queue 1 | trunk e49b83f red | $0.1104
+[6578.8s] landed  4/16  claimed 0  proposed 2  open 10 | landings 6, returned 1, review queue 1 | trunk e49b83f red | $0.1104
+[6584.0s] landed  4/16  claimed 0  proposed 2  open 10 | landings 6, returned 1, review queue 1 | trunk e49b83f red | $0.1104
+[6589.2s] landed  4/16  claimed 0  proposed 2  open 10 | landings 6, returned 1, review queue 1 | trunk e49b83f red | $0.1104
+[6594.5s] landed  5/16  claimed 0  proposed 1  open 10 | landings 7, returned 1, review queue 1 | trunk 00c2710 red | $0.1110
+[6599.7s] landed  5/16  claimed 0  proposed 1  open 10 | landings 7, returned 1, review queue 1 | trunk 00c2710 red | $0.1110
+[6604.9s] landed  5/16  claimed 0  proposed 1  open 10 | landings 7, returned 1, review queue 1 | trunk 00c2710 red | $0.1110
+[6610.5s] landed  5/16  claimed 0  proposed 1  open 10 | landings 7, returned 1, review queue 1 | trunk 00c2710 red | $0.1110
+[6615.8s] landed  5/16  claimed 0  proposed 1  open 10 | landings 7, returned 1, review queue 1 | trunk 00c2710 red | $0.1110
+[6621.0s] landed  5/16  claimed 0  proposed 1  open 10 | landings 7, returned 1, review queue 1 | trunk 00c2710 red | $0.1110
+[6626.3s] landed  5/16  claimed 0  proposed 1  open 10 | landings 7, returned 1, review queue 1 | trunk 00c2710 red | $0.1110
+[6631.5s] landed  5/16  claimed 0  proposed 1  open 10 | landings 7, returned 1, review queue 1 | trunk 00c2710 red | $0.1110
+[6636.8s] landed  5/16  claimed 0  proposed 1  open 10 | landings 7, returned 1, review queue 1 | trunk 00c2710 red | $0.1110
+[6642.0s] landed  5/16  claimed 0  proposed 1  open 10 | landings 7, returned 1, review queue 1 | trunk 00c2710 red | $0.1110
+[6647.3s] landed  5/16  claimed 0  proposed 1  open 10 | landings 7, returned 1, review queue 1 | trunk 00c2710 red | $0.1110
+[6652.5s] landed  5/16  claimed 1  proposed 1  open 9 | landings 7, returned 1, review queue 1 | trunk 00c2710 red | $0.1246
+[6657.7s] landed  5/16  claimed 1  proposed 1  open 9 | landings 7, returned 1, review queue 1 | trunk 00c2710 red | $0.1246
+[6663.0s] landed  5/16  claimed 1  proposed 1  open 9 | landings 7, returned 1, review queue 1 | trunk 00c2710 red | $0.1246
+[6668.2s] landed  5/16  claimed 1  proposed 1  open 9 | landings 7, returned 1, review queue 1 | trunk 00c2710 red | $0.1246
+[6673.5s] landed  5/16  claimed 1  proposed 1  open 9 | landings 7, returned 1, review queue 1 | trunk 00c2710 red | $0.1246
+[6678.7s] landed  5/16  claimed 1  proposed 1  open 9 | landings 7, returned 1, review queue 1 | trunk 00c2710 red | $0.1246
+[6684.0s] landed  5/16  claimed 1  proposed 1  open 9 | landings 7, returned 1, review queue 1 | trunk 00c2710 red | $0.1246
+[6689.2s] landed  5/16  claimed 1  proposed 1  open 9 | landings 7, returned 1, review queue 1 | trunk 00c2710 red | $0.1246
+[6694.4s] landed  5/16  claimed 1  proposed 1  open 9 | landings 7, returned 1, review queue 1 | trunk 00c2710 red | $0.1257
+[6699.7s] landed  5/16  claimed 1  proposed 1  open 9 | landings 7, returned 1, review queue 1 | trunk 00c2710 red | $0.1262
+[6704.9s] landed  5/16  claimed 1  proposed 1  open 9 | landings 7, returned 1, review queue 1 | trunk 00c2710 red | $0.1262
+[6710.2s] landed  5/16  claimed 1  proposed 1  open 9 | landings 7, returned 1, review queue 1 | trunk 00c2710 red | $0.1262
+[6715.4s] landed  5/16  claimed 1  proposed 1  open 9 | landings 7, returned 1, review queue 1 | trunk 00c2710 red | $0.1269
+[6720.7s] landed  5/16  claimed 1  proposed 1  open 9 | landings 7, returned 1, review queue 1 | trunk 00c2710 red | $0.1269
+[6725.9s] landed  5/16  claimed 0  proposed 2  open 9 | landings 7, returned 1, review queue 1 | trunk 00c2710 red | $0.1282
+[6731.2s] landed  5/16  claimed 0  proposed 2  open 9 | landings 7, returned 1, review queue 1 | trunk 00c2710 red | $0.1282
+[6736.5s] landed  5/16  claimed 0  proposed 2  open 9 | landings 7, returned 1, review queue 1 | trunk 00c2710 red | $0.1282
+[6741.8s] landed  5/16  claimed 0  proposed 2  open 9 | landings 7, returned 1, review queue 1 | trunk 00c2710 red | $0.1282
+[6747.1s] landed  5/16  claimed 0  proposed 2  open 9 | landings 7, returned 1, review queue 2 | trunk 00c2710 red | $0.1286
+[6752.3s] landed  5/16  claimed 1  proposed 2  open 8 | landings 7, returned 1, review queue 2 | trunk 00c2710 red | $0.1286
+[6757.5s] landed  5/16  claimed 1  proposed 2  open 8 | landings 7, returned 1, review queue 2 | trunk 00c2710 red | $0.1286
+[6762.8s] landed  5/16  claimed 1  proposed 2  open 8 | landings 7, returned 1, review queue 2 | trunk 00c2710 red | $0.1286
+[6768.1s] landed  5/16  claimed 1  proposed 2  open 8 | landings 7, returned 1, review queue 2 | trunk 00c2710 red | $0.1286
+[6773.3s] landed  5/16  claimed 1  proposed 2  open 8 | landings 7, returned 1, review queue 2 | trunk 00c2710 red | $0.1286
+[6778.5s] landed  5/16  claimed 1  proposed 2  open 8 | landings 7, returned 1, review queue 2 | trunk 00c2710 red | $0.1286
+[6783.7s] landed  5/16  claimed 1  proposed 2  open 8 | landings 7, returned 1, review queue 2 | trunk 00c2710 red | $0.1296
+[6788.9s] landed  5/16  claimed 1  proposed 2  open 8 | landings 7, returned 1, review queue 2 | trunk 00c2710 red | $0.1301
+[6794.2s] landed  5/16  claimed 1  proposed 2  open 8 | landings 7, returned 1, review queue 2 | trunk 00c2710 red | $0.1308
+[6799.4s] landed  5/16  claimed 1  proposed 2  open 8 | landings 7, returned 1, review queue 2 | trunk 00c2710 red | $0.1308
+[6804.7s] landed  5/16  claimed 1  proposed 2  open 8 | landings 7, returned 1, review queue 2 | trunk 00c2710 red | $0.1308
+[6810.2s] landed  5/16  claimed 0  proposed 3  open 8 | landings 7, returned 1, review queue 2 | trunk 00c2710 red | $0.1317
+[6815.7s] landed  5/16  claimed 0  proposed 3  open 8 | landings 7, returned 1, review queue 2 | trunk 00c2710 red | $0.1323
+[6821.1s] landed  5/16  claimed 0  proposed 3  open 8 | landings 7, returned 1, review queue 2 | trunk 00c2710 red | $0.1323
+[6826.4s] landed  5/16  claimed 0  proposed 3  open 8 | landings 7, returned 1, review queue 2 | trunk 00c2710 red | $0.1323
+[6831.6s] landed  5/16  claimed 0  proposed 3  open 8 | landings 7, returned 1, review queue 2 | trunk 00c2710 red | $0.1323
+[6836.8s] landed  5/16  claimed 0  proposed 3  open 8 | landings 7, returned 1, review queue 2 | trunk 00c2710 red | $0.1323
+[6842.0s] landed  5/16  claimed 0  proposed 3  open 8 | landings 7, returned 1, review queue 2 | trunk 00c2710 red | $0.1323
+[6847.2s] landed  5/16  claimed 0  proposed 3  open 8 | landings 7, returned 1, review queue 2 | trunk 00c2710 red | $0.1323
+[6852.4s] landed  5/16  claimed 1  proposed 2  open 8 | landings 7, returned 2, review queue 2 | trunk 00c2710 red | $0.1351
+[6857.6s] landed  5/16  claimed 1  proposed 2  open 8 | landings 7, returned 2, review queue 2 | trunk 00c2710 red | $0.1351
+[6862.9s] landed  5/16  claimed 1  proposed 2  open 8 | landings 7, returned 2, review queue 2 | trunk 00c2710 red | $0.1360
+[6868.1s] landed  5/16  claimed 1  proposed 2  open 8 | landings 7, returned 2, review queue 2 | trunk 00c2710 red | $0.1366
+[6873.4s] landed  5/16  claimed 1  proposed 2  open 8 | landings 7, returned 2, review queue 2 | trunk 00c2710 red | $0.1366
+[6878.8s] landed  5/16  claimed 1  proposed 2  open 8 | landings 7, returned 2, review queue 2 | trunk 00c2710 red | $0.1366
+[6884.2s] landed  5/16  claimed 0  proposed 3  open 8 | landings 7, returned 2, review queue 2 | trunk 00c2710 red | $0.1373
+[6889.4s] landed  5/16  claimed 0  proposed 3  open 8 | landings 7, returned 2, review queue 2 | trunk 00c2710 red | $0.1379
+[6894.7s] landed  5/16  claimed 0  proposed 3  open 8 | landings 7, returned 2, review queue 2 | trunk 00c2710 red | $0.1379
+[6900.0s] landed  5/16  claimed 0  proposed 3  open 8 | landings 7, returned 2, review queue 2 | trunk 00c2710 red | $0.1379
+[6905.2s] landed  5/16  claimed 0  proposed 3  open 8 | landings 7, returned 2, review queue 2 | trunk 00c2710 red | $0.1379
+[6910.4s] landed  5/16  claimed 0  proposed 3  open 8 | landings 7, returned 2, review queue 2 | trunk 00c2710 red | $0.1379
+[6915.7s] landed  5/16  claimed 0  proposed 3  open 8 | landings 7, returned 2, review queue 2 | trunk 00c2710 red | $0.1379
+[6920.9s] landed  5/16  claimed 0  proposed 3  open 8 | landings 7, returned 2, review queue 2 | trunk 00c2710 red | $0.1389
+[6926.2s] landed  6/16  claimed 1  proposed 2  open 7 | landings 8, returned 2, review queue 2 | trunk 5ad91c8 red | $0.1389
+[6931.5s] landed  6/16  claimed 1  proposed 2  open 7 | landings 8, returned 2, review queue 2 | trunk 5ad91c8 red | $0.1389
+[6936.7s] landed  6/16  claimed 1  proposed 2  open 7 | landings 8, returned 2, review queue 2 | trunk 5ad91c8 red | $0.1389
+[6941.9s] landed  6/16  claimed 1  proposed 2  open 7 | landings 8, returned 2, review queue 2 | trunk 5ad91c8 red | $0.1389
+[6947.1s] landed  6/16  claimed 1  proposed 2  open 7 | landings 8, returned 2, review queue 2 | trunk 5ad91c8 red | $0.1389
+[6952.5s] landed  6/16  claimed 1  proposed 2  open 7 | landings 8, returned 2, review queue 2 | trunk 5ad91c8 red | $0.1389
+[6957.8s] landed  6/16  claimed 1  proposed 2  open 7 | landings 8, returned 2, review queue 2 | trunk 5ad91c8 red | $0.1389
+[6963.1s] landed  6/16  claimed 1  proposed 2  open 7 | landings 8, returned 2, review queue 2 | trunk 5ad91c8 red | $0.1389
+[6968.3s] landed  6/16  claimed 1  proposed 2  open 7 | landings 8, returned 2, review queue 2 | trunk 5ad91c8 red | $0.1398
+[6973.5s] landed  6/16  claimed 1  proposed 2  open 7 | landings 8, returned 2, review queue 2 | trunk 5ad91c8 red | $0.1402
+[6978.7s] landed  6/16  claimed 1  proposed 2  open 7 | landings 8, returned 2, review queue 2 | trunk 5ad91c8 red | $0.1407
+[6983.9s] landed  6/16  claimed 1  proposed 2  open 7 | landings 8, returned 2, review queue 2 | trunk 5ad91c8 red | $0.1407
+[6990.9s] landed  6/16  claimed 1  proposed 2  open 7 | landings 8, returned 2, review queue 2 | trunk 5ad91c8 red | $0.1407
+[6996.1s] landed  6/16  claimed 0  proposed 3  open 7 | landings 8, returned 2, review queue 2 | trunk 5ad91c8 red | $0.1418
+[7001.3s] landed  6/16  claimed 0  proposed 3  open 7 | landings 8, returned 2, review queue 2 | trunk 5ad91c8 red | $0.1418
+[7006.5s] landed  6/16  claimed 0  proposed 3  open 7 | landings 8, returned 2, review queue 2 | trunk 5ad91c8 red | $0.1418
+[7011.8s] landed  6/16  claimed 0  proposed 3  open 7 | landings 8, returned 2, review queue 2 | trunk 5ad91c8 red | $0.1418
+[7017.0s] landed  7/16  claimed 0  proposed 2  open 7 | landings 9, returned 2, review queue 2 | trunk effc102 red at 5ad91c8 | $0.1422
+[7022.3s] landed  7/16  claimed 1  proposed 2  open 6 | landings 9, returned 2, review queue 2 | trunk effc102 red | $0.1422
+[7027.5s] landed  7/16  claimed 1  proposed 2  open 6 | landings 9, returned 2, review queue 2 | trunk effc102 red | $0.1422
+[7032.7s] landed  7/16  claimed 1  proposed 2  open 6 | landings 9, returned 2, review queue 2 | trunk effc102 red | $0.1422
+[7038.0s] landed  7/16  claimed 1  proposed 2  open 6 | landings 9, returned 2, review queue 2 | trunk effc102 red | $0.1422
+[7043.2s] landed  7/16  claimed 1  proposed 2  open 6 | landings 9, returned 2, review queue 2 | trunk effc102 red | $0.1422
+[7049.5s] landed  7/16  claimed 1  proposed 2  open 6 | landings 9, returned 2, review queue 2 | trunk effc102 red | $0.1422
+[7054.8s] landed  7/16  claimed 1  proposed 2  open 6 | landings 9, returned 2, review queue 2 | trunk effc102 red | $0.1431
+[7060.0s] landed  7/16  claimed 1  proposed 2  open 6 | landings 9, returned 2, review queue 2 | trunk effc102 red | $0.1431
+[7065.2s] landed  7/16  claimed 1  proposed 2  open 6 | landings 9, returned 2, review queue 2 | trunk effc102 red | $0.1437
+[7070.5s] landed  7/16  claimed 1  proposed 2  open 6 | landings 9, returned 2, review queue 2 | trunk effc102 red | $0.1442
+[7075.7s] landed  7/16  claimed 1  proposed 2  open 6 | landings 9, returned 2, review queue 2 | trunk effc102 red | $0.1442
+[7081.0s] landed  7/16  claimed 1  proposed 2  open 6 | landings 9, returned 2, review queue 2 | trunk effc102 red | $0.1442
+[7086.2s] landed  7/16  claimed 1  proposed 2  open 6 | landings 9, returned 2, review queue 2 | trunk effc102 red | $0.1442
+[7091.5s] landed  7/16  claimed 1  proposed 2  open 6 | landings 9, returned 2, review queue 2 | trunk effc102 red | $0.1442
+[7096.7s] landed  7/16  claimed 1  proposed 2  open 6 | landings 9, returned 2, review queue 2 | trunk effc102 red | $0.1442
+[7101.9s] landed  7/16  claimed 1  proposed 2  open 6 | landings 9, returned 2, review queue 2 | trunk effc102 red | $0.1442
+[7107.2s] landed  7/16  claimed 1  proposed 2  open 6 | landings 9, returned 2, review queue 2 | trunk effc102 red | $0.1449
+[7112.4s] landed  7/16  claimed 1  proposed 2  open 6 | landings 9, returned 2, review queue 2 | trunk effc102 red | $0.1449
+[7117.7s] landed  7/16  claimed 1  proposed 2  open 6 | landings 9, returned 2, review queue 2 | trunk effc102 red | $0.1449
+[7122.9s] landed  7/16  claimed 1  proposed 2  open 6 | landings 9, returned 2, review queue 2 | trunk effc102 red | $0.1449
+[7128.3s] landed  7/16  claimed 1  proposed 2  open 6 | landings 9, returned 2, review queue 2 | trunk effc102 red | $0.1449
+[7133.5s] landed  7/16  claimed 1  proposed 2  open 6 | landings 9, returned 2, review queue 2 | trunk effc102 red | $0.1457
+[7138.7s] landed  7/16  claimed 1  proposed 2  open 6 | landings 9, returned 2, review queue 2 | trunk effc102 red | $0.1457
+[7143.9s] landed  7/16  claimed 1  proposed 2  open 6 | landings 9, returned 2, review queue 2 | trunk effc102 red | $0.1457
+[7149.1s] landed  7/16  claimed 1  proposed 2  open 6 | landings 9, returned 2, review queue 2 | trunk effc102 red | $0.1457
+[7154.4s] landed  7/16  claimed 0  proposed 2  open 7 | landings 9, returned 2, review queue 2 | trunk effc102 red | $0.1465
+[7159.6s] landed  7/16  claimed 1  proposed 2  open 6 | landings 9, returned 2, review queue 2 | trunk effc102 red | $0.1465
+[7164.9s] landed  7/16  claimed 1  proposed 2  open 6 | landings 9, returned 2, review queue 2 | trunk effc102 red | $0.1465
+[7170.1s] landed  7/16  claimed 1  proposed 2  open 6 | landings 9, returned 2, review queue 2 | trunk effc102 red | $0.1465
+[7175.3s] landed  7/16  claimed 1  proposed 2  open 6 | landings 9, returned 2, review queue 2 | trunk effc102 red | $0.1475
+[7180.7s] landed  7/16  claimed 1  proposed 2  open 6 | landings 9, returned 2, review queue 2 | trunk effc102 red | $0.1480
+[7185.9s] landed  7/16  claimed 1  proposed 2  open 6 | landings 9, returned 2, review queue 2 | trunk effc102 red | $0.1485
+[7187.6s] stopped the agents (run finished)
+[7194.1s] graded at 04e9f5f (5.5 s): hidden tests pass for 6 of 16 intents, fail for 10
+
+run solo: 7/16 intents landed (timeout: 7/16 intents landed after 2400 s); intents held at once: peak 3, mean 1.7
+  returns 1 of 10 proposals: stale read 0, text-merge conflict 0, review 1, rule 0, other 0; cause repeats 0/1
+  rounds to land: median 1, max 2; model calls to land: median 10
+  semantic-conflict pairs landed: 0; red episodes 2 (1 open at the end), median time to green 658.9 s
+  human queue: 2 escalations, 0 held merges, 1 agent reports
+  spend $0.1480, $0.0211 per landed intent; wall n/a s to the last landing
+
+[7202.8s] deleted colony contention-1017-101855-solo
