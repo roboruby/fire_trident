@@ -28,6 +28,7 @@ export const COLONY_FLAGS: readonly string[] = [
   "FT_INLINE",
   "FT_INTENT_SPEND",
   "FT_INTENT_CHAIN_GATE",
+  "FT_LESSON_SCOPE",
   "FT_MEGAFILE",
   "FT_MERGE_INSERTIONS",
   "FT_MODEL_STEPUP",

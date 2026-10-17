@@ -176,3 +176,32 @@ describe("the MCP server offers lesson only where the deployment keeps a guide",
     expect(serverInstructions(false)).toBe(serverInstructions(false, false));
   });
 });
+
+describe("MCP take marks a lesson written before files of its scope changed", () => {
+  it("says so in a note, names each file with its landing and intent, and keeps the lessons on the footprint first", async () => {
+    const moved: GuideTake = {
+      lessons: [
+        { ...GUIDE.lessons[0]!, id: "les_new", activatedAt: Date.UTC(2026, 9, 15) },
+        {
+          ...GUIDE.lessons[0]!,
+          id: "les_on",
+          onFootprint: true,
+          movedSince: [{ path: "src/users.ts", landingId: "lnd_8", at: Date.UTC(2026, 9, 16, 9, 30), intentId: "int_8", title: "Move the users list" }],
+        },
+      ],
+    };
+    const { tools } = setup({ guide: moved });
+    await tools.join({ colony: "col" });
+    const t = (await tools.take()) as Record<string, any>;
+    expect(t.guide.lessons.map((l: { id: string }) => l.id)).toEqual(["les_on", "les_new"]);
+    expect(t.guide.lessons[0]).toMatchObject({
+      id: "les_on",
+      onFootprint: true,
+      movedSince: [{ path: "src/users.ts", landingId: "lnd_8", at: "2026-10-16T09:30:00.000Z", intentId: "int_8", title: "Move the users list" }],
+      note: 'Written before these files changed: src/users.ts (landing lnd_8, "Move the users list"). Check the lesson against the current code before you rely on it.',
+    });
+    expect(t.guide.lessons[1]).not.toHaveProperty("note");
+    expect(t.guide.lessons[1]).not.toHaveProperty("onFootprint");
+    expect(await tools.checkout()).toEqual(t);
+  });
+});

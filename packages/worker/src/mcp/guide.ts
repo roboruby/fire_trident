@@ -1,4 +1,4 @@
-import { GUIDE_LABEL, GUIDE_LIMITS } from "@fire_trident/core";
+import { GUIDE_LABEL, GUIDE_LIMITS, movedNote } from "@fire_trident/core";
 import type { GuideTake } from "@fire_trident/core";
 
 /**
@@ -20,12 +20,19 @@ export interface GuideBriefLesson {
   landingId: string | null;
   activatedAt: string;
   activatedBy: string;
+  /** Its change read or wrote a file the held intent covers (such lessons come first). */
+  onFootprint?: true;
+  /** The files of its scope that changed after it was written, each with the landing, when (ISO) and the intent's title. */
+  movedSince?: Array<{ path: string; landingId: string; at: string; intentId?: string; title?: string }>;
+  /** With movedSince: "Written before these files changed: ...", and to check the lesson against the current code. */
+  note?: string;
 }
 
 /**
  * A take's field guide as an external agent sees it, under the label every take carries: each lesson with who wrote it
  * (the agent, its kind, its model and how the model is known), the landing it came from, and when and how it became
- * active. Null when the guide has no lessons, or the colony keeps none.
+ * active; a lesson on the held intent's footprint says so, and one written before files of its scope changed names
+ * them in `movedSince` and says so in `note`. Null when the guide has no lessons, or the colony keeps none.
  */
 export function guideBrief(guide: GuideTake | null | undefined): { about: string; lessons: GuideBriefLesson[] } | null {
   if (!guide || !Array.isArray(guide.lessons) || guide.lessons.length === 0) return null;
@@ -41,6 +48,13 @@ export function guideBrief(guide: GuideTake | null | undefined): { about: string
       landingId: e.landingId,
       activatedAt: new Date(e.activatedAt).toISOString(),
       activatedBy: e.activatedBy,
+      ...(e.onFootprint ? { onFootprint: true as const } : {}),
+      ...(e.movedSince && e.movedSince.length > 0
+        ? {
+            movedSince: e.movedSince.map((m) => ({ path: m.path, landingId: m.landingId, at: new Date(m.at).toISOString(), ...(m.intentId ? { intentId: m.intentId } : {}), ...(m.title ? { title: m.title } : {}) })),
+            note: `${movedNote(e.movedSince)} Check the lesson against the current code before you rely on it.`,
+          }
+        : {}),
     })),
   };
 }
