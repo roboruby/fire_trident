@@ -43,7 +43,7 @@ export const GUIDE_STEPS: readonly GuideStep[] = [
   {
     target: "tabs",
     title: "The tabs",
-    text: "`Events` is the live log. `Intents` is the work by what asked for it, then by region. `Review` is what needs a person: changes shown with their code, and agents' reports. `Why` is the lineage of any file you click. Keys 1 to 4 switch tabs, and the strip under the trunk bar counts what needs you.",
+    text: "`Events` is the live log. `Intents` is the work by what asked for it, then by region. `Review` is what needs a person: changes shown with their code, and agents' reports. `Why` is the lineage of any file you click. Keys 1 to 4 switch tabs, and the exceptions strip above the map counts what needs you.",
   },
 ];
 

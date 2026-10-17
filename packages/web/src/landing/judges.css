@@ -1,0 +1,156 @@
+/* The landing page's pitch line, the judging-axes table (Axes.tsx) and "Take the work back" (TakeBack.tsx). Shares landing.css. */
+
+.l-pitch {
+  max-width: 34em;
+  margin: 16px 0 0;
+  font-size: clamp(15px, 1.1vw, 17px);
+  line-height: 1.55;
+  color: var(--text-2);
+  text-wrap: pretty;
+}
+
+.l-pitch b {
+  color: var(--text);
+  font-weight: 700;
+}
+
+/* the judging axes */
+
+.ax {
+  border-top: 1px solid var(--line);
+}
+
+.ax-row {
+  display: grid;
+  grid-template-columns: minmax(0, 0.24fr) minmax(0, 1fr) minmax(0, 0.62fr);
+  gap: 8px 32px;
+  align-items: start;
+  padding: 18px 0;
+  border-bottom: 1px solid var(--line);
+  scroll-margin-top: 24px;
+}
+
+.ax-headrow {
+  padding: 10px 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.ax-axis {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 680;
+  line-height: 1.35;
+  color: var(--accent-2);
+}
+
+.ax-mech {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--text-2);
+  text-wrap: pretty;
+}
+
+.ax-check {
+  min-width: 0;
+}
+
+.landing .ax-link {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent-2);
+  text-decoration: none;
+}
+
+.landing .ax-link:hover {
+  color: var(--text);
+}
+
+.ax-check-k {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: var(--text-3);
+}
+
+.ax-check .code pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+
+/* take the work back */
+
+.tb {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: 20px 36px;
+  align-items: start;
+}
+
+.tb-notes {
+  display: grid;
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--text-2);
+}
+
+.tb-notes b {
+  color: var(--text);
+  font-weight: 650;
+}
+
+.tb-notes code,
+#take-back .l-section-lede code {
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: #121925;
+  font: 13px var(--mono);
+  color: var(--text);
+}
+
+@media (max-width: 1080px) {
+  .ax-row {
+    grid-template-columns: minmax(0, 0.3fr) minmax(0, 1fr);
+  }
+
+  .ax-check {
+    grid-column: 2;
+  }
+
+  .ax-headrow span:last-child {
+    display: none;
+  }
+
+  .tb {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 720px) {
+  .ax-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+  }
+
+  .ax-check {
+    grid-column: 1;
+  }
+
+  .ax-headrow {
+    display: none;
+  }
+
+  .tb .code pre {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+}

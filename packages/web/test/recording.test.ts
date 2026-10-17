@@ -117,6 +117,7 @@ function deployment() {
       return json(diff(d[1], path));
     }
     if (p === "/api/colonies/c/certifications") return json({ colonyId: "c", certifications: [] });
+    if (p === "/api/colonies/c/decide/policy") return json({ enabled: true, protectedPaths: ["src/auth/**"] });
     return json({ error: `no route for GET ${p}` }, 404);
   });
   return { fetcher, asked };
@@ -156,6 +157,7 @@ describe("the recorder (scripts/record_colony.ts)", () => {
       "/api/about",
       "/api/colonies/c",
       "/api/colonies/c/agents?all=1&journal=0&limit=10000",
+      "/api/colonies/c/decide/policy",
       "/api/colonies/c/certifications?limit=50",
       "/api/colonies/c/why?path=src%2Fa.ts",
       "/api/colonies/c/why?path=src%2Fnew.ts",

@@ -1,6 +1,8 @@
 /** Which page to show, from the address bar. */
 export type Route =
   | { kind: "landing" }
+  /** "/limits": what FireTrident cannot do yet, why, what to do instead, and its status (limits/Limits.tsx). */
+  | { kind: "limits" }
   | {
       kind: "colony";
       colonyId: string;
@@ -33,7 +35,7 @@ function flag(params: URLSearchParams, key: string): boolean {
 }
 
 /**
- * "/" is the landing page; "/c/:colonyId" is one colony. The old shortcuts "/?mock=1"
+ * "/" is the landing page; "/c/:colonyId" is one colony; "/limits" is the limits page. The old shortcuts "/?mock=1"
  * and "/?director=1" still open the simulator colony.
  */
 export function parseRoute(pathname: string, search: string): Route {
@@ -66,6 +68,7 @@ export function parseRoute(pathname: string, search: string): Route {
     return { kind: "colony", colonyId, mock, director, debug, replay, tour, tourScript, recording };
   }
   if (mock || director) return { kind: "colony", colonyId: "demo", mock: true, director, debug, replay: null, tour: false, tourScript: null, recording: null };
+  if (/^\/limits\/?$/.test(pathname)) return { kind: "limits" };
   return { kind: "landing" };
 }
 

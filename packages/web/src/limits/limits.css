@@ -1,0 +1,162 @@
+/* The limits page (/limits, Limits.tsx). Shares landing.css and the tokens in styles.css. */
+
+.lm-h1 {
+  font-size: clamp(32px, 4vw, 56px);
+}
+
+.lm-intro {
+  border-top: 0;
+}
+
+.lm-rows {
+  display: grid;
+  border-top: 1px solid var(--line);
+}
+
+.lm-row {
+  display: grid;
+  grid-template-columns: minmax(0, 0.36fr) minmax(0, 1fr);
+  gap: 8px 36px;
+  padding: 22px 0;
+  border-bottom: 1px solid var(--line);
+  scroll-margin-top: 24px;
+}
+
+.lm-cannot {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 680;
+  line-height: 1.35;
+  text-wrap: balance;
+}
+
+.lm-dl {
+  display: grid;
+  grid-template-columns: 74px minmax(0, 1fr);
+  gap: 8px 14px;
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--text-2);
+}
+
+.lm-dl dt {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  line-height: 23px;
+  color: var(--text-3);
+}
+
+.lm-dl dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.lm-status {
+  display: inline-block;
+  padding: 1px 9px;
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 650;
+}
+
+.lm-status-planned {
+  border-color: rgba(31, 224, 142, 0.45);
+  color: #7ef0bb;
+}
+
+.lm-status-cloudflare {
+  border-color: rgba(243, 128, 32, 0.5);
+  color: var(--accent-2);
+}
+
+.lm-status-unscheduled {
+  color: var(--text-3);
+}
+
+.lm-check a {
+  font-weight: 600;
+  color: var(--accent-2);
+  text-decoration: none;
+}
+
+.lm-check a:hover {
+  color: var(--text);
+}
+
+.lm-check-k {
+  color: var(--text-3);
+}
+
+.lm-cmd {
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: #121925;
+  font: 13px var(--mono);
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.lm-lessons {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.lm-lesson {
+  padding: 18px 20px;
+  border: 1px solid var(--line-2);
+  border-radius: 14px;
+  background: #0a0e14;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--text-2);
+}
+
+.lm-lesson-title {
+  margin: 0 0 8px;
+  font-size: 17px;
+  font-weight: 680;
+  color: var(--text);
+}
+
+.lm-lesson p {
+  margin: 0;
+}
+
+.lm-lesson .lm-work {
+  margin-top: 10px;
+}
+
+.lm-work b {
+  color: #7ef0bb;
+}
+
+.lm-page .l-section-lede a {
+  color: var(--accent-2);
+}
+
+@media (max-width: 900px) {
+  .lm-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .lm-lessons {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 520px) {
+  .lm-dl {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+
+  .lm-dl dd + dt {
+    margin-top: 8px;
+  }
+}
