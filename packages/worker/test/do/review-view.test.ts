@@ -47,7 +47,7 @@ async function queue(colonyId: string): Promise<Map<string, Item>> {
 describe("review queue: the change kept for the reviewer", () => {
   it("sends the queue as before when no view was kept", async () => {
     const { colonyId, a, b } = await escalatedPair();
-    let q = await queue(colonyId);
+    const q = await queue(colonyId);
     expect([...q.keys()].sort()).toEqual([a.id, b.id].sort());
     expect([...q.values()].some((p) => "review" in p)).toBe(false);
   });

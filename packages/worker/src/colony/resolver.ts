@@ -61,8 +61,6 @@ const KEEP_MS = 7 * 24 * 60 * 60_000;
 const HOUR_MS = 60 * 60_000;
 /** The name of the resolver's agent in the colony. */
 export const RESOLVER_AGENT = "resolver";
-/** Who the resolver's inbox notices are from. */
-const NOTICE_BY = "resolver";
 
 /** Is the conflict resolver on for this colony? FT_RESOLVER, read like FT_REVALIDATE: "on", a list of colony ids, or off. */
 export function resolverEnabled(setting: string | undefined, colonyId: Id): boolean {

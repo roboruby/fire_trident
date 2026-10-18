@@ -234,7 +234,6 @@ function withTimeout<T>(p: Promise<T>, ms: number, message: string): Promise<T> 
 export class Certifier {
   private readonly schedule: CertifySchedule;
   private timer: ReturnType<typeof setTimeout> | null = null;
-  private inflight: Promise<void> | null = null;
   private forced = false;
   private policyCache: CertifyPolicy | null = null;
   private readonly memo: CompileMemo = new Map();
@@ -400,14 +399,13 @@ export class Certifier {
     const forced = this.forced;
     this.forced = false;
     let sha: Sha | null = null;
-    this.inflight = this.runOnce(forced, (s) => {
+    void this.runOnce(forced, (s) => {
       sha = s;
       this.schedule.certifying(s);
     })
       .catch((err: unknown) => console.warn(`certification failed: ${errorText(err)}`))
       .finally(() => {
         this.schedule.finish(sha);
-        this.inflight = null;
         if (this.active()) this.kick();
       });
   }

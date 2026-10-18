@@ -2,6 +2,8 @@
 
 FireTrident is built by several agents working in parallel on one tree. These rules keep that safe.
 
+People contributing on their own follow [CONTRIBUTING.md](CONTRIBUTING.md). The layout and ownership section below applies to coordinated agent builds, where several agent streams change one tree at once.
+
 ## Layout and ownership
 
 | Path | Owner stream |
@@ -34,4 +36,5 @@ Edit only files your stream owns. If you need a change to an orchestrator-owned 
 
 - Core tests: `npx vitest run --root packages/core`
 - Typecheck a package: `npx tsc -p packages/<name>/tsconfig.json`
+- Lint: `npm run lint`
 - Worker locally: `cd packages/worker && npx wrangler dev`

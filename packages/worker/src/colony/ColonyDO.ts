@@ -22,7 +22,6 @@ import type {
   Certification,
   Colony,
   ColonyEvent,
-  ColonySnapshot,
   Convergence,
   Decision,
   DecisionLayer,
@@ -6961,10 +6960,6 @@ export class ColonyDO extends DurableObject<Env> {
   private setAgentState(agentId: Id, state: AgentState, now: number): void {
     const row = this.sql.exec<{ kind: string; state: string }>("UPDATE agents SET state = ? WHERE id = ? AND state != ? RETURNING kind, state", state, agentId, state).toArray()[0];
     if (row) this.publish({ t: "agent", at: now, agentId, kind: row.kind as AgentKind, state });
-  }
-
-  private countIntents(status: IntentStatus): number {
-    return this.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM intents WHERE status = ?", status).one().n;
   }
 
   private landingsPerMin(now: number): number {

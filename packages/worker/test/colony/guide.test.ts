@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { GUIDE_LABEL, GUIDE_LIMITS } from "@fire_trident/core";
-import type { Certification, ColonyEvent, Evidence, GuideLesson, Landing } from "@fire_trident/core";
+import type { Certification, ColonyEvent, Evidence, Landing } from "@fire_trident/core";
 import { FieldGuide, guideEnabled, guideOffered, type GuideHost } from "../../src/colony/guide.ts";
 
 /**

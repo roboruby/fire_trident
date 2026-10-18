@@ -40,6 +40,7 @@
   const call = (fn, args) => {
     try {
       if (typeof fn === "function") fn(...args);
+      // biome-ignore lint/security/noGlobalEval: the page's own setTimeout(code) calls, replayed as the real timer would run them.
       else (0, eval)(String(fn));
     } catch (err) {
       console.error(err);

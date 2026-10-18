@@ -332,11 +332,10 @@
       let entered = 0;
       for (const a of arrivals) if (a.enter <= t) entered++;
       let waiting = 0;
-      let landed = 0;
       for (let i = 0; i < arrivals.length; i++) {
         const a = arrivals[i];
         if (a.s > t) break;
-        if (a.done + 0.9 < t) { landed++; continue; }
+        if (a.done + 0.9 < t) continue;
         let x, y, alpha = 1, color = "#ffb53d";
         const start = [L.x0 - 20, L.cy + (a.y - 0.5) * L.h];
         if (t < a.enter) {

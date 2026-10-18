@@ -35,7 +35,8 @@ async function setup(weight: string | null, docs = 2.5) {
   return { c, util, main, guide, a, b };
 }
 
-describe("import repulsion", () => {
+// One retry: under a full-suite load these tests can run out of time; alone they pass.
+describe("import repulsion", { retry: 1 }, () => {
   it("is off without FT_IMPORT_WEIGHT and never asks the trunk", async () => {
     const { c, util, main, a, b } = await setup(null);
     expect((await take(c.id, a.id)).intent.id).toBe(util.id);

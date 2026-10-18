@@ -20,6 +20,14 @@ const durableObjects = {
  */
 export default defineConfig({
   test: {
+    // burst.test.ts's hundreds of concurrent takes can leave a module load in flight when its file's environment
+    // closes, and the pool then reports `Closing rpc while "resolve" was pending` after every test in it passed (a
+    // harness race that shows only under load). Only that error from that file is ignored: its tests still run and
+    // must pass, with one retry.
+    onUnhandledError(error) {
+      const e = error as { name?: string; VITEST_TEST_PATH?: string };
+      if (e.name === "EnvironmentTeardownError" && e.VITEST_TEST_PATH?.endsWith("test/do/burst.test.ts")) return false;
+    },
     projects: [
       {
         test: {

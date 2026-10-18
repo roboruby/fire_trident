@@ -1990,7 +1990,7 @@ export class TrunkDO extends DurableObject<Env> {
    * (nothing landed); when the outcome cannot be learned they stay for recoverJournal.
    */
   private async pushChain(chain: { parent: Sha; tip: Sha; items: Array<{ data: JournalData }>; objects?: string[] }): Promise<{ ok: true } | { ok: false; detail: string }> {
-    const st = this.state();
+    this.state(); // Throws when the trunk was never initialized.
     const g = this.repo();
     const now = Date.now();
     this.ctx.storage.transactionSync(() => {

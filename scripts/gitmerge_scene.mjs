@@ -18,7 +18,7 @@
 //
 // Needs git and a Node that runs TypeScript files (type stripping, Node 22.18 or later). Nothing it writes names the
 // temporary directory. packages/web/test/try-gitmerge.test.ts fails when the JSON is stale.
-import { execFileSync, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { devNull, tmpdir } from "node:os";
 import { dirname, join } from "node:path";

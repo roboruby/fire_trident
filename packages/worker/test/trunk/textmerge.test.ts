@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { blobId } from "@fire_trident/core";
-import type { ExportSurface, ExportedNames, FileVersion, NameAssumption, Path, Proposal, Sha } from "@fire_trident/core";
+import type { ExportedNames, FileVersion, NameAssumption, Path, Proposal, Sha } from "@fire_trident/core";
 import { exportSurface, mergeBlobs, planCycle, textMergeEnabled, type DeletionImports, type PlanProposal, type TextMergeInput } from "../../src/trunk/plan.ts";
 
 /**
@@ -208,19 +208,6 @@ describe("planCycle: text merge (FT_TEXT_MERGE)", () => {
     expect(plan.merged.size).toBe(0);
     expect(plan.mergedTexts.size).toBe(0);
   });
-
-  /** A later reader of S, and what the trunk writer read: the exports and statements of every version it loaded, never the merged one. */
-  function laterReader(t: ReturnType<typeof loaded>, S: string): { reader: Proposal; exported: ExportedNames } {
-    const names: NameAssumption[] = [{ path: S, names: ["config"] }];
-    const enc = new TextEncoder();
-    return {
-      reader: prop("r", { "src/core/r.ts": t.blob("r\n") }, { [S]: t.blob(lines()) }, { nameAssumptions: names }),
-      exported: (path, blob) => {
-        const text = t.texts.get(blob);
-        return text === undefined ? null : exportSurface(enc.encode(text), path);
-      },
-    };
-  }
 
   it("revalidates a later reader against the merged version's exports and statements (import-name revalidation)", () => {
     const t = loaded();

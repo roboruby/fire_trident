@@ -13,8 +13,6 @@ const MATH_OK = "export function sub(a: number, b: number): number {\n  return a
 const MATH_BUG = "export function sub(a: number, b: number): number {\n  return a + b;\n}\n";
 const MATH_TEST = 'import { test } from "node:test";\nimport assert from "node:assert/strict";\nimport { sub } from "../src/math.ts";\ntest("subtracts", () => {\n  assert.equal(sub(5, 3), 2);\n});\n';
 
-type CertState = { results: Certification[] };
-
 /** Turn the first red search on for one colony as its ColonyDO sees FT_BISECT (the harness binds none, so it is off by default). */
 async function bisectOn(colonyId: string): Promise<void> {
   await runInDurableObject(colony(colonyId), (instance) => {

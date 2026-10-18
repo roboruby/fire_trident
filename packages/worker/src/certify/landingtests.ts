@@ -1,4 +1,4 @@
-import type { Certification, FileVersion, Id, IntentSpend, Landing, LandingTests, LineageNote, Path, Sha, TestAuthorGroup, TestAuthors, TestReach, TestsAt } from "@fire_trident/core";
+import type { Certification, FileVersion, Id, IntentSpend, Landing, LandingTests, LineageNote, Path, Sha, TestAuthorGroup, TestAuthors, TestsAt } from "@fire_trident/core";
 import { proofPath, spentOnIntent, testDelta, testsRow, type FileOutcomes } from "@fire_trident/core";
 import { sha256Hex } from "../trunk/digest.ts";
 import { fileKeyText, type FileResult } from "./cache.ts";

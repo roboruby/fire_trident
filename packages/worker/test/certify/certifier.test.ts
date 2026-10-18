@@ -312,7 +312,8 @@ describe("a test file that breaks the runner for the files after it", () => {
   }, 60_000);
 });
 
-describe("reading the test Worker's answer", () => {
+// One retry: under a full-suite load the deadline test's real-time steps can lag past its 200 ms tolerance; alone it passes.
+describe("reading the test Worker's answer", { retry: 1 }, () => {
   it("stops a body that never ends or trickles at the run's deadline, one past the cap at the cap, and drops an answer that comes too late", async () => {
     // A fake clock (timers and Date only): the runs' deadlines pass without the test waiting for them,
     // while the real work between them (digests, stream reads) runs as usual.

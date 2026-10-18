@@ -1,0 +1,108 @@
+# Every push to main and every pull request: typecheck, lint, the test suites of every package, the script tests, the
+# generated-docs check and the commit-subject rule. It needs no secrets and reaches no deployment: the worker suite runs
+# in a local workerd through the vitest pool, and npm is the only network it uses.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push to the same pull request or branch cancels the run it supersedes.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The README's version: the CLI runs its TypeScript directly, which needs Node 24.
+  NODE_VERSION: "24"
+  # The scripts and their tests are written for Ruby 4.0.
+  RUBY_VERSION: "4.0"
+
+jobs:
+  checks:
+    name: Typecheck, lint, scripts and commit subjects
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The commit-subject check reads the commits a push or a pull request adds.
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ env.RUBY_VERSION }}
+      - name: Install
+        run: npm ci
+      - name: Typecheck
+        run: |
+          for pkg in core worker web cli bench; do
+            echo "tsc -p packages/$pkg/tsconfig.json"
+            npx tsc -p "packages/$pkg/tsconfig.json"
+          done
+      - name: Lint
+        run: npm run lint
+      - name: Connect blocks match their source
+        run: node --experimental-transform-types scripts/connect_docs.ts --check
+      - name: Script tests
+        run: |
+          failed=0
+          for test in scripts/test/*_test.rb; do
+            echo "ruby $test"
+            ruby "$test" || failed=1
+          done
+          exit "$failed"
+      - name: Commit subjects
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          # A pull request's own commits (never GitHub's merge commit for it), or the commits a push added.
+          if [ "$EVENT" = pull_request ]; then range="$PR_BASE..$PR_HEAD"; else range="$PUSH_BEFORE..$GITHUB_SHA"; fi
+          ruby scripts/check_commit_subjects.rb "$range"
+
+  test:
+    name: Tests (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        # The worker suite runs as its three vitest projects on three runners: it is most of the test time, and its
+        # timing-sensitive tests pass more surely without the other projects loading the same machine.
+        include:
+          - { name: core, package: core }
+          - { name: web, package: web }
+          - { name: cli, package: cli }
+          - { name: bench, package: bench }
+          - { name: worker unit, package: worker, project: unit }
+          - { name: worker do, package: worker, project: do }
+          - { name: worker certify, package: worker, project: certify }
+    defaults:
+      run:
+        working-directory: packages/${{ matrix.package }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - name: Install
+        working-directory: .
+        run: npm ci
+      # The worker's unit project runs in Node, its do and certify projects in workerd; the cli suite includes
+      # test/package.test.ts, which fails when a vendored copy of a core module differs from core.
+      - name: vitest
+        env:
+          PROJECT: ${{ matrix.project }}
+        run: npx vitest run ${PROJECT:+--project "$PROJECT"}
