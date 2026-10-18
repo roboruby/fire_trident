@@ -44,6 +44,7 @@ export const COLONY_FLAGS: readonly string[] = [
   "FT_RESOLVER",
   "FT_RETURN_HUNKS",
   "FT_REVALIDATE",
+  "FT_REVIEW_VIEW",
   "FT_TEXT_MERGE",
   "FT_TWINS",
   "FT_VIRTUAL_CHECKOUT",

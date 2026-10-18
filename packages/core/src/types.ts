@@ -1144,9 +1144,11 @@ export type AcceptanceVerdict = "met" | "not met" | "unclear";
 /**
  * What a "met" rests on: `quote` when the platform found the model's quote in the diff it showed, `absence` when the
  * line states what must not be there ("No other file changes"), so there is no changed line to quote and the met rests
- * on the model's word (decide/quotes.ts isAbsence).
+ * on the model's word (decide/quotes.ts isAbsence). `checked` (the review view, FT_REVIEW_VIEW): no model answered the
+ * line, FireTrident checked it itself by reading the files after the change (decide/keepcheck.ts); it marks a line of any
+ * verdict, with `path` the file it read, `quote` what it found there for a met line, and `problem` the mismatch otherwise.
  */
-export type AcceptanceBasis = "quote" | "absence";
+export type AcceptanceBasis = "quote" | "absence" | "checked";
 
 /**
  * One acceptance line as the second opinion answered it, and what the platform counts (FT_QUOTED_ACCEPTANCE,
@@ -1163,7 +1165,7 @@ export interface NoteAcceptance {
    * stating an absence, answered met at all (`basis` says which).
    */
   verdict: AcceptanceVerdict;
-  /** What a `met` rests on: a quote the platform found, or the model's word for a line stating an absence. Absent on other verdicts and on records written before it. */
+  /** What a `met` rests on: a quote the platform found, or the model's word for a line stating an absence; `checked` on a line FireTrident checked itself, whatever its verdict. Absent on other verdicts and on records written before it. */
   basis?: AcceptanceBasis;
   /** The model's own answer, when the platform counts another (a "met" whose quote it could not find). */
   said?: AcceptanceVerdict;

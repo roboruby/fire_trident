@@ -12,8 +12,11 @@ export interface AcceptanceRow {
   place: string;
   line: string;
   verdict: "met" | "not met" | "unclear";
-  /** What a met rests on: a quote the platform found, or the model's word for a line stating an absence (absent on older notes). */
-  basis?: "quote" | "absence";
+  /**
+   * What a met rests on: a quote the platform found, or the model's word for a line stating an absence (absent on older
+   * notes); `checked` on a line of any verdict FireTrident checked itself in the files (the review view, FT_REVIEW_VIEW).
+   */
+  basis?: "quote" | "absence" | "checked";
   /** The file and the changed line quoted for it, when it was counted met. */
   path?: string;
   quote?: string;
@@ -40,6 +43,17 @@ export function acceptanceOf(d: NoteDecision | null | undefined): AcceptanceRow[
     const kind = r.kind === "keep" ? "keep" : "intent";
     seen[kind]++;
     const row: AcceptanceRow = { place: `${kind === "keep" ? "keep line" : "line"} ${seen[kind]}`, line, verdict };
+    // The review view: a line FireTrident checked itself, no model asked; for a line not met or unclear, what it found.
+    if (r.basis === "checked") {
+      row.basis = "checked";
+      if (verdict === "met") {
+        if (str(r.path)) row.path = str(r.path);
+        if (str(r.quote)) row.quote = str(r.quote);
+      } else row.why = `checked by FireTrident${str(r.problem) ? `: ${str(r.problem)}` : ""}`;
+      if (kind === "keep" && str(r.landingId)) row.landingId = str(r.landingId);
+      rows.push(row);
+      continue;
+    }
     if (verdict === "met") {
       if (r.basis === "quote" || r.basis === "absence") row.basis = r.basis;
       if (str(r.path)) row.path = str(r.path);
