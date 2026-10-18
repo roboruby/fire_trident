@@ -175,6 +175,8 @@ Every flag and tuning variable `packages/worker/wrangler.jsonc` sets, and every 
 | `FT_GOAL_CONFLICT` | The goal-conflict check: a change undoing a recent landing for another intent waits for a person | on | on | [ledger](#what-each-mechanism-buys) |
 | `FT_QUOTED_ACCEPTANCE` | Quoted acceptance: a model's approval counts only with a quoted changed line per acceptance line | on | on | [ledger](#what-each-mechanism-buys) |
 | `FT_REVIEW_VIEW` | The review view: FireTrident checks acceptance lines that name an export, a signature, a type or a file itself; the second opinion sees whole files for the rest | off | off | [ARCHITECTURE](ARCHITECTURE.md#configuration-and-deployment) |
+| `FT_INHIBIT_STRONGEST` | Lateral inhibition by the strongest single claim on a shared file, not the sum, so an inhibition lasts the same however many files overlap | off | off | [ARCHITECTURE](ARCHITECTURE.md#configuration-and-deployment) |
+| `FT_AGE_CAP` | Caps the age term in take (at 4), so co-change and import repulsion still matter for old intents | off | off | [ARCHITECTURE](ARCHITECTURE.md#configuration-and-deployment) |
 | `FT_REPRODUCE` | Review by reproduction: a declared recipe is replayed, and only what differs is reviewed | on | on | [ARCHITECTURE](ARCHITECTURE.md#configuration-and-deployment) |
 | `FT_ESCALATION_BATCH` | Escalations past the hourly budget that share a reason are reviewed as one batch | on | on | [results](results.md#honest-limits) |
 | `FT_PERSON_WAIT` | A change waiting for a person gives up its claim leases, so other agents can work its files | on | on | [results](results.md#the-contended-run) |
