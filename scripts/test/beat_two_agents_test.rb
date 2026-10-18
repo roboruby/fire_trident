@@ -2,7 +2,8 @@
 
 # Tests for scripts/beat_two_agents.rb, run as a command against a fake colony API on 127.0.0.1 that keeps a trunk of
 # texts, takes inline changes, merges a stale one line by line as text merge does (or sends it back naming the
-# conflicting hunk), and answers why per line with the line's writer first.
+# conflicting hunk), closes one whose text trunk already holds as already on trunk when asked to (FT_ALREADY_ON_TRUNK),
+# and answers why per line with the line's writer first.
 #
 #   ruby scripts/test/beat_two_agents_test.rb
 require "minitest/autorun"
@@ -16,9 +17,10 @@ require_relative "../stage"
 class FakeColony
   attr_reader :created
 
-  def initialize(flags: %w[FT_INLINE FT_RESOLVER FT_TEXT_MERGE], text_merge: true, settle_after: 0, settle_limit: nil, leak: false)
+  def initialize(flags: %w[FT_INLINE FT_RESOLVER FT_TEXT_MERGE], text_merge: true, settle_after: 0, settle_limit: nil, leak: false, on_trunk: false)
     @flags = flags
     @text_merge = text_merge
+    @on_trunk = on_trunk
     @settle_after = settle_after
     @settle_limit = settle_limit
     @leak = leak
@@ -70,6 +72,7 @@ class FakeColony
     in ["POST", "/proposals"] then propose(req.json)
     in ["GET", %r{\A/proposals/([^/]+)\z}] then poll(Regexp.last_match(1))
     in ["GET", "/why"] then why(req.params["path"], req.params["line"].to_i)
+    in ["GET", %r{\A/intents/([^/]+)\z}] then json(200, { intent: @intents[Regexp.last_match(1)] })
     else json(404, { error: "no route" })
     end
   end
@@ -126,6 +129,7 @@ class FakeColony
     base = @trees.fetch(p["baseSha"])[path]
     trunk = @trees.fetch(@head)[path]
     return land(p, p["text"], nil) if base == trunk
+    return already(p, path) if @on_trunk && p["text"] == trunk
 
     blob = ->(t) { t ? Stage.blob_id(t) : "0" * 40 }
     stale = "stale: #{path} (expected #{blob.(base)}, trunk has #{blob.(trunk)})"
@@ -144,6 +148,19 @@ class FakeColony
     return back(p, "#{stale}; text merge of #{path}: 1 conflicting hunk, at line #{conflict} of its base", [{ path: path, base: blob.(base), trunk: blob.(trunk), theirs: blob.(p["text"]), lines: [conflict] }]) if conflict
 
     land(p, merged, { "path" => path, "base" => blob.(base), "trunk" => blob.(trunk), "theirs" => blob.(p["text"]), "result" => blob.(merged) })
+  end
+
+  # Already on trunk (FT_ALREADY_ON_TRUNK): no landing and no return; the source is the landing that last changed the file.
+  def already(p, path)
+    last = @landings.reverse.find { |l| l["paths"].include?(path) }
+    writer = @notes[last["id"]]["proposals"].first
+    p["status"] = "already_on_trunk"
+    p["onTrunk"] = { "trunkSha" => last["trunkSha"], "landingId" => last["id"], "proposalId" => writer["id"], "agentId" => writer["agentId"] }
+    p["reason"] = "Your change is already on trunk: what it writes is there already, landed by agent #{writer['agentId']} in #{last['id']} (commit #{last['trunkSha'][0, 7]}). " \
+                  "Nothing landed for it and it was not sent back, so there is nothing to redo: take your next intent."
+    intent = @intents[p["intentId"]]
+    intent["status"] = "landed"
+    intent["closure"] = { "cause" => "already_on_trunk", "status" => "landed", "agentId" => p["agentId"], "onTrunk" => p["onTrunk"] }
   end
 
   def back(p, reason, conflicts = nil)
@@ -237,6 +254,43 @@ class BeatTwoAgentsTest < Minitest::Test
     assert_includes out, "FT_RESOLVER, is on here"
     assert_includes out, "PASS one landing and one return naming the conflicting hunk at line 6"
     assert_includes out, "deleted colony beat-"
+  end
+
+  def test_same_mode_shows_one_landing_and_the_second_change_closed_as_already_on_trunk
+    out, err, code, reqs = run_beat(FakeColony.new(flags: %w[FT_INLINE FT_TEXT_MERGE FT_ALREADY_ON_TRUNK], on_trunk: true), "--same")
+    assert_equal 0, code, out + err
+    order = ["beat: two agents make the same change to one file; the second is already on trunk",
+             "already on trunk (FT_ALREADY_ON_TRUNK) and inline changes (FT_INLINE) are on here; text merge is on",
+             "agent A changed line 6: landed in lnd_", "agent B changed line 6 on ", ", the trunk before A landed: closed as already on trunk",
+             "    6  export const v6 = 60;", "<- agent A", "closed as already on trunk: Your change is already on trunk: what it writes is there already, landed by agent agt_",
+             "agent B's intent int_", ": landed, closure already_on_trunk from lnd_",
+             "PASS one landing; agent B's identical change closed as already on trunk from lnd_", "deleted colony beat-"]
+    at = 0
+    order.each do |piece|
+      found = out.index(piece, at)
+      assert found, "expected #{piece.inspect} after position #{at} in:\n#{out}"
+      at = found
+    end
+    assert(reqs.any? { |r| r.method == "GET" && r.path.match?(%r{/intents/int_\d+\z}) })
+    assert_no_secrets(out + err)
+  end
+
+  def test_same_mode_fails_when_the_second_change_lands_as_an_empty_commit
+    out, err, code, reqs = run_beat(FakeColony.new(flags: %w[FT_INLINE FT_TEXT_MERGE FT_ALREADY_ON_TRUNK]), "--same")
+    assert_equal 1, code, out + err
+    assert_match(/FAIL agent B's change landed in lnd_\d+ \(a commit that changes nothing\) instead of closing as already on trunk; is FT_ALREADY_ON_TRUNK on for colony beat-/, out)
+    assert(reqs.any? { |r| r.method == "DELETE" })
+  end
+
+  def test_same_mode_needs_the_flag_and_not_conflict_too
+    out, _err, code, reqs = run_beat(FakeColony.new, "--same")
+    assert_equal 1, code
+    assert_includes out, "FAIL already on trunk is off on this deployment (FT_ALREADY_ON_TRUNK is not on in /api/about)"
+    assert_equal ["/api/about"], reqs.map(&:path)
+    _out, err, code, reqs = run_beat(FakeColony.new, "--same", "--conflict")
+    assert_equal 2, code
+    assert_includes err, "pass --conflict or --same, not both"
+    assert_empty reqs
   end
 
   def test_a_second_change_sent_back_stale_fails_the_beat_and_still_deletes_the_colony

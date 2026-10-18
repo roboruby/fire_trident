@@ -109,11 +109,11 @@ export class InlineContents {
   }
 
   /**
-   * A change settled. Landed: its texts go now (trunk holds its blobs). Sent back or rejected: they stay
-   * CONTENTS_GRACE_MS from the first time it settled, then sweep() removes them.
+   * A change settled. Landed, or already on trunk (FT_ALREADY_ON_TRUNK): its texts go now (trunk holds its blobs). Sent
+   * back or rejected: they stay CONTENTS_GRACE_MS from the first time it settled, then sweep() removes them.
    */
   settle(proposalId: Id, status: ProposalStatus, now: number): void {
-    if (status === "landed") this.sql.exec("DELETE FROM proposal_contents WHERE proposal_id = ?", proposalId);
+    if (status === "landed" || status === "already_on_trunk") this.sql.exec("DELETE FROM proposal_contents WHERE proposal_id = ?", proposalId);
     else if (status === "returned" || status === "rejected") this.sql.exec("UPDATE proposal_contents SET settled_at = ? WHERE proposal_id = ? AND settled_at IS NULL", now, proposalId);
   }
 

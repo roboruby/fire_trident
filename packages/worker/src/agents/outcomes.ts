@@ -17,7 +17,7 @@ export interface PushedOutcome {
 /** Pushed outcomes are kept this long (the await step reads them within seconds; a stale one is useless). */
 const KEEP_MS = 60 * 60_000;
 /** Proposal states a push may carry. */
-const STATUSES: ReadonlySet<string> = new Set<ProposalStatus>(["pending", "checking", "ready", "escalated", "landed", "returned", "rejected"]);
+const STATUSES: ReadonlySet<string> = new Set<ProposalStatus>(["pending", "checking", "ready", "escalated", "landed", "returned", "rejected", "already_on_trunk"]);
 
 /**
  * Outcomes pushed to this agent, by proposal id, in the agent's SQLite (so one that arrives just

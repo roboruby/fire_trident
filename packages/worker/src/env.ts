@@ -109,6 +109,17 @@ export interface Env {
    */
   FT_MERGE_INSERTIONS?: string;
   /**
+   * Optional: already on trunk, "on", or a comma-separated list of colony ids; absent or "off" is off. A change that would
+   * change nothing on the trunk it lands on (every file it writes already holds that content and every file it deletes is
+   * already gone, after the changes landing ahead of it in the same cycle, its text merge included) lands no commit and
+   * no note and is not returned: it closes as already on trunk (proposal status already_on_trunk, closure cause
+   * already_on_trunk), naming where the content came from (the landing ahead of it in the cycle, else the landing that
+   * last changed those files, else the trunk head), and its agent is told there is nothing to do (trunk/ontrunk.ts). Its
+   * lane sends such a change on to the trunk writer instead of back as stale. Counted apart: `alreadyOnTrunk` in the
+   * colony's metrics and `trunk.alreadyOnTrunk` per cycle. A retry of a change that did land still gets its landing.
+   */
+  FT_ALREADY_ON_TRUNK?: string;
+  /**
    * Optional: the conflict resolver, "on", or a comma-separated list of colony ids; absent or "off" is off. A change that
    * text merge sent back for overlapping hunks is merged by the platform (colony/resolver.ts): one model call writes each
    * conflicting file keeping both changes, deterministic checks validate it, and it goes through the decide stage as a new

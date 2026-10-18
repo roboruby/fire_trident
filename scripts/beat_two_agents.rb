@@ -11,14 +11,17 @@
 #   5. it prints both landings, the merged file's lines, and the lineage `ft why` reads for each edited line, then
 #      deletes the colony (--keep leaves it)
 #
-# With --conflict both agents change line 6: A lands, and B goes back with a reason naming the conflicting hunk.
+# With --conflict both agents change line 6: A lands, and B goes back with a reason naming the conflicting hunk. With
+# --same both make the same change to line 6 from the same trunk (FT_ALREADY_ON_TRUNK): A lands, and B lands no commit
+# and is not sent back: it closes as already on trunk, naming A's landing, and its intent closes with the cause
+# already_on_trunk.
 #
 # Every agent is this script over the HTTP API with inline changes (synthetic agents): no git, no model calls. Each step
 # has a hard time limit; a step that runs out says what it was waiting for, and the script exits 3.
 #
 # Usage:
 #   FT_TOKEN=<admin token> ruby scripts/beat_two_agents.rb --base https://staging.firetrident.com
-#     [--conflict] [--keep] [--name NAME] [--colony ID] [--review] [--step-timeout 90]
+#     [--conflict | --same] [--keep] [--name NAME] [--colony ID] [--review] [--step-timeout 90]
 #
 # --name names the new colony (default beat-<time>): with --keep, a name the deployment lists in FT_PUBLIC_GIT and
 # FT_PUBLIC_MCP leaves a public colony with three landings for scripts/judge_path.rb. --colony runs the beat on an
@@ -32,14 +35,16 @@ require_relative "stage"
 
 module BeatTwoAgents
   # The file's length and the edits: lines 2 and 11 (far apart, as the round-5 text-merge check edited them), or both on
-  # line 6 for --conflict.
+  # line 6 for --conflict, or the same edit of line 6 twice for --same.
   LINES = 12
   EDITS = {
     merge: [[2, "export const v2 = 20;"], [11, "export const v11 = 110;"]],
-    conflict: [[6, "export const v6 = 60;"], [6, "export const v6 = 66;"]]
+    conflict: [[6, "export const v6 = 60;"], [6, "export const v6 = 66;"]],
+    same: [[6, "export const v6 = 60;"], [6, "export const v6 = 60;"]]
   }.freeze
-  # Proposal statuses the beat stops waiting at (escalated: waiting for a person, which this beat does not do).
-  SETTLED = %w[landed returned rejected escalated].freeze
+  # Proposal statuses the beat stops waiting at (escalated: waiting for a person, which this beat does not do;
+  # already_on_trunk: FT_ALREADY_ON_TRUNK, nothing landed and nothing came back).
+  SETTLED = %w[landed returned rejected escalated already_on_trunk].freeze
   BY = ENV.fetch("FT_USER", "stage-beat")
 
   # The beat could not show what it should; the message says what happened.
@@ -64,11 +69,13 @@ module BeatTwoAgents
 
   # One run of the beat against one deployment.
   class Run
-    def initialize(http:, clock:, secrets:, conflict:, keep:, colony:, review:, step_timeout:, name: nil)
+    def initialize(http:, clock:, secrets:, conflict:, keep:, colony:, review:, step_timeout:, name: nil, same: false)
       @http = http
       @clock = clock
       @secrets = secrets
       @conflict = conflict
+      @same = same
+      @mode = same ? :same : conflict ? :conflict : :merge
       @keep = keep
       @existing = colony
       @review = review
@@ -88,7 +95,7 @@ module BeatTwoAgents
       take_both
       first = land_first
       second = propose_second
-      @conflict ? conflict_verdict(first, second) : merge_verdict(first, second)
+      { merge: -> { merge_verdict(first, second) }, conflict: -> { conflict_verdict(first, second) }, same: -> { same_verdict(first, second) } }.fetch(@mode).call
     rescue Stage::StepTimeout => e
       @clock.say("TIMEOUT #{e.message}")
       Stage::EXIT_TIMEOUT
@@ -109,7 +116,8 @@ module BeatTwoAgents
     def preflight
       res = @http.request(:get, "/api/about", timeout: [@step_timeout, 15].min, auth: false)
       about = res.ok? && res.json.is_a?(Hash) ? res.json : nil
-      what = @conflict ? "two agents change the same line of one file" : "two agents edit one file; text merge lands both"
+      what = { merge: "two agents edit one file; text merge lands both", conflict: "two agents change the same line of one file",
+               same: "two agents make the same change to one file; the second is already on trunk" }.fetch(@mode)
       @clock.say("beat: #{what}, on #{@http.base}#{about&.dig('commit') ? " (build #{about['commit']})" : ''}")
       unless about
         @clock.say("/api/about did not answer (#{res.problem}); going on without the deployment's flags")
@@ -117,9 +125,18 @@ module BeatTwoAgents
       end
       @flags = Array(about["flags"])
       raise Failure, "inline changes are off on this deployment (FT_INLINE is not on in /api/about), and every agent here proposes inline" unless @flags.include?("FT_INLINE")
+      return same_flags if @same
       raise Failure, "text merge is off on this deployment (FT_TEXT_MERGE is not on in /api/about), so this beat cannot show it" unless @flags.include?("FT_TEXT_MERGE")
 
       @clock.say("text merge (FT_TEXT_MERGE) and inline changes (FT_INLINE) are on here")
+    end
+
+    # --same needs FT_ALREADY_ON_TRUNK; text merge may be on or off (B is already on trunk either way).
+    def same_flags
+      raise Failure, "already on trunk is off on this deployment (FT_ALREADY_ON_TRUNK is not on in /api/about), so this beat cannot show it" unless @flags.include?("FT_ALREADY_ON_TRUNK")
+
+      merge = @flags.include?("FT_TEXT_MERGE") ? "on (without the flag B would land as a commit that changes nothing)" : "off (without the flag B would go back stale)"
+      @clock.say("already on trunk (FT_ALREADY_ON_TRUNK) and inline changes (FT_INLINE) are on here; text merge is #{merge}")
     end
 
     def create_colony
@@ -162,15 +179,16 @@ module BeatTwoAgents
     end
 
     def take_both
-      (line_a, text_a), (line_b, text_b) = EDITS.fetch(@conflict ? :conflict : :merge)
+      (line_a, text_a), (line_b, text_b) = EDITS.fetch(@mode)
       @edit_a = [line_a, text_a]
       @edit_b = [line_b, text_b]
       _, secs = step("agents A and B to be handed their intents") do
         @agent_a = register("beat-agent-a")
         @agent_b = register("beat-agent-b")
-        why = "Stage beat: agents A and B change #{@path} from the same trunk#{@conflict ? ', on the same line' : ', on different lines'}."
+        how = { merge: ", on different lines", conflict: ", on the same line", same: ", the same way" }.fetch(@mode)
+        why = "Stage beat: agents A and B change #{@path} from the same trunk#{how}."
         @intent_a = declare(@agent_a, BeatTwoAgents.title_for(text_a, @path), why)
-        @intent_b = declare(@agent_b, "#{BeatTwoAgents.title_for(text_b, @path)}#{@conflict ? ' (the other way)' : ''}", why)
+        @intent_b = declare(@agent_b, "#{BeatTwoAgents.title_for(text_b, @path)}#{{ merge: '', conflict: ' (the other way)', same: ' (the same edit)' }.fetch(@mode)}", why)
         @took_a = take(@agent_a, @intent_a["id"], "agent A")
         @took_b = take(@agent_b, @intent_b["id"], "agent B")
       end
@@ -196,7 +214,7 @@ module BeatTwoAgents
       line, text = @edit_b
       @text_b = BeatTwoAgents.edit(@seed_text, line, text)
       p, secs = step("agent B's change to land or go back") { settle(propose(@agent_b, @took_b, @seed_text, @text_b, "line #{line}: #{text}"), "agent B") }
-      what = { "landed" => "landed in #{p['landingId']}", "returned" => "went back" }.fetch(p["status"], p["status"])
+      what = { "landed" => "landed in #{p['landingId']}", "returned" => "went back", "already_on_trunk" => "closed as already on trunk" }.fetch(p["status"], p["status"])
       @clock.say("agent B changed line #{line} on #{short(@base)}, the trunk before A landed: #{what} (#{fmt(secs)})")
       p
     end
@@ -246,6 +264,37 @@ module BeatTwoAgents
       raise Failure, "agent B's change went back, but its reason does not name the conflicting hunk at line #{line}" unless recorded || named
 
       @clock.say("PASS one landing and one return naming the conflicting hunk at line #{line}")
+      Stage::EXIT_PASS
+    end
+
+    # B landed nothing and did not go back: it closed as already on trunk naming A's landing, trunk did not move for it,
+    # and its intent closed with the cause already_on_trunk.
+    def same_verdict(first, second)
+      line = @edit_b[0]
+      lineage = [[line, first, why(line)]]
+      landings_table([["agent A", first, @intent_a, "line #{line}"]], lineage)
+      file_lines(@text_a, "after agent A's landing (blob #{short(Stage.blob_id(@text_a))}); agent B wrote the same text", { line => "agent A, #{first['landingId']}" })
+      lineage_lines(lineage, nil)
+      unless second["status"] == "already_on_trunk"
+        how = second["status"] == "landed" ? "landed in #{second['landingId']} (a commit that changes nothing)" : second["status"]
+        raise Failure, "agent B's change #{how} instead of closing as already on trunk#{reason_of(second)}; is FT_ALREADY_ON_TRUNK on for colony #{@colony}?"
+      end
+
+      @clock.print("agent B's change #{second['id']} (line #{line}: #{@edit_b[1]}) closed as already on trunk: #{second['reason']}")
+      problems = []
+      from = second["onTrunk"] || {}
+      problems << "its source names #{from['landingId'] || "trunk #{short(from['trunkSha'])}"}, not agent A's landing #{first['landingId']}" unless from["landingId"] == first["landingId"]
+      problems << "it carries a landing (#{second['landingId']})" if second["landingId"]
+      owner = lineage.first[2].first&.dig("landing", "id")
+      problems << "ft why for line #{line} names #{owner || 'no landing'} first, not agent A's #{first['landingId']}" unless owner == first["landingId"]
+      intent, = step("agent B's intent to show its closure") { api!(:get, "/colonies/#{@colony}/intents/#{@intent_b['id']}") }
+      closure = intent.dig("intent", "closure") || {}
+      @clock.print("agent B's intent #{@intent_b['id']}: #{intent.dig('intent', 'status')}, closure #{closure['cause'] || 'none'}#{closure.dig('onTrunk', 'landingId') ? " from #{closure.dig('onTrunk', 'landingId')}" : ''}")
+      problems << "agent B's intent is #{intent.dig('intent', 'status')}, not landed" unless intent.dig("intent", "status") == "landed"
+      problems << "agent B's intent closed with #{closure['cause'].inspect}, not already_on_trunk" unless closure["cause"] == "already_on_trunk"
+      raise Failure, problems.join("; ") unless problems.empty?
+
+      @clock.say("PASS one landing; agent B's identical change closed as already on trunk from #{first['landingId']}, with no commit and no return")
       Stage::EXIT_PASS
     end
 
@@ -408,11 +457,12 @@ module BeatTwoAgents
 
   # Parse the command line and run the beat; returns the exit code.
   def self.main(argv)
-    opts = { conflict: false, keep: false, colony: nil, name: nil, review: false, step_timeout: 90.0, base: nil }
+    opts = { conflict: false, same: false, keep: false, colony: nil, name: nil, review: false, step_timeout: 90.0, base: nil }
     OptionParser.new do |o|
       o.banner = "Usage: FT_TOKEN=... ruby scripts/beat_two_agents.rb --base <url> [options]"
       o.on("--base URL", "The deployment, e.g. https://staging.firetrident.com") { |v| opts[:base] = v }
       o.on("--conflict", "Both agents change the same line: one lands, one goes back naming the hunk") { opts[:conflict] = true }
+      o.on("--same", "Both agents make the same change (FT_ALREADY_ON_TRUNK): one lands, the other closes as already on trunk") { opts[:same] = true }
       o.on("--keep", "Keep the colony the beat creates (default: delete it at the end)") { opts[:keep] = true }
       o.on("--name NAME", "Name of the new colony (default beat-<time>)") { |v| opts[:name] = v }
       o.on("--colony ID", "Run on this existing colony instead (never deleted; its review policy is left as it is)") { |v| opts[:colony] = v }
@@ -422,6 +472,7 @@ module BeatTwoAgents
     base = Stage.base_url(opts[:base])
     token = Stage.token(base)
     raise Stage::ConfigError, "pass --name or --colony, not both" if opts[:name] && opts[:colony]
+    raise Stage::ConfigError, "pass --conflict or --same, not both" if opts[:conflict] && opts[:same]
     raise Stage::ConfigError, "FT_TOKEN is not set (the deployment's admin token: set it, or put it in ~/.config/firetrident/env with that deployment's FT_URL)" unless token
 
     access = Stage.access_headers
@@ -429,7 +480,7 @@ module BeatTwoAgents
     clock = Stage::Clock.new(secrets: secrets)
     http = Stage::Http.new(base, token: token, access: access)
     Run.new(http: http, clock: clock, secrets: secrets, conflict: opts[:conflict], keep: opts[:keep], colony: opts[:colony],
-            review: opts[:review], step_timeout: opts[:step_timeout], name: opts[:name]).call
+            review: opts[:review], step_timeout: opts[:step_timeout], name: opts[:name], same: opts[:same]).call
   rescue Stage::ConfigError, OptionParser::ParseError => e
     warn("beat_two_agents: #{e.message}")
     Stage::EXIT_USAGE

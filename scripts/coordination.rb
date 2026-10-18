@@ -46,10 +46,14 @@
 #    record. Landed: status landed. Returned: status returned, except returns for a change of direction, whose reason
 #    starts "withdrawn: ", "intent revised: " or "superseded: " (a person withdrew or amended the intent, or a contest
 #    picked another change): the colony counts those as redirected, and so does this report. Rejected. In flight:
-#    pending, checking, ready, or escalated to a person. Merged fraction = landed / made, so a proposal still in
+#    pending, checking, ready, or escalated to a person. Already on trunk: status already_on_trunk (FT_ALREADY_ON_TRUNK:
+#    it would have changed nothing, its content already on trunk, so nothing landed and nothing came back), counted
+#    apart, never as landed or returned, and settled. Merged fraction = landed / made, so a proposal still in
 #    flight counts as not merged; also landed / settled, where settled = made - in flight. Intents: every intent in
 #    the record; an intent's status is that of its last intent event (landed when it has none and one of its
-#    proposals landed). Intents merged = landed intents / intents; also over the intents that had a proposal.
+#    proposals landed). Intents merged = landed intents / intents; also over the intents that had a proposal. Of the
+#    landed intents, those whose last intent event's cause is already_on_trunk are counted apart too (none of their
+#    changes landed: their content came from another landing).
 #
 # 2. Code sharing. The files: every text file at HEAD that a landed proposal wrote (and every path a landing commit
 #    changed when not all of its proposals are known). Each of their lines at HEAD goes to the commit
@@ -128,11 +132,11 @@
 #
 # 10. Closures (the closure ledger, packages/worker/src/colony/closure.ts). Every intent event that carries a cause: why
 #    an intent an agent held closed or reopened (landed, released, escalated, withdrawn, gave_up, reaped_silent, returned,
-#    stopped), with the agent and the gap since its last sign of life. Per agent kind (the event's agentKind, else the
-#    agent's kind from the agents list): the closures, each cause's count and its share of the kind's closures. With it:
-#    the intents taken back from silent agents (reaped_silent), with the median and largest gap; and the closes recorded
-#    before the ledger (an intent event that moves an intent from claimed or proposed to open, landed or withdrawn with
-#    no cause), counted apart and in no share. Vaccine agents are left out.
+#    stopped, already_on_trunk), with the agent and the gap since its last sign of life. Per agent kind (the event's
+#    agentKind, else the agent's kind from the agents list): the closures, each cause's count and its share of the kind's
+#    closures. With it: the intents taken back from silent agents (reaped_silent), with the median and largest gap; and
+#    the closes recorded before the ledger (an intent event that moves an intent from claimed or proposed to open, landed
+#    or withdrawn with no cause), counted apart and in no share. Vaccine agents are left out.
 #
 # 11. Heads-up before returns (FT_HEADS_UP, packages/worker/src/colony/headsup.ts). Returns (as in 1: redirects apart)
 #    whose reason ends with the heads-up's sentence: warned and proposed anyway ("You were told of <landing> at
@@ -256,7 +260,9 @@ module Coordination
   UNWARNED = /\byou could not have known\.\s*\z/
   IN_FLIGHT = %w[pending checking ready escalated].freeze
   # Definition 10: the closure ledger's causes, and the moves an intent event makes that close or reopen a held intent.
-  CLOSURE_CAUSES = %w[landed released escalated withdrawn gave_up reaped_silent returned stopped].freeze
+  CLOSURE_CAUSES = %w[landed released escalated withdrawn gave_up reaped_silent returned stopped already_on_trunk].freeze
+  # Definition 1: a proposal closed as already on trunk (FT_ALREADY_ON_TRUNK), and its intent's closing cause.
+  ON_TRUNK = "already_on_trunk"
   HELD = %w[claimed proposed].freeze
   CLOSED = %w[open landed withdrawn].freeze
   PHASES = %i[agentWork review waitingToLand rework].freeze
@@ -812,6 +818,8 @@ module Coordination
         when "intent"
           prev = @intents.dig(e["intentId"], :status)
           (@intents[e["intentId"]] ||= { id: e["intentId"], title: e["title"] })[:status] = e["status"]
+          # Definition 1: the cause of the intent's last event (already_on_trunk on an intent whose content another landing put there).
+          @intents[e["intentId"]][:cause] = e["cause"]
           if CLOSURE_CAUSES.include?(e["cause"])
             unless vaccine_agents.include?(e["agentId"])
               @closures << { intent: e["intentId"], at: e["at"], status: e["status"], cause: e["cause"], agent: e["agentId"], kind: e["agentKind"],
@@ -1212,7 +1220,7 @@ module Coordination
 
       { source: record.source, events: record.total, proposals: record.proposals.size, intents: record.intents.size,
         vaccineProposalsLeftOut: record.vaccine_proposals,
-        colonyCounters: (snapshot&.dig("metrics") || {}).slice("proposals", "landedProposals", "returned", "rejected", "escalated",
+        colonyCounters: (snapshot&.dig("metrics") || {}).slice("proposals", "landedProposals", "alreadyOnTrunk", "returned", "rejected", "escalated",
                                                                  "intents", "intentsLanded", "landings", "agents", "headsUp.warned", "headsUp.unwarned") }
     end
 
@@ -1235,12 +1243,13 @@ module Coordination
       status = record.intents.to_h { |id, i| [id, i[:status] || (landed_by_proposal.include?(id) ? "landed" : "unknown")] }
       with_proposal = record.proposals.values.to_set { |p| p[:intent] }
       landed_intents = status.count { |_, s| s == "landed" }
+      on_trunk = record.intents.count { |id, i| status[id] == "landed" && i[:cause] == ON_TRUNK }
       {
-        proposals: { made: made, landed: landed, returned: states.fetch("returned", 0), redirected: states.fetch("redirected", 0),
+        proposals: { made: made, landed: landed, alreadyOnTrunk: states.fetch(ON_TRUNK, 0), returned: states.fetch("returned", 0), redirected: states.fetch("redirected", 0),
                      rejected: states.fetch("rejected", 0), inFlight: in_flight, other: states.fetch("other", 0) },
         merged: Coordination.rounded(Coordination.ratio(landed, made)),
         mergedOfSettled: Coordination.rounded(Coordination.ratio(landed, made - in_flight)),
-        intents: { total: record.intents.size, withProposal: with_proposal.size, landed: landed_intents, byStatus: status.values.tally.sort.to_h },
+        intents: { total: record.intents.size, withProposal: with_proposal.size, landed: landed_intents, alreadyOnTrunk: on_trunk, byStatus: status.values.tally.sort.to_h },
         intentsMerged: Coordination.rounded(Coordination.ratio(landed_intents, record.intents.size)),
         intentsMergedWithProposal: Coordination.rounded(Coordination.ratio(status.count { |id, s| s == "landed" && with_proposal.include?(id) }, with_proposal.size))
       }
@@ -1248,7 +1257,7 @@ module Coordination
 
     def state(p)
       case p[:status]
-      when "landed", "rejected" then p[:status]
+      when "landed", "rejected", ON_TRUNK then p[:status]
       when "returned" then Coordination.redirect?(p[:reason]) ? "redirected" : "returned"
       when *IN_FLIGHT then "in flight"
       else "other"
@@ -2586,9 +2595,11 @@ module Coordination
     out += ["", "| Measure | Value |", "| --- | --- |"]
     if (m = r[:mergedFraction])
       pr = m[:proposals]
+      on_trunk = pr[:alreadyOnTrunk].to_i.positive? ? ", #{num(pr[:alreadyOnTrunk])} already on trunk (nothing landed, nothing came back)" : ""
       out << "| Proposals merged | #{num(pr[:landed])} of #{num(pr[:made])} (#{fmt(m[:merged])}); #{num(pr[:returned])} returned, " \
-             "#{num(pr[:redirected])} redirected, #{num(pr[:rejected])} rejected, #{num(pr[:inFlight])} in flight |"
-      out << "| Intents merged | #{num(m[:intents][:landed])} of #{num(m[:intents][:total])} (#{fmt(m[:intentsMerged])}) |"
+             "#{num(pr[:redirected])} redirected, #{num(pr[:rejected])} rejected, #{num(pr[:inFlight])} in flight#{on_trunk} |"
+      closed = m[:intents][:alreadyOnTrunk].to_i.positive? ? ", #{num(m[:intents][:alreadyOnTrunk])} of them closed as already on trunk" : ""
+      out << "| Intents merged | #{num(m[:intents][:landed])} of #{num(m[:intents][:total])} (#{fmt(m[:intentsMerged])})#{closed} |"
     else
       out << "| Proposals merged | not computed: no event record |"
     end

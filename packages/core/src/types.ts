@@ -374,9 +374,28 @@ export interface IntentEscalation {
  * landed), `released` (the agent gave it back), `escalated` (the agent reported it to a person), `withdrawn` (a person
  * or a change of direction called it off), `gave_up` (an in-platform agent's loop gave up on it), `reaped_silent` (the
  * agent was silent past the colony's limit and the colony took it back), `returned` (review or a person sent its change
- * back, or rejected it) and `stopped` (a person stopped the agent, or the colony was deleted).
+ * back, or rejected it) and `stopped` (a person stopped the agent, or the colony was deleted). `already_on_trunk`
+ * (FT_ALREADY_ON_TRUNK): its change would have changed nothing on trunk, because every file it writes already held that
+ * content when it came to land, so nothing landed and its need is met; the closure names where the content came from.
  */
-export type ClosureCause = "landed" | "released" | "escalated" | "withdrawn" | "gave_up" | "reaped_silent" | "returned" | "stopped";
+export type ClosureCause = "landed" | "released" | "escalated" | "withdrawn" | "gave_up" | "reaped_silent" | "returned" | "stopped" | "already_on_trunk";
+
+/**
+ * Where the content of a change that closed as already on trunk came from (FT_ALREADY_ON_TRUNK): the landing that put it
+ * there, either one landing ahead of it in the same trunk cycle or the landing whose commit last changed the files it
+ * writes, or, when no landing is known for them, only the trunk commit it was found on.
+ */
+export interface OnTrunkSource {
+  /** The landing's commit, or the trunk head when no landing is known. */
+  trunkSha: Sha;
+  landingId?: Id;
+  /** The proposal of that landing that wrote the content, its intent and its agent, when they are known. */
+  proposalId?: Id;
+  intentId?: Id;
+  agentId?: Id;
+  /** True when that landing was built in the same trunk cycle. */
+  sameCycle?: true;
+}
 
 /** One close or reopen of an intent an agent held, as the closure ledger keeps it. */
 export interface IntentClosure {
@@ -392,6 +411,8 @@ export interface IntentClosure {
    * heartbeat or a call) to then. 0 when the agent's own call closed it (released, escalated, gave_up).
    */
   gapMs?: number;
+  /** `already_on_trunk` only: where the content of its change came from. */
+  onTrunk?: OnTrunkSource;
 }
 
 /** One agent kind's closures in the ledger: how many, and per cause the count and its share of them. */
@@ -593,7 +614,8 @@ export type ProposalStatus =
   | "landed"
   | "returned" // stale read or conflict: sent back to its agent with the delta
   | "rejected"
-  | "escalated"; // waiting for a human
+  | "escalated" // waiting for a human
+  | "already_on_trunk"; // FT_ALREADY_ON_TRUNK: it would have changed nothing, its content already on trunk; neither landed nor returned
 
 export interface CheckResult {
   name: string;
@@ -937,6 +959,8 @@ export interface Proposal {
   status: ProposalStatus;
   createdAt: Millis;
   landingId?: Id;
+  /** Status already_on_trunk (FT_ALREADY_ON_TRUNK): where its content came from; its reason says so in a sentence. */
+  onTrunk?: OnTrunkSource;
   /** Why it was returned/rejected, including the exact stale paths. */
   reason?: string;
   /**
@@ -1781,7 +1805,7 @@ export type ColonyEvent =
    * An intent changed status. A close or reopen of an intent an agent held also carries the closure ledger's cause, the
    * agent, its kind and how long it had been silent (IntentClosure); events recorded before the ledger have none.
    */
-  | { t: "intent"; at: Millis; intentId: Id; status: IntentStatus; title: string; footprint: Path[]; cause?: ClosureCause; agentId?: Id; agentKind?: AgentKind; gapMs?: number }
+  | { t: "intent"; at: Millis; intentId: Id; status: IntentStatus; title: string; footprint: Path[]; cause?: ClosureCause; agentId?: Id; agentKind?: AgentKind; gapMs?: number; onTrunk?: OnTrunkSource }
   | { t: "proposal"; at: Millis; proposalId: Id; intentId: Id; agentId: Id; status: ProposalStatus; reason?: string; movedBy?: MovedBy[] }
   | { t: "landing"; at: Millis; landingId: Id; trunkSha: Sha; proposalIds: Id[]; paths: Path[] }
   | { t: "decision"; at: Millis; decisionId: Id; kind: DecisionKind; layer: DecisionLayer; p: number; action: string; subject: Id }

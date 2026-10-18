@@ -139,3 +139,37 @@ describe("the ledger", () => {
     expect(ledger.report().byKind.internal?.counts.landed).toBe(n);
   });
 });
+
+describe("already on trunk in the ledger (FT_ALREADY_ON_TRUNK)", () => {
+  const source = { trunkSha: "a".repeat(40), landingId: "lnd_1", proposalId: "prp_a", intentId: "int_a", agentId: "agt_a" };
+
+  it("records the cause with where the content came from, on the intent, in its history and in the counts", () => {
+    const sql = colonyTables();
+    const ledger = new ClosureLedger(sql);
+    const c = ledger.record({ intentId: "int_1", cause: "already_on_trunk", status: "landed", at: 5_000, agent: { id: "agt_b", kind: "internal", lastSeen: 4_000 }, onTrunk: source });
+    expect(c).toEqual({ cause: "already_on_trunk", at: 5_000, status: "landed", agentId: "agt_b", agentKind: "internal", gapMs: 1_000, onTrunk: source });
+    expect(eventFields(c)).toEqual({ cause: "already_on_trunk", agentId: "agt_b", agentKind: "internal", gapMs: 1_000, onTrunk: source });
+    const row = sql.exec("SELECT closure FROM intents WHERE id = 'int_1'").toArray()[0] as { closure: string };
+    expect(closureOf(row.closure)).toEqual(c);
+    expect(ledger.history("int_1")).toEqual([c]);
+    expect(ledger.report().byKind.internal).toEqual({ total: 1, counts: { already_on_trunk: 1 }, shares: { already_on_trunk: 1 } });
+  });
+
+  it("keeps a source only on that cause, and reads a malformed one as none", () => {
+    const ledger = new ClosureLedger(sqlite());
+    expect(ledger.record({ intentId: "int_2", cause: "landed", status: "landed", at: 1, agent: { id: "agt_c", kind: "internal", lastSeen: 1 }, onTrunk: source }).onTrunk).toBeUndefined();
+    expect(closureOf({ cause: "already_on_trunk", at: 1, status: "landed", onTrunk: { landingId: "lnd_1" } })).toEqual({ cause: "already_on_trunk", at: 1, status: "landed" });
+    expect(closureOf({ cause: "returned", at: 1, status: "open", onTrunk: source })).toEqual({ cause: "returned", at: 1, status: "open" });
+  });
+
+  it("adds the source column to a ledger kept before it, and reads its older rows as before", () => {
+    const sql = colonyTables();
+    sql.exec("CREATE TABLE intent_closures (seq INTEGER PRIMARY KEY AUTOINCREMENT, intent_id TEXT NOT NULL, at INTEGER NOT NULL, cause TEXT NOT NULL, status TEXT NOT NULL, agent_id TEXT, agent_kind TEXT, gap_ms INTEGER, detail TEXT)");
+    sql.exec("INSERT INTO intent_closures (intent_id, at, cause, status, agent_id, agent_kind, gap_ms) VALUES ('int_1', 1, 'released', 'open', 'agt_x', 'external', 0)");
+    const ledger = new ClosureLedger(sql);
+    const columns = (sql.exec("PRAGMA table_info(intent_closures)").toArray() as Array<{ name: string }>).map((c) => c.name);
+    expect(columns).toContain("on_trunk");
+    migrateClosure(sql);
+    expect(ledger.history("int_1")).toEqual([{ cause: "released", at: 1, status: "open", agentId: "agt_x", agentKind: "external", gapMs: 0 }]);
+  });
+});

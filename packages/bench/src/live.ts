@@ -101,7 +101,7 @@ export function publishModeOf(snapshot: unknown): PublishMode {
 
 type Assignment = { intent: Intent; lease: WorkspaceLease };
 type TakeResult = Assignment | { wait: true; retryInMs: number; reason: string };
-const TERMINAL = new Set(["landed", "returned", "rejected"]);
+const TERMINAL = new Set(["landed", "returned", "rejected", "already_on_trunk"]);
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, Math.max(0, ms)));
 
@@ -492,7 +492,8 @@ export interface LiveReport {
   ops: Array<{ op: string; calls: number; errors: number } & Summary>;
   takeAssigned: Summary;
   takeWait: Summary;
-  counts: { registered: number; assigned: number; waits: Record<string, number>; proposals: number; landed: number; returned: number; rejected: number; unresolved: number };
+  /** `alreadyOnTrunk` (FT_ALREADY_ON_TRUNK): proposals closed with no commit, their content on trunk; absent in runs before it. */
+  counts: { registered: number; assigned: number; waits: Record<string, number>; proposals: number; landed: number; returned: number; rejected: number; unresolved: number; alreadyOnTrunk?: number };
   returns: Record<string, number>;
   window: { fromS: number; toS: number; commits: number; landedProposals: number; landedPerMin: number; commitsPerMin: number; source: string };
   snapshotDelta: Record<string, number>;
@@ -581,7 +582,7 @@ export async function runLive(cfg: LiveConfig, opts: LiveOptions, state: LiveSta
   await feed.connect(cfg, opts.colony);
   log(`feed ${feed.open ? "connected" : "NOT connected"}; ${opts.agents} agents for ${opts.durationS}s (ramp ${opts.rampS}s, work ${opts.workMs} ms)`);
 
-  const counts = { registered: 0, assigned: 0, waits: {} as Record<string, number>, proposals: 0, landed: 0, returned: 0, rejected: 0, unresolved: 0 };
+  const counts = { registered: 0, assigned: 0, waits: {} as Record<string, number>, proposals: 0, landed: 0, returned: 0, rejected: 0, unresolved: 0, alreadyOnTrunk: 0 };
   const returns: Record<string, number> = {};
   const takeAssigned: number[] = [];
   const takeWait: number[] = [];
@@ -657,6 +658,7 @@ export async function runLive(cfg: LiveConfig, opts: LiveOptions, state: LiveSta
         const k = reasonKey(done?.reason);
         returns[k] = (returns[k] ?? 0) + 1;
       } else if (status === "rejected") counts.rejected++;
+      else if (status === "already_on_trunk") counts.alreadyOnTrunk++;
       else counts.unresolved++;
     }
   };
@@ -718,7 +720,7 @@ export async function runLive(cfg: LiveConfig, opts: LiveOptions, state: LiveSta
   const gaps: number[] = [];
   for (let i = 1; i < ordered.length; i++) gaps.push(ordered[i]!.at - ordered[i - 1]!.at);
   const delta: Record<string, number> = {};
-  for (const k of ["landings", "landedProposals", "landedIntents", "proposals", "returned", "rejected", "takes"]) {
+  for (const k of ["landings", "landedProposals", "landedIntents", "proposals", "returned", "rejected", "takes", "alreadyOnTrunk"]) {
     const a = after?.metrics?.[k];
     const b = before?.metrics?.[k];
     if (typeof a === "number") delta[k] = a - (typeof b === "number" ? b : 0);

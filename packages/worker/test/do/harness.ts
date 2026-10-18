@@ -70,6 +70,10 @@ interface TrunkState {
   /** Return hunks: what returnHunks() was asked (the latest 20), and how long it waits before it answers (holdQuotes). */
   quoteAsks?: ReturnHunksQuery[];
   quoteDelayMs?: number;
+  /** Already on trunk (FT_ALREADY_ON_TRUNK): land() closes these proposals as the real writer does, naming the newest landing (onTrunkOnLand). */
+  onTrunkNext?: Id[];
+  /** The first proposal of each landing, its intent and agent, by landing id. */
+  landingWriters?: Record<Id, { proposalId: Id; intentId: Id; agentId: Id }>;
 }
 
 /** A point where a held land() call waits until releaseLand() (see holdNextLand). */
@@ -82,6 +86,7 @@ interface LandGate {
 }
 
 type Returned = { proposalId: Id; reason: string; conflicts?: MergeConflict[]; held?: HeldMergeFile[] };
+type OnTrunkAnswer = { proposalId: Id; source: { trunkSha: Sha; landingId?: Id; proposalId?: Id; intentId?: Id; agentId?: Id }; reason: string };
 
 const DEFAULT_FILES: Record<Path, string> = {
   "README.md": "# demo\n",
@@ -205,6 +210,17 @@ export class TrunkDO extends DurableObject<Env> {
     s.returnNext = ids;
     s.returnConflicts = conflicts;
     s.returnAs = as;
+    await this.save(s);
+  }
+
+  /**
+   * Test helper: land() closes these proposals as already on trunk (FT_ALREADY_ON_TRUNK) instead of landing them, naming
+   * the newest landing and the proposal, intent and agent of it, as the real writer names the landing that last changed
+   * the files (trunk/ontrunk.ts).
+   */
+  async onTrunkOnLand(ids: Id[]): Promise<void> {
+    const s = await this.load();
+    s.onTrunkNext = ids;
     await this.save(s);
   }
 
@@ -432,7 +448,7 @@ export class TrunkDO extends DurableObject<Env> {
     return paths.map((path) => ({ path, blob: snap[path] ?? null }));
   }
 
-  async land(batch: Proposal[], ctx?: unknown): Promise<{ landing?: Landing; returned: Returned[] }> {
+  async land(batch: Proposal[], ctx?: unknown): Promise<{ landing?: Landing; returned: Returned[]; onTrunk?: OnTrunkAnswer[] }> {
     const s = await this.load();
     s.contexts = [...(s.contexts ?? []), JSON.stringify(ctx ?? null)].slice(-20);
     if (s.failLands > 0) {
@@ -448,8 +464,8 @@ export class TrunkDO extends DurableObject<Env> {
       gate.reached = true;
       await gate.opened;
     }
-    const { landing, returned, report } = await this.cycle(batch, gate, ctx as ProtectContext | undefined);
-    if (!landing) return { returned };
+    const { landing, returned, report, onTrunk } = await this.cycle(batch, gate, ctx as ProtectContext | undefined);
+    if (!landing) return { returned, ...(onTrunk.length > 0 ? { onTrunk } : {}) };
     // A convenience of this stand-in (reportLandings): the real TrunkDO never reports; its lane does, and the ColonyDO treats a second report as a no-op.
     if (report) await this.env.COLONY.get(this.env.COLONY.idFromName(landing.colonyId)).onLanding(landing);
     const after = await this.load();
@@ -458,14 +474,14 @@ export class TrunkDO extends DurableObject<Env> {
       await this.save(after);
       throw new Error("Durable Object reset because its code was updated.");
     }
-    return { landing, returned };
+    return { landing, returned, ...(onTrunk.length > 0 ? { onTrunk } : {}) };
   }
 
   /**
    * One cycle of land(): the direction check, then (past a "push" gate) the commit. It counts as a cycle the
    * direction fence waits for from just before its direction check until it ends.
    */
-  private async cycle(batch: Proposal[], gate: LandGate | null, ctx?: ProtectContext): Promise<{ landing?: Landing; returned: Returned[]; report: boolean }> {
+  private async cycle(batch: Proposal[], gate: LandGate | null, ctx?: ProtectContext): Promise<{ landing?: Landing; returned: Returned[]; report: boolean; onTrunk: OnTrunkAnswer[] }> {
     let finish!: () => void;
     const running = new Promise<void>((resolve) => (finish = resolve));
     this.cycles.add(running);
@@ -480,17 +496,23 @@ export class TrunkDO extends DurableObject<Env> {
       const s = await this.load();
       const returned: Returned[] = [];
       const landed: Proposal[] = [];
+      const onTrunk: OnTrunkAnswer[] = [];
       for (const p of batch) {
         const back = redirected.get(p.id) ?? guarded.get(p.id);
         if (back) returned.push({ proposalId: p.id, reason: back });
-        else if (s.returnNext.includes(p.id)) {
+        else if (s.onTrunkNext?.includes(p.id)) {
+          const last = s.landings.at(-1);
+          const writer = last ? s.landingWriters?.[last.id] : undefined;
+          const source: OnTrunkAnswer["source"] = last ? { trunkSha: last.trunkSha, landingId: last.id, ...(writer ?? {}) } : { trunkSha: s.head };
+          onTrunk.push({ proposalId: p.id, source, reason: `Your change is already on trunk: what it writes is there already, landed in ${source.landingId ?? s.head}.` });
+        } else if (s.returnNext.includes(p.id)) {
           const as = s.returnAs?.[p.id];
           returned.push({ proposalId: p.id, reason: as?.reason ?? "conflict at land time: src/lib/util.ts", ...(s.returnConflicts?.[p.id] ? { conflicts: s.returnConflicts[p.id] } : {}), ...(as?.held ? { held: as.held } : {}) });
         } else landed.push(p);
       }
       if (landed.length === 0) {
         await this.save(s);
-        return { returned, report: false };
+        return { returned, report: false, onTrunk };
       }
       for (const p of landed) {
         for (const w of p.writeSet) {
@@ -513,12 +535,15 @@ export class TrunkDO extends DurableObject<Env> {
         at: Date.now(),
       };
       s.landings.push(landing);
+      // Who wrote each landing (its first proposal), for onTrunkOnLand's source.
+      const first = landed[0]!;
+      s.landingWriters = { ...(s.landingWriters ?? {}), [landing.id]: { proposalId: first.id, intentId: first.intentId, agentId: first.agentId } };
       // Each intent's title, from the lineage context the lane passes, as the real writer's notes carry it.
       const titles = (ctx as { intents?: Record<Id, { title?: string }> } | undefined)?.intents;
       const intentOf = (id: Id) => (typeof titles?.[id]?.title === "string" ? { id, title: titles[id]!.title } : { id });
       s.notes = { ...(s.notes ?? {}), [landing.id]: JSON.stringify({ proposals: landed.map((p) => ({ id: p.id, intent: intentOf(p.intentId), writeSet: p.writeSet })) }) };
       await this.save(s);
-      return { landing, returned, report: s.reportLandings };
+      return { landing, returned, report: s.reportLandings, onTrunk };
     } finally {
       this.cycles.delete(running);
       finish();

@@ -19,6 +19,7 @@ import { guardExports, guardsScript, removedNames, type GuardExports } from "./e
 import { importTargets } from "./imports.ts";
 import { mergeHold, type HeldFile, type MergeLock } from "./mergelock.ts";
 import { commute, recipeHold, recipeLockFiles, refusedText, type RecipeInput } from "./recipes.ts";
+import { foundOnTrunk, type OnTrunk, type OnTrunkFound } from "./ontrunk.ts";
 
 /** A proposal sent back from `land`, with the exact reason. */
 export interface Returned {
@@ -41,13 +42,16 @@ export interface LandResult {
   prior?: Landing[];
   returned: Returned[];
   deferred?: Returned[];
+  /** Already on trunk (FT_ALREADY_ON_TRUNK, trunk/ontrunk.ts): changes that would have landed nothing, neither landed nor returned. */
+  onTrunk?: OnTrunk[];
 }
 
 /** One proposal's fate in a cycle. */
 export type Outcome =
   | { kind: "landed"; landing: Landing }
   | { kind: "returned"; reason: string; conflicts?: MergeConflict[]; held?: HeldFile[] }
-  | { kind: "deferred"; reason: string };
+  | { kind: "deferred"; reason: string }
+  | { kind: "already"; onTrunk: OnTrunk };
 
 /** A proposal ready for planning: shape-checked, not landed before, its new blobs local. */
 export interface PlanProposal {
@@ -78,6 +82,8 @@ export interface PlanResult {
    * each recipe, its landing and those files (trunk/recipes.ts commute). The rewritten texts are in `mergedTexts`.
    */
   recipes?: Map<Id, Array<{ recipe: Id; landing: Id; paths: Path[] }>>;
+  /** Already on trunk (with `alreadyOnTrunk`, trunk/ontrunk.ts): the changes that would land nothing, in neither list above. */
+  onTrunk?: OnTrunkFound[];
 }
 
 /**
@@ -212,6 +218,11 @@ function changedText(c: { path: Path; line: number; why: "edited" | "added" }): 
  *   what trunk has is current; every rule above then applies to it as to any proposal. A written file the recipe cannot
  *   transform keeps the proposal's own version, and a return for it being stale names the recipe's landing. A locked
  *   proposal whose files a recipe rewrote goes to a person with the rewrite, as a held merge does.
+ * - Already on trunk (with `alreadyOnTrunk`, FT_ALREADY_ON_TRUNK, trunk/ontrunk.ts foundOnTrunk): a proposal whose every
+ *   write the virtual trunk already holds, with the proposals accepted earlier in its batch, lands nothing. It is in
+ *   `onTrunk`, with the proposal ahead of it that wrote its content, and in neither `accepted` nor `returned`. Checked
+ *   before the in-batch conflict check (two proposals of one batch carrying the same content: the second), and again
+ *   after a clean text merge whose results are trunk's versions. Without it, such a proposal lands as before.
  *
  * Proposal ids must be unique across the cycle (the caller dedupes); a repeated id is skipped.
  */
@@ -223,6 +234,7 @@ export function planCycle(
   merge?: TextMergeInput | null,
   exportGuard?: ExportImports | null,
   recipes?: RecipeInput | null,
+  alreadyOnTrunk?: boolean,
 ): PlanResult {
   const ahead = new Map<Path, { blob: Sha | null; by: Id }>();
   const aheadPaths: Path[] = [];
@@ -269,6 +281,8 @@ export function planCycle(
     return imported.get(blob);
   };
   const exportRun = exportGuard === undefined ? null : exportRunFor(exportGuard, produced);
+  /** Already on trunk: the proposals that would land nothing. */
+  const onTrunk: OnTrunkFound[] = [];
   for (const batch of batches) {
     const ok: Proposal[] = [];
     const back: Returned[] = [];
@@ -297,6 +311,13 @@ export function planCycle(
       const w = p.writeSet.map((f) => f.path);
       const r = p.readSet.map((f) => f.path);
       const assumptions = p.assumptions ?? [];
+      // Already on trunk (trunk/ontrunk.ts): a proposal whose every write trunk holds, as the proposals ahead of it leave
+      // it, lands nothing; it is not in this landing, so it conflicts with none of it either.
+      const already = alreadyOnTrunk ? foundOnTrunk(p, before, ok, ahead) : null;
+      if (already) {
+        onTrunk.push(already);
+        continue;
+      }
       const clash = w.find((path) => reads.has(path) || [...writes].some((x) => overlaps(x, path))) ?? r.find((path) => writes.has(path));
       if (clash !== undefined) {
         back.push({ proposalId: p.id, reason: `conflicts with another proposal in this landing on ${clash}` });
@@ -346,6 +367,12 @@ export function planCycle(
           back.push({ proposalId: p.id, reason: commuted ? refusedText(reason, commuted, occ.stale) : reason, ...(conflicted && !lock ? { conflicts: conflicted } : {}) });
           continue;
         }
+      }
+      // Already on trunk: a clean merge whose every file came out as the version it merged with lands nothing either.
+      const mergedAway = alreadyOnTrunk && files ? foundOnTrunk(p, before, ok, ahead) : null;
+      if (mergedAway) {
+        onTrunk.push(mergedAway);
+        continue;
       }
       const missing = assumptions.find((path) => virtual(path) === null);
       if (missing !== undefined) {
@@ -407,7 +434,7 @@ export function planCycle(
     accepted.push(ok);
     returned.push(back);
   }
-  return { accepted, returned, revalidated, merged, mergedTexts, ...(exportRun ? { exportsUncovered: exportRun.uncovered } : {}), ...(applied.size > 0 ? { recipes: applied } : {}) };
+  return { accepted, returned, revalidated, merged, mergedTexts, ...(exportRun ? { exportsUncovered: exportRun.uncovered } : {}), ...(applied.size > 0 ? { recipes: applied } : {}), ...(onTrunk.length > 0 ? { onTrunk } : {}) };
 }
 
 /** The merge of one stale proposal's files (mergeWrites): the files and their merged texts by blob id, or the conflicts that stopped it. */
@@ -879,6 +906,8 @@ export function resultsFor(requests: Proposal[][], outcome: Map<Id, Outcome>, ow
         else prior.set(o.landing.id, o.landing);
       } else if (o.kind === "returned") {
         res.returned.push({ proposalId: id, reason: o.reason, ...(o.conflicts ? { conflicts: o.conflicts } : {}), ...(o.held ? { held: o.held } : {}) });
+      } else if (o.kind === "already") {
+        (res.onTrunk ??= []).push(o.onTrunk);
       } else {
         (res.deferred ??= []).push({ proposalId: id, reason: o.reason });
       }

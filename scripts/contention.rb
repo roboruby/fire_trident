@@ -80,7 +80,8 @@ module Contention
     "FT_CULPRITS" => "no culprit suspects on red certifications",
     "FT_INTENT_SPEND" => "no model calls per intent: rounds are counted, calls to land are not"
   }.freeze
-  SETTLED = %w[landed returned rejected escalated].freeze
+  # already_on_trunk (FT_ALREADY_ON_TRUNK): nothing landed for it and nothing came back, its content already on trunk.
+  SETTLED = %w[landed returned rejected escalated already_on_trunk].freeze
   OPEN = %w[open claimed proposed].freeze
   # Consecutive failed polls before a run gives up following (with its agents stopped).
   POLL_FAILURES = 12
@@ -708,8 +709,10 @@ module Contention
       i = r[:intents]
       ret = r[:returns]
       @clock.print
-      @clock.print("run #{@label}: #{i[:landed]}/#{i[:total]} intents landed (#{@result[:stop]}#{@detail ? ": #{@detail}" : ''}); intents held at once: peak #{r[:concurrency][:peak_in_flight]}, mean #{r[:concurrency][:mean_in_flight] || 'n/a'}")
-      @clock.print("  returns #{ret[:returned]} of #{ret[:proposals]} proposals: #{ret[:by_cause].map { |c, n| "#{ContentionReport::CAUSE_LABELS[c]} #{n}" }.join(', ')}; cause repeats #{r[:cause_repeat][:repeats]}/#{r[:cause_repeat][:eligible]}")
+      closed = i[:already_on_trunk].to_i.positive? ? ", #{i[:already_on_trunk]} of them closed as already on trunk" : ""
+      @clock.print("run #{@label}: #{i[:landed]}/#{i[:total]} intents landed#{closed} (#{@result[:stop]}#{@detail ? ": #{@detail}" : ''}); intents held at once: peak #{r[:concurrency][:peak_in_flight]}, mean #{r[:concurrency][:mean_in_flight] || 'n/a'}")
+      on_trunk = ret[:already_on_trunk].to_i.positive? ? "; #{ret[:already_on_trunk]} already on trunk (nothing landed, nothing came back)" : ""
+      @clock.print("  returns #{ret[:returned]} of #{ret[:proposals]} proposals: #{ret[:by_cause].map { |c, n| "#{ContentionReport::CAUSE_LABELS[c]} #{n}" }.join(', ')}; cause repeats #{r[:cause_repeat][:repeats]}/#{r[:cause_repeat][:eligible]}#{on_trunk}")
       @clock.print("  rounds to land: median #{r[:rounds][:median_rounds] || 'n/a'}, max #{r[:rounds][:max_rounds] || 'n/a'}; model calls to land: median #{r[:rounds][:median_calls] || 'n/a'}")
       @clock.print("  semantic-conflict pairs landed: #{r[:semantic][:pairs_landed]}; red episodes #{r[:red][:episodes]} (#{r[:red][:open_at_end]} open at the end), median time to green #{r[:red][:median_time_to_green_s] || 'n/a'} s")
       @clock.print("  human queue: #{r[:human_queue][:escalations]} escalations, #{r[:human_queue][:held_merges]} held merges, #{r[:human_queue][:agent_reports]} agent reports")
@@ -944,12 +947,12 @@ module Contention
       lines << "| Review | #{runs.map { |r| r.dig(:review, :enabled) ? "on (reflex #{r.dig(:review, :reflexModel).to_s.split('/').last})" : 'n/a' }.join(' | ')} |"
       lines << "| How the run ended | #{runs.map { |r| [r[:stop], r[:stop_detail]].compact.join(': ').gsub('|', '/') }.join(' | ')} |"
       lines << "| Stalled (no intent moved, intents open) | #{runs.map { |r| stalls_cell(r[:stalls]) }.join(' | ')} |"
-      row.call("Intents landed") { |x| "#{x[:intents][:landed]} of #{x[:intents][:total]}" }
+      row.call("Intents landed") { |x| "#{x[:intents][:landed]} of #{x[:intents][:total]}#{x[:intents][:already_on_trunk].to_i.positive? ? " (#{x[:intents][:already_on_trunk]} closed as already on trunk)" : ''}" }
       row.call("Intents held at once, peak (mean)") { |x| "#{x[:concurrency][:peak_in_flight]} (#{n(x[:concurrency][:mean_in_flight], 2)})" }
       row.call("Intents the colony or agents declared") { |x| x[:concurrency][:colony_intents].empty? ? "none" : x[:concurrency][:colony_intents].map { |src, st| "#{src}: #{st.map { |k, v| "#{v} #{k}" }.join(', ')}" }.join("; ") }
       row.call("Wall time, release to the last landing") { |x| x[:wall][:release_to_last_landing_s] ? "#{n(x[:wall][:release_to_last_landing_s])} s" : "not all landed (last at #{n(x[:wall][:last_landing_so_far_s])} s)" }
       row.call("Release to green after the last landing") { |x| s(x[:wall][:release_to_green_s]) }
-      row.call("Proposals (landed)") { |x| "#{x[:returns][:proposals]} (#{x[:returns][:landed]})" }
+      row.call("Proposals (landed)") { |x| "#{x[:returns][:proposals]} (#{x[:returns][:landed]}#{x[:returns][:already_on_trunk].to_i.positive? ? "; #{x[:returns][:already_on_trunk]} already on trunk" : ''})" }
       ContentionReport::CAUSES.each { |c| row.call("Returned: #{ContentionReport::CAUSE_LABELS[c]}") { |x| x[:returns][:by_cause][c].to_s } }
       row.call("Cause-repeat rate") { |x| "#{pct(x[:cause_repeat][:rate])} (#{x[:cause_repeat][:repeats]}/#{x[:cause_repeat][:eligible]})" }
       row.call("Rounds to land, median (max)") { |x| "#{n(x[:rounds][:median_rounds])} (#{n(x[:rounds][:max_rounds])})" }

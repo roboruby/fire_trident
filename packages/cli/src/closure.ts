@@ -79,15 +79,18 @@ const CAUSE_TEXT: Readonly<Record<ClosureCause, string>> = {
   reaped_silent: "reaped",
   returned: "change came back",
   stopped: "agent stopped",
+  already_on_trunk: "already on trunk",
 };
 const KIND_TEXT: Readonly<Record<AgentKind, string>> = { internal: "in-platform", external: "external", synthetic: "synthetic" };
 
 /** One closure as a line of `ft intent show`: the cause, the agent and its kind, how long it had been silent, when, and what the intent became. */
 export function closureLine(cl: IntentClosure, c: Colors, now: number): string {
   const cause = CAUSE_TEXT[cl.cause] ?? cl.cause;
-  const shown = cl.cause === "landed" ? c.green(cause) : cl.cause === "reaped_silent" || cl.cause === "stopped" ? c.yellow(cause) : cause;
+  const shown = cl.cause === "landed" || cl.cause === "already_on_trunk" ? c.green(cause) : cl.cause === "reaped_silent" || cl.cause === "stopped" ? c.yellow(cause) : cause;
   const who = cl.agentId ? `${cl.agentId}${cl.agentKind ? ` (${KIND_TEXT[cl.agentKind] ?? cl.agentKind})` : ""}` : "its agent";
   const gap = typeof cl.gapMs === "number" ? (cl.cause === "reaped_silent" ? `, silent ${durationText(cl.gapMs)}` : cl.gapMs >= 60_000 ? `, last seen ${durationText(cl.gapMs)} before` : "") : "";
   const became = cl.status === "open" ? "reopened" : cl.status;
-  return `${shown} ${c.dim("·")} ${who}${gap} ${c.dim(`${ago(cl.at, now)} → ${became}`)}`;
+  // Already on trunk: where the content came from (a landing, else the trunk commit it was found on).
+  const from = cl.cause === "already_on_trunk" && cl.onTrunk && typeof cl.onTrunk.trunkSha === "string" ? `, from ${cl.onTrunk.landingId ?? `trunk ${cl.onTrunk.trunkSha.slice(0, 7)}`}` : "";
+  return `${shown} ${c.dim("·")} ${who}${gap}${from} ${c.dim(`${ago(cl.at, now)} → ${became}`)}`;
 }

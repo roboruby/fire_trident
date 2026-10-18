@@ -14,8 +14,8 @@ import type { PushedOutcome } from "./outcomes.ts";
 /** The outcome a job ends with when its inline change is left with a person. */
 export const AWAITING_PERSON = "awaiting_person";
 
-/** Proposal states that end a change for good. */
-const FINAL: ReadonlySet<string> = new Set<ProposalStatus>(["landed", "returned", "rejected"]);
+/** Proposal states that end a change for good (already_on_trunk: FT_ALREADY_ON_TRUNK). */
+const FINAL: ReadonlySet<string> = new Set<ProposalStatus>(["landed", "returned", "rejected", "already_on_trunk"]);
 /** Finished jobs searched for the change an outcome is about. */
 const HISTORY_SEARCH = 50;
 

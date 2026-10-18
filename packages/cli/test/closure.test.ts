@@ -75,5 +75,10 @@ describe("closures in ft intent show", () => {
     expect(formatIntentShow({ intent: { ...res.intent, closure: res.closures[1] } }, c, NOW)).toContain("closed    reaped · agt_walker (external), silent 1 min 37 s");
     expect(formatIntentShow({ intent: res.intent }, c, NOW)).not.toContain("closed");
     expect(closureLine({ cause: "withdrawn", at: NOW, status: "withdrawn", agentId: "agt_x", gapMs: 300_000 }, c, NOW)).toBe("withdrawn while held · agt_x, last seen 5 min before just now → withdrawn");
+    // Already on trunk (FT_ALREADY_ON_TRUNK): the landing its content came from, else the trunk commit it was found on.
+    expect(closureLine({ cause: "already_on_trunk", at: NOW, status: "landed", agentId: "agt_x", gapMs: 0, onTrunk: { trunkSha: "c".repeat(40), landingId: "lnd_9" } }, c, NOW)).toBe(
+      "already on trunk · agt_x, from lnd_9 just now → landed",
+    );
+    expect(closureLine({ cause: "already_on_trunk", at: NOW, status: "landed", agentId: "agt_x", onTrunk: { trunkSha: "c".repeat(40) } }, c, NOW)).toBe("already on trunk · agt_x, from trunk ccccccc just now → landed");
   });
 });

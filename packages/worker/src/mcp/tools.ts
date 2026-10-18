@@ -144,8 +144,8 @@ const MAX_SENSE_REGIONS = 16;
 const SHA = /^[0-9a-f]{40}$/;
 /** Colony ids are slugs (same rule as the REST API). */
 const COLONY_ID = /^[a-z0-9](?:[a-z0-9-]{0,46}[a-z0-9])?$/;
-/** Proposal states after which nothing more happens to a proposal. */
-const FINAL: ReadonlySet<ProposalStatus> = new Set<ProposalStatus>(["landed", "returned", "rejected"]);
+/** Proposal states after which nothing more happens to a proposal (already_on_trunk: FT_ALREADY_ON_TRUNK). */
+const FINAL: ReadonlySet<ProposalStatus> = new Set<ProposalStatus>(["landed", "returned", "rejected", "already_on_trunk"]);
 /** The gap statement used when the agent does not state one. */
 export const EXTERNAL_NOT_VERIFIED = "Not verified: external agent over MCP; no check it ran is visible to the platform.";
 /**
@@ -370,6 +370,8 @@ function nextFor(status: ProposalStatus): string {
       return "Returned: read the reason, then take again (you get a fresh lease on the current trunk) and redo the change.";
     case "rejected":
       return "Rejected by review: read the reason. Take for other work.";
+    case "already_on_trunk":
+      return "Already on trunk: what your change writes is there already (the reason names the landing), so nothing landed and there is nothing to redo. Take for other work.";
     case "escalated":
       return "Waiting for a human reviewer: call inbox with wait again (it returns when the human decides), or take other work meanwhile.";
     default:

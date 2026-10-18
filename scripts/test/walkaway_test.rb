@@ -23,9 +23,11 @@ class FakeWalkColony
   attr_reader :calls, :created
 
   # `reap`: whether the reaper ever takes the intent back; `mark`: whether it leaves a failure mark; `ttl_route`: whether
-  # the deployment has POST /silent-ttl; `mcp_refuses`: whether /mcp answers 401.
-  def initialize(reap: true, mark: true, ttl_route: true, mcp_refuses: false)
+  # the deployment has POST /silent-ttl; `mcp_refuses`: whether /mcp answers 401; `on_trunk`: whether every change after
+  # the seed closes as already on trunk (FT_ALREADY_ON_TRUNK) instead of landing.
+  def initialize(reap: true, mark: true, ttl_route: true, mcp_refuses: false, on_trunk: false)
     @reap = reap
+    @on_trunk = on_trunk
     @mark = mark
     @ttl_route = ttl_route
     @mcp_refuses = mcp_refuses
@@ -165,7 +167,10 @@ class FakeWalkColony
     p = @proposals[pid]
     return json(404, { error: "proposal not found" }) unless p
 
-    if p["status"] == "checking"
+    if p["status"] == "checking" && @on_trunk && @proposals.values.any? { |x| x["status"] == "landed" }
+      p["status"] = "already_on_trunk"
+      p["reason"] = "Your change is already on trunk: what it writes is there already at trunk commit #{@head[0, 7]}."
+    elsif p["status"] == "checking"
       parent = @head
       @head = Digest::SHA1.hexdigest("#{parent}#{p['text']}")
       @trees[@head] = @trees[parent].merge(Walkaway::PATH => p["text"])
@@ -326,6 +331,13 @@ class WalkawayTest < Minitest::Test
     out, err, code, reqs = run_walk(FakeWalkColony.new(mark: false), *FAST)
     assert_equal 1, code, out + err
     assert_includes out, "FAIL no failure mark on src/values.ts after the reaper took the intent back"
+    assert(reqs.any? { |r| r.method == "DELETE" && r.path.start_with?("/api/colonies/") })
+  end
+
+  def test_a_second_change_already_on_trunk_fails_the_beat_at_once_naming_it
+    out, err, code, reqs = run_walk(FakeWalkColony.new(on_trunk: true), *FAST)
+    assert_equal 1, code, out + err
+    assert_match(/FAIL the second agent's change prp_\d+ did not land: it is already_on_trunk: Your change is already on trunk/, out)
     assert(reqs.any? { |r| r.method == "DELETE" && r.path.start_with?("/api/colonies/") })
   end
 

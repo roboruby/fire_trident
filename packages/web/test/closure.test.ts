@@ -63,4 +63,15 @@ describe("closures on the page", () => {
     expect(closureEventText({ cause: "landed", at: 1, status: "landed" })).toBe("");
     expect(closureEventText(null)).toBe("");
   });
+
+  it("reads and labels an intent closed as already on trunk (FT_ALREADY_ON_TRUNK), naming where the content came from", () => {
+    const raw = { cause: "already_on_trunk", at: 900_000, status: "landed", agentId: "agt_walker", onTrunk: { trunkSha: "b".repeat(40), landingId: "lnd_7", agentId: "agt_first", odd: 1 } };
+    const c = closureFrom(raw);
+    expect(c).toEqual({ cause: "already_on_trunk", at: 900_000, status: "landed", agentId: "agt_walker", onTrunk: { trunkSha: "b".repeat(40), landingId: "lnd_7", agentId: "agt_first" } });
+    expect(closureBadge(c, name, NOW)?.label).toBe("already on trunk");
+    expect(closureBadge(c, name, NOW)?.title).toContain("walker's change was already on trunk");
+    expect(closureBadge(c, name, NOW)?.title).toContain("(from lnd_7)");
+    expect(closureEventText(c)).toBe(" · already on trunk from lnd_7");
+    expect(closureEventText({ cause: "already_on_trunk", at: 1, status: "landed" })).toBe(" · already on trunk");
+  });
 });

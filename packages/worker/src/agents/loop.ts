@@ -49,9 +49,11 @@ export type JobStep = "deps" | "fetch" | "read" | "produce" | "commit" | "push" 
 /**
  * `redirected`: the intent was revised under the job (it restarts from the new revision); `withdrawn`: called off;
  * `escalated`: the model reported that the intent cannot be done as written, and the intent waits for a person;
- * `awaiting_person`: the job's inline change waits for a person, and the agent went on to other work (agents/personwait.ts).
+ * `awaiting_person`: the job's inline change waits for a person, and the agent went on to other work (agents/personwait.ts);
+ * `already_on_trunk`: its change would have changed nothing, its content already on trunk (FT_ALREADY_ON_TRUNK), so the
+ * intent is done and the agent goes on to other work.
  */
-export type Outcome = "landed" | "returned" | "rejected" | "abandoned" | "timeout" | "lost" | "redirected" | "withdrawn" | "escalated" | "awaiting_person";
+export type Outcome = "landed" | "returned" | "rejected" | "abandoned" | "timeout" | "lost" | "redirected" | "withdrawn" | "escalated" | "awaiting_person" | "already_on_trunk";
 
 /** Persistent configuration of one agent. `epoch` changes on every start/stop. */
 export interface AgentConfig {

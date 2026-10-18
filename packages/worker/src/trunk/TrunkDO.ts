@@ -97,6 +97,8 @@ import { PUBLISH_BOUND, addedObjects, asyncPublishEnabled, publishBackoffMs, pub
 import { PROTECT_TABLE, keepProtect, protectReturns } from "./protect.ts";
 import { keepHolds, mergeLocks } from "./mergelock.ts";
 import { cyclePause, keepPause } from "./pause.ts";
+import { changesNothing } from "@fire_trident/core";
+import { alreadyOnTrunkEnabled, onTrunkLog, onTrunkSources } from "./ontrunk.ts";
 import { landingRange as rangeOfLandings, type LandingRange, type RangeQuery } from "../certify/range.ts";
 import { commitOrder as commitOrderOf, testLineage as testLineageOf, type TestFileLineage, type TestLineageQuery } from "../certify/testlineage.ts";
 import { FoldedIndex, cycleCollisions, structureProblem, submoduleProblems, type SubmoduleOutcome } from "./structure.ts";
@@ -246,6 +248,8 @@ export interface CycleStat {
   commuted?: number;
   /** Of those, the ones with a file merged by the insertion rule (FT_MERGE_INSERTIONS: both sides only inserted lines at one place). */
   insertions?: number;
+  /** Already on trunk (FT_ALREADY_ON_TRUNK, trunk/ontrunk.ts): proposals that would have landed nothing, closed with no commit (counted in neither `landed` nor `returned`). */
+  alreadyOnTrunk?: number;
   /**
    * The export guard (FT_EXPORT_GUARD), in cycles that change trunk script files: checks of changed files it left undone
    * (exports or importers it could not read for sure, or its input not ready in time). Its reads are timed as `ms.exports`.
@@ -1394,6 +1398,8 @@ export class TrunkDO extends DurableObject<Env> {
       ...(stat.merged ? [metric("merged", stat.merged)] : []),
       // The insertion rule (FT_MERGE_INSERTIONS): those merged by it (only cycles where it merged one).
       ...(stat.insertions ? [metric("mergedInsertions", stat.insertions)] : []),
+      // Already on trunk (FT_ALREADY_ON_TRUNK): proposals closed with no commit, their content on trunk (only cycles that closed one).
+      ...(stat.alreadyOnTrunk ? [metric("alreadyOnTrunk", stat.alreadyOnTrunk)] : []),
       // The export guard (FT_EXPORT_GUARD): checks of changed script files it left undone (only cycles that left one).
       ...(stat.exportsUncovered ? [metric("exportsUncovered", stat.exportsUncovered)] : []),
     ];
@@ -1567,6 +1573,9 @@ export class TrunkDO extends DurableObject<Env> {
     // Text merge (FT_TEXT_MERGE): a change stale only on files it writes lands when each of them merges cleanly, line by
     // line, with the version it would land on (core/textmerge.ts). Off: stale means back.
     const merging = textMergeEnabled((this.env as unknown as { FT_TEXT_MERGE?: string } | undefined)?.FT_TEXT_MERGE, st.colonyId);
+    // Already on trunk (FT_ALREADY_ON_TRUNK, trunk/ontrunk.ts): a change that would land nothing closes, naming where its
+    // content came from, instead of landing a commit that changes nothing or going back stale. Off: as before.
+    const onTrunk = alreadyOnTrunkEnabled((this.env as unknown as { FT_ALREADY_ON_TRUNK?: string } | undefined)?.FT_ALREADY_ON_TRUNK, st.colonyId);
     // Conflict resolver (FT_RESOLVER, colony/resolver.ts): a change sent back for overlapping hunks carries them to its
     // colony (paths, blobs, lines), so the resolver never parses a reason. Off: returns carry only their reasons.
     const resolving = revalidationEnabled((this.env as unknown as { FT_RESOLVER?: string } | undefined)?.FT_RESOLVER, st.colonyId);
@@ -1634,7 +1643,8 @@ export class TrunkDO extends DurableObject<Env> {
         const occ = validateProposal(e.p, (path) => this.indexBlob(path), fv);
         // A revalidation candidate (stale only through files it read, each covered by a name assumption), or a
         // text merge candidate (stale only on files it writes), is decided by the plan, which reads those files.
-        if (!occ.eligible && !(revalidating && revalidationCandidate(e.p, occ.stale)) && !(merging && textMergeCandidate(e.p, occ.stale)) && !commuting.has(e.p.id)) {
+        // So is one whose every write trunk already holds (already on trunk): the plan checks it against the virtual trunk.
+        if (!occ.eligible && !(revalidating && revalidationCandidate(e.p, occ.stale)) && !(merging && textMergeCandidate(e.p, occ.stale)) && !commuting.has(e.p.id) && !(onTrunk && changesNothing(e.p, (path) => this.indexBlob(path)))) {
           return { kind: "returned", reason: `stale: ${staleDetail(occ.stale)}` };
         }
         const structural = this.structuralProblem(e.p);
@@ -1725,12 +1735,12 @@ export class TrunkDO extends DurableObject<Env> {
       // Unreadable locks: no recipe is applied, and a change stale through one goes back as before (fail closed).
       const recipeInput = commuting.size > 0 && locks !== null ? await this.recipeTexts(input.flat(), commuting, recipeLoad) : undefined;
       if (recipeInput) lap("recipes");
-      let plan = planCycle(input, trunkBlob, exported, deletions, merge, exportInput, recipeInput);
+      let plan = planCycle(input, trunkBlob, exported, deletions, merge, exportInput, recipeInput, onTrunk);
       // Merged files go to the local store before a commit names them. One that cannot be stored there: the cycle plans
       // again without merging, and the changes it would have merged go back as stale.
       let mergedSizes = plan.mergedTexts.size > 0 ? await this.storeMerged(plan.mergedTexts) : new Map<Sha, number>();
       if (mergedSizes === null) {
-        plan = planCycle(input, trunkBlob, exported, deletions, undefined, exportInput);
+        plan = planCycle(input, trunkBlob, exported, deletions, undefined, exportInput, undefined, onTrunk);
         mergedSizes = new Map();
       }
       const back = (): void => {
@@ -1738,12 +1748,21 @@ export class TrunkDO extends DurableObject<Env> {
         // Merge locks: the merges held for a person this cycle; an approval given after this lands them.
         keepHolds(this.sql, plan.returned.flat(), Date.now());
       };
+      // Already on trunk (trunk/ontrunk.ts): the changes that would land nothing close, each naming where its content came
+      // from (a landing of this chain, else the landing that last changed its files, else the head). No commit, no note.
+      const closeOnTrunk = (chained: Landing[]): void => {
+        if (!plan.onTrunk) return;
+        const byId = new Map(live.map((e) => [e.p.id, e.p]));
+        for (const o of onTrunkSources(plan.onTrunk, byId, chained, onTrunkLog(this.sql), this.meta("trunk_sha") ?? st.trunkSha)) outcome.set(o.proposalId, { kind: "already", onTrunk: o });
+        stat.alreadyOnTrunk = plan.onTrunk.length;
+      };
       lap("plan");
       if (exportInput !== undefined) stat.exportsUncovered = plan.exportsUncovered ?? 0;
       const chain = await this.buildChain(reqs, plan.accepted, sizes, stat, plan.revalidated, { merged: plan.merged, sizes: mergedSizes }, plan.recipes);
       lap("build");
       if (chain === null) {
         back();
+        closeOnTrunk([]);
         break;
       }
       // Test hook (FT_TEST_PUSH_DELAY_MS, previews only): hold the cycle between its direction read and its push
@@ -1778,6 +1797,7 @@ export class TrunkDO extends DurableObject<Env> {
         const byInsertions = [...plan.merged.values()].filter((files) => files.some((f) => f.rule === "insertions")).length;
         if (byInsertions > 0) stat.insertions = byInsertions;
         back();
+        closeOnTrunk(chain.items.map((it) => it.data.landing));
         lap("finalize");
         break;
       }
@@ -1786,6 +1806,8 @@ export class TrunkDO extends DurableObject<Env> {
           for (const id of it.data.landing.proposalIds) outcome.set(id, { kind: "returned", reason: `trunk kept moving during landing (${pushed.detail}); propose again` });
         }
         back();
+        // Already on trunk: what such a change was found against did not land, so its lane tries it again.
+        for (const f of plan.onTrunk ?? []) outcome.set(f.proposalId, { kind: "deferred", reason: `trunk kept moving during landing (${pushed.detail})` });
         break;
       }
       stat.rebuilds++;

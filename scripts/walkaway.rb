@@ -39,7 +39,8 @@ module Walkaway
   PATH = "src/values.ts"
   LINES = 12
   EDIT = [2, "export const v2 = 20;"].freeze
-  SETTLED = %w[landed returned rejected escalated].freeze
+  # already_on_trunk (FT_ALREADY_ON_TRUNK): the change's content was on trunk already, so nothing landed and nothing came back.
+  SETTLED = %w[landed returned rejected escalated already_on_trunk].freeze
   BY = ENV.fetch("FT_USER", "stage-walkaway")
   RECORDING = "walkaway"
   # The reaper looks at most this often (colony REAP_EVERY_MS).
