@@ -190,6 +190,42 @@ class ContentionTest < Minitest::Test
     assert_equal 3, rounds[:by_cause]["first try"][:intents]
   end
 
+  # Already on trunk (FT_ALREADY_ON_TRUNK): gift-card's third change found its content on trunk, so nothing landed for it
+  # and nothing came back; the colony closed the intent (it shows landed).
+  def test_a_change_already_on_trunk_is_counted_apart
+    j = JSON.parse(File.read(FIXTURE))
+    j["events"] += [
+      { "seq" => 60, "t" => "proposal", "at" => 1_060_000, "proposalId" => "p_gift3", "intentId" => "int_gift", "agentId" => "agt_1", "status" => "pending" },
+      { "seq" => 61, "t" => "proposal", "at" => 1_061_000, "proposalId" => "p_gift3", "intentId" => "int_gift", "agentId" => "agt_1", "status" => "ready" },
+      { "seq" => 62, "t" => "proposal", "at" => 1_062_000, "proposalId" => "p_gift3", "intentId" => "int_gift", "agentId" => "agt_1", "status" => "already_on_trunk",
+        "reason" => "Your change is already on trunk: what it writes is there already, landed by agent agt_2 in lnd_5." },
+      { "seq" => 63, "t" => "intent", "at" => 1_062_000, "intentId" => "int_gift", "status" => "landed", "title" => "Gift card payments", "cause" => "already_on_trunk", "agentId" => "agt_1" }
+    ]
+    j["snapshot"]["intents"].find { |i| i["id"] == "int_gift" }["status"] = "landed"
+    spec_intents = j["spec_intents"].to_h { |k, v| [k, v.transform_keys(&:to_sym)] }
+    r = ContentionReport.build(spec_intents: spec_intents, pairs: j["pairs"], events: j["events"], proposals: j["proposals"], certifications: j["certifications"],
+                               agents: j["agents"], metrics: j["metrics"], snapshot: j["snapshot"], release_at: j["release_at"], end_at: j["end_at"])
+    assert_equal 7, r[:intents][:landed]
+    assert_equal 1, r[:intents][:already_on_trunk]
+    assert_equal %w[fx], r[:intents][:not_landed]
+    gift = r[:intents][:per_intent].find { |x| x[:id] == "gift-card" }
+    assert gift[:already_on_trunk]
+    assert_nil gift[:rounds]
+    ret = r[:returns]
+    assert_equal [16, 6, 1, 8], [ret[:proposals], ret[:landed], ret[:already_on_trunk], ret[:returned]]
+    # gift-card's stale return now has a settled successor that did not come back: one more eligible, no more repeats.
+    assert_equal [7, 1], [r[:cause_repeat][:eligible], r[:cause_repeat][:repeats]]
+    assert_equal 6, r[:rounds][:landed]
+    # The README's side-by-side rows say it, and say nothing of it when there is none.
+    md = Contention::Results.readme({ runs: [{ agents: 8, report: r, label: "n8" }], base: "https://x.invalid", date: "2026-10-18", command: "ruby scripts/contention.rb" })
+    assert_includes md, "| Intents landed | 7 of 8 (1 closed as already on trunk) |"
+    assert_includes md, "| Proposals (landed) | 16 (6; 1 already on trunk) |"
+    # Before it, nothing is counted that way.
+    assert_equal [0, 0], [fixture_report[:intents][:already_on_trunk], fixture_report[:returns][:already_on_trunk]]
+    plain = Contention::Results.readme({ runs: [{ agents: 8, report: fixture_report, label: "n8" }], base: "https://x.invalid", date: "2026-10-18", command: "ruby scripts/contention.rb" })
+    refute_includes plain, "already on trunk"
+  end
+
   def test_concurrency_says_how_many_intents_were_held_at_once
     c = fixture_report[:concurrency]
     # format-options, split and csv were claimed within 0.2 s of each other; split went back and was claimed again.

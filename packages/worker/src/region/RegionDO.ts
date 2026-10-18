@@ -25,6 +25,7 @@ import type { ClearFilter, FieldOps } from "../colony/logic.ts";
 import { settleLane, suspects } from "../trunk/outcome.ts";
 import { textMergeEnabled, type LandResult } from "../trunk/plan.ts";
 import { isMergeHold } from "../trunk/mergelock.ts";
+import { alreadyOnTrunkEnabled, liftOnTrunk, onTrunkUpdates } from "../trunk/ontrunk.ts";
 import {
   accumulates,
   admissionBar,
@@ -971,6 +972,11 @@ export class RegionDO extends DurableObject<Env> {
         candidates.set(p.id, occ.stale);
       } else stale.push({ p, occ });
     }
+    // Already on trunk (FT_ALREADY_ON_TRUNK, trunk/ontrunk.ts): a stale change whose every write trunk already holds goes
+    // on to the trunk writer, which closes it as already on trunk (or, when it is its own landing, settles it as landed).
+    if (alreadyOnTrunkEnabled((this.env as unknown as { FT_ALREADY_ON_TRUNK?: string } | undefined)?.FT_ALREADY_ON_TRUNK, colonyId)) {
+      liftOnTrunk(stale, valid, candidates, (path) => current[path]);
+    }
     // Recipes (trunk/recipes.ts): a stale change built before a recipe landed goes on to the trunk writer, which brings it
     // through the recipe before it validates it. A writer that cannot answer (older code, busy) leaves them stale.
     if (stale.length > 0) {
@@ -1052,6 +1058,12 @@ export class RegionDO extends DurableObject<Env> {
     for (const r of guarded.stopped) {
       remove.add(r.p.id);
       updates.push({ id: r.p.id, patch: { status: "escalated", reason: r.reason } });
+    }
+    // Already on trunk (trunk/ontrunk.ts): a change the trunk writer found would land nothing closes, naming where its
+    // content came from. Neither a landing nor a return: no causal event.
+    for (const u of onTrunkUpdates(result?.onTrunk, settled.landed)) {
+      remove.add(u.id);
+      updates.push(u);
     }
     let retryMs: number | null = null;
     const keep = new Set(settled.keep);

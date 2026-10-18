@@ -17,8 +17,11 @@
 #   or a person returned it), other. Returns for a change of direction (withdrawn, revised, superseded) are redirects,
 #   counted apart. "other" is broken down by the reason's first words (tests before landing, the guards, ...).
 # Cause-repeat rate. For each return of a spec intent's proposal that the intent's next proposal followed and that next
-#   one settled (landed, returned or rejected): a repeat when the next one came back for the same cause. Rate = repeats
-#   over those returns, overall and per cause.
+#   one settled (landed, returned, rejected or already on trunk): a repeat when the next one came back for the same
+#   cause. Rate = repeats over those returns, overall and per cause.
+# Already on trunk (FT_ALREADY_ON_TRUNK). A proposal with status already_on_trunk would have changed nothing: its content
+#   was on trunk, so nothing landed for it and nothing came back. It is counted apart, never as landed or returned, and
+#   so is a spec intent closed that way (it shows landed, but no proposal of it landed, so it has no rounds to land).
 # Rounds and model calls to land. Rounds: the proposals a landed intent made up to and including the first that landed.
 #   Model calls: the calls the colony counted for the intent (FT_INTENT_SPEND, every layer: its agents and review);
 #   null without that flag. By cause: over the landed intents with at least one return of a cause before landing, and
@@ -51,7 +54,9 @@ require_relative "coordination"
 module ContentionReport
   CAUSES = %w[stale text_merge review rule other].freeze
   CAUSE_LABELS = { "stale" => "stale read", "text_merge" => "text-merge conflict", "review" => "review", "rule" => "rule", "other" => "other" }.freeze
-  SETTLED = %w[landed returned rejected].freeze
+  SETTLED = %w[landed returned rejected already_on_trunk].freeze
+  # A proposal closed with no commit, its content already on trunk (FT_ALREADY_ON_TRUNK).
+  ON_TRUNK = "already_on_trunk"
   # An intent an agent holds.
   HELD = %w[claimed proposed].freeze
   # A held merge's reason starts with one of these (worker trunk/mergelock.ts OPENERS).
@@ -132,7 +137,8 @@ module ContentionReport
     def intents
       rows = @spec.map { |iid, s| intent_row(iid, s) }
       landed = rows.count { |r| r[:status] == "landed" }
-      { total: rows.size, landed: landed, not_landed: rows.reject { |r| r[:status] == "landed" }.map { |r| r[:id] }, per_intent: rows }
+      { total: rows.size, landed: landed, already_on_trunk: rows.count { |r| r[:already_on_trunk] },
+        not_landed: rows.reject { |r| r[:status] == "landed" }.map { |r| r[:id] }, per_intent: rows }
     end
 
     def intent_row(iid, s)
@@ -144,6 +150,8 @@ module ContentionReport
       {
         id: s[:id], intent: iid, title: s[:title], change: s[:change] || "adds",
         status: intent_status(iid), proposals: props.size,
+        # Closed as already on trunk: no proposal of it landed, and one found its content on trunk.
+        already_on_trunk: first_landed.nil? && props.any? { |p| p[:status] == ON_TRUNK },
         rounds: first_landed && (first_landed + 1),
         returns: returns.map { |p| p[:cause] }.tally,
         model_calls: calls,
@@ -196,7 +204,8 @@ module ContentionReport
       by = CAUSES.to_h { |c| [c, counted.count { |p| p[:cause] == c }] }
       other = counted.select { |p| p[:cause] == "other" }.map { |p| ContentionReport.other_kind(p[:reason]) }.tally
       {
-        proposals: ours.size, landed: ours.count { |p| p[:status] == "landed" }, returned: counted.size, redirects: redirects,
+        proposals: ours.size, landed: ours.count { |p| p[:status] == "landed" }, already_on_trunk: ours.count { |p| p[:status] == ON_TRUNK },
+        returned: counted.size, redirects: redirects,
         rejected: ours.count { |p| p[:status] == "rejected" }, escalated_now: ours.count { |p| p[:status] == "escalated" },
         in_flight: ours.count { |p| %w[pending checking ready].include?(p[:status]) },
         by_cause: by, labels: CAUSE_LABELS, other: other.sort_by { |k, v| [-v, k] }.to_h

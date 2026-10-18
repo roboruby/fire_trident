@@ -44,6 +44,8 @@ export const METRIC_KEYS: readonly string[] = [
   "proposalsInFlight",
   "reviewQueue",
   "landedProposals",
+  // Already on trunk (FT_ALREADY_ON_TRUNK): changes closed with no commit, their content on trunk; neither landed nor returned.
+  "alreadyOnTrunk",
   "returned",
   "rejected",
   "escalated",

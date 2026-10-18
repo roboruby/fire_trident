@@ -166,6 +166,17 @@ export function textMergeCandidate(p: Pick<Proposal, "writeSet">, stale: OccResu
 }
 
 /**
+ * Already on trunk (FT_ALREADY_ON_TRUNK): would landing this change on `trunk` change nothing? Yes when every file it
+ * writes already holds the blob it writes there and every file it deletes is already absent (`undefined` from the index
+ * means absent). A change that writes nothing is not one: there is no content to find on trunk. Whatever the change
+ * read, and whatever base it started from, a change that changes nothing has nothing left to land.
+ */
+export function changesNothing(p: Pick<Proposal, "writeSet">, trunk: TrunkIndex): boolean {
+  if (!Array.isArray(p.writeSet) || p.writeSet.length === 0) return false;
+  return p.writeSet.every((w) => (trunk(w.path) ?? null) === (w.blob ?? null));
+}
+
+/**
  * Import-name revalidation (the trunk writer, with file contents): a proposal stale only through files it
  * read lands when, for each of them, every name it imports is still exported by the version it would land
  * on (`stale[].actual`) and the file only grew since the version it read (`grewOnly`: new top-level

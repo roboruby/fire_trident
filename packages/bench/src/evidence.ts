@@ -270,7 +270,7 @@ export function summarizeColony(r: ColonyReads): Obj {
         .slice(0, 20)
         .map((i) => ({ id: i.id, title: i.title, source: i.source, status: i.status, createdBy: i.createdBy, createdAt: iso(i.createdAt) })),
     },
-    proposals: { total: n("proposals"), landed: n("landedProposals"), returned: n("returned"), rejected: n("rejected"), escalated: n("escalated"), inFlight: n("proposalsInFlight"), reviewQueue: n("reviewQueue") },
+    proposals: { total: n("proposals"), landed: n("landedProposals"), alreadyOnTrunk: n("alreadyOnTrunk"), returned: n("returned"), rejected: n("rejected"), escalated: n("escalated"), inFlight: n("proposalsInFlight"), reviewQueue: n("reviewQueue") },
     landings: {
       total: n("landings"),
       note: "recent lists the snapshot's most recent landings (the API returns 20); every landing is a trunk commit with FT-* trailers and a note under refs/notes/firetrident",

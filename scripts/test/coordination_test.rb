@@ -347,10 +347,10 @@ class CoordinationTest < Minitest::Test
 
   def test_merged_fraction_counts_in_flight_as_not_merged_and_redirects_apart
     m = report[:mergedFraction]
-    assert_equal({ made: 19, landed: 9, returned: 6, redirected: 1, rejected: 2, inFlight: 1, other: 0 }, m[:proposals])
+    assert_equal({ made: 19, landed: 9, alreadyOnTrunk: 0, returned: 6, redirected: 1, rejected: 2, inFlight: 1, other: 0 }, m[:proposals])
     assert_in_delta 9 / 19.0, m[:merged], 1e-4
     assert_in_delta 0.5, m[:mergedOfSettled], 1e-4
-    assert_equal({ total: 19, withProposal: 18, landed: 9, byStatus: { "landed" => 9, "open" => 8, "proposed" => 1, "withdrawn" => 1 } }, m[:intents])
+    assert_equal({ total: 19, withProposal: 18, landed: 9, alreadyOnTrunk: 0, byStatus: { "landed" => 9, "open" => 8, "proposed" => 1, "withdrawn" => 1 } }, m[:intents])
     assert_in_delta 9 / 19.0, m[:intentsMerged], 1e-4
     assert_in_delta 0.5, m[:intentsMergedWithProposal], 1e-4
     assert_equal 1, report[:record][:vaccineProposalsLeftOut]
@@ -456,6 +456,16 @@ class CoordinationTest < Minitest::Test
     assert_includes md, "| Sprawl | top-level directories 2 → 4, regions 3 → 5 over 8 commits |"
     assert_includes md, "| Where the time went | 216.0 agent-seconds over 9 landed intents, from claim to landing:"
     assert_includes md, "| Critical path to the last landing | `int_10` (int_10 title) landed at +299.0 s in lnd_6 (1 change): no claim in the record"
+  end
+
+  # Already on trunk (FT_ALREADY_ON_TRUNK): the rows name the changes and intents closed that way, and only when there are some.
+  def test_markdown_names_changes_already_on_trunk
+    m = report[:mergedFraction]
+    on = report.merge(mergedFraction: m.merge(proposals: m[:proposals].merge(alreadyOnTrunk: 2), intents: m[:intents].merge(alreadyOnTrunk: 2)))
+    md = Coordination.markdown(on)
+    assert_includes md, "| Proposals merged | 9 of 19 (0.474); 6 returned, 1 redirected, 2 rejected, 1 in flight, 2 already on trunk (nothing landed, nothing came back) |"
+    assert_includes md, "| Intents merged | 9 of 19 (0.474), 2 of them closed as already on trunk |"
+    refute_includes Coordination.markdown(report), "already on trunk"
   end
 
   # The fixture's record predates the closure ledger: no intent event carries a cause.
@@ -814,6 +824,44 @@ class ClosuresTest < Minitest::Test
                  "2 closes recorded before the ledger, in no share |", row
     assert_equal "| Closures | none recorded; 1 close recorded before the ledger, in no share |",
                  Coordination.closure_row({ closures: 0, byKind: {}, reaped: { count: 0 }, beforeLedger: 1 })
+  end
+end
+
+# Definitions 1 and 10 with a change closed as already on trunk (FT_ALREADY_ON_TRUNK): its content was on trunk, so
+# nothing landed for it and nothing came back. It is counted apart, never as landed or returned.
+class AlreadyOnTrunkTest < Minitest::Test
+  def record
+    events = []
+    prop = ->(at, id, status, extra = {}) { events << { "t" => "proposal", "at" => at, "proposalId" => id, "intentId" => "int_#{id}", "agentId" => "agt_#{id}", "status" => status }.merge(extra) }
+    intent = ->(at, id, status, extra = {}) { events << { "t" => "intent", "at" => at, "intentId" => "int_#{id}", "status" => status, "title" => id }.merge(extra) }
+    intent.(1, "a", "claimed")
+    intent.(2, "b", "claimed")
+    prop.(3, "a", "ready")
+    prop.(4, "b", "ready")
+    prop.(5, "a", "landed")
+    intent.(5, "a", "landed", "cause" => "landed", "agentId" => "agt_a", "agentKind" => "internal", "gapMs" => 0)
+    prop.(6, "b", "already_on_trunk", "reason" => "Your change is already on trunk: what it writes is there already, landed by agent agt_a in lnd_1.")
+    intent.(6, "b", "landed", "cause" => "already_on_trunk", "agentId" => "agt_b", "agentKind" => "internal", "gapMs" => 0, "onTrunk" => { "trunkSha" => "a" * 40, "landingId" => "lnd_1" })
+    Coordination::Record.new({ "source" => "recorded", "total" => events.size, "events" => events })
+  end
+
+  def test_proposals_and_intents_count_it_apart
+    m = Coordination::Report.allocate.send(:merged_fraction, record)
+    assert_equal({ made: 2, landed: 1, alreadyOnTrunk: 1, returned: 0, redirected: 0, rejected: 0, inFlight: 0, other: 0 }, m[:proposals])
+    assert_in_delta 0.5, m[:merged], 1e-4
+    assert_in_delta 0.5, m[:mergedOfSettled], 1e-4
+    assert_equal 2, m[:intents][:landed]
+    assert_equal 1, m[:intents][:alreadyOnTrunk]
+  end
+
+  def test_closures_count_its_cause
+    c = Coordination.closures(record, [])
+    assert_equal({ total: 2, counts: { "landed" => 1, "already_on_trunk" => 1 }, shares: { "landed" => 0.5, "already_on_trunk" => 0.5 } }, c[:byKind]["internal"])
+    assert_includes Coordination.closure_row(c), "in-platform 2 (landed 1, 50.0%; already on trunk 1, 50.0%)"
+  end
+
+  def test_no_return_is_counted_for_it
+    assert_equal 0, Coordination.heads_up(record)[:returns]
   end
 end
 

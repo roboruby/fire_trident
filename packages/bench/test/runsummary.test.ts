@@ -14,13 +14,15 @@ describe("runSummary", () => {
         { at: t0 + 120_000, proposalIds: ["f", "g", "h", "i", "j"] },
       ],
       timeToLand: Array.from({ length: 100 }, (_, i) => (i + 1) * 100),
-      delta: { landings: 3, landedProposals: 10, landedIntents: 10, proposals: 10 },
+      // Two more changes closed as already on trunk (FT_ALREADY_ON_TRUNK): counted apart, in no landing.
+      delta: { landings: 3, landedProposals: 10, landedIntents: 10, proposals: 12, alreadyOnTrunk: 2 },
     });
     expect(r).toEqual({
       agentsJoined: 2000,
       landings: 3,
       landedProposals: 10,
       landedIntents: 10,
+      alreadyOnTrunk: 2,
       firstLandingAt: "2026-10-14T20:00:00.000Z",
       lastLandingAt: "2026-10-14T20:02:00.000Z",
       spanS: 120,
@@ -36,6 +38,7 @@ describe("runSummary", () => {
     expect(r.spanS).toBeNull();
     expect(r.landingsPerMin).toBeNull();
     expect(r.landedIntents).toBeNull();
+    expect(r.alreadyOnTrunk).toBeNull();
     expect(r.timeToLandP50Ms).toBeNull();
     expect(runSummary({ registered: 0, landings: [], timeToLand: [], delta: {} }).firstLandingAt).toBeNull();
   });

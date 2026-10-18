@@ -147,8 +147,8 @@ export interface AgentRpc {
   direct?(p: { directive: Directive; intent?: Intent }): Promise<unknown>;
 }
 
-/** Proposal states after which nothing more happens to a proposal. */
-export const TERMINAL_STATUSES: ReadonlySet<ProposalStatus> = new Set<ProposalStatus>(["landed", "returned", "rejected"]);
+/** Proposal states after which nothing more happens to a proposal (already_on_trunk: FT_ALREADY_ON_TRUNK, nothing to redo). */
+export const TERMINAL_STATUSES: ReadonlySet<ProposalStatus> = new Set<ProposalStatus>(["landed", "returned", "rejected", "already_on_trunk"]);
 
 /** RPC stub of a colony's ColonyDO. */
 export function colonyStub(env: Pick<Env, "COLONY">, colonyId: Id): ColonyRpc {

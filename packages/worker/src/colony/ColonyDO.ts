@@ -208,6 +208,8 @@ import { ClosureLedger, abandonCause, closureOf, eventFields, reapCutoffs, silen
 import type { ClosureCause, ClosureReport, IntentClosure } from "@fire_trident/core";
 import { CoordMeter, coordTokensReport, headsUpBumps, type CoordTokensReport } from "./coordtokens.ts";
 import { ColonyAudit, type AuditAnswer, type AuditHost, type AuditReport, type CanaryAnswer } from "./audit.ts";
+import { onTrunkSourceOf, onTrunkText } from "../trunk/ontrunk.ts";
+import type { OnTrunkSource } from "@fire_trident/core";
 
 /**
  * Result of ColonyDO.take: an assignment, or advice to wait and retry. `review`: what review will
@@ -292,7 +294,7 @@ const CANDIDATES_TTL_MS = 200;
 /** The metrics tick recomputes intent and agent counts (table scans) at most this often. */
 const COUNTS_TTL_MS = 10_000;
 /** In-platform agents' outcomes are pushed to them (AgentDO.outcome) in these states. */
-const PUSHED_STATES: ReadonlySet<string> = new Set(["landed", "returned", "rejected", "escalated"]);
+const PUSHED_STATES: ReadonlySet<string> = new Set(["landed", "returned", "rejected", "escalated", "already_on_trunk"]);
 /** Picks re-tried when a concurrent take wins the chosen intent. */
 const PICK_ATTEMPTS = 8;
 /** Heartbeats refresh claim marks at most this often (claims decay with tau = 5 min). */
@@ -2186,7 +2188,7 @@ export class ColonyDO extends DurableObject<Env> {
     // even after that proposal landed or went back.
     const repeat = this.repeatedProposal(input.agentId, intentRow.id, input.headSha);
     if (repeat) {
-      if (input.notify === true && !SENT_BACK.has(repeat.status) && repeat.status !== "landed") this.watchOutcome(repeat.id, repeat.agentId);
+      if (input.notify === true && !SENT_BACK.has(repeat.status) && repeat.status !== "landed" && repeat.status !== "already_on_trunk") this.watchOutcome(repeat.id, repeat.agentId);
       // Field guide (FT_FIELD_GUIDE): a repeat hears about the lesson the first call left.
       const again = input.lesson !== undefined ? this.guide()?.repeated(repeat.id) : undefined;
       return again ? { ...repeat, lesson: again } : repeat;
@@ -2405,8 +2407,8 @@ export class ColonyDO extends DurableObject<Env> {
       const row = this.proposalRow(id);
       if (!row) continue;
       const prev = JSON.parse(row.data) as Proposal;
-      // Landed and rejected are final; returned may only move to rejected.
-      if (prev.status === "landed" || prev.status === "rejected") continue;
+      // Landed, rejected and already on trunk are final; returned may only move to rejected.
+      if (prev.status === "landed" || prev.status === "rejected" || prev.status === "already_on_trunk") continue;
       if (prev.status === "returned" && patch.status !== undefined && patch.status !== "rejected") continue;
       const next: Proposal = {
         ...prev,
@@ -2419,6 +2421,13 @@ export class ColonyDO extends DurableObject<Env> {
         evidence: patch.evidence ? { ...prev.evidence, ...patch.evidence } : prev.evidence,
       };
       if (!next.evidence.notVerified) next.evidence = { ...next.evidence, notVerified: DEFAULT_NOT_VERIFIED, notVerifiedBy: "platform" };
+      // Already on trunk (trunk/ontrunk.ts): where its content came from, checked, and the sentence its agent reads.
+      if (next.status === "already_on_trunk") {
+        const source = onTrunkSourceOf(next.onTrunk);
+        if (source) next.onTrunk = source;
+        else delete next.onTrunk;
+        if (!next.reason && source) next.reason = onTrunkText(source);
+      }
       // What beat it (colony/movedby.ts): a change back because trunk moved its files names the landings that moved them.
       if (next.status === "returned" && prev.status !== "returned") this.attributeReturn(next, stale, quoted);
       this.writeProposal(next, now);
@@ -2672,7 +2681,7 @@ export class ColonyDO extends DurableObject<Env> {
     if (!row) throw ftError(404, `unknown proposal ${proposalId}`);
     // With an inline change's contents: an antibody minted from a rejection reads the change.
     const p = this.withContents(JSON.parse(row.data) as Proposal);
-    if (p.status === "landed" || p.status === "rejected" || p.status === "returned") throw ftError(409, `proposal is already ${p.status}`);
+    if (p.status === "landed" || p.status === "rejected" || p.status === "returned" || p.status === "already_on_trunk") throw ftError(409, `proposal is already ${p.status}`);
     const engine = this.decider();
     // Blind canaries (colony/audit.ts): a canary is revealed and scored and stays sealed; nothing else of a decision happens.
     const canary = this.audits().canaryDecision(p, d, reason, by);
@@ -6012,12 +6021,12 @@ export class ColonyDO extends DurableObject<Env> {
    * holder as its row stood before the close, or its id (read here). Vaccine intents and closes with no holder are not
    * recorded. Fails open: a failure is logged and the close goes on without a cause.
    */
-  private closedBy(row: IntentRow, cause: ClosureCause, status: IntentStatus, now: number, agent: { id: Id; kind: string | null; lastSeen: number | null } | Id | null | undefined, detail?: string): ClosureEventFields {
+  private closedBy(row: IntentRow, cause: ClosureCause, status: IntentStatus, now: number, agent: { id: Id; kind: string | null; lastSeen: number | null } | Id | null | undefined, detail?: string, onTrunk?: OnTrunkSource): ClosureEventFields {
     if (!agent || row.created_by === "vaccine") return {};
     try {
       const known = typeof agent === "string" ? this.agentRow(agent) : undefined;
       const who = typeof agent === "string" ? { id: agent, kind: known?.kind ?? null, lastSeen: known?.last_seen ?? null } : agent;
-      return eventFields(this.closures().record({ intentId: row.id, cause, status, at: now, agent: who, ...(detail ? { detail } : {}) }));
+      return eventFields(this.closures().record({ intentId: row.id, cause, status, at: now, agent: who, ...(detail ? { detail } : {}), ...(onTrunk ? { onTrunk } : {}) }));
     } catch (err) {
       console.warn(`closure of intent ${row.id} (${cause}) not recorded: ${errorText(err)}`);
       return {};
@@ -6331,8 +6340,45 @@ export class ColonyDO extends DurableObject<Env> {
         this.bump("landedProposals", 1, now);
         break;
       }
+      case "already_on_trunk": {
+        // Already on trunk (trunk/ontrunk.ts): nothing landed and nothing came back. The agent's claims go with no failure
+        // mark and it goes idle; the intent's need is met (closeOnTrunk). Counted apart from landings and returns.
+        const fp = intent ? this.footprintOf(intent.id, intent.footprint) : p.declared.footprint;
+        fx.batch.clear(fp, { agentId: p.agentId, intentId: p.intentId, kind: "claim" });
+        if (agent && (agent.intent_id === p.intentId || agent.intent_id === null)) {
+          this.sql.exec("UPDATE agents SET state = 'idle', intent_id = NULL, workspace = NULL WHERE id = ?", agent.id);
+          if (agent.state !== "idle") fx.events.push({ t: "agent", at: now, agentId: agent.id, kind: agent.kind as AgentKind, state: "idle" });
+          fx.release.add(agent.id);
+        }
+        this.closeOnTrunk(p, now, fx);
+        this.bump("alreadyOnTrunk", 1, now);
+        break;
+      }
       default:
         break;
+    }
+  }
+
+  /**
+   * Already on trunk (FT_ALREADY_ON_TRUNK, trunk/ontrunk.ts): the intent of a change that would have landed nothing. Its
+   * need is met as a landing's would be: it shows landed, its need marks go and its rule has one fewer open violation file,
+   * with the closure cause already_on_trunk naming where the content came from. `landedIntents` is not counted: no change
+   * of it landed. A change built on an older revision than a later substantive amendment leaves the intent live at its
+   * current revision (keepRevised); a withdrawn or settled intent is left as it is.
+   */
+  private closeOnTrunk(p: Proposal, now: number, fx: Effects): void {
+    const row = this.intentRow(p.intentId);
+    if (!row || row.status === "landed" || row.status === "withdrawn" || row.status === "abandoned") return;
+    const missed = this.missedRevision(p);
+    if (missed) return this.keepRevised(row, missed, now, fx);
+    const why = this.closedBy(row, "already_on_trunk", "landed", now, p.agentId, p.reason, p.onTrunk);
+    this.sql.exec("UPDATE intents SET status = 'landed', updated_at = ? WHERE id = ?", now, row.id);
+    const fp = this.footprintOf(row.id, row.footprint);
+    fx.batch.clear(fp, { intentId: row.id, kind: "need" });
+    fx.events.push({ t: "intent", at: now, intentId: row.id, status: "landed", title: row.title, footprint: fp, ...why });
+    if (row.rule_id && row.violations > 0) {
+      this.sql.exec("UPDATE rules SET open_violations = MAX(0, open_violations - ?) WHERE id = ?", row.violations, row.rule_id);
+      fx.events.push(this.violationsEvent(now));
     }
   }
 
@@ -6792,7 +6838,7 @@ export class ColonyDO extends DurableObject<Env> {
     // An inline change's contents stay in their own table, never in the row; they go once it settles (InlineContents.settle).
     const row = p.contents === undefined ? p : { ...p, contents: undefined };
     this.sql.exec("UPDATE proposals SET status = ?, updated_at = ?, data = ? WHERE id = ?", p.status, now, JSON.stringify(row), p.id);
-    if ((p.status === "landed" || p.status === "returned" || p.status === "rejected") && isInlineChange(p)) this.inline().settle(p.id, p.status, now);
+    if ((p.status === "landed" || p.status === "returned" || p.status === "rejected" || p.status === "already_on_trunk") && isInlineChange(p)) this.inline().settle(p.id, p.status, now);
   }
 
   private footprintOf(id: Id, json: string): Path[] {

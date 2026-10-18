@@ -14,6 +14,11 @@ export interface RunSummary {
   landedProposals: number | null;
   /** Intents the run landed (the colony's `landedIntents`). */
   landedIntents: number | null;
+  /**
+   * Changes closed as already on trunk (the colony's `alreadyOnTrunk`, FT_ALREADY_ON_TRUNK): their content was on trunk
+   * already, so nothing landed for them; counted in neither number above. Null when the colony does not count them.
+   */
+  alreadyOnTrunk: number | null;
   /** The run's first and last landing on the live feed, by the colony's clock (ISO), and the seconds between them. */
   firstLandingAt: string | null;
   lastLandingAt: string | null;
@@ -52,6 +57,7 @@ export function runSummary(input: RunSummaryInput): RunSummary {
     landings: metric("landings"),
     landedProposals: metric("landedProposals"),
     landedIntents: metric("landedIntents"),
+    alreadyOnTrunk: metric("alreadyOnTrunk"),
     firstLandingAt: first !== null ? new Date(first).toISOString() : null,
     lastLandingAt: last !== null ? new Date(last).toISOString() : null,
     spanS: spanMs !== null ? spanMs / 1000 : null,

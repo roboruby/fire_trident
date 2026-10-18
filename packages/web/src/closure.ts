@@ -7,7 +7,7 @@ import { fmtDuration, timeAgo } from "./format.ts";
  * few words on its line in the events log. Landed and withdrawn closures get no label: the intent's status says them.
  */
 
-const CAUSES: readonly ClosureCause[] = ["landed", "released", "escalated", "withdrawn", "gave_up", "reaped_silent", "returned", "stopped"];
+const CAUSES: readonly ClosureCause[] = ["landed", "released", "escalated", "withdrawn", "gave_up", "reaped_silent", "returned", "stopped", "already_on_trunk"];
 const KINDS: readonly AgentKind[] = ["internal", "external", "synthetic"];
 
 /** A closure the colony sent (on an intent, or as an intent event's fields), checked field by field; null otherwise. */
@@ -22,6 +22,11 @@ export function closureFrom(raw: unknown, status?: IntentStatus): IntentClosure 
   if (typeof o.agentId === "string" && o.agentId) out.agentId = o.agentId;
   if (typeof o.agentKind === "string" && (KINDS as readonly string[]).includes(o.agentKind)) out.agentKind = o.agentKind as AgentKind;
   if (typeof o.gapMs === "number" && Number.isFinite(o.gapMs) && o.gapMs >= 0) out.gapMs = o.gapMs;
+  // Already on trunk (FT_ALREADY_ON_TRUNK): where the content came from.
+  const from = o.onTrunk as Record<string, unknown> | undefined;
+  if (o.cause === "already_on_trunk" && from && typeof from.trunkSha === "string") {
+    out.onTrunk = { trunkSha: from.trunkSha, ...(typeof from.landingId === "string" ? { landingId: from.landingId } : {}), ...(typeof from.agentId === "string" ? { agentId: from.agentId } : {}) };
+  }
   return out;
 }
 
@@ -49,6 +54,10 @@ export function closureBadge(c: IntentClosure | null | undefined, agentName: (id
       return { label: "returned", title: `${who}'s change came back${ago}, so it reopened.` };
     case "stopped":
       return { label: "agent stopped", title: `A person stopped ${who}${ago}, so it reopened with a failure mark.` };
+    case "already_on_trunk": {
+      const from = c.onTrunk?.landingId ?? (c.onTrunk ? `trunk commit ${c.onTrunk.trunkSha.slice(0, 7)}` : "trunk");
+      return { label: "already on trunk", title: `${who}'s change was already on trunk${ago} (from ${from}), so nothing landed for it and its intent is done.` };
+    }
   }
   return null;
 }
@@ -71,6 +80,8 @@ export function closureEventText(c: IntentClosure | null): string {
       return " · agent stopped";
     case "withdrawn":
       return " · withdrawn while held";
+    case "already_on_trunk":
+      return c.onTrunk?.landingId ? ` · already on trunk from ${c.onTrunk.landingId}` : " · already on trunk";
     case "landed":
       return "";
   }

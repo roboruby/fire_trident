@@ -1,4 +1,5 @@
-import type { AgentKind, ClosureCause, ClosureKindShare, ClosureReport, Id, IntentClosure, IntentStatus } from "@fire_trident/core";
+import type { AgentKind, ClosureCause, ClosureKindShare, ClosureReport, Id, IntentClosure, IntentStatus, OnTrunkSource } from "@fire_trident/core";
+import { onTrunkSourceOf } from "../trunk/ontrunk.ts";
 
 /**
  * The closure ledger: why each intent an agent held closed or reopened, and the silent-agent limit.
@@ -7,8 +8,10 @@ import type { AgentKind, ClosureCause, ClosureKindShare, ClosureReport, Id, Inte
  * its cause: `landed`, `released` (the agent gave it back), `escalated` (the agent reported it to a person), `withdrawn`
  * (a person or a change of direction called it off), `gave_up` (an in-platform agent's loop gave up), `reaped_silent`
  * (the agent was silent past the colony's limit and the reaper took the intent back), `returned` (review or a person
- * sent its change back) and `stopped` (a person stopped the agent). Each record keeps the agent, its kind and the gap
- * from the agent's last sign of life the colony recorded (a heartbeat or a call) to the close; a close the agent's own
+ * sent its change back), `stopped` (a person stopped the agent) and `already_on_trunk` (FT_ALREADY_ON_TRUNK: its change
+ * would have changed nothing, its content already on trunk, so nothing landed; the record names where the content came
+ * from, trunk/ontrunk.ts). Each record keeps the agent, its kind and the gap from the agent's last sign of life the
+ * colony recorded (a heartbeat or a call) to the close; a close the agent's own
  * call made has a gap of 0. The intent's latest closure is kept on its row (shown on the intent), every closure in
  * `intent_closures` (the intent's history; the newest LEDGER_KEEP rows), and a running count per agent kind and cause in
  * `closure_counts` (the shares in the metrics report). The intent event of the close carries the same fields.
@@ -21,7 +24,7 @@ import type { AgentKind, ClosureCause, ClosureKindShare, ClosureReport, Id, Inte
  */
 
 /** Every cause, in the order reports list them. */
-export const CLOSURE_CAUSES: readonly ClosureCause[] = ["landed", "released", "escalated", "withdrawn", "gave_up", "reaped_silent", "returned", "stopped"];
+export const CLOSURE_CAUSES: readonly ClosureCause[] = ["landed", "released", "escalated", "withdrawn", "gave_up", "reaped_silent", "returned", "stopped", "already_on_trunk"];
 /** Causes the agent's own call made: its call is its sign of life, so the gap is 0. */
 const OWN_CALL: ReadonlySet<ClosureCause> = new Set<ClosureCause>(["released", "escalated", "gave_up"]);
 const AGENT_KINDS: readonly AgentKind[] = ["internal", "external", "synthetic"];
@@ -63,7 +66,7 @@ export interface SilentTtlView {
 }
 
 /** The fields an intent event of a close carries (empty when nothing was recorded). */
-export type ClosureEventFields = Partial<Pick<IntentClosure, "cause" | "agentId" | "agentKind" | "gapMs">>;
+export type ClosureEventFields = Partial<Pick<IntentClosure, "cause" | "agentId" | "agentKind" | "gapMs" | "onTrunk">>;
 
 /** What ColonyDO tells the ledger about one close or reopen. */
 export interface ClosureInput {
@@ -76,6 +79,8 @@ export interface ClosureInput {
   agent: { id: Id; kind: string | null; lastSeen: number | null };
   /** A short reason (the release's or give-up's words, the return's status), kept with the row; never shown as instructions. */
   detail?: string;
+  /** `already_on_trunk`: where the content of its change came from. */
+  onTrunk?: OnTrunkSource;
 }
 
 /** Create the ledger's tables and the intent column (additive: the column only when it is missing, nothing rewritten). */
@@ -87,6 +92,13 @@ export function migrateClosure(sql: SqlRunner): void {
   sql.exec("CREATE INDEX IF NOT EXISTS intent_closures_by_cause ON intent_closures(cause, seq)");
   sql.exec("CREATE TABLE IF NOT EXISTS closure_counts (agent_kind TEXT NOT NULL, cause TEXT NOT NULL, n INTEGER NOT NULL, PRIMARY KEY (agent_kind, cause))");
   sql.exec("CREATE TABLE IF NOT EXISTS silent_ttl (id INTEGER PRIMARY KEY CHECK (id = 1), ms INTEGER NOT NULL, set_by TEXT NOT NULL, set_at INTEGER NOT NULL)");
+  // Already on trunk (FT_ALREADY_ON_TRUNK): where a closure's content came from, a column added only when it is missing.
+  try {
+    const kept = new Set((sql.exec("PRAGMA table_info(intent_closures)").toArray() as Array<{ name?: unknown }>).map((c) => String(c?.name ?? "")));
+    if (kept.size > 0 && !kept.has("on_trunk")) sql.exec("ALTER TABLE intent_closures ADD COLUMN on_trunk TEXT");
+  } catch {
+    // Already there (a concurrent migration), or a storage that cannot say: closures are kept without it.
+  }
   let columns: Set<string> | null = null;
   try {
     columns = new Set((sql.exec("PRAGMA table_info(intents)").toArray() as Array<{ name?: unknown }>).map((c) => String(c?.name ?? "")));
@@ -140,6 +152,8 @@ export function closureOf(raw: unknown): IntentClosure | null {
   if (typeof o.agentId === "string" && o.agentId) out.agentId = o.agentId;
   if (typeof o.agentKind === "string" && (AGENT_KINDS as readonly string[]).includes(o.agentKind)) out.agentKind = o.agentKind as AgentKind;
   if (typeof o.gapMs === "number" && Number.isFinite(o.gapMs) && o.gapMs >= 0) out.gapMs = Math.round(o.gapMs);
+  const from = o.cause === "already_on_trunk" ? onTrunkSourceOf(o.onTrunk) : null;
+  if (from) out.onTrunk = from;
   return out;
 }
 
@@ -150,6 +164,7 @@ export function eventFields(c: IntentClosure | null): ClosureEventFields {
   if (c.agentId) out.agentId = c.agentId;
   if (c.agentKind) out.agentKind = c.agentKind;
   if (c.gapMs !== undefined) out.gapMs = c.gapMs;
+  if (c.onTrunk) out.onTrunk = c.onTrunk;
   return out;
 }
 
@@ -189,6 +204,16 @@ function ttlNote(ms: number, isDefault: boolean): string {
   return `An agent outside the platform silent for ${durationText(ms)} loses its claimed intents to the colony, which reopens them with a failure mark.${floor}`;
 }
 
+/** A stored source (already on trunk), or undefined when there is none or it does not parse. */
+function onTrunkJson(text: string | null | undefined): unknown {
+  if (typeof text !== "string" || text === "") return undefined;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+}
+
 /** The median of a sorted list, or null. */
 function median(sorted: readonly number[]): number | null {
   if (sorted.length === 0) return null;
@@ -196,7 +221,7 @@ function median(sorted: readonly number[]): number | null {
   return sorted.length % 2 === 1 ? (sorted[m] ?? null) : Math.round(((sorted[m - 1] ?? 0) + (sorted[m] ?? 0)) / 2);
 }
 
-type ClosureRow = { cause: string; at: number; status: string; agent_id: string | null; agent_kind: string | null; gap_ms: number | null };
+type ClosureRow = { cause: string; at: number; status: string; agent_id: string | null; agent_kind: string | null; gap_ms: number | null; on_trunk?: string | null };
 type TtlRow = { ms: number; set_by: string; set_at: number };
 
 /** One colony's closure ledger and silent-agent limit, over its storage. */
@@ -218,6 +243,8 @@ export class ClosureLedger {
     if (kind) closure.agentKind = kind;
     const gap = gapOf(e.cause, e.agent.lastSeen, e.at);
     if (gap !== undefined) closure.gapMs = gap;
+    const from = e.cause === "already_on_trunk" ? onTrunkSourceOf(e.onTrunk) : null;
+    if (from) closure.onTrunk = from;
     const detail = typeof e.detail === "string" ? e.detail.replace(/\s+/g, " ").trim().slice(0, 300) || null : null;
     this.sql.exec(
       "INSERT INTO intent_closures (intent_id, at, cause, status, agent_id, agent_kind, gap_ms, detail) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
@@ -230,6 +257,14 @@ export class ClosureLedger {
       gap ?? null,
       detail,
     );
+    // Already on trunk: the source goes in its own column (an older storage without it keeps the row without it).
+    if (from) {
+      try {
+        this.sql.exec("UPDATE intent_closures SET on_trunk = ? WHERE seq = last_insert_rowid()", JSON.stringify(from));
+      } catch {
+        // No such column: the intent's latest closure still names it.
+      }
+    }
     this.sql.exec(
       "INSERT INTO closure_counts (agent_kind, cause, n) VALUES (?, ?, 1) ON CONFLICT(agent_kind, cause) DO UPDATE SET n = n + 1",
       kind ?? "unknown",
@@ -246,10 +281,17 @@ export class ClosureLedger {
 
   /** The intent's closures, newest first (at most HISTORY_CAP). */
   history(intentId: Id, limit = HISTORY_CAP): IntentClosure[] {
-    const rows = this.sql
-      .exec("SELECT cause, at, status, agent_id, agent_kind, gap_ms FROM intent_closures WHERE intent_id = ? ORDER BY seq DESC LIMIT ?", intentId, Math.max(1, Math.min(limit, HISTORY_CAP)))
-      .toArray() as ClosureRow[];
-    return rows.map((r) => closureOf({ cause: r.cause, at: r.at, status: r.status, agentId: r.agent_id ?? undefined, agentKind: r.agent_kind ?? undefined, gapMs: r.gap_ms ?? undefined })).filter((c): c is IntentClosure => c !== null);
+    const cap = Math.max(1, Math.min(limit, HISTORY_CAP));
+    let rows: ClosureRow[];
+    try {
+      rows = this.sql.exec("SELECT cause, at, status, agent_id, agent_kind, gap_ms, on_trunk FROM intent_closures WHERE intent_id = ? ORDER BY seq DESC LIMIT ?", intentId, cap).toArray() as ClosureRow[];
+    } catch {
+      // A storage without the on_trunk column (already on trunk, FT_ALREADY_ON_TRUNK): the history as before.
+      rows = this.sql.exec("SELECT cause, at, status, agent_id, agent_kind, gap_ms FROM intent_closures WHERE intent_id = ? ORDER BY seq DESC LIMIT ?", intentId, cap).toArray() as ClosureRow[];
+    }
+    return rows
+      .map((r) => closureOf({ cause: r.cause, at: r.at, status: r.status, agentId: r.agent_id ?? undefined, agentKind: r.agent_kind ?? undefined, gapMs: r.gap_ms ?? undefined, onTrunk: onTrunkJson(r.on_trunk) }))
+      .filter((c): c is IntentClosure => c !== null);
   }
 
   /** Shares per agent kind and cause, the reaped agents' gaps, and the limit (the metrics report's `closures`). */
