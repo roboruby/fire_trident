@@ -1,4 +1,4 @@
-import type { DecisionLayer, Path, Rule } from "@fire_trident/core";
+import type { Path, Rule } from "@fire_trident/core";
 import { importsOf } from "@fire_trident/core";
 import { applyReplacement } from "../agents/change.ts";
 import { loosenedGuards } from "./danger.ts";

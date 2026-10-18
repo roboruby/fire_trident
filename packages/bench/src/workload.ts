@@ -102,7 +102,7 @@ export function buildModel(
   opts: { repo: string; head: string; cap: number; maxNeighbours: number },
 ): WorkloadModel {
   const used: string[][] = [];
-  let dropped = { release: 0, generatedOnly: 0, tooBig: 0 };
+  const dropped = { release: 0, generatedOnly: 0, tooBig: 0 };
   for (const c of commits) {
     if (RELEASE.test(c.subject.trim())) {
       dropped.release++;

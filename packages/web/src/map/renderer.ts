@@ -923,7 +923,7 @@ export class MapRenderer {
   // -- the field -------------------------------------------------------------
 
   private drawField(now: number, wall: number): void {
-    const { L, W, H } = this;
+    const { W, H } = this;
     this.ensureScreen();
     const f = this.fctx;
     const g = this.gctx;

@@ -150,7 +150,7 @@ describe("a take marks what moved since a lesson was written", () => {
   });
 
   it("keeps a lesson whose scope was cut at the cap even when every kept file changed", () => {
-    const { guide, sql, land, activeLesson, stored } = setup();
+    const { sql, land, activeLesson, stored } = setup();
     const id = activeLesson("The router table is generated at build time.", [], [v("src/a.ts", "2")], "lnd_1", 10_100);
     const l = stored(id);
     sql.exec("UPDATE guide_lessons SET data = ? WHERE id = ?", JSON.stringify({ ...l, scope: { ...l.scope, more: 3 } }), id);
@@ -175,7 +175,7 @@ describe("a take ranks and carries", () => {
   });
 
   it("carries a lesson recorded before scopes as before: unmarked, never left out, off the footprint", () => {
-    const { guide, sql, land, activeLesson, stored } = setup();
+    const { sql, land, activeLesson, stored } = setup();
     const id = activeLesson("An old lesson with no scope stored.", [], [v("src/a.ts", "2")], "lnd_1", 10_100);
     const { scope: _drop, ...old } = stored(id);
     sql.exec("UPDATE guide_lessons SET data = ? WHERE id = ?", JSON.stringify(old), id);

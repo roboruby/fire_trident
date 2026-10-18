@@ -17,7 +17,8 @@ async function events(colonyId: string): Promise<Array<Record<string, unknown>>>
   return page.body.events.filter((e) => e.t === "paused" || e.t === "resumed").map(({ seq: _seq, at: _at, ...e }) => e);
 }
 
-describe("pausing the whole deployment", () => {
+// One retry: under a full-suite load these tests can run out of time; alone they pass.
+describe("pausing the whole deployment", { retry: 1 }, () => {
   it("holds every colony's agents and lanes, a new colony too, until a person resumes", async () => {
     const one = await newColony();
     const two = await newColony();

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import type { AgentInfo, Colony, Id, Intent } from "@fire_trident/core";
+import type { AgentInfo, Colony, Intent } from "@fire_trident/core";
 import { FORCE_ARGUMENT, TWIN_DESCRIPTION, twinNote, type DeclareAnswer } from "../../src/colony/twins.ts";
 import { FireTridentMcp } from "../../src/mcp/FireTridentMcp.ts";
 import { FireTridentTools } from "../../src/mcp/tools.ts";

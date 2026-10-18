@@ -503,7 +503,7 @@ function tokenize(src: string): Lexed | { error: string } {
     if (/[0-9]/.test(c) || (c === "." && /[0-9]/.test(src[i + 1] ?? ""))) {
       const m = NUMBER.exec(src.slice(i, i + 400));
       if (!m || m[0] === "") return fail("a number this reader does not read", i);
-      let j = i + m[0].length;
+      const j = i + m[0].length;
       if (j < src.length && ID_START.test(src[j]!)) return fail("a number run into a name", i);
       push({ k: "num", v: m[0], s: start, e: j });
       i = j;

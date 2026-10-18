@@ -214,7 +214,7 @@ export function answerRead(rec: Recording, method: string, pathname: string, sea
     const page = eventsPage(rec, new URLSearchParams(search));
     return page ? { status: 200, statusText: "OK", body: page, hit: true } : miss(key);
   }
-  if (Object.prototype.hasOwnProperty.call(rec.reads, key)) return { status: 200, statusText: "OK", body: rec.reads[key], hit: true };
+  if (Object.hasOwn(rec.reads, key)) return { status: 200, statusText: "OK", body: rec.reads[key], hit: true };
   const refused = rec.refused[key];
   if (refused) return { status: refused.status, statusText: "Refused when recorded", body: { error: refused.error || `The deployment refused GET ${key} when this was recorded.` }, hit: true };
   return miss(key);

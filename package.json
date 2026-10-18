@@ -7,9 +7,11 @@
     "build": "npm run build --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "biome lint --error-on-warnings .",
     "deploy": "npm run build -w @fire_trident/web && npm run deploy -w @fire_trident/worker"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.5.15",
     "typescript": "7.0.2",
     "vitest": "4.1.11"
   }

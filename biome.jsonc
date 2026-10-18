@@ -1,0 +1,116 @@
+// Biome lints the repository (`npm run lint`); the formatter is off, so it never rewrites a file's layout.
+// Rules start from Biome's recommended set. Each rule turned off below says why: it flags a pattern the code uses on
+// purpose, or it would need a sweeping change across packages without catching a bug. The rules that catch real bugs
+// (unused imports, variables and private members, unsafe optional chaining, debugger statements, duplicate keys,
+// suspicious equality, global eval and the rest of the recommended set) stay on, and `npm run lint` fails on warnings too.
+{
+  "$schema": "https://biomejs.dev/schemas/2.5.15/schema.json",
+  "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
+  "files": {
+    "includes": [
+      "**",
+      "!**/node_modules",
+      "!**/dist",
+      // Published run logs and results: data, not code.
+      "!packages/bench/results",
+      "!spike/results",
+      "!**/recordings",
+      // Copies of core modules written by scripts/vendor_cli.rb (core is linted; package.test.ts keeps them equal).
+      "!packages/cli/src/answerable.ts",
+      "!packages/cli/src/connect.ts",
+      "!packages/cli/src/pricing.ts",
+      "!packages/cli/src/testdelta.ts",
+      "!packages/cli/src/decides.ts",
+      "!packages/cli/src/lifecycle.ts",
+      "!packages/cli/src/whyholds.ts"
+    ]
+  },
+  "formatter": { "enabled": false },
+  "assist": { "enabled": false },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "recommended",
+      "a11y": {
+        // The web views use custom ARIA widgets (the map, the review cards); each of these needs a reviewed markup
+        // change in packages/web, which belongs in a dedicated accessibility pass rather than a lint sweep.
+        "noAutofocus": "off",
+        "noNoninteractiveElementToInteractiveRole": "off",
+        "noNoninteractiveTabindex": "off",
+        "noRedundantRoles": "off",
+        "noStaticElementInteractions": "off",
+        "useAriaPropsSupportedByRole": "off",
+        "useFocusableInteractive": "off",
+        "useKeyWithClickEvents": "off",
+        "useSemanticElements": "off"
+      },
+      "complexity": {
+        // Readability preferences with no bug behind them; following them would touch hundreds of lines.
+        "noAdjacentSpacesInRegex": "off",
+        "noCommaOperator": "off",
+        "noImportantStyles": "off",
+        "noUselessStringRaw": "off",
+        "noUselessThisAlias": "off",
+        "useIndexOf": "off",
+        "useLiteralKeys": "off",
+        "useOptionalChain": "off"
+      },
+      "correctness": {
+        // Unused parameters are kept to match a callback's or an interface's signature.
+        "noUnusedFunctionParameters": "off",
+        // `return f()` ends a void function early when f returns nothing.
+        "noVoidTypeReturn": "off",
+        // React hook dependency lists: each needs a reviewed change in packages/web, not a sweep.
+        "useExhaustiveDependencies": "off"
+      },
+      "performance": {
+        // Only matters on hot paths; the code builds small arrays this way in tests and reports.
+        "noAccumulatingSpread": "off"
+      },
+      "style": {
+        // Non-null assertions pair with `noUncheckedIndexedAccess`; the code asserts where it knows an index exists.
+        "noNonNullAssertion": "off",
+        // CSS order is set by the cascade the views need, not by specificity.
+        "noDescendingSpecificity": "off",
+        // Under `verbatimModuleSyntax`, tsc already requires `import type` for names that are only types; this rule
+        // would also turn class imports into type imports, which changes which modules load.
+        "useImportType": "off",
+        "useExponentiationOperator": "off",
+        "useTemplate": "off"
+      },
+      "suspicious": {
+        // Sanitizers strip control characters from untrusted text and terminal output on purpose.
+        "noControlCharactersInRegex": "off",
+        // `while ((m = re.exec(s)))` and assignments in short arrow bodies are used throughout.
+        "noAssignInExpressions": "off",
+        // Strings that hold source code (fixtures, demo projects) contain `${...}` on purpose.
+        "noTemplateCurlyInString": "off",
+        // Scripts and tests read untyped JSON.
+        "noExplicitAny": "off",
+        // Static lists rendered once and never reordered.
+        "noArrayIndexKey": "off",
+        // `list.forEach((x) => set.add(x))`: the returned value is ignored.
+        "useIterableCallbackReturn": "off",
+        // CSS fallbacks: `height: 100vh` then `height: 100dvh` for browsers that know the newer unit.
+        "noDuplicateProperties": "off",
+        "noConfusingVoidType": "off",
+        // tsc's control-flow typing types these, and strict mode fails where it cannot.
+        "noImplicitAnyLet": "off",
+        // Local helpers named `unescape`; the deprecated global is never used.
+        "noShadowRestrictedNames": "off"
+      }
+    }
+  },
+  "overrides": [
+    {
+      // Tests reach into optional results and let the assertion fail; in source code these rules stay on.
+      "includes": ["**/test/**"],
+      "linter": {
+        "rules": {
+          "correctness": { "noUnsafeOptionalChaining": "off" },
+          "suspicious": { "noNonNullAssertedOptionalChain": "off" }
+        }
+      }
+    }
+  ]
+}
