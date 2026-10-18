@@ -56,6 +56,8 @@ import { extractSpec, planNew } from "./spec.ts";
 import { formatMegafile } from "./megafile.ts";
 import { formatPause } from "./pause.ts";
 import { formatSpendCap } from "./spendcap.ts";
+import { formatCommitAuthor } from "./commitauthor.ts";
+import { recordedLine } from "./receipt.ts";
 import { formatRecipe, ruleRecipeLines } from "./recipe.ts";
 import { canaryLines, formatAudit } from "./audit.ts";
 import { formatSilentTtl, type SilentTtlView } from "./closure.ts";
@@ -374,6 +376,9 @@ async function execute(cmd: Command, ctx: Ctx): Promise<number> {
         io.stdout(`${verb} ${c.bold(cmd.proposalId)}${cmd.decision === "approve" ? "" : `: ${cmd.reason}`}`);
         if (cmd.decision === "reject") io.stdout(c.dim("  The rejection is recorded; it can mint an antibody for similar changes."));
         if (cmd.decision === "return") io.stdout(c.dim("  Sent back to its agent with your reason."));
+        // Verified approvers (receipt.ts): the name the server recorded, verified by Access or stated.
+        const recorded = recordedLine(res, c);
+        if (recorded) io.stdout(recorded);
       }
       return 0;
     }
@@ -493,6 +498,12 @@ async function execute(cmd: Command, ctx: Ctx): Promise<number> {
       const res = await send<unknown>(ctx.http, req, 60_000);
       if (ctx.flags.json) printJson(ctx, res);
       else io.stdout(formatSpendCap(cmd, res, c));
+      return 0;
+    }
+    case "commit-author": {
+      const res = await send<unknown>(ctx.http, req, 60_000);
+      if (ctx.flags.json) printJson(ctx, res);
+      else io.stdout(formatCommitAuthor(cmd, res, c));
       return 0;
     }
     case "audit": {

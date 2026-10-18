@@ -3,6 +3,7 @@ import type { Id } from "@fire_trident/core";
 import { z } from "zod";
 import { ftError } from "../colony/errors.ts";
 import { MAX_BATCH_DECISION } from "../decide/batch.ts";
+import { approverIdentity } from "./access.ts";
 import type { ApiEnv } from "./app.ts";
 
 /**
@@ -46,7 +47,9 @@ export function reviewBatchRoutes(app: Hono<ApiEnv>, admin: MiddlewareHandler<Ap
     const b = parsed.data;
     const stub = colony(c);
     if (!(await stub.getColony())) throw ftError(404, "colony not found");
-    return json(await stub.decideBatch({ key: b.key, ids: b.ids, decision: b.decision, reason: b.reason, by: b.by ?? "human" }));
+    // Verified approvers (api/access.ts): each change of the batch records the verified email, else the stated name.
+    const who = await approverIdentity(c.env, c.req.raw.headers, b.by);
+    return json(await stub.decideBatch({ key: b.key, ids: b.ids, decision: b.decision, reason: b.reason, by: who.by }, who));
   });
 }
 

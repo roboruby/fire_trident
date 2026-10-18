@@ -36,6 +36,7 @@ import { signatureLines } from "./signatures.ts";
 import { intentSpendDetail, intentSpendLine, spendLine } from "./spend.ts";
 import { spendCapStatus } from "./spendcap.ts";
 import { acceptanceRows } from "./acceptance.ts";
+import { cardReceiptLine, receiptRows } from "./receipt.ts";
 import { contestLines } from "./contest.ts";
 import { prelandLine } from "./preland.ts";
 import { holdsRow, walkRows } from "./holds.ts";
@@ -906,6 +907,8 @@ export function formatWhy(
       }
       // Quoted acceptance (FT_QUOTED_ACCEPTANCE): the changed line quoted for each acceptance line (acceptance.ts).
       for (const row of acceptanceRows(p.decisions, c)) out.push(`  ${label(row.k)}${row.v}`);
+      // The review receipt (receipt.ts): the head each decision was made on and what its decider was shown.
+      for (const row of receiptRows(p.decisions, c)) out.push(`  ${label(row.k)}${row.v}`);
       out.push(`  ${label("checks")}${checkLine(p.evidence, c)}`);
       // Contest mode (contest.ts): how the change won its contest, and the attempts it was chosen over.
       for (const line of contestLines(p.evidence?.checks, p.alternatives, c)) out.push(`  ${label(line.k)}${line.v}`);
@@ -1433,6 +1436,9 @@ export function formatReview(queue: Proposal[], intents: Intent[] | undefined, c
     } else {
       out.push(`  ${c.dim("diff     not kept for this proposal")}`);
     }
+    // The review receipt (receipt.ts): the head and view digest a decision on this card records.
+    const receipt = cardReceiptLine(p, c);
+    if (receipt) out.push(receipt);
   }
   out.push(...audited);
   out.push("");

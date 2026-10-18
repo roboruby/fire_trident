@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { createHash, createPublicKey, verify } from "node:crypto";
 // The published CLI ships without @fire_trident/core: answerable.ts is the CLI's copy of core's (test/package.test.ts).
 import { answerableLine, landingAnswerable } from "./answerable.ts";
+import { receiptLines } from "./receipt.ts";
 import type { Colors } from "./format.ts";
 
 /**
@@ -25,6 +26,7 @@ import type { Colors } from "./format.ts";
  *
  * A note that checks out also says who answers for its landing (core/answerable.ts): a second line after the verdict,
  * "answerable: <who> (<why>)", and with --all the end of the landing's line.
+ * Without --all, a note with review receipts then gets one "receipt:" line a decision (receipt.ts).
  *
  * scripts/verify_note.mjs repeats this for a stock Node with no dependencies (it is downloaded alone, and carries its
  * own copy of the answerable rules); test/clonecheck-git.test.ts runs both on one repository and holds their output in
@@ -667,6 +669,8 @@ function checkOne(cmd: CloneVerify, git: Git, keys: unknown): CloneReport {
   // A note that checks out (signed, or landed before signing): who answers for its landing.
   const who = ok || verdict.startsWith("unsigned") ? answerableOf(raw) : null;
   if (who !== null) lines.push({ text: `answerable: ${who}`, tone: "ok" });
+  // The review receipt (receipt.ts): each decision's head and what it was shown, for a note that checks out.
+  if (who !== null) for (const text of receiptLines(JSON.parse(raw ?? "null"))) lines.push({ text, tone: "ok" });
   if (cmd.tamper) {
     const t = digest === null ? ({ ok: false, reason: "the commit carries no FT-Note trailer to check a copy against" } as TamperResult) : tamperNote(raw, digest, cmd.tamperField);
     const caught = t.ok && t.caught;

@@ -18,6 +18,7 @@ import type {
   RedirectOutcome,
 } from "@fire_trident/core";
 import { noteAcceptance } from "../decide/quotes.ts";
+import { noteReceipt } from "../decide/receipt.ts";
 import { CHAIN_KIND } from "./chain.ts";
 import { cleanHedgeRecord, hedgeText } from "./hedge.ts";
 
@@ -565,6 +566,8 @@ export function noteDecision(r: DecisionRow): NoteDecision {
     d.answer = oneLine(`${decision}${tests}${text(a.reason) ? `: ${text(a.reason)}` : ""}`, ANSWER_CHARS);
   }
   if (!d.answer) delete d.answer;
+  // The review receipt (decide/receipt.ts): the head it was made on, what it was shown, and for a person verified or stated.
+  Object.assign(d, noteReceipt(a, r.layer));
   return d;
 }
 
@@ -572,6 +575,11 @@ export function noteDecision(r: DecisionRow): NoteDecision {
 export function noteDecisions(rows: DecisionRow[]): Record<Id, NoteDecision[]> {
   const out: Record<Id, NoteDecision[]> = {};
   for (const r of [...rows].sort((x, y) => x.at - y.at)) (out[r.subject] ??= []).push(noteDecision(r));
-  for (const k of Object.keys(out)) out[k] = out[k]!.slice(-MAX_NOTE_DECISIONS);
+  for (const k of Object.keys(out)) {
+    const all = out[k]!;
+    out[k] = all.slice(-MAX_NOTE_DECISIONS);
+    // The review receipt: past the cap, the oldest decision kept says how many earlier ones were left out ("8 of 11 shown").
+    if (all.length > MAX_NOTE_DECISIONS) out[k]![0] = { ...out[k]![0]!, earlier: all.length - MAX_NOTE_DECISIONS };
+  }
   return out;
 }

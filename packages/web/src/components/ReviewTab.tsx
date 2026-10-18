@@ -9,6 +9,8 @@ import { decisionsFromChecks } from "../decisions.ts";
 import { useThrottledVersion } from "../useStore.ts";
 import { EscalationCard } from "./EscalationCard.tsx";
 import { ReviewChange } from "./ReviewChange.tsx";
+import { CardReceipt } from "./Receipt.tsx";
+import { recordedText } from "../receipt.ts";
 import { TokenForm } from "./TokenForm.tsx";
 import { VaccineMeter } from "./VaccineMeter.tsx";
 import { MovedByList } from "./MovedBy.tsx";
@@ -192,7 +194,8 @@ export function ReviewTab({ store, backend, director = false }: { store: ColonyS
       // A blind canary is revealed by the answer: say what it was instead of what an ordinary decision did.
       const canary = canaryOf(res);
       setReveal(canary);
-      setToast(canary ? null : doneText(decision, store.agentName(p.agentId)));
+      // Verified approvers (receipt.ts): the toast also says how the server recorded the person, when it says.
+      setToast(canary ? null : [doneText(decision, store.agentName(p.agentId)), recordedText(res)].filter(Boolean).join(" "));
       setError(null);
       setPending(null);
       store.setHighlight([]);
@@ -424,6 +427,8 @@ export function ReviewTab({ store, backend, director = false }: { store: ColonyS
                   ))}
                 </div>
               ) : null}
+              {/* The review receipt (receipt.ts): the head and view digest a decision on this card records. */}
+              <CardReceipt item={p} />
               <textarea
                 className="note"
                 rows={2}

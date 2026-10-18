@@ -58,6 +58,7 @@ import {
 } from "./reflex.ts";
 import { buildReviewView } from "./review.ts";
 import { canaryDiscarded, isCanary } from "./canary.ts";
+import { promptShown, reflexShown } from "./receipt.ts";
 import { gateRecord } from "./ruleline.ts";
 import { maskNote } from "../trunk/mask.ts";
 import { damageSignals, isTestPath, protectedHits } from "./signals.ts";
@@ -462,6 +463,8 @@ export class DecideEngine {
                 damage: v1.damage,
                 confidence: v1.confidence,
                 coverage: seen.reflex,
+                // The review receipt (decide/receipt.ts): a digest of the diff the reflex read.
+                shown: await reflexShown(state, seen.reflex),
                 ...destructiveRecord(destructive),
                 ...(repro ? { reproduction: repro.note } : {}),
                 ...(clefHedged ? { hedged: clefHedged } : {}),
@@ -500,6 +503,8 @@ export class DecideEngine {
             reasons: final.reasons,
             damage: final.damage,
             coverage: seen.llm,
+            // The review receipt (decide/receipt.ts): a digest of the diff text the second opinion was given.
+            shown: await promptShown(input.diffs),
             ...destructiveRecord(destructive),
             ...(repro ? { reproduction: repro.note } : {}),
             ...(so.hedged ? { hedged: so.hedged } : {}),

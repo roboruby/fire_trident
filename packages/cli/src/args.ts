@@ -2,6 +2,7 @@ import { parseArgs } from "node:util";
 import type { AgentKind, ColonyEvent } from "@fire_trident/core";
 import { CLONE_OPTIONS, cloneVerify, type CloneVerify } from "./clonecheck.ts";
 import { parseSpendCap } from "./spendcap.ts";
+import { parseCommitAuthor } from "./commitauthor.ts";
 import { isConnectColony } from "./connect.ts";
 import { parseSilentTtl } from "./closure.ts";
 import type { HookCommand } from "./hook.ts";
@@ -91,6 +92,8 @@ export type Command =
   | { name: "resume"; colony?: string; by?: string; reason?: string }
   // The spend cap (spendcap.ts): show it (no usd), set it, or remove it (usd null).
   | { name: "spend-cap"; colony: string; usd?: number | null; reviewReserveUsd?: number; by?: string }
+  // People as commit authors (commitauthor.ts): show the setting, name a person, or go back to FireTrident (off).
+  | { name: "commit-author"; colony: string; author?: { name: string; email: string }; off?: true; by?: string }
   // Recipes (recipe.ts): declare one, list them, show one, approve a held one.
   | RecipeCommand
   // The audit sample and blind canaries (audit.ts): show the measures, set the rates, answer an item.
@@ -150,6 +153,7 @@ const COMMAND_OPTIONS: Record<string, Record<string, OptionSpec>> = {
   pause: { deployment: { type: "boolean" }, reason: { type: "string" }, by: { type: "string" } },
   resume: { deployment: { type: "boolean" }, reason: { type: "string" }, by: { type: "string" } },
   "spend-cap": { "review-reserve": { type: "string" }, by: { type: "string" } },
+  "commit-author": { name: { type: "string" }, email: { type: "string" }, by: { type: "string" } },
   recipe: RECIPE_OPTIONS,
   audit: AUDIT_OPTIONS,
   swarm: { agents: { type: "string" }, model: { type: "string" }, kind: { type: "string" } },
@@ -638,6 +642,11 @@ function build(word: string, v: Record<string, unknown>, p: string[]): Command {
       const cmd = parseSpendCap(v, p);
       return typeof cmd === "string" ? fail(cmd) : cmd;
     }
+    case "commit-author": {
+      // People as commit authors (commitauthor.ts): show the setting, name a person, or go back to FireTrident.
+      const cmd = parseCommitAuthor(v, p);
+      return typeof cmd === "string" ? fail(cmd) : cmd;
+    }
     case "recipe": {
       // Recipes (recipe.ts): declare one, list them, show one, or approve a held one.
       const cmd = parseRecipeCommand(v, p);
@@ -896,6 +905,7 @@ Commands
   pause <colony> --reason <text>   Pause every agent of a colony (--deployment: of the server)
   resume <colony>                  Let a paused colony's agents work again (--deployment too)
   spend-cap <colony> <usd>         Cap what the model calls the platform makes for a colony may cost
+  commit-author <colony>           Name the person who authors a colony's landing commits
   recipe <colony> rename <a> <b>   A mass mechanical change the trunk writer lands and applies to work in flight
   swarm <colony> --agents <n>      Spawn in-platform agents
   agents <colony>                  List agents: state, intent, step, what each says it is doing
@@ -1319,6 +1329,26 @@ Examples
   ft recipe web replace-import lodash lodash-es --scope 'src/**'
   ft recipe web text-replace --pattern '^(\\s*)node-version: 18$' --replace '$1node-version: 20' --scope '.github/**'
   ft recipe web rcp_abc123
+`,
+  "commit-author": `
+ft commit-author <colony> --name <name> --email <email> [--by <name>]
+ft commit-author <colony> off
+ft commit-author <colony>
+
+Name the person who authors every landing commit of a colony, for teams that
+want the accountable person in git log. FireTrident stays the committer, so
+the FT-Note-Signature and the git signature are made and checked as before,
+and agents get no Co-authored-by lines (with credit trailers on, Approved-by
+stays). Each lineage note still names every agent, its model and the review
+receipt. off goes back to FireTrident as the author; with neither, show who
+authors the colony's commits. Needs the admin token.
+
+Check it on a clone: git log --format='%an %cn' prints the person, then
+FireTrident.
+
+Examples
+  ft commit-author web --name "Dana Reviewer" --email dana@example.com
+  ft commit-author web off
 `,
   "spend-cap": `
 ft spend-cap <colony> <usd> [--review-reserve <usd>] [--by <name>]

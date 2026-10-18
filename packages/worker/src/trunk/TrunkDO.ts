@@ -97,6 +97,7 @@ import { PUBLISH_BOUND, addedObjects, asyncPublishEnabled, publishBackoffMs, pub
 import { PROTECT_TABLE, keepProtect, protectReturns } from "./protect.ts";
 import { keepHolds, mergeLocks } from "./mergelock.ts";
 import { cyclePause, keepPause } from "./pause.ts";
+import { cycleAuthor, personCredits } from "./commitauthor.ts";
 import { landingRange as rangeOfLandings, type LandingRange, type RangeQuery } from "../certify/range.ts";
 import { commitOrder as commitOrderOf, testLineage as testLineageOf, type TestFileLineage, type TestLineageQuery } from "../certify/testlineage.ts";
 import { FoldedIndex, cycleCollisions, structureProblem, submoduleProblems, type SubmoduleOutcome } from "./structure.ts";
@@ -1848,6 +1849,8 @@ export class TrunkDO extends DurableObject<Env> {
     const signer = await noteSigner(this.env.FT_NOTE_KEY);
     // Credit trailers (trunk/credits.ts): where FT_CREDIT_TRAILERS covers the colony, the agents and approvers.
     const credits = creditsEnabled(this.env.FT_CREDIT_TRAILERS, st.colonyId);
+    // People as commit authors (trunk/commitauthor.ts): the person the colony names authors each commit; FireTrident commits it.
+    const author = cycleAuthor(this.sql, reqs.map((r) => r.ctx));
     for (let i = 0; i < accepted.length; i++) {
       const proposals = accepted[i]!;
       if (proposals.length === 0) continue;
@@ -1883,10 +1886,10 @@ export class TrunkDO extends DurableObject<Env> {
       const note = await sealNote(built);
       lap("note");
       const titled = landingMessage({ id, intentIds }, proposals, info.titles);
-      const credited = credits ? withCredits(titled, creditLines(built, (agentId) => info.agents.get(agentId)?.name)) : titled;
+      const credited = credits ? withCredits(titled, personCredits(creditLines(built, (agentId) => info.agents.get(agentId)?.name), author)) : titled;
       const message = withNoteDigest(await withSignature(credited, signer, { digest: note.digest, tree, parents: [parent] }), note.digest);
       // Signed the stock git way too (trunk/gitsig.ts), with the same key: a gpgsig header that git verify-commit checks.
-      const content = await signCommit(commitContent({ tree, parents: [parent], message, name: LANDING_IDENTITY.name, email: LANDING_IDENTITY.email, timestamp: Math.floor(at / 1000) }), signer);
+      const content = await signCommit(commitContent({ tree, parents: [parent], message, name: LANDING_IDENTITY.name, email: LANDING_IDENTITY.email, timestamp: Math.floor(at / 1000), author }), signer);
       const commit = objectId("commit", content);
       pending.set(commit, { type: "commit", content });
       this.commitTrees.set(commit, tree);

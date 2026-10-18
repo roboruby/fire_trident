@@ -3036,6 +3036,15 @@ a.lin-sha:hover,
   overflow-wrap: anywhere;
 }
 
+/* The review receipt (receipt.ts): a decision's head and the digest of what its decider was shown. */
+.dec-receipt {
+  color: var(--text-4);
+}
+
+.card-receipt {
+  overflow-wrap: anywhere;
+}
+
 .node-sets {
   border-color: var(--text-3);
 }

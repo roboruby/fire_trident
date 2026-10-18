@@ -56,6 +56,18 @@ export interface Env {
   /** Secret: bearer token for mutating API routes. */
   FT_ADMIN_TOKEN?: string;
   /**
+   * Optional: verified approvers behind Cloudflare Access (api/access.ts). FT_ACCESS_TEAM_DOMAIN is the Access team domain
+   * ("<team>.cloudflareaccess.com") and FT_ACCESS_AUD the Application Audience (AUD) tag of the Access application in
+   * front of this Worker. With both set, a person's review decision (POST /api/colonies/:id/review/:pid and the batch
+   * route) verifies the Cf-Access-Jwt-Assertion header (RS256 against the team's keys at /cdn-cgi/access/certs, cached;
+   * audience, expiry and issuer checked) and records the token's email as the approver, marked verified; without a valid
+   * token the name the request states is recorded, marked stated. The plain Cf-Access-Authenticated-User-Email header is
+   * never trusted. The admin token is still required for the write. Absent (either one), nothing is verified and every
+   * decision's name is recorded as stated.
+   */
+  FT_ACCESS_TEAM_DOMAIN?: string;
+  FT_ACCESS_AUD?: string;
+  /**
    * Secret (optional): the key that signs lineage notes, an Ed25519 private key as a JWK JSON string
    * ({"kty":"OKP","crv":"Ed25519","d":"…","x":"…"}, with an optional "since": the ISO date it started signing). With it,
    * the trunk writer signs each landing commit it builds (an FT-Note-Signature trailer just above FT-Note, over the note's
