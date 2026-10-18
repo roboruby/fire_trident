@@ -25,6 +25,7 @@ import type { ClearFilter, FieldOps } from "../colony/logic.ts";
 import { settleLane, suspects } from "../trunk/outcome.ts";
 import { textMergeEnabled, type LandResult } from "../trunk/plan.ts";
 import { isMergeHold } from "../trunk/mergelock.ts";
+import { FENCE_RECHECK_MS, fenceHeldIds } from "../trunk/fencecheck.ts";
 import {
   accumulates,
   admissionBar,
@@ -1055,7 +1056,11 @@ export class RegionDO extends DurableObject<Env> {
     }
     let retryMs: number | null = null;
     const keep = new Set(settled.keep);
-    const unresolved = seen.filter((p) => keep.has(p.id) && !remove.has(p.id));
+    // Commit-point checks (trunk/fencecheck.ts): a change the trunk writer held because it could not read its direction
+    // record or the protected globs waits here without counting a failed attempt, and is offered again shortly.
+    const held = fenceHeldIds(result);
+    if (held.size > 0) retryMs = FENCE_RECHECK_MS;
+    const unresolved = seen.filter((p) => keep.has(p.id) && !remove.has(p.id) && !held.has(p.id));
     if (unresolved.length > 0) {
       // Land failed, or the trunk neither landed nor returned them: count an attempt so nothing loops forever.
       let worst = 0;

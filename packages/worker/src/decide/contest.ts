@@ -5,9 +5,9 @@ import { hedgeSummary, hedged, runAi, type Hedge, type HedgeRecord } from "../co
 import { bindingReader, contentsReader, textOf, type BlobReader } from "../colony/innate.ts";
 import { DANGER_CHECK, type WhyAuthor } from "./danger.ts";
 import { fileDiff, type FileDiff } from "./diff.ts";
+import { judgePick } from "./independence.ts";
 import type { JuryMember } from "./jury.ts";
 import type { CallLimiter } from "./limiter.ts";
-import { modelFamily } from "./policy.ts";
 import { isThrottled, modelText, requestOptions, withTimeout, type AiRunner } from "./reflex.ts";
 
 /**
@@ -17,10 +17,11 @@ import { isThrottled, modelText, requestOptions, withTimeout, type AiRunner } fr
  *
  * Selection prefers deterministic evidence: a mechanical proof first, then fewer paths written
  * outside the intent's footprint, then no danger signals. Changes still tied are compared in pairs
- * by a second-opinion model from another family than their authors, asked in both orders so a
- * preference for the change shown first (or second) cancels out: an answer that flips with the
- * order counts as a tie. Ties go to the smaller diff, then to the earlier proposal. Without a model,
- * or when a pair is too large for the judge to see whole, the deterministic order decides.
+ * by a second-opinion model from a family none of their authors belongs to (decide/independence.ts),
+ * asked in both orders so a preference for the change shown first (or second) cancels out: an answer
+ * that flips with the order counts as a tie. Ties go to the smaller diff, then to the earlier proposal.
+ * Without a model, with no model outside the authors' families, or when a pair is too large for the
+ * judge to see whole, the deterministic order decides.
  */
 
 /** Agents a contest intent may seat at once (Intent.contest); 1 or absent is an ordinary intent. */
@@ -403,16 +404,23 @@ export function withHedged<V extends { why: string }>(v: V, records: readonly He
 }
 
 /**
- * The models that may judge changes by these authors: second-opinion models from a family none of
- * them belongs to, else from another family than the first author's, else all of them.
+ * The models that may judge changes by these authors: second-opinion models from a family none of them belongs to
+ * (decide/independence.ts judgePick). None when every model is in an author's family: no model judges then.
  */
 export function judgeModels(authors: ReadonlyArray<string | undefined>, candidates: readonly string[]): string[] {
-  const families = new Set(authors.map((a) => modelFamily(a)).filter((f) => f !== ""));
-  const outside = candidates.filter((c) => !families.has(modelFamily(c)));
-  if (outside.length > 0) return [...new Set(outside)];
-  const first = modelFamily(authors.find((a) => !!a));
-  const other = candidates.filter((c) => modelFamily(c) !== first);
-  return [...new Set(other.length > 0 ? other : candidates)];
+  return judgePick(authors, candidates).models;
+}
+
+/**
+ * The pair judge for changes by these authors under the second opinion's independence rule (decide/independence.ts):
+ * `make` builds it on the models outside every author's family. With none configured no model is asked: each pair is
+ * a tie that says why, and the deterministic order decides.
+ */
+export function independentJudge(authors: ReadonlyArray<string | undefined>, candidates: readonly string[], make: (models: string[]) => PairJudge): PairJudge {
+  const pick = judgePick(authors, candidates);
+  if (!pick.refusal) return make(pick.models);
+  const why = pick.refusal;
+  return async () => ({ better: "tie", why, calls: 0 });
 }
 
 /** What a pair judge needs: the Workers AI binding, the models in order, the shared call limiter and the intent. */

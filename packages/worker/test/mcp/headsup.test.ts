@@ -2,14 +2,15 @@ import { describe, expect, it } from "vitest";
 import type { AgentInfo, Colony, FileVersion, Intent, Path, Proposal, Sha, WorkspaceLease } from "@fire_trident/core";
 import type { ProposeInput, TakeResult } from "../../src/agents/rpc.ts";
 import type { HeadsUpAnswer, HeadsUpQuery, HeadsUpReport } from "../../src/colony/headsup.ts";
-import { AGENT_CONFIG_KEY, HEADS_UP_ABOUT, HeadsUpTools, TOLD_KEY, sessionTools, withAgentConfig, type ToldRecord } from "../../src/mcp/headsup.ts";
+import { AGENT_CONFIG_KEY, HEADS_UP_ABOUT, HeadsUpTools, TOLD_KEY, headsUpView, sessionTools, unavailableMessage, withAgentConfig, type ToldRecord } from "../../src/mcp/headsup.ts";
 import { FireTridentTools } from "../../src/mcp/tools.ts";
 import type { McpColonyRpc, McpTrunkRpc, Session, ToolContext } from "../../src/mcp/tools.ts";
 
 /**
  * The heads-up on MCP replies (FT_HEADS_UP): every reply to an agent that holds an intent carries what moved under its
- * files and what waits to land on them, only when there is something to say, within a tight time budget, failing open;
- * what it told the agent goes with the proposal.
+ * files and what waits to land on them, only when there is something to say, within a tight time budget; a heads-up that
+ * could not be had says so instead of reading as nothing to say, and the tool's answer goes out either way; what it told
+ * the agent goes with the proposal.
  */
 
 const BASE = "b".repeat(40);
@@ -140,7 +141,7 @@ describe("heads-up on MCP replies", () => {
     expect(colony.asked).toHaveLength(3);
   });
 
-  it("never slows a reply past its budget: a slow answer is left out, and the next reply carries it", async () => {
+  it("never slows a reply past its budget: a slow answer is named unavailable, never nothing to say, and the next reply carries it", async () => {
     const { tools, colony, clock, read } = await setup({ budgetMs: 30 });
     await tools.take();
     read("src/z.ts");
@@ -149,7 +150,11 @@ describe("heads-up on MCP replies", () => {
     const t0 = Date.now();
     const slow = (await tools.checkout()) as Record<string, any>;
     expect(Date.now() - t0).toBeLessThan(200);
-    expect(slow).not.toHaveProperty("headsUp");
+    expect(slow.headsUp).toEqual({ unavailable: "timeout", message: unavailableMessage("timeout", 30) });
+    expect(slow.headsUp.message).toBe(
+      "The heads-up did not answer within 30 ms, so this reply could not check what changed around your work: trunk may have moved under your files, or a change waiting to land may write them. Call inbox and read your files again before you propose.",
+    );
+    expect(slow).not.toHaveProperty("deliveredThrough");
     expect(slow.intent.id).toBe("int_1");
     await new Promise((r) => setTimeout(r, 300));
     clock.now += 1_000;
@@ -158,12 +163,53 @@ describe("heads-up on MCP replies", () => {
     expect(colony.asked).toHaveLength(2);
   });
 
-  it("fails open: a colony that errs leaves the reply as it was", async () => {
-    const { tools, colony } = await setup();
+  it("a slow answer with nothing to say: unavailable while it is late, then no field once it is in", async () => {
+    const { tools, colony, clock, read } = await setup({ budgetMs: 30 });
+    await tools.take();
+    read("src/q.ts");
+    colony.delayMs = 150;
+    expect(((await tools.checkout()) as Record<string, any>).headsUp).toMatchObject({ unavailable: "timeout" });
+    await new Promise((r) => setTimeout(r, 200));
+    clock.now += 500;
+    expect((await tools.checkout()) as Record<string, any>).not.toHaveProperty("headsUp");
+  });
+
+  it("a colony that errs: the tool's answer goes out with headsUp unavailable, and the next reply asks again", async () => {
+    const { tools, colony, clock } = await setup();
     colony.fail = true;
     const t = (await tools.take()) as Record<string, any>;
     expect(t.intent.id).toBe("int_1");
-    expect(t).not.toHaveProperty("headsUp");
+    expect(t.lease).toBeDefined();
+    expect(t.headsUp).toEqual({ unavailable: "error", message: unavailableMessage("error") });
+    expect(t.headsUp.message).toMatch(/^The heads-up failed, so this reply could not check what changed around your work: trunk may have moved under your files/);
+    expect(t).not.toHaveProperty("deliveredThrough");
+    // A failure is not kept for the cache window: the next reply asks again, and says what it found.
+    colony.fail = false;
+    colony.report = MOVED;
+    clock.now += 100;
+    const next = (await tools.checkout()) as Record<string, any>;
+    expect(colony.asked).toHaveLength(2);
+    expect(next.headsUp.trunkMoved[0].landingId).toBe("lnd_x");
+  });
+
+  it("a colony call that throws before it answers is an error too, and a reply that holds nothing gets no field", async () => {
+    const { tools, colony } = await setup();
+    (colony as unknown as { headsUp: () => never }).headsUp = () => {
+      throw new Error("stub gone");
+    };
+    // Joined, holding nothing: no heads-up applies, so none is asked for and none is named.
+    expect((await tools.join({ colony: "col" })) as Record<string, any>).not.toHaveProperty("headsUp");
+    expect(((await tools.take()) as Record<string, any>).headsUp).toMatchObject({ unavailable: "error" });
+  });
+
+  it("names a partial read of the changes waiting to land, even with nothing found", () => {
+    const view = headsUpView({ moved: [], ahead: [], aheadScanned: { scanned: 200, of: 340 } });
+    expect(view.waitingAheadScanned).toEqual({ scanned: 200, of: 340 });
+    expect(view).not.toHaveProperty("waitingAhead");
+    expect(view.next).toBe(
+      "Only the oldest 200 of the 340 changes waiting to land were checked, so one of the others may write your files too. Call inbox for the landing notices before you propose, and keep what landed unless your intent says otherwise.",
+    );
+    expect(headsUpView(AHEAD)).not.toHaveProperty("waitingAheadScanned");
   });
 
   it("off for the colony: replies are exactly the plain tools' replies", async () => {

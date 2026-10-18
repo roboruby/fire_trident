@@ -60,6 +60,8 @@ import { damageLabels } from "./signals.ts";
  *      unclear, or a quote the platform could not find) → escalate (llm; the alert budget cannot bounce it)
  * - L8 no second opinion because the colony's spend cap refused its model call (colony/spendcap.ts)
  *                                               → escalate: a person decides (llm; the alert budget cannot bounce it)
+ * - L9 no second opinion because every configured second-opinion model is in the author's model family
+ *      (decide/independence.ts)                 → escalate: a person decides (llm; the alert budget cannot bounce it)
  * - L4 anything else (one signal only)          → return to the agent with the reason
  * An escalation over the hourly alert budget goes back to its agent unless its risk is at or
  * above the budget's risk floor.
@@ -139,6 +141,11 @@ export interface GateInput {
    * waits for a person (L8) instead of going back; it never lands. Absent: no cap refused anything.
    */
   spendCap?: string;
+  /**
+   * No second-opinion model outside the author's model family is configured (decide/independence.ts): the reason. With
+   * `llm` null the change waits for a person (L9) instead of going back; it never lands. Absent: independence held.
+   */
+  noReviewer?: string;
   /** The region earned autonomy (enough approved landings, no rejection since). */
   autonomy: boolean;
   /** Who wrote the intent's why. Earned autonomy covers only an intent a person or a rule wrote; absent counts as unknown (no R3). */
@@ -534,6 +541,11 @@ export function gate(input: GateInput): GateVerdict {
   if (!llm && input.spendCap) {
     risk = Math.max(risk, policy.budgetRiskFloor);
     return escalate("llm", "L8 spend cap", 1, [input.spendCap, ...(detectors.length > 0 ? [`detectors: ${labels.join(", ")}`] : [])], ["review:spend-cap"], []);
+  }
+  // L9: no model outside the author's family may review it, so nothing independent confirmed the change: a person decides.
+  if (!llm && input.noReviewer) {
+    risk = Math.max(risk, policy.budgetRiskFloor);
+    return escalate("llm", "L9 no independent reviewer", 1, [input.noReviewer, ...(detectors.length > 0 ? [`detectors: ${labels.join(", ")}`] : [])], ["review:no-independent-reviewer"], []);
   }
   const reasons: string[] = [];
   if (!llm) reasons.push("second opinion unavailable; one confirmation only");

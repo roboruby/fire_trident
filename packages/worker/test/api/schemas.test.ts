@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { tokensEqual } from "../../src/api/app.ts";
-import { CreateColonyBody, DecisionBody, IntentBody, ProposalBody, RuleBody, SwarmBody, WhyQuery } from "../../src/api/schemas.ts";
+import { CreateColonyBody, DecisionBody, IntentBody, ProposalBody, RuleBody, SwarmBody, WhyQuery, isHttpsUrl } from "../../src/api/schemas.ts";
 
 describe("request bodies", () => {
   it("accepts the CLI's colony bodies (import with pool, new without source)", () => {
@@ -47,6 +47,25 @@ describe("request bodies", () => {
     expect(DecisionBody.parse({ decision: "return" })).toEqual({ decision: "return", reason: "" });
     expect(WhyQuery.parse({ path: "src/a.ts", line: "12" })).toEqual({ path: "src/a.ts", line: 12 });
     expect(WhyQuery.safeParse({ path: "src/a.ts", line: "0" }).success).toBe(false);
+  });
+
+  it("takes an agent's preview link only as an https URL, and says so plainly otherwise", () => {
+    const sha = "c".repeat(40);
+    const base = { intentId: "i", agentId: "a", workspace: { namespace: "n", name: "w", remote: "r" }, baseSha: sha, headSha: sha, writeSet: [{ path: "a", blob: sha }] };
+    const preview = (previewUrl: string) => ProposalBody.safeParse({ ...base, evidence: { previewUrl } });
+    expect(preview("https://preview.example.com/pr/1?x=1").data?.evidence?.previewUrl).toBe("https://preview.example.com/pr/1?x=1");
+    for (const bad of ["javascript:alert(1)", "data:text/html,<script>alert(1)</script>", "http://preview.example.com/", "JavaScript:alert(1)", "https://", " https://a.example/", "https://a.exa\nmple/", "vbscript:x"]) {
+      const r = preview(bad);
+      expect(r.success).toBe(false);
+      expect(r.error?.issues).toEqual([
+        expect.objectContaining({
+          path: ["evidence", "previewUrl"],
+          message: "the preview link must be an https:// URL (javascript:, data:, http: and other schemes are refused); send the https address of the preview, or leave previewUrl out",
+        }),
+      ]);
+    }
+    expect(ProposalBody.safeParse({ ...base, evidence: { notVerified: "n" } }).success).toBe(true);
+    expect(isHttpsUrl("HTTPS://A.EXAMPLE/")).toBe(true);
   });
 });
 

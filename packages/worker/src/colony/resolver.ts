@@ -12,6 +12,7 @@ import { hedgeText } from "./hedge.ts";
 import type { SqlRunner } from "./inline.ts";
 import { checkMerged, cleanConflicts, cleanResolves, mergeSides, type ConflictedMerge } from "./resolver-merge.ts";
 import { markedText, parseResolveReply, resolveMaxTokens, resolveMessages } from "./resolver-prompt.ts";
+import { malformedReply, retryCheck } from "./resolver-retry.ts";
 
 /**
  * The conflict resolver (FT_RESOLVER: "on", or a comma-separated list of colony ids; off when absent). Agents are bad at
@@ -25,8 +26,10 @@ import { markedText, parseResolveReply, resolveMaxTokens, resolveMessages } from
  *   and the change's agent finds a notice in its inbox. Then, asynchronously and never inside a trunk cycle: the base,
  *   trunk and change versions of each file trunk moved are read (at most RESOLVE_MAX_FILES files of RESOLVE_FILE_BYTES),
  *   files that merge cleanly are merged as text merge would, and one model call (through the decide stage's limiter)
- *   writes each conflicting file whole, keeping both changes, or answers CANNOT. Everything agents, people and the
- *   repository wrote is fenced as data (colony/resolver-prompt.ts).
+ *   writes each conflicting file whole, keeping both changes, or answers CANNOT. A malformed reply (it cannot be parsed,
+ *   or leaves a conflict marker) is asked for once more, counted like any call and recorded in the evidence
+ *   (colony/resolver-retry.ts). Everything agents, people and the repository wrote is fenced as data
+ *   (colony/resolver-prompt.ts).
  * - The merge is validated before anything is proposed (colony/resolver-merge.ts): every line outside the conflicting
  *   hunks is exactly the clean merge of both changes, no conflicting hunk is either side's version whole, every line
  *   either side added in a conflicting hunk is kept in that side's order (unless the other side deleted it: rewrote or
@@ -515,22 +518,25 @@ export class Resolver {
     const marked = conflicted.map((f) => ({ path: f.path, marked: markedText(f.merge), conflicts: f.merge.conflicts.length }));
     const { messages } = resolveMessages({ change: { proposalId: p.id, title: mine?.title ?? p.declared.summary, why: mine?.why ?? "" }, landed: sides, files: marked });
 
-    // One model call, through the decide stage's limiter.
+    // One model call, through the decide stage's limiter. A malformed reply is asked for once more (colony/resolver-retry.ts):
+    // where a hedge copy went out (FT_HEDGE, which takes the same test as its validity check) the copy was that retry.
     const model = this.modelName();
-    const limiter = host.limiter();
-    const release = await limiter.acquire(model, job.deadline);
-    if (!release) return { fail: `no call to ${model} could start in time (rate limits)` };
-    const t0 = host.now();
-    let reply: ModelReply;
-    try {
-      reply = await this.client().complete({ model, messages, maxTokens: resolveMaxTokens(marked) });
-    } catch (err) {
-      if (isThrottled(err)) limiter.cooldown(model, 2_000);
-      return { fail: `the call to ${model} failed: ${oneLine(errorText(err), 200)}` };
-    } finally {
-      release();
+    const maxTokens = resolveMaxTokens(marked);
+    const malformed = (text: string | null): string | null => malformedReply(text, conflicted);
+    const first = await this.ask({ model, messages, maxTokens, valid: (text) => malformed(text) === null }, job.deadline);
+    if ("fail" in first) return first;
+    const calls = [first];
+    let retried: string | null = null;
+    const problem = malformed(first.reply.text);
+    if (problem !== null && !first.reply.hedged) {
+      const second = await this.ask({ model, messages, maxTokens }, job.deadline);
+      if ("fail" in second) return { fail: `the model's first reply was not usable (${problem}), and asking once more failed: ${second.fail}` };
+      calls.push(second);
+      retried = problem;
+      const again = malformed(second.reply.text);
+      if (again !== null) return { fail: `the model's reply was not usable twice: first ${problem}; then ${again}` };
     }
-    const ms = host.now() - t0;
+    const reply = calls[calls.length - 1]!.reply;
     const used = reply.model ?? model;
     const parsed = parseResolveReply(reply.text ?? "", conflicted.map((f) => f.ours));
     if ("cannot" in parsed) return { fail: `the model found the two changes cannot both be kept: ${parsed.cannot}` };
@@ -577,13 +583,15 @@ export class Resolver {
     const conflictPaths = conflicted.map((f) => f.path);
     const hunks = conflicted.reduce((n, f) => n + f.merge.conflicts.length, 0);
     const checks: CheckResult[] = [
-      {
+      // One usage check per call: a resolution asked once more made two.
+      ...calls.map(({ reply: r, ms }) => ({
         name: MODEL_USAGE_CHECK,
         ok: true,
         ms,
         // Hedged (FT_HEDGE, colony/hedge.ts): which copy answered.
-        detail: `${used}: 1 call(s), ${reply.usage?.input ?? 0} input / ${reply.usage?.output ?? 0} output tokens${reply.usage?.cached ? ` (${reply.usage.cached} cached)` : ""}${reply.hedged ? `; ${hedgeText(reply.hedged)}` : ""}`,
-      },
+        detail: `${r.model ?? model}: 1 call(s), ${r.usage?.input ?? 0} input / ${r.usage?.output ?? 0} output tokens${r.usage?.cached ? ` (${r.usage.cached} cached)` : ""}${r.hedged ? `; ${hedgeText(r.hedged)}` : ""}`,
+      })),
+      ...(retried !== null ? [retryCheck(first.reply.model ?? model, retried)] : []),
       {
         name: "resolver: merge",
         ok: true,
@@ -612,6 +620,23 @@ export class Resolver {
       },
     };
     return { input, record: { proposalId: p.id, landingIds, paths: conflictPaths } };
+  }
+
+  /** One model call through the decide stage's limiter, by `deadline`: its reply and how long it took, or why there is none. */
+  private async ask(req: Parameters<ModelClient["complete"]>[0], deadline: number): Promise<{ reply: ModelReply; ms: number } | { fail: string }> {
+    const limiter = this.host.limiter();
+    const release = await limiter.acquire(req.model, deadline);
+    if (!release) return { fail: `no call to ${req.model} could start in time (rate limits)` };
+    const t0 = this.host.now();
+    try {
+      const reply = await this.client().complete(req);
+      return { reply, ms: this.host.now() - t0 };
+    } catch (err) {
+      if (isThrottled(err)) limiter.cooldown(req.model, 2_000);
+      return { fail: `the call to ${req.model} failed: ${oneLine(errorText(err), 200)}` };
+    } finally {
+      release();
+    }
   }
 
   /** Texts of these blobs (the change's inline contents first, then the trunk writer), each checked against its blob id. */

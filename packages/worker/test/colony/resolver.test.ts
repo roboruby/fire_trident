@@ -17,6 +17,7 @@ import {
   type ResolverIntent,
   type ResolverJob,
 } from "../../src/colony/resolver.ts";
+import { RETRY_CHECK, malformedReply } from "../../src/colony/resolver-retry.ts";
 import { CallLimiter } from "../../src/decide/limiter.ts";
 import { MODEL_USAGE_CHECK, noteProvenance } from "../../src/trunk/provenance.ts";
 
@@ -386,11 +387,104 @@ describe("validation before anything is proposed", () => {
     expect(w.intents.get("int_b")?.status).toBe("open");
   });
 
-  it("refuses a reply that changes a file that was not in conflict", async () => {
+  it("refuses a reply that changes a file that was not in conflict, after asking once more", async () => {
     const w = world({ reply: async () => ({ text: `<file n="1">\n${BOTH}</file>\n<file n="2">\n${OTHER_TEXT}</file>` }) });
     hold(w);
     await w.settle();
-    expect(w.job()?.reason).toBe("the model's reply was not usable: the reply has a file 2, which was not asked for");
+    // A malformed reply is asked for once more; malformed again, the return stands.
+    expect(w.calls).toHaveLength(2);
+    expect(w.job()?.reason).toBe("the model's reply was not usable twice: first the reply has a file 2, which was not asked for; then the reply has a file 2, which was not asked for");
+  });
+});
+
+describe("one retry for a malformed reply", () => {
+  /** A world whose model answers these replies in turn (the last one again after). */
+  function scripted(replies: ModelReply[]) {
+    let i = 0;
+    return world({ reply: async () => replies[Math.min(i++, replies.length - 1)]! });
+  }
+  const garbled: ModelReply = { text: "Here is the merged file: export const six = 66;", usage: { input: 100, output: 10, cached: 0, neurons: 0 }, model: "test-model" };
+
+  it("asks once more when the reply cannot be parsed, proposes the second reply's merge, and records both calls and why", async () => {
+    const w = scripted([garbled, answer(BOTH)]);
+    hold(w);
+    await w.settle();
+    expect(w.calls).toHaveLength(2);
+    expect(w.calls[1]).toEqual(w.calls[0]);
+    expect(w.proposed).toHaveLength(1);
+    expect(w.proposed[0]!.contents).toMatchObject({ [blobId(BOTH)]: BOTH });
+    const checks = w.proposed[0]!.evidence?.checks ?? [];
+    expect(checks.map((c) => c.name)).toEqual([MODEL_USAGE_CHECK, MODEL_USAGE_CHECK, RETRY_CHECK, "resolver: merge"]);
+    expect(checks[0]!.detail).toBe("test-model: 1 call(s), 100 input / 10 output tokens");
+    expect(checks[1]!.detail).toBe("test-model: 1 call(s), 120 input / 30 output tokens");
+    expect(checks[2]!.detail).toBe(
+      "the first reply from test-model was malformed (the reply has no <file n=\"N\"> block and no CANNOT line), so the resolver asked once more; this merge is from the second reply, and both calls count in the spend",
+    );
+    // Provenance counts both calls to the model.
+    expect(noteProvenance({ kind: "internal", model: "test-model" }, { checks })?.model?.observed).toEqual([{ model: "test-model", calls: 2, inputTokens: 220, outputTokens: 40 }]);
+  });
+
+  it("asks once more when the merge leaves a conflict marker, and only once", async () => {
+    const marked = BOTH.replace("export const six = 66;\n", "<<<<<<< trunk\nexport const six = 6;\n=======\nexport const v6 = 66;\n>>>>>>> change\n");
+    const w = scripted([answer(marked)]);
+    hold(w);
+    await w.settle();
+    expect(w.calls).toHaveLength(2);
+    expect(w.proposed).toEqual([]);
+    expect(w.job()?.reason).toBe("the model's reply was not usable twice: first the merge of src/values.ts leaves a conflict marker in it; then the merge of src/values.ts leaves a conflict marker in it");
+    expect(w.intents.get("int_b")?.status).toBe("open");
+  });
+
+  it("does not ask again for a well-formed merge the checks reject, or for CANNOT", async () => {
+    const dropped = scripted([answer(file({ 6: "export const six = 66;", 8: "export const v8 = 80;" })), answer(BOTH)]);
+    hold(dropped);
+    await dropped.settle();
+    expect(dropped.calls).toHaveLength(1);
+    expect(dropped.job()?.reason).toBe("the merge of src/values.ts changes or drops line 2, which is outside the conflicting hunks");
+    const cannot = scripted([{ text: "CANNOT: the intents disagree." }, answer(BOTH)]);
+    hold(cannot);
+    await cannot.settle();
+    expect(cannot.calls).toHaveLength(1);
+    expect(cannot.job()?.state).toBe("failed");
+  });
+
+  it("says so when the second call fails", async () => {
+    let i = 0;
+    const w = world({ reply: async () => (i++ === 0 ? garbled : Promise.reject(new Error("upstream answered 502"))) });
+    hold(w);
+    await w.settle();
+    expect(w.calls).toHaveLength(2);
+    expect(w.job()?.reason).toBe(
+      "the model's first reply was not usable (the reply has no <file n=\"N\"> block and no CANNOT line), and asking once more failed: the call to test-model failed: upstream answered 502",
+    );
+  });
+
+  it("asks no more when a hedge copy already answered for it, and passes the same test to the hedge", async () => {
+    const seen: Array<boolean | undefined> = [];
+    const w = world();
+    w.host.model = () => ({
+      complete: async (req) => {
+        seen.push(req.valid?.(garbled.text));
+        seen.push(req.valid?.(answer(BOTH).text));
+        // The hedge's copy answered malformed too: the copy was the retry.
+        return { ...garbled, hedged: { after_ms: 900, winner: "original", model: "test-model", cause: "invalid" } };
+      },
+    });
+    hold(w);
+    await w.settle();
+    expect(seen).toEqual([false, true]);
+    expect(w.job()?.reason).toBe("the model's reply was not usable: the reply has no <file n=\"N\"> block and no CANNOT line");
+  });
+
+  it("tells a malformed reply from an answer", () => {
+    const f = [{ path: F, base: BASE, ours: OURS, theirs: THEIRS }];
+    expect(malformedReply(answer(BOTH).text, f)).toBeNull();
+    expect(malformedReply("CANNOT: no", f)).toBeNull();
+    expect(malformedReply(null, f)).toBe('the reply has no <file n="N"> block and no CANNOT line');
+    expect(malformedReply(`<file n="1">\n${BOTH}`, f)).toBe("file 1 has no closing </file>");
+    // A file that had marker lines of its own may keep them: that is for the merge checks, not a malformed reply.
+    const own = [{ path: F, base: `=======\n${BASE}`, ours: `=======\n${OURS}`, theirs: `=======\n${THEIRS}` }];
+    expect(malformedReply(answer(`=======\n${BOTH}`).text, own)).toBeNull();
   });
 });
 

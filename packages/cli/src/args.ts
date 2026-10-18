@@ -1397,9 +1397,10 @@ never .claude/settings.json, which is committed. In a git work tree it also
 lists the file in .git/info/exclude so it is never committed. Before Edit,
 Write, MultiEdit or NotebookEdit, Claude Code runs ft hook check: one read of
 the agent's heads-up (1.5 s at most) that prints one line when trunk moved
-under the file or a change waiting to land writes it, and nothing otherwise.
-It always exits 0 and never denies an edit. uninstall removes exactly what
-install added.
+under the file or a change waiting to land writes it, one line saying the
+heads-up was unavailable when the server cannot be reached, refuses or is too
+slow, and nothing otherwise. It always exits 0 and never denies an edit.
+uninstall removes exactly what install added.
 
 check finds the colony and agent from --colony and --agent, else FT_COLONY
 and FT_AGENT_ID, else the clone's local git config (the take's git commands

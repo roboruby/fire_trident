@@ -130,6 +130,9 @@ describe("policy", () => {
     expect(pickSecondOpinion("@cf/google/gemma-4-26b-a4b-it", c)).toBe("@cf/openai/gpt-oss-120b");
     expect(pickSecondOpinion(undefined, c)).toBe("@cf/google/gemma-4-26b-a4b-it");
     expect(secondOpinionCandidates("@cf/google/gemma-4-26b-a4b-it", c)).toEqual(["@cf/openai/gpt-oss-120b", "@cf/zai-org/glm-4.7-flash"]);
-    expect(secondOpinionCandidates("@cf/google/gemma-4-26b-a4b-it", ["@cf/google/gemma-4-26b-a4b-it"])).toEqual(["@cf/google/gemma-4-26b-a4b-it"]);
+    // Every candidate in the author's family: none is independent, so none is a second opinion (decide/independence.ts).
+    expect(secondOpinionCandidates("@cf/google/gemma-4-26b-a4b-it", ["@cf/google/gemma-4-26b-a4b-it"])).toEqual([]);
+    // Rephrasing a rejection confirms nothing: it still has a model then.
+    expect(pickSecondOpinion("@cf/google/gemma-4-26b-a4b-it", ["@cf/google/gemma-4-26b-a4b-it"])).toBe("@cf/google/gemma-4-26b-a4b-it");
   });
 });

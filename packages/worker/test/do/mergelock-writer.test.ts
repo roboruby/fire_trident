@@ -163,8 +163,23 @@ describe("merge locks in the trunk writer", () => {
     await withWriter(FILES, undefined, async (w) => {
       merging(w);
       const { p, base, onTrunk } = await movedUnder(w);
-      (w.trunk as unknown as { sql: SqlStorage }).sql.exec("DROP TABLE ft_protected");
-      expect(await w.land(p)).toEqual({ returned: [{ proposalId: p.id, reason: `stale: ${F} (expected ${base}, trunk has ${onTrunk})` }] });
+      // The protected paths read fine for the cycle's protection check (which holds the cycle when they cannot be read,
+      // trunk/protect.ts) and fail for the merge locks' read after it.
+      const t = w.trunk as unknown as { sql: SqlStorage };
+      const real = t.sql;
+      let reads = 0;
+      t.sql = {
+        exec: (q: string, ...b: unknown[]) => {
+          if (/FROM ft_protected/.test(q) && ++reads > 1) throw new Error("no such table: ft_protected");
+          return real.exec(q, ...b);
+        },
+      } as unknown as SqlStorage;
+      try {
+        expect(await w.land(p)).toEqual({ returned: [{ proposalId: p.id, reason: `stale: ${F} (expected ${base}, trunk has ${onTrunk})` }] });
+        expect(reads).toBe(2);
+      } finally {
+        t.sql = real;
+      }
     });
   });
 });

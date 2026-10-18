@@ -2,7 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import type { Proposal } from "@fire_trident/core";
 import type { SqlRunner } from "../../src/colony/inline.ts";
 import { protectReason, type ProtectRecord } from "../../src/colony/protect.ts";
-import { PROTECT_TABLE, cycleProtect, keepProtect, protectReturns, protectionReturns, storedProtect } from "../../src/trunk/protect.ts";
+import { isFenceHeld, protectHeldReason } from "../../src/trunk/fencecheck.ts";
+import { PROTECT_TABLE, cycleProtect, keepProtect, protectCheck, protectionReturns, storedProtect } from "../../src/trunk/protect.ts";
 
 /** The trunk writer's copy of the protected-paths record and its per-cycle check (trunk/protect.ts). */
 
@@ -81,23 +82,63 @@ describe("the per-cycle protection check", () => {
     const a = change("prp_a", "src/auth/x.ts");
     // The lane read a newer record than the writer's own: it is kept and used.
     const newer: ProtectRecord = { version: 3, globs: [{ glob: "src/auth/**", at: 7_000 }] };
-    expect([...protectReturns(sql, [{ p: a, ctx: { protect: newer } }], 10)].map(([id]) => id)).toEqual(["prp_a"]);
+    expect([...protectCheck(sql, [{ p: a, ctx: { protect: newer } }], 10).returned].map(([id]) => id)).toEqual(["prp_a"]);
     expect(storedProtect(sql)).toEqual(newer);
     // A lane that read an older record changes nothing.
-    expect([...protectReturns(sql, [{ p: a, ctx: { protect: V1 } }], 11)].map(([id]) => id)).toEqual(["prp_a"]);
+    expect([...protectCheck(sql, [{ p: a, ctx: { protect: V1 } }], 11).returned].map(([id]) => id)).toEqual(["prp_a"]);
     expect(storedProtect(sql)).toEqual(newer);
   });
 
-  it("stops nothing when its record cannot be read, and says so", () => {
+  it("fails closed: when its record cannot be read it holds every change for the next cycle, landing none and sending none to a person", () => {
     const broken: SqlRunner = {
       exec: () => {
         throw new Error("disk on fire");
       },
     };
+    const a = change("prp_a", "src/auth/x.ts");
+    const b = change("prp_b", "src/lib/z.ts");
+    // Even a lane's record does not stand in for the writer's own: it may be older than a glob the colony just protected.
+    const out = protectCheck(broken, [{ p: a, ctx: { protect: V1 } }, { p: b, ctx: undefined }], 1);
+    expect(out.returned.size).toBe(0);
+    expect([...out.held.keys()]).toEqual(["prp_a", "prp_b"]);
+    expect(out.problem).toBe("the protected paths could not be read: disk on fire");
+    const reason = out.held.get("prp_b")!;
+    expect(reason).toBe(protectHeldReason("disk on fire"));
+    expect(reason).toBe(
+      "waiting for the next landing cycle: the protected-path check could not read the colony's protected paths (disk on fire), so the change was neither landed nor sent to a person; once the check can run it lands, or goes to a person if it writes a protected path",
+    );
+    // Its lane keeps it as it keeps one the direction fence held.
+    expect(isFenceHeld(reason)).toBe(true);
+  });
+
+  it("holds the cycle's changes when the stored record does not parse, and checks again once it does", () => {
+    const sql = store();
+    sql.exec("INSERT INTO ft_protected (k, record, at) VALUES ('record', '{not json', 1)");
+    const a = change("prp_a", "src/lib/z.ts");
+    expect([...protectCheck(sql, [{ p: a, ctx: undefined }], 2).held.keys()]).toEqual(["prp_a"]);
+    sql.exec("DELETE FROM ft_protected");
+    expect(protectCheck(sql, [{ p: a, ctx: undefined }], 3)).toEqual({ returned: new Map(), held: new Map(), problem: null });
+  });
+
+  it("still checks when only keeping a lane's newer record fails, and says so", () => {
+    let writes = 0;
+    const db = store();
+    const flaky: SqlRunner = {
+      exec: (q, ...b) => {
+        if (/^INSERT/.test(q)) {
+          writes++;
+          throw new Error("read-only");
+        }
+        return db.exec(q, ...b);
+      },
+    };
     const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
     try {
-      expect(protectReturns(broken, [{ p: change("prp_a", "src/auth/x.ts"), ctx: { protect: V1 } }], 1).size).toBe(0);
-      expect(error).toHaveBeenCalledWith("protection check skipped in this cycle: disk on fire");
+      const out = protectCheck(flaky, [{ p: change("prp_a", "src/auth/x.ts"), ctx: { protect: V1 } }], 1);
+      expect([...out.returned.keys()]).toEqual(["prp_a"]);
+      expect(out.held.size).toBe(0);
+      expect(writes).toBe(1);
+      expect(error).toHaveBeenCalledWith("protection check: a lane's newer record was not kept: read-only");
     } finally {
       error.mockRestore();
     }

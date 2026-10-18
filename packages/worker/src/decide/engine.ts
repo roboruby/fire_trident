@@ -36,6 +36,7 @@ import { destructiveCheck, destructiveFact, destructiveRecord } from "./destruct
 import { CallLimiter } from "./limiter.ts";
 import { candidatePaths, mechanicalCheck, nameAssumptionCandidates, nameAssumptions, proofAssumptions, type MechanicalResult } from "./mechanical.ts";
 import { pickSecondOpinion, secondOpinionCandidates, type DecidePolicy } from "./policy.ts";
+import { NO_INDEPENDENT_RULE, independenceNote, reviewerPick } from "./independence.ts";
 import { pushQuarantine } from "./quarantine.ts";
 import { askedLines, checkAcceptance, type KeepSource } from "./quotes.ts";
 import { REPRODUCED_LINES_METRIC, reproduceChange } from "./reproduce.ts";
@@ -155,8 +156,11 @@ const LLM_DEADLINE_MS = 90_000;
 const LLM_ATTEMPTS = 3;
 /** Trunk paths asked per proposal for import resolution. */
 const MAX_RESOLUTION_PATHS = 4_000;
-/** Escalations because a model could not answer (decide/gate.ts L8, M2): nothing was found wrong, so autonomy stands. */
-const UNREVIEWED = new Set(["L8 spend cap", "M2 antibodies unscreened"]);
+/** Escalations because no model could answer (decide/gate.ts L8, M2, L9): nothing was found wrong, so autonomy stands. */
+const UNREVIEWED = new Set(["L8 spend cap", "M2 antibodies unscreened", NO_INDEPENDENT_RULE]);
+
+/** What one second-opinion run gives the decide stage: the opinion (null when none came), the model, how long, why none came. */
+type SecondOpinionRun = { opinion: SecondOpinion | null; model: string; ms: number; error: string; hedged?: HedgeRecord; hedgeNote?: string };
 
 /** A vaccination batch as started. */
 export interface VaccinationResult {
@@ -474,18 +478,21 @@ export class DecideEngine {
 
       // System 2: only when the deterministic stage was inconclusive and the reflex cannot act alone.
       if (v1.action === "consult") {
-        const so = await this.secondOpinion(p, input, policy, vaccine ? "other" : "review");
+        // Independence (decide/independence.ts): only models outside the author's family are asked; with none configured,
+        // none is, and the gate sends the change to a person (L9). An author that reported no model is noted as unchecked.
+        const pick = reviewerPick(this.host.agent(p.agentId)?.model, policy.secondOpinionModels);
+        const so: SecondOpinionRun = pick.refusal ? { opinion: null, model: "", ms: 0, error: pick.refusal } : await this.secondOpinion(p, input, policy, vaccine ? "other" : "review", pick.models);
         llm = so.opinion;
         // Quoted acceptance: each line as the second opinion answered it, its quote looked for in the diff it was shown.
         const accepted = acceptance && llm ? checkAcceptance(acceptance, llm.acceptance, secondOpinionDiff(diffs).shown) : undefined;
         // Spend cap (colony/spendcap.ts): no second opinion because the cap refused its call; the gate sends it to a person (L8).
         const capped = !llm && isSpendCapRefusal(so.error) ? { spendCap: so.error } : {};
-        final = gate({ ...base, reflex, llm, ...(accepted ? { acceptance: accepted } : {}), ...capped });
+        final = gate({ ...base, reflex, llm, ...(accepted ? { acceptance: accepted } : {}), ...capped, ...(pick.refusal ? { noReviewer: pick.refusal } : {}) });
         checks.push({
-          name: `llm: ${so.model}`,
+          name: `llm: ${so.model || "none"}`,
           ok: llm?.verdict === "approve",
           ms: so.ms,
-          detail: llm ? `${llm.verdict}, needs_human ${llm.needsHuman}: ${llm.reason}; ${coverageText(seen.llm)}${so.hedgeNote ? `; ${so.hedgeNote}` : ""}` : `unavailable: ${so.error}`,
+          detail: `${llm ? `${llm.verdict}, needs_human ${llm.needsHuman}: ${llm.reason}; ${coverageText(seen.llm)}${so.hedgeNote ? `; ${so.hedgeNote}` : ""}` : `unavailable: ${so.error}`}${pick.unchecked ? `; ${pick.unchecked}` : ""}`,
         });
         if (accepted) checks.push(acceptanceCheck(accepted));
         await this.host.recordDecision({
@@ -500,6 +507,7 @@ export class DecideEngine {
             reasons: final.reasons,
             damage: final.damage,
             coverage: seen.llm,
+            ...independenceNote(pick),
             ...destructiveRecord(destructive),
             ...(repro ? { reproduction: repro.note } : {}),
             ...(so.hedged ? { hedged: so.hedged } : {}),
@@ -645,9 +653,9 @@ export class DecideEngine {
     input: ReflexInput,
     policy: DecidePolicy,
     use: CapUse = "review",
-  ): Promise<{ opinion: SecondOpinion | null; model: string; ms: number; error: string; hedged?: HedgeRecord; hedgeNote?: string }> {
+    models: string[] = secondOpinionCandidates(this.host.agent(p.agentId)?.model, policy.secondOpinionModels),
+  ): Promise<SecondOpinionRun> {
     this.limiter.configure(policy.llmConcurrency, policy.llmPerMinute);
-    const models = secondOpinionCandidates(this.host.agent(p.agentId)?.model, policy.secondOpinionModels);
     const messages = secondOpinionMessages(input, p.evidence.notVerified);
     const t0 = Date.now();
     const deadline = t0 + LLM_DEADLINE_MS;

@@ -302,16 +302,22 @@ export function modelFamily(id: string | undefined | null): string {
   return parts.length >= 2 ? parts[0]!.replace(/^@/, "") : m;
 }
 
-/** The System 2 model for a change written by `authorModel`: the first candidate from a different family. */
+/**
+ * A model for work on a change written by `authorModel` that confirms nothing (rephrasing a person's rejection as an
+ * antibody question): the first candidate from a different family, else the first candidate.
+ */
 export function pickSecondOpinion(authorModel: string | undefined, candidates: readonly string[]): string {
-  return secondOpinionCandidates(authorModel, candidates)[0] ?? DEFAULT_POLICY.secondOpinionModels[0]!;
+  return secondOpinionCandidates(authorModel, candidates)[0] ?? candidates[0] ?? DEFAULT_POLICY.secondOpinionModels[0]!;
 }
 
-/** System 2 models to try, in order: every candidate from a different family than the author's (all of them when none is). */
+/**
+ * System 2 models to try, in order: every candidate from a different family than the author's. None when every candidate
+ * is in the author's family: no independent second opinion exists then, and the change goes to a person
+ * (decide/independence.ts). An author whose model is unknown has no family, so every candidate is listed.
+ */
 export function secondOpinionCandidates(authorModel: string | undefined, candidates: readonly string[]): string[] {
   const author = modelFamily(authorModel);
-  const other = candidates.filter((c) => modelFamily(c) !== author);
-  return [...new Set(other.length > 0 ? other : candidates)];
+  return [...new Set(candidates.filter((c) => modelFamily(c) !== author))];
 }
 
 /**
