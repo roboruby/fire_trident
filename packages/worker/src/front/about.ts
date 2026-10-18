@@ -74,6 +74,7 @@ export const NOT_FLAGS: readonly string[] = [
   "FT_BULK_MODEL",
   "FT_COCHANGE_WEIGHT",
   "FT_DEFAULT_MODEL",
+  "FT_GITHUB_TOKEN",
   "FT_HEDGE_MS",
   "FT_LATERAL_INHIBITION",
   "FT_MCP_TOKEN",

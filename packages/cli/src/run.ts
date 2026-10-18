@@ -72,6 +72,8 @@ import { firstLandings, readRows, testsRequest } from "./tests.ts";
 import type { IntentBody, SpecPolicy } from "./spec.ts";
 import type { Certification, GuideLesson, Intent, Landing, LandingTests, LineageNote, Proposal, Rule } from "@fire_trident/core";
 import { connectInfo, connectText } from "./connect.ts";
+import { installPlan, nodeRunner, runInstall, terminalAsk, type ProcessRunner } from "./install.ts";
+import { formatIssues } from "./issues.ts";
 import { retestText } from "./reviewtests.ts";
 import { runReviewBatch } from "./batch.ts";
 import { lifecycleRequest } from "./strip.ts";
@@ -96,6 +98,10 @@ export interface Io {
   stdin?: () => Promise<string>;
   /** The working directory `ft hook` resolves paths against; the process's when absent. */
   cwd?: () => string;
+  /** `ft connect --install` (install.ts): runs a client's own command, never through a shell; absent, nothing is run. */
+  run?: ProcessRunner;
+  /** One question on the terminal (`ft connect --install` asks before it runs); absent when there is no terminal. */
+  ask?: (question: string) => Promise<string>;
 }
 
 /** The real process I/O. */
@@ -114,6 +120,8 @@ export function nodeIo(): Io {
     onInterrupt: (fn) => void process.once("SIGINT", fn),
   };
   if (process.stderr.isTTY) io.progress = (text) => void process.stderr.write(text);
+  io.run = nodeRunner;
+  if (process.stdin.isTTY) io.ask = terminalAsk;
   return io;
 }
 
@@ -519,6 +527,13 @@ async function execute(cmd: Command, ctx: Ctx): Promise<number> {
       else io.stdout(formatRecipe(cmd, res, c));
       return 0;
     }
+    case "issues": {
+      // GitHub issues as intents (issues.ts): the server reads up to three pages from GitHub before it answers.
+      const res = await send<unknown>(ctx.http, req, 60_000);
+      if (ctx.flags.json) printJson(ctx, res);
+      else io.stdout(formatIssues(cmd, res, c));
+      return 0;
+    }
     default:
       throw new Error(`unhandled command ${cmd.name}`);
   }
@@ -613,10 +628,15 @@ async function revert(cmd: Extract<Command, { name: "revert" }>, ctx: Ctx): Prom
 
 /**
  * `ft connect [<colony>]`: each MCP client's command and configuration for the server ft talks to, the read-only
- * server first (core/connect.ts, the same source as the /connect page). Sends nothing.
+ * server first (core/connect.ts, the same source as the /connect page). Sends nothing. With `--install <client>`
+ * (install.ts), runs Claude Code's or Codex CLI's own command to add the server, after showing it and asking.
  */
-function connect(cmd: Extract<Command, { name: "connect" }>, ctx: Ctx): number {
+function connect(cmd: Extract<Command, { name: "connect" }>, ctx: Ctx): number | Promise<number> {
   const info = connectInfo(ctx.http.baseUrl, cmd.colony ?? null);
+  if (cmd.install) {
+    const { io, c, flags } = ctx;
+    return runInstall(installPlan(info, cmd.install), cmd.install, { stdout: io.stdout, stderr: io.stderr, env: io.env, c, dryRun: flags.dryRun, json: flags.json, ...(io.run ? { run: io.run } : {}), ...(io.ask ? { ask: io.ask } : {}) });
+  }
   if (ctx.flags.json) printJson(ctx, info);
   else ctx.io.stdout(connectText(info));
   return 0;

@@ -4,6 +4,7 @@ import { pauseRequest } from "./pause.ts";
 import { spendCapRequest } from "./spendcap.ts";
 import { commitAuthorRequest } from "./commitauthor.ts";
 import { recipeRequest } from "./recipe.ts";
+import { issuesRequest } from "./issues.ts";
 import { auditRequest } from "./audit.ts";
 import { silentTtlRequest } from "./closure.ts";
 
@@ -205,6 +206,9 @@ export function planRequest(cmd: Command, by: string): ApiRequest | null {
     case "recipe":
       // Recipes (recipe.ts): declare, list, show, approve.
       return recipeRequest(cmd, by, colonyPath);
+    case "issues":
+      // GitHub issues as intents (issues.ts).
+      return issuesRequest(cmd, by, colonyPath);
     case "megafile":
       if (!cmd.path) return { method: "GET", path: colonyPath(cmd.colony, "/megafile") };
       return { method: "POST", path: colonyPath(cmd.colony, "/megafile"), body: { path: cmd.path, action: cmd.release ? "release" : "hold", by: cmd.by ?? by } };

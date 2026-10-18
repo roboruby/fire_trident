@@ -69,7 +69,7 @@ describe("connectInfo", () => {
 
   it("gives Claude Code the commands and .mcp.json of docs/agents/claude-code.md", () => {
     expect(snippet(info, "claude-code", "public", "shell").text).toBe(`claude mcp add --transport http firetrident-public ${SITE}/public/mcp`);
-    expect(snippet(info, "claude-code", "token", "shell").text).toBe(`claude mcp add --transport http firetrident ${SITE}/mcp --header "Authorization: Bearer $FT_MCP_TOKEN"`);
+    expect(snippet(info, "claude-code", "token", "shell").text).toBe(`claude mcp add --transport http firetrident ${SITE}/mcp --header 'Authorization: Bearer \${FT_MCP_TOKEN}'`);
     expect(JSON.parse(snippet(info, "claude-code", "public", "json").text)).toEqual({ mcpServers: { "firetrident-public": { type: "http", url: `${SITE}/public/mcp` } } });
     const project = snippet(info, "claude-code", "token", "json");
     expect(project.file).toBe(".mcp.json");
@@ -150,7 +150,7 @@ describe("connectInfo", () => {
 
   it("names the token only by its variable or an input, never by value", () => {
     const all = info.clients.flatMap((c) => c.variants.flatMap((v) => v.snippets.map((s) => s.text))).join("\n");
-    const bearers = [...all.matchAll(/Bearer ([^"\s]+)/g)].map((m) => m[1]);
+    const bearers = [...all.matchAll(/Bearer ([^"'\s]+)/g)].map((m) => m[1]);
     expect(bearers.length).toBeGreaterThan(5);
     for (const b of bearers) expect(b).toMatch(/^(?:\$FT_MCP_TOKEN|\$\{FT_MCP_TOKEN\}|\$\{env:FT_MCP_TOKEN\}|\$\{input:ft-mcp-token\}|<the)$/);
     for (const c of info.clients) expect(c.variants[0].snippets.some((s) => /Bearer|token/i.test(s.text)), c.id).toBe(false);

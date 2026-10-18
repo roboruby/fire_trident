@@ -68,6 +68,7 @@ const FIXED: Readonly<Record<Exclude<OriginKind, "rule">, Origin>> = {
   certify: { key: "certify", kind: "certify", label: "Certification repairs" },
   system: { key: "system", kind: "system", label: "The colony's own splits" },
   agent: { key: "agent", kind: "agent", label: "Agents' follow-ups" },
+  external: { key: "external", kind: "external", label: "Imported issues" },
   unknown: { key: "unknown", kind: "unknown", label: "Origin not known" },
 };
 
@@ -81,6 +82,7 @@ export const ORIGIN_TITLE: Readonly<Record<OriginKind, string>> = {
   certify: "Repairs that trunk certification declared when the project's own tests failed on trunk.",
   system: "Splits the colony declared itself when a file grew too large too fast.",
   agent: "Intents agents declared while working on another one. Each names its parent.",
+  external: "Public GitHub issues a person imported: strangers wrote their text, so review reads them as it reads an agent's request.",
   unknown:
     "The colony's events do not say who declared these intents. A live page learns it from the colony's next snapshot; a replay knows it only for the intents the finished colony still lists.",
 };
@@ -178,6 +180,7 @@ export function originOf(it: IntentView, book: RuleBook): Origin {
     case "certify":
     case "system":
     case "agent":
+    case "external":
       return FIXED[it.source];
     default:
       return inferred(it, book);

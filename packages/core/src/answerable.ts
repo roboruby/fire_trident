@@ -141,6 +141,8 @@ function declaredBy(source: string, createdBy: string, ruleId: string): string {
   if (source === "rule") return `rule ${ruleId || "unknown"} declared the intent`;
   if (source === "certify") return "trunk certification declared the intent";
   if (source === "system") return "FireTrident declared the intent";
+  // An imported issue (worker colony/issues.ts): a stranger wrote its text; the person who imported it did not write it.
+  if (source === "external") return `${createdBy || "someone"} imported the intent from a public issue`;
   return `an intent of source ${source} was declared`;
 }
 

@@ -27,7 +27,9 @@ import type { MovedBy } from "@fire_trident/core";
 import type { ColonySpend, IntentSpendBrief } from "@fire_trident/core";
 import type { PauseState } from "@fire_trident/core";
 import type { IntentClosure } from "@fire_trident/core";
+import type { ExternalSource } from "@fire_trident/core";
 import { closureFrom } from "./closure.ts";
+import { issueOf } from "./issues.ts";
 import { applyPauseEvent, parsePauses } from "./pause.ts";
 import { finite } from "./format.ts";
 import { movedByOf } from "./moved.ts";
@@ -144,6 +146,8 @@ export interface IntentView {
   acceptance?: string[];
   /** Why it last closed or reopened while an agent held it (the closure ledger; closure.ts), from the snapshot or an intent event. */
   closure?: IntentClosure;
+  /** An imported issue's intent: the public issue it came from (issues.ts checks it), from the snapshot. */
+  external?: ExternalSource;
 }
 
 export interface ProposalView {
@@ -184,6 +188,8 @@ export interface IntentOrigin {
   why?: string;
   /** Its acceptance lines, when it has any. */
   acceptance?: string[];
+  /** An imported issue's intent: the public issue it came from (issues.ts checks it). */
+  external?: ExternalSource;
 }
 
 /** An intent whose changes keep coming back: how many returns this page saw, and the latest reason. */
@@ -318,7 +324,7 @@ const NOTICE_WINDOW_MS = 15_000;
 /** Resolved reports kept for the review tab and lineage (open ones are always kept). */
 const RESOLVED_KEEP = 200;
 const INTENT_STATUSES: ReadonlySet<string> = new Set<IntentStatus>(["open", "claimed", "proposed", "landed", "abandoned", "withdrawn"]);
-const INTENT_SOURCES: ReadonlySet<string> = new Set<IntentSource>(["human", "rule", "agent", "certify", "system"]);
+const INTENT_SOURCES: ReadonlySet<string> = new Set<IntentSource>(["human", "rule", "agent", "certify", "system", "external"]);
 /** Learned intent origins kept at most (a replay's finished snapshot lists up to 5,200 intents). */
 const ORIGINS_KEEP = 50_000;
 const LAYERS: ReadonlySet<string> = new Set<DecisionLayer>(["reflex", "llm", "human"]);
@@ -439,6 +445,8 @@ export function intentOriginOf(raw: unknown): IntentOrigin | null {
   if (typeof r.why === "string") o.why = r.why;
   const acceptance = acceptanceOf((raw as { acceptance?: unknown }).acceptance);
   if (acceptance) o.acceptance = acceptance;
+  const external = issueOf((raw as { external?: unknown }).external);
+  if (external) o.external = external;
   return o;
 }
 
@@ -457,6 +465,7 @@ function fillOrigin(view: IntentView, o: IntentOrigin): void {
   if (o.priority !== undefined) view.priority = o.priority;
   if (o.why !== undefined && view.why === undefined) view.why = o.why;
   if (o.acceptance && view.acceptance === undefined) view.acceptance = o.acceptance;
+  if (o.external && view.external === undefined) view.external = o.external;
 }
 
 /** The landing a notice names, when its event carries one (`landingId`, or a `landing` with its id). */
@@ -734,6 +743,8 @@ export class ColonyStore {
       if (acceptance) view.acceptance = acceptance;
       const closure = closureFrom(i.closure);
       if (closure) view.closure = closure;
+      const external = issueOf(i.external);
+      if (external) view.external = external;
       this.intents.set(i.id, view);
       tally(this.intentsByStatus, i.status, 1, INTENT_STATUSES);
       const esc = escalationOf(i.id, i.escalation, view.title, now);

@@ -132,7 +132,7 @@ export const LIFECYCLE_CHANGES = 20;
 export interface LifecycleIntent {
   id: string;
   title?: string;
-  /** IntentSource: human, rule, agent, certify, system. */
+  /** IntentSource: human, rule, agent, certify, system, external. */
   source?: string;
   createdBy?: string;
   createdAt?: number;
@@ -250,6 +250,9 @@ export function declaredText(i: Pick<LifecycleIntent, "source" | "createdBy">): 
       return "trunk certification, to repair failing tests";
     case "system":
       return "FireTrident itself";
+    case "external":
+      // An imported issue (worker colony/issues.ts): a stranger wrote it; a person brought it in.
+      return named ? `a public issue, imported by ${named}` : "a public issue";
     default:
       return named || "not recorded";
   }

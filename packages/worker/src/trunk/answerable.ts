@@ -18,7 +18,7 @@ export interface IntentWho {
 
 /** Longest name a note keeps for who declared an intent or approved a rule. */
 const WHO_CHARS = 200;
-const SOURCES: ReadonlySet<string> = new Set<IntentSource>(["human", "rule", "agent", "certify", "system"]);
+const SOURCES: ReadonlySet<string> = new Set<IntentSource>(["human", "rule", "agent", "certify", "system", "external"]);
 
 /** One line, at most WHO_CHARS; undefined when not a string. */
 function who(raw: unknown): string | undefined {

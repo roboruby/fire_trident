@@ -339,7 +339,7 @@ Point your client at the colony's MCP endpoint, either Streamable HTTP at `/mcp`
 
 ```sh
 npx wrangler secret put FT_MCP_TOKEN    # in packages/worker, once; without it /mcp refuses connections
-claude mcp add --transport http firetrident https://<your-host>/mcp --header "Authorization: Bearer $FT_MCP_TOKEN"
+claude mcp add --transport http firetrident https://<your-host>/mcp --header 'Authorization: Bearer ${FT_MCP_TOKEN}'
 ```
 
 Then ask for one thing: *"Join the FireTrident colony `my-colony`, take one intent, make the change, propose it, and wait until it lands."* The server's instructions and tool descriptions handle the rest:

@@ -205,9 +205,23 @@ export interface ImpactReport {
 
 /**
  * `certify`: declared by trunk certification to repair failing tests (see Certification). `system`: declared by the
- * colony itself (the megafile alarm's split intents, FT_MEGAFILE); its why is the colony's own numbers.
+ * colony itself (the megafile alarm's split intents, FT_MEGAFILE); its why is the colony's own numbers. `external`:
+ * imported from outside the colony (a public GitHub issue, worker colony/issues.ts); its title and why quote text a
+ * stranger wrote, so every gate reads it as untrusted, as an agent's: it never waives a danger gate or earns autonomy.
  */
-export type IntentSource = "human" | "rule" | "agent" | "certify" | "system";
+export type IntentSource = "human" | "rule" | "agent" | "certify" | "system" | "external";
+/**
+ * Where an `external` intent came from: a public GitHub issue, by repository (`owner/name`), number, its page and the
+ * login of the person who opened it. Recorded when the issue is imported (worker colony/issues.ts); the lineage note,
+ * the landing card and the landing commit's `Refs:` trailer name it.
+ */
+export interface ExternalSource {
+  kind: "github-issue";
+  repo: string;
+  number: number;
+  url: string;
+  author: string;
+}
 /**
  * The cap that lowered an agent's priority: its parent's (`parent`: a parent it holds or declared, or one whose priority
  * is below the default), the default with no parent (`no-parent`), or the default under a parent that is not its own
@@ -266,6 +280,8 @@ export interface Intent {
    * the trunk writer runs the recipe over trunk and lands its output. Absent on every other intent.
    */
   recipe?: Recipe & { id: Id };
+  /** Imported issues (source `external`, worker colony/issues.ts): the issue it came from. Absent on every other intent. */
+  external?: ExternalSource;
 }
 
 /**
@@ -1205,9 +1221,10 @@ export interface LineageNote {
      * `priority` and `requestedPriority` only when an agent asked for more than its intent was granted (worker colony/priority.ts).
      * `source` and `createdBy`: who declared the intent, as the colony recorded it; `ruleApprovedBy`: for a rule's intent,
      * who approved the rule. The trunk writer adds them from the land context (absent on older notes, and when the writer
-     * did not know them); they name the nearest person answerable for the change (core/answerable.ts).
+     * did not know them); they name the nearest person answerable for the change (core/answerable.ts). `external`: the
+     * public issue an imported intent came from (worker colony/issues.ts).
      */
-    intent: { id: Id; title: string; why: string; ruleId?: Id; parentId?: Id; priority?: number; requestedPriority?: number; source?: IntentSource; createdBy?: string; ruleApprovedBy?: string };
+    intent: { id: Id; title: string; why: string; ruleId?: Id; parentId?: Id; priority?: number; requestedPriority?: number; source?: IntentSource; createdBy?: string; ruleApprovedBy?: string; external?: ExternalSource };
     writeSet: FileVersion[];
     readSet: FileVersion[];
     decisions: NoteDecision[];

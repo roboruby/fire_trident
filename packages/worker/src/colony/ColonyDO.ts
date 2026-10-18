@@ -29,6 +29,7 @@ import type {
   DecisionLayer,
   EventsPage,
   Evidence,
+  ExternalSource,
   FunnelStage,
   FieldReading,
   FileVersion,
@@ -172,6 +173,7 @@ import { lessonScopesEnabled } from "./lessonscope.ts";
 import type { GuideLesson, GuideTake, LessonReceipt } from "@fire_trident/core";
 import { MegafileAlarm, megafileEnabled, type MegafileHost } from "./megafile.ts";
 import { declareRecipe, intentRecipe, migrateIntentRecipes, recipeNews, type RecipeColonyHost, type RecipeDeclare } from "./recipe.ts";
+import { externalOf, importIssues, issueLanded, migrateIssues, type IssueImportInput, type IssueImportResult } from "./issues.ts";
 import { mechanicalShare, ruleRecipe, ruleRecipeNews, splitViolations, startRuleRecipe, type RuleRecipeHost, type RuleRecipeStart } from "./rulerecipe.ts";
 import { declaredRecipe } from "../decide/reproduce.ts";
 import { reviewReproduction } from "../decide/review.ts";
@@ -479,6 +481,8 @@ type IntentRow = {
   closure?: string | null;
   /** Recipes: the intent's recipe (Recipe & { id } JSON; recipe.ts migrates older tables). */
   recipe?: string | null;
+  /** Imported issues: the issue an `external` intent came from (ExternalSource JSON; issues.ts migrates older tables). */
+  external?: string | null;
 };
 
 type RuleRow = {
@@ -681,6 +685,8 @@ export class ColonyDO extends DurableObject<Env> {
     migratePriority(this.sql);
     // Recipes (colony/recipe.ts): the intents' recipe column.
     migrateIntentRecipes(this.sql);
+    // Imported issues (colony/issues.ts): the import table and the intents' external column.
+    migrateIssues(this.sql);
     this.backfillSeries();
     this.hub = new EventHub(() => this.ctx.getWebSockets());
     this.certifier = new Certifier(this.certifyHost());
@@ -1854,7 +1860,7 @@ export class ColonyDO extends DurableObject<Env> {
    * (`alternatives`, keyed by the winner's proposal id).
    */
   async landContext(intentIds: Id[], agentIds: Id[], proposalIds: Id[] = []): Promise<{
-    intents: Record<Id, { title: string; why: string; ruleId?: Id; parentId?: Id; priority?: number; requestedPriority?: number } & DirectionInfo & IntentWho>;
+    intents: Record<Id, { title: string; why: string; ruleId?: Id; parentId?: Id; priority?: number; requestedPriority?: number; external?: ExternalSource } & DirectionInfo & IntentWho>;
     agents: Record<Id, { kind: AgentKind; model?: string; resumeKey?: boolean; name?: string }>;
     decisions: Record<Id, NoteDecision[]>;
     alternatives?: Record<Id, ContestAlternative[]>;
@@ -1864,7 +1870,7 @@ export class ColonyDO extends DurableObject<Env> {
     author?: CommitAuthorRecord;
   }> {
     const colonyId = this.requireColony().id;
-    const intents: Record<Id, { title: string; why: string; ruleId?: Id; parentId?: Id; priority?: number; requestedPriority?: number } & DirectionInfo & IntentWho> = {};
+    const intents: Record<Id, { title: string; why: string; ruleId?: Id; parentId?: Id; priority?: number; requestedPriority?: number; external?: ExternalSource } & DirectionInfo & IntentWho> = {};
     // Who approved each rule, for the lineage note's answerable person (trunk/answerable.ts).
     const approver = (ruleId: Id): string | undefined => this.sql.exec<{ approved_by: string }>("SELECT approved_by FROM rules WHERE id = ?", ruleId).toArray()[0]?.approved_by;
     for (const id of new Set(intentIds)) {
@@ -1877,6 +1883,8 @@ export class ColonyDO extends DurableObject<Env> {
       if (i.withdrawnReason) entry.withdrawnReason = i.withdrawnReason;
       // What an agent asked for when the cap lowered its priority, for the lineage note (priority.ts).
       Object.assign(entry, notePriority(i));
+      // Imported issues (colony/issues.ts): the issue, for the note and the commit's Refs trailer.
+      if (i.external) Object.assign(entry, { external: i.external });
       if ((i.revision ?? 1) > 1) {
         entry.revisions = this.revisionRows(id)
           .filter((r) => r.substantive === 1)
@@ -2537,6 +2545,12 @@ export class ColonyDO extends DurableObject<Env> {
     await this.flushEffects(fx);
     // Trunk moved: certify the newest trunk soon (asynchronous; nothing here waits for it).
     this.certifier.landed(l);
+    // Imported issues (colony/issues.ts): the opt-in comment, and close, on GitHub, after the landing and never holding it.
+    this.ctx.waitUntil(
+      issueLanded({ sql: this.sql, colonyId: colony.id, token: this.env.FT_GITHUB_TOKEN, publicUrl: this.env.FT_PUBLIC_URL, fetch: (input, init) => fetch(input, init), now: () => Date.now() }, { ...l, paths }).catch((err: unknown) =>
+        console.warn(`issue write-back of ${l.id} failed: ${errorText(err)}`),
+      ),
+    );
     // A person approved this change to colony memory (.firetrident/ is governance): it takes effect now.
     await this.refreshAntibodies({ ...l, paths });
   }
@@ -2831,6 +2845,12 @@ export class ColonyDO extends DurableObject<Env> {
    */
   async declareRecipe(p: RecipeDeclare): Promise<{ intent: Intent; recipe: RecipeRecord }> {
     return declareRecipe(this.recipeColony(), p);
+  }
+
+  /** Imported issues (colony/issues.ts; api/issues.ts read them from GitHub): one `external` intent per issue not imported before. */
+  async importIssues(p: IssueImportInput): Promise<IssueImportResult> {
+    const colony = this.requireColony();
+    return importIssues({ sql: this.sql, colonyId: colony.id, now: () => Date.now(), declare: (drafts) => this.createIntents(drafts) }, p);
   }
 
   /** The trunk writer tells the colony of a recipe's batch and of its end (TrunkDO.tellColony). */
@@ -6598,7 +6618,7 @@ export class ColonyDO extends DurableObject<Env> {
       if (!title) throw ftError(400, "intent title is required");
       if (d.assignedTo !== undefined && d.assignedTo !== null && !this.agentRow(d.assignedTo)) throw ftError(404, `unknown agent ${d.assignedTo}`);
       if (d.parentId && !this.intentRow(d.parentId)) throw ftError(404, `unknown parent intent ${d.parentId}`);
-      const source: IntentSource = d.source === "rule" || d.source === "agent" || d.source === "certify" || d.source === "system" ? d.source : "human";
+      const source: IntentSource = d.source === "rule" || d.source === "agent" || d.source === "certify" || d.source === "system" || d.source === "external" ? d.source : "human";
       // An agent's intent takes at most the priority of a parent it holds or declared, else 1; what it asked is kept (priority.ts).
       const granted = grantPriority(d.priority, source, source === "agent" && d.parentId ? this.intentRow(d.parentId) : null, d.createdBy || "unknown");
       const { priority } = granted;
@@ -6819,6 +6839,9 @@ export class ColonyDO extends DurableObject<Env> {
     // Recipes (colony/recipe.ts): a recipe's intent carries its recipe.
     const recipe = intentRecipe(r.recipe);
     if (recipe) intent.recipe = recipe;
+    // Imported issues (colony/issues.ts): an external intent carries its issue.
+    const external = intent.source === "external" ? externalOf(r.external) : undefined;
+    if (external) intent.external = external;
     return intent;
   }
 
