@@ -3,6 +3,7 @@ import type { Env } from "../env.ts";
 import { publicColonies } from "../api/git-proxy.ts";
 import { parseBudget } from "../mcp/budget.ts";
 import { pushDelayMs } from "../trunk/direction.ts";
+import { defaultCapUsd } from "../colony/spendcap.ts";
 
 /**
  * GET /api/about: which build is serving (the git commit it was built from, the Worker version and its tag, when that
@@ -55,6 +56,7 @@ export const COLONY_FLAGS: readonly string[] = [
  */
 export const OTHER_FLAGS: Readonly<Record<string, (value: unknown) => boolean>> = {
   FT_AGENT_CALL_BUDGET: (v) => typeof v === "string" && parseBudget(v) !== null,
+  FT_DEFAULT_SPEND_CAP: (v) => defaultCapUsd(v) !== null,
   FT_IMPORT_WEIGHT: (v) => {
     const weight = typeof v === "string" || typeof v === "number" ? Number(v) : 0;
     return Number.isFinite(weight) && weight > 0;

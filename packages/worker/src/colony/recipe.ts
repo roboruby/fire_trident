@@ -1,4 +1,5 @@
-import { newId, parseRecipe, recipeText, scopeFootprint } from "@fire_trident/core";
+import { parseRecipe, recipeText, scopeFootprint } from "@fire_trident/core";
+import { newId } from "../ids.ts";
 import type { ColonyEvent, Id, Intent, Landing, Recipe, RecipeRecord } from "@fire_trident/core";
 import { ftError } from "./errors.ts";
 import type { SqlRunner } from "./inline.ts";

@@ -5,7 +5,8 @@
  */
 import { DurableObject } from "cloudflare:workers";
 import { Hono } from "hono";
-import { blobId, newId, regionOf } from "@fire_trident/core";
+import { blobId, regionOf } from "@fire_trident/core";
+import { newId } from "../../src/ids.ts";
 import type { AgentKind, FileVersion, HeldMergeFile, Id, Landing, LineageNote, MergeConflict, NoteCertification, Path, Proposal, RepoRef, Sha, TrunkPublish, WorkspaceLease } from "@fire_trident/core";
 import { createApi } from "../../src/api/app.ts";
 import type { ApiDeps } from "../../src/api/app.ts";

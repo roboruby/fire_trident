@@ -477,7 +477,9 @@ describe("MCP tools", () => {
     const out = (await tools.inbox({ wait: 30 })) as Record<string, any>;
     expect(out.watching).toMatchObject({ id: "prp_1", status: "landed", final: true, landingId: "lnd_1" });
     expect(out.next).toMatch(/^Landed/);
-    expect(clock.slept).toBe(3_000);
+    // Gaps of 1 s and 2 s while it stays checking; it moved to ready, so the next ask came 1 s later (mcp/poll.ts).
+    expect(clock.slept).toBe(4_000);
+    expect(colony.statusCalls).toBe(4);
     await expect(tools.inbox({ wait: 5, proposalId: "prp_other" })).rejects.toThrow(/not one of yours/);
   });
 
@@ -493,6 +495,8 @@ describe("MCP tools", () => {
     clock.slept = 0;
     expect(await tools.inbox({ wait: 10 })).toMatchObject({ watching: { status: "escalated", final: false } });
     expect(clock.slept).toBe(10_000);
+    // Growing gaps (1, 2, 4, then the 3 s left): five asks in ten seconds, not eleven.
+    expect(colony.statusCalls).toBe(5);
     await expect(setup().tools.inbox({ wait: 1 })).rejects.toThrow(/call join first/);
   });
 

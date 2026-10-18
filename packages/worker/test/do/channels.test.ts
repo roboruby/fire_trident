@@ -210,8 +210,12 @@ describe("an agent reports an intent it cannot do as written", () => {
     // No agent is offered it, the reporter included.
     const b = await addAgent(c.id, "b");
     for (const agent of [a, b]) expect((await api("POST", `/colonies/${c.id}/agents/${agent.id}/take`)).body).toMatchObject({ wait: true, reason: "no open intents" });
-    // One open report per intent.
-    expect(await escalateIn(c.id, a.id, { intentId: i.id, kind: "other", report: "again" })).toMatch(/already has a report waiting for a person/);
+    // One open report per intent: another agent's is refused, and the reporter's own repeat (a retry after a lost reply)
+    // gets its first report back and writes nothing (the events below hold one report).
+    expect(await escalateIn(c.id, b.id, { intentId: i.id, kind: "other", report: "again" })).toMatch(/already has a report waiting for a person/);
+    expect(await escalateIn(c.id, a.id, { intentId: i.id, kind: "other", report: "again" })).toBe("ok");
+    const repeat = await colony(c.id).escalate(a.id, { intentId: i.id, kind: "other", report: "again" });
+    expect(repeat.escalation).toEqual({ kind: "broken-test", report, by: a.id, at: expect.any(Number) });
     // Every read carries it: the snapshot, the intent with its history, the list of open reports.
     const snap = (await api<ColonySnapshot>("GET", `/colonies/${c.id}`)).body;
     expect(snap.intents.find((x) => x.id === i.id)?.escalation).toEqual({ kind: "broken-test", report, by: a.id, at: expect.any(Number) });

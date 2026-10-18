@@ -1,4 +1,5 @@
-import { GUIDE_LIMITS, cleanLesson, duplicateOf, guideEntry, lessonKey, lessonVerdict, newId, overBudget, revalidationEnabled, takeLessons } from "@fire_trident/core";
+import { GUIDE_LIMITS, cleanLesson, duplicateOf, guideEntry, lessonKey, lessonVerdict, overBudget, revalidationEnabled, takeLessons } from "@fire_trident/core";
+import { newId } from "../ids.ts";
 import type { AgentKind, Certification, ColonyEvent, Evidence, GuideCertification, GuideEntry, GuideLesson, GuideTake, Id, Landing, LessonGate, LessonProvenance, LessonReceipt, LessonStatus, Proposal } from "@fire_trident/core";
 import { MASKED, maskSecrets } from "../trunk/mask.ts";
 import { noteProvenance } from "../trunk/provenance.ts";

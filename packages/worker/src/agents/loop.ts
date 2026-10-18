@@ -4,11 +4,14 @@ import { agentIdentity, applyReplacement, changeSummary, cleanPath, commitMessag
 import { TreeIndex, applySpecifierEdits, isImportRule, parseSpecifierEdits, specifierFacts } from "./context.ts";
 import { checkWrittenFile, parseIntentSpec, resolveImport, wantsErasable, writeOrder } from "./create.ts";
 import { cleanContext, noticeEntry, withLanded, type LandedWhy } from "./landed.ts";
-import { TREE_MAX, buildEditMessages, buildSpecifierMessages, buildWriteMessages, cleanLastReturn, maxTokensFor, parseEscalateReply, parseFileReply, retryMessages, specifierRetryMessages, violationProblem } from "./prompt.ts";
+import { MAX_REWRITE_CHARS, TREE_MAX, buildEditMessages, buildSpecifierMessages, buildWriteMessages, cleanLastReturn, maxTokensFor, parseEscalateReply, parseFileReply, retryMessages, specifierRetryMessages, violationProblem } from "./prompt.ts";
 import { parseLessonReply } from "./prompt.ts";
 import type { ChatMessage, LastReturn, TokenUsage } from "./prompt.ts";
 import { cleanPreview, type AntibodyQuestion } from "./preview.ts";
 import { TERMINAL_STATUSES, errorMessage, errorStatus } from "./rpc.ts";
+import { throttleRetryAfterMs } from "./throttle.ts";
+import { MODEL_LINE_CHECK, modelLineChoice, type KnownModels } from "./modelline.ts";
+import { tooLargeToRewrite, tooManyFiles } from "./limits.ts";
 import type { ColonyRpc, TakeResult } from "./rpc.ts";
 import { MAX_GUIDANCE, directionError, directiveNote, guidanceFor, holdDirective, interrupts, markApplied, nextDirection, stepNote, withGuidance } from "./direction.ts";
 import type { Guidance, HeldDirective } from "./direction.ts";
@@ -81,6 +84,8 @@ export interface FileRead {
   size: number;
   /** False for binary content and non-regular files, which are never edited. */
   text: boolean;
+  /** Characters of a text file at the base (absent in jobs read before it was recorded: `size` stands in). */
+  chars?: number;
 }
 
 /** The current unit of work, journaled after every step. */
@@ -373,6 +378,8 @@ export interface LoopDeps {
   intentSpend?: boolean;
   /** Changes waiting for a person hold no files (FT_PERSON_WAIT for the colony, agents/personwait.ts): an inline one ends its job. */
   personWait?: boolean;
+  /** The deployment's default and bulk models (FT_DEFAULT_MODEL, FT_BULK_MODEL): a Model line may name them (agents/modelline.ts). */
+  models?: { default?: string; bulk?: string };
 }
 
 export const MAX_STEP_ATTEMPTS = 4;
@@ -387,10 +394,13 @@ export const COLONY_BEAT_EVERY_MS = 3 * 60_000;
 export const AWAIT_TIMEOUT_MS = 30 * 60_000;
 export const ABANDON_PAUSE_MS = 3_000;
 export const DEFAULT_TICK_BUDGET_MS = 4 * 60_000;
-/** Files one job reads at most. */
+/** Files one job writes at most: an intent whose footprint covers more goes to a person whole (agents/limits.ts). */
 export const MAX_FILES = 20;
-/** Largest file a model is asked to rewrite (characters). */
-export const MAX_MODEL_CHARS = 120_000;
+/**
+ * Largest file a model is asked to rewrite (characters): what one reply can write back within the output budget
+ * (prompt.ts MAX_REWRITE_CHARS). A larger file would fail every attempt, so it is refused before any call.
+ */
+export const MAX_MODEL_CHARS = MAX_REWRITE_CHARS;
 /** Largest file the deterministic replacement edits (characters; journal rows stay under 2 MB). */
 export const MAX_EDIT_CHARS = 1_500_000;
 /** Output budget of one specifier-edit call: the reply is a few lines, the rest is room for reasoning. */
@@ -539,7 +549,7 @@ async function stepOnce(deps: LoopDeps, cfg: AgentConfig): Promise<StepResult> {
     if (e instanceof Halt) throw e;
     const msg = errorMessage(e);
     deps.journal.log({ at: deps.now(), intentId: job.intentId, step, ok: false, ms: deps.now() - t0, detail: msg });
-    if (errorStatus(e) === 429) return throttled(deps, cfg, job, msg);
+    if (errorStatus(e) === 429) return throttled(deps, cfg, job, msg, throttleRetryAfterMs(e));
     if (isPauseRefusal(e)) return paused(deps, cfg, job, msg);
     // The colony refused because the intent was revised or withdrawn under this job: turn, do not retry.
     const turn = directionError(e);
@@ -585,20 +595,30 @@ export function throttleWaitMs(n: number, rand: () => number = Math.random): num
 }
 
 /**
- * The model provider throttled a step (rate limit or no capacity). That is not the
- * agent's failure: the attempt is given back and the step waits with jittered
- * backoff. Only a job throttled MAX_THROTTLED times gives its intent back.
+ * The wait after the n-th throttle when the provider asked for `retryAfterMs` (agents/throttle.ts): at least that, plus
+ * up to a quarter more so agents told the same wait do not all come back at once; else throttleWaitMs alone.
  */
-async function throttled(deps: LoopDeps, cfg: AgentConfig, job: Job, msg: string): Promise<StepResult> {
+export function throttledSleepMs(n: number, retryAfterMs: number | null, rand: () => number = Math.random): number {
+  const backoff = throttleWaitMs(n, rand);
+  if (retryAfterMs === null || !Number.isFinite(retryAfterMs) || retryAfterMs <= 0) return backoff;
+  return Math.max(backoff, Math.round(retryAfterMs * (1 + rand() * 0.25)));
+}
+
+/**
+ * The model provider throttled a step (rate limit, no capacity, Anthropic overloaded). That is not the
+ * agent's failure: the attempt is given back and the step waits with jittered backoff, at least as long
+ * as the provider asked (Retry-After). Only a job throttled MAX_THROTTLED times gives its intent back.
+ */
+async function throttled(deps: LoopDeps, cfg: AgentConfig, job: Job, msg: string, retryAfterMs: number | null = null): Promise<StepResult> {
   deps.journal.bump("throttled");
   const fresh = deps.journal.job();
-  if (!fresh || fresh.intentId !== job.intentId) return { sleepMs: throttleWaitMs(1, deps.rand) };
+  if (!fresh || fresh.intentId !== job.intentId) return { sleepMs: throttledSleepMs(1, retryAfterMs, deps.rand) };
   fresh.throttled = (fresh.throttled ?? 0) + 1;
   fresh.attempts = Math.max(0, fresh.attempts - 1);
   fresh.lastError = msg;
   save(deps, cfg, fresh);
   if (fresh.throttled > MAX_THROTTLED) return abandon(deps, cfg, fresh, `the model stayed throttled through ${MAX_THROTTLED} waits: ${msg}`);
-  return { sleepMs: throttleWaitMs(fresh.throttled, deps.rand) };
+  return { sleepMs: throttledSleepMs(fresh.throttled, retryAfterMs, deps.rand) };
 }
 
 async function runStep(deps: LoopDeps, cfg: AgentConfig, job: Job): Promise<StepResult> {
@@ -709,8 +729,15 @@ async function takeWork(deps: LoopDeps, cfg: AgentConfig): Promise<StepResult> {
   await adoptGuidance(deps, cfg, job, now);
   save(deps, cfg, job);
   deps.journal.bump("taken");
-  deps.journal.log({ at: now, intentId: res.intent.id, step: "take", ok: true, ms: now - t0 });
+  // A Model line the agent will not honor (agents/modelline.ts): the take's line says why.
+  const ignored = rule ? undefined : modelLineChoice(parseIntentSpec(res.intent.why ?? "").model, res.intent.source, knownModels(deps, cfg)).ignored;
+  deps.journal.log({ at: now, intentId: res.intent.id, step: "take", ok: true, ms: now - t0, ...(ignored ? { detail: ignored } : {}) });
   return { sleepMs: 0 };
+}
+
+/** The models this deployment knows beyond the classes and the price list, for a Model line (agents/modelline.ts). */
+function knownModels(deps: LoopDeps, cfg: AgentConfig): KnownModels {
+  return { default: deps.models?.default, bulk: deps.models?.bulk, own: cfg.model };
 }
 
 /**
@@ -911,15 +938,29 @@ async function readStep(deps: LoopDeps, cfg: AgentConfig, job: Job): Promise<Ste
   let paths = expandFootprint(footprint, listing, MAX_FILES * 4);
   const rule = job.rule;
   if (rule) paths = paths.filter((p) => ruleApplies(rule, p));
-  paths = paths.slice(0, MAX_FILES);
+  // More files than one agent writes: the intent goes to a person whole, before any read, never landed in part as done.
+  const tooMany = tooManyFiles(paths.length, MAX_FILES, MAX_FILES * 4);
+  if (tooMany) return escalateJob(deps, cfg, job, tooMany);
   if (paths.length === 0) return abandon(deps, cfg, job, "the footprint names no file this agent can edit");
   const at = async (path: Path): Promise<FileRead | null> => {
     const f = await files.readFile(baseSha, path);
     if (!f) return null;
     const regular = f.mode === "100644" || f.mode === "100755";
-    return { path, blob: f.blob, mode: f.mode, size: f.bytes.length, text: regular && decodeText(f.bytes) !== null };
+    const text = regular ? decodeText(f.bytes) : null;
+    return { path, blob: f.blob, mode: f.mode, size: f.bytes.length, text: text !== null, ...(text !== null ? { chars: text.length } : {}) };
   };
   const reads: FileRead[] = (await eachRead(job, paths, at)).map((f, i) => f ?? { path: paths[i]!, blob: null, mode: null, size: 0, text: true });
+  // A file a model would rewrite whole that its reply cannot hold: to a person before any model call (agents/limits.ts).
+  // A rule's intent rewrites only a file with violations, which its model edit checks for itself.
+  if (!rule) {
+    for (const f of reads) {
+      const big = f.blob !== null && f.text ? tooLargeToRewrite(f.path, f.chars ?? f.size, MAX_MODEL_CHARS) : null;
+      if (big) {
+        bookReads(deps, job);
+        return escalateJob(deps, cfg, job, big);
+      }
+    }
+  }
   if (rule) {
     job.reads = reads;
     bookReads(deps, job);
@@ -1092,8 +1133,11 @@ async function writeFile(
   };
   const maxTokens = maxTokensFor(original, WRITE_MIN_TOKENS);
   // The take's hint first (the model step-up), then the model class the intent asks for ("default" for integration-heavy
-  // work; bulk agents then write with it), then the agent's own.
-  const asked = job.modelHint?.model ?? spec.model ?? cfg.model;
+  // work; bulk agents then write with it), then the agent's own. A Model line is honored only where a person, a spec or
+  // a rule wrote it and it names a model this deployment knows (agents/modelline.ts); otherwise the evidence says why not.
+  const line = modelLineChoice(spec.model, job.intent.source, knownModels(deps, cfg));
+  if (line.ignored && !job.modelHint) addCheck(job, { name: MODEL_LINE_CHECK, ok: true, ms: 0, detail: line.ignored });
+  const asked = job.modelHint?.model ?? line.model ?? cfg.model;
   let messages = first;
   let problem = "";
   for (let attempt = 0; attempt < MAX_WRITE_ATTEMPTS; attempt++) {

@@ -86,17 +86,17 @@ export function inhibited(candidate: Pick<Candidate, "directClaim">, inhibitAt: 
 /**
  * Pick an intent for an agent with the response-threshold rule. Walks candidates in
  * descending stimulus and accepts each with probability responseProbability(s, theta[region] ?? defaultTheta).
- * Returns null if nothing is accepted. `rand` is injectable for tests.
+ * Returns null if nothing is accepted. The caller supplies `rand` (core is pure).
  *
  * Closed-admission candidates and laterally inhibited ones (see `inhibited`; `inhibitAt` defaults
- * to LATERAL_INHIBITION) are skipped; ties keep input order; `rand` (default Math.random) is
+ * to LATERAL_INHIBITION) are skipped; ties keep input order; `rand` (in [0, 1)) is
  * called once per candidate walked and accepts when rand() < p; defaultTheta defaults to 1.
  */
 export function chooseIntent(
   candidates: Candidate[],
   thresholds: Record<string, number>,
   now: number,
-  rand: () => number = Math.random,
+  rand: () => number,
   defaultTheta = 1,
   inhibitAt: number = LATERAL_INHIBITION,
 ): Candidate | null {

@@ -764,11 +764,18 @@ export function extractFinishReason(result: unknown): string | undefined {
   return undefined;
 }
 
+/** The most output tokens a file rewrite asks for, the part of them kept for reasoning, and the characters a token carries. */
+export const MAX_REWRITE_TOKENS = 32_768;
+export const REWRITE_HEADROOM_TOKENS = 4096;
+export const CHARS_PER_OUTPUT_TOKEN = 3;
+/** The largest file a whole-file rewrite can return within MAX_REWRITE_TOKENS: 86,016 characters. */
+export const MAX_REWRITE_CHARS = (MAX_REWRITE_TOKENS - REWRITE_HEADROOM_TOKENS) * CHARS_PER_OUTPUT_TOKEN;
+
 /**
  * Output token budget for rewriting a file: about one token per three characters
  * plus headroom for reasoning, clamped to [floor, ceiling].
  */
-export function maxTokensFor(content: string | null, floor = 4096, ceiling = 32_768): number {
-  const estimate = Math.ceil((content?.length ?? 0) / 3) + 4096;
+export function maxTokensFor(content: string | null, floor = 4096, ceiling = MAX_REWRITE_TOKENS): number {
+  const estimate = Math.ceil((content?.length ?? 0) / CHARS_PER_OUTPUT_TOKEN) + REWRITE_HEADROOM_TOKENS;
   return Math.min(ceiling, Math.max(floor, estimate));
 }

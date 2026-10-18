@@ -16,9 +16,8 @@ import type { AgentStartParams } from "./rpc.ts";
 import { SHARED_OBJECTS, VirtualReads, trunkObjects, virtualCheckoutEnabled } from "./virtual.ts";
 import { personWaitOn } from "../colony/personwait.ts";
 import { recordLeftOutcome } from "./personwait.ts";
+import { WATCHDOG_MS, busyAlarmAt } from "./watchdog.ts";
 
-/** Re-arm time set at the start of every tick, so a killed tick resumes within a minute. */
-const WATCHDOG_MS = 60_000;
 /** Longest first-step delay a caller may ask for. */
 const MAX_START_DELAY_MS = 60_000;
 /**
@@ -62,6 +61,8 @@ export class AgentDO extends DurableObject<Env> {
   private readonly journal: SqlJournal;
   private git: WorkspaceGit | null = null;
   private ticking = false;
+  /** The alarm the running tick chose for its next step, once it chose one (null while its step runs; agents/watchdog.ts). */
+  private chosenAt: number | null = null;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -118,6 +119,8 @@ export class AgentDO extends DurableObject<Env> {
       intentSpend: intentSpendEnabled(this.env.FT_INTENT_SPEND, colonyId),
       // Changes waiting for a person hold no files (colony/personwait.ts), where the flag covers the colony.
       personWait: personWaitOn(this.env.FT_PERSON_WAIT, colonyId),
+      // The models a spec intent's Model line may name besides the classes and the price list (agents/modelline.ts).
+      models: { default: this.env.FT_DEFAULT_MODEL, bulk: this.env.FT_BULK_MODEL },
     };
   }
 
@@ -286,10 +289,12 @@ export class AgentDO extends DurableObject<Env> {
     const cfg = this.journal.config();
     if (!cfg || !cfg.running) return;
     if (this.ticking) {
-      await this.ctx.storage.setAlarm(Date.now() + 1_000);
+      // Only a tick the runtime gave up on still runs here (agents/watchdog.ts): wait for it a minute, not a second.
+      await this.ctx.storage.setAlarm(busyAlarmAt(Date.now(), this.chosenAt));
       return;
     }
     this.ticking = true;
+    this.chosenAt = null;
     try {
       await this.ctx.storage.setAlarm(Date.now() + WATCHDOG_MS);
       const finishedBefore = this.finishedJobs();
@@ -311,8 +316,10 @@ export class AgentDO extends DurableObject<Env> {
         sleepMs = 0;
       }
       // A start() during the tick bumps the epoch (the tick halts) but leaves the agent running.
-      if (this.journal.config()?.running) await this.ctx.storage.setAlarm(Date.now() + Math.max(0, sleepMs ?? 0));
-      else await this.ctx.storage.deleteAlarm();
+      if (this.journal.config()?.running) {
+        this.chosenAt = Date.now() + Math.max(0, sleepMs ?? 0);
+        await this.ctx.storage.setAlarm(this.chosenAt);
+      } else await this.ctx.storage.deleteAlarm();
     } finally {
       this.ticking = false;
       this.trunkRepo?.release();

@@ -8,7 +8,7 @@ import { cleanLastReturn, type LastReturn } from "../agents/prompt.ts";
 import type { ColonyRpc, RegionRpc, TakeResult, TrunkRpc } from "../agents/rpc.ts";
 import { diffTrees, onFirstParentChain, readFileAt } from "./gitread.ts";
 import type { ReadBlob, ReadCommit, ReadTree } from "./gitread.ts";
-import { RESUME_KEY_NOTE, contextBrief, escalateReceipt, gitInstructions, leaseNext, reviewBrief, ruleBrief } from "./instructions.ts";
+import { RESUME_KEY_NOTE, contextBrief, gitInstructions, leaseNext, reviewBrief, ruleBrief } from "./instructions.ts";
 import { newResumeKey } from "./resume.ts";
 import { cleanGuideTake, type GuideTake, type LessonReceipt } from "@fire_trident/core";
 import { guideBrief } from "./guide.ts";
@@ -23,6 +23,8 @@ import { foldPath } from "../decide/pathfold.ts";
 import { declaredRecipe } from "../decide/reproduce.ts";
 import { refuseWhilePaused } from "../colony/pause.ts";
 import { replayAnswer, replayedProposal } from "./replay.ts";
+import { escalateAnswer, rememberReport, replayedReport, type EscalatedIntent } from "./escalated.ts";
+import { POLL_FIRST_MS, PollBackoff } from "./poll.ts";
 import { withTests } from "./whytests.ts";
 import { latestCertification, withHoldsText } from "./whyholds.ts";
 
@@ -57,6 +59,8 @@ export interface Session {
    * intent it declared instead of a duplicate (sessions saved before it have none).
    */
   declared?: DeclaredIntent[];
+  /** This session's reports of the last ESCALATE_REPLAY_MS, newest last: a repeat gets the first answer back (mcp/escalated.ts). */
+  escalated?: EscalatedIntent[];
 }
 
 /**
@@ -137,8 +141,8 @@ export const MAX_WAIT_S = 45;
  * reopening its intent and revoking its workspace token.
  */
 export const HEARTBEAT_EVERY_MS = 15_000;
-/** Poll period of the server-side waits. */
-const POLL_MS = 1_000;
+/** Shortest poll period of the server-side waits; the gaps grow from it (mcp/poll.ts). */
+const POLL_MS = POLL_FIRST_MS;
 /** Regions one sense call reads. */
 const MAX_SENSE_REGIONS = 16;
 const SHA = /^[0-9a-f]{40}$/;
@@ -617,8 +621,10 @@ export class FireTridentTools {
     const colony = this.ctx.colony(s.colonyId);
     const deadline = this.ctx.now() + waitSeconds(a.wait) * 1000;
     let res: TakeResult = await colony.take(s.agentId);
+    // The colony's own hint or a growing gap (mcp/poll.ts), whichever is longer, never past the deadline.
+    const gaps = new PollBackoff();
     while ("wait" in res && this.ctx.now() + POLL_MS <= deadline) {
-      await this.sleep(Math.min(Math.max(res.retryInMs, POLL_MS), deadline - this.ctx.now()));
+      await this.sleep(Math.min(Math.max(res.retryInMs, gaps.next()), deadline - this.ctx.now()));
       res = await colony.take(s.agentId);
     }
     if ("wait" in res) {
@@ -922,9 +928,16 @@ export class FireTridentTools {
       if (!p || p.agentId !== s.agentId) fail(404, `proposal ${id} is not one of yours`);
       const startedAs = p.status;
       const news = (st: ProposalStatus): boolean => FINAL.has(st) || (st === "escalated" && startedAs !== "escalated");
+      // Growing gaps between asks (mcp/poll.ts); a status change starts them over, since the next one often follows soon.
+      const gaps = new PollBackoff();
+      let seen = p.status;
       while (!news(p.status) && this.ctx.now() + POLL_MS <= deadline) {
-        await this.sleep(POLL_MS);
+        await this.sleep(Math.min(gaps.next(), deadline - this.ctx.now()));
         p = (await colony.getProposal(id)) ?? p;
+        if (p.status !== seen) {
+          seen = p.status;
+          gaps.reset();
+        }
       }
       watched = { id, status: p.status, final: FINAL.has(p.status), reason: p.reason ?? null, landingId: p.landingId ?? null, waitedMs: this.ctx.now() - t0 };
       // What beat it, when trunk moved its files (colony/movedby.ts).
@@ -999,9 +1012,12 @@ export class FireTridentTools {
    * Report to a person that an intent cannot be done as written (a wrong test, a contradictory spec,
    * an impossible ask) instead of working around it. Defaults to the held intent. The colony keeps the
    * intent for a person and releases this agent's claim and lease; the session forgets the intent.
-   * The answer is fixed text (escalateReceipt).
+   * The answer is fixed text (escalateReceipt); a repeat for the same intent gets it back (mcp/escalated.ts).
    */
   async escalate(a: { intentId?: string; kind: string; report: string }): Promise<unknown> {
+    // A retry after a lost reply (mcp/escalated.ts): the first report gave up the session's intent, so it gets its answer back.
+    const again = replayedReport(await this.ctx.load(), a, this.ctx.now());
+    if (again) return escalateAnswer(again, true);
     const s = await this.joined();
     // Pause (colony/pause.ts): refused at once while the colony's agents are paused; the colony checks again inside.
     await refuseWhilePaused(this.ctx.colony(s.colonyId));
@@ -1015,10 +1031,13 @@ export class FireTridentTools {
     // Called as a method: on a Durable Object stub, a detached function would name a remote property.
     if (!colony.escalate) fail(503, "this colony cannot take reports yet; release the intent with your report as the reason");
     const res = await colony.escalate(s.agentId, { intentId, kind, report });
+    // The kind as the colony keeps it: a repeat the colony answered (ColonyDO.escalate) carries the first report's.
+    const filed = { intentId: res.intent.id, title: res.intent.title, kind: res.escalation?.kind ?? kind, agentId: s.agentId, at: this.ctx.now() };
     await this.update((x) => {
       if (x.intent?.id === intentId) dropHeld(x);
+      rememberReport(x, filed, filed.at);
     });
-    return { escalated: { intentId: res.intent.id, title: res.intent.title, kind }, receipt: escalateReceipt(res.intent.id), next: "Call take for other work." };
+    return escalateAnswer(filed);
   }
 
   /**

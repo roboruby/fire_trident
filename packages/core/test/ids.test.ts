@@ -7,40 +7,32 @@ afterEach(() => {
 
 describe("newId", () => {
   it("is prefix + 8 base36 time digits + 6 base36 random characters", () => {
-    vi.spyOn(Date, "now").mockReturnValue(1_760_000_000_000);
-    const id = newId("int_");
+    const id = newId("int_", 1_760_000_000_000, () => 0.5);
     expect(id).toMatch(/^int_[0-9a-z]{14}$/);
     expect(parseInt(id.slice(4, 12), 36)).toBe(1_760_000_000_000);
+    expect(newId("", 1_760_000_000_000, () => 0.5)).toMatch(/^[0-9a-z]{14}$/);
   });
 
-  it("defaults to no prefix", () => {
-    expect(newId()).toMatch(/^[0-9a-z]{14}$/);
-  });
-
-  it("draws one random base36 character per Math.random call", () => {
-    vi.spyOn(Date, "now").mockReturnValue(0);
-    const random = vi.spyOn(Math, "random");
-    for (const draw of [0, 0.5, 0.999999, 0.1, 0.25, 0.75]) random.mockReturnValueOnce(draw);
-    expect(newId("x_")).toBe("x_00000000" + "0iz39r");
-    expect(random).toHaveBeenCalledTimes(6);
+  it("draws one random base36 character per call of the random source it is given", () => {
+    const draws = [0, 0.5, 0.999999, 0.1, 0.25, 0.75];
+    let calls = 0;
+    expect(newId("x_", 0, () => draws[calls++]!)).toBe("x_00000000" + "0iz39r");
+    expect(calls).toBe(6);
   });
 
   it("sorts by creation time, even when the random part says otherwise", () => {
     const times = [35, 36, 1_295, 1_296, 1_700_000_000_000, 1_760_000_000_000];
-    const now = vi.spyOn(Date, "now");
-    const random = vi.spyOn(Math, "random");
-    const ids = times.map((t, i) => {
-      now.mockReturnValue(t);
-      random.mockReturnValue(i % 2 === 0 ? 0.999 : 0);
-      return newId("prp_");
-    });
+    const ids = times.map((t, i) => newId("prp_", t, () => (i % 2 === 0 ? 0.999 : 0)));
     expect([...ids].sort()).toEqual(ids);
   });
 
-  it("does not repeat within one millisecond", () => {
-    vi.spyOn(Date, "now").mockReturnValue(1_760_000_000_000);
-    const ids = new Set(Array.from({ length: 200 }, () => newId()));
-    expect(ids.size).toBe(200);
+  it("is pure: it reads neither the clock nor Math.random, and the same inputs give the same id", () => {
+    const now = vi.spyOn(Date, "now");
+    const random = vi.spyOn(Math, "random");
+    expect(newId("int_", 1_760_000_000_000, () => 0)).toBe(`int_${(1_760_000_000_000).toString(36).padStart(8, "0")}000000`);
+    expect(newId("p_", 42, () => 0.3)).toBe(newId("p_", 42, () => 0.3));
+    expect(now).not.toHaveBeenCalled();
+    expect(random).not.toHaveBeenCalled();
   });
 });
 

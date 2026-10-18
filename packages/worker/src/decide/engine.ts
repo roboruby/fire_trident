@@ -17,7 +17,8 @@ import type {
   Rule,
   Sha,
 } from "@fire_trident/core";
-import { newId, revalidationEnabled } from "@fire_trident/core";
+import { revalidationEnabled } from "@fire_trident/core";
+import { newId } from "../ids.ts";
 import type { Env } from "../env.ts";
 import { prelandAlone, prelandReturn, prelandTexts, type PrelandOutcome } from "../certify/preland.ts";
 import { runInnateChecks, type InnateResult } from "../colony/innate.ts";

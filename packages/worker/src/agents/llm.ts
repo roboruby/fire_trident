@@ -5,6 +5,9 @@ import { hedged, runAi, type Hedge, type Hedged } from "../colony/hedge.ts";
 import type { ModelClient, ModelReply } from "./loop.ts";
 import type { ChatMessage } from "./prompt.ts";
 import { extractFinishReason, extractModelText, extractUsage } from "./prompt.ts";
+import { throttleError } from "./throttle.ts";
+
+export { throttleError } from "./throttle.ts";
 
 /** Wall-clock cap for one model call. */
 const CALL_TIMEOUT_MS = 180_000;
@@ -65,7 +68,18 @@ export function modelClient(env: Pick<Env, "AI" | "ANTHROPIC_API_KEY"> & Partial
       const { valid, ...rest } = req;
       const p = alias ? { ...rest, model: alias } : rest;
       if (usesAnthropic(env, p.model)) {
-        const r = await hedged((m, signal) => anthropicComplete(env.ANTHROPIC_API_KEY as string, { ...p, model: m }, signal), p.model, hedge, Date.now, valid ? (v) => valid(v.text) : undefined);
+        // Anthropic's 429 and 529, with its Retry-After, take the throttle path Workers AI errors take (agents/throttle.ts).
+        // Each copy's error is tagged where it fails, so a hedge sends no copy to a model that just refused (colony/hedge.ts).
+        const call = (m: string, signal?: AbortSignal): Promise<ModelReply> =>
+          anthropicComplete(env.ANTHROPIC_API_KEY as string, { ...p, model: m }, signal).catch((e: unknown) => {
+            throw throttleError(e, m);
+          });
+        let r: Hedged<ModelReply>;
+        try {
+          r = await hedged(call, p.model, hedge, Date.now, valid ? (v) => valid(v.text) : undefined);
+        } catch (e) {
+          throw throttleError(e, p.model);
+        }
         return withHedge({ ...r.value, model: r.model }, r, (v) => v.usage ?? null);
       }
       if (p.model.startsWith("claude-")) throw new Error(`model ${p.model} needs ANTHROPIC_API_KEY, which is not set`);
@@ -97,20 +111,6 @@ function withHedge<T>(reply: ModelReply, r: Hedged<T>, usageOf: (value: T) => Mo
   reply.hedged = r.hedged;
   if (r.late) reply.late = r.late.then((l) => (l ? { model: l.model, usage: usageOf(l.value) ?? null } : null));
   return reply;
-}
-
-/**
- * Workers AI refuses work it is not allowed to take right now: the per-account, per-model
- * request rate (3021; models that need Workers Paid get 20 requests a minute) or a lack
- * of capacity (3040). Tag those `[ft:429]` so the loop waits instead of counting a failure.
- */
-const THROTTLED = /rate limit|\b3021\b|\b3040\b|out of capacity|too many requests|\b429\b/i;
-
-/** The error to throw for a failed model call: tagged `[ft:429]` when the provider throttled it. */
-export function throttleError(e: unknown, model: string): Error {
-  const msg = e instanceof Error ? e.message : String(e);
-  if (THROTTLED.test(msg) && !/^\[ft:\d{3}\]/.test(msg)) return new Error(`[ft:429] model ${model} is throttled: ${msg.slice(0, 200)}`);
-  return e instanceof Error ? e : new Error(msg);
 }
 
 function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {

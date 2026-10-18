@@ -1,5 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
-import { blobId, landingMessage, mergeContentProblem, newId, regionOf, revalidationCandidate, revalidationEnabled, serializeNote, textMergeCandidate, validateProposal } from "@fire_trident/core";
+import { blobId, landingMessage, mergeContentProblem, regionOf, revalidationCandidate, revalidationEnabled, serializeNote, textMergeCandidate, validateProposal } from "@fire_trident/core";
+import { newId } from "../ids.ts";
 import type { AgentKind, ColonyEvent, ColonySnapshot, Decision, ExportSurface, ExternalSource, FileVersion, Id, Landing, LineageNote, NoteResolves, NotesVerification, OccResult, Path, Proposal, RepoRef, Revalidated, Sha, TextMerged, TrunkPublish } from "@fire_trident/core";
 import type { TrunkRoot } from "@fire_trident/core";
 import type { TreeEntry } from "isomorphic-git";

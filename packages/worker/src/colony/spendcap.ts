@@ -9,7 +9,7 @@ import { cleanBy, isPauseRefusal, pauseError, type PauseAnswer, type ResumeAnswe
 import { counterUsage, type AgentModelUsage, type ReviewConfig } from "./spend.ts";
 
 /**
- * The spend cap (no flag: nothing changes until a person sets one). A person caps what the model calls this platform
+ * The spend cap (no flag: nothing changes until a person sets one, or the deployment sets a default cap, see below). A person caps what the model calls this platform
  * makes for one colony may cost (POST /api/colonies/:id/spend-cap, `ft spend-cap`), keeping part of it for review.
  * Only the platform's own calls count: in-platform agents, review, the contest judge, the conflict resolver, antibody
  * minting. What an external agent spends on its own model is never seen here.
@@ -40,10 +40,17 @@ import { counterUsage, type AgentModelUsage, type ReviewConfig } from "./spend.t
  * and note names what sized the call that did not fit: its model and its output limit.
  *
  * Stored in the colony's own storage (`spend_cap`, one row; `spend_cap_holds`): it survives a restart.
+ *
+ * A default cap (FT_DEFAULT_SPEND_CAP, dollars; absent: none, and nothing changes). A colony with no cap of its own is
+ * capped at the deployment's default, with the same review reserve (DEFAULT_RESERVE_SHARE of it), the same reservations
+ * and the same pause; its ledger (`spend_cap_default`, one row) starts at the colony's spend when the default first
+ * applies. A person's own cap always wins, above or below the default, and removing it puts the default back.
  */
 
 /** Who the pause names when the cap trips it. */
 export const SPEND_CAP_ACTOR = "platform:spend-cap";
+/** Who set a colony's cap when the deployment's default applies (FT_DEFAULT_SPEND_CAP). */
+export const DEFAULT_CAP_BY = "platform:default-cap";
 /** Characters of prompt a reservation counts as one input token (code and JSON run 3 to 4, so this errs high). */
 export const CHARS_PER_TOKEN = 3;
 /** Output tokens a reservation assumes for a call that sets no limit. */
@@ -141,10 +148,32 @@ export function messagesChars(messages: readonly ChatMessage[]): number {
   return (messages ?? []).reduce((n, m) => n + (typeof m?.content === "string" ? m.content.length : 0) + 8, 0);
 }
 
-/** The pause's reason at the cap: "spend cap: $X of $Y spent on model calls this platform made". */
-export function capReason(spentUsd: number, capUsd: number): string {
-  return `spend cap: ${usdText(spentUsd)} of ${usdText(capUsd)} spent on model calls this platform made`;
+/**
+ * The pause's reason at the cap: "spend cap: $X of $Y spent on model calls this platform made", and for the deployment's
+ * default cap, "(the deployment's default cap)" after it.
+ */
+export function capReason(spentUsd: number, capUsd: number, byDefault = false): string {
+  return `spend cap: ${usdText(spentUsd)} of ${usdText(capUsd)} spent on model calls this platform made${byDefault ? " (the deployment's default cap)" : ""}`;
 }
+
+/**
+ * The deployment's default cap from FT_DEFAULT_SPEND_CAP: dollars above 0 and at most MAX_CAP_USD ("5", "12.50", "$5",
+ * or a number), else null: absent, empty or "off" means no default, and a value that does not read is ignored with a
+ * warning (a typo must not pause every colony).
+ */
+export function defaultCapUsd(setting: unknown): number | null {
+  if (setting === undefined || setting === null) return null;
+  if (typeof setting === "string" && (setting.trim() === "" || setting.trim().toLowerCase() === "off")) return null;
+  const usd = dollars(setting);
+  if (usd === null && warnedSetting !== String(setting)) {
+    warnedSetting = String(setting);
+    console.warn(`FT_DEFAULT_SPEND_CAP is not a dollar amount above 0 and at most ${MAX_CAP_USD}; no default spend cap applies`);
+  }
+  return usd;
+}
+
+/** The FT_DEFAULT_SPEND_CAP value last warned about, so a bad value is logged once per isolate, not at every call. */
+let warnedSetting: string | null = null;
 
 /** What sized a call's reservation: its model and its output limit (null: none, held at DEFAULT_OUTPUT_TOKENS). */
 export interface CallSize {
@@ -183,6 +212,8 @@ export function migrateSpendCap(sql: SqlRunner): void {
   sql.exec("CREATE TABLE IF NOT EXISTS spend_cap_holds (id TEXT PRIMARY KEY, use TEXT NOT NULL, usd REAL NOT NULL, unit_usd REAL NOT NULL, at INTEGER NOT NULL)");
   // The last call the agents' share could not fit (one row): what the next call may need, for a resume answer.
   sql.exec("CREATE TABLE IF NOT EXISTS spend_cap_need (id INTEGER PRIMARY KEY CHECK (id = 1), usd REAL NOT NULL, model TEXT, max_tokens INTEGER, copies INTEGER NOT NULL, at INTEGER NOT NULL)");
+  // The default cap's ledger (FT_DEFAULT_SPEND_CAP), from when it first applied to the colony (one row).
+  sql.exec("CREATE TABLE IF NOT EXISTS spend_cap_default (id INTEGER PRIMARY KEY CHECK (id = 1), baseline_usd REAL NOT NULL, settled_usd REAL NOT NULL, at INTEGER NOT NULL)");
 }
 
 /** What the cap uses of its colony (ColonyDO builds it; tests fake it). */
@@ -200,6 +231,8 @@ export interface SpendCapHost {
   /** Resume the colony's agents, as `by` (the person who raised or removed the cap), with this reason. */
   lift(by: string, reason: string): Promise<ResumeAnswer | unknown>;
   waitUntil(p: Promise<unknown>): void;
+  /** The deployment's default cap in USD (FT_DEFAULT_SPEND_CAP, defaultCapUsd), or null for none; absent: none. */
+  defaultUsd?(): number | null;
 }
 
 /**
@@ -219,7 +252,8 @@ export interface SpendCapAnswer {
   note: string;
 }
 
-type CapRow = { usd: number; reserve_usd: number; baseline_usd: number; settled_usd: number; set_by: string; set_at: number };
+/** A cap as the book reads it; `byDefault` when it is the deployment's default, kept in `spend_cap_default`. */
+type CapRow = { usd: number; reserve_usd: number; baseline_usd: number; settled_usd: number; set_by: string; set_at: number; byDefault?: boolean };
 
 /** A dollar figure a person sent: positive, finite, at most MAX_CAP_USD; null when it is not one. */
 function dollars(v: unknown, allowZero = false): number | null {
@@ -238,8 +272,35 @@ export class SpendCapBook {
     migrateSpendCap(host.sql);
   }
 
+  /** The cap in force: the colony's own, else the deployment's default (null: no cap). */
   private row(): CapRow | null {
+    return this.ownRow() ?? this.defaultRow();
+  }
+
+  /** The cap a person set for this colony, or null. */
+  private ownRow(): CapRow | null {
     return (this.host.sql.exec("SELECT usd, reserve_usd, baseline_usd, settled_usd, set_by, set_at FROM spend_cap WHERE id = 1").toArray()[0] as CapRow | undefined) ?? null;
+  }
+
+  /** The deployment's default cap (FT_DEFAULT_SPEND_CAP) as a row, its ledger started at the colony's spend the first time; null with none. */
+  private defaultRow(): CapRow | null {
+    let usd: number | null = null;
+    try {
+      usd = this.host.defaultUsd?.() ?? null;
+    } catch {
+      usd = null;
+    }
+    if (usd === null || !(usd > 0)) return null;
+    const read = (): { baseline_usd: number; settled_usd: number; at: number } | undefined =>
+      this.host.sql.exec("SELECT baseline_usd, settled_usd, at FROM spend_cap_default WHERE id = 1").toArray()[0] as { baseline_usd: number; settled_usd: number; at: number } | undefined;
+    let led = read();
+    if (!led) {
+      const now = this.host.now();
+      this.host.sql.exec("INSERT OR IGNORE INTO spend_cap_default (id, baseline_usd, settled_usd, at) VALUES (1, ?, 0, ?)", this.counted(now, true), now);
+      led = read();
+      if (!led) return null;
+    }
+    return { usd, reserve_usd: round(usd * DEFAULT_RESERVE_SHARE), baseline_usd: led.baseline_usd, settled_usd: led.settled_usd, set_by: DEFAULT_CAP_BY, set_at: led.at, byDefault: true };
   }
 
   /** The colony's spend as last counted, trusted for BOOK_TTL_MS (a reservation does not scan the counters each time). */
@@ -274,7 +335,7 @@ export class SpendCapBook {
     const now = this.host.now();
     const spent = this.spent(r, now, true);
     const state: SpendCapState = spent + EPSILON >= r.usd ? "spent" : spent + EPSILON >= r.usd - r.reserve_usd ? "review-only" : "open";
-    return { usd: r.usd, reviewReserveUsd: r.reserve_usd, spentUsd: round(spent), inFlightUsd: round(this.inFlight(now)), state, setBy: r.set_by, setAt: r.set_at };
+    return { usd: r.usd, reviewReserveUsd: r.reserve_usd, spentUsd: round(spent), inFlightUsd: round(this.inFlight(now)), state, setBy: r.set_by, setAt: r.set_at, ...(r.byDefault ? { byDefault: true } : {}) };
   }
 
   /**
@@ -285,7 +346,7 @@ export class SpendCapBook {
   async set(p: { usd: unknown; reviewReserveUsd?: unknown; by: unknown }): Promise<SpendCapAnswer> {
     const usd = dollars(p?.usd);
     if (usd === null) throw ftError(400, `the cap must be a dollar amount above 0 and at most ${MAX_CAP_USD.toLocaleString("en-US")}, such as 5 or 12.50`);
-    const prev = this.row();
+    const prev = this.ownRow();
     const given = p?.reviewReserveUsd;
     let reserve: number | null;
     if (given === undefined || given === null) reserve = prev && prev.reserve_usd < usd ? prev.reserve_usd : round(usd * DEFAULT_RESERVE_SHARE);
@@ -293,15 +354,18 @@ export class SpendCapBook {
     if (reserve === null || reserve >= usd) throw ftError(400, `the review reserve must be a dollar amount of at least 0 and below the cap of ${usdText(usd)}`);
     const by = cleanBy(p?.by);
     const now = this.host.now();
+    // A person's own cap wins over the deployment's default, above or below it.
     if (prev) {
       this.host.sql.exec("UPDATE spend_cap SET usd = ?, reserve_usd = ?, set_by = ?, set_at = ? WHERE id = 1", usd, reserve, by, now);
     } else {
-      // The ledger starts at the colony's spend now: the cap covers everything the colony spent, before it too.
+      // The ledger starts at the colony's spend now: the cap covers everything the colony spent, before it too, and
+      // what calls settled under the deployment's default cap (FT_DEFAULT_SPEND_CAP) that the count has not shown yet.
+      const fallback = this.defaultRow();
       this.host.sql.exec(
         "INSERT INTO spend_cap (id, usd, reserve_usd, baseline_usd, settled_usd, set_by, set_at) VALUES (1, ?, ?, ?, 0, ?, ?)",
         usd,
         reserve,
-        this.counted(now, true),
+        fallback ? this.spent(fallback, now, true) : this.counted(now, true),
         by,
         now,
       );
@@ -334,16 +398,41 @@ export class SpendCapBook {
     return { cap: this.state(), lifted, tripped, note: head + tail + (again && !again.over ? ` ${again.text}` : "") };
   }
 
-  /** Remove the cap: calls go on with no limit, and a pause the cap tripped is lifted. */
+  /**
+   * Remove the colony's own cap: calls go on with no limit, and a pause the cap tripped is lifted. Where the deployment
+   * has a default cap (FT_DEFAULT_SPEND_CAP), the default applies again instead: the pause is lifted only when it has room.
+   */
   async clear(p: { by: unknown }): Promise<SpendCapAnswer> {
-    const had = this.row() !== null;
+    const own = this.ownRow();
+    const had = own !== null;
     this.host.sql.exec("DELETE FROM spend_cap");
-    this.host.sql.exec("DELETE FROM spend_cap_holds");
-    this.host.sql.exec("DELETE FROM spend_cap_need");
+    const fallback = this.defaultRow();
+    // The default's ledger takes over what calls settled under the colony's own cap that the count has not shown yet.
+    if (fallback && own && amount(own.baseline_usd) + amount(own.settled_usd) > amount(fallback.baseline_usd) + amount(fallback.settled_usd)) {
+      this.host.sql.exec("UPDATE spend_cap_default SET baseline_usd = ?, settled_usd = 0 WHERE id = 1", amount(own.baseline_usd) + amount(own.settled_usd));
+      fallback.baseline_usd = amount(own.baseline_usd) + amount(own.settled_usd);
+      fallback.settled_usd = 0;
+    }
+    // Calls in flight stay held against the default; with no cap left nothing is held.
+    if (!fallback) {
+      this.host.sql.exec("DELETE FROM spend_cap_holds");
+      this.host.sql.exec("DELETE FROM spend_cap_need");
+    }
+    const now = this.host.now();
+    const room = !fallback || this.spent(fallback, now, true) + this.inFlight(now) < fallback.usd - fallback.reserve_usd - EPSILON;
     let lifted = false;
-    if (this.host.ownPause()?.by === SPEND_CAP_ACTOR) {
-      await this.host.lift(cleanBy(p?.by), "spend cap removed");
+    if (room && this.host.ownPause()?.by === SPEND_CAP_ACTOR) {
+      await this.host.lift(cleanBy(p?.by), fallback ? `spend cap removed; the default cap of ${usdText(fallback.usd)} has room` : "spend cap removed");
       lifted = true;
+    }
+    if (fallback) {
+      const head = `${had ? "The colony's own spend cap is removed" : "The colony had no spend cap of its own"}: the deployment's default cap of ${usdText(fallback.usd)} applies (everything but review stops at ${usdText(fallback.usd - fallback.reserve_usd)}).`;
+      const tail = lifted
+        ? " The pause the cap had tripped is lifted: agents may work again."
+        : !room && this.host.ownPause()?.by === SPEND_CAP_ACTOR
+          ? ` The default cap is reached too, so the agents stay paused; set a higher cap to let them go on: ft spend-cap <colony> <usd>.`
+          : "";
+      return { cap: this.state(), lifted, tripped: false, note: head + tail };
     }
     const note = had ? `No spend cap: model calls go on with no limit.${lifted ? " The pause the cap had tripped is lifted: agents may work again." : ""}` : "There was no spend cap: model calls go on with no limit.";
     return { cap: null, lifted, tripped: false, note };
@@ -385,7 +474,9 @@ export class SpendCapBook {
     if (held > 0 && spent + want <= limit + EPSILON) return { ok: false, reason: BUSY_REFUSAL, busy: true };
     // The reason says what sized the reservation, so a cap that trips well below its amount reads plainly.
     const reason =
-      spent >= share - EPSILON ? capReason(spent, r.usd) : `${capReason(spent, r.usd)}, and the next call (${callText(want, p.size, copies)}) does not fit in the ${usdText(Math.max(0, share - spent))} left to agents`;
+      spent >= share - EPSILON
+        ? capReason(spent, r.usd, r.byDefault)
+        : `${capReason(spent, r.usd, r.byDefault)}, and the next call (${callText(want, p.size, copies)}) does not fit in the ${usdText(Math.max(0, share - spent))} left to agents`;
     if (p.use !== "review") {
       // What the next call may need, for a resume answer (colony/spendcap.ts again).
       this.host.sql.exec(
@@ -414,10 +505,10 @@ export class SpendCapBook {
     const r = this.row();
     if (!r) return;
     const add = amount(usd);
-    if (add > 0) this.host.sql.exec("UPDATE spend_cap SET settled_usd = settled_usd + ? WHERE id = 1", add);
+    if (add > 0) this.host.sql.exec(`UPDATE ${r.byDefault ? "spend_cap_default" : "spend_cap"} SET settled_usd = settled_usd + ? WHERE id = 1`, add);
     const now = this.host.now();
     const spent = this.spent({ ...r, settled_usd: r.settled_usd + add }, now);
-    if (spent >= r.usd - r.reserve_usd - EPSILON) this.trip(capReason(spent, r.usd));
+    if (spent >= r.usd - r.reserve_usd - EPSILON) this.trip(capReason(spent, r.usd, r.byDefault));
   }
 
   /**
