@@ -1,4 +1,4 @@
-import type { CertificationStatus, FailingTest, Path, TestCounts } from "@fire_trident/core";
+import type { CertificationStatus, FailingTest, Path, TestCounts, UnsupportedTest } from "@fire_trident/core";
 
 /** One test as the harness reports it. */
 export interface ReportedTest {
@@ -7,6 +7,11 @@ export interface ReportedTest {
   status: "pass" | "fail" | "cancelled" | "skipped" | "todo";
   error?: string;
   ms?: number;
+  /**
+   * The API trunk certification does not support that this test used (its status is then "skipped": it never
+   * passes and never fails; summarize counts it apart).
+   */
+  unsupported?: string;
 }
 
 /** The harness's JSON answer (plan.ts, HARNESS_BODY). */
@@ -44,11 +49,16 @@ export function testName(s: unknown): string {
   return n.length > MAX_NAME ? `${n.slice(0, MAX_NAME - 1)}…` : n;
 }
 
+/** Tests that used an API trunk certification does not support, kept per result. */
+export const MAX_UNSUPPORTED = 20;
+
 /** The verdict of one run: green, red, or nothing to judge (no tests). */
 export interface Summary {
   status: Extract<CertificationStatus, "green" | "red" | "skipped">;
   counts: TestCounts;
   failing: FailingTest[];
+  /** Tests that used an API trunk certification does not support (at most MAX_UNSUPPORTED), with the API; absent when none. */
+  unsupported?: UnsupportedTest[];
   detail?: string;
 }
 
@@ -57,16 +67,24 @@ export interface Summary {
  * judge it: green when no test failed or was cancelled and no suite failed on its own (a hook or
  * its body threw), red otherwise; a run with no tests at all judges nothing. A test file that did
  * not load counts as one failing test (named after the file, with its load error) unless a failing
- * or cancelled test of its own names it already, so no file drops out of a run unnoticed.
+ * or cancelled test of its own names it already, so no file drops out of a run unnoticed. A test that
+ * used an API trunk certification does not support counts in `unsupported`, apart from failures: it
+ * neither passes nor makes the run red.
  */
 export function summarize(r: RunReport): Summary {
   const counts: TestCounts = { tests: 0, pass: 0, fail: 0, cancelled: 0, skipped: 0, todo: 0, suites: 0 };
   const failing: FailingTest[] = [];
+  const unsupported: UnsupportedTest[] = [];
   const clip = (s: string | undefined): string | undefined => (s === undefined ? undefined : s.length > MAX_ERROR ? `${s.slice(0, MAX_ERROR - 1)}…` : s);
   /** Test files that a failing or cancelled test of their own names. */
   const named = new Set<Path>();
   for (const t of Array.isArray(r.tests) ? r.tests : []) {
     counts.tests++;
+    if (t.status === "skipped" && typeof t.unsupported === "string") {
+      counts.unsupported = (counts.unsupported ?? 0) + 1;
+      if (unsupported.length < MAX_UNSUPPORTED) unsupported.push({ name: testName(t.name), file: t.file, api: t.unsupported.slice(0, MAX_ERROR) });
+      continue;
+    }
     if (t.status === "pass" || t.status === "fail" || t.status === "cancelled" || t.status === "skipped" || t.status === "todo") counts[t.status]++;
     else counts.fail++;
     const bad = t.status === "fail" || t.status === "cancelled" || !["pass", "skipped", "todo"].includes(t.status);
@@ -103,15 +121,16 @@ export function summarize(r: RunReport): Summary {
       }
     }
   }
-  if (counts.tests === 0 && suiteErrors === 0) return { status: "skipped", counts, failing, detail: "the test files define no tests" };
+  const some = unsupported.length > 0 ? { unsupported } : {};
+  if (counts.tests === 0 && suiteErrors === 0) return { status: "skipped", counts, failing, ...some, detail: "the test files define no tests" };
   const red = counts.fail > 0 || counts.cancelled > 0 || suiteErrors > 0;
-  return { status: red ? "red" : "green", counts, failing };
+  return { status: red ? "red" : "green", counts, failing, ...some };
 }
 
 /**
- * The counts in one line: "60/60 tests", "58/60 tests · 2 skipped", "5 failing · 1 todo". Skipped
- * and todo tests stay in the total and are named, so a test that stops running never drops out of
- * the line.
+ * The counts in one line: "60/60 tests", "58/60 tests · 2 skipped", "5 failing · 1 todo",
+ * "57/60 tests · 3 unsupported". Skipped, todo and unsupported tests stay in the total and are named,
+ * so a test that stops running never drops out of the line.
  */
 export function countsLine(counts: TestCounts | undefined): string {
   if (!counts) return "";
@@ -119,6 +138,7 @@ export function countsLine(counts: TestCounts | undefined): string {
   const parts = [bad === 0 ? `${counts.pass}/${counts.tests} tests` : `${bad} failing`];
   if (counts.skipped > 0) parts.push(`${counts.skipped} skipped`);
   if (counts.todo > 0) parts.push(`${counts.todo} todo`);
+  if ((counts.unsupported ?? 0) > 0) parts.push(`${counts.unsupported} unsupported`);
   return parts.join(" · ");
 }
 

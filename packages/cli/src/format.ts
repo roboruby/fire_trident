@@ -157,16 +157,30 @@ export function sparkline(values: readonly number[]): string {
 }
 
 /**
- * Test counts in one phrase: "60/60 tests", "58/60 tests · 2 skipped", "5 of 67 failing" (skipped and
- * todo tests named whenever there are any). `verb` follows a passing count: "58/60 tests pass · 2 skipped".
+ * Test counts in one phrase: "60/60 tests", "58/60 tests · 2 skipped", "5 of 67 failing", "57/60 tests · 3 unsupported"
+ * (skipped, todo and unsupported tests named whenever there are any; unsupported ones used an API trunk certification
+ * does not support and count apart from failures). `verb` follows a passing count: "58/60 tests pass · 2 skipped".
  */
 export function testsPhrase(cert: Pick<Certification, "counts">, verb = ""): string {
   const k = cert.counts;
   if (!k) return "";
   const bad = k.fail + k.cancelled;
   const head = bad === 0 ? `${num(k.pass)}/${num(k.tests)} tests${verb ? ` ${verb}` : ""}` : `${num(bad)} of ${num(k.tests)} failing`;
-  const notRun = [k.skipped > 0 ? `${num(k.skipped)} skipped` : "", k.todo > 0 ? `${num(k.todo)} todo` : ""].filter(Boolean);
+  const unsupported = k.unsupported ?? 0;
+  const notRun = [k.skipped > 0 ? `${num(k.skipped)} skipped` : "", k.todo > 0 ? `${num(k.todo)} todo` : "", unsupported > 0 ? `${num(unsupported)} unsupported` : ""].filter(Boolean);
   return [head, ...notRun].join(" · ");
+}
+
+/**
+ * The newest result's unsupported tests for `ft certify`: "    unsupported  name (API), name (API) +3", or nothing
+ * when it has none.
+ */
+export function unsupportedLine(cert: Pick<Certification, "counts" | "unsupportedTests">, c: Colors): string[] {
+  const list = Array.isArray(cert.unsupportedTests) ? cert.unsupportedTests : [];
+  if (list.length === 0) return [];
+  const shown = list.slice(0, 3).map((u) => `${quote(u.name, 48)} (${u.api})`);
+  const more = Math.max(cert.counts?.unsupported ?? list.length, list.length) - shown.length;
+  return [`    ${c.dim("unsupported")}  ${shown.join(", ")}${more > 0 ? ` +${more}` : ""}`];
 }
 
 /** Names of failing tests, "a, b +3". */
@@ -228,7 +242,7 @@ export function formatCertify(colony: string, action: "show" | "now" | "on" | "o
     running?: boolean;
     pending?: boolean;
     greenSha?: string | null;
-    policy?: { enabled?: boolean; repair?: boolean; repairsPerHour?: number };
+    policy?: { enabled?: boolean; repair?: boolean; repairsPerHour?: number; excludeTests?: string[] };
     results?: Certification[];
   };
   if (action === "now") return r.started ? `${c.green("✓")} certifying ${c.bold(colony)}'s trunk now. Watch: ft watch ${colony} --only certify` : `${c.yellow("!")} not started: ${r.reason ?? "unknown reason"}`;
@@ -238,6 +252,9 @@ export function formatCertify(colony: string, action: "show" | "now" | "on" | "o
   out.push(`${c.bold(colony)} trunk certification ${why}${r.running ? c.yellow(" · running") : r.pending ? c.dim(" · queued") : ""}`);
   out.push(`${c.dim("green".padEnd(11))}${r.greenSha ? shortSha(r.greenSha) : c.dim("never green yet")}`);
   if (r.policy) out.push(`${c.dim("repairs".padEnd(11))}${r.policy.repair === false ? "off" : `on, at most ${r.policy.repairsPerHour ?? 3} an hour`}`);
+  // Tests a person excluded (known runtime differences): they count as unsupported.
+  const excluded = Array.isArray(r.policy?.excludeTests) ? r.policy.excludeTests : [];
+  if (excluded.length > 0) out.push(`${c.dim("excluded".padEnd(11))}${quoteList(excluded, 2)} (counted as unsupported)`);
   const results = Array.isArray(r.results) ? r.results : [];
   if (results.length === 0) out.push(c.dim("no results yet"));
   // A run of red results with the same suspects lists them once, under the newest; the same goes for the first failing commit.
@@ -257,6 +274,7 @@ export function formatCertify(colony: string, action: "show" | "now" | "on" | "o
       suspects.length > 0 ? `${suspects.length} suspect${suspects.length === 1 ? "" : "s"}` : "",
     ].filter(Boolean);
     out.push(`  ${shortSha(cert.trunkSha)} ${when}  ${what}${extra.length ? c.dim(`  (${extra.join(", ")})`) : ""}`);
+    if (cert === results[0]) out.push(...unsupportedLine(cert, c));
     const key = suspects.map((s) => s.proposalId ?? s.landingId).join(" ");
     if (suspects.length > 0 && key !== listed) out.push(...suspectLines(colony, suspects, c));
     if (suspects.length > 0) listed = key;

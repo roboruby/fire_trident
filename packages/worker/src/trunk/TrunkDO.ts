@@ -743,7 +743,8 @@ export class TrunkDO extends DurableObject<Env> {
 
   /**
    * Trunk certification's view of trunk: the current commit, the landing that produced it, and the
-   * files a test run may load (.ts, .js, .mjs, .json; dependency and dot directories left out). One
+   * files a test run may load (.ts, .js, .mjs, .json; .tsx, .jsx, .mts and .cts too, so an import of one is found and
+   * reported as what the runner cannot compile rather than as missing; dependency and dot directories left out). One
    * synchronous read, so the listing is exactly that commit's; contents are then read by blob id.
    */
   async certifySnapshot(p: { maxFiles?: number } = {}): Promise<{ trunkSha: Sha; landingId: Id | null; files: Array<{ path: Path; size: number; blob: Sha }>; truncated: boolean }> {
@@ -752,7 +753,7 @@ export class TrunkDO extends DurableObject<Env> {
     const files = this.sql
       .exec<{ path: string; size: number; blob: string }>(
         `SELECT path, size, blob FROM ft_files
-           WHERE (path LIKE '%.ts' OR path LIKE '%.js' OR path LIKE '%.mjs' OR path LIKE '%.json')
+           WHERE (path LIKE '%.ts' OR path LIKE '%.js' OR path LIKE '%.mjs' OR path LIKE '%.json' OR path LIKE '%.tsx' OR path LIKE '%.jsx' OR path LIKE '%.mts' OR path LIKE '%.cts')
              AND path NOT LIKE 'node_modules/%' AND path NOT LIKE '%/node_modules/%' AND path NOT LIKE '.%' AND path NOT LIKE '%/.%'
            ORDER BY path LIMIT ?`,
         max + 1,

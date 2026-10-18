@@ -1696,6 +1696,18 @@ export interface TestCounts {
   skipped: number;
   todo: number;
   suites: number;
+  /**
+   * Tests that used an API trunk certification does not support (a vitest snapshot, module mocking): counted in
+   * `tests` but in none of the other counts, never failing. Absent means none (and on results made before vitest support).
+   */
+  unsupported?: number;
+}
+
+/** A test that used an API trunk certification does not support: its name with its suites, its file, and the API. */
+export interface UnsupportedTest {
+  name: string;
+  file: Path;
+  api: string;
 }
 
 /** One trunk commit's certification: its own tests, run on that commit. */
@@ -1712,6 +1724,8 @@ export interface Certification {
   /** Test files run, and test files left out with the reason (a package import, the size cap). */
   files?: number;
   unsupported?: Array<{ path: Path; reason: string }>;
+  /** Tests that ran but used an API trunk certification does not support (at most 20), counted in `counts.unsupported`. */
+  unsupportedTests?: UnsupportedTest[];
   startedAt: Millis;
   finishedAt?: Millis;
   /** Wall time from start to result, and the part spent inside the test runner. */
@@ -1913,6 +1927,8 @@ export type ColonyEvent =
       reusedFrom?: Sha;
       /** The result's suspects (culprit finding), at most 5. */
       suspects?: Suspect[];
+      /** Tests that used an API trunk certification does not support, counted apart (at most 10). */
+      unsupportedTests?: UnsupportedTest[];
     }
   // The first red search (FT_BISECT) ended for the red result of `trunkSha`: the result now carries `firstRed`.
   | { t: "bisect"; at: Millis; trunkSha: Sha; firstRed: FirstRed };

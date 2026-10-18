@@ -12,6 +12,7 @@ import type { LandingRange, RangeQuery } from "./range.ts";
 import { countsLine, isReport, readBounded, summarize, type RunReport } from "./report.ts";
 import { fileKeyText, mergeResults, splitReport, type FileResult } from "./cache.ts";
 import { CertifySchedule } from "./schedule.ts";
+import { excludeFiles, excludeTests } from "./exclude.ts";
 import { afterFailedStart } from "./startfail.ts";
 import {
   MAX_LOST,
@@ -455,6 +456,8 @@ export class Certifier {
       return this.finish({ ...base, status: "error", detail: `could not read trunk: ${errorText(err)}` }, null, testKey, null);
     }
     const loadMs = Date.now() - t1;
+    // Test files the policy excludes (known runtime differences) are left out, like files the runner cannot run.
+    excludeFiles(loaded, policy.excludeTests);
     if (loaded.tests.length === 0) {
       const foreign = loaded.unsupported.every((u) => u.reason === "does not import node:test");
       const detail = foreign ? `no test file imports node:test (${tests.length} test file${tests.length === 1 ? "" : "s"})` : `no test file can run here: ${loaded.unsupported.slice(0, 3).map((u) => `${u.path} ${u.reason}`).join("; ")}`;
@@ -497,12 +500,15 @@ export class Certifier {
       // this run, but they are not kept under one file's key for later runs to reuse.
       if (plan.isolated) this.storeFiles(splitReport(report, toRun), keys);
     }
-    const merged = mergeResults(loaded.tests, results, RUNNER_VERSION, runMs);
+    // Tests the policy excludes by name count as unsupported (exclude.ts).
+    const merged = excludeTests(mergeResults(loaded.tests, results, RUNNER_VERSION, runMs), policy.excludeTests);
     const s = summarize(merged);
     const cert: Certification = { ...common, status: s.status, counts: s.counts, failing: s.failing, runMs, timing: { indexMs, loadMs, workerMs } };
     if (cached.size > 0) cert.cached = cached.size;
     if (modules) cert.modules = modules;
     if (s.detail) cert.detail = s.detail;
+    // Tests that used an API certification does not support (vitest snapshots, module mocking): counted apart, never red.
+    if (s.unsupported) cert.unsupportedTests = s.unsupported;
     const judged = this.judge(cert, runFiles(merged, loaded), owing, listing, loaded, snap.files);
     // Nothing ran: these are the results of an earlier run of the same tested files (named when its verdict was the same).
     if (toRun.length === 0 && !forced) {
@@ -778,6 +784,7 @@ export class Certifier {
     if (cert.greenSha) e.greenSha = cert.greenSha;
     if (cert.detail) e.detail = cert.detail;
     if (cert.reusedFrom) e.reusedFrom = cert.reusedFrom;
+    if (cert.unsupportedTests && cert.unsupportedTests.length > 0) e.unsupportedTests = cert.unsupportedTests.slice(0, EVENT_FAILING);
     // The first landing since green keeps its place when the event carries fewer suspects than the result.
     if (cert.suspects && cert.suspects.length > 0) e.suspects = capSuspects(cert.suspects, EVENT_SUSPECTS);
     return e;

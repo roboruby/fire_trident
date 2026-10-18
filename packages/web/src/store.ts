@@ -21,6 +21,7 @@ import type {
   Rule,
   Sha,
   TestCounts,
+  UnsupportedTest,
 } from "@fire_trident/core";
 import type { StuckAction, StuckItem, StuckKind, StuckRepairState } from "@fire_trident/core";
 import type { MovedBy } from "@fire_trident/core";
@@ -60,6 +61,8 @@ export interface CertView {
   suspects?: Extract<ColonyEvent, { t: "certify" }>["suspects"];
   /** A red result's first red commit (FT_BISECT), once the search ended (the result, or a `bisect` event). */
   firstRed?: FirstRed;
+  /** Tests that used an API trunk certification does not support (counted apart in `counts.unsupported`). */
+  unsupportedTests?: UnsupportedTest[];
   at: number;
 }
 
@@ -670,6 +673,7 @@ export class ColonyStore {
     if (c.reusedFrom) view.reusedFrom = c.reusedFrom;
     if (Array.isArray(c.suspects) && c.suspects.length > 0) view.suspects = c.suspects;
     if (isFirstRed(c.firstRed)) view.firstRed = c.firstRed;
+    if (Array.isArray(c.unsupportedTests) && c.unsupportedTests.length > 0) view.unsupportedTests = c.unsupportedTests;
     this.certs.delete(c.trunkSha);
     this.certs.set(c.trunkSha, view);
     this.lastCertSha = c.trunkSha;

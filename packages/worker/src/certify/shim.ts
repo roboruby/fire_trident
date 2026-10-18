@@ -17,6 +17,10 @@
  * subtests fail fails too; tests of a suite whose body or `before` hook throws are cancelled; a
  * skipped suite contributes nothing; failures inside todo tests count as todo; a timed-out test is
  * cancelled. The harness (see plan.ts) calls `__ft.begin`, imports the file, then `__ft.finish`.
+ *
+ * The vitest shim (vitest.ts) is a layer over this module: it registers its tests here through
+ * `__ftLayer`, so a file that imports both runners has one tree. Nothing in that layer's hooks runs
+ * unless a file loads it: node:test files keep the behavior above.
  */
 export const NODE_TEST_SHIM = String.raw`// node:test for trunk certification (FireTrident).
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -29,6 +33,12 @@ const settings = { file: "", timeoutMs: 10000, deadline: Infinity, exhausted: fa
 const CANCELLED_BY_PARENT = "test did not finish before its parent and was cancelled";
 const GENERATED = /^(Expected values|Expected "actual"|Values are|Values have same|Values identical|Expected value|Input A expected|The expression)/;
 const OPS = { strictEqual: "strictEqual", equal: "equal", notStrictEqual: "notStrictEqual", notEqual: "notEqual", deepStrictEqual: "deepStrictEqual", deepEqual: "deepEqual", notDeepStrictEqual: "notDeepStrictEqual", notDeepEqual: "notDeepEqual" };
+const UNSUPPORTED = "not supported by trunk certification: ";
+// The runner's own timers: the global ones at each call, unless the vitest layer hands over the
+// runtime's own (a test that fakes timers must not stop the runner's timeouts).
+const T = { setTimeout: (f, ms) => setTimeout(f, ms), clearTimeout: (t) => clearTimeout(t), now: () => Date.now() };
+// Layers over this runner (the vitest shim): called when a file begins, before its tests run, and at its end.
+const layers = [];
 
 function makeNode(kind, name, parent, opts, fn) {
   const n = {
@@ -36,7 +46,7 @@ function makeNode(kind, name, parent, opts, fn) {
     children: [], hooks: { before: [], after: [], beforeEach: [], afterEach: [] },
     status: "", error: null, ms: 0, ready: null, queue: [], pump: null, subsBefore: false,
     failedChildren: 0, assertions: 0, plan: null, skipMsg: undefined, todoMsg: undefined,
-    done: null, resolve: null, settled: false, collected: false,
+    done: null, resolve: null, settled: false, collected: false, vt: null, ftUnsupported: undefined,
   };
   n.done = new Promise((r) => { n.resolve = r; });
   return n;
@@ -78,14 +88,16 @@ function normalize(args) {
   return { name: String(name), opts, fn: typeof fn === "function" ? fn : null };
 }
 
-function register(kind, args, extra, forced) {
+function register(kind, args, extra, forced, vt) {
   const a = normalize(args);
   const parent = forced || current();
   const opts = Object.assign({}, a.opts, extra);
   const n = makeNode(kind, a.name, parent, opts, a.fn);
+  if (vt) n.vt = vt;
   if (closed && parent === root) { n.resolve(); return n.done; }
   parent.children.push(n);
-  if (kind === "suite" && !opts.skip) collect(n);
+  // A vitest suite is collected even when skipped: vitest counts the tests of a skipped suite.
+  if (kind === "suite" && (!opts.skip || (vt && vt.collect))) collect(n);
   if (parent.kind === "test") enqueueSub(parent, n);
   else if (parent === root && running) scheduleDrain();
   return n.done;
@@ -143,7 +155,9 @@ async function runTop() {
   if (rootBefore === null) rootBefore = (await runHooks(root.hooks.before, root, suiteContext(root), true)) || false;
   while (nextTop < root.children.length) {
     const n = root.children[nextTop++];
-    if (rootBefore) cancelTree(n, rootBefore);
+    if (root.ftUnsupported !== undefined) settleTree({ children: [n] }, "skipped", root.ftUnsupported);
+    else if (rootBefore && layers.length > 0) settleTree({ children: [n] }, "skipped");
+    else if (rootBefore) cancelTree(n, rootBefore);
     else await runItem(n);
   }
 }
@@ -177,10 +191,27 @@ function cancelTree(n, error) {
   for (const c of n.children) cancelTree(c, { value: CANCELLED_BY_PARENT });
 }
 
+// Settle every test under n without running it, as vitest does: "skipped" (a skipped suite, or one
+// whose beforeAll failed; its todo tests stay todo), "todo" (a todo suite; its skipped tests stay
+// skipped), or skipped as unsupported when api names what trunk certification does not support.
+function settleTree(n, mode, api) {
+  for (const c of n.children) {
+    if (api !== undefined && c.ftUnsupported === undefined) c.ftUnsupported = api;
+    if (c.kind === "test") {
+      const todo = !!(c.vt && c.vt.todo);
+      settle(c, api !== undefined ? "skipped" : mode === "todo" ? (c.opts.skip && !todo ? "skipped" : "todo") : todo ? "todo" : "skipped");
+    } else {
+      settleTree(c, mode, api);
+      settle(c, "skipped");
+    }
+  }
+}
+
 async function runSuite(s) {
   const t0 = clock();
-  if (s.opts.skip) { s.ms = 0; settle(s, "skipped"); return; }
+  if (s.opts.skip) { s.ms = 0; if (s.vt) settleTree(s, s.vt.todo ? "todo" : "skipped"); settle(s, "skipped"); return; }
   if (s.ready) await s.ready;
+  if (s.ftUnsupported !== undefined) { settleTree(s, "skipped", s.ftUnsupported); s.ms = clock() - t0; settle(s, "skipped"); return; }
   if (s.error) {
     for (const c of s.children) cancelTree(c, { value: CANCELLED_BY_PARENT });
     s.ms = clock() - t0;
@@ -189,15 +220,20 @@ async function runSuite(s) {
   }
   const ctx = suiteContext(s);
   const beforeErr = await runHooks(s.hooks.before, s, ctx, true);
-  if (beforeErr) {
+  if (s.ftUnsupported !== undefined) {
+    settleTree(s, "skipped", s.ftUnsupported);
+  } else if (beforeErr) {
     s.error = beforeErr;
-    for (const c of s.children) cancelTree(c, { value: CANCELLED_BY_PARENT });
+    // vitest skips the tests of a suite whose beforeAll failed; node:test cancels them.
+    if (s.vt) settleTree(s, "skipped");
+    else for (const c of s.children) cancelTree(c, { value: CANCELLED_BY_PARENT });
   } else {
     for (let i = 0; i < s.children.length; i++) await runItem(s.children[i]);
   }
   const afterErr = await runHooks(s.hooks.after, s, ctx, false);
   if (afterErr && !s.error) s.error = afterErr;
   s.ms = clock() - t0;
+  if (s.ftUnsupported !== undefined) { settle(s, "skipped"); return; }
   const childFailed = s.children.some((c) => c.status === "fail" || c.status === "cancelled");
   settle(s, s.error || childFailed ? "fail" : "pass");
 }
@@ -210,8 +246,8 @@ function ancestors(n) {
 
 async function runTest(n) {
   const t0 = clock();
-  if (n.opts.skip) { settle(n, "skipped"); return; }
-  if (settings.exhausted || Date.now() >= settings.deadline) { settle(n, "cancelled", { value: "not run: the certification ran out of time" }); return; }
+  if (n.opts.skip) { settle(n, n.vt && n.vt.todo ? "todo" : "skipped"); return; }
+  if (settings.exhausted || T.now() >= settings.deadline) { settle(n, "cancelled", { value: "not run: the certification ran out of time" }); return; }
   const ctx = testContext(n);
   n.ctx = ctx;
   const chain = ancestors(n);
@@ -234,7 +270,8 @@ async function runTest(n) {
   try { ctx.__abort(); } catch (e) { /* already aborted */ }
   n.ms = clock() - t0;
   let status;
-  if (n.skipMsg !== undefined) status = "skipped";
+  if (n.ftUnsupported !== undefined) status = "skipped";
+  else if (n.skipMsg !== undefined) status = "skipped";
   else if (n.todoMsg !== undefined || inTodo(n)) status = "todo";
   else if (err) status = err.cancel ? "cancelled" : "fail";
   else status = "pass";
@@ -258,14 +295,14 @@ function invoke(owner, fn, ctx, ms, isTest) {
     const done = (err) => {
       if (finished) return;
       finished = true;
-      if (timer !== null) clearTimeout(timer);
+      if (timer !== null) T.clearTimeout(timer);
       resolve(err);
     };
-    const left = settings.deadline - Date.now();
+    const left = settings.deadline - T.now();
     const budget = left < ms;
     const limit = Math.max(0, Math.min(ms, left));
     if (Number.isFinite(limit)) {
-      timer = setTimeout(() => {
+      timer = T.setTimeout(() => {
         if (budget) settings.exhausted = true;
         const e = budget ? new Error("the certification ran out of time while this " + (isTest ? "test" : "hook") + " ran") : new Error((isTest ? "test" : "hook") + " timed out after " + ms + "ms");
         try { if (ctx) ctx.__abort(e); } catch (x) { /* already aborted */ }
@@ -339,7 +376,10 @@ function fullName(n) {
 }
 
 function suiteContext(s) {
-  return { name: s.name, fullName: fullName(s), filePath: settings.file, signal: new AbortController().signal };
+  // The signal is made when read: suites are collected while modules load, outside any request, where the
+  // runtime refuses to create an AbortController.
+  let signal = null;
+  return { name: s.name, fullName: fullName(s), filePath: settings.file, get signal() { return signal || (signal = new AbortController().signal); } };
 }
 
 function testContext(n) {
@@ -420,7 +460,8 @@ function report() {
         const status = c.settled ? c.status : "cancelled";
         const entry = { name: fullName(c), file: settings.file, status, ms: Math.round(c.ms * 10) / 10 };
         const err = c.settled ? c.error : { value: "not finished when the file ended" };
-        if (status === "fail" || status === "cancelled" || status === "todo") { const t = errorText(err); if (t) entry.error = t; }
+        if (c.ftUnsupported !== undefined) { entry.unsupported = String(c.ftUnsupported); entry.error = UNSUPPORTED + entry.unsupported; }
+        else if (status === "fail" || status === "cancelled" || status === "todo") { const t = errorText(err); if (t) entry.error = t; }
         tests.push(entry);
       } else if (!c.opts.skip) {
         const entry = { name: fullName(c), file: settings.file, status: c.settled ? c.status : "fail" };
@@ -439,10 +480,36 @@ function report() {
 function race(p, ms, message) {
   if (!Number.isFinite(ms)) return p;
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(message)), Math.max(0, ms));
-    p.then((v) => { clearTimeout(timer); resolve(v); }, (e) => { clearTimeout(timer); reject(e); });
+    const timer = T.setTimeout(() => reject(new Error(message)), Math.max(0, ms));
+    p.then((v) => { T.clearTimeout(timer); resolve(v); }, (e) => { T.clearTimeout(timer); reject(e); });
   });
 }
+
+function endLayers() {
+  for (const l of layers) {
+    try { if (l.end) l.end(); } catch (e) { /* a layer's cleanup failed: the results stand */ }
+  }
+}
+
+// For the vitest layer (vitest.ts) only: it registers its tests and hooks here, marks what uses an
+// API trunk certification does not support, and hands over the runtime's own timers.
+export const __ftLayer = {
+  current,
+  register(kind, args, extra, vt) { return register(kind, args, extra, undefined, vt || {}); },
+  hook(kind, fn, opts, first) {
+    if (typeof fn !== "function") return;
+    const h = { fn, opts: opts || {} };
+    if (first) current().hooks[kind].unshift(h);
+    else current().hooks[kind].push(h);
+  },
+  unsupported(api) {
+    const n = current();
+    if (n.ftUnsupported === undefined) n.ftUnsupported = String(api);
+  },
+  attach(layer) { if (!layers.includes(layer)) layers.push(layer); },
+  timers(real) { Object.assign(T, real); },
+  file() { return settings.file; },
+};
 
 export const __ft = {
   begin(opts) {
@@ -451,21 +518,29 @@ export const __ft = {
     settings.file = String(opts.file || "");
     if (typeof opts.timeoutMs === "number") settings.timeoutMs = opts.timeoutMs;
     if (typeof opts.deadline === "number") settings.deadline = opts.deadline;
+    for (const l of layers) if (l.begin) l.begin();
   },
   async finish(loadError) {
     if (loadError !== null && loadError !== undefined) {
       closed = true;
+      endLayers();
+      if (root.ftUnsupported !== undefined) {
+        // The file uses, as it loads, an API trunk certification does not support: unsupported, not failing.
+        const api = String(root.ftUnsupported);
+        return { file: settings.file, loadError: null, tests: [{ name: settings.file, file: settings.file, status: "skipped", unsupported: api, error: UNSUPPORTED + api }], suites: [], diagnostics };
+      }
       const text = errorText({ value: loadError }) || "the test file failed to load";
       return { file: settings.file, loadError: text, tests: [{ name: settings.file, file: settings.file, status: "fail", error: text }], suites: [], diagnostics };
     }
     // Tests start here, in the request: the runtime evaluates modules outside any request, where
     // timers are not allowed. (So a file that awaits its own tests at top level never finishes loading.)
     running = true;
+    for (const l of layers) if (l.beforeRun) l.beforeRun(root);
     scheduleDrain();
     let timedOut = false;
     try {
       // A little past the deadline, so a test's own budget timer settles it first.
-      while (drain) await race(drain, settings.deadline - Date.now() + 100, "the certification ran out of time");
+      while (drain) await race(drain, settings.deadline - T.now() + 100, "the certification ran out of time");
     } catch (e) {
       timedOut = true;
       settings.exhausted = true;
@@ -473,6 +548,7 @@ export const __ft = {
     closed = true;
     for (let i = nextTop; i < root.children.length; i++) cancelTree(root.children[i], { value: "not run: the certification ran out of time" });
     const rootError = timedOut ? null : await runHooks(root.hooks.after, root, suiteContext(root), false);
+    endLayers();
     const out = report();
     if (rootBefore) out.suites.push({ name: "(file before hook)", file: settings.file, status: "fail", error: errorText(rootBefore) });
     if (rootError) out.suites.push({ name: "(file after hook)", file: settings.file, status: "fail", error: errorText(rootError) });

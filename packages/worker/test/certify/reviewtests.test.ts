@@ -340,7 +340,7 @@ describe("tests before approval: runs on escalated changes", () => {
 
   it("says not run, with the reason, when the colony has no tests this runner can run", async () => {
     const trunk = new Trunk();
-    const head = trunk.commit({ "src/math.ts": MATH_OK, "test/math.test.ts": 'import { describe, it } from "vitest";\nimport { sub } from "../src/math.ts";\ndescribe("math", () => it("subtracts", () => sub(1, 1)));\n' });
+    const head = trunk.commit({ "src/math.ts": MATH_OK, "test/math.test.ts": 'import { describe, it } from "some-runner";\nimport { sub } from "../src/math.ts";\ndescribe("math", () => it("subtracts", () => sub(1, 1)));\n' });
     const c = colony(trunk);
     const bad = c.escalate(head, { "src/math.ts": MATH_BUG });
     const run = await c.result(bad.id);
