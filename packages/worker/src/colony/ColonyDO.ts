@@ -169,6 +169,7 @@ import { CallLimiter } from "../decide/limiter.ts";
 import type { AiRunner } from "../decide/reflex.ts";
 import type { CheckResult } from "@fire_trident/core";
 import { INLINE_FETCH_BYTES, InlineContents, inlineRefusal, isInlineChange, migrateContents } from "./inline.ts";
+import { controlPathProblem } from "../api/pathchars.ts";
 import { FieldGuide, guideEnabled, type GuideView } from "./guide.ts";
 import { lessonScopesEnabled } from "./lessonscope.ts";
 import type { GuideLesson, GuideTake, LessonReceipt } from "@fire_trident/core";
@@ -2201,6 +2202,9 @@ export class ColonyDO extends DurableObject<Env> {
     // call that resumes second finds the first one's proposal and answers as a repeat. Nothing below waits until the insert.
     if (this.repeatedProposal(input.agentId, intentRow.id, input.headSha)) return this.propose(input);
     this.assertProposable(intentRow, input.agentId);
+    // A path with a control character (api/pathchars.ts) is refused however the change arrived: the API, MCP, an in-platform agent.
+    const controlPath = controlPathProblem((Array.isArray(input.writeSet) ? input.writeSet : []).map((f) => f?.path));
+    if (controlPath) throw ftError(400, controlPath);
     const writeSet = this.normalizeVersions(input.writeSet);
     if (writeSet.length === 0) throw ftError(400, "proposal write set is empty");
     // An inline change carries the text of every file it writes (colony/inline.ts); its head is the changeset id of its base and write set.

@@ -1,9 +1,11 @@
 import { z } from "zod";
 import { GUIDE_LIMITS, INLINE_LIMITS } from "@fire_trident/core";
+import { CONTROL_PATH, NO_CONTROL } from "./pathchars.ts";
 
 /** A git object id (SHA-1, or SHA-256 for repos that use it), lowercase hex. */
 const Sha = z.string().regex(/^[0-9a-f]{40}([0-9a-f]{24})?$/, "expected a lowercase hex commit id");
-const PathString = z.string().trim().min(1).max(1024);
+/** A repository path: no control character anywhere (api/pathchars.ts, checked before the trim), 1 to 1024 characters. */
+const PathString = z.string().regex(NO_CONTROL, CONTROL_PATH).trim().min(1).max(1024);
 const Name = z.string().trim().min(1).max(200);
 
 /** Whether `s` is an https:// URL with a host, written without spaces or control characters (what a preview link may be). */

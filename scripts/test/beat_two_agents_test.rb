@@ -3,7 +3,8 @@
 # Tests for scripts/beat_two_agents.rb, run as a command against a fake colony API on 127.0.0.1 that keeps a trunk of
 # texts, takes inline changes, merges a stale one line by line as text merge does (or sends it back naming the
 # conflicting hunk), closes one whose text trunk already holds as already on trunk when asked to (FT_ALREADY_ON_TRUNK),
-# and answers why per line with the line's writer first.
+# lands two appends to the file as their union when insertion merges are on (FT_MERGE_INSERTIONS), and answers why per
+# line with the line's writer first.
 #
 #   ruby scripts/test/beat_two_agents_test.rb
 require "minitest/autorun"
@@ -17,8 +18,9 @@ require_relative "../stage"
 class FakeColony
   attr_reader :created
 
-  def initialize(flags: %w[FT_INLINE FT_RESOLVER FT_TEXT_MERGE], text_merge: true, settle_after: 0, settle_limit: nil, leak: false, on_trunk: false)
+  def initialize(flags: %w[FT_INLINE FT_RESOLVER FT_TEXT_MERGE], text_merge: true, settle_after: 0, settle_limit: nil, leak: false, on_trunk: false, dup_twice: false)
     @flags = flags
+    @dup_twice = dup_twice
     @text_merge = text_merge
     @on_trunk = on_trunk
     @settle_after = settle_after
@@ -134,6 +136,7 @@ class FakeColony
     blob = ->(t) { t ? Stage.blob_id(t) : "0" * 40 }
     stale = "stale: #{path} (expected #{blob.(base)}, trunk has #{blob.(trunk)})"
     return back(p, stale) unless @text_merge
+    return union(p, base, trunk) if @flags.include?("FT_MERGE_INSERTIONS") && appended?(base, trunk) && appended?(base, p["text"])
 
     b, t, o = [base, trunk, p["text"]].map(&:lines)
     conflict = nil
@@ -148,6 +151,18 @@ class FakeColony
     return back(p, "#{stale}; text merge of #{path}: 1 conflicting hunk, at line #{conflict} of its base", [{ path: path, base: blob.(base), trunk: blob.(trunk), theirs: blob.(p["text"]), lines: [conflict] }]) if conflict
 
     land(p, merged, { "path" => path, "base" => blob.(base), "trunk" => blob.(trunk), "theirs" => blob.(p["text"]), "result" => blob.(merged) })
+  end
+
+  def appended?(base, text) = text.length > base.length && text.start_with?(base)
+
+  # The insertion rule for two appends: trunk's append, then the change's past what trunk's already holds (dup_twice:
+  # the change's whole append again, as the rule did before it set aside what both start with).
+  def union(p, base, trunk)
+    ours = trunk[base.length..]
+    theirs = p["text"][base.length..]
+    merged = base + ours + (!@dup_twice && theirs.start_with?(ours) ? theirs[ours.length..] : theirs)
+    blob = ->(t) { Stage.blob_id(t) }
+    land(p, merged, { "path" => p["path"], "base" => blob.(base), "trunk" => blob.(trunk), "theirs" => blob.(p["text"]), "result" => blob.(merged), "rule" => "insertions" })
   end
 
   # Already on trunk (FT_ALREADY_ON_TRUNK): no landing and no return; the source is the landing that last changed the file.
@@ -290,6 +305,43 @@ class BeatTwoAgentsTest < Minitest::Test
     _out, err, code, reqs = run_beat(FakeColony.new, "--same", "--conflict")
     assert_equal 2, code
     assert_includes err, "pass --conflict or --same, not both"
+    assert_empty reqs
+  end
+
+  def test_dup_mode_lands_the_shared_function_once
+    out, err, code, = run_beat(FakeColony.new(flags: %w[FT_INLINE FT_TEXT_MERGE FT_MERGE_INSERTIONS]), "--dup")
+    assert_equal 0, code, out + err
+    order = ["beat: two agents append the same function to one file; it lands once",
+             "text merge (FT_TEXT_MERGE), insertion merges (FT_MERGE_INSERTIONS) and inline changes (FT_INLINE) are on here",
+             "agent A appended total(): landed in lnd_", "agent B appended total() and largest() on ", ", the trunk before A landed: landed in lnd_",
+             "\"Append total() and largest() to src/values.ts\"", "merged onto lnd_", "by the insertion rule",
+             "src/values.ts after both landings", "total() once, then largest()",
+             "   14  export function total(values: number[]): number {", "<- agent A", "   18  export function largest(values: number[]): number {", "<- agent B",
+             "src/values.ts:14", "src/values.ts:18", "PASS both changes landed; agent B's as an insertion merge that holds the shared function once", "deleted colony beat-"]
+    at = 0
+    order.each do |piece|
+      found = out.index(piece, at)
+      assert found, "expected #{piece.inspect} after position #{at} in:\n#{out}"
+      at = found
+    end
+    assert_equal 1, out.scan("   14  export function total(").length
+  end
+
+  def test_dup_mode_fails_when_the_shared_function_lands_twice
+    out, err, code, reqs = run_beat(FakeColony.new(flags: %w[FT_INLINE FT_TEXT_MERGE FT_MERGE_INSERTIONS], dup_twice: true), "--dup")
+    assert_equal 1, code, out + err
+    assert_match(/FAIL the merge landed the shared function twice \(blob \h{7}\)/, out)
+    assert(reqs.any? { |r| r.method == "DELETE" })
+  end
+
+  def test_dup_mode_needs_insertion_merges_and_runs_alone
+    out, _err, code, reqs = run_beat(FakeColony.new, "--dup")
+    assert_equal 1, code
+    assert_includes out, "FAIL insertion merges are off on this deployment (FT_MERGE_INSERTIONS is not on in /api/about)"
+    assert_equal ["/api/about"], reqs.map(&:path)
+    _out, err, code, reqs = run_beat(FakeColony.new, "--dup", "--same")
+    assert_equal 2, code
+    assert_includes err, "pass --dup alone, not with --conflict or --same"
     assert_empty reqs
   end
 

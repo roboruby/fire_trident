@@ -105,6 +105,8 @@ import { alreadyOnTrunkEnabled, onTrunkLog, onTrunkSources } from "./ontrunk.ts"
 import { landingRange as rangeOfLandings, type LandingRange, type RangeQuery } from "../certify/range.ts";
 import { commitOrder as commitOrderOf, testLineage as testLineageOf, type TestFileLineage, type TestLineageQuery } from "../certify/testlineage.ts";
 import { FoldedIndex, cycleCollisions, structureProblem, submoduleProblems, type SubmoduleOutcome } from "./structure.ts";
+import { PullRefused, PullTally, pullCapped } from "./pullcap.ts";
+import { journalFates } from "./recovery.ts";
 import { readTreeCached } from "./surgery.ts";
 import { foldPath } from "../decide/pathfold.ts";
 import {
@@ -1173,7 +1175,8 @@ export class TrunkDO extends DurableObject<Env> {
     return {
       sql: this.sql,
       now: () => Date.now(),
-      files: () => this.sql.exec<{ path: string; blob: string; size: number }>(`SELECT path, blob, size FROM ft_files`).toArray(),
+      // A symbolic link is not a file a recipe transforms: its blob is where it points, and a system commit may not retarget it.
+      files: () => this.sql.exec<{ path: string; blob: string; size: number }>(`SELECT path, blob, size FROM ft_files WHERE mode <> '120000'`).toArray(),
       read: (blob) => this.blobBytes(blob),
       commit: async (c) => {
         try {
@@ -2019,10 +2022,8 @@ export class TrunkDO extends DurableObject<Env> {
         } catch (e) {
           const at = await head(e);
           if (at === chain.tip) return { ok: true };
-          if (at !== chain.parent) {
-            drop();
-            return { ok: false, detail: `trunk main moved to ${at ?? "nothing"}` };
-          }
+          // Main is neither where the chain was built nor its tip: whether the chain is under it is not known here.
+          if (at !== chain.parent) throw new UnknownPush(`trunk push outcome unknown (trunk main is at ${at ?? "nothing"}), journal kept for recovery: ${errorText(e)}`);
           console.error(`direct trunk push failed (${errorText(e)}); using the regular push`);
           outcome = await regular();
         }
@@ -2030,8 +2031,10 @@ export class TrunkDO extends DurableObject<Env> {
         outcome = await regular();
       }
     } catch (e) {
-      // The outcome is unknown (network): ask the binding where main is.
-      if ((await head(e)) === chain.tip) return { ok: true };
+      // The outcome is unknown (network): ask the trunk repository where main is (its ref advertisement, remoteHead).
+      const at = await head(e);
+      if (at === chain.tip) return { ok: true };
+      if (at !== chain.parent) throw new UnknownPush(`trunk push outcome unknown (trunk main is at ${at ?? "nothing"}), journal kept for recovery: ${errorText(e)}`);
       drop();
       throw new Error(`trunk push failed: ${errorText(e)}`);
     }
@@ -2044,13 +2047,16 @@ export class TrunkDO extends DurableObject<Env> {
     throw new Error(`trunk push rejected: ${outcome.detail}`);
   }
 
-  /** Whether main is at `tip` after a stale answer: the answer's remote value, or the binding's when it gave none. */
+  /**
+   * Whether main is at `tip` after a stale answer: the answer's remote value, or the trunk repository's when it gave none.
+   * When even that cannot be read, the outcome is unknown and the journal stays for recovery (UnknownPush).
+   */
   private async landedAnyway(remoteOid: Sha | null, tip: Sha): Promise<boolean> {
     if (remoteOid !== null) return remoteOid === tip;
     try {
       return (await this.remoteHead()) === tip;
-    } catch {
-      return false;
+    } catch (e) {
+      throw new UnknownPush(`trunk push answered stale without main's value, and main could not be read: journal kept for recovery: ${errorText(e)}`);
     }
   }
 
@@ -2125,7 +2131,7 @@ export class TrunkDO extends DurableObject<Env> {
   }
 
   /** A file where a directory is needed (or the reverse), a write into a submodule, a symbolic link retargeted, or a second spelling of a trunk file. */
-  private structuralProblem(p: Proposal): string | null {
+  private structuralProblem(p: Pick<Proposal, "writeSet">): string | null {
     for (const w of p.writeSet) {
       if (w.blob === null) continue;
       const parts = w.path.split("/");
@@ -2179,10 +2185,13 @@ export class TrunkDO extends DurableObject<Env> {
       throw e;
     }
     try {
+      // Byte caps (trunk/pullcap.ts): a file or a change too large to pull goes back alone, before its bytes are copied.
+      const tally = new PullTally();
       const pulled = await mapLimit(needed, 6, async (w) => {
-        const blob = await withArtifactsRetry(() => repo.readBlob(w.blob!));
-        if (!blob) throw new ProposalProblem(`blob ${w.blob} for ${w.path} is not in workspace ${p.workspace.name}; push the commit first`);
-        const bytes = new Uint8Array(await blob.arrayBuffer());
+        const bytes = await pullCapped(() => withArtifactsRetry(() => repo.readBlob(w.blob!)), w.path, tally).catch((err: unknown) => {
+          throw err instanceof PullRefused ? new ProposalProblem(err.message) : err;
+        });
+        if (!bytes) throw new ProposalProblem(`blob ${w.blob} for ${w.path} is not in workspace ${p.workspace.name}; push the commit first`);
         const sha = await blobSha(bytes);
         if (sha !== w.blob) throw new ProposalProblem(`blob for ${w.path} hashes to ${sha}, not ${w.blob}`);
         await writeLocalBlob(g, bytes);
@@ -2294,6 +2303,10 @@ export class TrunkDO extends DurableObject<Env> {
         if (blob !== before) changes.set(f.path, { blob, mode: this.indexMode(f.path) ?? NEW_FILE_MODE, size: bytes.length, before });
       }
       if (changes.size === 0) throw new Error("system commit changes nothing");
+      // The structure check a landing gets (structuralProblem, trunk/structure.ts): a revert, a recipe's batch or colony
+      // memory never retargets a symbolic link, adds a second spelling of a trunk file or puts a file where a directory is.
+      const structural = this.structuralProblem({ writeSet: [...changes].map(([path, c]) => ({ path, blob: c.blob })) });
+      if (structural) throw ftError(422, `nothing was committed: ${structural}`);
       const treeChanges = new Map<Path, PathChange>();
       for (const [path, c] of changes) treeChanges.set(path, c.blob === null ? null : { blob: c.blob, mode: c.mode });
       const parentTree = await commitTree(g, parent);
@@ -2346,7 +2359,8 @@ export class TrunkDO extends DurableObject<Env> {
       try {
         outcome = await this.authed((token) => pushRef(g, { url: st.trunk.remote, token, localRef: STAGING_REF, remoteRef: MAIN_REF, expectedOld: parent }));
       } catch (e) {
-        // The outcome is unknown (network): ask the binding where main is; if that fails too, the journal row stays for recovery.
+        // The outcome is unknown (network): ask the trunk repository where main is (remoteHead); if that fails too, or main
+        // is somewhere else than this commit or its parent, the journal row stays for recovery.
         let head: Sha | null;
         try {
           head = await this.remoteHead();
@@ -2354,6 +2368,7 @@ export class TrunkDO extends DurableObject<Env> {
           throw new UnknownPush(`system commit push outcome unknown, journal kept for recovery: ${errorText(e)}`);
         }
         if (head !== commit) {
+          if (head !== parent) throw new UnknownPush(`system commit push outcome unknown (trunk main is at ${head ?? "nothing"}), journal kept for recovery: ${errorText(e)}`);
           this.dropJournal(id);
           throw new Error(`system commit push failed: ${errorText(e)}`);
         }
@@ -2411,33 +2426,49 @@ export class TrunkDO extends DurableObject<Env> {
   }
 
   /**
-   * Settle landings whose trunk push outcome was never recorded (the object was evicted
-   * mid-push, or the push outcome could not be learned): finalize, in chain order, those whose
-   * commit reached main, and drop the rest. A cycle's landings are one chain, so they reach
-   * main together or not at all.
+   * Settle landings whose trunk push outcome was never recorded (the object was evicted mid-push, or the push outcome
+   * could not be learned), as trunk/recovery.ts decides from where the trunk repository's ref advertisement says main is
+   * and the binding's log of main (which can lag a push): finalize, in chain order, those whose commit is on main, drop
+   * those surely not, and keep the rest. A cycle's landings are one chain, so they reach main together or not at all.
+   * While a row is kept nothing may build on trunk (it may be under main), so this throws UnknownPush and the next
+   * recovery pass decides it; a landing is never recorded unless its commit is on main.
    */
   private async recoverJournal(): Promise<void> {
     const rows = this.sql
-      .exec<{ landing_id: string; commit_sha: string; data: string }>(`SELECT landing_id, commit_sha, data FROM ft_journal WHERE state = 'pushing' ORDER BY created_at, rowid`)
+      .exec<{ landing_id: string; commit_sha: string; parent_sha: string; data: string }>(`SELECT landing_id, commit_sha, parent_sha, data FROM ft_journal WHERE state = 'pushing' ORDER BY created_at, rowid`)
       .toArray();
     if (rows.length === 0) return;
-    const st = this.state();
-    const recent = await withRepo(this.trunkBinding(st.trunk), st.trunk.name, (r) => r.log({ ref: "main", limit: Math.min(500, rows.length + 50) }));
-    const onMain = new Set(recent.map((c) => c.hash));
+    const [head, log] = await Promise.all([
+      this.remoteHead().catch((e: unknown) => {
+        console.error(`journal recovery: trunk main not read from the ref advertisement: ${errorText(e)}`);
+        return null;
+      }),
+      this.mainLog(Math.min(500, rows.length + 50)).catch((e: unknown) => {
+        console.error(`journal recovery: the binding's log of main not read: ${errorText(e)}`);
+        return null;
+      }),
+    ]);
+    const fates = journalFates(rows.map((r) => ({ landingId: r.landing_id, commit: r.commit_sha, parent: r.parent_sha })), { head, log });
     const landed: JournalData[] = [];
+    let kept = 0;
     this.ctx.storage.transactionSync(() => {
       for (const row of rows) {
-        if (!onMain.has(row.commit_sha)) {
-          this.dropJournal(row.landing_id);
-          continue;
-        }
-        const data = JSON.parse(row.data) as JournalData;
-        this.finalizeRows(data);
-        landed.push(data);
+        const fate = fates.get(row.landing_id);
+        if (fate === "dropped") this.dropJournal(row.landing_id);
+        else if (fate === "landed") {
+          const data = JSON.parse(row.data) as JournalData;
+          this.finalizeRows(data);
+          landed.push(data);
+        } else kept++;
       }
     });
     const tip = landed[landed.length - 1];
     if (tip) await setRef(this.repo(), MAIN_REF, tip.landing.trunkSha);
+    if (kept > 0) {
+      throw new UnknownPush(
+        `whether ${kept === 1 ? "a landing" : `${kept} landings`} reached trunk main is not known yet (main is at ${head ?? "an unread commit"} on the trunk repository, and the binding's log ${log === null ? "could not be read" : "does not show it yet"}); the journal keeps ${kept === 1 ? "it" : "them"} and the next cycle settles ${kept === 1 ? "it" : "them"}`,
+      );
+    }
   }
 
   private dropJournal(landingId: Id): void {
@@ -3065,10 +3096,26 @@ export class TrunkDO extends DurableObject<Env> {
     return bindingFor(this.env, trunk.namespace || TRUNK_NAMESPACE) ?? this.env.ARTIFACTS;
   }
 
+  /**
+   * Where main is on the trunk repository, from its git ref advertisement: the server a push updates, so it answers for
+   * a push that just landed (the binding's log of main can lag one). Null when the repository names no main.
+   */
   private async remoteHead(): Promise<Sha | null> {
+    const refs = await this.trunkRefs();
+    return refs.find((r) => r.ref === MAIN_REF)?.oid ?? null;
+  }
+
+  /** The trunk repository's ref advertisement. */
+  private trunkRefs(): Promise<Array<{ ref: string; oid: string }>> {
     const st = this.state();
-    const log = await withRepo(this.trunkBinding(st.trunk), st.trunk.name, (r) => r.log({ ref: "main", limit: 1 }));
-    return log[0]?.hash ?? null;
+    return this.authed((token) => listRemoteRefs(st.trunk.remote, token));
+  }
+
+  /** Main's newest `limit` commits as the binding lists them, newest first (it can lag a push: see remoteHead). */
+  private async mainLog(limit: number): Promise<Sha[]> {
+    const st = this.state();
+    const log = await withRepo(this.trunkBinding(st.trunk), st.trunk.name, (r) => r.log({ ref: "main", limit }));
+    return log.map((c) => c.hash);
   }
 
   /**

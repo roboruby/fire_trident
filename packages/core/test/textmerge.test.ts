@@ -209,6 +209,29 @@ describe("mergeText: the insertion rule (FT_MERGE_INSERTIONS)", () => {
     expect(mergeText("a\nb\nc\n", "A\nb\nc\n", "a\nb\nC\n", undefined, on)).toEqual(clean("A\nb\nC\n"));
   });
 
+it("lands a function both agents appended once, also when one of them appended more with it", () => {
+  const f = "\nexport function slug(s: string): string {\n  return s.trim().toLowerCase();\n}\n";
+  const g = "\nexport function words(s: string): string[] {\n  return s.split(/\\s+/);\n}\n";
+  // The same function from both agents: one copy, and no rule was needed.
+  expect(mergeText(base, base + f, base + f, undefined, on)).toEqual(clean(base + f));
+  // F against F+G, F+G against F, G+F against F and F against G+F: F once.
+  expect(mergeText(base, base + f, base + f + g, undefined, on)).toEqual({ clean: true, text: base + f + g, rule: "insertions" });
+  expect(mergeText(base, base + f + g, base + f, undefined, on)).toEqual({ clean: true, text: base + f + g, rule: "insertions" });
+  expect(mergeText(base, base + g + f, base + f, undefined, on)).toEqual({ clean: true, text: base + g + f, rule: "insertions" });
+  expect(mergeText(base, base + f, base + g + f, undefined, on)).toEqual({ clean: true, text: base + g + f, rule: "insertions" });
+  // The same function with something else around it on both sides would land twice: the conflict stays.
+  const h = "\nexport const h = 1;\n";
+  expect(mergeText(base, base + f + g, base + h + f + "// end\n", undefined, on)).toEqual({ clean: false, conflicts: 1, lines: [3] });
+  // So does one signature with two bodies.
+  expect(mergeText(base, `${base}export function f() {\n  return 1;\n}\n`, `${base}export function f() {\n  return 2;\n}\n`, undefined, on)).toEqual({ clean: false, conflicts: 1, lines: [3] });
+});
+
+it("keeps an import both added once when the two differ only in their quotes", () => {
+  const ours = `import { z } from "./z.ts";\n${base}`;
+  const theirs = `import { z } from './z.ts';\nimport { y } from './y.ts';\n${base}`;
+  expect(mergeText(base, ours, theirs, undefined, on)).toEqual({ clean: true, text: `import { z } from "./z.ts";\nimport { y } from './y.ts';\n${base}`, rule: "insertions" });
+});
+
   it("merges the disjoint random cases exactly as without the rule (it only ever resolves conflicts)", () => {
     const r = generator(11);
     for (let n = 0; n < 500; n++) {
