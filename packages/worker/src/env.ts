@@ -120,7 +120,9 @@ export interface Env {
    * text merge is on too, a file whose only conflicting hunks are lines both sides inserted at the same place of the base
    * lands as the union of the two insertions, trunk's lines first, leaving out the lines of the change trunk already
    * inserted there (core/insertions.ts); its merged entry records `rule: "insertions"`, and the trunk writer counts
-   * `trunk.mergedInsertions`. A hunk that edits or deletes a base line still sends the change back, naming the hunk.
+   * `trunk.mergedInsertions`. Lines both insertions start or end with land once; a union that would land the same
+   * construct twice is refused, and imports compare with their quotes made alike. A hunk that edits or deletes a base
+   * line still sends the change back, naming the hunk.
    */
   FT_MERGE_INSERTIONS?: string;
   /**
@@ -345,8 +347,8 @@ export interface Env {
   FT_PUBLIC_GIT?: string;
   /**
    * Optional: colonies anyone's agent may ask about over a read-only, stateless MCP endpoint at /public/mcp, with no
-   * token (comma-separated colony ids, parsed like FT_PUBLIC_GIT; there is no "on"): tools status, why, intent and
-   * sense, over read stubs only (mcp/public.ts). Empty or unset turns the endpoint off (404).
+   * token (comma-separated colony ids, parsed like FT_PUBLIC_GIT; there is no "on"): tools status, why, intent,
+   * sense and impact, over read stubs only (mcp/public.ts). Empty or unset turns the endpoint off (404).
    */
   FT_PUBLIC_MCP?: string;
   /**
