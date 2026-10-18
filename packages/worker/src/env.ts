@@ -98,6 +98,21 @@ export interface Env {
   FT_COCHANGE_WEIGHT?: string;
   /** Optional: lateral inhibition threshold as a fraction of a fresh claim, or "off". */
   FT_LATERAL_INHIBITION?: string;
+  /**
+   * Optional: lateral inhibition by the strongest file, "on", or a comma-separated list of colony ids; absent or "off" is
+   * off. Where it covers the colony, take() skips an open intent when one of its own files carries at least the
+   * threshold of other agents' live claim, where off it sums the claims over all of the intent's files: summed, a silent
+   * agent's claims on n shared files hold an intent for 5 * ln(2n) minutes, by the strongest file one half-life (about
+   * 3.5 minutes) however many files overlap (colony/takemath.ts).
+   */
+  FT_INHIBIT_STRONGEST?: string;
+  /**
+   * Optional: the age cap, "on", or a comma-separated list of colony ids; absent or "off" is off. Where it covers the
+   * colony, an open intent's age multiplier in take() (1 + ageMinutes / 10) stops at core AGE_FACTOR_CAP, so co-change
+   * and import repulsion keep holding back an old intent while its coupled files are claimed; off, the multiplier grows
+   * without bound (colony/takemath.ts).
+   */
+  FT_AGE_CAP?: string;
   /** Optional: import-aware repulsion weight in take() (imports and importers of claimed files); absent or 0 is off. */
   FT_IMPORT_WEIGHT?: string;
   /**
@@ -337,6 +352,16 @@ export interface Env {
    * sense, over read stubs only (mcp/public.ts). Empty or unset turns the endpoint off (404).
    */
   FT_PUBLIC_MCP?: string;
+  /**
+   * Optional bindings (Workers Rate Limiting, `ratelimits` in wrangler.jsonc): public reads counted per client address
+   * and per colony, across POST /public/mcp (one count per JSON-RPC message, each tools/call also against its colony) and
+   * the API's GET routes under /colonies (api/ratelimit.ts). wrangler.jsonc sets 1,200 reads a minute per address and
+   * 3,000 per colony, counted per Cloudflare location, with namespaces 41001 and 41002 (staging 41011 and 41012). Over
+   * either limit a read gets 429 with Retry-After; the admin token is not counted. Absent, nothing is limited (the public
+   * MCP's per-isolate in-flight cap still holds).
+   */
+  PUBLIC_IP_LIMIT?: RateLimit;
+  PUBLIC_COLONY_LIMIT?: RateLimit;
   /**
    * Optional: the Agent2Agent door for orchestrators, "on", or a comma-separated list of colony ids; absent or "off" is
    * off (404). A covered colony serves an agent card at GET /api/colonies/:id/.well-known/agent-card.json and JSON-RPC

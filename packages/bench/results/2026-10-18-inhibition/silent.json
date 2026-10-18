@@ -1,0 +1,57 @@
+{
+  "kind": "silent",
+  "label": "COMPUTED (core functions, 1 s steps; no simulation)",
+  "generatedAt": "2026-10-18T08:19:01.936Z",
+  "tauMs": 300000,
+  "inhibitAt": 0.5,
+  "rows": [
+    {
+      "files": 1,
+      "sumMin": 3.47,
+      "strongestMin": 3.47,
+      "formulaSumMin": 3.47
+    },
+    {
+      "files": 2,
+      "sumMin": 6.93,
+      "strongestMin": 3.47,
+      "formulaSumMin": 6.93
+    },
+    {
+      "files": 3,
+      "sumMin": 8.97,
+      "strongestMin": 3.47,
+      "formulaSumMin": 8.96
+    },
+    {
+      "files": 5,
+      "sumMin": 11.52,
+      "strongestMin": 3.47,
+      "formulaSumMin": 11.51
+    },
+    {
+      "files": 10,
+      "sumMin": 14.98,
+      "strongestMin": 3.47,
+      "formulaSumMin": 14.98
+    },
+    {
+      "files": 20,
+      "sumMin": 18.45,
+      "strongestMin": 3.47,
+      "formulaSumMin": 18.44
+    },
+    {
+      "files": 50,
+      "sumMin": 23.03,
+      "strongestMin": 3.47,
+      "formulaSumMin": 23.03
+    }
+  ],
+  "twoAgentsOneFile": {
+    "files": 1,
+    "agents": 2,
+    "sumMin": 6.93,
+    "strongestMin": 6.93
+  }
+}

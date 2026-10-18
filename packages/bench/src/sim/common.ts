@@ -57,6 +57,8 @@ export class Metrics {
   agentRequests = 0;
   ttl: number[] = [];
   e2e: number[] = [];
+  /** FireTrident: how long each task waited open before its first claim (after warm-up). */
+  claimWait: number[] = [];
   batch: number[] = [];
   waits: Record<string, number> = {};
   sigmaMax = 0;
@@ -106,6 +108,10 @@ export interface SimResult {
   ttlP99S: number | null;
   e2eP50S: number | null;
   e2eP99S: number | null;
+  /** How long tasks waited open before their first claim (FireTrident only; null for the baseline): p50, p99 and the longest. */
+  waitP50S?: number | null;
+  waitP99S?: number | null;
+  waitMaxS?: number | null;
   meanBatch: number | null;
   messagesPerLanded: number | null;
   messagesPerAgentAction: number | null;
@@ -127,6 +133,7 @@ export function summarize(p: SimParams, m: Metrics, extra: { backlogAtEnd: numbe
   const sortS = (xs: number[]) => xs.map((x) => x / 1000).sort((a, b) => a - b);
   const ttl = sortS(m.ttl);
   const e2e = sortS(m.e2e);
+  const wait = sortS(m.claimWait);
   const r1 = (x: number | null) => (x === null ? null : Math.round(x * 10) / 10);
   const r2 = (x: number | null) => (x === null ? null : Math.round(x * 100) / 100);
   return {
@@ -146,6 +153,9 @@ export function summarize(p: SimParams, m: Metrics, extra: { backlogAtEnd: numbe
     ttlP99S: r1(q(ttl, 0.99)),
     e2eP50S: r1(q(e2e, 0.5)),
     e2eP99S: r1(q(e2e, 0.99)),
+    waitP50S: r1(q(wait, 0.5)),
+    waitP99S: r1(q(wait, 0.99)),
+    waitMaxS: wait.length > 0 ? r1(wait[wait.length - 1]!) : null,
     meanBatch: m.batch.length ? r2(m.batch.reduce((a, b) => a + b, 0) / m.batch.length) : null,
     messagesPerLanded: m.landed > 0 ? r1(totalMsgs / m.landed) : null,
     messagesPerAgentAction: m.agentRequests > 0 ? r2(totalMsgs / m.agentRequests) : null,

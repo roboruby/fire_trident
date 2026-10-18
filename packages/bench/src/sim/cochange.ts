@@ -247,6 +247,9 @@ export interface TtzResult {
   conflictsPer1000: number;
   writeWritePer1000: number;
   submitted: number;
+  /** FireTrident: seconds tasks waited open before their first claim, p99 and the longest (null for the baseline). */
+  waitP99S?: number | null;
+  waitMaxS?: number | null;
 }
 
 /** Run a finite workload until every task lands (or `capMs`), stepping 1 s. */
@@ -276,7 +279,16 @@ export function runToZero(variant: string, sim: FireSim | BaselineSim, total: nu
     conflictsPer1000: Math.round((m.submitted > 0 ? (1000 * m.invalidated) / m.submitted : 0) * 10) / 10,
     writeWritePer1000: Math.round((m.submitted > 0 ? (1000 * m.invalidatedWriteWrite) / m.submitted : 0) * 10) / 10,
     submitted: m.submitted,
+    ...claimWaits(m.claimWait),
   };
+}
+
+/** p99 and longest of the claim waits, in seconds (nulls when none were recorded). */
+function claimWaits(ms: number[]): { waitP99S: number | null; waitMaxS: number | null } {
+  if (ms.length === 0) return { waitP99S: null, waitMaxS: null };
+  const s = [...ms].sort((a, b) => a - b);
+  const seconds = (x: number): number => Math.round(x / 100) / 10;
+  return { waitP99S: seconds(s[Math.min(s.length - 1, Math.ceil(0.99 * s.length) - 1)]!), waitMaxS: seconds(s[s.length - 1]!) };
 }
 
 /** A simulated variant: which model, and which co-change table (if any) at which weight. */

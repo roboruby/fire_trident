@@ -54,6 +54,7 @@ import { declaredRecipe } from "../decide/reproduce.ts";
 import { bearerMatches } from "./token.ts";
 import { accessConfig, approverIdentity, recordedAs } from "./access.ts";
 import { commitAuthorRoutes } from "./commitauthor.ts";
+import { publicReadLimit } from "./ratelimit.ts";
 
 /** Hono environment of the API. */
 export type ApiEnv = { Bindings: Env };
@@ -243,6 +244,9 @@ async function requireColony(env: Env, colonyId: Id): Promise<void> {
 export function createApi(deps: ApiDeps): Hono<ApiEnv> {
   const app = new Hono<ApiEnv>();
   app.use("*", hideRemotes);
+  // Public reads (GET /colonies and everything under it) are rate limited per client address and per colony
+  // (api/ratelimit.ts); the operator's requests, with the admin token, are not counted.
+  app.use("/colonies/*", publicReadLimit(isAdminRequest));
 
   app.onError((err, c) => {
     // Deploys reach Durable Objects gradually: an object still on the previous class lacks new methods for a while.

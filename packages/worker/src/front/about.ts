@@ -16,6 +16,7 @@ import { pushDelayMs } from "../trunk/direction.ts";
  */
 export const COLONY_FLAGS: readonly string[] = [
   "FT_A2A",
+  "FT_AGE_CAP",
   "FT_ALREADY_ON_TRUNK",
   "FT_ASYNC_PUBLISH",
   "FT_BISECT",
@@ -29,6 +30,7 @@ export const COLONY_FLAGS: readonly string[] = [
   "FT_GOAL_CONFLICT",
   "FT_HEADS_UP",
   "FT_HEDGE",
+  "FT_INHIBIT_STRONGEST",
   "FT_INLINE",
   "FT_INTENT_SPEND",
   "FT_INTENT_CHAIN_GATE",
