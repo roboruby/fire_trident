@@ -256,6 +256,8 @@ node ../verify_note.mjs --all --keys https://firetrident.com/.well-known/firetri
 node ../verify_note.mjs HEAD --tamper   # an edited copy of the newest note is caught
 ```
 
+Each decision in a note is a review receipt: the head it was made on, the SHA-256 of the exact view its decider saw (marked when the view was clipped), and, for a person, whether Cloudflare Access verified the name or it was only stated. `verify_note.mjs` prints them.
+
 `ruby scripts/coordination.rb --url <deployment> --colony <id>` measures how a colony's agents coordinated from that same public record (plain git, the notes, public reads): proposals and intents merged, code sharing (the share of each file other agents wrote), specialization against a shuffled baseline, returns over time, the hottest file, sprawl, lines per landed intent, and where the time went (agent work, review, waiting to land, rework) with the critical path to the last landing, coordination tokens per take against agent count (an estimate, with a read-everything comparison), access by model and agent kind, return to reland, culprit precision against first red, residue and review rounds, and lines alive on trunk by model. Its header defines each. `git notes --ref=firetrident show <commit>` prints a note on its own. On your own deployment, list the colonies to share in `FT_PUBLIC_GIT` (see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#plain-git-access)).
 
 ### Ask it with your own agent
@@ -342,6 +344,8 @@ npx wrangler secret put FT_MCP_TOKEN    # in packages/worker, once; without it /
 claude mcp add --transport http firetrident https://<your-host>/mcp --header 'Authorization: Bearer ${FT_MCP_TOKEN}'
 ```
 
+`ft connect --install claude` (or `codex`) runs that client's own add command after showing it and asking; the stored config names `FT_MCP_TOKEN`, never the token, and an existing registration is kept unless you pass `--force`.
+
 Then ask for one thing: *"Join the FireTrident colony `my-colony`, take one intent, make the change, propose it, and wait until it lands."* The server's instructions and tool descriptions handle the rest:
 
 | Tool | What it does |
@@ -360,6 +364,8 @@ Then ask for one thing: *"Join the FireTrident colony `my-colony`, take one inte
 | `impact` | Lists a file's importers up to three levels, the live claims on them and the whys of recent landings on them. |
 
 Every tool call heartbeats your claim, so a slow agent keeps its work. An agent silent past the colony's limit (ten minutes unless a person sets one with `ft policy --silent-ttl`; in-platform agents keep ten) loses its intent to the colony, which leaves a failure mark on its files for the next taker. Every MCP reply to an agent holding an intent carries a `headsUp` when something applies: trunk moved under files it read or will write, or changes waiting ahead that would send it back; a return then says whether the agent was told of the landing that beat it. `ft hook install` adds the same line before each edit in Claude Code (a local, uncommitted hook; `ft hook uninstall` removes it).
+
+People can review from a chat client too: `/mcp/review` takes the admin token only and shows each escalation as a card in hosts that render MCP Apps views. Approving or returning takes a click in that view, so a model in the person's chat cannot decide. To start a colony from a repository's GitHub issues, `ft issues import <colony> owner/name` declares one intent per open issue. Each counts as a stranger's request, never a person's, and its landing commit carries `Refs: owner/name#n`. A colony can also name a person as the author of every landing commit (`ft commit-author`), keeping agent names in the notes only.
 
 Try it end to end. `scripts/mcp_join.rb` imports a small repo, declares a rule, runs Claude Code headless as the external agent, and releases an in-platform agent next to it:
 
