@@ -159,6 +159,7 @@ Every flag and tuning variable `packages/worker/wrangler.jsonc` sets, and every 
 | `FT_CULPRITS` | A red result names the landings that changed what its failing tests load | on | on | [ARCHITECTURE](ARCHITECTURE.md#trunk-certification) |
 | `FT_BISECT` | The first red commit search: the failing tests run alone at earlier commits, halving the range | on | on | [ledger](#what-each-mechanism-buys) |
 | `FT_PRELAND` | Tests before landing: the test files a change reaches run on its base before it lands | off | off | [ledger](#what-each-mechanism-buys) |
+| `FT_RED_BRAKE` | The red brake: while trunk is red, its repair goes first and changes to what the failing tests load wait for it (15 minutes at most) | off | off | [ARCHITECTURE](ARCHITECTURE.md#trunk-certification) |
 | `FT_INLINE` | Inline changes: a proposal may carry its files' contents instead of a pushed commit | on | on | [ledger](#what-each-mechanism-buys) |
 | `FT_VIRTUAL_CHECKOUT` | Virtual checkouts: in-platform agents read trunk object by object and propose inline | on | on | [ARCHITECTURE](ARCHITECTURE.md#request-flow-an-in-platform-agent) |
 | `FT_ASYNC_PUBLISH` | Asynchronous publishing: the trunk writer records landings and pushes git beside its cycles | off | off | [ledger](#what-each-mechanism-buys) |

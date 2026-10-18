@@ -1197,6 +1197,19 @@ class TrunkHealthTest < Minitest::Test
                  Coordination.trunk_health_row(h.merge(colonySays: "red 9 times"))
   end
 
+  def test_the_red_brake_beside_trunk_health
+    ev = ->(action, extra = {}) { { "t" => "brake", "action" => action }.merge(extra) }
+    events = [ev.call("on"), ev.call("hold", "proposalId" => "p1"), ev.call("hold", "proposalId" => "p2"), ev.call("hold", "proposalId" => "p3"), ev.call("reserve"),
+              ev.call("release", "proposalId" => "p1", "heldMs" => 90_000, "end" => "green"), ev.call("release", "proposalId" => "p2", "heldMs" => 30_000, "end" => "green", "gone" => true)]
+    k = Coordination.brake_numbers(events)
+    assert_equal({ held: 3, stillHeld: 1, wentOn: { "gone" => 1, "green" => 1 }, heldMs: { p50: 60_000.0, max: 90_000 }, reserved: 1, escalated: 0 }, k)
+    assert_nil Coordination.brake_numbers([])
+    landings = (0..4).map { |i| landing(i) } + [landing(5, ["int_r"]), landing(6)]
+    h = health([result(1, "green", 1.2, 1.5), result(3, "red", 3.2, 3.5, "repairIntentId" => "int_r"), result(5, "green", 5.2, 5.5)], landings, now: m(10))
+    assert_includes Coordination.trunk_health_row(h.merge(brake: k)), "; red brake held 3 changes for 1.0 min at p50, longest 1.5 min (gone 1, green 1), 1 repair taken first, 0 sent to a person |"
+    refute_includes Coordination.trunk_health_row(h), "red brake"
+  end
+
   # Through the report: the fixture's landing commits with the record's landing times, results naming landings, the
   # repair's spend from the API, and the colony's own line beside it.
   class Api < Fixture::FakeApi

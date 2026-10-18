@@ -213,6 +213,8 @@ import { ColonyAudit, type AuditAnswer, type AuditHost, type AuditReport, type C
 import { onTrunkSourceOf, onTrunkText } from "../trunk/ontrunk.ts";
 import type { OnTrunkSource } from "@fire_trident/core";
 import { spendReviewCode } from "./reviewcodes.ts";
+import { RedBrake, redBrakeEnabled, withBrake } from "./redbrake.ts";
+import type { RedBrakeReport } from "@fire_trident/core";
 
 /**
  * Result of ColonyDO.take: an assignment, or advice to wait and retry. `review`: what review will
@@ -1988,6 +1990,9 @@ export class ColonyDO extends DurableObject<Env> {
     // Contest mode: a contestant whose change is not in yet gets its own seat back.
     const seated = await this.contestSeatAgain(agent, colony.id, now);
     if (seated) return seated;
+    // Red brake (FT_RED_BRAKE, colony/redbrake.ts): while trunk is red, the first agent to ask takes its repair, whatever its region.
+    const repair = await this.repairFirst(agentId, agent.kind as AgentKind, colony.id, now);
+    if (repair) return repair;
 
     // Only the columns self-assignment needs; the winner is loaded in full. Contest intents with a free seat join them.
     // Megafile alarm (colony/megafile.ts, FT_MEGAFILE): an intent whose footprint covers a file held for its split waits until the hold lifts.
@@ -4223,7 +4228,63 @@ export class ColonyDO extends DurableObject<Env> {
         this.sql.exec("UPDATE intents SET why = ? WHERE id = ?", why, intentId);
         return true;
       },
+      // Red brake (FT_RED_BRAKE, colony/redbrake.ts): red holds what the failing tests load, green lets it go.
+      verdict: (cert, reach) => this.redBrake().verdict(cert, reach),
     };
+  }
+
+  // =========================================================================
+  // Red brake (colony/redbrake.ts, FT_RED_BRAKE): while trunk is red, its
+  // repair goes first and changes to what the failing tests load wait for it
+  // =========================================================================
+
+  private redBrakeRun: RedBrake | null = null;
+
+  /** The red brake, made on first use (it does nothing where FT_RED_BRAKE does not cover the colony). */
+  private redBrake(): RedBrake {
+    return (this.redBrakeRun ??= new RedBrake({
+      sql: this.sql,
+      enabled: () => redBrakeEnabled(this.env.FT_RED_BRAKE, this.loadColony()?.colony.id ?? ""),
+      now: () => Date.now(),
+      enqueue: (p, region, priority) => this.enqueue(p, region, priority),
+      // In the inbox only: the change stays proposed, so an in-platform agent has nothing to redo.
+      notice: (agentId, intentId, message) => {
+        const d = this.insertDirective({ agentId, kind: "hold", intentId, message: oneLine(message, MAX_DIRECTIVE_CHARS), by: "red brake", at: Date.now() });
+        return { t: "directive", at: d.at, directiveId: d.id, agentId, intentId, message: d.message, by: d.by, kind: "hold" };
+      },
+      publish: (events) => void this.publish(events),
+      bump: (name, delta) => void this.bump(name, delta, Date.now()),
+      wake: (at) => void this.armContestAlarm(at),
+      forget: (intentId) => {
+        if (this.candidateRows) this.candidateRows.rows = this.candidateRows.rows.filter((r) => r.id !== intentId);
+      },
+      waitUntil: (p) => this.ctx.waitUntil(p.catch((err) => console.warn(`red brake: ${errorText(err)}`))),
+    }));
+  }
+
+  /**
+   * The take's first look (FT_RED_BRAKE): the open repair of a red trunk, reserved for this agent ahead of every other
+   * intent, whatever its region, thresholds and other agents' claims (the megafile alarm's holds still apply). Null when
+   * the brake does not hold, the repair is not open for taking, or a region of the repair closed admission (the take
+   * goes on as usual, so a closed region cannot keep every agent waiting); any other failed lease is the take's answer.
+   */
+  private async repairFirst(agentId: Id, kind: AgentKind, colonyId: Id, now: number): Promise<TakeResult | null> {
+    const id = this.redBrake().first(now);
+    const row = id ? this.intentRow(id) : undefined;
+    if (!id || !row) return null;
+    const offered = this.megafiles().offerable([{ id: row.id, footprint: row.footprint, priority: row.priority, created_at: row.created_at }], (r) => this.footprintOf(r.id, r.footprint));
+    if (offered.rows.length === 0 || !this.reserve(id, agentId)) return null;
+    const got = await this.leaseAndClaim(agentId, kind, this.toIntent(this.intentRow(id) ?? row, colonyId));
+    if ("wait" in got) return got.reason.startsWith("admission closed") ? null : got;
+    this.redBrake().reserved(id, agentId, Date.now());
+    return got;
+  }
+
+  /** Should a change that just turned ready wait for the repair (FT_RED_BRAKE)? Its hold and notice join the effects. Fails open. */
+  private redBrakeHold(p: Proposal, intent: IntentRow | undefined, now: number, fx: Effects): boolean {
+    const events = this.redBrake().hold(p, intent ? { source: intent.source } : null, now);
+    if (events) fx.events.push(...events);
+    return events !== null;
   }
 
   /**
@@ -4637,6 +4698,7 @@ export class ColonyDO extends DurableObject<Env> {
     coordTokens?: CoordTokensReport;
     trunkHealth?: TrunkHealth;
     audit?: AuditReport;
+    redBrake?: RedBrakeReport;
   }> {
     const colony = this.requireColony();
     const now = Date.now();
@@ -4668,7 +4730,9 @@ export class ColonyDO extends DurableObject<Env> {
     const trunkHealth = this.trunkHealthReport(now);
     // The audit sample, blind canaries and people's decisions over time (colony/audit.ts); absent when they cannot be read.
     const audit = this.auditMeasures(now);
-    return { ...report, ...(spend ? { spend } : {}), ...(intentSpend ? { intentSpend } : {}), ...(closures ? { closures } : {}), ...(coordTokens ? { coordTokens } : {}), ...(trunkHealth ? { trunkHealth } : {}), ...(audit ? { audit } : {}) };
+    // Red brake (FT_RED_BRAKE, colony/redbrake.ts): changes held, time held, repairs back to green; absent where it never ran.
+    const redBrake = this.redBrake().report(now);
+    return { ...report, ...(spend ? { spend } : {}), ...(intentSpend ? { intentSpend } : {}), ...(closures ? { closures } : {}), ...(coordTokens ? { coordTokens } : {}), ...(trunkHealth ? { trunkHealth } : {}), ...(audit ? { audit } : {}), ...(redBrake ? { redBrake } : {}) };
   }
 
   /** Trunk health (certify/health.ts), made on first use; undefined when it cannot be computed (logged). */
@@ -4682,7 +4746,8 @@ export class ColonyDO extends DurableObject<Env> {
         spend: (ids) => landingSpend(ids, (id) => this.intentSpends().report(id)),
         landingsKept: LANDINGS_KEEP,
       });
-      return this.trunkHealthRun.report(now);
+      // Red brake (FT_RED_BRAKE, colony/redbrake.ts): the changes it held and the repairs back to green, where it ran.
+      return withBrake(this.trunkHealthRun.report(now), this.redBrake().report(now));
     } catch (err) {
       console.warn(`trunk health failed: ${errorText(err)}`);
       return undefined;
@@ -4975,6 +5040,8 @@ export class ColonyDO extends DurableObject<Env> {
     this.guideStore = null;
     // So did the megafile alarm's.
     this.megafileAlarm = null;
+    // And the red brake's.
+    this.redBrakeRun?.reset();
     // And the pause switch's (a deployment pause in force is read again from the registry).
     this.pauseSwitch = null;
     // And the spend cap's.
@@ -5053,6 +5120,8 @@ export class ColonyDO extends DurableObject<Env> {
   async alarm(): Promise<void> {
     // Contest mode: contests whose deadline passed are decided (the alarm is shared with this tick).
     await this.contestAlarm(Date.now());
+    // Red brake (FT_RED_BRAKE, colony/redbrake.ts): held changes go on at the ceiling, or when the repair is reported or gone.
+    if (this.loadColony()) this.redBrake().sweep(Date.now());
     if (this.ctx.getWebSockets().length === 0 || !this.loadColony()) return;
     const now = Date.now();
     this.maybeReap(now);
@@ -5087,7 +5156,8 @@ export class ColonyDO extends DurableObject<Env> {
 
   /** The detector, on this colony's tables; an agent counts as alive as long as the reaper lets it live. */
   private stuck(): StuckDetector {
-    return (this.stuckDetector ??= new StuckDetector(this.sql, AGENT_TTL_MS));
+    // Red brake (FT_RED_BRAKE): an episode whose holding stopped (ceiling, report, two failures) is red stuck work too.
+    return (this.stuckDetector ??= new StuckDetector(this.sql, AGENT_TTL_MS, (now) => this.redBrake().stuckItems(now)));
   }
 
   /** What is stuck now, for the snapshot and the metrics report; undefined when the checks cannot run (the rest of the answer stands). */
@@ -5454,7 +5524,8 @@ export class ColonyDO extends DurableObject<Env> {
     // With FT_LESSON_SCOPE, those on the intent's footprint first, marked with the files that changed since (colony/lessonscope.ts).
     const guide = this.guide()?.take(lessonScopesEnabled(this.env.FT_LESSON_SCOPE, intent.colonyId) ? { footprint: intent.footprint ?? [] } : undefined);
     // Model step-up (FT_MODEL_STEPUP, colony/stepup.ts): the stronger model class after two returns; absent where it is off.
-    const model = this.modelStepup(intent);
+    // Red brake (FT_RED_BRAKE, colony/redbrake.ts): a red trunk's repair asks for it from its first attempt.
+    const model = this.modelStepup(intent) ?? this.redBrake().modelFor(intent);
     // Who declared the intent (colony/chain.ts): its source, the declarer and its model, and the chain depth.
     const declared = this.declaredBy(intent);
     // Coordination tokens (colony/coordtokens.ts): what this take hands beyond the intent, counted for the coordination report.
@@ -6303,7 +6374,8 @@ export class ColonyDO extends DurableObject<Env> {
           fx.events.push({ t: "agent", at: now, agentId: agent.id, kind: agent.kind as AgentKind, state: "proposing", intentId: p.intentId });
         }
         // Contest mode: a ready change for a contest intent waits for its contest instead of its lane.
-        if (p.status === "ready" && !this.contestHold(p, now)) fx.enqueue.push({ proposal: p, region, priority });
+        // Red brake (FT_RED_BRAKE, colony/redbrake.ts): so does one that writes what a red trunk's failing tests load.
+        if (p.status === "ready" && !this.contestHold(p, now) && !this.redBrakeHold(p, intent, now, fx)) fx.enqueue.push({ proposal: p, region, priority });
         if (p.status === "escalated") this.bump("escalated", 1, now);
         // Tests before approval (certify/reviewtests.ts): the colony's tests run on the change while it waits for a person.
         if (p.status === "escalated" && prev !== "escalated") this.reviewTests().escalated(p);

@@ -30,6 +30,8 @@ export interface ModelHint {
   returns: number;
   /** Why, in one sentence. */
   reason: string;
+  /** "repair": the red brake asks for it because the intent is a red trunk's repair, whatever its returns (colony/redbrake.ts). Absent: two returns did. */
+  cause?: "repair";
 }
 
 /** Whether FT_MODEL_STEPUP covers the colony: "on", or a comma-separated list that names it; off when absent. */
@@ -82,10 +84,12 @@ export function cleanModelHint(x: unknown): ModelHint | undefined {
   if (!x || typeof x !== "object") return undefined;
   const h = x as Record<string, unknown>;
   if (h.model !== STEPUP_MODEL) return undefined;
-  if (typeof h.returns !== "number" || !Number.isInteger(h.returns) || h.returns < STEPUP_RETURNS || h.returns > 10_000) return undefined;
+  // The red brake's hint for a repair (colony/redbrake.ts) asks for the stronger model before any return.
+  const repair = h.cause === "repair";
+  if (typeof h.returns !== "number" || !Number.isInteger(h.returns) || h.returns < (repair ? 0 : STEPUP_RETURNS) || h.returns > 10_000) return undefined;
   const reason = typeof h.reason === "string" ? h.reason.replace(/\s+/g, " ").trim() : "";
   if (reason === "") return undefined;
-  return { model: STEPUP_MODEL, returns: h.returns, reason: reason.length > REASON_CHARS ? `${reason.slice(0, REASON_CHARS - 1)}…` : reason };
+  return { model: STEPUP_MODEL, returns: h.returns, reason: reason.length > REASON_CHARS ? `${reason.slice(0, REASON_CHARS - 1)}…` : reason, ...(repair ? { cause: "repair" as const } : {}) };
 }
 
 /**

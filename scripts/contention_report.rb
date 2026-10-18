@@ -29,6 +29,12 @@
 # Red-trunk episodes. Certification results that are green or red, in the order they finished. An episode starts at a
 #   red result after a green one (the seed's own green certification is the first) and ends at the next green result:
 #   time to green is the time between the two results. Landings during it are the landings recorded between them.
+# Red brake (FT_RED_BRAKE), from its `brake` events; absent when the run recorded none. Changes held: the proposals a
+#   `hold` event named; each went on at a `release` event, by why it went (trunk green, the 15-minute ceiling, the
+#   repair escalated or reported, the flag off, no repair open) or `gone` when it no longer waited; time held is the
+#   release's heldMs. Repairs: those the brake handed to the first agent that asked (`reserve`) and those it sent to a
+#   person after two failures (`escalate`); stops: why holding ended before green; to green: each `green` event's time
+#   from the episode's first red result.
 # Semantic-conflict pairs that landed. For each episode whose first red search found the commit (FT_BISECT), the
 #   culprit: the proposal isolation named, else the proposals of the first-red landing that touched what the failing
 #   tests load; without a search, the newest suspect (FT_CULPRITS), else the red commit's own landing. A partner of
@@ -273,6 +279,24 @@ module ContentionReport
         time_red_s: rows.sum { |r| r[:time_red_s].to_f }.round(1),
         repair_intents: { declared: repairs.size, landed: repairs.count { |i| i["status"] == "landed" } },
         list: rows
+      }.merge(brake.then { |b| b ? { brake: b } : {} })
+    end
+
+    # The red brake's numbers from its events (definition above), or nil when the run recorded no brake event.
+    def brake
+      evs = @events.select { |e| e["t"] == "brake" }
+      return nil if evs.empty?
+
+      held = evs.select { |e| e["action"] == "hold" }.map { |e| e["proposalId"] }.uniq
+      releases = evs.select { |e| e["action"] == "release" }
+      times = releases.filter_map { |e| e["heldMs"] && ContentionReport.secs(e["heldMs"]) }
+      {
+        held: held.size, still_held: (held - releases.map { |e| e["proposalId"] }).size,
+        went_on: releases.map { |e| e["gone"] ? "gone" : (e["end"] || "no repair") }.tally.sort.to_h,
+        median_held_s: ContentionReport.median(times), max_held_s: times.max,
+        reserved: evs.count { |e| e["action"] == "reserve" }, escalated: evs.count { |e| e["action"] == "escalate" },
+        stops: evs.select { |e| e["action"] == "stop" }.map { |e| e["end"] }.tally.sort.to_h,
+        to_green_s: evs.select { |e| e["action"] == "green" }.filter_map { |e| e["toGreenMs"] && ContentionReport.secs(e["toGreenMs"]) }
       }
     end
 

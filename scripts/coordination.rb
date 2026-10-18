@@ -222,7 +222,10 @@
 #    the bound, over the landings that reached one or had that long. Culprit precision is 15's. Reported: episodes and
 #    per 100 landings, time red and its share, time to green p50, p90 and max, landings built on red, the repairs, the
 #    certified-within shares, and the colony's line; a colony with no verdict says why instead (no test this platform
-#    can run, certification off, no run yet).
+#    can run, certification off, no run yet). Where the record has red brake events (FT_RED_BRAKE): the changes the brake
+#    held (`hold`), how each went on (`release`: trunk green, the ceiling, the repair escalated or reported, the flag
+#    off, no repair open, or gone when it no longer waited) and for how long (its heldMs, p50 and max), the repairs it
+#    handed to the first agent that asked (`reserve`) and sent to a person after two failures (`escalate`).
 #
 # 19. Audit sample, blind canaries and people's decisions (packages/worker/src/colony/audit.ts), as the colony measures
 #    them (`audit` in GET /api/colonies/<id>/metrics; the record cannot rebuild them). Of the changes that landed without
@@ -766,7 +769,7 @@ module Coordination
   class Record
     attr_reader :proposals, :intents, :landing_ids, :human_returns, :t0, :t_last, :source, :total, :vaccine_proposals,
                 :claims, :declared, :human_decisions, :landings, :first_at, :closures, :uncaused_closures,
-                :takes, :decisions, :certify, :bisects, :last_at, :intent_events
+                :takes, :decisions, :certify, :bisects, :last_at, :intent_events, :brake_events
 
     def initialize(page, vaccine_agents: Set.new)
       # Definition 12: takes (agent events that set an agent working on an intent, with its footprint) and the agents
@@ -794,6 +797,8 @@ module Coordination
       @uncaused_closures = 0
       # Definition 18: each intent's status changes, [at, status] in record order.
       @intent_events = Hash.new { |h, k| h[k] = [] }
+      # Definition 18: the red brake's events (FT_RED_BRAKE), in record order.
+      @brake_events = []
       vaccine_ids = Set.new
       vaccine_intents = Set.new
       events = (page["events"] || []).each_with_index.sort_by { |e, i| [e["seq"] || i, i] }.map(&:first)
@@ -844,6 +849,8 @@ module Coordination
           @certify[e["trunkSha"]] = e if e["trunkSha"].is_a?(String) && e["status"].is_a?(String)
         when "bisect"
           @bisects[e["trunkSha"]] = e["firstRed"] if e["trunkSha"].is_a?(String) && e["firstRed"].is_a?(Hash)
+        when "brake"
+          @brake_events << e if e["action"].is_a?(String)
         end
       end
       @first_at = events.filter_map { |e| e["at"] if e["at"].is_a?(Numeric) }.min
@@ -1526,6 +1533,7 @@ module Coordination
         # Culprit precision is 15's, not computed again.
         h[:culprits] = culprits&.slice(:answers, :suspect, :precision, :rank1)
         h[:holdsFrom] = record ? "the record's intent events" : "no event record: the time agents held repairs is not known"
+        h[:brake] = Coordination.brake_numbers(record.brake_events) if record && !record.brake_events.empty?
       end
       h.merge(colonySays: colony_says).compact
     end
@@ -2026,6 +2034,20 @@ module Coordination
     end
   end
 
+  # Definition 18: the red brake's numbers from its events (record order): changes held, how they went on, time held
+  # (p50 and max over the releases), repairs handed out first and sent to a person; nil when there are none.
+  def brake_numbers(events)
+    return nil if events.empty?
+
+    held = events.select { |e| e["action"] == "hold" }.map { |e| e["proposalId"] }.uniq
+    releases = events.select { |e| e["action"] == "release" }
+    times = releases.filter_map { |e| e["heldMs"] if e["heldMs"].is_a?(Numeric) }.sort
+    { held: held.size, stillHeld: (held - releases.map { |e| e["proposalId"] }).size,
+      wentOn: releases.map { |e| e["gone"] ? "gone" : (e["end"] || "no repair") }.tally.sort.to_h,
+      heldMs: { p50: quantile(times, 0.5), max: times.last },
+      reserved: events.count { |e| e["action"] == "reserve" }, escalated: events.count { |e| e["action"] == "escalate" } }
+  end
+
   # Definition 18: the model calls the colony counted for some intents (their spend answers), summed; nil when none counted.
   def spend_sum(answers)
     counted = answers.select { |s| s.is_a?(Hash) && s["usd"].is_a?(Numeric) && s["tokens"].is_a?(Hash) && (s["tokens"]["input"].to_i + s["tokens"]["output"].to_i).positive? }
@@ -2352,6 +2374,11 @@ module Coordination
     end
     within = h[:certifiedWithin].select { |w| w[:landings].positive? }.map { |w| "#{w[:minutes]} min #{pct(w[:share])}" }
     parts << "certified within #{within.join(', ')}" unless within.empty?
+    if (k = h[:brake])
+      went = k[:wentOn].map { |why, n| "#{why} #{num(n)}" }.join(", ")
+      time = k[:heldMs][:p50] ? " for #{span(k[:heldMs][:p50])} at p50, longest #{span(k[:heldMs][:max])}" : ""
+      parts << "red brake held #{many(k[:held], 'change')}#{time}#{went.empty? ? '' : " (#{went})"}, #{many(k[:reserved], 'repair')} taken first, #{num(k[:escalated])} sent to a person"
+    end
     parts << (h[:colonySays] == h[:text] ? "the colony says the same" : "the colony says: #{h[:colonySays]}") if h[:colonySays]
     "| Trunk health | #{parts.join('; ')} |"
   end

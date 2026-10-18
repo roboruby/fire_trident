@@ -404,11 +404,12 @@ export interface StuckFindings {
 export class StuckDetector {
   /**
    * `aliveMs`: how long an agent counts as alive after it was last seen (the colony's reaper declares
-   * an agent dead after that long).
+   * an agent dead after that long). `moreRed`: further items of the red check (the red brake's, colony/redbrake.ts).
    */
   constructor(
     private readonly sql: SqlStorage,
     private readonly aliveMs: number,
+    private readonly moreRed?: (now: number) => StuckItem[],
   ) {}
 
   /** Everything stuck at `now`. */
@@ -437,7 +438,14 @@ export class StuckDetector {
     });
     run("red", () => {
       const item = redItem(this.redRow(), now);
-      return { items: item ? [item] : [], complete: true };
+      // The red brake's stops (colony/redbrake.ts); its failure leaves the red check's own item standing.
+      let more: StuckItem[] = [];
+      try {
+        more = this.moreRed?.(now) ?? [];
+      } catch (err) {
+        console.warn(`stuck check red (red brake) failed: ${err instanceof Error ? err.message : String(err)}`);
+      }
+      return { items: item ? [item, ...more] : more, complete: true };
     });
     run("report", () => {
       const rows = this.reportRows();
