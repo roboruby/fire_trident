@@ -6,7 +6,6 @@ import {
   directClaimOn,
   inhibited,
   markValue,
-  newId,
   regionKey,
   regionOf,
   reinforceThreshold,
@@ -159,6 +158,9 @@ import { readLifecycle, type LifecycleTrunk } from "./lifecycle.ts";
 import { reviewPreview, type ReviewPreview } from "../agents/preview.ts";
 import { RETURN_PATHS, extractUsage, returnReason, type LastReturn } from "../agents/prompt.ts";
 import { MAX_RESUME_KEY, MIN_RESUME_KEY, resumeDigest, resumeKeyMatches } from "../mcp/resume.ts";
+import { repeatedReport } from "../mcp/escalated.ts";
+import { newId } from "../ids.ts";
+import { leaseHolders, releaseRetried } from "../pool/upkeep.ts";
 import { CONTEST_LOOK_MS, CONTEST_MIN, CONTEST_RETRY_MS, CONTEST_WAIT_MS, cleanAlternatives, contestEvidence, contestSeats, independentJudge, loadDiffs, migrateContest, pairJudge, selectWinner, supersededReason } from "../decide/contest.ts";
 import type { ContestAlternative, ContestCandidate, ContestOutcome, ContestRound, JudgeIntent, PairJudge, PairVerdict } from "../decide/contest.ts";
 import { juryEnabled, juryMembers, pairJury, type JuryMember } from "../decide/jury.ts";
@@ -204,7 +206,7 @@ import { SpendBook, modelOfClass, resolverClient, spendCounters } from "./spend.
 import { hedgeFor } from "./hedge.ts";
 import type { ColonySpend, CommitAuthor, IntentSpendBrief, SpendCap } from "@fire_trident/core";
 import { IntentSpendBook, intentSpendEnabled, type IntentSpendAnswer } from "./intentspend.ts";
-import { SPEND_CAP_ACTOR, SpendCapBook, agentReserve, agentSettle, bookUsd, cappedAi, cappedClient, localGate, type AgentCapAsk, type CapSettle, type CapUse, type SpendCapAnswer } from "./spendcap.ts";
+import { SPEND_CAP_ACTOR, SpendCapBook, agentReserve, agentSettle, bookUsd, cappedAi, cappedClient, defaultCapUsd, localGate, type AgentCapAsk, type CapSettle, type CapUse, type SpendCapAnswer } from "./spendcap.ts";
 import { ClosureLedger, abandonCause, closureOf, eventFields, reapCutoffs, silentTtlMs, type AbandonCause, type ClosureEventFields, type SilentTtlView } from "./closure.ts";
 import type { ClosureCause, ClosureReport, IntentClosure } from "@fire_trident/core";
 import { CoordMeter, coordTokensReport, headsUpBumps, type CoordTokensReport } from "./coordtokens.ts";
@@ -1640,6 +1642,10 @@ export class ColonyDO extends DurableObject<Env> {
   async escalate(agentId: Id, p: { intentId?: Id; kind: EscalationKind; report: string }): Promise<{ intent: Intent; escalation: IntentEscalation }> {
     const colony = this.requireColony();
     const agent = this.requireAgent(agentId);
+    // A repeat of this agent's own open report (a retry after a lost reply, mcp/escalated.ts) gets it back and writes nothing.
+    const asked = typeof p?.intentId === "string" && p.intentId.trim() ? this.intentRow(p.intentId.trim()) : undefined;
+    const repeat = repeatedReport(asked, agentId);
+    if (asked && repeat) return { intent: this.toIntent(asked, colony.id), escalation: repeat };
     // Pause (colony/pause.ts): an agent's report waits for a person to resume, like its changes.
     await this.pauses().refuse();
     const kind = escalationKind(p?.kind);
@@ -4759,6 +4765,8 @@ export class ColonyDO extends DurableObject<Env> {
       trip: (reason) => this.pauses().pause({ by: SPEND_CAP_ACTOR, reason }),
       lift: (by, reason) => this.pauses().resume({ by, reason }),
       waitUntil: (p) => this.ctx.waitUntil(p),
+      // The deployment's default cap for a colony with none of its own (FT_DEFAULT_SPEND_CAP; absent: none).
+      defaultUsd: () => defaultCapUsd(this.env.FT_DEFAULT_SPEND_CAP),
     }));
   }
 
@@ -6605,21 +6613,21 @@ export class ColonyDO extends DurableObject<Env> {
     }
   }
 
+  /** Of these agents, the ones that still hold a workspace here: the pool's lease sweep frees only the others (pool/upkeep.ts). */
+  async leaseHolders(agentIds: Id[]): Promise<Id[]> {
+    this.requireColony();
+    return leaseHolders(this.sql, agentIds);
+  }
+
   private async releaseLeases(agentIds: Id[]): Promise<void> {
     const pool = this.poolStub();
-    // Only release agents that have not leased again in the meantime.
-    const ids = agentIds.filter((id) => this.agentRow(id)?.state !== "working");
+    // Only release agents that have not leased again in the meantime, asked again before each retry.
+    const releasable = (): Id[] => agentIds.filter((id) => this.agentRow(id)?.state !== "working");
+    const ids = releasable();
     if (ids.length === 0) return;
-    // One call for a whole landing's agents; a pool still on the previous version releases one by one.
-    try {
-      await pool.releaseMany(ids);
-      return;
-    } catch (err) {
-      if (!/does not implement/i.test(errorText(err))) {
-        console.warn(`PoolDO.releaseMany failed for ${ids.length} agent(s): ${errorText(err)}`);
-        return;
-      }
-    }
+    // One call for a whole landing's agents, tried again when it fails (pool/upkeep.ts; what still fails, the pool's lease
+    // sweep frees later); a pool still on the previous version releases one by one.
+    if ((await releaseRetried((list) => pool.releaseMany(list), releasable)) !== "unsupported") return;
     await Promise.all(
       ids.map(async (id) => {
         try {

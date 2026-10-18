@@ -184,6 +184,15 @@ export interface Env {
    */
   FT_INTENT_SPEND?: string;
   /**
+   * Optional: the default spend cap, in dollars ("5", "12.50"); absent, empty or "off" means no default, as before. A
+   * colony with no spend cap of its own is capped at this amount (colony/spendcap.ts): the same reservations, the same
+   * review reserve (a tenth of it) and the same pause at the cap; its ledger starts at the colony's spend when the
+   * default first applies, and counts everything the colony spent, before it too. A person's own cap (POST
+   * /api/colonies/:id/spend-cap) always wins, above or below it, and removing that cap puts the default back. A value that
+   * is not a dollar amount above 0 is ignored with a warning.
+   */
+  FT_DEFAULT_SPEND_CAP?: string;
+  /**
    * Optional: the deletion guard, "on", or a comma-separated list of colony ids; absent or "off" is off. In a trunk
    * cycle that deletes files, a change goes back while a trunk file's import of a file it deletes would resolve to nothing.
    */

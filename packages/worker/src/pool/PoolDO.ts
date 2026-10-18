@@ -23,6 +23,7 @@ import {
 import { durableFs } from "../artifacts/workspace.ts";
 import { TRUNK_NAMESPACE, bindingFor, seedRepoName, workspaceBinding, workspaceNamespace, workspaceRepoName } from "../artifacts/shards.ts";
 import { CLEAN_AFTER_MS, SlotBook, TOKEN_TTL_S, reusable, type SlotRow, type SlotState, type SlotToken, type TokenOps } from "./slots.ts";
+import { LEGACY_FLOOR, LeaseGuard, QUIET_MS, SWEEP_EVERY_MS, nextSweepAt, oldLeases, shrunkTarget, sweepLeases } from "./upkeep.ts";
 
 /** Most workspaces one colony may hold (thousands of concurrent agents each hold one). */
 const MAX_TARGET = 8_192;
@@ -75,6 +76,9 @@ export class PoolDO extends DurableObject<Env> {
   private slowLeases = 0;
   /** Slots, leases and their tokens (pool/slots.ts): the lease path is SQL only. */
   private book: SlotBook;
+  /** Agents the lease sweep leaves alone while their lease calls run (pool/upkeep.ts), and when it last ran. */
+  private readonly leaseGuard = new LeaseGuard();
+  private lastSweepAt = 0;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -120,6 +124,9 @@ export class PoolDO extends DurableObject<Env> {
     this.setMeta("colony_id", p.colonyId);
     this.setMeta("trunk", JSON.stringify(p.trunk));
     this.setMeta("target", String(clampTarget(p.target)));
+    // The target a quiet pool comes back down to, and the start of its quiet period (pool/upkeep.ts).
+    this.setMeta("floor", String(clampTarget(p.target)));
+    this.setMeta("raised_at", String(Date.now()));
     await this.ensureSeeds(false);
     await this.grow(GROW_BUDGET_MS, 1);
     await this.schedule(500);
@@ -137,6 +144,17 @@ export class PoolDO extends DurableObject<Env> {
    * the target; null if that fails.
    */
   async lease(agentId: Id, trunkSha: Sha): Promise<WorkspaceLease | null> {
+    // The lease sweep (pool/upkeep.ts) never frees an agent's slot while its lease call runs.
+    this.leaseGuard.enter(agentId);
+    try {
+      return await this.leaseNow(agentId, trunkSha);
+    } finally {
+      this.leaseGuard.leave(agentId);
+    }
+  }
+
+  /** lease(), inside the sweep's guard. */
+  private async leaseNow(agentId: Id, trunkSha: Sha): Promise<WorkspaceLease | null> {
     const st = this.state();
     for (let attempt = 0; attempt < 3; attempt++) {
       let row: SlotRow | null = this.book.take(agentId);
@@ -298,6 +316,12 @@ export class PoolDO extends DurableObject<Env> {
     if (this.meta("trunk") === null) return;
     let made = 0;
     let cleaned = 0;
+    // Upkeep (pool/upkeep.ts): free leases whose agents hold no workspace any more, and lower a quiet pool's target.
+    try {
+      await this.upkeep();
+    } catch (e) {
+      console.error(`pool upkeep failed: ${errorText(e)}`);
+    }
     try {
       made = await this.grow(GROW_BUDGET_MS, Infinity);
     } catch (e) {
@@ -314,6 +338,45 @@ export class PoolDO extends DurableObject<Env> {
     else {
       const at = this.book.nextChoreAt();
       if (at !== null) await this.armAlarm(Math.max(250, at - Date.now()));
+    }
+    // The next lease sweep, while anything is leased.
+    const sweepAt = nextSweepAt(this.sql, this.lastSweepAt);
+    if (sweepAt !== null) await this.armAlarm(Math.max(250, sweepAt - Date.now()));
+  }
+
+  /**
+   * One round of upkeep (pool/upkeep.ts): at most every SWEEP_EVERY_MS, the old leases whose agents the colony no longer
+   * counts as holding a workspace are released (a colony that does not answer frees nothing); and after a quiet period
+   * with no raise, the target comes down toward the leases held now, never below the target the pool was created with.
+   */
+  private async upkeep(): Promise<void> {
+    const now = Date.now();
+    const colonyId = this.meta("colony_id");
+    if (colonyId && now - this.lastSweepAt >= SWEEP_EVERY_MS && oldLeases(this.sql, now, 1).length > 0) {
+      this.lastSweepAt = now;
+      const colony = this.env.COLONY.get(this.env.COLONY.idFromName(colonyId)) as unknown as { leaseHolders(agentIds: Id[]): Promise<Id[]> };
+      const swept = await sweepLeases({ sql: this.sql, now, guard: this.leaseGuard, holders: (ids) => colony.leaseHolders(ids), release: (id) => this.book.release(id) });
+      if (swept.skipped) console.warn(`pool lease sweep freed nothing: ${swept.skipped}`);
+      if (swept.released.length > 0) {
+        this.book.touched();
+        console.log(`pool lease sweep released the workspaces of ${swept.released.length} agent(s) that hold none in the colony`);
+        await this.armAlarm(CLEAN_DELAY_MS);
+      }
+    }
+    const raised = Number(this.meta("raised_at") ?? Number.NaN);
+    if (!Number.isFinite(raised)) {
+      // A pool from before upkeep: its quiet period starts now.
+      this.setMeta("raised_at", String(now));
+      return;
+    }
+    this.book.touched();
+    const target = this.target();
+    const floorMeta = this.meta("floor");
+    const floor = floorMeta !== null ? clampTarget(Number(floorMeta)) : Math.min(target, LEGACY_FLOOR);
+    const next = shrunkTarget({ target, floor, leased: this.counts().leased, quietSince: raised, now });
+    if (next !== null) {
+      this.setMeta("target", String(next));
+      console.log(`pool target lowered from ${target} to ${next}: no lease found the pool empty for ${QUIET_MS / 60_000} minutes`);
     }
   }
 
@@ -512,12 +575,13 @@ export class PoolDO extends DurableObject<Env> {
     return clampTarget(Number(this.meta("target") ?? "0"));
   }
 
-  /** Leases exhausted the pool: grow the target by a quarter (at least 4), up to 256. */
+  /** Leases exhausted the pool: grow the target by a quarter (at least 4), up to MAX_TARGET (8,192); the quiet period starts over. */
   private raiseTarget(): void {
     const c = this.counts();
     const total = c.ready + c.leased + c.forking;
     const next = clampTarget(Math.max(this.target(), total + Math.max(4, Math.ceil(total / 4))));
     this.setMeta("target", String(next));
+    this.setMeta("raised_at", String(Date.now()));
   }
 
   private counts(): Record<SlotState, number> {
@@ -577,7 +641,7 @@ export class PoolDO extends DurableObject<Env> {
   }
 }
 
-/** Target clamped to 0..256. */
+/** Target clamped to 0..MAX_TARGET (8,192). */
 function clampTarget(n: number): number {
   return Number.isFinite(n) ? Math.max(0, Math.min(MAX_TARGET, Math.floor(n))) : 0;
 }

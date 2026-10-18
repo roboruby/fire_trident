@@ -5,11 +5,16 @@ const TIME_WIDTH = 8;
 const RANDOM_CHARS = 6;
 const GLOB_CHARS = /[*?{]/;
 
-/** Time-sortable id: base36 millis + random suffix, with an optional prefix ("int_", "prp_", ...). */
-export function newId(prefix = ""): Id {
-  const time = Date.now().toString(36).padStart(TIME_WIDTH, "0");
+/**
+ * Time-sortable id: base36 millis + random suffix, with a prefix ("int_", "prp_", ..., or ""). Core is pure, so the
+ * caller supplies the time (`now`, ms since epoch) and the randomness (`rand`, in [0, 1), called once per random
+ * character); the worker's newId (worker src/ids.ts) passes the clock and crypto.getRandomValues.
+ */
+export function newId(prefix: string, now: number, rand: () => number): Id {
+  const ms = Number.isFinite(now) && now > 0 ? Math.floor(now) : 0;
+  const time = ms.toString(36).padStart(TIME_WIDTH, "0");
   let suffix = "";
-  for (let i = 0; i < RANDOM_CHARS; i++) suffix += (Math.floor(Math.random() * 36) % 36).toString(36);
+  for (let i = 0; i < RANDOM_CHARS; i++) suffix += (Math.floor(rand() * 36) % 36).toString(36);
   return prefix + time + suffix;
 }
 

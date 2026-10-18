@@ -1,4 +1,5 @@
-import { footprintCovers, newId, revalidationEnabled } from "@fire_trident/core";
+import { footprintCovers, revalidationEnabled } from "@fire_trident/core";
+import { newId } from "../ids.ts";
 import type { CheckResult, Id, Landing, MegafileHold, MegafileReport, Path, Proposal, Sha } from "@fire_trident/core";
 import { HOTNESS, hotness, lineCount, type Hotness, type HotnessThresholds, type PathWrite } from "@fire_trident/core";
 import { isTestPath } from "../decide/signals.ts";

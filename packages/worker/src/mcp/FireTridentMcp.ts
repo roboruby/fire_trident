@@ -19,6 +19,7 @@ import { FireTridentTools, MAX_WAIT_S } from "./tools.ts";
 import type { McpColonyRpc, McpTrunkRpc, RepoReader, Session, ToolContext } from "./tools.ts";
 import { IMPACT_DESCRIPTION } from "./impact.ts";
 import { PROPOSE_RETRY } from "./replay.ts";
+import { ESCALATE_RETRY } from "./escalated.ts";
 import { RECIPE_ARGUMENT, reproduceOffered } from "../decide/reproduce.ts";
 import { sessionTools } from "./headsup.ts";
 import { IMPACT_DEPTH, IMPACT_ENTRIES } from "../trunk/impact.ts";
@@ -298,13 +299,13 @@ export class FireTridentMcp extends McpAgent<Env, Record<string, never>, Record<
       {
         title: "Report to a person",
         description:
-          "Report to a person that an intent cannot be done correctly as written, instead of proposing a change you know is wrong or working around it: a test that is wrong (kind broken-test), a spec that contradicts itself or the code (contradictory-spec), an impossible ask (impossible), or other. Quote the test or spec line and say what you tried. The intent waits for a person's answer (amend, withdraw or dismiss) and no agent is offered it meanwhile; your claim and workspace lease are released. Escalating is a normal part of the work and is never counted as a failure; it is always better than editing, skipping or weakening a test, or hard-coding a value a test expects.",
+          `Report to a person that an intent cannot be done correctly as written, instead of proposing a change you know is wrong or working around it: a test that is wrong (kind broken-test), a spec that contradicts itself or the code (contradictory-spec), an impossible ask (impossible), or other. Quote the test or spec line and say what you tried. The intent waits for a person's answer (amend, withdraw or dismiss) and no agent is offered it meanwhile; your claim and workspace lease are released. Escalating is a normal part of the work and is never counted as a failure; it is always better than editing, skipping or weakening a test, or hard-coding a value a test expects. ${ESCALATE_RETRY}`,
         inputSchema: {
           intentId: z.string().max(100).optional().describe("The intent the report is about (default: the one you hold)"),
           kind: z.enum(["broken-test", "contradictory-spec", "impossible", "other"]).describe(ESCALATION_KINDS.join(", ")),
           report: z.string().min(1).max(MAX_REPORT_CHARS).describe("What is wrong and why, quoting the test or spec line, and what you tried"),
         },
-        // Idempotent: while a report on the intent waits for a person, another one is refused.
+        // Idempotent: a repeat for the same intent gets the first answer back and reports nothing new (mcp/escalated.ts).
         annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
       },
       async (a) => run(() => this.tools().escalate(a)),

@@ -2122,6 +2122,8 @@ export interface SpendCap {
   /** Who set the cap last, and when. */
   setBy: string;
   setAt: Millis;
+  /** Present when no person set this colony's cap: the deployment's default (FT_DEFAULT_SPEND_CAP) applies, set by `platform:default-cap`. */
+  byDefault?: boolean;
 }
 
 /**
