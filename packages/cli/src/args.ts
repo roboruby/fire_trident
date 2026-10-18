@@ -9,6 +9,8 @@ import { RECIPE_OPTIONS, RULE_RECIPE_USAGE, parseRecipeCommand, parseRuleRecipe,
 import { CENSUS_OPTIONS, parseCensusCommand, type CensusCommand } from "./census.ts";
 import type { ReviewBatchCommand } from "./batch.ts";
 import { AUDIT_OPTIONS, parseAuditCommand, type AuditCommand } from "./audit.ts";
+import { INSTALL_OPTIONS, parseInstall, type InstallSpec } from "./install.ts";
+import { ISSUES_OPTIONS, ISSUES_USAGE, parseIssuesCommand, type IssuesCommand } from "./issues.ts";
 
 /** Event types `ft watch --only` accepts. */
 export const EVENT_TYPES: ReadonlyArray<ColonyEvent["t"]> = [
@@ -64,8 +66,11 @@ export type Command =
   | { name: "watch"; colony: string; only: string[] }
   | { name: "new"; specPath: string; colonyName?: string; by?: string }
   | { name: "colonies"; scan: boolean }
-  // Connect your agent: each MCP client's command and configuration for this server, for one colony when named.
-  | { name: "connect"; colony?: string }
+  // Connect your agent: each MCP client's command and configuration for this server, for one colony when named;
+  // `install`: run Claude Code's or Codex CLI's own command to add it (install.ts).
+  | { name: "connect"; colony?: string; install?: InstallSpec }
+  // GitHub issues as intents (issues.ts): import a repository's open issues into a colony.
+  | IssuesCommand
   // The Claude Code hook (hook.ts): install or remove it in local settings, or run its check.
   | HookCommand
   | { name: "agents"; colony: string; all: boolean; journal: boolean }
@@ -162,7 +167,8 @@ const COMMAND_OPTIONS: Record<string, Record<string, OptionSpec>> = {
   watch: { only: { type: "string", multiple: true } },
   new: { spec: { type: "string" }, name: { type: "string" }, by: { type: "string" } },
   colonies: { scan: { type: "boolean" } },
-  connect: {},
+  connect: INSTALL_OPTIONS,
+  issues: ISSUES_OPTIONS,
   hook: { colony: { type: "string" }, agent: { type: "string" }, dir: { type: "string" }, text: { type: "boolean" } },
   agents: { all: { type: "boolean" }, "no-journal": { type: "boolean" } },
   stop: { all: { type: "boolean" }, reason: { type: "string" } },
@@ -486,10 +492,18 @@ function build(word: string, v: Record<string, unknown>, p: string[]): Command {
       // Nothing is sent: the commands are built here from the server URL (core/connect.ts).
       const usage = "ft connect [<colony>]";
       noExtras(p, 1, usage);
+      // --install runs a client's own command to add the server (install.ts).
+      const install = parseInstall(v);
+      if (typeof install === "string") fail(install);
       const colony = p[0]?.trim();
-      if (colony === undefined || colony === "") return { name: "connect" };
+      if (colony === undefined || colony === "") return install ? { name: "connect", install } : { name: "connect" };
       if (!isConnectColony(colony)) fail(`"${colony}" is not a colony id (lowercase letters, digits and single hyphens). Usage: ${usage}`);
-      return { name: "connect", colony };
+      return install ? { name: "connect", colony, install } : { name: "connect", colony };
+    }
+    case "issues": {
+      // GitHub issues as intents (issues.ts): the server reads GitHub, the CLI only asks.
+      const cmd = parseIssuesCommand(v, p);
+      return typeof cmd === "string" ? fail(cmd) : cmd;
     }
     case "hook": {
       // The Claude Code hook (hook.ts): local settings only; check never fails the edit it runs before.
@@ -878,6 +892,8 @@ Usage
 Commands
   colonies                         List every colony with live counters
   connect [<colony>]               Connect an agent: each MCP client's command and config
+  connect --install claude|codex   Add the MCP server to Claude Code or Codex CLI (asks first)
+  issues import <colony> <o/repo>  Import a GitHub repository's open issues as intents
   hook install [--colony <id>]     A heads-up in Claude Code before it edits a file (local settings)
   import <git-url>                 Import a public repository as a new colony
   new --spec <file>                Start a colony from a spec: empty trunk, rules, intents
@@ -1381,10 +1397,49 @@ No snippet holds a token. With a colony, also what to ask it first and the
 colony's SKILL.md. Sends nothing; --json prints the same as JSON. The same
 text is on the server's /connect page.
 
+ft connect [<colony>] --install claude|codex [--read-only] [--force] [--yes]
+           [--scope local|user]
+
+Add the server to Claude Code or Codex CLI by running that client's own
+command (claude mcp add, codex mcp add), after showing it and asking. The
+command line never holds a token: the configuration names FT_MCP_TOKEN, which
+the client reads when it starts, so set it there. --read-only adds the
+read-only server instead, which needs no token. A server of the same name is
+kept unless --force replaces it. --yes runs without asking; --dry-run shows
+the commands and runs nothing; --scope is Claude Code's (default local, this
+directory; user, every directory). Other clients: copy what ft connect prints.
+
 Examples
   ft connect
   ft connect hono
   ft connect hono --url https://<your-worker>.workers.dev
+  ft connect --install claude
+  ft connect hono --install codex --read-only --yes
+`,
+  issues: `
+${ISSUES_USAGE}
+
+Import a public GitHub repository's open issues into a colony: one intent per
+issue (pull requests skipped), titled after the issue, its text quoted as data
+that someone outside the colony wrote. Review reads these intents as it reads
+an agent's request: their text never waives a danger gate or earns autonomy.
+Importing again skips the issues already imported. The server reads GitHub,
+with its FT_GITHUB_TOKEN when it has one.
+
+  --label <name>     Only issues with this label (repeat: issues with all)
+  --limit <n>        At most n issues, 1 to 100 (default 20)
+  --footprint <p>    The paths the work may touch, for every issue (repeat;
+                     globs and directories ending in / are fine); without it,
+                     the paths each issue names, and an issue naming none is
+                     skipped
+  --close-on-land    When an issue's change lands, comment on the issue with a
+                     link to the landing (needs FT_GITHUB_TOKEN on the server,
+                     with access to the repository)
+  --close            With --close-on-land: close the issue after the comment
+
+Examples
+  ft issues import web octo-org/hello-world --label "good first issue" --limit 5
+  ft issues import web octo-org/site --footprint 'src/**' --close-on-land
 `,
   hook: `
 ft hook install [--colony <id>] [--agent <id>] [--dir <path>]

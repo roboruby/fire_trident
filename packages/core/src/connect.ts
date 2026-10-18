@@ -184,9 +184,9 @@ function claudeCode(publicUrl: string, tokenUrl: string): ConnectClient {
       },
       {
         access: "token",
-        note: `Your shell fills in $${MCP_TOKEN_ENV} when you run the command; a project's .mcp.json names the variable instead, and Claude Code fills it in from the environment when it starts.`,
+        note: `The single quotes keep your shell from filling in the token: Claude Code stores \${${MCP_TOKEN_ENV}}, as a project's .mcp.json names it, and fills it in from the environment when it starts.`,
         snippets: [
-          { kind: "shell", label: "Shell", text: `claude mcp add --transport http ${MCP_SERVER_NAME} ${tokenUrl} --header "Authorization: ${BEARER_SHELL}"` },
+          { kind: "shell", label: "Shell", text: `claude mcp add --transport http ${MCP_SERVER_NAME} ${tokenUrl} --header 'Authorization: ${BEARER_CLAUDE}'` },
           {
             kind: "json",
             label: ".mcp.json",

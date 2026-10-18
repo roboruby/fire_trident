@@ -48,6 +48,7 @@ import { silentTtlRoutes } from "./closure.ts";
 import { lifecycleRoutes } from "./lifecycle.ts";
 import { headsUpRoutes } from "./headsup.ts";
 import { recipeRoutes } from "./recipes.ts";
+import { issueRoutes } from "./issues.ts";
 import { refuseWhilePaused } from "../colony/pause.ts";
 import { declaredRecipe } from "../decide/reproduce.ts";
 import { bearerMatches } from "./token.ts";
@@ -234,6 +235,7 @@ async function requireColony(env: Env, colonyId: Id): Promise<void> {
  *   GET    /colonies/:id/spend-cap          the colony's spend cap on the model calls this platform makes; POST sets, raises or removes it (api/spendcap.ts)
  *   GET    /colonies/:id/skill              the colony's SKILL.md for an agent: connect, arrive, work, leave, come back (api/skill.ts)
  *   GET    /colonies/:id/recipes            the colony's recipes; POST declares one, POST recipes/:rid/approve lands a held one (api/recipes.ts)
+ *   POST   /colonies/:id/issues/import      a GitHub repository's open issues as intents, untrusted, re-imports skipped (api/issues.ts)
  * POST routes require the admin bearer token when FT_ADMIN_TOKEN is set; DELETE always does.
  */
 export function createApi(deps: ApiDeps): Hono<ApiEnv> {
@@ -624,6 +626,7 @@ export function createApi(deps: ApiDeps): Hono<ApiEnv> {
   lifecycleRoutes(app); // Lifecycle strip: each change from declared to merged by a person, with its evidence (api/lifecycle.ts)
   headsUpRoutes(app); // Heads-up for the Claude Code hook: what moved under an agent's files and what waits to land on them (api/headsup.ts)
   recipeRoutes(app, requireAdmin, isAdminRequest); // Recipes: a person's mass mechanical change, landed by the trunk writer and applied to work in flight (api/recipes.ts)
+  issueRoutes(app, requireAdmin); // Imported issues: a public GitHub repository's open issues as intents, read as untrusted text (api/issues.ts)
 
   // Unknown API paths answer JSON here instead of falling through to the static UI.
   app.all("*", (c) => json({ error: `no route for ${c.req.method} ${c.req.path}` }, 404));

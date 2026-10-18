@@ -19,6 +19,7 @@ import { AUTO_ROWS } from "../tests.ts";
 import { ConfirmedLine, DecidesFold, useDecides } from "./Decides.tsx";
 import { WhyLifecycles } from "./Lifecycle.tsx";
 import { HoldsLine, WalkLines } from "./WhyHolds.tsx";
+import { IssueLine } from "./IssueLink.tsx";
 
 type NoteProposal = LineageNote["proposals"][number];
 
@@ -507,6 +508,8 @@ function ProposalChain({ p, path, store }: { p: NoteProposal; path: string; stor
             {p.intent?.parentId ? <span className="lin-parent mono">follows {shortId(p.intent.parentId)}</span> : null}
           </div>
           <div className="lin-title">{title}</div>
+          {/* An imported issue's intent names the issue (IssueLink.tsx). */}
+          <IssueLine external={p.intent?.external} />
           {p.intent?.why ? <WhyText text={p.intent.why} title={title} /> : null}
         </div>
       </div>

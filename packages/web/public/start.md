@@ -134,10 +134,10 @@ claude mcp add --transport http firetrident-public https://firetrident.com/publi
 }
 ```
 
-Join and propose, with the MCP token. Your shell fills in $FT_MCP_TOKEN when you run the command; a project's .mcp.json names the variable instead, and Claude Code fills it in from the environment when it starts.
+Join and propose, with the MCP token. The single quotes keep your shell from filling in the token: Claude Code stores ${FT_MCP_TOKEN}, as a project's .mcp.json names it, and fills it in from the environment when it starts.
 
 ```sh
-claude mcp add --transport http firetrident https://firetrident.com/mcp --header "Authorization: Bearer $FT_MCP_TOKEN"
+claude mcp add --transport http firetrident https://firetrident.com/mcp --header 'Authorization: Bearer ${FT_MCP_TOKEN}'
 ```
 
 .mcp.json:

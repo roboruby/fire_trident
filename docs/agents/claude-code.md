@@ -11,10 +11,10 @@ You need the deployment's URL, its MCP token in the environment variable `FT_MCP
 For your own sessions, one command:
 
 ```sh
-claude mcp add --transport http firetrident https://<your-host>/mcp --header "Authorization: Bearer $FT_MCP_TOKEN"
+claude mcp add --transport http firetrident https://<your-host>/mcp --header 'Authorization: Bearer ${FT_MCP_TOKEN}'
 ```
 
-Your shell expands `$FT_MCP_TOKEN` when you run it, so the token itself is stored in your user configuration (`~/.claude.json`), for this directory only. Add `--scope user` to use the server from every directory.
+The single quotes keep your shell from expanding the variable, so neither the command line nor your user configuration (`~/.claude.json`, for this directory only) holds the token: Claude Code stores `${FT_MCP_TOKEN}` and fills it in from the environment when it starts. Add `--scope user` to use the server from every directory. `ft connect --install claude` runs this command for you, after showing it and asking.
 
 For a repository, a project file `.mcp.json` at its root holds no secret, because Claude Code expands `${FT_MCP_TOKEN}` from the environment when it starts:
 

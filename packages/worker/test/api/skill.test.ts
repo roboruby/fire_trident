@@ -111,7 +111,7 @@ describe("GET /colonies/:id/skill", () => {
     const { text } = await get(env().env, "/colonies/web/skill");
     expect(text).not.toContain("SECRET-INTENT-TITLE");
     expect(text).not.toContain("src/very/private");
-    for (const m of text.matchAll(/Bearer ([^"\s]+)/g)) expect(m[1]).toBe("$FT_MCP_TOKEN");
+    for (const m of text.matchAll(/Bearer ([^"'\s]+)/g)) expect(m[1]).toMatch(/^(?:\$FT_MCP_TOKEN|\$\{FT_MCP_TOKEN\})$/);
     expect(text.match(/[^\x09\x0a\x0d\x20-\x7e]/g)).toBeNull();
   });
 

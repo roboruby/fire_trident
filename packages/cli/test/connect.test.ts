@@ -77,7 +77,7 @@ describe("ft connect: output", () => {
     const json = JSON.parse(t.out.join("\n"));
     expect(json).toEqual(JSON.parse(JSON.stringify(connectInfo("https://ft.example", "hono"))));
     const snippets = (json.clients as Array<{ variants: Array<{ snippets: Array<{ text: string }> }> }>).flatMap((c) => c.variants.flatMap((v) => v.snippets.map((s) => s.text))).join("\n");
-    for (const m of snippets.matchAll(/Bearer ([^"\s]+)/g)) expect(m[1]).toMatch(/^(?:\$FT_MCP_TOKEN|\$\{FT_MCP_TOKEN\}|\$\{env:FT_MCP_TOKEN\}|\$\{input:ft-mcp-token\}|<the)$/);
+    for (const m of snippets.matchAll(/Bearer ([^"'\s]+)/g)) expect(m[1]).toMatch(/^(?:\$FT_MCP_TOKEN|\$\{FT_MCP_TOKEN\}|\$\{env:FT_MCP_TOKEN\}|\$\{input:ft-mcp-token\}|<the)$/);
   });
 
   it("says plainly when the server URL is not one a command can carry", async () => {

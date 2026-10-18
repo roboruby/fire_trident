@@ -324,6 +324,14 @@ export interface Env {
   /** Secret (optional): token MCP clients must present at /mcp and /sse. */
   FT_MCP_TOKEN?: string;
   /**
+   * Secret (optional): a GitHub token for issue import (colony/issues.ts, api/issues.ts). Without it, POST
+   * /api/colonies/:id/issues/import reads public repositories with GitHub's limit for reads without a token; with it,
+   * the token's limit. It is also what the opt-in write-back needs: an import made with closeOnLand posts one comment
+   * on each issue when its change lands (and closes it with close), only while this is set and GitHub says the token
+   * may change that repository's issues. Sent only to api.github.com, never logged.
+   */
+  FT_GITHUB_TOKEN?: string;
+  /**
    * Optional: a call budget for each MCP session at /mcp and /sse, "on" (4 tool calls a second, 20 at once after a
    * pause) or "<calls per second>,<burst>" such as "8,40"; absent, "off" or anything else is off. Global, since a
    * session may not have joined a colony yet. A call that finds its session's bucket empty answers rate_limit (429,

@@ -1,6 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 import { blobId, landingMessage, mergeContentProblem, newId, regionOf, revalidationCandidate, revalidationEnabled, serializeNote, textMergeCandidate, validateProposal } from "@fire_trident/core";
-import type { AgentKind, ColonyEvent, ColonySnapshot, Decision, ExportSurface, FileVersion, Id, Landing, LineageNote, NoteResolves, NotesVerification, OccResult, Path, Proposal, RepoRef, Revalidated, Sha, TextMerged, TrunkPublish } from "@fire_trident/core";
+import type { AgentKind, ColonyEvent, ColonySnapshot, Decision, ExportSurface, ExternalSource, FileVersion, Id, Landing, LineageNote, NoteResolves, NotesVerification, OccResult, Path, Proposal, RepoRef, Revalidated, Sha, TextMerged, TrunkPublish } from "@fire_trident/core";
 import type { TrunkRoot } from "@fire_trident/core";
 import type { TreeEntry } from "isomorphic-git";
 import type { Env } from "../env.ts";
@@ -90,6 +90,7 @@ import { ftError } from "../colony/errors.ts";
 import { INLINE_FETCH_BYTES, isInlineChange } from "../colony/inline.ts";
 import { noteResolves } from "../colony/resolver-merge.ts";
 import { notePriority } from "../colony/priority.ts";
+import { issueRefsMessage, noteExternal } from "../colony/issues.ts";
 import { returnHunksEnabled, type ReturnHunksAnswer, type ReturnHunksQuery } from "../colony/returnhunks.ts";
 import { quoteReturns, sqlQuoteSource } from "./quote.ts";
 import { DIRECTION_TABLE, FENCE_WAIT_MS, directionReturns, fenceAnswer, mergeDirection, parseDirection, pushDelayMs, settlesWithin, type FenceAnswer } from "./direction.ts";
@@ -180,7 +181,7 @@ export interface LandContext {
    * Each intent's lineage fields: `priority` and `requestedPriority` only when an agent asked for more than its intent was
    * granted (colony/priority.ts); who declared it and who approved its rule (trunk/answerable.ts IntentWho) when the colony says.
    */
-  intents?: Record<Id, { title: string; why?: string; ruleId?: Id; parentId?: Id; priority?: number; requestedPriority?: number } & IntentWho>;
+  intents?: Record<Id, { title: string; why?: string; ruleId?: Id; parentId?: Id; priority?: number; requestedPriority?: number; external?: ExternalSource } & IntentWho>;
   /**
    * `resumeKey`: an external agent holds an MCP resume key (it joined over MCP), for the note's provenance. `name`: the
    * agent's name, sent where FT_CREDIT_TRAILERS covers the colony, for its Co-authored-by trailer (trunk/credits.ts).
@@ -193,7 +194,7 @@ export interface LandContext {
   resolves?: Record<Id, NoteResolves>;
 }
 
-type IntentInfo = { title: string; why: string; ruleId?: Id; parentId?: Id; priority?: number; requestedPriority?: number } & IntentWho;
+type IntentInfo = { title: string; why: string; ruleId?: Id; parentId?: Id; priority?: number; requestedPriority?: number; external?: ExternalSource } & IntentWho;
 type AgentLite = { kind: AgentKind; model?: string; resumeKey?: boolean; name?: string };
 type StagedChange = { blob: Sha; mode: string; size: number; before: Sha | null } | { blob: null; before: Sha | null };
 
@@ -1884,7 +1885,9 @@ export class TrunkDO extends DurableObject<Env> {
       lap("note");
       const titled = landingMessage({ id, intentIds }, proposals, info.titles);
       const credited = credits ? withCredits(titled, creditLines(built, (agentId) => info.agents.get(agentId)?.name)) : titled;
-      const message = withNoteDigest(await withSignature(credited, signer, { digest: note.digest, tree, parents: [parent] }), note.digest);
+      // Imported issues (colony/issues.ts): `Refs: owner/repo#n` at the top of the trailers, for each issue the commit lands.
+      const refd = issueRefsMessage(credited, intentIds, info.intents);
+      const message = withNoteDigest(await withSignature(refd, signer, { digest: note.digest, tree, parents: [parent] }), note.digest);
       // Signed the stock git way too (trunk/gitsig.ts), with the same key: a gpgsig header that git verify-commit checks.
       const content = await signCommit(commitContent({ tree, parents: [parent], message, name: LANDING_IDENTITY.name, email: LANDING_IDENTITY.email, timestamp: Math.floor(at / 1000) }), signer);
       const commit = objectId("commit", content);
@@ -2807,7 +2810,7 @@ export class TrunkDO extends DurableObject<Env> {
   // -------------------------------------------------------------------------
 
   private async lineageInfo(proposals: Proposal[], ctx: LandContext, colonyId: Id): Promise<{ titles: Record<Id, string>; intents: Map<Id, IntentInfo>; agents: Map<Id, AgentLite> }> {
-    for (const [id, i] of Object.entries(ctx.intents ?? {})) this.intentCache.set(id, { title: i.title, why: i.why ?? "", ruleId: i.ruleId, parentId: i.parentId, ...notePriority(i), ...noteIntentWho(i) });
+    for (const [id, i] of Object.entries(ctx.intents ?? {})) this.intentCache.set(id, { title: i.title, why: i.why ?? "", ruleId: i.ruleId, parentId: i.parentId, ...notePriority(i), ...noteIntentWho(i), ...noteExternal(i) });
     for (const [id, a] of Object.entries(ctx.agents ?? {})) this.agentCache.set(id, { kind: a.kind, model: a.model, ...(typeof a.resumeKey === "boolean" ? { resumeKey: a.resumeKey } : {}), ...(typeof a.name === "string" ? { name: a.name } : {}) });
     const missing = proposals.some((p) => !this.intentCache.has(p.intentId) || !this.agentCache.has(p.agentId));
     if (missing) await this.loadColonyContext(colonyId);
@@ -2836,7 +2839,7 @@ export class TrunkDO extends DurableObject<Env> {
       // Who declared each intent and who approved its rule, for the note's answerable person (trunk/answerable.ts).
       const approvers = new Map((snap.rules ?? []).map((r) => [r.id, r.approvedBy] as const));
       for (const i of snap.intents ?? []) {
-        this.intentCache.set(i.id, { title: i.title, why: i.why, ruleId: i.ruleId, parentId: i.parentId, ...notePriority(i), ...noteIntentWho({ ...intentWho(i, (id) => approvers.get(id)), ruleId: i.ruleId }) });
+        this.intentCache.set(i.id, { title: i.title, why: i.why, ruleId: i.ruleId, parentId: i.parentId, ...notePriority(i), ...noteIntentWho({ ...intentWho(i, (id) => approvers.get(id)), ruleId: i.ruleId }), ...noteExternal(i) });
       }
       // A snapshot does not say who holds a resume key: keep what a land context said.
       for (const a of snap.agents ?? []) this.agentCache.set(a.id, { ...this.agentCache.get(a.id), kind: a.kind, model: a.model, ...(typeof a.name === "string" ? { name: a.name } : {}) });
@@ -3200,7 +3203,8 @@ function buildNote(
         model: a?.model,
         // What an agent asked for, only when the cap lowered its intent's priority (colony/priority.ts), and who declared
         // the intent and who approved its rule, when the colony said (trunk/answerable.ts).
-        intent: { id: p.intentId, title: i.title, why: i.why, ruleId: i.ruleId, parentId: i.parentId, ...notePriority(i), ...noteIntentWho(i) },
+        // An imported issue's intent names its issue (colony/issues.ts).
+        intent: { id: p.intentId, title: i.title, why: i.why, ruleId: i.ruleId, parentId: i.parentId, ...notePriority(i), ...noteIntentWho(i), ...noteExternal(i) },
         writeSet: p.writeSet,
         readSet: p.readSet,
         decisions: ctx.decisions?.[p.id] ?? [],

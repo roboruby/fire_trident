@@ -36,6 +36,7 @@ import { useThrottledVersion } from "../useStore.ts";
 import { MovedBadge } from "./MovedBy.tsx";
 import { closureBadge } from "../closure.ts";
 import { IntentLifecycleToggle } from "./Lifecycle.tsx";
+import { IssueBadge } from "./IssueLink.tsx";
 
 /** Groups that start open: the most urgent few, decided once when each first appears (a person's clicks win after that). */
 const OPEN_AT_FIRST = 3;
@@ -316,6 +317,8 @@ function IntentRow({ item, store, book, now, lit, setLitEl, onPick, onFollow }: 
           </span>
         ) : null}
         {moved ? <MovedBadge moved={moved} agentName={(id) => store.agentName(id)} /> : null}
+        {/* An imported issue: a link to it (IssueLink.tsx), from the colony's snapshot. */}
+        <IssueBadge external={it.external} />
         {closed ? (
           <span className={`ibadge ibadge-closure ibadge-closure-${it.closure?.cause ?? "none"}`} title={closed.title}>
             {closed.label}

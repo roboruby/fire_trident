@@ -129,7 +129,7 @@ describe.skipIf(!HAS_GIT)("git push to a colony's read-only git URL, with stock 
       .map((l) => l.slice("remote: ".length));
     expect(remote).toEqual(pushRefusal(origin, "demo"));
     expect(remote).toContain(`The colony: ${origin}/c/demo`);
-    expect(remote.join("\n")).toContain(`claude mcp add --transport http firetrident ${origin}/mcp --header "Authorization: Bearer $FT_MCP_TOKEN"`);
+    expect(remote.join("\n")).toContain(`claude mcp add --transport http firetrident ${origin}/mcp --header 'Authorization: Bearer \${FT_MCP_TOKEN}'`);
     expect(out.stderr).toMatch(/returned error: 403/);
   });
 
