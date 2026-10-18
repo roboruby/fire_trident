@@ -51,6 +51,8 @@ import { recipeRoutes } from "./recipes.ts";
 import { refuseWhilePaused } from "../colony/pause.ts";
 import { declaredRecipe } from "../decide/reproduce.ts";
 import { bearerMatches } from "./token.ts";
+import { accessConfig, approverIdentity, recordedAs } from "./access.ts";
+import { commitAuthorRoutes } from "./commitauthor.ts";
 
 /** Hono environment of the API. */
 export type ApiEnv = { Bindings: Env };
@@ -580,9 +582,11 @@ export function createApi(deps: ApiDeps): Hono<ApiEnv> {
   app.post("/colonies/:id/review/:pid", requireAdmin, async (c) => {
     const colonyId = colonyParam(c);
     const b = await body(c, DecisionBody);
-    const res = await colonyStub(c.env, colonyId).decide(c.req.param("pid"), b.decision, b.reason, b.by ?? "human");
+    // Verified approvers (api/access.ts): with Access configured, the approver is the verified token's email, else the stated name.
+    const who = await approverIdentity(c.env, c.req.raw.headers, b.by);
+    const res = await colonyStub(c.env, colonyId).decide(c.req.param("pid"), b.decision, b.reason, who.by, true, who);
     // Blind canaries (colony/audit.ts): a decided canary is revealed in the answer.
-    return json({ ok: true, ...(res && typeof res === "object" ? res : {}) });
+    return json({ ok: true, ...(res && typeof res === "object" ? res : {}), ...(accessConfig(c.env) ? { recorded: recordedAs(who) } : {}) });
   });
 
   app.post("/colonies/:id/landings/:ref/revert", requireAdmin, async (c) => {
@@ -619,6 +623,7 @@ export function createApi(deps: ApiDeps): Hono<ApiEnv> {
   a2aRoutes(app, requireAdmin); // Agent2Agent: an orchestrator declares intents and follows them as tasks (FT_A2A; api/a2a.ts)
   pauseRoutes(app, requireAdmin); // Pause: a person stops the agents of a colony or of the deployment, with a reason (api/pause.ts)
   spendCapRoutes(app, requireAdmin); // Spend cap: a person caps what this platform's model calls for a colony may cost (api/spendcap.ts)
+  commitAuthorRoutes(app, requireAdmin, isAdminRequest); // People as commit authors: the person who authors a colony's landing commits (api/commitauthor.ts)
   skillRoutes(app); // The colony's SKILL.md: how an agent connects and works there, its rules and protected paths (api/skill.ts)
   silentTtlRoutes(app, requireAdmin); // Silent-agent limit: how long an outside agent may be silent before the colony takes its intents back (api/closure.ts)
   lifecycleRoutes(app); // Lifecycle strip: each change from declared to merged by a person, with its evidence (api/lifecycle.ts)

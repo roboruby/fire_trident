@@ -2,6 +2,7 @@ import type { Colony, Rule } from "@fire_trident/core";
 import type { Command } from "./args.ts";
 import { pauseRequest } from "./pause.ts";
 import { spendCapRequest } from "./spendcap.ts";
+import { commitAuthorRequest } from "./commitauthor.ts";
 import { recipeRequest } from "./recipe.ts";
 import { auditRequest } from "./audit.ts";
 import { silentTtlRequest } from "./closure.ts";
@@ -45,6 +46,8 @@ import { silentTtlRequest } from "./closure.ts";
  *   POST   /api/colonies/:id/pause | /resume        { reason, by } | { by, reason? } -> { pause, already } | { resumed, pauses, spendCap? }; /api/pause and /api/resume for the deployment
  *   GET    /api/colonies/:id/spend-cap              -> { colonyId, cap: SpendCap | null }
  *   POST   /api/colonies/:id/spend-cap              { usd, reviewReserveUsd?, by } | { usd: null, by } -> { colonyId, cap, lifted, tripped, note }
+ *   GET    /api/colonies/:id/commit-author          -> { colonyId, author: CommitAuthor | null } (the email with the token)
+ *   POST   /api/colonies/:id/commit-author          { name, email, by } | { name: null, by } -> { colonyId, author, cleared? }
  *   GET    /api/colonies/:id/recipes[/:rid]         -> RecipeRecord[] | { record, residue }
  *   POST   /api/colonies/:id/recipes                { kind, args, scope, why, by, title? } -> { intent, recipe } (201)
  *   POST   /api/colonies/:id/recipes/:rid/approve   { by } -> RecipeRecord
@@ -193,6 +196,9 @@ export function planRequest(cmd: Command, by: string): ApiRequest | null {
     case "spend-cap":
       // The spend cap (spendcap.ts): read it, set it, or remove it.
       return spendCapRequest(cmd, by, colonyPath);
+    case "commit-author":
+      // People as commit authors (commitauthor.ts): read the setting, name a person, or go back to FireTrident.
+      return commitAuthorRequest(cmd, by, colonyPath);
     case "audit":
       // The audit sample and blind canaries (audit.ts): the measures, the rates, or a person's answer.
       return auditRequest(cmd, by, colonyPath);

@@ -62,6 +62,8 @@ import type { DetectorState } from "../decide/policy.ts";
 import type { DecideStore, StoredAntibody } from "../decide/store.ts";
 import { ANTIBODY_DIR, antibodyAllows, parseAntibodyFile, type AllowingAntibody } from "../decide/antibodies.ts";
 import { keepSource } from "../decide/quotes.ts";
+import { cardShown, identityAnswers, type ApproverWho } from "../decide/receipt.ts";
+import { CommitAuthors, type CommitAuthorRecord } from "./commitauthor.ts";
 import { cachedSplit, decidesReport } from "../decide/decides.ts";
 import type { DecidesReport } from "@fire_trident/core";
 import { DEFAULT_NOT_VERIFIED, FieldBatch, groupByRegion, jitter, normalizePath, normalizePaths, overlapCount, primaryRegion, violationIntents } from "./logic.ts";
@@ -197,7 +199,7 @@ import { eventMovedBy, fetchReturnHunks, quoteHunks, returnHunksEnabled, type Qu
 import { PROTECT_META, isProtectStop, parseProtectRecord, protectChanged, protectLandedText, type ProtectHost, type ProtectOutcome, type ProtectRecord } from "./protect.ts";
 import { SpendBook, modelOfClass, resolverClient, spendCounters } from "./spend.ts";
 import { hedgeFor } from "./hedge.ts";
-import type { ColonySpend, IntentSpendBrief, SpendCap } from "@fire_trident/core";
+import type { ColonySpend, CommitAuthor, IntentSpendBrief, SpendCap } from "@fire_trident/core";
 import { IntentSpendBook, intentSpendEnabled, type IntentSpendAnswer } from "./intentspend.ts";
 import { SPEND_CAP_ACTOR, SpendCapBook, agentReserve, agentSettle, bookUsd, cappedAi, cappedClient, localGate, type AgentCapAsk, type CapSettle, type CapUse, type SpendCapAnswer } from "./spendcap.ts";
 import { ClosureLedger, abandonCause, closureOf, eventFields, reapCutoffs, silentTtlMs, type AbandonCause, type ClosureEventFields, type SilentTtlView } from "./closure.ts";
@@ -1859,6 +1861,7 @@ export class ColonyDO extends DurableObject<Env> {
     resolves?: Record<Id, NoteResolves>;
     protect?: ProtectRecord;
     pause?: WriterPause;
+    author?: CommitAuthorRecord;
   }> {
     const colonyId = this.requireColony().id;
     const intents: Record<Id, { title: string; why: string; ruleId?: Id; parentId?: Id; priority?: number; requestedPriority?: number } & DirectionInfo & IntentWho> = {};
@@ -1913,7 +1916,9 @@ export class ColonyDO extends DurableObject<Env> {
     const protect = parseProtectRecord(this.decider().store.meta(PROTECT_META));
     // Pause (colony/pause.ts): the colony's pauses as they stand; a lane holds on it, and the trunk writer keeps the newest.
     const pause = await this.pauses().writerRecord();
-    return { intents, agents, decisions, ...(alternatives ? { alternatives } : {}), ...(Object.keys(resolves).length > 0 ? { resolves } : {}), ...(protect ? { protect } : {}), pause };
+    // People as commit authors (colony/commitauthor.ts): the colony's setting, once it has one; the trunk writer keeps the newest.
+    const author = this.commitAuthors().record();
+    return { intents, agents, decisions, ...(alternatives ? { alternatives } : {}), ...(Object.keys(resolves).length > 0 ? { resolves } : {}), ...(protect ? { protect } : {}), pause, ...(author ? { author } : {}) };
   }
 
   /**
@@ -2559,6 +2564,8 @@ export class ColonyDO extends DurableObject<Env> {
       // Escalated before views were kept: build one in the background, for the next read.
       else if (backfills++ < REVIEW_BACKFILLS) this.ctx.waitUntil(engine.backfillReview(p.id).catch((err) => console.warn(`review view of ${p.id} not built: ${errorText(err)}`)));
     }
+    // The review receipt (decide/receipt.ts): the head and the digest of the view each card serves, as a decision records them.
+    for (const p of queue) Object.assign(p, { reviewReceipt: { head: p.headSha, shown: await cardShown(views.get(p.id)) } });
     // Tests before approval (certify/reviewtests.ts): what the colony's tests said of each change, or why they did not run.
     for (const p of queue) {
       const tests = this.reviewTests().view(p);
@@ -2640,10 +2647,13 @@ export class ColonyDO extends DurableObject<Env> {
   /**
    * A human decision on a proposal: approve (back to its lane), reject (intent reopened) or return. `mint` false keeps a
    * rejection from minting an antibody (a batch rejected with one reason mints one, from its first change: decide/batch.ts).
+   * `who` (api/access.ts): how the route named the person, verified by Access or stated; absent, `by` is recorded as stated.
    */
-  async decide(proposalId: Id, d: "approve" | "reject" | "return", reason: string, by: string, mint = true): Promise<CanaryAnswer | void> {
+  async decide(proposalId: Id, d: "approve" | "reject" | "return", reason: string, by: string, mint = true, who?: ApproverWho): Promise<CanaryAnswer | void> {
     const colony = this.requireColony();
     if (d !== "approve" && d !== "reject" && d !== "return") throw ftError(400, `unknown decision ${String(d)}`);
+    // The review receipt (decide/receipt.ts): what the person's card served of the change, digested before anything is decided.
+    const shown = await cardShown(this.reviewViews([proposalId]).get(proposalId));
     const row = this.proposalRow(proposalId);
     if (!row) throw ftError(404, `unknown proposal ${proposalId}`);
     // With an inline change's contents: an antibody minted from a rejection reads the change.
@@ -2666,7 +2676,7 @@ export class ColonyDO extends DurableObject<Env> {
         kind: "triage",
         subject: proposalId,
         layer: "human",
-        answers: { decision: d, reason, by, head: p.headSha, ...(tested.line ? { tests: tested.line } : {}) },
+        answers: { decision: d, reason, by, head: p.headSha, ...(tested.line ? { tests: tested.line } : {}), shown, ...identityAnswers(who) },
         p: 1,
         action: d,
         at: now,
@@ -2700,7 +2710,7 @@ export class ColonyDO extends DurableObject<Env> {
    * one batch of the review queue, recorded as their decision on each change the card listed that still waits in it.
    * 409 where FT_ESCALATION_BATCH does not cover the colony.
    */
-  async decideBatch(d: BatchDecision): Promise<BatchAnswer> {
+  async decideBatch(d: BatchDecision, who?: ApproverWho): Promise<BatchAnswer> {
     const colony = this.requireColony();
     if (!escalationBatchOn(this.env.FT_ESCALATION_BATCH, colony.id)) throw ftError(409, "escalation batching is off for this colony (FT_ESCALATION_BATCH), so there is no batch to answer; decide each change on its own card");
     const batches = new EscalationBatches(this.sql);
@@ -2712,7 +2722,8 @@ export class ColonyDO extends DurableObject<Env> {
         // A blind canary (colony/audit.ts) is never decided with a batch: it is left alone like any change outside it.
         excluded: (p) => isCanary(engine.store.vaccineByIntent(p.intentId)),
         decide: async (id, decision, reason, by, mint) => {
-          await this.decide(id, decision, reason, by, mint);
+          // A verified approver (api/access.ts) is recorded on each change of the batch as on a single card.
+          await this.decide(id, decision, reason, who?.by ?? by, mint, who);
         },
       },
       d,
@@ -4717,6 +4728,27 @@ export class ColonyDO extends DurableObject<Env> {
   async spendCap(): Promise<SpendCap | null> {
     this.requireColony();
     return this.spendCaps().state();
+  }
+
+  // People as commit authors (colony/commitauthor.ts): the person a colony names authors its landing commits.
+  private commitAuthorsRun: CommitAuthors | null = null;
+
+  private commitAuthors(): CommitAuthors {
+    return (this.commitAuthorsRun ??= new CommitAuthors(this.sql));
+  }
+
+  /** The person who authors the colony's landing commits, or null when FireTrident does (GET /api/colonies/:id/commit-author). */
+  async commitAuthor(): Promise<CommitAuthor | null> {
+    this.requireColony();
+    return this.commitAuthors().get();
+  }
+
+  /** Name the person who authors the colony's landing commits, or go back to FireTrident with `name: null` (POST /api/colonies/:id/commit-author). */
+  async setCommitAuthor(p: { name?: string | null; email?: string; by?: string }): Promise<{ author: CommitAuthor | null; cleared?: boolean }> {
+    this.requireColony();
+    const by = typeof p?.by === "string" && p.by.trim() !== "" ? p.by.trim() : "api";
+    if (p?.name === null) return { author: null, cleared: this.commitAuthors().clear(by, Date.now()) };
+    return { author: this.commitAuthors().set({ name: p?.name, email: p?.email, by }, Date.now()) };
   }
 
   /** An in-platform agent's reservation before a model call (agentCapGate); refused with the pause's sentence as the cap trips it. */

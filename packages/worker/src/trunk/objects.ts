@@ -118,10 +118,15 @@ export function treeContent(entries: TreeEntry[]): Uint8Array {
   return out;
 }
 
-/** The git encoding of a commit, as isomorphic-git writes it (timezone +0000, message ending in one newline). */
-export function commitContent(c: { tree: string; parents: string[]; message: string; name: string; email: string; timestamp: number }): Uint8Array {
+/**
+ * The git encoding of a commit, as isomorphic-git writes it (timezone +0000, message ending in one newline). `name` and
+ * `email` are the committer, and the author too unless `author` names another identity (a colony's commit author,
+ * trunk/commitauthor.ts), which then authors it at the same time.
+ */
+export function commitContent(c: { tree: string; parents: string[]; message: string; name: string; email: string; timestamp: number; author?: { name: string; email: string } | null }): Uint8Array {
   const who = `${c.name} <${c.email}> ${c.timestamp} +0000`;
+  const by = c.author ? `${c.author.name} <${c.author.email}> ${c.timestamp} +0000` : who;
   const message = `${c.message.replace(/\r/g, "").replace(/^\n+/, "").replace(/\n+$/, "")}\n`;
-  const headers = [`tree ${c.tree}`, ...c.parents.map((p) => `parent ${p}`), `author ${who}`, `committer ${who}`].join("\n");
+  const headers = [`tree ${c.tree}`, ...c.parents.map((p) => `parent ${p}`), `author ${by}`, `committer ${who}`].join("\n");
   return te.encode(`${headers}\n\n${message}`);
 }

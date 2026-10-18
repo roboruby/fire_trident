@@ -45,6 +45,19 @@ export interface Colony {
 }
 
 /**
+ * The person a colony names as the author of its landing commits (POST /api/colonies/:id/commit-author, `ft commit-author`;
+ * worker colony/commitauthor.ts). Absent, landing commits are authored by FireTrident as before. Set, each landing commit
+ * is authored by this person and committed by FireTrident (so its signatures are unchanged), and agents get no
+ * Co-authored-by trailers; the lineage note still names every agent. `by` and `at`: who set it, and when.
+ */
+export interface CommitAuthor {
+  name: string;
+  email: string;
+  by: string;
+  at: Millis;
+}
+
+/**
  * Asynchronous trunk publishing (FT_ASYNC_PUBLISH): a landing counts once the trunk writer records it,
  * and a publish loop pushes the recorded commits to the trunk repository in order. `trunkSha` runs ahead
  * of `publishedSha` by the commits waiting to be pushed.
@@ -1046,7 +1059,44 @@ export interface NoteDecision extends Pick<Decision, "kind" | "layer" | "p" | "a
   answer?: string;
   /** The second opinion's answer for each acceptance line, its quote checked by the platform (FT_QUOTED_ACCEPTANCE); absent elsewhere. */
   acceptance?: NoteAcceptance[];
+  /** The review receipt: the proposal head commit the layer decided on. Absent on notes written before receipts. */
+  head?: Sha;
+  /** The review receipt: what the layer was shown of the change (see NoteShown). Absent on notes written before receipts. */
+  shown?: NoteShown;
+  /** A person's decision: whether `by` is a verified identity or the name the request stated (see ApproverIdentity). Absent on older notes. */
+  identity?: ApproverIdentity;
+  /**
+   * Set on the oldest decision a note keeps when the note's cap (the latest 8 per change) left earlier ones out: how many
+   * it left out, so a reader can say "8 of 11 shown". Absent when the note keeps every decision.
+   */
+  earlier?: number;
 }
+
+/**
+ * Which view of a change a decider was shown: `reflex-state` the diff in the reflex model's state, `prompt-diff` the diff
+ * text of the second opinion's prompt, `review-card` the review view the person's card served.
+ */
+export type ShownView = "reflex-state" | "prompt-diff" | "review-card";
+
+/**
+ * What a decider was shown of a change, for the review receipt (worker decide/receipt.ts). `digest` is "sha256:<64 hex>"
+ * over the exact view: the JSON of the reflex state's diff, the second opinion's diff text, or the review view as the card
+ * served it (keys sorted). It is absent when no view was kept to show (a card with no diff). `clipped` when the view left
+ * changed lines out (cut for length, files past the limit, binary or unreadable files, or no view at all), with `seen`
+ * saying how much it showed in words.
+ */
+export interface NoteShown {
+  view: ShownView;
+  digest?: string;
+  clipped?: true;
+  seen?: string;
+}
+
+/**
+ * How a person's decision names them: `verified` when the name is the email of a Cloudflare Access token the server
+ * verified (FT_ACCESS_TEAM_DOMAIN and FT_ACCESS_AUD), `stated` when it is the name the request gave, which nothing checked.
+ */
+export type ApproverIdentity = "verified" | "stated";
 
 /** What counts for one acceptance line: met (with a quote the platform found, or on the model's word for an absence), not met, or unclear. */
 export type AcceptanceVerdict = "met" | "not met" | "unclear";

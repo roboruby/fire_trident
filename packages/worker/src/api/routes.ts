@@ -37,5 +37,6 @@ import { createApi } from "./app.ts";
  *   POST   /api/colonies/:id/swarm            spawn in-platform agents
  *   POST   /api/colonies/:id/swarm/stop       stop every running in-platform agent
  *   GET    /api/colonies/:id/spend-cap        the spend cap; POST { usd, reviewReserveUsd? } sets it, { usd: null } removes it
+ *   GET    /api/colonies/:id/commit-author    who authors landing commits; POST { name, email } names a person, { name: null } goes back to FireTrident
  */
 export const api = createApi({ provisionTrunk, spawnSwarm });

@@ -31,6 +31,9 @@
 // A note that checks out gets a second line, "answerable: <who> (<why>)": the nearest person answerable for the landing,
 // or "none" or "unknown" with the reason, by the rules of packages/core/src/answerable.ts (the Why tab says the same);
 // with --all, each landing's line ends with it.
+// Then, for a note with review receipts, one "receipt: <proposal> <layer> <action> by <who> at head <commit>, shown <view>
+// sha256:<16 hex>" line a decision: the head it was made on, a digest of the view its decider was shown ("clipped" when
+// it left changed lines out), and for a person "(verified by Access)" or "(stated, not verified)" (one commit only).
 // Exits 0 when every check passes, 1 when one fails, 2 when the arguments, the clone or the keys cannot be read.
 // packages/cli/src/clonecheck.ts (ft verify --all) does the same; packages/cli/test/clonecheck-git.test.ts holds them in step.
 import { execFileSync } from "node:child_process";
@@ -465,6 +468,45 @@ const answerableOf = (raw) => {
   return `${a.who} (${a.why})`;
 };
 
+// The review receipt, one line a decision of a note that checks out: the head it was made on, what its decider was shown
+// (a digest of the exact view, clipped when it left changed lines out) and whether a person was verified by Access or
+// only stated; the oldest kept decision says how many the note's cap left out. packages/cli/src/receipt.ts says the same.
+const VIEW_WORDS = { "reflex-state": "the reflex's diff", "prompt-diff": "the prompt's diff", "review-card": "the review card" };
+const MAX_RECEIPTS = 50;
+const one = (v, max = 200) => (typeof v === "string" ? v.replace(/[\u0000-\u001f\u007f-\u009f]+/g, " ").replace(/\s+/g, " ").trim().slice(0, max) : "");
+const identityWords = (v) => (v === "verified" ? "(verified by Access)" : v === "stated" ? "(stated, not verified)" : "");
+const shownWords = (s) => {
+  if (!obj(s)) return "";
+  const view = VIEW_WORDS[one(s.view)] ?? (one(s.view, 40) || "a view");
+  const digest = typeof s.digest === "string" && /^sha256:[0-9a-f]{64}$/.test(s.digest) ? ` ${s.digest.slice(0, 23)}` : ": no view was kept";
+  const seen = one(s.seen);
+  return `shown ${view}${digest}${s.clipped === true ? `, clipped${seen ? `: ${seen}` : ""}` : ""}`;
+};
+const receiptText = (d) => {
+  const by = one(d.by) || "unnamed";
+  const who = d.layer === "human" ? [by, identityWords(d.identity)].filter(Boolean).join(" ") : by;
+  const head = typeof d.head === "string" && /^[0-9a-f]{40,64}$/.test(d.head) ? ` at head ${d.head.slice(0, 12)}` : "";
+  const shown = shownWords(d.shown);
+  return `${one(d.layer, 20) || "?"} ${one(d.action, 20) || "?"} by ${who}${head}${shown ? `, ${shown}` : ""}`;
+};
+const receiptsOf = (raw) => {
+  let note = null;
+  try {
+    note = JSON.parse(raw);
+  } catch {}
+  if (!obj(note)) return [];
+  const lines = [];
+  for (const p of list(note.proposals)) {
+    if (!obj(p)) continue;
+    const id = one(p.id, 100) || "?";
+    const ds = list(p.decisions).filter(obj);
+    const earlier = obj(ds[0]) && Number.isInteger(ds[0].earlier) && ds[0].earlier > 0 ? ds[0].earlier : 0;
+    if (earlier) lines.push(`receipt: ${id} ${ds.length} of ${ds.length + earlier} decisions kept (the ${earlier} earliest left out by the note's cap)`);
+    for (const d of ds) if (typeof d.head === "string" || obj(d.shown) || d.identity === "verified" || d.identity === "stated") lines.push(`receipt: ${id} ${receiptText(d)}`);
+  }
+  return lines.length > MAX_RECEIPTS ? [...lines.slice(0, MAX_RECEIPTS), `receipt: and ${lines.length - MAX_RECEIPTS} more (ft why shows each change's)`] : lines;
+};
+
 // The root: the last commit of the first-parent chain.
 function rootLine(from) {
   const chain = git(["rev-list", "--first-parent", from, "--"]).toString("utf8").trim().split("\n");
@@ -501,6 +543,7 @@ if (!o.all) {
   // A note that checks out (signed, or landed before signing): who answers for its landing.
   const who = verdict === "intact" || verdict.startsWith("intact, signed by ") || verdict.startsWith("unsigned") ? answerableOf(raw) : null;
   if (who !== null) say(`answerable: ${who}`, false);
+  if (who !== null) for (const r of receiptsOf(raw)) say(r, false);
   if (o.tamper) {
     const t = digest === null ? { ok: false, reason: "the commit carries no FT-Note trailer to check a copy against" } : tamper(raw, digest, o["tamper-field"]);
     say(tamperLine(t), !(t.ok && t.caught));

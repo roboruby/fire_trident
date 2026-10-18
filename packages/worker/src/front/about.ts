@@ -67,6 +67,8 @@ export const OTHER_FLAGS: Readonly<Record<string, (value: unknown) => boolean>> 
 
 /** Everything else the Worker reads by an FT_ name: secrets, settings, models and tuning. Never listed. */
 export const NOT_FLAGS: readonly string[] = [
+  "FT_ACCESS_AUD",
+  "FT_ACCESS_TEAM_DOMAIN",
   "FT_ADMIN_TOKEN",
   "FT_BUILD",
   "FT_BULK_MODEL",

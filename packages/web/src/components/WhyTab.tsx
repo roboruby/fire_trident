@@ -13,6 +13,7 @@ import { certCounts, certTitle } from "../certs.ts";
 import { NoteBar } from "./NoteSeal.tsx";
 import { acceptanceOf } from "../acceptance.ts";
 import { AcceptanceLines } from "./AcceptanceLines.tsx";
+import { DecisionReceipt, EarlierDecisions } from "./Receipt.tsx";
 import { AnswerableLine, EvidenceList, SaidBy } from "./SaidBy.tsx";
 import { LandingTestsRow } from "./TestsRow.tsx";
 import { AUTO_ROWS } from "../tests.ts";
@@ -558,6 +559,8 @@ function ProposalChain({ p, path, store }: { p: NoteProposal; path: string; stor
               const note = d as NoteDecision;
               return (
                 <div key={i}>
+                  {/* The review receipt: how many earlier decisions the note's cap left out, above the oldest it kept. */}
+                  {i === 0 ? <EarlierDecisions decisions={decisions} /> : null}
                   <div className="dec" title={note.question}>
                     <span className="dec-layer" style={{ color, borderColor: color }}>
                       {d.layer}
@@ -570,6 +573,8 @@ function ProposalChain({ p, path, store }: { p: NoteProposal; path: string; stor
                   </div>
                   {note.answer ? <div className="dec-answer">{note.answer}</div> : null}
                   <AcceptanceLines rows={acceptanceOf(note)} />
+                  {/* The review receipt (receipt.ts): the head it was made on and what its decider was shown. */}
+                  <DecisionReceipt d={note} />
                 </div>
               );
             })
