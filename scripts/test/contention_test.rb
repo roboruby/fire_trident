@@ -250,6 +250,39 @@ class ContentionTest < Minitest::Test
     assert_equal ["test/tip.test.ts"], second[:failing]
   end
 
+  def test_the_red_brake_counts_held_changes_time_held_and_repairs
+    j = JSON.parse(File.read(FIXTURE))
+    brake = ->(seq, at, action, extra = {}) { { "seq" => seq, "t" => "brake", "at" => at, "action" => action }.merge(extra) }
+    j["events"] += [
+      # Episode 1 (red at a3, green at a4): two changes held, one went on at green, the other was recalled meanwhile.
+      brake.call(100, 1_032_000, "on", "trunkSha" => "a3", "repairId" => "int_r1"),
+      brake.call(101, 1_033_000, "hold", "proposalId" => "p_x", "paths" => ["src/core/money.ts"]),
+      brake.call(102, 1_034_000, "hold", "proposalId" => "p_y", "paths" => ["src/core/money.ts"]),
+      brake.call(103, 1_035_000, "reserve", "repairId" => "int_r1", "agentId" => "agt_1"),
+      brake.call(104, 1_042_000, "green", "toGreenMs" => 10_000),
+      brake.call(105, 1_042_000, "release", "proposalId" => "p_x", "heldMs" => 9_000, "end" => "green"),
+      brake.call(106, 1_042_000, "release", "proposalId" => "p_y", "heldMs" => 8_000, "end" => "green", "gone" => true),
+      # Episode 2 (red at a6, still red): one change held until the ceiling.
+      brake.call(107, 1_062_000, "on", "trunkSha" => "a6", "repairId" => "int_r2"),
+      brake.call(108, 1_063_000, "hold", "proposalId" => "p_z", "paths" => ["src/core/money.ts"]),
+      brake.call(109, 1_078_000, "release", "proposalId" => "p_z", "heldMs" => 15_000, "end" => "ceiling"),
+      brake.call(110, 1_078_000, "stop", "end" => "ceiling", "held" => 1)
+    ]
+    spec_intents = j["spec_intents"].to_h { |k, v| [k, v.transform_keys(&:to_sym)] }
+    r = ContentionReport.build(spec_intents: spec_intents, pairs: j["pairs"], events: j["events"], proposals: j["proposals"], certifications: j["certifications"],
+                               agents: j["agents"], metrics: j["metrics"], snapshot: j["snapshot"], release_at: j["release_at"], end_at: j["end_at"])
+    assert_equal({ held: 3, still_held: 0, went_on: { "ceiling" => 1, "gone" => 1, "green" => 1 }, median_held_s: 9.0, max_held_s: 15.0,
+                   reserved: 1, escalated: 0, stops: { "ceiling" => 1 }, to_green_s: [10.0] }, r[:red][:brake])
+    md = Contention::Results.readme({ runs: [{ agents: 8, report: r, label: "n8" }], base: "https://x.invalid", date: "2026-10-18", command: "ruby scripts/contention.rb" })
+    assert_includes md, "| Red brake: changes held (how they went on) | 3 (ceiling 1, gone 1, green 1) |"
+    assert_includes md, "| Red brake: time held, median (max) | 9.0 s (15.0 s) |"
+    assert_includes md, "| Red brake: repairs taken first, sent to a person; stops | 1, 0; ceiling 1 |"
+    # A run without the brake has no brake numbers, and the README no brake rows.
+    refute fixture_report[:red].key?(:brake)
+    plain = Contention::Results.readme({ runs: [{ agents: 8, report: fixture_report, label: "n8" }], base: "https://x.invalid", date: "2026-10-18", command: "ruby scripts/contention.rb" })
+    refute_includes plain, "Red brake"
+  end
+
   def test_semantic_conflict_pairs_that_landed
     sem = fixture_report[:semantic]
     assert_equal 2, sem[:pairs_landed]

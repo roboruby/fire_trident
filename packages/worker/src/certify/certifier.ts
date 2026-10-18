@@ -102,6 +102,11 @@ export interface CertifyHost {
   repairWhy?(intentId: Id, edit: (why: string) => string | null): boolean;
   /** Tests before landing are on for this colony (FT_PRELAND, preland.ts); absent means off. */
   preland?(): boolean;
+  /**
+   * The red brake (FT_RED_BRAKE, colony/redbrake.ts): each green or red verdict once it is recorded, with what a failing
+   * test file loads at the red commit (its import closure, itself first; null when the run read no modules).
+   */
+  verdict?(cert: Certification, reach: ((file: Path) => Path[]) | null): void;
 }
 
 /**
@@ -695,6 +700,15 @@ export class Certifier {
     }
     this.store({ cert, inputs: cert.status === "error" ? null : inputs, testKey });
     this.host.publish(this.event(cert));
+    // The red brake (FT_RED_BRAKE): the verdict, and what its failing test files load (the module graph this run read).
+    if (cert.status === "green" || cert.status === "red") {
+      try {
+        const modules = judged?.loaded?.modules ?? null;
+        this.host.verdict?.(cert, modules ? (file) => closureOf(file, modules) : null);
+      } catch (err) {
+        console.warn(`certification: red brake not told: ${errorText(err)}`);
+      }
+    }
     // First red search (FT_BISECT): once the red result is recorded, find the first commit its failing tests fail on, in the background (bisect.ts).
     try {
       if (cert.status === "red" && judged && this.host.bisect?.()) this.firstRed.request({ cert, failing: judged.failing, ...(judged.suspects ? { suspects: judged.suspects } : {}) });

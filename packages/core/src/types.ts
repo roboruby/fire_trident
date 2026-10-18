@@ -490,8 +490,10 @@ export interface IntentRevision {
  * `withdrawal` are the colony telling the agent that the intent it holds was amended or called off.
  * `resolution`: the conflict resolver (FT_RESOLVER) telling the agent whose change came back with
  * overlapping hunks that the platform is merging it, and then how that ended (inbox only, never pushed).
+ * `hold`: the red brake (FT_RED_BRAKE) telling the agent that its change waits for a red trunk's repair, and when it
+ * goes on to its lane (inbox only, never pushed: the change stays proposed, so there is nothing to redo).
  */
-export type DirectiveKind = "guidance" | "revision" | "withdrawal" | "landing" | "resolution";
+export type DirectiveKind = "guidance" | "revision" | "withdrawal" | "landing" | "resolution" | "hold";
 
 /**
  * A landing notice: files an agent read or holds changed on trunk while it worked. Facts it can check
@@ -1824,6 +1826,38 @@ export interface TrunkHealthMeasured {
   culprits: CulpritPrecision;
   /** Landings that reached a green certification within each bound, over the landings that reached one or had that long. */
   certifiedWithin: Array<{ minutes: number; landings: number; certified: number; share: number | null }>;
+  /** The red brake (FT_RED_BRAKE), when it ran in the colony: the episodes it saw, the changes it held and for how long (RedBrakeReport). */
+  brake?: Pick<RedBrakeReport, "episodes" | "held" | "toGreen" | "repairs">;
+}
+
+/**
+ * How the red brake (FT_RED_BRAKE, worker colony/redbrake.ts) stopped holding in an episode: trunk went `green`, the
+ * `ceiling` (15 minutes of holding) passed, the repair failed twice and was `escalated` to a person, its agent
+ * `reported` that it cannot be done as written, or the brake was turned `off` for the colony.
+ */
+export type RedBrakeEnd = "green" | "ceiling" | "escalated" | "reported" | "off";
+
+/**
+ * The red brake (FT_RED_BRAKE): while trunk is red and its repair intent is open, the repair goes to the first agent
+ * that asks for work, and changes that write a file the failing tests load (the cone) wait for it instead of landing;
+ * they go on when trunk is green, at the ceiling, or when the repair goes to a person. GET /api/colonies/:id/metrics
+ * `redBrake`. Durations are in ms; `p50Ms` and `maxMs` are null over nothing.
+ */
+export interface RedBrakeReport {
+  /** FT_RED_BRAKE covers the colony now. */
+  on: boolean;
+  /** One line: "held 4 changes for 6.1 min in all over 1 red episode; 1 episode back to green in 3.2 min at p50". */
+  text: string;
+  /** Red episodes the brake saw (the newest kept), those that ended green, those still red, and how holding stopped in the others. */
+  episodes: { count: number; green: number; open: number; ceiling: number; escalated: number; reported: number };
+  /** Changes held in all, still held now, and the time they were held (all of it; p50 and max over the ones released). */
+  held: { changes: number; holding: number; ms: number; p50Ms: number | null; maxMs: number | null };
+  /** From an episode's first red result to its green one, over the episodes that ended green. */
+  toGreen: { episodes: number; p50Ms: number | null; maxMs: number | null };
+  /** Repairs the brake handed to the first agent that asked, and repairs it sent to a person after they failed twice. */
+  repairs: { reserved: number; escalated: number };
+  /** While it holds: since when, until when at most, the red commit, the repair it waits for, the failing test files and the cone's size. */
+  holding?: { since: Millis; until: Millis; trunkSha: Sha; repairId?: Id; failing: Path[]; cone: number };
 }
 
 /**
@@ -1959,7 +1993,31 @@ export type ColonyEvent =
       suspects?: Suspect[];
     }
   // The first red search (FT_BISECT) ended for the red result of `trunkSha`: the result now carries `firstRed`.
-  | { t: "bisect"; at: Millis; trunkSha: Sha; firstRed: FirstRed };
+  | { t: "bisect"; at: Millis; trunkSha: Sha; firstRed: FirstRed }
+  /**
+   * The red brake (FT_RED_BRAKE): `on` it began holding for the red result of `trunkSha` (`paths`: the failing test
+   * files); `hold` a change that writes `paths` (files the failing tests load) waits; `reserve` the repair went to the
+   * first agent that asked; `release` a held change went on to its lane after `heldMs` (`gone`: it no longer waited, so
+   * nothing went); `escalate` the repair failed `failures` times and went to a person; `stop` holding stopped for the
+   * episode (`end`, with `held` changes let go); `green` the episode ended green `toGreenMs` after its first red result.
+   */
+  | {
+      t: "brake";
+      at: Millis;
+      action: "on" | "hold" | "reserve" | "release" | "escalate" | "stop" | "green";
+      trunkSha?: Sha;
+      repairId?: Id;
+      proposalId?: Id;
+      intentId?: Id;
+      agentId?: Id;
+      paths?: Path[];
+      heldMs?: number;
+      held?: number;
+      failures?: number;
+      toGreenMs?: number;
+      end?: RedBrakeEnd;
+      gone?: boolean;
+    };
 
 /** Per-minute history for sparklines and the violations burn-down. */
 export interface ColonySeries {

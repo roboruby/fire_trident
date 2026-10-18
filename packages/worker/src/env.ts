@@ -419,6 +419,16 @@ export interface Env {
    */
   FT_BISECT?: string;
   /**
+   * Optional: the red brake, "on", or a comma-separated list of colony ids; absent or "off" is off. While the latest
+   * certification of trunk is red and its repair intent is open (colony/redbrake.ts): the repair goes to the first agent
+   * that asks for work, whatever its region, and is written with the stronger model class ("default"); a ready change
+   * that writes a file the failing test files load (their import closure, the cone) waits instead of going to its lane,
+   * and its agent is told so in its inbox; changes outside the cone land as before and the repair is never held. Held
+   * changes go on when trunk is green again, after 15 minutes of holding, when the repair's agent reports it to a person,
+   * or when the repair failed twice (it then goes to a person with the failing tests). /metrics serves `redBrake`.
+   */
+  FT_RED_BRAKE?: string;
+  /**
    * Optional: tests before landing, "on", or a comma-separated list of colony ids; absent or "off" is off. Where it
    * covers a colony whose certification is on, a change that writes a path the certify policy's `prelandPaths` match
    * (every change when they are empty) has the test files that reach it (at most 5) run on its base with its files laid

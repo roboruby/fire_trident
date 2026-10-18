@@ -962,6 +962,13 @@ module Contention
       row.call("Red-trunk episodes (open at the end)") { |x| "#{x[:red][:episodes]} (#{x[:red][:open_at_end]})" }
       row.call("Time to green, median (max)") { |x| "#{s(x[:red][:median_time_to_green_s])} (#{s(x[:red][:max_time_to_green_s])})" }
       row.call("Repair intents declared (landed)") { |x| "#{x[:red][:repair_intents][:declared]} (#{x[:red][:repair_intents][:landed]})" }
+      # The red brake (FT_RED_BRAKE, contention_report.rb): its rows only when a run recorded it.
+      if runs.any? { |r| r.dig(:report, :red, :brake) }
+        tally = ->(h) { h.empty? ? "none" : h.map { |k, v| "#{k} #{v}" }.join(", ") }
+        row.call("Red brake: changes held (how they went on)") { |x| (b = x[:red][:brake]) ? "#{b[:held]} (#{tally.call(b[:went_on])})" : "off" }
+        row.call("Red brake: time held, median (max)") { |x| (b = x[:red][:brake]) ? "#{s(b[:median_held_s])} (#{s(b[:max_held_s])})" : "off" }
+        row.call("Red brake: repairs taken first, sent to a person; stops") { |x| (b = x[:red][:brake]) ? "#{b[:reserved]}, #{b[:escalated]}; #{tally.call(b[:stops])}" : "off" }
+      end
       row.call("Human queue: escalations, held merges, agent reports") { |x| "#{x[:human_queue][:escalations]}, #{x[:human_queue][:held_merges]}, #{x[:human_queue][:agent_reports]}" }
       row.call("Time in the human queue, median (max)") { |x| "#{s(x[:human_queue][:median_time_in_queue_s])} (#{s(x[:human_queue][:max_time_in_queue_s])})" }
       row.call("Model calls: agents (review)") { |x| "#{x[:spend][:agent_calls]} (#{n(x[:spend][:review_calls])})" }
