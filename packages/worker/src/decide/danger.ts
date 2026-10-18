@@ -168,11 +168,43 @@ const PRESENCE_CHECK = /[!=]==?\s*(?:""|''|``|null|undefined)(?![\w$])|(?<![\w$]
 const UNION_MEMBER = /^\s*\|\s*['"`][\w-]+['"`]\s*;?\s*$/;
 const PLACEHOLDER = /^(?:<[^>]*>|\$\{[^}]*\}|x+|\*+|\.+|change[-_]?me|replace[-_]?me|your[-_].*|example.*|placeholder|todo|tbd|redacted|dummy|sample.*|test.*|fake.*|none|null|undefined|string|secret|password|token)$/i;
 const PRIVATE_KEY = /-----BEGIN [A-Z ]*PRIVATE KEY-----/;
-const TOKEN_FORMAT_SOURCE = String.raw`\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{20,}|sk-(?:live-|proj-|ant-)?[A-Za-z0-9_-]{20,}|xox[abprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{35}|art_v\d+_[A-Za-z0-9_]{20,}|eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})`;
-/** Known token formats: code-host and model-API tokens, chat-app and cloud keys, Artifacts tokens (any `art_v<n>_` version), JWTs. */
+const TOKEN_FORMAT_SOURCE = String.raw`\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{20,}|sk-(?:live-|proj-|ant-)?[A-Za-z0-9_-]{20,}|[sr]k_(?:live|test)_[A-Za-z0-9]{16,}|npm_[A-Za-z0-9]{36}|xox[abprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{35}|art_v\d+_[A-Za-z0-9_]{20,}|eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})`;
+/**
+ * Known token formats: code-host tokens (`gh*_`, `github_pat_`, `glpat-`), model-API tokens, payment-API secret and
+ * restricted keys (`sk_live_`, `sk_test_`, `rk_live_`, `rk_test_`), package-registry tokens (`npm_`), chat-app and
+ * cloud keys, Artifacts tokens (any `art_v<n>_` version), JWTs.
+ */
 const TOKEN_FORMAT = new RegExp(TOKEN_FORMAT_SOURCE);
 /** A credential-named key set to a bare (unquoted) literal that looks like a secret (`api_key: s3cr3tv4lu3x`, `TOKEN=ab12…`). */
 const UNQUOTED_CREDENTIAL = /\b\w*(?:secret|passw(?:or)?d|api[_-]?key|apikey|private[_-]?key|access[_-]?key|token)\w*["']?\s*[:=]\s*(?=[A-Za-z0-9_\-+/=]*\d)(?=[A-Za-z0-9_\-+/=]*[A-Za-z])[A-Za-z0-9_\-+/=]{12,}\s*,?\s*$/i;
+
+// What only masking reads (looksLikeSecret), never the check for a new secret in a change: these shapes are common in
+// test fixtures and docs, where flagging them would send ordinary changes to a person.
+/** A URL with a password in it (`https://user:pass@host`, `postgres://app:pw@db/x`); a `<placeholder>` is not one. */
+const URL_CREDENTIALS = /\b[a-z][a-z0-9+.-]*:\/\/[^\s/?#@:'"`<>]+:[^\s/?#@'"`<>]+@/i;
+/** The credentials of an Authorization or Proxy-Authorization header (`Authorization: Basic …`, `"authorization": "Bearer …"`). */
+const AUTH_HEADER_VALUE = /\b(?:proxy-)?authorization\b["'`]?\s*[:=]\s*["'`]?\s*(?:basic|bearer|token|digest)\s+[A-Za-z0-9._~+/=-]{8,}/i;
+/** An environment-style credential name assigned a value anywhere in a line (`ADMIN_TOKEN=…`, `DB_PASSWORD=…`, `AWS_SECRET_ACCESS_KEY=…`). */
+const ENV_ASSIGNMENT = /(?<![\w$.])[A-Z][A-Z0-9_]*(?:_KEY|_TOKEN|_SECRET|_PASS|_PWD|PASSWORD|PASSWD|SECRET|TOKEN)\s*=(?!=)\s*["'`]?([^\s"'`&;,)]+)/g;
+/** A lower-case or snake-case credential name assigned a value (`password=…`, `client_secret=…`, `?access_token=…`). */
+const NAME_ASSIGNMENT = /(?<![\w$.])(?:[a-z0-9]+[_-])*(?:password|passwd|secret|token|api[_-]?key|apikey|access[_-]?key|private[_-]?key)\s*=(?!=)\s*["'`]?([^\s"'`&;,)]+)/gi;
+/**
+ * A value that names a secret without being one: a variable or template (`$X`, `${x}`, `{{x}}`, `%s`), a `<placeholder>`,
+ * a mask, a property read, or what starts like a flag or another assignment (`-x`, `=`).
+ */
+const REFERENCE_VALUE = /^(?:[-=$<{%*[(]|[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)+(?:\(.*)?$)/;
+
+/** Does a credential name in this line get a value that may be a secret (six characters or more, with a digit or a symbol, or twelve or more)? */
+function credentialAssignment(line: string): boolean {
+  for (const re of [ENV_ASSIGNMENT, NAME_ASSIGNMENT]) {
+    for (const m of line.matchAll(re)) {
+      const v = m[1] ?? "";
+      if (v.length < 6 || REFERENCE_VALUE.test(v) || PLACEHOLDER.test(v)) continue;
+      if (v.length >= 12 || /[\d\W_]/.test(v)) return true;
+    }
+  }
+  return false;
+}
 
 /** Running a program: child_process and its calls, a string handed to exec(), Deno's and Bun's process APIs. */
 const PROCESS = /\b(?:child_process|execSync|execFileSync|spawnSync)\b|\b(?:spawn|execFile)\s*\(|\bexec\s*\(\s*['"`]|\bDeno\.(?:run|Command)\b|\bBun\.spawn\b/;
@@ -266,11 +298,21 @@ export function maskExcerpt(line: string, max = 140): string {
 
 /**
  * Does this line hold what a secret pattern matches: a private key, a known token format, a
- * credential-named value (quoted or bare), or a secret written to a log? Used to mask what is
- * published; it errs toward masking.
+ * credential-named value (quoted or bare), or a secret written to a log? Also, for masking only, a
+ * URL with a password in it, an Authorization header's credentials and a credential name assigned
+ * a value anywhere in the line (`ADMIN_TOKEN=…`). Used to mask what is published; it errs toward masking.
  */
 export function looksLikeSecret(line: string): boolean {
-  return PRIVATE_KEY.test(line) || TOKEN_FORMAT.test(line) || HARDCODED.test(line) || UNQUOTED_CREDENTIAL.test(line) || (LOGGING.test(line) && SECRETISH.test(line));
+  return (
+    PRIVATE_KEY.test(line) ||
+    TOKEN_FORMAT.test(line) ||
+    HARDCODED.test(line) ||
+    UNQUOTED_CREDENTIAL.test(line) ||
+    (LOGGING.test(line) && SECRETISH.test(line)) ||
+    URL_CREDENTIALS.test(line) ||
+    AUTH_HEADER_VALUE.test(line) ||
+    credentialAssignment(line)
+  );
 }
 
 /** The first and last line of a PEM private key block (what lies between is key material). */

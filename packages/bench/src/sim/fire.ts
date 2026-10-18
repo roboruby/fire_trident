@@ -6,6 +6,8 @@
  *    set, lateral inhibition as ColonyDO.take applies it: a candidate whose own files carry that
  *    much claim from other agents is skipped (core inhibited). Live agents heartbeat, so every
  *    claim counts as a fresh one (1); unset keeps the model as it was before inhibition was built.
+ *    `inhibitBy` picks how a candidate's per-file claims make that value (the sum, as before, or the
+ *    strongest single file), and `ageCap` caps the stimulus's age multiplier (unset: uncapped, as before).
  *  - each proposal goes to the lane of its primary region (RegionDO): on a tick it is validated
  *    with core validateProposal against current trunk, core selectBatch picks the batch, and the
  *    trunk writer lands it; the next tick waits core laneIntervalMs(flux) times
@@ -21,6 +23,7 @@
  */
 import {
   admissionOpen,
+  ageFactor,
   branchingRatio,
   chooseIntent,
   inhibited,
@@ -31,7 +34,7 @@ import {
   stimulus,
   validateProposal,
 } from "@fire_trident/core";
-import type { CausalEvent, Candidate, FileVersion, OccResult } from "@fire_trident/core";
+import type { CausalEvent, Candidate, ClaimCombine, FileVersion, OccResult } from "@fire_trident/core";
 import { SimBase, holdChance, assumptionStream, type SimParams } from "./common.ts";
 import type { Rng } from "./engine.ts";
 import type { SimTask, TaskSource } from "./workloads.ts";
@@ -60,6 +63,14 @@ export interface FireOptions {
    * LATERAL_INHIBITION, half a fresh claim). Undefined leaves it off.
    */
   inhibitAt?: number;
+  /**
+   * How a candidate's per-file claims make its inhibition value: "sum" (as before; the default) or
+   * "strongest" (the largest single file's, core directClaimOn). With every live claim fresh (1),
+   * both inhibit the same candidates at a threshold of 1 or less.
+   */
+  inhibitBy?: ClaimCombine;
+  /** Cap on the stimulus's age multiplier, passed to core chooseIntent (core AGE_FACTOR_CAP as deployed). Undefined leaves it uncapped. */
+  ageCap?: number;
   /** Open intents considered per take, oldest first (ColonyDO's CANDIDATE_CAP, 200). For analysis. */
   window?: number;
   /**
@@ -203,6 +214,9 @@ export class FireSim extends SimBase {
   private readonly claimOn = (path: string): number => this.claimCount.get(path) ?? 0;
   /** Lateral inhibition threshold passed to core chooseIntent (Infinity = off). */
   private readonly inhibitAt: number;
+  private readonly inhibitBy: ClaimCombine;
+  /** Cap on the stimulus's age multiplier (Infinity = uncapped). */
+  private readonly ageCap: number;
   private readonly window: number;
   /** Assumption revalidation: the chance a assumption holds through one change (null = off), drawn from its own stream. */
   private readonly assumptionHold: number | null;
@@ -219,6 +233,8 @@ export class FireSim extends SimBase {
     this.initial = initial;
     this.extraRepulsion = extraRepulsion ?? null;
     this.inhibitAt = opts.inhibitAt ?? Number.POSITIVE_INFINITY;
+    this.inhibitBy = opts.inhibitBy ?? "sum";
+    this.ageCap = opts.ageCap ?? Number.POSITIVE_INFINITY;
     this.window = opts.window !== undefined && opts.window >= 1 ? Math.floor(opts.window) : CANDIDATE_CAP;
     this.assumptionHold = opts.assumptions ? holdChance(opts.assumptions.hold) : null;
     this.assumptionRng = opts.assumptions ? assumptionStream(p.seed) : null;
@@ -301,8 +317,8 @@ export class FireSim extends SimBase {
     // Candidates whose stimulus is still 0 (repelled more than their age offsets) have p = 0 in
     // chooseIntent, and inhibited ones are skipped without a draw; leaving them out changes nothing
     // but the number of random draws.
-    const viable = now < ev.nextViableAt ? [] : ev.free.filter((c) => stimulus(c.intent, now, c.repulsion) > 0);
-    const pick = viable.length > 0 ? (chooseIntent(viable, a.thresholds, now, this.rng.fn(), undefined, this.inhibitAt) as (Candidate & { task: SimTask }) | null) : null;
+    const viable = now < ev.nextViableAt ? [] : ev.free.filter((c) => stimulus(c.intent, now, c.repulsion, 1, this.ageCap) > 0);
+    const pick = viable.length > 0 ? (chooseIntent(viable, a.thresholds, now, this.rng.fn(), undefined, this.inhibitAt, this.ageCap) as (Candidate & { task: SimTask }) | null) : null;
     if (!pick) {
       this.m.wait(now, "no intent accepted at this agent's thresholds");
       this.q.after(this.p.timings.takeMs + this.rng.jitter(RETRY.declined), () => this.take(a));
@@ -322,7 +338,12 @@ export class FireSim extends SimBase {
     const extras: number[] = [];
     for (const t of this.open.top(this.window)) {
       let rep = 0;
-      for (const w of t.writes) rep += this.claimCount.get(w) ?? 0;
+      let strongest = 0;
+      for (const w of t.writes) {
+        const n = this.claimCount.get(w) ?? 0;
+        rep += n;
+        if (n > strongest) strongest = n;
+      }
       let ok = true;
       for (const rn of t.regions) {
         let o = openRegion.get(rn);
@@ -335,8 +356,8 @@ export class FireSim extends SimBase {
       }
       if (!ok) continue;
       if (this.extraRepulsion) extras.push(this.extraRepulsion(t, this.claimOn));
-      // The direct claim is the soft overlap term itself: every live claim is a fresh one (1).
-      open.push({ intent: t.intent, region: t.primary, repulsion: rep, directClaim: rep, admissionOpen: true, task: t });
+      // The direct claim is the soft overlap term itself (or its largest file's part): every live claim is a fresh one (1).
+      open.push({ intent: t.intent, region: t.primary, repulsion: rep, directClaim: this.inhibitBy === "strongest" ? strongest : rep, admissionOpen: true, task: t });
     }
     if (this.extraRepulsion && open.length > 0) {
       const floor = this.extraRepulsion.relative ? Math.min(...extras) : 0;
@@ -348,9 +369,11 @@ export class FireSim extends SimBase {
       this.m.windowInhibited += open.length - free.length;
     }
     let nextViableAt = Number.POSITIVE_INFINITY;
+    // stimulus = min(1 + ageMinutes / 10, cap) - repulsion is positive once age > 10 min * (repulsion - 1), and never
+    // while repulsion >= cap (until the state changes).
+    const cap = ageFactor(Number.POSITIVE_INFINITY, this.ageCap);
     for (const c of free) {
-      // stimulus = 1 + ageMinutes / 10 - repulsion is positive once age > 10 min * (repulsion - 1).
-      const viableAt = c.repulsion < 1 ? Number.NEGATIVE_INFINITY : c.task.createdAt + 600_000 * (c.repulsion - 1);
+      const viableAt = c.repulsion < 1 ? Number.NEGATIVE_INFINITY : c.repulsion >= cap ? Number.POSITIVE_INFINITY : c.task.createdAt + 600_000 * (c.repulsion - 1);
       if (viableAt < nextViableAt) nextViableAt = viableAt;
     }
     const ev: EvalCache = { version: this.stateVersion, at: now, open, free, nextViableAt };
@@ -375,7 +398,10 @@ export class FireSim extends SimBase {
     this.refill();
     t.status = "claimed";
     t.attempts++;
-    if (t.firstClaimAt < 0) t.firstClaimAt = now;
+    if (t.firstClaimAt < 0) {
+      t.firstClaimAt = now;
+      if (this.m.on(now)) this.m.claimWait.push(now - t.createdAt);
+    }
     a.task = t;
     a.claimedAt = now;
     for (const w of t.writes) this.claimCount.set(w, (this.claimCount.get(w) ?? 0) + 1);

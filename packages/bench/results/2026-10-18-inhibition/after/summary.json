@@ -1,0 +1,406 @@
+{
+  "generatedAt": "2026-10-18T09:03:18.394Z",
+  "labels": {
+    "sim": "SIMULATED",
+    "live": "MEASURED (preview deployment)",
+    "silent": "COMPUTED (core functions)"
+  },
+  "variants": {
+    "baseline": "Locks + one merge queue",
+    "ft": "FireTrident, claims repel softly only",
+    "ft+inh": "FireTrident + lateral inhibition",
+    "ft+cc": "FireTrident + co-change (before)",
+    "ft+cc+inh": "FireTrident + co-change + lateral inhibition (after)",
+    "group": "Group commit, claims repel softly only",
+    "group+inh": "Group commit + lateral inhibition",
+    "group+cc": "Group commit + co-change (before)",
+    "group+cc+inh": "Group commit + co-change + lateral inhibition (after)",
+    "ft+cc+inh+max": "FireTrident + co-change + inhibition by the strongest file",
+    "ft+cc+inh+fix": "FireTrident + co-change + inhibition by the strongest file + age cap",
+    "group+cc+inh+max": "Group commit + co-change + inhibition by the strongest file",
+    "group+cc+inh+fix": "Group commit + co-change + inhibition by the strongest file + age cap",
+    "ft+cc5+inh": "FireTrident + co-change 5 + lateral inhibition (deployed before the fixes)",
+    "ft+cc5+inh+fix": "FireTrident + co-change 5 + the review fixes",
+    "group+cc5+inh": "Group commit + co-change 5 + lateral inhibition (deployed before the fixes)",
+    "group+cc5+inh+fix": "Group commit + co-change 5 + the review fixes",
+    "ft+cc5+inh+max": "FireTrident + co-change 5 + inhibition by the strongest file",
+    "group+cc5+inh+max": "Group commit + co-change 5 + inhibition by the strongest file",
+    "group+cc5+imp1+inh+max": "Group commit + co-change 5 + imports 1 + inhibition by the strongest file"
+  },
+  "steady": {
+    "100|group+cc+inh+fix": {
+      "n": 3,
+      "landingsPerMin": {
+        "mean": 64.5,
+        "min": 64,
+        "max": 64.9
+      },
+      "reworkPct": {
+        "mean": 10.1,
+        "min": 7.8,
+        "max": 11.5
+      },
+      "conflictsPer1000": {
+        "mean": 64.5,
+        "min": 56.3,
+        "max": 71.7
+      },
+      "writeWritePer1000": {
+        "mean": 0.3,
+        "min": 0,
+        "max": 1
+      },
+      "e2eP50S": {
+        "mean": 62.6,
+        "min": 61,
+        "max": 65.1
+      },
+      "e2eP99S": {
+        "mean": 453.9,
+        "min": 409.6,
+        "max": 504.7
+      },
+      "waitP99S": {
+        "mean": 1007.3,
+        "min": 971.9,
+        "max": 1054.9
+      },
+      "waitMaxS": {
+        "mean": 1153.7,
+        "min": 1092,
+        "max": 1185.8
+      },
+      "inhibitedWindowPct": {
+        "mean": 10,
+        "min": 7.7,
+        "max": 11.9
+      }
+    },
+    "100|ft+cc5+inh+fix": {
+      "n": 3,
+      "landingsPerMin": {
+        "mean": 63.4,
+        "min": 62.4,
+        "max": 63.9
+      },
+      "reworkPct": {
+        "mean": 10,
+        "min": 7.3,
+        "max": 12.4
+      },
+      "conflictsPer1000": {
+        "mean": 62.7,
+        "min": 52.4,
+        "max": 70.4
+      },
+      "writeWritePer1000": {
+        "mean": 0.7,
+        "min": 0,
+        "max": 2
+      },
+      "e2eP50S": {
+        "mean": 64.2,
+        "min": 62.1,
+        "max": 67.4
+      },
+      "e2eP99S": {
+        "mean": 442.8,
+        "min": 403.5,
+        "max": 504.8
+      },
+      "waitP99S": {
+        "mean": 1014.1,
+        "min": 980.9,
+        "max": 1059.3
+      },
+      "waitMaxS": {
+        "mean": 1116.5,
+        "min": 1099.9,
+        "max": 1141.1
+      },
+      "inhibitedWindowPct": {
+        "mean": 10.2,
+        "min": 7.9,
+        "max": 12
+      }
+    },
+    "100|group+cc5+inh+fix": {
+      "n": 3,
+      "landingsPerMin": {
+        "mean": 64.5,
+        "min": 64,
+        "max": 64.9
+      },
+      "reworkPct": {
+        "mean": 10,
+        "min": 7.8,
+        "max": 11.5
+      },
+      "conflictsPer1000": {
+        "mean": 64.1,
+        "min": 55.3,
+        "max": 71.7
+      },
+      "writeWritePer1000": {
+        "mean": 0.7,
+        "min": 0,
+        "max": 1
+      },
+      "e2eP50S": {
+        "mean": 62.6,
+        "min": 61,
+        "max": 65.1
+      },
+      "e2eP99S": {
+        "mean": 453.9,
+        "min": 409.6,
+        "max": 504.7
+      },
+      "waitP99S": {
+        "mean": 1007.3,
+        "min": 971.9,
+        "max": 1054.9
+      },
+      "waitMaxS": {
+        "mean": 1155.2,
+        "min": 1092,
+        "max": 1190.2
+      },
+      "inhibitedWindowPct": {
+        "mean": 10.1,
+        "min": 7.7,
+        "max": 12
+      }
+    },
+    "1000|group+cc+inh+fix": {
+      "n": 3,
+      "landingsPerMin": {
+        "mean": 175.9,
+        "min": 173.7,
+        "max": 177.2
+      },
+      "reworkPct": {
+        "mean": 31.2,
+        "min": 30.2,
+        "max": 31.9
+      },
+      "conflictsPer1000": {
+        "mean": 199.9,
+        "min": 189.9,
+        "max": 206.7
+      },
+      "writeWritePer1000": {
+        "mean": 3.1,
+        "min": 2.2,
+        "max": 4.5
+      },
+      "e2eP50S": {
+        "mean": 65.8,
+        "min": 64.8,
+        "max": 67.7
+      },
+      "e2eP99S": {
+        "mean": 672.6,
+        "min": 625.8,
+        "max": 716.3
+      },
+      "waitP99S": {
+        "mean": 825,
+        "min": 775.4,
+        "max": 850
+      },
+      "waitMaxS": {
+        "mean": 1137.1,
+        "min": 1094.3,
+        "max": 1186.1
+      },
+      "inhibitedWindowPct": {
+        "mean": 95,
+        "min": 94.6,
+        "max": 95.7
+      }
+    },
+    "1000|ft+cc5+inh+fix": {
+      "n": 3,
+      "landingsPerMin": {
+        "mean": 86.3,
+        "min": 86.1,
+        "max": 86.6
+      },
+      "reworkPct": {
+        "mean": 26.2,
+        "min": 24.1,
+        "max": 29.9
+      },
+      "conflictsPer1000": {
+        "mean": 236.9,
+        "min": 229,
+        "max": 250.2
+      },
+      "writeWritePer1000": {
+        "mean": 117.2,
+        "min": 113.8,
+        "max": 119.6
+      },
+      "e2eP50S": {
+        "mean": 253.8,
+        "min": 244.1,
+        "max": 259.5
+      },
+      "e2eP99S": {
+        "mean": 891.4,
+        "min": 860.9,
+        "max": 950
+      },
+      "waitP99S": {
+        "mean": 1107.7,
+        "min": 1099.2,
+        "max": 1114
+      },
+      "waitMaxS": {
+        "mean": 1183.3,
+        "min": 1156.9,
+        "max": 1198.6
+      },
+      "inhibitedWindowPct": {
+        "mean": 76.5,
+        "min": 75.6,
+        "max": 77.4
+      }
+    },
+    "1000|group+cc5+inh+fix": {
+      "n": 3,
+      "landingsPerMin": {
+        "mean": 157.9,
+        "min": 153.1,
+        "max": 162.7
+      },
+      "reworkPct": {
+        "mean": 27.6,
+        "min": 26,
+        "max": 28.7
+      },
+      "conflictsPer1000": {
+        "mean": 173.2,
+        "min": 164.3,
+        "max": 178.8
+      },
+      "writeWritePer1000": {
+        "mean": 2.2,
+        "min": 1.7,
+        "max": 2.8
+      },
+      "e2eP50S": {
+        "mean": 64.9,
+        "min": 62.9,
+        "max": 66.3
+      },
+      "e2eP99S": {
+        "mean": 678.6,
+        "min": 621.1,
+        "max": 748.4
+      },
+      "waitP99S": {
+        "mean": 901.1,
+        "min": 868,
+        "max": 943.2
+      },
+      "waitMaxS": {
+        "mean": 1151.3,
+        "min": 1117.3,
+        "max": 1188.1
+      },
+      "inhibitedWindowPct": {
+        "mean": 74.6,
+        "min": 72.1,
+        "max": 77
+      }
+    }
+  },
+  "timeToZero": {
+    "tasks": 1500,
+    "byVariant": {
+      "100|group+cc+inh+fix": {
+        "n": 5,
+        "drained": 5,
+        "t50": 687,
+        "t90": 1253.2,
+        "t95": 1326.6,
+        "ttzMedian": 2029,
+        "ttzMean": 2398.2,
+        "reworkPct": 10.1,
+        "conflictsPer1000": 58.9,
+        "waitP99S": 1311.1,
+        "waitMaxS": 2295.5
+      },
+      "100|ft+cc5+inh+fix": {
+        "n": 5,
+        "drained": 5,
+        "t50": 698,
+        "t90": 1268.2,
+        "t95": 1341.8,
+        "ttzMedian": 2042,
+        "ttzMean": 2515,
+        "reworkPct": 10,
+        "conflictsPer1000": 58.3,
+        "waitP99S": 1331.7,
+        "waitMaxS": 2191.5
+      },
+      "100|group+cc5+inh+fix": {
+        "n": 5,
+        "drained": 5,
+        "t50": 687,
+        "t90": 1253.2,
+        "t95": 1326.6,
+        "ttzMedian": 2029,
+        "ttzMean": 2398.2,
+        "reworkPct": 10,
+        "conflictsPer1000": 58.3,
+        "waitP99S": 1313.5,
+        "waitMaxS": 2193.1
+      },
+      "1000|group+cc+inh+fix": {
+        "n": 5,
+        "drained": 5,
+        "t50": 142.2,
+        "t90": 432.4,
+        "t95": 595.8,
+        "ttzMedian": 1697,
+        "ttzMean": 1806.2,
+        "reworkPct": 23.9,
+        "conflictsPer1000": 174.8,
+        "waitP99S": 713.5,
+        "waitMaxS": 1742.1
+      },
+      "1000|ft+cc5+inh+fix": {
+        "n": 5,
+        "drained": 5,
+        "t50": 530,
+        "t90": 949.4,
+        "t95": 1060.4,
+        "ttzMedian": 2051,
+        "ttzMean": 2076,
+        "reworkPct": 22.7,
+        "conflictsPer1000": 180.6,
+        "waitP99S": 1208.9,
+        "waitMaxS": 1917
+      },
+      "1000|group+cc5+inh+fix": {
+        "n": 5,
+        "drained": 5,
+        "t50": 165.2,
+        "t90": 470.4,
+        "t95": 645.2,
+        "ttzMedian": 1801,
+        "ttzMean": 1773.6,
+        "reworkPct": 21.6,
+        "conflictsPer1000": 151.7,
+        "waitP99S": 831.8,
+        "waitMaxS": 1450.3
+      }
+    }
+  },
+  "weights": {},
+  "window": {},
+  "live": null
+}

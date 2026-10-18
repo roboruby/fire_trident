@@ -1,9 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import { markValue } from "../src/field.ts";
 import {
+  AGE_FACTOR_CAP,
   LATERAL_INHIBITION,
   admissionOpen,
+  ageFactor,
   chooseIntent,
+  claimsByPath,
+  combineClaims,
   directClaimOn,
   inhibited,
   reinforceThreshold,
@@ -202,8 +206,10 @@ describe("directClaimOn", () => {
     "src/c.ts": { danger: 1, trail: 4 },
   };
 
-  it("sums claims on exactly the footprint paths", () => {
-    expect(directClaimOn(byPath, ["src/a.ts", "src/b.ts"])).toBe(1.25);
+  it("takes the strongest single footprint path's claim (the sum only when asked)", () => {
+    expect(directClaimOn(byPath, ["src/a.ts", "src/b.ts"])).toBe(1);
+    expect(directClaimOn(byPath, ["src/b.ts"])).toBe(0.25);
+    expect(directClaimOn(byPath, ["src/a.ts", "src/b.ts"], "sum")).toBe(1.25);
     expect(directClaimOn(byPath, ["src/a.ts"])).toBe(1);
   });
 
@@ -303,9 +309,14 @@ describe("chooseIntent with lateral inhibition", () => {
   });
 
   it("keeps co-change repulsion soft however large it is", () => {
-    // Repulsion from claimed neighbors (no claim on the intent's own files) never skips a candidate.
+    // Repulsion from claimed neighbors (no claim on the intent's own files) never skips a candidate: with the age
+    // multiplier uncapped, age outgrows it.
     const coupled: Candidate = { ...candidate("coupled", 1, "src", { repulsion: 5 }), intent: intent({ id: "coupled", priority: 1, createdAt: NOW - 60 * MIN }) };
-    expect(chooseIntent([coupled], {}, NOW, () => 0)?.intent.id).toBe("coupled");
+    expect(chooseIntent([coupled], {}, NOW, () => 0, 1, LATERAL_INHIBITION, Infinity)?.intent.id).toBe("coupled");
+    // Capped, a repulsion at or above priority * cap holds an old intent back while its neighbors stay claimed, and
+    // it is taken once that repulsion falls under the cap.
+    expect(chooseIntent([coupled], {}, NOW, () => 0)).toBeNull();
+    expect(chooseIntent([{ ...coupled, repulsion: AGE_FACTOR_CAP - 0.5 }], {}, NOW, () => 0)?.intent.id).toBe("coupled");
   });
 
   it("takes a custom threshold (Infinity turns lateral inhibition off)", () => {
@@ -384,5 +395,63 @@ describe("admissionOpen", () => {
   it("treats a negative or NaN landing rate as 0", () => {
     expect(admissionOpen(2, Number.NaN)).toBe(true);
     expect(admissionOpen(3, -5)).toBe(false);
+  });
+});
+
+describe("the review's fixes: strongest single-path claim, capped age multiplier", () => {
+  it("claimsByPath adds per path, once per path, into a given map", () => {
+    const into = new Map([["src/a.ts", 0.5]]);
+    claimsByPath({ "src/a.ts": { claim: 1 }, "src/b.ts": { claim: 0.25 } }, ["src/a.ts", "src/a.ts", "src/b.ts", "src/z.ts"], into);
+    expect([...into]).toEqual([
+      ["src/a.ts", 1.5],
+      ["src/b.ts", 0.25],
+    ]);
+  });
+
+  it("combineClaims takes the strongest or the sum, skipping odd values", () => {
+    expect(combineClaims([0.25, 1, 0.5])).toBe(1);
+    expect(combineClaims([0.25, 1, 0.5], "sum")).toBe(1.75);
+    expect(combineClaims([Number.NaN, -1, Infinity, 0.3])).toBe(0.3);
+    expect(combineClaims([])).toBe(0);
+  });
+
+  it("a silent agent's claims inhibit for one half-life however many of the intent's files they cover", () => {
+    const halfLife = 5 * MIN * Math.LN2;
+    const reading = (files: number, at: number): FieldReading["byPath"] => {
+      const v = markValue({ id: "m", kind: "claim", path: "", strength: 1, at: 0 }, at);
+      return Object.fromEntries(Array.from({ length: files }, (_, i) => [`src/f${i}.ts`, { claim: v }]));
+    };
+    for (const files of [1, 2, 20]) {
+      const paths = Object.keys(reading(files, 0));
+      expect(inhibited({ directClaim: directClaimOn(reading(files, halfLife - 1_000), paths) }), `${files} files`).toBe(true);
+      expect(inhibited({ directClaim: directClaimOn(reading(files, halfLife + 1_000), paths) }), `${files} files`).toBe(false);
+    }
+    // Summed, 20 shared files held it for 5 * ln(40) minutes, about 18.4.
+    const paths = Object.keys(reading(20, 0));
+    const summedHold = 5 * MIN * Math.log(40);
+    expect(inhibited({ directClaim: directClaimOn(reading(20, summedHold - 1_000), paths, "sum") })).toBe(true);
+    expect(inhibited({ directClaim: directClaimOn(reading(20, summedHold + 1_000), paths, "sum") })).toBe(false);
+  });
+
+  it("caps the age multiplier at AGE_FACTOR_CAP, reached at (cap - 1) * 10 minutes", () => {
+    expect(ageFactor(0)).toBe(1);
+    expect(ageFactor(10)).toBe(2);
+    expect(ageFactor((AGE_FACTOR_CAP - 1) * 10)).toBe(AGE_FACTOR_CAP);
+    expect(ageFactor(600)).toBe(AGE_FACTOR_CAP);
+    expect(ageFactor(600, Infinity)).toBe(61);
+    expect(ageFactor(600, Number.NaN)).toBe(AGE_FACTOR_CAP);
+    expect(ageFactor(600, 0.5)).toBe(1);
+    expect(stimulus(intent({ priority: 2, createdAt: NOW - 600 * MIN }), NOW, 1)).toBe(2 * AGE_FACTOR_CAP - 1);
+    expect(stimulus(intent({ priority: 2, createdAt: NOW - 600 * MIN }), NOW, 1, 1, Infinity)).toBe(121);
+  });
+
+  it("keeps age ordering among intents younger than the cap, and lets repulsion order the older ones", () => {
+    const at = (id: string, ageMin: number, repulsion = 0): Candidate => ({ ...candidate(id, 1, "src", { repulsion }), intent: intent({ id, priority: 1, createdAt: NOW - ageMin * MIN }) });
+    // Younger than the cap: the older one ranks first (anti-starvation holds).
+    expect(chooseIntent([at("young", 5), at("older", 20)], {}, NOW, () => 0)?.intent.id).toBe("older");
+    // Both past the cap: the less repelled one ranks first, where uncapped the older one would.
+    const cands = [at("ancient", 600, 1.5), at("old", 60, 0)];
+    expect(chooseIntent(cands, {}, NOW, () => 0)?.intent.id).toBe("old");
+    expect(chooseIntent(cands, {}, NOW, () => 0, 1, LATERAL_INHIBITION, Infinity)?.intent.id).toBe("ancient");
   });
 });

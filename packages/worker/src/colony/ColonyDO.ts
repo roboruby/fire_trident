@@ -184,6 +184,7 @@ import { answerBatch, escalationBatchOn, EscalationBatches, markQueueBatches, ty
 import { isCanary } from "../decide/canary.ts";
 import { revalidationEnabled as flagCovers } from "@fire_trident/core";
 import { dropWaiting, personWaitOn } from "./personwait.ts";
+import { ageCapFor, directClaims, inhibitStrongestOn, lowerClaim, strongestClaim } from "./takemath.ts";
 import type { RecipeRecord } from "@fire_trident/core";
 import { A2A_ACTOR, ColonyPause, DEPLOYMENT_PAUSE_KEY, type PauseAnswer, type PauseView, type ResumeAnswer, type WriterPause } from "./pause.ts";
 import type { MegafileHold, MegafileReport } from "@fire_trident/core";
@@ -2034,6 +2035,8 @@ export class ColonyDO extends DurableObject<Env> {
     const claimOn = claimLookup(views, (p) => regionOf(p, depth), CLAIM_STRENGTH);
     const neighborsOf = (p: Path): Neighbor[] | undefined => neighbors.get(p);
     const importLinksOf = (p: Path): Neighbor[] | undefined => imports.neighbors.get(p);
+    // FT_INHIBIT_STRONGEST (colony/takemath.ts): inhibition reads the strongest single file's claim instead of the sum.
+    const strongest = inhibitStrongestOn(this.env.FT_INHIBIT_STRONGEST, colony.id);
     const candidates: Candidate[] = intents.map((intent, idx) => {
       let rep = 0;
       // Lateral inhibition: other agents' live claims on the intent's own files, kept apart from the
@@ -2051,7 +2054,7 @@ export class ColonyDO extends DurableObject<Env> {
         if (!view) continue; // unreadable region: fail open
         if (view.repulsive) {
           rep += fastRepulsion(view.index, paths);
-          direct += directClaimOn(view.byPath, paths);
+          direct += directClaimOn(view.byPath, paths, "sum");
         }
         for (const c of view.unseen) {
           rep += CLAIM_STRENGTH * overlapCount(c.paths, paths);
@@ -2061,7 +2064,8 @@ export class ColonyDO extends DurableObject<Env> {
       }
       if (neighbors.size > 0) rep += cochangeWeight * neighborRepulsion(intent.footprint, neighborsOf, claimOn);
       if (imports.neighbors.size > 0) rep += imports.weight * neighborRepulsion(intent.footprint, importLinksOf, claimOn);
-      return { intent, region: primary, repulsion: rep, directClaim: direct, admissionOpen: open };
+      const directClaim = strongest ? strongestClaim(directClaims(perIntent[idx] ?? new Map<string, Path[]>(), views, CLAIM_STRENGTH)) : direct;
+      return { intent, region: primary, repulsion: rep, directClaim, admissionOpen: open };
     });
     // Contest mode: contestants' own claims on a contest intent's files neither repel nor inhibit a taker.
     this.contestAdjust(agentId, candidates, perIntent, views);
@@ -2070,7 +2074,8 @@ export class ColonyDO extends DurableObject<Env> {
     const inhibitAt = this.inhibitAt();
     let pool = candidates;
     for (let attempt = 0; attempt < PICK_ATTEMPTS && pool.length > 0; attempt++) {
-      const pick = chooseIntent(pool, thresholds, Date.now(), this.rand, undefined, inhibitAt);
+      // FT_AGE_CAP (colony/takemath.ts): the age multiplier stops at core AGE_FACTOR_CAP; off, it is uncapped as before.
+      const pick = chooseIntent(pool, thresholds, Date.now(), this.rand, undefined, inhibitAt, ageCapFor(this.env.FT_AGE_CAP, colony.id));
       if (!pick) break;
       // Contest mode: a contest intent seats several agents, each with a lease of its own.
       if (this.contestSeatsOf(pick.intent.id) >= CONTEST_MIN) {
@@ -3496,6 +3501,8 @@ export class ColonyDO extends DurableObject<Env> {
       const recent = new Set(others.map((a) => this.recentClaims.get(a)).filter((x): x is RecentClaim => x !== undefined));
       let rep = c.repulsion;
       let direct = c.directClaim ?? 0;
+      // FT_INHIBIT_STRONGEST: the same claims taken off file by file, then the strongest file's left.
+      const byPath = inhibitStrongestOn(this.env.FT_INHIBIT_STRONGEST, this.requireColony().id) ? directClaims(perIntent[i] ?? new Map<string, Path[]>(), views, CLAIM_STRENGTH) : null;
       for (const [region, paths] of perIntent[i] ?? new Map<string, Path[]>()) {
         const view = views.get(region);
         if (!view) continue;
@@ -3507,15 +3514,17 @@ export class ColonyDO extends DurableObject<Env> {
             const removed = Math.min(Object.hasOwn(view.byPath, p) ? (view.byPath[p]?.claim ?? 0) : 0, inReading * CLAIM_STRENGTH);
             rep -= removed;
             direct -= removed;
+            if (byPath) lowerClaim(byPath, p, removed);
           }
         }
         for (const u of unseen) {
           rep -= CLAIM_STRENGTH * overlapCount(u.paths, paths);
           for (const p of paths) if (u.paths.has(p)) direct -= CLAIM_STRENGTH;
+          if (byPath) for (const p of paths) if (u.paths.has(p)) lowerClaim(byPath, p, CLAIM_STRENGTH);
         }
       }
       c.repulsion = Math.max(0, rep);
-      c.directClaim = Math.max(0, direct);
+      c.directClaim = byPath ? strongestClaim(byPath) : Math.max(0, direct);
       c.admissionOpen = true;
     });
   }

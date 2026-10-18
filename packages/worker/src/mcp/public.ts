@@ -34,6 +34,7 @@ import { latestCertification, withHoldsText } from "./whyholds.ts";
 import { IMPACT_DESCRIPTION } from "./impact.ts";
 import { IMPACT_DEPTH, IMPACT_ENTRIES } from "../trunk/impact.ts";
 import { capSuspects } from "../certify/culprit.ts";
+import { RETRY_AFTER_S, clientIp, mcpReads, publicReadRefusal, type PublicLimits } from "../api/ratelimit.ts";
 import type { ImpactReport, LandingTests } from "@fire_trident/core";
 
 /**
@@ -46,7 +47,8 @@ import type { ImpactReport, LandingTests } from "@fire_trident/core";
  * lineage notes, which hold landed changes only, come as GET /why serves them. Its tools reach the colony only through
  * PublicReads, which forwards read methods and nothing else: there is no path to a write, a join, a lease or a token.
  * A request is bounded (64 KB, a few JSON-RPC messages, 32 in flight per isolate) and checked as JSON-RPC before any
- * server is built; browser requests from other sites are refused.
+ * server is built; browser requests from other sites are refused. Across isolates, the rate limit bindings count its
+ * messages per client address and its tool calls per colony (api/ratelimit.ts): over either, 429 with Retry-After.
  */
 
 /** One intent as GET /api/colonies/:id/intents/:iid serves it: the intent, its revisions, the directives about it, the reports on it. */
@@ -532,13 +534,15 @@ export interface PublicMcpOptions {
   plainGit?: ReadonlySet<string>;
   maxInFlight?: number;
   deadlineMs?: number;
+  /** Rate limit bindings for public reads (api/ratelimit.ts); absent, only the in-flight cap bounds requests. */
+  limits?: PublicLimits;
 }
 
 /**
  * Serve one request to the public MCP endpoint. 404 when no colony is listed; only POST (405 otherwise: stateless, so
  * no event stream and no sessions); 403 for a browser request from another site; 415 unless the body is JSON; 503 past
- * the in-flight cap; 413 over MAX_PUBLIC_BODY; 400 for anything but well-formed JSON-RPC requests and notifications.
- * Then a fresh server and transport answer it (JSON, not a stream) and are closed.
+ * the in-flight cap; 413 over MAX_PUBLIC_BODY; 400 for anything but well-formed JSON-RPC requests and notifications;
+ * 429 past a rate limit (opts.limits). Then a fresh server and transport answer it (JSON, not a stream) and are closed.
  */
 export async function servePublicMcp(req: Request, opts: PublicMcpOptions): Promise<Response> {
   if (opts.colonies.size === 0) return json(404, { error: "not found" });
@@ -560,6 +564,11 @@ export async function servePublicMcp(req: Request, opts: PublicMcpOptions): Prom
     }
     const problem = rpcProblem(body);
     if (problem) return rpcError(400, -32600, `Invalid Request: ${problem}`);
+    if (opts.limits) {
+      const reads = mcpReads(body, opts.colonies);
+      const refused = await publicReadRefusal(opts.limits, clientIp(req), reads.calls, reads.colonies);
+      if (refused) return rpcError(429, -32000, refused.message, { "Retry-After": String(RETRY_AFTER_S) });
+    }
     const plainGit = opts.plainGit;
     const tools = new PublicTools({ colonies: opts.colonies, reads: opts.reads, cloneUrl: (id) => (plainGit?.has(id) ? `${url.origin}/git/${id}.git` : null) });
     const server = publicServer(tools, [...opts.colonies], opts.deadlineMs ?? PUBLIC_CALL_MS);
@@ -578,7 +587,7 @@ export async function servePublicMcp(req: Request, opts: PublicMcpOptions): Prom
   }
 }
 
-/** POST /public/mcp of a deployment (index.ts): the colonies in FT_PUBLIC_MCP (parsed like FT_PUBLIC_GIT), over read stubs only. */
-export function publicMcp(req: Request, env: Pick<Env, "FT_PUBLIC_MCP" | "FT_PUBLIC_GIT" | "COLONY" | "REGION" | "TRUNK">): Promise<Response> {
-  return servePublicMcp(req, { colonies: publicColonies(env.FT_PUBLIC_MCP), reads: publicReads(env), plainGit: publicColonies(env.FT_PUBLIC_GIT) });
+/** POST /public/mcp of a deployment (index.ts): the colonies in FT_PUBLIC_MCP (parsed like FT_PUBLIC_GIT), over read stubs only, rate limited. */
+export function publicMcp(req: Request, env: Pick<Env, "FT_PUBLIC_MCP" | "FT_PUBLIC_GIT" | "COLONY" | "REGION" | "TRUNK" | "PUBLIC_IP_LIMIT" | "PUBLIC_COLONY_LIMIT">): Promise<Response> {
+  return servePublicMcp(req, { colonies: publicColonies(env.FT_PUBLIC_MCP), reads: publicReads(env), plainGit: publicColonies(env.FT_PUBLIC_GIT), limits: env });
 }

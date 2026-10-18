@@ -1,5 +1,5 @@
 import type { CheckResult, Colony, FileVersion, Intent, Path, Proposal, Rule, Sha } from "@fire_trident/core";
-import { checkFile, importsOf, residualPaths, ruleApplies, validateRule } from "@fire_trident/core";
+import { checkFile, importsOf, residualPaths, ruleApplies, ruleLine, validateRule } from "@fire_trident/core";
 import type { Env } from "../env.ts";
 import { bindingFor } from "../artifacts/shards.ts";
 import { dispose, withArtifactsRetry } from "../artifacts/git.ts";
@@ -279,7 +279,7 @@ export function ruleViolations(rule: Rule, path: Path, text: string, importsFor:
   const flags = typeof rule.spec.flags === "string" ? rule.spec.flags.replace(/[gy]/g, "") : "";
   const re = new RegExp(String(rule.spec.module), flags);
   let n = 0;
-  for (const imp of importsFor(text)) if (re.test(imp.specifier)) n++;
+  for (const imp of importsFor(text)) if (re.test(ruleLine(imp.specifier))) n++;
   return n;
 }
 

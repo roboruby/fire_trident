@@ -1,4 +1,4 @@
-import { checkFile, importsOf } from "@fire_trident/core";
+import { checkFile, importsOf, ruleLine } from "@fire_trident/core";
 import type { Path, Rule } from "@fire_trident/core";
 
 /**
@@ -151,7 +151,7 @@ export function specifierFacts(rule: Rule, path: Path, content: string, tree: Tr
   if (checkFile(rule, path, content).length === 0) return [];
   const re = moduleRegex(rule);
   return importsOf(content)
-    .filter((imp) => re.test(imp.specifier))
+    .filter((imp) => re.test(ruleLine(imp.specifier)))
     .map((imp) => {
       const target = resolveRelative(path, imp.specifier);
       const directory = target !== null && tree.isDir(target);

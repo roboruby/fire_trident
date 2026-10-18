@@ -119,6 +119,80 @@ function matchSegment(pattern: string, text: string): boolean {
 const SCRIPT_FILE = /\.[cm]?[jt]sx?$/i;
 const ALL_FILES = ["**/*"];
 
+/** Longest rule pattern (spec.pattern or spec.module) a rule may have, in characters. */
+export const MAX_RULE_PATTERN = 256;
+/**
+ * Characters of one line (or one import specifier) a rule's pattern is tested on. Agents write the text rules scan and a
+ * line has no length limit, so a longer line is tested on its first MAX_RULE_LINE characters: that bounds what any
+ * accepted pattern costs per line.
+ */
+export const MAX_RULE_LINE = 1_000;
+
+/** The part of a line or specifier a rule's pattern is tested on: at most its first MAX_RULE_LINE characters. */
+export function ruleLine(text: string): string {
+  return text.length > MAX_RULE_LINE ? text.slice(0, MAX_RULE_LINE) : text;
+}
+
+/** A quantifier at `i` of a pattern (`*`, `+`, `?`, `{n}`, `{n,}`, `{n,m}`): its bounds and its last character, or null. */
+function quantifierAt(source: string, i: number): { min: number; max: number; end: number } | null {
+  const c = source[i];
+  if (c === "*") return { min: 0, max: Infinity, end: i };
+  if (c === "+") return { min: 1, max: Infinity, end: i };
+  if (c === "?") return { min: 0, max: 1, end: i };
+  if (c !== "{") return null;
+  const m = /^\{(\d+)(,(\d*))?\}/.exec(source.slice(i, i + 24));
+  if (!m) return null; // a brace that is not a quantifier is a literal
+  const min = Number(m[1]);
+  const max = m[2] === undefined ? min : m[3] === "" ? Infinity : Number(m[3]);
+  return { min, max, end: i + m[0].length - 1 };
+}
+
+/**
+ * The first part of a pattern whose matching can take exponential time: a group repeated more than once that holds a
+ * quantifier of its own (`(a+)+`, `(\w*\s?)*`, `(?:x+y){2,}`, `((ab)*c)+`), or null when there is none. A static check
+ * on the pattern's text (escapes and character classes read as single atoms): it also refuses a few safe patterns, such
+ * as `(\d+\.){3}`, which can be written out instead.
+ */
+export function nestedQuantifier(source: string): string | null {
+  // The open groups, and whether a quantifier that lets the match vary in length sits inside each.
+  const open: Array<{ at: number; varies: boolean }> = [];
+  // What a quantifier here would repeat: the group just closed, or a single atom (null after "(" and "|").
+  let atom: { at: number; varies: boolean } | null = null;
+  for (let i = 0; i < source.length; i++) {
+    const c = source[i];
+    if (c === "\\") {
+      atom = { at: i, varies: false };
+      i++;
+    } else if (c === "[") {
+      const at = i;
+      for (i++; i < source.length && source[i] !== "]"; i++) if (source[i] === "\\") i++;
+      atom = { at, varies: false };
+    } else if (c === "(") {
+      open.push({ at: i, varies: false });
+      // A group's prefix ((?:, (?=, (?!, (?<=, (?<!, (?<name>) is not a quantifier: skip to its last character.
+      if (source[i + 1] === "?") for (i += 2; i < source.length && !":=!>".includes(source[i]!); i++);
+      atom = null;
+    } else if (c === ")") {
+      const g = open.pop();
+      if (g?.varies && open.length > 0) open[open.length - 1]!.varies = true;
+      atom = g ?? null;
+    } else if (c === "|") {
+      atom = null;
+    } else {
+      const q = quantifierAt(source, i);
+      if (q === null) {
+        atom = { at: i, varies: false };
+        continue;
+      }
+      i = source[q.end + 1] === "?" ? q.end + 1 : q.end;
+      if (atom?.varies && q.max > 1) return source.slice(atom.at, i + 1);
+      if (q.max > q.min && open.length > 0) open[open.length - 1]!.varies = true;
+      atom = null;
+    }
+  }
+  return null;
+}
+
 /**
  * Does this rule apply to this path at all (include/exclude/from globs)?
  * forbid-pattern scopes with spec.include, forbid-import with spec.from (both default to every file,
@@ -137,7 +211,9 @@ export function ruleApplies(rule: Rule, path: Path): boolean {
 
 /**
  * Problems that make a rule unusable: unknown kind, a missing or invalid RegExp (spec.pattern or
- * spec.module, with optional spec.flags), or a non-string glob, hint, or replacement. Empty when valid.
+ * spec.module, with optional spec.flags), a pattern longer than MAX_RULE_PATTERN or one that repeats
+ * a group holding a quantifier (see nestedQuantifier), or a non-string glob, hint, or replacement.
+ * Empty when valid.
  */
 export function validateRule(rule: Pick<Rule, "kind" | "spec">): string[] {
   const spec = rule.spec ?? {};
@@ -154,6 +230,10 @@ export function validateRule(rule: Pick<Rule, "kind" | "spec">): string[] {
   } else {
     try {
       new RegExp(source, lineFlags(flags));
+      // Agents write the text a rule scans: a pattern that can backtrack without bound would let one line stall the colony.
+      const nested = nestedQuantifier(source);
+      if (source.length > MAX_RULE_PATTERN) problems.push(`spec.${field} is ${source.length} characters long; at most ${MAX_RULE_PATTERN} are allowed`);
+      else if (nested !== null) problems.push(`spec.${field} repeats a group that holds a quantifier of its own (${nested}), which can take exponential time on a long line; write it without the nested repetition`);
     } catch (error) {
       problems.push(`spec.${field} is not a valid RegExp: ${error instanceof Error ? error.message : String(error)}`);
     }
@@ -176,7 +256,8 @@ export function validateRule(rule: Pick<Rule, "kind" | "spec">): string[] {
  * forbid-pattern: RegExp(spec.pattern, spec.flags) tested per line, one violation per matching line
  * ("g"/"y" flags are dropped so lines are tested independently). forbid-import: one violation per
  * import whose specifier matches RegExp(spec.module); only JS/TS-family files are scanned. Excerpt is
- * the trimmed line (at most 160 characters); message joins rule.description and spec.hint.
+ * the trimmed line (at most 160 characters); message joins rule.description and spec.hint. A line
+ * or specifier longer than MAX_RULE_LINE is tested on its first MAX_RULE_LINE characters (ruleLine).
  * Throws if the rule is invalid (see validateRule).
  */
 export function checkFile(rule: Rule, path: Path, content: string): Violation[] {
@@ -199,12 +280,12 @@ export function checkFile(rule: Rule, path: Path, content: string): Violation[] 
   if (rule.kind === "forbid-pattern") {
     const out: Violation[] = [];
     lines.forEach((text, i) => {
-      if (re.test(text)) out.push(violation(i + 1));
+      if (re.test(ruleLine(text))) out.push(violation(i + 1));
     });
     return out;
   }
   return importsOf(content)
-    .filter((imp) => re.test(imp.specifier))
+    .filter((imp) => re.test(ruleLine(imp.specifier)))
     .map((imp) => violation(imp.line));
 }
 
