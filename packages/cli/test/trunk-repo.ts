@@ -6,10 +6,11 @@ import { join } from "node:path";
 import { landingMessage, type LineageNote, type Proposal } from "@fire_trident/core";
 import { sealNote, withNoteDigest } from "../../worker/src/trunk/digest.ts";
 
-/** The trunk writer's signer (trunk/signature.ts): its published key, and the signature of a text. */
+/** The trunk writer's signer (trunk/signature.ts): its published key, and the signature of a text or of bytes. */
 export interface NoteSigner {
   key: { id: string; alg: "Ed25519"; publicKey: string; since: string | null; until: string | null };
   sign(text: string): Promise<string>;
+  signBytes(data: Uint8Array): Promise<Uint8Array>;
 }
 
 /**
@@ -22,11 +23,20 @@ const signatures = (await import(new URL("../../worker/src/trunk/signature.ts", 
   withSignature(message: string, signer: NoteSigner | null, p: { digest: string; tree: string; parents: readonly string[] }): Promise<string>;
 };
 const { keyIdOf, noteSigner, withSignature } = signatures;
+/** The trunk writer's commit objects (trunk/objects.ts) and full-commit signatures (trunk/gitsig.ts), loaded the same way. */
+const { commitContent } = (await import(new URL("../../worker/src/trunk/objects.ts", import.meta.url).href)) as {
+  commitContent(c: { tree: string; parents: string[]; message: string; name: string; email: string; timestamp: number }): Uint8Array;
+};
+const { signCommit } = (await import(new URL("../../worker/src/trunk/gitsig.ts", import.meta.url).href)) as {
+  signCommit(content: Uint8Array, signer: NoteSigner | null): Promise<Uint8Array>;
+};
 
 /**
  * A tiny trunk repository built with stock git the way the trunk writer builds one (trunk/TrunkDO.ts): each landing
  * commit's message is landingMessage's, signed (withSignature) when a signer is given and sealed (withNoteDigest) with
- * the digest of its note (sealNote), and the note is written under refs/notes/firetrident byte for byte. For the clone
+ * the digest of its note (sealNote), the commit object then signed whole (a gpgsig header, signCommit) as the trunk
+ * writer has since 2026-10-17 unless `full` is false, and the note is written under refs/notes/firetrident byte for byte.
+ * Each commit also moves refs/remotes/origin/main, as a fresh clone of the trunk repository has it. For the clone
  * checks (clonecheck.ts, scripts/verify_note.mjs).
  */
 
@@ -42,8 +52,8 @@ const ENV = {
   GIT_CONFIG_GLOBAL: "/dev/null",
 };
 
-/** A file change: its new text, or null to delete it. */
-export type Files = Record<string, string | null>;
+/** A file change: its new text (as 100644, or with its mode), or null to delete it. */
+export type Files = Record<string, string | { text: string; mode: string } | null>;
 
 /** A repository under construction. */
 export interface TrunkRepo {
@@ -53,8 +63,8 @@ export interface TrunkRepo {
   blob(text: string): string;
   /** A commit with no trailers (the import, an outside push). */
   plain(files: Files, message: string): string;
-  /** A landing commit, sealed (and signed with `signer`), and its note on refs/notes/firetrident. */
-  landing(files: Files, note: Omit<LineageNote, "schema" | "colonyId"> & Record<string, unknown>, p?: { signer?: NoteSigner | null; system?: string }): Promise<string>;
+  /** A landing commit, sealed (and signed with `signer`, the whole commit too unless `full` is false), and its note on refs/notes/firetrident. */
+  landing(files: Files, note: Omit<LineageNote, "schema" | "colonyId"> & Record<string, unknown>, p?: { signer?: NoteSigner | null; system?: string; full?: boolean }): Promise<string>;
   /** Replace a commit's note with these bytes (as anyone with write access to the repository could). */
   rewriteNote(commit: string, text: string): void;
   /** Point a branch at a commit. */
@@ -78,17 +88,24 @@ export function trunkRepo(colonyId = "demo"): TrunkRepo {
   const blob = (text: string): string => git(["hash-object", "-w", "--stdin"], text);
   let head: string | null = null;
   const stage = (files: Files): string => {
-    for (const [path, text] of Object.entries(files)) {
-      if (text === null) git(["update-index", "--force-remove", "--", path]);
-      else git(["update-index", "--add", "--cacheinfo", `100644,${blob(text)},${path}`]);
+    for (const [path, f] of Object.entries(files)) {
+      if (f === null) git(["update-index", "--force-remove", "--", path]);
+      else if (typeof f === "string") git(["update-index", "--add", "--cacheinfo", `100644,${blob(f)},${path}`]);
+      else git(["update-index", "--add", "--cacheinfo", `${f.mode},${blob(f.text)},${path}`]);
     }
     return git(["write-tree"]);
   };
-  const commit = (tree: string, message: string): string => {
-    const sha = git(["commit-tree", tree, ...(head ? ["-p", head] : [])], message);
+  const move = (sha: string): string => {
     git(["update-ref", "refs/heads/main", sha]);
+    git(["update-ref", "refs/remotes/origin/main", sha]);
     head = sha;
     return sha;
+  };
+  const commit = (tree: string, message: string): string => move(git(["commit-tree", tree, ...(head ? ["-p", head] : [])], message));
+  // A commit object as the trunk writer builds and signs it (objects.ts, gitsig.ts), written as is.
+  const signedCommit = async (tree: string, message: string, signer: NoteSigner): Promise<string> => {
+    const content = commitContent({ tree, parents: head ? [head] : [], message, name: ENV.GIT_COMMITTER_NAME, email: ENV.GIT_COMMITTER_EMAIL, timestamp: Math.floor(Date.parse(ENV.GIT_COMMITTER_DATE) / 1000) });
+    return move(git(["hash-object", "-t", "commit", "-w", "--stdin"], new TextDecoder().decode(await signCommit(content, signer))));
   };
   return {
     dir,
@@ -102,7 +119,7 @@ export function trunkRepo(colonyId = "demo"): TrunkRepo {
       const proposals = full.proposals.map((x) => ({ id: x.id, intentId: x.intent.id, agentId: x.agentId })) as unknown as Proposal[];
       const message = p.system ? `${p.system}\nFT-Landing: ${full.landingId}` : landingMessage({ id: full.landingId, intentIds: proposals.map((x) => x.intentId) }, proposals, {});
       const signed = await withSignature(message, p.signer ?? null, { digest: sealed.digest, tree, parents: head ? [head] : [] });
-      const sha = commit(tree, withNoteDigest(signed, sealed.digest));
+      const sha = p.signer && p.full !== false ? await signedCommit(tree, withNoteDigest(signed, sealed.digest), p.signer) : commit(tree, withNoteDigest(signed, sealed.digest));
       git(["notes", "--ref=firetrident", "add", "-C", blob(sealed.text), sha]);
       return sha;
     },

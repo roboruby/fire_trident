@@ -44,12 +44,13 @@ import { sqlWhySource, whyLineage, type WhyLineage } from "./whywalk.ts";
 import { maskNote } from "./mask.ts";
 import { addNotes } from "./notes.ts";
 import { sealNote, withNoteDigest } from "./digest.ts";
-import { noteSigner, publishedKeys, withSignature } from "./signature.ts";
+import { noteKeyProblem, noteSigner, publishedKeys, withSignature } from "./signature.ts";
 import { signCommit, writeTrunkCommit } from "./gitsig.ts";
 import { creditLines, creditsEnabled, withCredits } from "./credits.ts";
 import { noteProvenance } from "./provenance.ts";
 import { intentWho, landingAnswer, noteIntentWho, type IntentWho } from "./answerable.ts";
-import { bindingSource, checkLandings, layered, localSource, summarize, verifyLimit } from "./verify.ts";
+import { bindingSource, checkLandings, layered, localSource, summarize, verifyLimit, withTrunkSource } from "./verify.ts";
+import { MainWalk, bindingMain, layeredMain, localMain, verifyAgainstMain, type MainCheckDeps } from "./onmain.ts";
 import { findLanding, landingOf, landingRow, storedNote, verifyOne } from "./landing-note.ts";
 import { ROOT_META, findRoot, rootAnswer } from "./root.ts";
 import { BoundedMap, applyTreeChangesDeferred, writePending, type PendingObject } from "./surgery.ts";
@@ -80,7 +81,7 @@ import { mergeInsertionsEnabled } from "./plan.ts";
 import { ExportMemo, exportGuardEnabled } from "./exportguard.ts";
 import { exportImports } from "./imports.ts";
 import type { ExportImports } from "./plan.ts";
-import { runRevert, sqlRevertTrunk, type RevertResult, type RevertTrunk } from "./revert.ts";
+import { modeAt, runRevert, sqlRevertTrunk, type RevertResult, type RevertTrunk } from "./revert.ts";
 import { durableFs } from "../artifacts/workspace.ts";
 import { TRUNK_NAMESPACE, bindingFor } from "../artifacts/shards.ts";
 import { noteAlternatives, type ContestAlternative } from "../decide/contest.ts";
@@ -349,8 +350,10 @@ export class TrunkDO extends DurableObject<Env> {
   private publishBound: PublishBound = PUBLISH_BOUND;
   /** Moves when this object's storage is erased: a publish attempt of an earlier epoch writes nothing more. */
   private epoch = 0;
-  /** The trunk repository's notes tip as verifyNotes last read it (remoteNotesTip), and when. */
-  private notesTipRead: { at: number; tip: Promise<Sha | null> } | null = null;
+  /** The trunk repository's ref advertisement as verifyNotes last read it (remoteNotesTip, remoteMainTip), and when. */
+  private refsRead: { at: number; refs: Promise<Array<{ ref: string; oid: string }>> } | null = null;
+  /** Main's first-parent chain as the note checks last read it (trunk/onmain.ts), so the next reads only what main gained. */
+  private readonly mainWalk = new MainWalk();
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -596,6 +599,11 @@ export class TrunkDO extends DurableObject<Env> {
     return sqlRevertTrunk(this.sql, {
       landing: (ref) => this.landingByRef(ref),
       read: (blob) => this.blobBytes(blob),
+      // The mode a deleted file had, so a revert puts it back as it was (trunk/revert.ts).
+      modeAt: (commit, path) => {
+        const trunk = this.state().trunk;
+        return withTrunkSource(this.repo(), () => this.trunkBinding(trunk).get(trunk.name), (src) => modeAt(src, commit, path));
+      },
       serial: (fn) => this.serial(fn),
       commitNow: async (commit) => {
         try {
@@ -689,7 +697,8 @@ export class TrunkDO extends DurableObject<Env> {
         rows.map((r) => ({ landingId: r.id, trunkSha: r.trunk_sha, at: r.at, note: r.note, waiting: due.has(r.id) })),
         { src: layered(localSource(this.repo()), remote), tip, keys: await publishedKeys(this.env.FT_NOTE_KEY, this.env.FT_NOTE_KEYS_RETIRED) },
       );
-      return summarize(st.colonyId, tip, notes, Date.now());
+      // Each landing against main as the trunk repository advertises it, and signatures that stopped (trunk/onmain.ts).
+      return await verifyAgainstMain(summarize(st.colonyId, tip, notes, Date.now()), await this.mainCheck(() => (opened.repo ??= this.trunkBinding(st.trunk).get(st.trunk.name))));
     } finally {
       if (opened.repo) dispose(await opened.repo.catch(() => null));
     }
@@ -707,7 +716,9 @@ export class TrunkDO extends DurableObject<Env> {
     const opened: { repo?: Promise<ArtifactsRepo> } = {};
     const remote = bindingSource(() => (opened.repo ??= this.trunkBinding(st.trunk).get(st.trunk.name)));
     try {
-      return await verifyOne(landingRow(this.sql, found), { colonyId: st.colonyId, tip: () => this.remoteNotesTip(), src: layered(localSource(this.repo()), remote), keys: await publishedKeys(this.env.FT_NOTE_KEY, this.env.FT_NOTE_KEYS_RETIRED) });
+      const one = await verifyOne(landingRow(this.sql, found), { colonyId: st.colonyId, tip: () => this.remoteNotesTip(), src: layered(localSource(this.repo()), remote), keys: await publishedKeys(this.env.FT_NOTE_KEY, this.env.FT_NOTE_KEYS_RETIRED) });
+      // The landing against main as the trunk repository advertises it (trunk/onmain.ts).
+      return await verifyAgainstMain(one, await this.mainCheck(() => (opened.repo ??= this.trunkBinding(st.trunk).get(st.trunk.name))));
     } finally {
       if (opened.repo) dispose(await opened.repo.catch(() => null));
     }
@@ -2266,7 +2277,7 @@ export class TrunkDO extends DurableObject<Env> {
    * asynchronous publishing it is built on the recorded head (unpublished commits included) and recorded like a
    * landing; the publish loop pushes it after every commit recorded before it.
    */
-  private async systemCommitNow(p: { files: Array<{ path: Path; content: string | null; expect?: Sha | null }>; message: string; note: LineageNote & Record<string, unknown>; intentIds?: Id[] }): Promise<Landing> {
+  private async systemCommitNow(p: { files: Array<{ path: Path; content: string | Uint8Array | null; expect?: Sha | null; mode?: string }>; message: string; note: LineageNote & Record<string, unknown>; intentIds?: Id[] }): Promise<Landing> {
     const asyncPublish = this.asyncPublish(this.state().colonyId);
     await this.recoverJournal();
     await this.publishFirst(asyncPublish);
@@ -2289,9 +2300,10 @@ export class TrunkDO extends DurableObject<Env> {
           if (before !== null) changes.set(f.path, { blob: null, before });
           continue;
         }
-        const bytes = enc.encode(f.content);
+        // A revert passes the bytes of the blob it puts back, and the mode a deleted file had (trunk/revert.ts).
+        const bytes = typeof f.content === "string" ? enc.encode(f.content) : f.content;
         const blob = await writeLocalBlob(g, bytes);
-        if (blob !== before) changes.set(f.path, { blob, mode: this.indexMode(f.path) ?? NEW_FILE_MODE, size: bytes.length, before });
+        if (blob !== before) changes.set(f.path, { blob, mode: this.indexMode(f.path) ?? f.mode ?? NEW_FILE_MODE, size: bytes.length, before });
       }
       if (changes.size === 0) throw new Error("system commit changes nothing");
       const treeChanges = new Map<Path, PathChange>();
@@ -3076,17 +3088,39 @@ export class TrunkDO extends DurableObject<Env> {
    * none. Read at most every NOTES_TIP_TTL_MS: verifyNotes is a public read, and git requests are limited per repository.
    */
   private remoteNotesTip(): Promise<Sha | null> {
+    return this.remoteRefs().then((refs) => refs.find((r) => r.ref === NOTES_REF)?.oid ?? null);
+  }
+
+  /** The commit refs/heads/main names in the same ref advertisement (the note checks place each landing against it), or null when it has none. */
+  private remoteMainTip(): Promise<Sha | null> {
+    return this.remoteRefs().then((refs) => refs.find((r) => r.ref === MAIN_REF)?.oid ?? null);
+  }
+
+  /** The trunk repository's ref advertisement, read at most every NOTES_TIP_TTL_MS; a failed read is not kept. */
+  private remoteRefs(): Promise<Array<{ ref: string; oid: string }>> {
     const now = Date.now();
-    if (this.notesTipRead && now - this.notesTipRead.at < NOTES_TIP_TTL_MS) return this.notesTipRead.tip;
+    if (this.refsRead && now - this.refsRead.at < NOTES_TIP_TTL_MS) return this.refsRead.refs;
     const st = this.state();
-    const tip = this.authed((token) => listRemoteRefs(st.trunk.remote, token)).then((refs) => refs.find((r) => r.ref === NOTES_REF)?.oid ?? null);
-    const read = { at: now, tip };
-    this.notesTipRead = read;
-    // A failed read is not kept.
-    tip.catch(() => {
-      if (this.notesTipRead === read) this.notesTipRead = null;
+    const refs = this.authed((token) => listRemoteRefs(st.trunk.remote, token));
+    const read = { at: now, refs };
+    this.refsRead = read;
+    refs.catch(() => {
+      if (this.refsRead === read) this.refsRead = null;
     });
-    return tip;
+    return refs;
+  }
+
+  /** What the note checks need to place landings on main (trunk/onmain.ts); `open` opens the binding for what the local repository does not have. */
+  private async mainCheck(open: () => Promise<ArtifactsRepo>): Promise<MainCheckDeps> {
+    return {
+      sql: this.sql,
+      tip: () => this.remoteMainTip(),
+      history: layeredMain(localMain(this.repo()), bindingMain(open)),
+      src: layered(localSource(this.repo()), bindingSource(open)),
+      walk: this.mainWalk,
+      signing: (await noteSigner(this.env.FT_NOTE_KEY)) !== null,
+      signingProblem: await noteKeyProblem(this.env.FT_NOTE_KEY),
+    };
   }
 
   /** Blob of each path at `baseSha`, or null when the commit is unknown locally and remotely. */

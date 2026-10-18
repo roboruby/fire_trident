@@ -16,9 +16,13 @@
 //                                              and every retired one, so a rotated key's signatures still check out. Prints
 //                                              "intact, signed by <key id>", "bad signature" (with why when the key was not
 //                                              signing at the commit's time) or "unsigned (landed before signing)".
-// The same commits carry a gpgsig header, an SSH signature by the same key, that stock git checks on its own:
+// The same commits carry a gpgsig header, an SSH signature by the same key over the whole commit object, that stock git
+// checks on its own:
 //   curl -s <deployment>/.well-known/firetrident-allowed-signers > allowed_signers
 //   git -c gpg.format=ssh -c gpg.ssh.allowedSignersFile=allowed_signers verify-commit <commit>
+// and this script checks it too with --keys, for a commit whose FT-Note-Signature verifies: "full commit signed", or
+// "full-commit signature bad (why)" (a message, author or committer changed after signing says so), or "signed before
+// full-commit signatures" for a commit built before them (2026-10-17), which fails only when an older landing has one.
 //   --tamper [--tamper-field <path>]           copy the note in memory, change one field (a decision's approver, else a blob
 //                                              id the change read), and require the copy to fail against its commit.
 //                                              Nothing is written to git.
@@ -28,6 +32,10 @@
 //                                              each landing: note intact, signature good (with --keys), and the commit
 //                                              changing exactly the files and blob ids its note's write sets name. Commits
 //                                              that are not landings are listed and skipped. Ends with a summary line.
+// Main: a landing counts only while the clone's origin/main (main as the trunk repository advertised it at the last
+// fetch) still reaches its commit: one commit gets "on origin/main" (git merge-base --is-ancestor) or "not on origin/main",
+// and --all lists every commit the notes name that origin/main no longer reaches (dropped from main, or main rewritten:
+// the notes still name the commits a force-push took off main), then a line saying how many it reaches.
 // A note that checks out gets a second line, "answerable: <who> (<why>)": the nearest person answerable for the landing,
 // or "none" or "unknown" with the reason, by the rules of packages/core/src/answerable.ts (the Why tab says the same);
 // with --all, each landing's line ends with it.
@@ -338,7 +346,9 @@ function revertProblems(diff, target, targetSha, whole) {
   const before = new Map(target.map((t) => [t.path, t.oldBlob]));
   const problems = [];
   for (const d of diff) {
-    const mode = modeProblem(d);
+    // A file the reverted commit deleted comes back with the mode it had then; any other file as a landing writes it.
+    const was = target.find((t) => t.path === d.path);
+    const mode = d.oldMode === "000000" && was?.newMode === "000000" ? (d.newMode !== was.oldMode ? `${d.path}: put back with mode ${d.newMode}, where it had mode ${was.oldMode} before ${short(targetSha)}` : null) : modeProblem(d);
     if (mode) problems.push(mode);
     if (!before.has(d.path)) problems.push(`${d.path}: the commit ${wrote(d.newBlob)}, and ${short(targetSha)}, the commit it reverts, did not change it`);
     else if ((before.get(d.path) ?? null) !== d.newBlob) {
@@ -507,6 +517,153 @@ const receiptsOf = (raw) => {
   return lines.length > MAX_RECEIPTS ? [...lines.slice(0, MAX_RECEIPTS), `receipt: and ${lines.length - MAX_RECEIPTS} more (ft why shows each change's)`] : lines;
 };
 
+// Main: origin/main as the clone last fetched it, against one commit or every commit the notes name.
+const MAIN = "refs/remotes/origin/main";
+function originMain() {
+  try {
+    const sha = git(["rev-parse", "--verify", "--quiet", `${MAIN}^{commit}`]).toString("utf8").trim();
+    return /^[0-9a-f]{40,64}$/.test(sha) ? sha : null;
+  } catch {
+    return null;
+  }
+}
+function mainLine(sha) {
+  const main = originMain();
+  if (main === null) return { text: "main not compared: this clone has no origin/main", bad: false };
+  let reached = true;
+  try {
+    git(["merge-base", "--is-ancestor", sha, main]);
+  } catch {
+    reached = false; // both commits are in the clone, so a refusal is git's answer: not an ancestor
+  }
+  return reached ? { text: "on origin/main", bad: false } : { text: "not on origin/main: main no longer reaches this commit (it was dropped from main, or main was rewritten)", bad: true };
+}
+function notesOffMain(notes) {
+  const main = originMain();
+  if (main === null) return { lines: [{ text: "main not compared: this clone has no origin/main", bad: false }], off: 0 };
+  const reached = new Set(git(["rev-list", main, "--"]).toString("utf8").split("\n").filter(Boolean));
+  let shallow = false;
+  try {
+    shallow = git(["rev-parse", "--is-shallow-repository"]).toString("utf8").trim() === "true";
+  } catch {}
+  const missing = [...notes.keys()].filter((c) => !reached.has(c));
+  const present = new Set(missing.length > 0 ? [...readRaw(missing).keys()] : []);
+  const lines = [];
+  let off = 0, unknown = 0;
+  for (const c of missing) {
+    if (!present.has(c) && shallow) {
+      unknown++;
+      continue;
+    }
+    off++;
+    lines.push({ text: `${short(c)}  not on origin/main: a note names this commit, and main no longer reaches it (it was dropped from main, or main was rewritten)${present.has(c) ? "" : "; the commit is not in this clone"}`, bad: true });
+  }
+  const rest = unknown > 0 ? ` (${n(unknown)} not compared: this clone is shallow)` : "";
+  const named = notes.size - unknown;
+  lines.push(off === 0 ? { text: `origin/main reaches every commit the notes name (${n(named)} note${named === 1 ? "" : "s"})${rest}`, bad: false } : { text: `origin/main does not reach ${n(off)} of the ${n(named)} commits the notes name${rest}`, bad: true });
+  return { lines, off };
+}
+
+// The full-commit signature: the gpgsig header, an SSH signature (PROTOCOL.sshsig: namespace "git", sha512, Ed25519) over
+// the commit object without that header, by a key the keys list, inside its window.
+function readRaw(ids) {
+  const out = new Map();
+  if (ids.length === 0) return out;
+  const buf = git(["cat-file", "--batch"], `${ids.join("\n")}\n`);
+  let at = 0;
+  for (const id of ids) {
+    const nl = buf.indexOf(10, at);
+    if (nl < 0) break;
+    const head = buf.toString("utf8", at, nl).split(" ");
+    at = nl + 1;
+    if (head[1] === "missing" || head.length < 3) continue;
+    const size = Number(head[2]);
+    out.set(id, buf.subarray(at, at + size));
+    at += size + 1;
+  }
+  return out;
+}
+function splitSigned(raw) {
+  const blank = raw.indexOf("\n\n");
+  const end = blank < 0 ? raw.length : blank + 1;
+  const lineEnd = (at) => {
+    const nl = raw.indexOf(10, at);
+    return nl < 0 || nl >= end ? end : nl + 1;
+  };
+  let found = null;
+  for (let at = 0; at < end; at = lineEnd(at)) {
+    if (raw.toString("latin1", at, at + 7) !== "gpgsig ") continue;
+    if (found) return "many";
+    let to = lineEnd(at);
+    while (to < end && raw[to] === 0x20) to = lineEnd(to);
+    found = { from: at, to };
+  }
+  if (!found) return null;
+  const lines = raw.toString("utf8", found.from + 7, found.to).replace(/\n$/, "").split("\n");
+  return { payload: Buffer.concat([raw.subarray(0, found.from), raw.subarray(found.to)]), armored: `${[lines[0] ?? "", ...lines.slice(1).map((l) => l.slice(1))].join("\n")}\n` };
+}
+function fullSignatureState(raw, noteSigned) {
+  const split = splitSigned(raw);
+  if (split === null) return { status: "none" };
+  if (split === "many") return { status: "bad", why: "the commit carries more than one gpgsig header" };
+  const form = "it is not an Ed25519 SSH signature in the form the trunk writer writes";
+  const m = /^-----BEGIN SSH SIGNATURE-----\n([A-Za-z0-9+/=\n]+)\n-----END SSH SIGNATURE-----\n$/.exec(split.armored);
+  if (!m) return { status: "bad", why: form };
+  const blob = Buffer.from(m[1].replace(/\n/g, ""), "base64");
+  let at = 0;
+  const take = (k) => (k < 0 || at + k > blob.length ? null : blob.subarray(at, (at += k)));
+  const string = () => {
+    const len = take(4);
+    return len ? take(len.readUInt32BE(0)) : null;
+  };
+  const magic = take(6), version = take(4), keyBlob = string(), namespace = string(), reserved = string(), hash = string(), sigBlob = string();
+  const pair = (b) => {
+    if (!b || b.length < 4) return null;
+    const k = b.readUInt32BE(0);
+    if (8 + k > b.length || 8 + k + b.readUInt32BE(4 + k) !== b.length) return null;
+    return [b.toString("latin1", 4, 4 + k), b.subarray(8 + k)];
+  };
+  const key = pair(keyBlob), sig = pair(sigBlob);
+  const ok = magic?.toString("latin1") === "SSHSIG" && version?.readUInt32BE(0) === 1 && at === blob.length && key?.[0] === "ssh-ed25519" && key[1].length === 32 && sig?.[0] === "ssh-ed25519" && sig[1].length === 64;
+  if (!ok || namespace?.toString("utf8") !== "git" || reserved?.length !== 0 || hash?.toString("utf8") !== "sha512") return { status: "bad", why: form };
+  const publicKey = key[1];
+  const keyId = createHash("sha256").update(publicKey).digest("hex").slice(0, 16);
+  const listed = list(keys?.keys).find((k) => k?.alg === "Ed25519" && typeof k.publicKey === "string" && Buffer.from(k.publicKey, "base64url").equals(publicKey));
+  if (!listed) return { status: "bad", why: `it is by key ${keyId}, which the keys do not list` };
+  const str = (b) => {
+    const len = Buffer.alloc(4);
+    len.writeUInt32BE(b.length);
+    return Buffer.concat([len, b]);
+  };
+  const signed = Buffer.concat([Buffer.from("SSHSIG"), str(Buffer.from("git")), str(Buffer.alloc(0)), str(Buffer.from("sha512")), str(createHash("sha512").update(split.payload).digest())]);
+  let good = false;
+  try {
+    good = verify(null, signed, createPublicKey({ key: { kty: "OKP", crv: "Ed25519", x: publicKey.toString("base64url") }, format: "jwk" }), sig[1]);
+  } catch {}
+  if (!good) return { status: "bad", why: noteSigned ? "the commit's message, author or committer changed after it was signed; its tree, parents and note digest are as signed" : "it does not verify: the commit changed after it was signed" };
+  const why = windowWhy(keyId, listed.since, listed.until, committedIn(raw.toString("utf8")));
+  return why === null ? { status: "signed", keyId } : { status: "bad", why };
+}
+const fullWords = (s, older) => (s.status === "signed" ? "full commit signed" : s.status === "bad" ? `full-commit signature bad (${s.why})` : older ? `no full-commit signature, though ${short(older)}, an older landing, has one` : "signed before full-commit signatures");
+const fullFailed = (s, older) => s.status === "bad" || (s.status === "none" && older !== null);
+// The newest landing below a commit (64 first-parent commits at most) whose commit carries a gpgsig header, or null.
+function olderFullSigned(parents) {
+  const parent = parents.split(" ").filter(Boolean)[0];
+  if (!parent) return null;
+  let ids;
+  try {
+    ids = git(["rev-list", "--first-parent", "--max-count=64", parent, "--"]).toString("utf8").split("\n").filter(Boolean);
+  } catch {
+    return null;
+  }
+  const raws = readRaw(ids);
+  for (const id of ids) {
+    const text = raws.get(id)?.toString("utf8");
+    if (text && /(^|\n)gpgsig /.test(text.split("\n\n")[0] ?? "") && /(^|\n)FT-Note: sha256:[0-9a-f]{64}\s*$/.test(text)) return id;
+  }
+  return null;
+}
+
 // The root: the last commit of the first-parent chain.
 function rootLine(from) {
   const chain = git(["rev-list", "--first-parent", from, "--"]).toString("utf8").trim().split("\n");
@@ -535,15 +692,25 @@ if (!o.all) {
   const blob = notes.get(c.sha);
   const raw = blob !== undefined ? (readObjects([blob]).get(blob) ?? null) : null;
   let verdict = digest === null ? "no FT-Note trailer" : noteState(raw, digest);
+  let fullBad = false;
   if (keys !== undefined && verdict === "intact") {
     const s = signatureState(c, digest);
     verdict = s.status === "signed" ? `intact, ${signatureWords(s)}` : signatureWords(s);
+    // The full-commit signature, of a commit whose note signature verifies.
+    if (s.status === "signed") {
+      const full = fullSignatureState(readRaw([c.sha]).get(c.sha) ?? Buffer.alloc(0), true);
+      const older = full.status === "none" ? olderFullSigned(c.parents) : null;
+      verdict = `${verdict}, ${fullWords(full, older)}`;
+      fullBad = fullFailed(full, older);
+    }
   }
-  say(verdict, !(verdict === "intact" || verdict.startsWith("intact, signed by ")));
+  say(verdict, !(verdict === "intact" || verdict.startsWith("intact, signed by ")) || fullBad);
   // A note that checks out (signed, or landed before signing): who answers for its landing.
   const who = verdict === "intact" || verdict.startsWith("intact, signed by ") || verdict.startsWith("unsigned") ? answerableOf(raw) : null;
   if (who !== null) say(`answerable: ${who}`, false);
   if (who !== null) for (const r of receiptsOf(raw)) say(r, false);
+  const main = mainLine(c.sha);
+  say(main.text, main.bad);
   if (o.tamper) {
     const t = digest === null ? { ok: false, reason: "the commit carries no FT-Note trailer to check a copy against" } : tamper(raw, digest, o["tamper-field"]);
     say(tamperLine(t), !(t.ok && t.caught));
@@ -560,14 +727,16 @@ if (!o.all) {
   const sealed = commits.filter((c) => trailerOf(c.message) !== null);
   const blobs = readObjects([...new Set(sealed.map((c) => notes.get(c.sha)).filter((b) => b !== undefined))]);
   const rawOf = (sha) => (notes.has(sha) ? (blobs.get(notes.get(sha)) ?? null) : null);
+  const objects = keys !== undefined ? readRaw(sealed.map((c) => c.sha)) : new Map();
   const verdicts = commits.map((c) => {
     const digest = trailerOf(c.message);
     if (digest === null) return { kind: "skip", sha: c.sha, unsealed: /(^|\n)FT-Landing: \S/.test(c.message) };
     const raw = rawOf(c.sha);
     const state = noteState(raw, digest);
     const signature = keys !== undefined && state === "intact" ? signatureState(c, digest) : null;
+    const full = signature?.status === "signed" ? fullSignatureState(objects.get(c.sha) ?? Buffer.alloc(0), true) : null;
     const who = state === "intact" && signature?.status !== "bad" ? answerableOf(raw) : null;
-    return { kind: "landing", sha: c.sha, note: state, signature, paths: state === "intact" ? pathsVerdict(c, JSON.parse(raw)) : null, who };
+    return { kind: "landing", sha: c.sha, note: state, signature, full, paths: state === "intact" ? pathsVerdict(c, JSON.parse(raw)) : null, who };
   });
   // An unsigned landing newer than a signed one was not built by a trunk writer that signs: it fails.
   const lateUnsigned = new Set();
@@ -578,7 +747,16 @@ if (!o.all) {
     if (v.signature.status === "signed") signedBelow = true;
     else if (v.signature.status === "unsigned" && signedBelow) lateUnsigned.add(v.sha);
   }
-  const count = { landings: 0, intact: 0, signed: 0, matched: 0, failures: 0, skipped: 0, unsealed: 0 };
+  // A landing without a full-commit signature newer than one with it fails, naming the nearest such older landing.
+  const lateFull = new Map();
+  let fullBelow = null;
+  for (let i = verdicts.length - 1; i >= 0; i--) {
+    const v = verdicts[i];
+    if (v.kind !== "landing" || !v.full) continue;
+    if (v.full.status === "signed") fullBelow = v.sha;
+    else if (v.full.status === "none" && fullBelow !== null) lateFull.set(v.sha, fullBelow);
+  }
+  const count = { landings: 0, intact: 0, signed: 0, full: 0, matched: 0, failures: 0, skipped: 0, unsealed: 0 };
   for (let i = 0; i < verdicts.length; i++) {
     const v = verdicts[i];
     if (v.kind === "skip") {
@@ -600,6 +778,12 @@ if (!o.all) {
       if (v.signature.status === "bad" || lateUnsigned.has(v.sha)) bad = true;
       parts.push(lateUnsigned.has(v.sha) ? "unsigned, though an older landing is signed" : signatureWords(v.signature));
     }
+    if (v.full) {
+      const older = lateFull.get(v.sha) ?? null;
+      if (v.full.status === "signed") count.full++;
+      if (fullFailed(v.full, older)) bad = true;
+      parts.push(fullWords(v.full, older));
+    }
     if (v.paths) {
       parts.push(v.paths.text);
       if (v.paths.matched === true) count.matched++;
@@ -608,6 +792,12 @@ if (!o.all) {
     if (v.who !== null) parts.push(`answerable: ${v.who}`);
     if (bad) count.failures++;
     say(`${short(v.sha)}  ${parts.join(", ")}`, bad);
+  }
+  // Every commit the notes name against origin/main: a force-push leaves notes on commits main lost.
+  if (notes.size > 0) {
+    const main = notesOffMain(notes);
+    for (const l of main.lines) say(l.text, l.bad);
+    count.failures += main.off;
   }
   if (sealed.length > 0 && notes.size === 0) say("this clone has no lineage notes: fetch them with git fetch origin refs/notes/firetrident:refs/notes/firetrident, then check again", true);
   if (pinned !== undefined) {
@@ -619,7 +809,7 @@ if (!o.all) {
     const t = newest ? tamper(rawOf(newest.sha), trailerOf(newest.message), o["tamper-field"]) : { ok: false, reason: "no commit in this history carries a sealed note to copy" };
     say(newest ? `${short(newest.sha)}  ${tamperLine(t)}` : tamperLine(t), !(t.ok && t.caught));
   }
-  const signed = keys !== undefined ? `${n(count.signed)} signed` : "signatures not checked (give --keys)";
+  const signed = keys !== undefined ? `${n(count.signed)} signed, ${n(count.full)} full commit${count.full === 1 ? "" : "s"} signed` : "signatures not checked (give --keys)";
   const skipped = [count.skipped > 0 ? `${n(count.skipped)} ${count.skipped === 1 ? "not a landing" : "not landings"}` : "", count.unsealed > 0 ? `${n(count.unsealed)} landed before notes were sealed` : ""].filter(Boolean).join(", ");
   out.push(
     `checked ${n(count.landings)} landing${count.landings === 1 ? "" : "s"} in ${n(commits.length)} commit${commits.length === 1 ? "" : "s"}: ${n(count.intact)} intact, ${signed}, ${n(count.matched)} paths match, ${n(count.failures)} failure${count.failures === 1 ? "" : "s"}${skipped ? ` (skipped: ${skipped})` : ""}`,

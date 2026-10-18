@@ -65,6 +65,16 @@ export function sealOf(check: unknown): NoteSeal {
       return { state: "pending", label: "Note not pushed yet", detail: "The note is not on the trunk repository yet: its push is due, and it is checked again in a few seconds." };
     case "unreadable":
       return uncheckedSeal(`the commit or its note could not be read${detail ? `: ${detail}` : ""}`);
+    case "dropped": {
+      // The trunk repository's main no longer reaches the landing's commit (trunk/onmain.ts): rewritten, or dropped.
+      const main = (check as { main?: { replacedBy?: unknown } }).main;
+      const rewritten = typeof main?.replacedBy === "string" && main.replacedBy !== "";
+      return {
+        state: "altered",
+        label: rewritten ? "Rewritten on main" : "No longer on main",
+        detail: `${sentence(detail || "main no longer reaches this landing's commit: it was dropped from main, or main was rewritten")} Someone with write access to the trunk repository changed main's history after this landed.`,
+      };
+    }
     default:
       return uncheckedSeal("this page does not know the note check's answer");
   }

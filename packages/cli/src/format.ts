@@ -33,6 +33,7 @@ import { whySummary } from "./spec.ts";
 import { megafileLines } from "./megafile.ts";
 import { pauseLines } from "./pause.ts";
 import { signatureLines } from "./signatures.ts";
+import { mainCheckLines } from "./verifymain.ts";
 import { intentSpendDetail, intentSpendLine, spendLine } from "./spend.ts";
 import { spendCapStatus } from "./spendcap.ts";
 import { acceptanceRows } from "./acceptance.ts";
@@ -1016,6 +1017,8 @@ const VERIFY_ROWS: ReadonlyArray<{ status: NoteCheckStatus; mark: string; words:
   { status: "unreadable", mark: "?", words: "could not be read", color: "yellow" },
   { status: "pending", mark: "…", words: "not pushed yet", color: "dim" },
   { status: "no-trailer", mark: "-", words: "landed before commits carried the note's digest", color: "dim" },
+  // The trunk repository's main no longer reaches the landing's commit (verifymain.ts).
+  { status: "dropped", mark: "✗", words: "no longer on main", color: "red" },
 ];
 /** Notes listed one by one per status at most. */
 const VERIFY_LISTED = 10;
@@ -1054,6 +1057,8 @@ export function formatVerify(colony: string, res: unknown, c: Colors, now: numbe
   if (verifyFailed(r)) out.push(c.dim("  A commit's trailer cannot change without changing the commit: the note on the repository is what changed."));
   // Signed lineage notes (signatures.ts): where the server signs, whether each commit is signed by its published key.
   out.push(...signatureLines(notes, c, now));
+  // Full-commit signatures, main and the signing key (verifymain.ts).
+  out.push(...mainCheckLines(r, c, now));
   return out.join("\n");
 }
 

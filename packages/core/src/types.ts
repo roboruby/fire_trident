@@ -1330,9 +1330,45 @@ export interface WhyWalk {
  * One landing's lineage note on the trunk repository against the FT-Note trailer of its commit (the sha256 of the note as
  * the trunk writer wrote it, without `certification`): `intact` (they match), `altered` (they do not, or the note is not
  * in the form the trunk writer writes), `missing` (no note for the commit), `pending` (the note is not pushed yet),
- * `no-trailer` (the commit predates the trailer), `unreadable` (the commit or the note could not be read).
+ * `no-trailer` (the commit predates the trailer), `unreadable` (the commit or the note could not be read), `dropped` (the
+ * trunk repository's main no longer reaches the landing's commit: it was dropped from main, or main was rewritten; the
+ * check's `main` says how, whatever the note itself reads).
  */
-export type NoteCheckStatus = "intact" | "altered" | "missing" | "pending" | "no-trailer" | "unreadable";
+export type NoteCheckStatus = "intact" | "altered" | "missing" | "pending" | "no-trailer" | "unreadable" | "dropped";
+
+/**
+ * Whether a landing's commit is on main as the trunk repository's git endpoint advertises it: `on-main` (main reaches it),
+ * `dropped` (main no longer reaches it), `pending` (recorded and not published yet), `unchecked` (main's history could not
+ * be read far enough to tell).
+ */
+export type NoteMainStatus = "on-main" | "dropped" | "pending" | "unchecked";
+
+/** One landing's commit against the trunk repository's main. */
+export interface NoteMainCheck {
+  status: NoteMainStatus;
+  /** `dropped`: the commit on main that now carries this landing (its FT-Landing trailer), when one was found. */
+  replacedBy?: Sha;
+  /** `dropped` and `unchecked`: why, in words. */
+  detail?: string;
+}
+
+/**
+ * A landing commit's full-commit signature (FT_NOTE_KEY): the gpgsig header, an SSH signature over the whole commit object
+ * (its tree, parents, author, committer and message) by the trunk writer's published key. `signed` (it verifies),
+ * `bad-signature` (it does not, names a key that is not published, the key was not signing at the commit's time, or a
+ * newer commit lacks one an older landing has), `note-only` (none, and the commit's FT-Note-Signature is there: signed
+ * before full-commit signatures), `unsigned` (neither: it landed before signing).
+ */
+export type CommitSignatureStatus = "signed" | "bad-signature" | "note-only" | "unsigned";
+
+/** The full-commit signature check of one landing commit. */
+export interface CommitSignatureCheck {
+  status: CommitSignatureStatus;
+  /** The key the signature carries (16 hex digits of the SHA-256 of the raw public key). */
+  keyId?: string;
+  /** `bad-signature`: why, in words. */
+  detail?: string;
+}
 
 /**
  * A landing commit's FT-Note-Signature trailer (signed lineage notes, FT_NOTE_KEY) against the trunk writer's published
@@ -1367,6 +1403,10 @@ export interface NoteCheck {
   detail?: string;
   /** Whether the commit is signed by the trunk writer's published key; present where the deployment signs notes (FT_NOTE_KEY) and the commit could be read. */
   signature?: NoteSignatureCheck;
+  /** Whether the commit's full-commit signature (its gpgsig header) verifies; present where the deployment signs and the commit object could be read. */
+  commitSignature?: CommitSignatureCheck;
+  /** Whether the trunk repository's main still reaches the commit (absent from a trunk writer that does not check). */
+  main?: NoteMainCheck;
 }
 
 /** The newest landings' lineage notes on the trunk repository, checked against their commits. */
@@ -1378,6 +1418,10 @@ export interface NotesVerification {
   notes: NoteCheck[];
   counts: Partial<Record<NoteCheckStatus, number>>;
   at: Millis;
+  /** The main commit the landings were checked against (refs/heads/main as the trunk repository advertised it); null when it has none. */
+  mainTip?: Sha | null;
+  /** FT_NOTE_KEY is set but could not be used, so landings go out unsigned: why, in words. */
+  signingProblem?: string;
 }
 
 /**

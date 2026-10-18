@@ -32,6 +32,12 @@ import { sha256Hex } from "./digest.ts";
  * the switch, and deploy. A key that leaked is not retired but dropped: what it signed then reads as a bad signature.
  *
  * The same key also signs each commit the stock git way (trunk/gitsig.ts), so `git verify-commit` checks it too.
+ *
+ * Signing fails closed: once FT_NOTE_KEY's signer has loaded (its halves proven to match by one signature), a signature
+ * that fails at landing time throws SigningFailed, logged and counted every time, so that cycle lands nothing and its
+ * lanes retry; no commit goes out unsigned while the key is good. A secret that never loads (not such a key) leaves
+ * landings unsigned as before, since refusing them would stop every colony on a typo; noteKeyProblem says why, and the
+ * note checks (`ft verify`) report it as a failure.
  */
 
 /** The trailer key of a commit's signature. */
@@ -83,7 +89,28 @@ export async function keyIdOf(publicKey: Uint8Array): Promise<string> {
 
 /** The signer FT_NOTE_KEY last held, kept for the isolate's life: every landing cycle and every key read asks. */
 let loaded: { secret: string; signer: Promise<NoteSigner | null> } | null = null;
-let signFailureLogged = false;
+/** Why the secret being loaded was refused (refuse), read by noteKeyProblem. */
+let refused: string | null = null;
+/** Signatures that failed at landing time since this isolate started (SigningFailed). */
+let signFailures = 0;
+
+/**
+ * A signature that failed at landing time with a key that loaded: the commit is not built, so nothing lands unsigned.
+ * The landing cycle that hit it fails and its lanes retry; a system commit (an antibody, a revert) fails to its caller.
+ */
+export class SigningFailed extends Error {
+  constructor(what: string, cause: unknown) {
+    signFailures++;
+    super(`${what} was not signed, so it was held: signing failed (${cause instanceof Error ? cause.name : "unknown error"}); its changes are tried again (${signFailures} signing failure${signFailures === 1 ? "" : "s"} since this trunk writer started)`);
+    this.name = "SigningFailed";
+    console.error(this.message);
+  }
+}
+
+/** How many signatures failed at landing time since this isolate started (SigningFailed). */
+export function signingFailures(): number {
+  return signFailures;
+}
 
 /**
  * The signer FT_NOTE_KEY holds, or null when it is absent, or is not an Ed25519 private key as a JWK whose halves match
@@ -91,8 +118,21 @@ let signFailureLogged = false;
  */
 export function noteSigner(secret: unknown): Promise<NoteSigner | null> {
   if (typeof secret !== "string" || secret.trim() === "") return Promise.resolve(null);
-  if (loaded?.secret !== secret) loaded = { secret, signer: loadSigner(secret).catch(() => refuse("it could not be loaded")) };
+  if (loaded?.secret !== secret) {
+    refused = null;
+    loaded = { secret, signer: loadSigner(secret).catch(() => refuse("it could not be loaded")) };
+  }
   return loaded.signer;
+}
+
+/**
+ * Why FT_NOTE_KEY is set and still signs nothing (not an Ed25519 private key as a JWK whose halves match), as a sentence
+ * the note checks report; null when it is absent or signs. Never says the secret. Never throws.
+ */
+export async function noteKeyProblem(secret: unknown): Promise<string | null> {
+  if (typeof secret !== "string" || secret.trim() === "") return null;
+  if (await noteSigner(secret)) return null;
+  return `FT_NOTE_KEY is set but cannot sign (${refused ?? "it could not be loaded"}), so landings go out unsigned: set it to ${KEY_HELP} and deploy again`;
 }
 
 /** The id of the key that signs lineage notes (GET /api/about), or null when landings are not signed. */
@@ -153,8 +193,8 @@ export async function keysResponse(env: Pick<Env, "FT_NOTE_KEY" | "FT_NOTE_KEYS_
 
 /**
  * `message` with its commit's signature line appended, over the note's `digest`, the commit's `tree` and its `parents`;
- * the caller then adds the FT-Note trailer as the last line (withNoteDigest). Unchanged when `signer` is null, and when
- * signing fails (logged once; the landing goes on unsigned).
+ * the caller then adds the FT-Note trailer as the last line (withNoteDigest). Unchanged when `signer` is null. Throws
+ * SigningFailed when signing fails, so the commit is not built unsigned.
  */
 export async function withSignature(message: string, signer: Pick<NoteSigner, "key" | "sign"> | null, p: { digest: string; tree: Sha; parents: readonly Sha[] }): Promise<string> {
   if (!signer) return message;
@@ -162,9 +202,7 @@ export async function withSignature(message: string, signer: Pick<NoteSigner, "k
   try {
     signature = await signer.sign(signedText(p));
   } catch (e) {
-    if (!signFailureLogged) console.error(`a landing commit was left unsigned: signing its note failed (${e instanceof Error ? e.name : "unknown error"})`);
-    signFailureLogged = true;
-    return message;
+    throw new SigningFailed("a trunk commit's lineage note", e);
   }
   return `${message.replace(/\s+$/, "")}\n${SIGNATURE_TRAILER}: ed25519 ${signer.key.id} ${signature}`;
 }
@@ -280,8 +318,9 @@ async function importable(x: string): Promise<boolean> {
   }
 }
 
-/** Say once why FT_NOTE_KEY is not used (never the secret itself), and sign nothing. */
+/** Say once why FT_NOTE_KEY is not used (never the secret itself), keep why for noteKeyProblem, and sign nothing. */
 function refuse(reason: string): null {
+  refused = reason;
   console.error(`FT_NOTE_KEY is set but not used, so landings stay unsigned: ${reason}. It must be ${KEY_HELP}.`);
   return null;
 }

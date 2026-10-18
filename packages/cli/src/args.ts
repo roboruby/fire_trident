@@ -1115,9 +1115,15 @@ says whether FireTrident's own copy still matches. Where the deployment signs
 notes, each commit is also signed by a key it publishes at
 /.well-known/firetrident-keys.json (the current key and each retired one,
 each good for the commits made while it signed), unsigned (it landed before
-signing), or has a bad signature. Exits 1 when a note is altered or missing,
-or a signature is bad. The same commits carry a standard git signature by the
-same key, which stock git checks with no FireTrident code: save
+signing), or has a bad signature. The same commits carry a full-commit
+signature (a gpgsig header over the message, author and committer too), which
+is checked as well; commits built before 2026-10-17 were signed before
+full-commit signatures. Each landing is also checked against main as the
+trunk repository advertises it: one whose commit main no longer reaches (main
+rewritten or reset after it landed) is no longer on main. Exits 1 when a note
+is altered or missing, a landing is no longer on main, a signature is bad, or
+the deployment's key is set and cannot sign. Stock git checks the full-commit
+signature with no FireTrident code: save
 /.well-known/firetrident-allowed-signers to a file F, then run
   git -c gpg.format=ssh -c gpg.ssh.allowedSignersFile=F verify-commit <commit>
 
@@ -1131,7 +1137,11 @@ and skipped. --tamper copies the newest note in memory, changes one field (a
 decision's approver, else a blob id the change read) and requires the copy to
 fail against its commit; nothing is written to git. --colony pins the colony
 by its root commit, which ft status shows: a clone whose first commit is
-another fails. scripts/verify_note.mjs does the same with Node alone.
+another fails. Both compare against the clone's origin/main: --commit says
+whether it reaches the commit, and --all lists every commit the notes name
+that it no longer reaches. With --keys, a landing whose note signature
+verifies has its full-commit signature checked too. scripts/verify_note.mjs
+does the same with Node alone.
 
   --limit <n>           Landings to check, newest first (default 20, at most
                         200); with --all, commits to walk

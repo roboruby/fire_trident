@@ -3,6 +3,7 @@ import { createHash, createPublicKey, verify } from "node:crypto";
 // The published CLI ships without @fire_trident/core: answerable.ts is the CLI's copy of core's (test/package.test.ts).
 import { answerableLine, landingAnswerable } from "./answerable.ts";
 import { receiptLines } from "./receipt.ts";
+import { fullSignatureFailed, fullSignatureState, fullSignatureWords, mainLine, notesOffMain, olderFullSigned, readRawObjects, type FullSignature } from "./clonemain.ts";
 import type { Colors } from "./format.ts";
 
 /**
@@ -27,6 +28,9 @@ import type { Colors } from "./format.ts";
  * A note that checks out also says who answers for its landing (core/answerable.ts): a second line after the verdict,
  * "answerable: <who> (<why>)", and with --all the end of the landing's line.
  * Without --all, a note with review receipts then gets one "receipt:" line a decision (receipt.ts).
+ * Each check also compares against the clone's origin/main, and with --keys checks each signed landing's full-commit
+ * signature (clonemain.ts): one commit gets an "on origin/main" line, and --all lists every commit the notes name that
+ * origin/main no longer reaches.
  *
  * scripts/verify_note.mjs repeats this for a stock Node with no dependencies (it is downloaded alone, and carries its
  * own copy of the answerable rules); test/clonecheck-git.test.ts runs both on one repository and holds their output in
@@ -425,7 +429,9 @@ export function revertProblems(diff: readonly DiffEntry[], target: readonly Diff
   const before = new Map(target.map((t) => [t.path, t.oldBlob]));
   const problems: string[] = [];
   for (const d of diff) {
-    const mode = modeProblem(d);
+    // A file the reverted commit deleted comes back with the mode it had then; any other file as a landing writes it.
+    const was = target.find((t) => t.path === d.path);
+    const mode = d.oldMode === "000000" && was?.newMode === "000000" ? (d.newMode !== was.oldMode ? `${d.path}: put back with mode ${d.newMode}, where it had mode ${was.oldMode} before ${short(targetSha)}` : null) : modeProblem(d);
     if (mode) problems.push(mode);
     if (!before.has(d.path)) problems.push(`${d.path}: the commit ${wrote(d.newBlob)}, and ${short(targetSha)}, the commit it reverts, did not change it`);
     else if ((before.get(d.path) ?? null) !== d.newBlob) {
@@ -659,18 +665,30 @@ function checkOne(cmd: CloneVerify, git: Git, keys: unknown): CloneReport {
   const blob = notesList(git).get(c.sha);
   const raw = blob !== undefined ? (readObjects(git, [blob]).get(blob) ?? null) : null;
   let verdict: string = digest === null ? "no FT-Note trailer" : noteState(raw, digest);
+  let fullFailed = false;
   if (keys !== undefined && verdict === "intact" && digest !== null) {
     const s = signatureState({ message: c.message, digest, tree: c.tree, parents: c.parents, keys, time: c.time });
     verdict = s.status === "signed" ? `intact, ${signatureWords(s)}` : signatureWords(s);
+    // The full-commit signature (clonemain.ts), of a commit whose note signature verifies.
+    if (s.status === "signed") {
+      const full = fullSignatureState(readRawObjects(git, [c.sha]).get(c.sha) ?? Buffer.alloc(0), keys, true, windowWhy);
+      const older = full.status === "none" ? olderFullSigned(git, c.parents) : null;
+      verdict = `${verdict}, ${fullSignatureWords(full, older)}`;
+      fullFailed = fullSignatureFailed(full, older);
+    }
   }
   const ok = verdict === "intact" || verdict.startsWith("intact, signed by ");
-  const lines: CheckLine[] = [{ text: verdict, tone: ok ? "ok" : "fail" }];
-  let failed = !ok;
+  const lines: CheckLine[] = [{ text: verdict, tone: ok && !fullFailed ? "ok" : "fail" }];
+  let failed = !ok || fullFailed;
   // A note that checks out (signed, or landed before signing): who answers for its landing.
   const who = ok || verdict.startsWith("unsigned") ? answerableOf(raw) : null;
   if (who !== null) lines.push({ text: `answerable: ${who}`, tone: "ok" });
   // The review receipt (receipt.ts): each decision's head and what it was shown, for a note that checks out.
   if (who !== null) for (const text of receiptLines(JSON.parse(raw ?? "null"))) lines.push({ text, tone: "ok" });
+  // Whether origin/main still reaches the commit (clonemain.ts).
+  const main = mainLine(git, c.sha);
+  lines.push(main);
+  failed ||= main.tone === "fail";
   if (cmd.tamper) {
     const t = digest === null ? ({ ok: false, reason: "the commit carries no FT-Note trailer to check a copy against" } as TamperResult) : tamperNote(raw, digest, cmd.tamperField);
     const caught = t.ok && t.caught;
@@ -688,7 +706,7 @@ function checkOne(cmd: CloneVerify, git: Git, keys: unknown): CloneReport {
 /** What one walked commit is: skipped (not a landing, or landed before sealing), or a landing with its checks. */
 type Verdict =
   | { kind: "skip"; sha: string; unsealed: boolean }
-  | { kind: "landing"; sha: string; note: "intact" | "altered" | "missing"; signature: ReturnType<typeof signatureState> | null; paths: { text: string; matched: boolean | null } | null; who: string | null };
+  | { kind: "landing"; sha: string; note: "intact" | "altered" | "missing"; signature: ReturnType<typeof signatureState> | null; full: FullSignature | null; paths: { text: string; matched: boolean | null } | null; who: string | null };
 
 /** The whole first-parent chain: one line per landing, runs of other commits on one line, then the root, the tamper check and a summary. */
 function checkAll(cmd: CloneVerify, git: Git, keys: unknown): CloneReport {
@@ -702,15 +720,18 @@ function checkAll(cmd: CloneVerify, git: Git, keys: unknown): CloneReport {
     const b = notes.get(sha);
     return b === undefined ? null : (blobs.get(b) ?? null);
   };
+  // The commit objects' exact bytes, for the full-commit signatures (clonemain.ts).
+  const objects = keys !== undefined ? readRawObjects(git, sealed.map((c) => c.sha)) : new Map<string, Buffer>();
   const verdicts: Verdict[] = commits.map((c) => {
     const digest = trailerOf(c.message);
     if (digest === null) return { kind: "skip", sha: c.sha, unsealed: isLandingMessage(c.message) };
     const raw = rawOf(c.sha);
     const state = noteState(raw, digest);
     const signature = keys !== undefined && state === "intact" ? signatureState({ message: c.message, digest, tree: c.tree, parents: c.parents, keys, time: c.time }) : null;
+    const full = signature?.status === "signed" ? fullSignatureState(objects.get(c.sha) ?? Buffer.alloc(0), keys, true, windowWhy) : null;
     const paths = state === "intact" ? pathsVerdict(git, c, JSON.parse(raw as string) as Record<string, unknown>) : null;
     const who = state === "intact" && signature?.status !== "bad" ? answerableOf(raw) : null;
-    return { kind: "landing", sha: c.sha, note: state, signature, paths, who };
+    return { kind: "landing", sha: c.sha, note: state, signature, full, paths, who };
   });
   // An unsigned landing newer than a signed one was not built by a trunk writer that signs: it fails.
   const lateUnsigned = new Set<string>();
@@ -721,8 +742,17 @@ function checkAll(cmd: CloneVerify, git: Git, keys: unknown): CloneReport {
     if (v.signature.status === "signed") signedBelow = true;
     else if (v.signature.status === "unsigned" && signedBelow) lateUnsigned.add(v.sha);
   }
+  // A landing without a full-commit signature newer than one with it: the nearest such older landing, which it fails on.
+  const lateFull = new Map<string, string>();
+  let fullBelow: string | null = null;
+  for (let i = verdicts.length - 1; i >= 0; i--) {
+    const v = verdicts[i]!;
+    if (v.kind !== "landing" || !v.full) continue;
+    if (v.full.status === "signed") fullBelow = v.sha;
+    else if (v.full.status === "none" && fullBelow !== null) lateFull.set(v.sha, fullBelow);
+  }
   const lines: CheckLine[] = [];
-  const count = { landings: 0, intact: 0, signed: 0, matched: 0, failures: 0, skipped: 0, unsealed: 0 };
+  const count = { landings: 0, intact: 0, signed: 0, full: 0, matched: 0, failures: 0, skipped: 0, unsealed: 0 };
   for (let i = 0; i < verdicts.length; i++) {
     const v = verdicts[i]!;
     if (v.kind === "skip") {
@@ -747,6 +777,12 @@ function checkAll(cmd: CloneVerify, git: Git, keys: unknown): CloneReport {
       parts.push(lateUnsigned.has(v.sha) ? "unsigned, though an older landing is signed" : signatureWords(v.signature));
       if (lateUnsigned.has(v.sha)) failed = true;
     }
+    if (v.full) {
+      const older = lateFull.get(v.sha) ?? null;
+      if (v.full.status === "signed") count.full++;
+      parts.push(fullSignatureWords(v.full, older));
+      if (fullSignatureFailed(v.full, older)) failed = true;
+    }
     if (v.paths) {
       parts.push(v.paths.text);
       if (v.paths.matched === true) count.matched++;
@@ -755,6 +791,12 @@ function checkAll(cmd: CloneVerify, git: Git, keys: unknown): CloneReport {
     if (v.who !== null) parts.push(`answerable: ${v.who}`);
     if (failed) count.failures++;
     lines.push({ text: `${short(v.sha)}  ${parts.join(", ")}`, tone: failed ? "fail" : "ok" });
+  }
+  // Every commit the notes name against origin/main (clonemain.ts): a force-push leaves notes on commits main lost.
+  if (notes.size > 0) {
+    const main = notesOffMain(git, notes);
+    lines.push(...main.lines);
+    count.failures += main.off;
   }
   let failed = count.failures > 0;
   if (sealed.length > 0 && notes.size === 0) {
@@ -774,7 +816,7 @@ function checkAll(cmd: CloneVerify, git: Git, keys: unknown): CloneReport {
     failed ||= !caught;
   }
   const n = (x: number): string => x.toLocaleString("en-US");
-  const signed = keys !== undefined ? `${n(count.signed)} signed` : "signatures not checked (give --keys)";
+  const signed = keys !== undefined ? `${n(count.signed)} signed, ${n(count.full)} full commit${count.full === 1 ? "" : "s"} signed` : "signatures not checked (give --keys)";
   const skipped = [count.skipped > 0 ? `${n(count.skipped)} ${count.skipped === 1 ? "not a landing" : "not landings"}` : "", count.unsealed > 0 ? `${n(count.unsealed)} landed before notes were sealed` : ""].filter(Boolean).join(", ");
   lines.push({
     text: `checked ${n(count.landings)} landing${count.landings === 1 ? "" : "s"} in ${n(commits.length)} commit${commits.length === 1 ? "" : "s"}: ${n(count.intact)} intact, ${signed}, ${n(count.matched)} paths match, ${n(count.failures)} failure${count.failures === 1 ? "" : "s"}${skipped ? ` (skipped: ${skipped})` : ""}`,

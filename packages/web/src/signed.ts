@@ -29,10 +29,23 @@ export function signedSeal(check: unknown): NoteSeal | null {
   if (c.status !== "intact" || !sig) return null;
   const key = /^[0-9a-f]{16}$/.test(text(sig.keyId)) ? ` ${text(sig.keyId)}` : "";
   if (sig.status === "signed") {
+    // The full-commit signature (its gpgsig header), over the message, author and committer the note signature leaves out.
+    const full = (check as { commitSignature?: unknown }).commitSignature;
+    const whole = full && typeof full === "object" ? (full as { status?: unknown; detail?: unknown }) : null;
+    if (whole?.status === "bad-signature") {
+      const why = text(whole.detail);
+      return {
+        state: "altered",
+        label: "Commit signature does not match",
+        detail: `The note matches its commit's FT-Note trailer and its note signature checks out, but the commit's full-commit signature does not${why ? `: ${why}` : ""}. Its message, author or committer was changed after it landed, or FireTrident's key changed.`,
+      };
+    }
+    const scope = whole?.status === "signed" ? "the whole commit (its message, author and committer too) is signed" : "the commit is signed";
+    const before = whole?.status === "note-only" ? " It was signed before full-commit signatures, which cover its message, author and committer too." : "";
     return {
       state: "intact",
       label: "Note intact and signed",
-      detail: `The note on refs/notes/firetrident hashes to the FT-Note trailer its commit carries, and the commit is signed by FireTrident's key${key}, published at /.well-known/firetrident-keys.json: nobody rewrote the note, or the history it sits in, after it landed.`,
+      detail: `The note on refs/notes/firetrident hashes to the FT-Note trailer its commit carries, and ${scope} by FireTrident's key${key}, published at /.well-known/firetrident-keys.json: nobody rewrote the note, or the history it sits in, after it landed.${before}`,
     };
   }
   if (sig.status === "bad-signature") {

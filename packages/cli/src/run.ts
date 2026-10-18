@@ -66,6 +66,7 @@ import { autonomyLine, formatImmune } from "./immune.ts";
 import { decidesLines, decidesRequest } from "./gateline.ts";
 import { trunkHealthLines } from "./trunkhealth.ts";
 import { signatureFailed } from "./signatures.ts";
+import { mainChecksFailed } from "./verifymain.ts";
 import { checkClone, colorLines, keysReader, nodeGit, rootRow, type CloneVerify } from "./clonecheck.ts";
 import { runCensus } from "./censusgit.ts";
 import { firstLandings, readRows, testsRequest } from "./tests.ts";
@@ -357,8 +358,8 @@ async function execute(cmd: Command, ctx: Ctx): Promise<number> {
       const res = await send<unknown>(ctx.http, req, 60_000);
       if (ctx.flags.json) printJson(ctx, res);
       else io.stdout(formatVerify(cmd.colony, res, c, io.now()));
-      // A bad signature (signatures.ts) fails it too.
-      return verifyFailed(res) || signatureFailed(res) ? 1 : 0;
+      // A bad signature (signatures.ts), a landing off main, a bad full-commit signature or an unusable key (verifymain.ts) fail it too.
+      return verifyFailed(res) || signatureFailed(res) || mainChecksFailed(res) ? 1 : 0;
     }
     case "review-list": {
       const snapReq = planRequest({ name: "status", colony: cmd.colony }, ctx.by) as ApiRequest;

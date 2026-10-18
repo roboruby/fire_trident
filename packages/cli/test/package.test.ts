@@ -123,6 +123,6 @@ describe("the published package", () => {
     await repo.landing({ "src/a.ts": text }, { landingId: "lnd_1", proposals: [proposal({ id: "prp_1", writeSet: [{ path: "src/a.ts", blob: repo.blob(text) }], decisions: [{ kind: "triage", layer: "human", p: 1, action: "approve", by: "matt" }] })] });
     const verified = ft(["verify", "--dir", repo.dir]);
     expect(verified.stderr).toBe("");
-    expect(verified).toMatchObject({ status: 0, stdout: "intact\nanswerable: matt (approved this change)\n" });
+    expect(verified).toMatchObject({ status: 0, stdout: "intact\nanswerable: matt (approved this change)\non origin/main\n" });
   }, 60_000);
 });

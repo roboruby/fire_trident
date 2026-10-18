@@ -1,18 +1,21 @@
 import type { Id, Landing, LineageNote, Path, Sha } from "@fire_trident/core";
 import { importsOf } from "@fire_trident/core";
 import { isRelative, resolveModule, specifierTarget } from "../decide/mechanical.ts";
+import type { ObjectSource } from "./verify.ts";
 
 /**
  * Undoing a landing (`ft revert`). A revert is a person's decision, written as a new commit on
  * current main that puts every path the landing wrote back to the blob it had before. It is
  * guarded like any landing: a path that no longer holds the blob the landing produced has had work
  * land on top of it, and undoing would overwrite that work, so the revert is refused with the paths
- * and the landings that moved them. A file the landing created is deleted by its revert, so the
- * revert is refused too while other trunk files import it (resolved as the decide stage resolves
- * relative imports). A revert can also undo one proposal of a landing (a landing is one lane batch,
- * and the write sets of its proposals never overlap): then only the paths that proposal wrote go
- * back, and the same guards apply to them. The planning functions are pure; runRevert reads trunk
- * and commits through a RevertTrunk (TrunkDO's tables and serial chain, or a stand-in in tests).
+ * and the landings that moved them. Each file goes back by blob id, byte for byte (text or not), and
+ * a file the landing deleted comes back with the mode it had (an executable stays executable). A
+ * file the landing created is deleted by its revert, so the revert is refused too while other trunk
+ * files import it (resolved as the decide stage resolves relative imports). A revert can also undo
+ * one proposal of a landing (a landing is one lane batch, and the write sets of its proposals never
+ * overlap): then only the paths that proposal wrote go back, and the same guards apply to them. The
+ * planning functions are pure; runRevert reads trunk and commits through a RevertTrunk (TrunkDO's
+ * tables and serial chain, or a stand-in in tests).
  */
 
 /** One path of a landing as the trunk writer recorded it (null: absent). */
@@ -147,9 +150,32 @@ export function proposalWrites(note: unknown, proposalId: Id): { intentId: Id | 
   return null;
 }
 
-/** One file of a revert commit: the text of the blob it goes back to (null: delete it), written only while trunk still holds `expect`. */
+/**
+ * One file of a revert commit: the bytes of the blob it goes back to (null: delete it), written only while trunk still
+ * holds `expect`; `mode`, for a file the landing deleted, the mode it had before (absent: as trunk has it, else 100644).
+ */
 export interface RevertFile extends Restore {
-  content: string | null;
+  content: Uint8Array | null;
+  mode?: string;
+}
+
+/** The modes a revert puts a deleted file back with: a file, an executable file, a symbolic link. */
+export const RESTORABLE_MODES: ReadonlySet<string> = new Set(["100644", "100755", "120000"]);
+
+/** The mode `path` has in `commit` (100644, 100755, 120000, ...), read through `src`; null when the commit, a tree or the path cannot be found. */
+export async function modeAt(src: ObjectSource, commit: Sha, path: Path): Promise<string | null> {
+  const c = await src.commit(commit);
+  if (!c) return null;
+  const parts = path.split("/");
+  let tree = c.tree;
+  for (let i = 0; i < parts.length; i++) {
+    const entry = (await src.tree(tree))?.find((e) => e.name === parts[i]);
+    if (!entry) return null;
+    if (i === parts.length - 1) return entry.type === "tree" || entry.type === "commit" || entry.type === "gitlink" ? null : (entry.mode ?? null);
+    if (entry.type !== "tree") return null;
+    tree = entry.oid;
+  }
+  return null;
 }
 
 /** The revert commit the trunk writer is asked to make. */
@@ -165,6 +191,8 @@ export interface RevertWriter {
   landing(ref: string): Landing | null;
   /** A blob's bytes, or null when it cannot be read. */
   read(blob: Sha): Promise<Uint8Array | null>;
+  /** The mode `path` had in `commit`, or null when it cannot be read (absent: deleted files come back as 100644). */
+  modeAt?(commit: Sha, path: Path): Promise<string | null>;
   /** Run `fn` on the trunk writer's serial chain: no landing cycle runs while it does. */
   serial<T>(fn: () => Promise<T>): Promise<T>;
   /** Write and push the commit now (call inside `serial`); `stale` when a file no longer holds its `expect`, and nothing was written. */
@@ -194,6 +222,7 @@ export function sqlRevertTrunk(sql: SqlStorage, w: RevertWriter): RevertTrunk {
   return {
     landing: (ref) => w.landing(ref),
     read: (blob) => w.read(blob),
+    ...(w.modeAt ? { modeAt: (commit: Sha, path: Path) => w.modeAt!(commit, path) } : {}),
     serial: (fn) => w.serial(fn),
     commitNow: (commit) => w.commitNow(commit),
     notesSoon: () => w.notesSoon(),
@@ -231,8 +260,9 @@ export function sqlRevertTrunk(sql: SqlStorage, w: RevertWriter): RevertTrunk {
  * write set in the landing's lineage note names; every guard applies to the paths being undone.
  * Refused (409) while one of them holds other work than the landing produced, or while trunk files
  * import a file the revert would delete; both are checked again on the serial chain right before the
- * commit. 422 when a file to restore is not UTF-8 text or the import check would read too much; 404
- * for an unknown landing, or a proposal that did not land in it.
+ * commit. 422 when a file to restore cannot be read (or its mode, for one the landing deleted) or
+ * the import check would read too much; 404 for an unknown landing, or a proposal that did not land
+ * in it.
  */
 export async function runRevert(trunk: RevertTrunk, ref: string, p: { by: string; reason: string; proposal?: Id }): Promise<RevertResult> {
   const target = trunk.landing(String(ref ?? "").trim());
@@ -300,8 +330,9 @@ export async function runRevert(trunk: RevertTrunk, ref: string, p: { by: string
     if (refused) return refused;
   }
 
+  // Each file goes back by its blob id: the bytes are the blob's own, so binary files and text in any encoding come back
+  // exactly. A file the landing deleted comes back with the mode it had in the landing's parent.
   const files: RevertFile[] = [];
-  const strict = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
   for (const r of plan.restore) {
     if (r.blob === null) {
       files.push({ ...r, content: null });
@@ -309,13 +340,14 @@ export async function runRevert(trunk: RevertTrunk, ref: string, p: { by: string
     }
     const bytes = await trunk.read(r.blob);
     if (bytes === null) return { ok: false, status: 422, error: `cannot read ${r.path} as it was before ${target.id}` };
-    let content: string;
-    try {
-      content = strict.decode(bytes);
-    } catch {
-      return { ok: false, status: 422, error: `${r.path} is not UTF-8 text; revert it by hand` };
+    let mode: string | undefined;
+    if (r.expect === null && trunk.modeAt) {
+      const was = await trunk.modeAt(target.parentSha, r.path).catch(() => null);
+      if (was === null) return { ok: false, status: 422, error: `cannot read the mode ${r.path} had before ${target.id}; revert it by hand` };
+      if (!RESTORABLE_MODES.has(was)) return { ok: false, status: 422, error: `${r.path} had mode ${was} before ${target.id}, which a revert does not put back; revert it by hand` };
+      mode = was;
     }
-    files.push({ ...r, content });
+    files.push({ ...r, content: bytes, ...(mode ? { mode } : {}) });
   }
   const why = p.reason.replace(/\s+/g, " ").trim().slice(0, 500);
   const of = undone ? `${undone.id} of ${target.trunkSha}` : target.trunkSha;

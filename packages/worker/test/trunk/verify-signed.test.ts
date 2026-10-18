@@ -164,11 +164,16 @@ describe.skipIf(!hasGit)("scripts/verify_note.mjs with stock git", () => {
     const dir = NODE.mkdtempSync(NODE.join(NODE.tmpdir(), "ft-signed-"));
     const keysDir = NODE.mkdtempSync(NODE.join(NODE.tmpdir(), "ft-keys-"));
     const env = { ...NODE.process.env, GIT_CONFIG_NOSYSTEM: "1", HOME: dir };
-    /** The script run in the clone: its exit code and what it printed (the verdict, then the answerable line of a note that checks out). */
+    /**
+     * The script run in the clone: its exit code and what it printed (the verdict, then the answerable line of a note
+     * that checks out, then the main line: this repository has no origin/main to compare against).
+     */
     const run = (...args: string[]): Promise<{ code: number; out: string; answerable?: string; err: string }> =>
       new Promise((resolve) =>
         NODE.execFile(NODE.process.execPath, [SCRIPT, ...args], { cwd: dir, env }, (e, stdout, stderr) => {
-          const [out = "", answerable, ...rest] = String(stdout).trim().split("\n");
+          const [out = "", ...more] = String(stdout).trim().split("\n");
+          const answerable = more.find((l) => l.startsWith("answerable: "));
+          const rest = more.filter((l) => l !== answerable && l !== "main not compared: this clone has no origin/main");
           expect(rest).toEqual([]);
           resolve({ code: e ? (typeof e.code === "number" ? e.code : -1) : 0, out, ...(answerable !== undefined ? { answerable } : {}), err: String(stderr).trim() });
         }),
@@ -198,8 +203,9 @@ describe.skipIf(!hasGit)("scripts/verify_note.mjs with stock git", () => {
       expect(await run(c1)).toMatchObject({ code: 0, out: "intact" });
       expect(await run(c0)).toMatchObject({ code: 1, out: "no FT-Note trailer" });
       // With --keys, before or after the commit.
-      expect(await run(c2, "--keys", keysFile)).toMatchObject({ code: 0, out: `intact, signed by ${k.signer.key.id}` });
-      expect(await run("--keys", keysFile, c2)).toMatchObject({ code: 0, out: `intact, signed by ${k.signer.key.id}` });
+      // These commits carry no gpgsig header: signed before full-commit signatures, which is not a failure.
+      expect(await run(c2, "--keys", keysFile)).toMatchObject({ code: 0, out: `intact, signed by ${k.signer.key.id}, signed before full-commit signatures` });
+      expect(await run("--keys", keysFile, c2)).toMatchObject({ code: 0, out: `intact, signed by ${k.signer.key.id}, signed before full-commit signatures` });
       expect(await run(c1, "--keys", keysFile)).toMatchObject({ code: 1, out: "unsigned (landed before signing)" });
       expect(await run(c0, "--keys", keysFile)).toMatchObject({ code: 1, out: "no FT-Note trailer" });
       expect(await run(c2, "--keys", otherFile)).toMatchObject({ code: 1, out: "bad signature" });
@@ -218,7 +224,7 @@ describe.skipIf(!hasGit)("scripts/verify_note.mjs with stock git", () => {
       await new Promise<void>((go) => server.listen(0, "127.0.0.1", go));
       try {
         const base = `http://127.0.0.1:${server.address().port}`;
-        expect(await run(c2, "--keys", `${base}/.well-known/firetrident-keys.json`)).toMatchObject({ code: 0, out: `intact, signed by ${k.signer.key.id}` });
+        expect(await run(c2, "--keys", `${base}/.well-known/firetrident-keys.json`)).toMatchObject({ code: 0, out: `intact, signed by ${k.signer.key.id}, signed before full-commit signatures` });
         const gone = await run(c2, "--keys", `${base}/nothing.json`);
         expect(gone).toMatchObject({ code: 2, out: "" });
         expect(gone.err).toMatch(/^the keys at .* could not be read: HTTP 404$/);
@@ -251,7 +257,8 @@ describe.skipIf(!hasGit)("scripts/verify_note.mjs with stock git", () => {
       NODE.rmSync(dir, { recursive: true, force: true });
       NODE.rmSync(keysDir, { recursive: true, force: true });
     }
-  });
+    // About twenty runs of the script, each spawning git a few times: room for a loaded machine.
+  }, 30_000);
 });
 
 describe.skipIf(!hasGit)("scripts/verify_note.mjs says who answers for a note that checks out", () => {
