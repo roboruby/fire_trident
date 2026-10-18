@@ -500,7 +500,7 @@ function sameOrigin(origin: string, url: URL): boolean {
 }
 
 /** The body as text, or null when it is over `max` bytes (by Content-Length, or while it streams in). */
-async function readCapped(req: Request, max: number): Promise<string | null> {
+export async function readCapped(req: Request, max: number): Promise<string | null> {
   const declared = Number(req.headers.get("content-length") ?? "");
   if (Number.isFinite(declared) && declared > max) return null;
   if (!req.body) return "";
