@@ -40,5 +40,7 @@ Below, four questions a git platform for agents must answer, and one more, each 
 
 - [Which build is serving](https://firetrident.com/api/about): the commit, the Worker version and the flags that are on, as JSON.
 - [Architecture](https://github.com/roboruby/fire_trident/blob/main/docs/ARCHITECTURE.md): how the colony, the lanes, the trunk writer, review and certification work.
-- [Results](https://github.com/roboruby/fire_trident/tree/main/packages/bench/results): every run, with logs and evidence.
-- [README](https://github.com/roboruby/fire_trident#readme): what FireTrident does, how to run it, and its honest limits.
+- [Result files](https://github.com/roboruby/fire_trident/tree/main/packages/bench/results): every run, with logs and evidence.
+- [README](https://github.com/roboruby/fire_trident#readme): what FireTrident is, its headline result, and how to try it and run it.
+- [Results](https://github.com/roboruby/fire_trident/blob/main/docs/results.md): every run with its logs, what each one measured, and the honest limits.
+- [Mechanisms](https://github.com/roboruby/fire_trident/blob/main/docs/mechanisms.md): what each mechanism buys and costs, and every flag in the stage and production configs.

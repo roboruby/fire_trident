@@ -8,15 +8,16 @@ import { REPO } from "../src/landing/questions.ts";
 
 /**
  * The "with and without" panel of the landing page: every row complete (a mechanism, both values, where it was
- * measured and its run), every number copied from that mechanism's row of the README's ledger, and the panel drawn
+ * measured and its run), every number copied from that mechanism's row of the ledger in docs/mechanisms.md, and the panel drawn
  * right after the results strip.
  */
 
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
-const readme = read("../../../README.md");
+const mechanisms = read("../../../docs/mechanisms.md");
 
-/** What README.md's ledger says: the section "What each mechanism buys", up to the next section. */
-const ledger = readme.slice(readme.indexOf("## What each mechanism buys"), readme.indexOf("## Watch a finished run"));
+/** What the ledger says: the section "What each mechanism buys" of docs/mechanisms.md, up to the next section. */
+const ledgerAt = mechanisms.indexOf("## What each mechanism buys");
+const ledger = mechanisms.slice(ledgerAt, mechanisms.indexOf("\n## ", ledgerAt + 1));
 
 /** The ledger's table rows, without its header. */
 const ledgerRows = ledger.split("\n").filter((l) => l.startsWith("| ") && !l.startsWith("| Mechanism") && !l.startsWith("| ---"));
@@ -53,13 +54,13 @@ describe("the panel's rows", () => {
     }
   });
 
-  it("are copied from the README's ledger: its row has the same run, label and flag, and every number of the panel's row", () => {
+  it("are copied from the ledger: its row has the same run, label and flag, and every number of the panel's row", () => {
     expect(ledgerRows.length).toBeGreaterThanOrEqual(COMPARED.length);
     for (const r of COMPARED) {
       const rows = ledgerRows.filter((l) => l.startsWith(`| ${r.mechanism}`));
       expect(rows, r.mechanism).toHaveLength(1);
       const row = rows[0] ?? "";
-      expect(row, r.id).toContain(`(packages/bench/results/${r.folder}/)`);
+      expect(row, r.id).toContain(`(../packages/bench/results/${r.folder}/)`);
       expect(row, r.id).toContain(`**${r.label.toUpperCase()}**`);
       if (r.flag !== null) expect(row, r.id).toContain(`\`${r.flag}\``);
       for (const n of numbers(`${r.metric} ${r.off} ${r.on} ${r.note}`)) expect(row, `${r.id}: ${n}`).toContain(n);
@@ -101,8 +102,9 @@ describe("the panel", () => {
     expect(out).toContain('<span class="cm-flag">built in</span>');
   });
 
-  it("links to the README's ledger, which holds every mechanism", () => {
-    expect(LEDGER_HREF).toBe(`${REPO}#what-each-mechanism-buys`);
+  it("links to the ledger in docs/mechanisms.md, which holds every mechanism", () => {
+    expect(ledgerAt).toBeGreaterThan(0);
+    expect(LEDGER_HREF).toBe(`${REPO}/blob/main/docs/mechanisms.md#what-each-mechanism-buys`);
     expect(out).toContain(`href="${LEDGER_HREF}" target="_blank" rel="noreferrer"`);
     expect(ledgerRows.length).toBeGreaterThan(COMPARED.length);
   });

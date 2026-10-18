@@ -4,7 +4,7 @@ import "./judges.css";
 
 /**
  * "How FireTrident answers the judging axes": five rows, each the mechanism in one sentence and a live replay, an
- * in-browser scene or a command that checks it (axes.ts; the README carries the same table).
+ * in-browser scene or a command that checks it (axes.ts; docs/mechanisms.md carries the same table).
  */
 export function Axes() {
   return (

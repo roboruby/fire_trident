@@ -1,8 +1,8 @@
 /**
  * The questions a git platform for agents must answer, each with one sentence, one measured number and one link. The
  * landing page shows them; public/llms.txt, public/start.md (what GET / answers an agent that asks for markdown), the
- * static summary in index.html and the top of the README carry the same sentences word for word
- * (test/front-door.test.ts checks). Every number comes from the README's results.
+ * static summary in index.html and docs/results.md carry the same sentences word for word
+ * (test/front-door.test.ts checks). Every number comes from the runs in docs/results.md.
  */
 
 /** The public site. */

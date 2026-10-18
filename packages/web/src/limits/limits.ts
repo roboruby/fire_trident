@@ -3,7 +3,7 @@ import { SITE } from "../landing/questions.ts";
 
 /**
  * The limits page (/limits, Limits.tsx): what you cannot do with FireTrident, why, what to do instead, and its status,
- * drawn from the README's honest limits. The rows where a team's current forge does better come first. Each row links
+ * drawn from the honest limits in docs/results.md. The rows where a team's current forge does better come first. Each row links
  * a page of the site or gives a command that shows the limit or its workaround. Then what building on Artifacts taught
  * us (spike/RESULTS.md), each finding with the workaround the code uses.
  */
@@ -44,7 +44,7 @@ export const GROUPS: ReadonlyArray<{ id: Limit["group"]; title: string; lede: st
   {
     id: "colony",
     title: "Where a colony stops",
-    lede: "From the README's honest limits: what the coordination, review and certification do not cover, measured where it could be.",
+    lede: "From the honest limits in the docs: what the coordination, review and certification do not cover, measured where it could be.",
   },
 ];
 
@@ -208,7 +208,7 @@ export const LIMITS: readonly Limit[] = [
     group: "colony",
     cannot: "Point to a model-driven run in which agents' changes contended at landing.",
     why: "In every model-driven run so far no change came back stale, and on the Hono rule each intent edits its own file; contest mode, where three in-platform agents raced one intent, picks one change before any lands. Contention at landing was measured with synthetic or scripted agents the script placed (the cascade, import-name revalidation, text merge, goal conflicts) and in the simulator.",
-    instead: "Read each headline run's models, review setting and overlap in the README before comparing numbers, and measure a colony's own code sharing and returns with scripts/coordination.rb.",
+    instead: "Read each headline run's models, review setting and overlap in docs/results.md before comparing numbers, and measure a colony's own code sharing and returns with scripts/coordination.rb.",
     status: "planned",
     check: { label: "A run's code sharing and returns, from its public record", command: `ruby scripts/coordination.rb --url ${SITE} --colony hono` },
   },

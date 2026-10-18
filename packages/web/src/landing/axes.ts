@@ -2,7 +2,7 @@ import { SITE } from "./questions.ts";
 
 /**
  * The landing page's table of how FireTrident answers each judging axis (Axes.tsx), the pitch line, and the commands
- * that take a colony's certified work back to the team's forge (TakeBack.tsx). The README carries the same table:
+ * that take a colony's certified work back to the team's forge (TakeBack.tsx). docs/mechanisms.md carries the same table:
  * axesMarkdown() writes it, word for word, with links to the public site.
  */
 
@@ -47,13 +47,13 @@ export const AXES: readonly Axis[] = [
     id: "context",
     axis: "Context",
     mechanism:
-      "Lineage notes: every landed commit carries a JSON note in git (the intent, the rule and who approved it, the agent and its model, every decision, the files read and written), sealed by its SHA-256 in the commit's FT-Note trailer.",
+      "Lineage notes: every landed commit carries a JSON note in git (the intent, the rule and who approved it, the agent and its model, every decision, the files read and written), sealed by its SHA-256 in the commit's FT-Note trailer and signed.",
     check: { label: "Read the newest note with stock git", command: NOTES_COMMAND },
   },
   {
     id: "review",
     axis: "Review",
-    mechanism: "Deterministic proof first, then decision models, a second model from another family and a person, each only when the cheaper layer is unsure.",
+    mechanism: "Deterministic proof first, then decision models, a second model from another family and a person, each only when the cheaper layer is unsure; every landing names the person answerable for it, or says no person.",
     check: { label: "See a proof-path landing", href: "/c/hono?path=src/index.ts" },
   },
   {
@@ -65,12 +65,12 @@ export const AXES: readonly Axis[] = [
   },
 ];
 
-/** A site path as a full URL on the public site (for the README). */
+/** A site path as a full URL on the public site (for docs/mechanisms.md). */
 export function siteUrl(href: string): string {
   return href.startsWith("/") ? `${SITE}${href}` : href;
 }
 
-/** The README's version of the table, in Markdown, with full links. */
+/** The docs' version of the table (docs/mechanisms.md), in Markdown, with full links. */
 export function axesMarkdown(): string {
   const rows = AXES.map((a) => {
     const check = "href" in a.check ? `[${a.check.label}](${siteUrl(a.check.href)})` : `${a.check.label}: \`${a.check.command}\``;

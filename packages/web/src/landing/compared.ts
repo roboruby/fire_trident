@@ -2,7 +2,7 @@ import { REPO } from "./questions.ts";
 
 /**
  * The landing page's "with and without" panel: a few mechanisms, each measured with it off and on, chosen from the
- * README's ledger ("What each mechanism buys"), which holds every mechanism with its source. Every number here is
+ * ledger in docs/mechanisms.md ("What each mechanism buys"), which holds every mechanism with its source. Every number here is
  * copied from that mechanism's row of the ledger (test/compared.test.ts checks), and every row links to the folder of
  * packages/bench/results that holds its run.
  */
@@ -17,7 +17,7 @@ export type Verdict = "earns" | "trade" | "costs";
 export interface Comparison {
   /** The anchor on the landing page. */
   id: string;
-  /** The mechanism, named as its row of the README's ledger begins. */
+  /** The mechanism, named as its row of the ledger begins. */
   mechanism: string;
   /** The flag that switches it, or null for a mechanism that is always on. */
   flag: string | null;
@@ -35,8 +35,8 @@ export interface Comparison {
   folder: string;
 }
 
-/** The README's ledger, every mechanism with its source. */
-export const LEDGER_HREF = `${REPO}#what-each-mechanism-buys`;
+/** The ledger in docs/mechanisms.md, every mechanism with its source. */
+export const LEDGER_HREF = `${REPO}/blob/main/docs/mechanisms.md#what-each-mechanism-buys`;
 
 /** A results folder on GitHub. */
 export function resultsHref(folder: string): string {

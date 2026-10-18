@@ -108,8 +108,8 @@ export function Limits() {
         </div>
         <nav className="l-foot-links">
           <a href="/">Home</a>
-          <a href={`${REPO}#honest-limits`} target="_blank" rel="noreferrer">
-            The README&apos;s honest limits
+          <a href={`${REPO}/blob/main/docs/results.md#honest-limits`} target="_blank" rel="noreferrer">
+            The honest limits
           </a>
           <a href="/c/hono?replay=1">Replay the Hono run</a>
         </nav>
