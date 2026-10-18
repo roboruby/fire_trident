@@ -93,9 +93,10 @@ import { notePriority } from "../colony/priority.ts";
 import { issueRefsMessage, noteExternal } from "../colony/issues.ts";
 import { returnHunksEnabled, type ReturnHunksAnswer, type ReturnHunksQuery } from "../colony/returnhunks.ts";
 import { quoteReturns, sqlQuoteSource } from "./quote.ts";
-import { DIRECTION_TABLE, FENCE_WAIT_MS, directionReturns, fenceAnswer, mergeDirection, parseDirection, pushDelayMs, settlesWithin, type FenceAnswer } from "./direction.ts";
+import { DIRECTION_TABLE, FENCE_WAIT_MS, fenceAnswer, mergeDirection, parseDirection, pushDelayMs, settlesWithin, type FenceAnswer } from "./direction.ts";
+import { fenceCheck, type FenceCheck } from "./fencecheck.ts";
 import { PUBLISH_BOUND, addedObjects, asyncPublishEnabled, publishBackoffMs, publishChain, settlePublish, withinBound, type PublishBound, type RecordedCommit } from "./publish.ts";
-import { PROTECT_TABLE, keepProtect, protectReturns } from "./protect.ts";
+import { PROTECT_TABLE, keepProtect, protectCheck } from "./protect.ts";
 import { keepHolds, mergeLocks } from "./mergelock.ts";
 import { cyclePause, keepPause } from "./pause.ts";
 import { cycleAuthor, personCredits } from "./commitauthor.ts";
@@ -246,6 +247,10 @@ export interface CycleStat {
   revalidated?: number;
   /** Proposals that landed with files they wrote on an older version merged line by line with the newer one (text merge). */
   merged?: number;
+  /** Proposals held for the next cycle because the direction check could not read their record (trunk/fencecheck.ts). */
+  directionUnchecked?: number;
+  /** Proposals held for the next cycle because the protected-path check could not read the colony's protected globs (trunk/protect.ts). */
+  protectUnchecked?: number;
   /** Proposals built before a recipe landed whose written files the recipe rewrote as they landed (trunk/recipes.ts). */
   commuted?: number;
   /** Of those, the ones with a file merged by the insertion rule (FT_MERGE_INSERTIONS: both sides only inserted lines at one place). */
@@ -1404,6 +1409,10 @@ export class TrunkDO extends DurableObject<Env> {
       ...(stat.alreadyOnTrunk ? [metric("alreadyOnTrunk", stat.alreadyOnTrunk)] : []),
       // The export guard (FT_EXPORT_GUARD): checks of changed script files it left undone (only cycles that left one).
       ...(stat.exportsUncovered ? [metric("exportsUncovered", stat.exportsUncovered)] : []),
+      // The direction fence (trunk/fencecheck.ts): changes held because their record could not be read; the colony counts them.
+      ...(stat.directionUnchecked ? [metric("directionUnchecked", stat.directionUnchecked)] : []),
+      // The protected-path check (trunk/protect.ts): changes held because the protected globs could not be read; counted the same way.
+      ...(stat.protectUnchecked ? [metric("protectUnchecked", stat.protectUnchecked)] : []),
     ];
     const stub = ns.get(ns.idFromName(colonyId)) as unknown as { emit(e: unknown[]): Promise<unknown> };
     await stub.emit(events);
@@ -1607,18 +1616,33 @@ export class TrunkDO extends DurableObject<Env> {
 
     // 2b. Direction, the fence's commit point (see direction()): a change whose intent was withdrawn, or amended
     //     substantively after the revision it was built on, goes back before anything is built. One read per cycle.
-    const redirected = this.redirected(live.map((e) => e.p), new Set(prior.keys()));
+    const fence = this.redirected(live.map((e) => e.p), new Set(prior.keys()));
+    const redirected = fence.returned;
     if (redirected.size > 0) {
       for (const [id, reason] of redirected) outcome.set(id, { kind: "returned", reason });
       live = live.filter((e) => !redirected.has(e.p.id));
     }
+    //     A change the check could not judge (its record unreadable) waits for the next cycle, neither landed nor sent back.
+    if (fence.held.size > 0) {
+      for (const [id, reason] of fence.held) outcome.set(id, { kind: "deferred", reason });
+      live = live.filter((e) => !fence.held.has(e.p.id));
+      stat.directionUnchecked = fence.held.size;
+    }
 
     // 2c. Protected paths (trunk/protect.ts), the same commit point: a change that writes a path protected after a person
     //     last approved it (or that none approved) goes back to a person before anything is built. One read per cycle.
-    const guarded = protectReturns(this.sql, live.map((e) => ({ p: e.p, ctx: reqs[e.request]?.ctx })), Date.now());
+    const protection = protectCheck(this.sql, live.map((e) => ({ p: e.p, ctx: reqs[e.request]?.ctx })), Date.now());
+    const guarded = protection.returned;
     if (guarded.size > 0) {
       for (const [id, reason] of guarded) outcome.set(id, { kind: "returned", reason });
       live = live.filter((e) => !guarded.has(e.p.id));
+    }
+    //     A check that cannot read the protected globs holds every change for the next cycle, neither landed nor sent to a person.
+    if (protection.held.size > 0) {
+      console.error(`protection check: ${protection.held.size} change(s) wait for the next cycle: ${protection.problem}`);
+      for (const [id, reason] of protection.held) outcome.set(id, { kind: "deferred", reason });
+      live = live.filter((e) => !protection.held.has(e.p.id));
+      stat.protectUnchecked = protection.held.size;
     }
 
     // 2d. Pause (trunk/pause.ts), the same commit point: while a person has paused the colony's agents (or the
@@ -2070,30 +2094,15 @@ export class TrunkDO extends DurableObject<Env> {
   }
 
   /**
-   * One cycle's direction check (the fence's commit point): the reason each change whose direction went stale
-   * goes back, by proposal id, from one read of the fence's record; one that already landed (`landed`) stays
-   * landed. A read that fails is logged and stops nothing, as before the fence existed (the lane checked
-   * direction just before it handed the batch over).
+   * One cycle's direction check (the fence's commit point, trunk/fencecheck.ts): the reason each change whose
+   * direction went stale goes back, by proposal id, from one read of the fence's record; one that already landed
+   * (`landed`) stays landed. It fails closed: when the read fails, or an intent's row cannot be parsed, the changes it
+   * could not judge are held for the next cycle (logged here, counted by the cycle), never landed unchecked.
    */
-  private redirected(proposals: Proposal[], landed: ReadonlySet<Id>): Map<Id, string> {
-    if (proposals.length === 0) return new Map();
-    try {
-      const direction = new Map<Id, DirectionInfo>();
-      const intents = unique(proposals.map((p) => p.intentId));
-      for (let i = 0; i < intents.length; i += 500) {
-        const rows = this.sql
-          .exec<{ intent_id: string; info: string | null }>(`SELECT intent_id, info FROM ft_direction WHERE intent_id IN (SELECT value FROM json_each(?))`, JSON.stringify(intents.slice(i, i + 500)))
-          .toArray();
-        for (const r of rows) {
-          const info = parseDirection(r.info);
-          if (info) direction.set(r.intent_id, info);
-        }
-      }
-      return directionReturns(proposals, direction, landed);
-    } catch (e) {
-      console.error(`direction check skipped in this cycle: ${errorText(e)}`);
-      return new Map();
-    }
+  private redirected(proposals: Proposal[], landed: ReadonlySet<Id>): FenceCheck {
+    const check = fenceCheck(this.sql, proposals, landed);
+    if (check.problem) console.error(`direction check: ${check.held.size} change(s) wait for the next cycle: ${check.problem}`);
+    return check;
   }
 
   /** The proposals of the landings whose push outcome is not recorded yet; null when a journal row cannot be read. */

@@ -194,6 +194,95 @@ describe("a hedged call", () => {
   });
 });
 
+describe("a hedged call with a validity check (a malformed answer is a failed attempt)", () => {
+  const ok = (v: unknown): boolean => typeof v === "string" && v.startsWith("ok");
+
+  it("sends the copy at once when the original's answer is malformed, takes the copy's, and hands back the malformed one for counting", async () => {
+    const s = scripted([{ ms: 1_000, value: "garbled" }, { ms: 2_000, value: "ok: merged" }]);
+    const late: Array<{ model: string; value: unknown }> = [];
+    const h = hedge({ onLate: (model, value) => void late.push({ model, value }) });
+    const p = hedged(s.call, "m", h, Date.now, ok);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(s.calls).toHaveLength(2);
+    await vi.advanceTimersByTimeAsync(2_000);
+    const r = await p;
+    expect(r).toMatchObject({ value: "ok: merged", model: "m", hedged: { after_ms: 1_000, winner: "copy", model: "m", cause: "invalid" } });
+    expect(hedgeText(r.hedged!)).toBe("answered by the hedge copy, sent when the original's answer was malformed after 1.0 s");
+    expect(late).toEqual([{ model: "m", value: "garbled" }]);
+    expect(await r.late).toEqual({ model: "m", value: "garbled" });
+    expect(h.counted).toEqual({ "hedge.review.sent": 1, "hedge.review.copy": 1 });
+  });
+
+  it("ends with the original's answer when the copy's is malformed too, and counts both", async () => {
+    const s = scripted([{ ms: 500, value: "garbled 1" }, { ms: 500, value: "garbled 2" }]);
+    const late: unknown[] = [];
+    const p = hedged(s.call, "m", hedge({ onLate: (_m, v) => void late.push(v) }), Date.now, ok);
+    await vi.advanceTimersByTimeAsync(1_000);
+    const r = await p;
+    expect(r).toMatchObject({ value: "garbled 1", hedged: { winner: "original", cause: "invalid", after_ms: 500 } });
+    expect(hedgeText(r.hedged!)).toBe("the original's answer was malformed, and its hedge copy, sent after 0.5 s, gave no well-formed one");
+    expect(late).toEqual(["garbled 2"]);
+    expect(await r.late).toEqual({ model: "m", value: "garbled 2" });
+  });
+
+  it("ends with the original's malformed answer when the limiter has no slot for a copy", async () => {
+    const limiter = new CallLimiter(1, 100);
+    const held = await limiter.acquire("m", Date.now());
+    const s = scripted([{ ms: 300, value: "garbled" }]);
+    const p = hedged(s.call, "m", hedge({ admit: (m) => limiter.acquire(m, 0) }), Date.now, ok);
+    await vi.advanceTimersByTimeAsync(300);
+    expect(await p).toEqual({ value: "garbled", model: "m" });
+    expect(s.calls).toHaveLength(1);
+    held!();
+  });
+
+  it("waits for the original when a slow call's copy answers malformed, and keeps its answer", async () => {
+    const s = scripted([{ ms: 12_000, value: "ok: original" }, { ms: 1_000, value: "garbled copy" }]);
+    const late: unknown[] = [];
+    const p = track(hedged(s.call, "m", hedge({ onLate: (_m, v) => void late.push(v) }), Date.now, ok));
+    await vi.advanceTimersByTimeAsync(9_000);
+    expect(s.calls).toHaveLength(2);
+    expect(p()).toBe("pending");
+    await vi.advanceTimersByTimeAsync(3_000);
+    const r = p() as { value: Awaited<ReturnType<typeof hedged<unknown>>> };
+    expect(r.value).toMatchObject({ value: "ok: original", hedged: { winner: "original", cause: "slow" } });
+    expect(late).toEqual(["garbled copy"]);
+  });
+
+  it("takes a malformed copy's answer over the original's error, and a check that throws finds the answer malformed", async () => {
+    const s = scripted([{ ms: 100, error: "upstream answered 502" }, { ms: 100, value: "garbled" }]);
+    const p = hedged(s.call, "m", hedge(), Date.now, ok);
+    await vi.advanceTimersByTimeAsync(200);
+    expect(await p).toMatchObject({ value: "garbled", hedged: { winner: "copy", cause: "failed" } });
+    const t = scripted([{ ms: 100, value: "anything" }, { ms: 100, value: "ok" }]);
+    const q = hedged(
+      t.call,
+      "m",
+      hedge(),
+      Date.now,
+      (v) => {
+        if (v === "anything") throw new Error("cannot read it");
+        return true;
+      },
+    );
+    await vi.advanceTimersByTimeAsync(200);
+    expect(await q).toMatchObject({ value: "ok", hedged: { winner: "copy", cause: "invalid" } });
+  });
+
+  it("is the call alone when the hedge is off: a malformed answer is the answer, as before", async () => {
+    const s = scripted([{ ms: 100, value: "garbled" }]);
+    const p = hedged(s.call, "m", null, Date.now, ok);
+    await vi.advanceTimersByTimeAsync(100);
+    expect(await p).toEqual({ value: "garbled", model: "m" });
+    expect(s.calls).toHaveLength(1);
+  });
+
+  it("reads a stored record with the new cause, and an unknown cause as slow", () => {
+    expect(cleanHedgeRecord({ after_ms: 1_200, winner: "copy", model: "m", cause: "invalid" })).toEqual({ after_ms: 1_200, winner: "copy", model: "m", cause: "invalid" });
+    expect(cleanHedgeRecord({ after_ms: 1_200, winner: "copy", model: "m", cause: "weird" })?.cause).toBe("slow");
+  });
+});
+
 describe("the flag and the waits", () => {
   it("covers the colonies FT_HEDGE names, like FT_REVALIDATE", () => {
     expect(hedgeFor({ FT_HEDGE: "on" }, "c1", "agent")).toMatchObject({ site: "agent", afterMs: HEDGE_AFTER_MS.agent });
@@ -289,6 +378,26 @@ describe("the agents' model client and the resolver's", () => {
     await vi.advanceTimersByTimeAsync(40_000);
     expect(counted).toEqual({ "resolver.tokensIn:@cf/vendor/strong": 1_000, "resolver.tokensOut:@cf/vendor/strong": 100 });
     expect(await reply.late).toEqual({ model: "@cf/vendor/strong", usage: { input: 900, output: 90, cached: 0, neurons: 0 } });
+  });
+
+  it("takes the copy's reply when the original's text fails the request's check, and counts the malformed one's tokens", async () => {
+    let n = 0;
+    const garbledThenGood = {
+      run: (_model: string, _input: Record<string, unknown>) => {
+        n++;
+        const text = n === 1 ? "no file block here" : "<file>\nmerged\n</file>";
+        return Promise.resolve({ response: text, usage: { prompt_tokens: 100 * n, completion_tokens: 10 * n } });
+      },
+    };
+    const counted: Record<string, number> = {};
+    const h = hedgeFor({ FT_HEDGE: "on" }, "c1", "resolver");
+    const client = resolverClient({ AI: garbledThenGood as unknown as Ai, ANTHROPIC_API_KEY: undefined, FT_DEFAULT_MODEL: "@cf/vendor/strong", FT_BULK_MODEL: "@cf/vendor/cheap" }, (name, delta) => void (counted[name] = (counted[name] ?? 0) + delta), h);
+    const reply = await client.complete({ model: "default", messages: [{ role: "user", content: "merge" }], maxTokens: 100, valid: (text) => (text ?? "").includes("<file>") });
+    expect(reply.text).toContain("merged");
+    expect(reply.hedged).toEqual({ after_ms: 0, winner: "copy", model: "@cf/vendor/strong", cause: "invalid" });
+    expect(await reply.late).toEqual({ model: "@cf/vendor/strong", usage: { input: 100, output: 10, cached: 0, neurons: 0 } });
+    expect(counted).toEqual({ "resolver.tokensIn:@cf/vendor/strong": 300, "resolver.tokensOut:@cf/vendor/strong": 30 });
+    expect(n).toBe(2);
   });
 
   it("sends the call exactly as before when the flag is off", async () => {

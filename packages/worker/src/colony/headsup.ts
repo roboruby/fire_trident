@@ -12,7 +12,8 @@ import { WHY_FOOTPRINT, indexRange, isLiteralEntry, pickLanded, shortTitle, type
  *   the intent each completed;
  * - changes waiting ahead: proposals in flight (pending, checking, ready) whose write sets meet those files, from the
  *   colony's proposals table, read at most every LANE_TTL_MS for the whole colony. If one lands first, the agent's
- *   change comes back.
+ *   change comes back. The read takes the oldest LANE_SCAN; with more in flight the report says how many it checked
+ *   of how many (`aheadScanned`), so a partial answer never reads as a complete one.
  *
  * Read-only: the MCP server (mcp/headsup.ts) asks for it on each reply and records what it told the agent in the
  * session; GET /api/colonies/:id/agents/:aid/headsup serves it to the Claude Code hook (`ft hook check`).
@@ -33,7 +34,7 @@ export const HEADS_UP_ASKED = 4;
 const RANGE_ROWS = 200;
 /** How long the colony reuses its read of the changes in flight (ms), and how many it reads (oldest first). */
 export const LANE_TTL_MS = 2_000;
-const LANE_SCAN = 200;
+export const LANE_SCAN = 200;
 /** Landings a proposal's toldOf keeps at most. */
 export const TOLD_KEEP = 16;
 /** The metric names of the two kinds of return (GET /metrics). */
@@ -91,6 +92,11 @@ export interface HeadsUpReport {
   ahead: HeadsUpAhead[];
   moreMoved?: number;
   moreAhead?: number;
+  /**
+   * Only the oldest `scanned` of the `of` changes in flight were checked for `ahead` (LANE_SCAN): one of the others may
+   * write the agent's files too. Absent: every change in flight was checked.
+   */
+  aheadScanned?: { scanned: number; of: number };
 }
 
 /** The answer for one agent: the intent and lease base looked at, and the heads-up (null when there is nothing to say). */
@@ -160,7 +166,8 @@ function leaseBase(workspace: unknown): Sha | null {
  * the proposals table once. Everything else is a few indexed lookups.
  */
 export class HeadsUpBook {
-  private lane: { at: number; entries: LaneEntry[] } | null = null;
+  /** The changes in flight as last read, and, when the read stopped at LANE_SCAN, how many it read of how many (else null). */
+  private lane: { at: number; entries: LaneEntry[]; scan: { scanned: number; of: number } | null } | null = null;
 
   constructor(
     private readonly sql: SqlRunner,
@@ -189,14 +196,17 @@ export class HeadsUpBook {
     return { intentId, baseSha, report: this.report({ agentId, intentId, baseSha, exact, patterns }) };
   }
 
-  /** Both lists for these files; null when both are empty. */
+  /** Both lists for these files; null when both are empty and every change in flight was checked. */
   private report(w: Watch): HeadsUpReport | null {
     const moved = this.moved(w);
     const ahead = this.ahead(w);
-    if (moved.length === 0 && ahead.length === 0) return null;
+    // A read that stopped at LANE_SCAN says so even with nothing found: "nothing waits" would not be true then.
+    const scan = this.lane?.scan ?? null;
+    if (moved.length === 0 && ahead.length === 0 && scan === null) return null;
     const out: HeadsUpReport = { moved: moved.slice(0, HEADS_UP_LANDINGS), ahead: ahead.slice(0, HEADS_UP_AHEAD) };
     if (moved.length > HEADS_UP_LANDINGS) out.moreMoved = moved.length - HEADS_UP_LANDINGS;
     if (ahead.length > HEADS_UP_AHEAD) out.moreAhead = ahead.length - HEADS_UP_AHEAD;
+    if (scan !== null) out.aheadScanned = { ...scan };
     return out;
   }
 
@@ -246,26 +256,37 @@ export class HeadsUpBook {
     return hits.map(({ e, paths }) => ({ proposalId: e.id, intentId: e.intentId, title: titles.get(e.intentId) ?? "", region: e.region, paths }));
   }
 
-  /** The changes in flight with the paths they write (the oldest LANE_SCAN), read again at most every LANE_TTL_MS. */
+  /**
+   * The changes in flight with the paths they write (the oldest LANE_SCAN), read again at most every LANE_TTL_MS. A read
+   * that took LANE_SCAN of them also counts how many are in flight, which report() names when it is more.
+   */
   private inFlight(): LaneEntry[] {
     const now = this.now();
     if (this.lane && now - this.lane.at < LANE_TTL_MS) return this.lane.entries;
+    // LEFT JOIN: a change with no written path still counts as one read.
     const found = rows<{ id: string; intent_id: string; agent_id: string; region: string; created_at: number; path: string | null }>(
       this.sql,
       `SELECT p.id AS id, p.intent_id AS intent_id, p.agent_id AS agent_id, p.region AS region, p.created_at AS created_at, json_extract(w.value, '$.path') AS path
          FROM (SELECT id, intent_id, agent_id, region, created_at, data FROM proposals WHERE status IN ('pending', 'checking', 'ready') ORDER BY created_at LIMIT ?) p
-         JOIN json_each(p.data, '$.writeSet') w`,
+         LEFT JOIN json_each(p.data, '$.writeSet') w`,
       LANE_SCAN,
     );
     const byId = new Map<Id, LaneEntry>();
+    const read = new Set<Id>();
     for (const r of found) {
+      read.add(r.id);
       if (typeof r.path !== "string" || r.path === "") continue;
       const e = byId.get(r.id) ?? { id: r.id, intentId: r.intent_id, agentId: r.agent_id, region: r.region, createdAt: r.created_at, paths: [] };
       e.paths.push(r.path);
       byId.set(r.id, e);
     }
     const entries = [...byId.values()].sort((a, b) => a.createdAt - b.createdAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
-    this.lane = { at: now, entries };
+    let scan: { scanned: number; of: number } | null = null;
+    if (read.size >= LANE_SCAN) {
+      const n = Number(first<{ n: number }>(this.sql, "SELECT COUNT(*) AS n FROM proposals WHERE status IN ('pending', 'checking', 'ready')")?.n ?? 0);
+      if (n > read.size) scan = { scanned: read.size, of: n };
+    }
+    this.lane = { at: now, entries, scan };
     return entries;
   }
 

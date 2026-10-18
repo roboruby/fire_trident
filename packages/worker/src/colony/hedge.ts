@@ -14,6 +14,11 @@ import type { AiRunner } from "../decide/reflex.ts";
  * No model call the platform makes streams, so "no answer" means no reply at all, and each site waits as long as its
  * normal latency calls for (HEDGE_AFTER_MS says why).
  *
+ * A malformed answer: a call site can pass a validity predicate (hedged's `valid`). An answer that fails it counts as a
+ * failed attempt: the copy goes out at once (cause "invalid") and its valid answer wins. When no valid answer comes, the
+ * call ends with the original's answer if it gave one (else the copy's, else the original's error), and the site judges
+ * it malformed as before. Without a predicate every answer is valid, as before.
+ *
  * Spend: each copy's tokens count where the call site counts them. The winner's count as before. A losing copy that
  * answers anyway (it finished at nearly the same moment, or its provider ignored the abort) reaches the site through
  * Hedge.onLate and Hedged.late, so its tokens count too. An aborted copy reports no usage, so it counts none.
@@ -52,8 +57,11 @@ export interface HedgeRecord {
   winner: "original" | "copy";
   /** The model that answered. */
   model: string;
-  /** Why the copy went out: the original had not answered by then ("slow"), or it had failed ("failed"). */
-  cause: "slow" | "failed";
+  /**
+   * Why the copy went out: the original had not answered by then ("slow"), it had failed ("failed"), or its answer
+   * failed the call site's validity check ("invalid").
+   */
+  cause: "slow" | "failed" | "invalid";
 }
 
 /** One call site's hedge (hedgeFor). */
@@ -128,22 +136,29 @@ export function runAi(ai: AiRunner, model: string, input: Record<string, unknown
  */
 const THROTTLED = /rate limit|\b3021\b|\b3040\b|out of capacity|capacity temporarily|too many requests|\b429\b/i;
 
-/** One copy of a hedged call in flight. */
+/** One copy of a hedged call in flight; "invalid": it answered, and the answer failed the validity check. */
 interface Leg<T> {
   model: string;
   ctl: AbortController;
-  state: "running" | "ok" | "failed";
+  state: "running" | "ok" | "failed" | "invalid";
   value?: T;
   error?: unknown;
 }
 
 /**
  * Make one model call through `call`, hedged when `hedge` is given (null: the call alone, with no signal, as before).
- * The copy goes out once the original has given no answer for `hedge.afterMs`, or at once when it fails first (a
- * throttled original to the same model fails at once instead). The first answer wins and the other copy is aborted;
- * an error wins only once both have failed, and it is the original's.
+ * The copy goes out once the original has given no answer for `hedge.afterMs`, or at once when it fails first or its
+ * answer fails `valid` (a throttled original to the same model fails at once instead). The first valid answer wins and
+ * the other copy is aborted; with no valid answer the call ends with the original's answer, else the copy's, else the
+ * original's error.
  */
-export function hedged<T>(call: (model: string, signal?: AbortSignal) => Promise<T>, model: string, hedge: Hedge | null | undefined, now: () => number = Date.now): Promise<Hedged<T>> {
+export function hedged<T>(
+  call: (model: string, signal?: AbortSignal) => Promise<T>,
+  model: string,
+  hedge: Hedge | null | undefined,
+  now: () => number = Date.now,
+  valid?: (value: T) => boolean,
+): Promise<Hedged<T>> {
   if (!hedge) return call(model).then((value) => ({ value, model }));
   const h = hedge;
   const copyModel = typeof h.copyModel === "string" && h.copyModel.trim() !== "" ? h.copyModel : model;
@@ -177,6 +192,15 @@ export function hedged<T>(call: (model: string, signal?: AbortSignal) => Promise
         // Counting never fails a call.
       }
     };
+    const usable = (value: T): boolean => {
+      if (!valid) return true;
+      try {
+        return valid(value);
+      } catch {
+        // A check that cannot read the answer finds it malformed.
+        return false;
+      }
+    };
     const start = (m: string, who: "original" | "copy"): Leg<T> => {
       const leg: Leg<T> = { model: m, ctl: new AbortController(), state: "running" };
       let p: Promise<T>;
@@ -187,8 +211,13 @@ export function hedged<T>(call: (model: string, signal?: AbortSignal) => Promise
       }
       p.then(
         (value) => {
-          leg.state = "ok";
           leg.value = value;
+          if (!usable(value)) {
+            leg.state = "invalid";
+            spoiled(leg, who);
+            return;
+          }
+          leg.state = "ok";
           answered(leg, who, value);
         },
         (error: unknown) => {
@@ -201,18 +230,17 @@ export function hedged<T>(call: (model: string, signal?: AbortSignal) => Promise
     };
     const original = start(model, "original");
 
-    function answered(leg: Leg<T>, who: "original" | "copy", value: T): void {
-      if (who === "copy") freeSlot();
-      if (done) {
-        // The losing copy answered anyway: its tokens were spent, so the site counts them.
-        try {
-          h.onLate?.(leg.model, value);
-        } catch {
-          // Counting never fails a call.
-        }
-        lateResolve?.({ model: leg.model, value });
-        return;
+    /** A losing copy's answer (a late one, or one that failed the validity check): its tokens were spent, so the site counts them. */
+    function spent(leg: Leg<T>, value: T): void {
+      try {
+        h.onLate?.(leg.model, value);
+      } catch {
+        // Counting never fails a call.
       }
+    }
+
+    /** The call's answer: `leg`'s (valid, or the one it ends with when none is), with the other copy as the loser. */
+    function settle(leg: Leg<T>, who: "original" | "copy", value: T): void {
       done = true;
       stopTimer();
       const loser = who === "original" ? copy : original;
@@ -226,11 +254,55 @@ export function hedged<T>(call: (model: string, signal?: AbortSignal) => Promise
           lateResolve = r;
         });
         loser.ctl.abort();
+      } else if (loser.state === "invalid") {
+        // It answered first, malformed: its tokens count as a losing copy's do.
+        spent(loser, loser.value as T);
+        late = Promise.resolve({ model: loser.model, value: loser.value as T });
       } else {
         late = Promise.resolve(null);
       }
       if (who === "copy") count("copy");
       resolve({ value, model: leg.model, hedged: { after_ms: sentAt, winner: who, model: leg.model, cause }, late });
+    }
+
+    function answered(leg: Leg<T>, who: "original" | "copy", value: T): void {
+      if (who === "copy") freeSlot();
+      if (done) {
+        // The losing copy answered anyway: its tokens were spent, so the site counts them.
+        spent(leg, value);
+        lateResolve?.({ model: leg.model, value });
+        return;
+      }
+      settle(leg, who, value);
+    }
+
+    /** A copy answered, and its answer failed the validity check: a failed attempt, except that its tokens count. */
+    function spoiled(leg: Leg<T>, who: "original" | "copy"): void {
+      if (who === "copy") freeSlot();
+      if (done) {
+        spent(leg, leg.value as T);
+        lateResolve?.({ model: leg.model, value: leg.value as T });
+        return;
+      }
+      if (who === "copy") {
+        if (original.state === "failed" || original.state === "invalid") noneValid();
+        return;
+      }
+      // The original's answer is malformed: a copy in flight decides; else one goes out now, as for a failure.
+      if (copy) {
+        if (copy.state === "failed" || copy.state === "invalid") noneValid();
+        return;
+      }
+      if (admitting) return;
+      stopTimer();
+      void send("invalid");
+    }
+
+    /** No valid answer will come: end with the original's answer, else the copy's, else the original's error. */
+    function noneValid(): void {
+      if (original.state === "invalid") settle(original, "original", original.value as T);
+      else if (copy?.state === "invalid") settle(copy, "copy", copy.value as T);
+      else lose();
     }
 
     function failed(who: "original" | "copy"): void {
@@ -240,12 +312,12 @@ export function hedged<T>(call: (model: string, signal?: AbortSignal) => Promise
         return;
       }
       if (who === "copy") {
-        if (original.state === "failed") lose();
+        if (original.state === "failed" || original.state === "invalid") noneValid();
         return;
       }
       // The original failed: a copy in flight decides; one being admitted is sent or not as admission says.
       if (copy) {
-        if (copy.state === "failed") lose();
+        if (copy.state === "failed" || copy.state === "invalid") noneValid();
         return;
       }
       if (admitting) return;
@@ -281,7 +353,7 @@ export function hedged<T>(call: (model: string, signal?: AbortSignal) => Promise
         }
         if (!slot) {
           // No slot free: no copy, and the original alone decides.
-          if (original.state === "failed") lose();
+          if (original.state === "failed" || original.state === "invalid") noneValid();
           return;
         }
         let freed = false;
@@ -304,7 +376,8 @@ export function cleanHedgeRecord(v: unknown): HedgeRecord | null {
   const o = v as Record<string, unknown>;
   if (o.winner !== "copy" && o.winner !== "original") return null;
   if (typeof o.after_ms !== "number" || !Number.isFinite(o.after_ms) || typeof o.model !== "string" || o.model.trim() === "") return null;
-  return { after_ms: Math.max(0, Math.round(o.after_ms)), winner: o.winner, model: o.model.replace(/\s+/g, " ").trim().slice(0, 200), cause: o.cause === "failed" ? "failed" : "slow" };
+  const cause: HedgeRecord["cause"] = o.cause === "failed" || o.cause === "invalid" ? o.cause : "slow";
+  return { after_ms: Math.max(0, Math.round(o.after_ms)), winner: o.winner, model: o.model.replace(/\s+/g, " ").trim().slice(0, 200), cause };
 }
 
 /** An error's message, or the value as text. */
@@ -319,8 +392,10 @@ function errorText(err: unknown): string {
  */
 export function hedgeText(h: HedgeRecord, asked?: string): string {
   const after = `${(Math.max(0, h.after_ms) / 1000).toFixed(1)} s`;
+  if (h.winner === "original" && h.cause === "invalid") return `the original's answer was malformed, and its hedge copy, sent after ${after}, gave no well-formed one`;
   if (h.winner === "original") return `answered by the original; its hedge copy went out after ${after}`;
   const to = asked && asked !== h.model ? ` to ${h.model}` : "";
+  if (h.cause === "invalid") return `answered by the hedge copy${to}, sent when the original's answer was malformed after ${after}`;
   return h.cause === "failed" ? `answered by the hedge copy${to}, sent when the original failed after ${after}` : `answered by the hedge copy${to} after ${after}`;
 }
 

@@ -10,6 +10,7 @@ import {
   contestEvidence,
   contestSeats,
   diffSize,
+  independentJudge,
   judgeMessages,
   judgeModels,
   judgeView,
@@ -26,6 +27,7 @@ import {
 } from "../../src/decide/contest.ts";
 import { fileDiff, type FileDiff } from "../../src/decide/diff.ts";
 import { CallLimiter } from "../../src/decide/limiter.ts";
+import { DEFAULT_POLICY } from "../../src/decide/policy.ts";
 import type { AiRunner } from "../../src/decide/reflex.ts";
 
 /** A candidate with neutral evidence, overridable field by field. */
@@ -271,8 +273,37 @@ describe("the pairwise judge", () => {
     const models = ["@cf/google/gemma-4-26b-a4b-it", "@cf/openai/gpt-oss-120b", "@cf/zai-org/glm-4.7-flash"];
     expect(judgeModels(["@cf/google/gemma-4-26b-a4b-it", "@cf/openai/gpt-oss-20b"], models)).toEqual(["@cf/zai-org/glm-4.7-flash"]);
     expect(judgeModels([undefined, undefined], models)).toEqual(models);
-    // Every family taken: another family than the first author's.
-    expect(judgeModels(["@cf/google/x", "@cf/openai/y", "@cf/zai-org/z"], models)).toEqual(["@cf/openai/gpt-oss-120b", "@cf/zai-org/glm-4.7-flash"]);
+    // Every family taken: no model is independent of the contestants, so none judges (decide/independence.ts).
+    expect(judgeModels(["@cf/google/x", "@cf/openai/y", "@cf/zai-org/z"], models)).toEqual([]);
+  });
+
+  it("asks no model when every judge model shares a contestant's family, and the deterministic order decides with the reason", async () => {
+    const built: string[][] = [];
+    const judge = independentJudge(["@cf/google/x", "@cf/openai/y", "@cf/zai-org/z"], DEFAULT_POLICY.secondOpinionModels, (models) => {
+      built.push(models);
+      return async () => ({ better: "first", why: "never asked", calls: 1 });
+    });
+    expect(built).toEqual([]);
+    const a = cand("prp_a", { diffs: change("export const greet = () => 'hi';\n") });
+    const b = cand("prp_b", { createdAt: 2_000, diffs: change("export const greet = () => 'hello, world';\n") });
+    const reason = "no judge model outside the contestants' model families (google, openai, zai-org) is configured, so no model judged and the contest's deterministic order decided";
+    expect(await judge(a, b)).toEqual({ better: "tie", why: reason, calls: 0 });
+    const out = await selectWinner([a, b], { judge });
+    expect(out.calls).toBe(0);
+    expect(out.losers[0]!.why).toContain(`a tie (${reason})`);
+  });
+
+  it("judges with the models outside every contestant's family; a contestant with no reported model leaves none out", async () => {
+    const built: string[][] = [];
+    const make = (models: string[]): PairJudge => {
+      built.push(models);
+      return async () => ({ better: "second", why: "judged better", model: models[0]!, calls: 2 });
+    };
+    const known = independentJudge(["@cf/google/x", "@cf/openai/y"], DEFAULT_POLICY.secondOpinionModels, make);
+    expect(await known(cand("a"), cand("b"))).toEqual({ better: "second", why: "judged better", model: "@cf/zai-org/glm-4.7-flash", calls: 2 });
+    const unknown = independentJudge(["@cf/google/x", undefined], DEFAULT_POLICY.secondOpinionModels, make);
+    expect((await unknown(cand("a"), cand("b"))).why).toBe("judged better");
+    expect(built).toEqual([["@cf/zai-org/glm-4.7-flash"], ["@cf/openai/gpt-oss-120b", "@cf/zai-org/glm-4.7-flash"]]);
   });
 });
 

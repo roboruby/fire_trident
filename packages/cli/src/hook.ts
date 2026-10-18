@@ -20,7 +20,9 @@ import { connectSite, isConnectColony } from "./connect.ts";
  * (FT_RESUME_KEY), and gives up after CHECK_TIMEOUT_MS. When something waits it prints one line of JSON, Claude Code's
  * PreToolUse output with the sentence as `additionalContext` (Claude Code reads a PreToolUse hook's plain stdout into
  * its debug log only; additionalContext reaches the model next to the tool result). It never asks for a decision, so the
- * edit goes through the normal permission flow. Otherwise it prints nothing. It always exits 0: advisory, never in the way.
+ * edit goes through the normal permission flow. When the heads-up could not be had (no answer in time, the server
+ * unreachable, a refusal, an answer it cannot read) it prints one line saying so, since silence would read as nothing to
+ * say. With nothing to say, or no colony and agent known, it prints nothing. It always exits 0: advisory, never in the way.
  */
 
 /** The tools the hook runs before: Claude Code's file edit tools. */
@@ -200,7 +202,10 @@ export function headsUpLine(headsUp: unknown, path: string | null): string | nul
   const ahead = entries(headsUp.ahead, "proposalId");
   const total = moved.length + ahead.length + (typeof headsUp.moreMoved === "number" ? headsUp.moreMoved : 0) + (typeof headsUp.moreAhead === "number" ? headsUp.moreAhead : 0);
   const more = total > 1 ? ` and ${total - 1} more` : "";
-  const end = "; call inbox before you edit.";
+  // The colony checked only the oldest of the changes waiting to land: the line says so, so a partial answer never reads as whole.
+  const scan = scanned(headsUp.aheadScanned);
+  const partial = scan ? `; only the oldest ${scan.scanned} of ${scan.of} changes waiting to land were checked` : "";
+  const end = `${partial}; call inbox before you edit.`;
   const here = path ? moved.find((m) => m.paths.includes(path)) : undefined;
   if (here && path) return `FireTrident: trunk moved under ${path} (${here.id}, '${here.title}')${more}${end}`;
   const waiting = path ? ahead.find((a) => a.paths.includes(path)) : undefined;
@@ -209,7 +214,43 @@ export function headsUpLine(headsUp: unknown, path: string | null): string | nul
   if (m) return `FireTrident: trunk moved under ${m.paths[0]} since your lease (${m.id}, '${m.title}')${more}${end}`;
   const a = ahead[0];
   if (a) return `FireTrident: a change waiting to land writes ${a.paths[0]} (${a.id}, '${a.title}')${more}${end}`;
+  if (scan) return `FireTrident: only the oldest ${scan.scanned} of ${scan.of} changes waiting to land were checked, so one of the others may write ${path ?? "your files"}; call inbox before you edit.`;
   return null;
+}
+
+/** A heads-up's `aheadScanned` (how many changes in flight the colony checked, of how many), or null when it is not one. */
+function scanned(x: unknown): { scanned: number; of: number } | null {
+  if (!isObject(x)) return null;
+  const n = (v: unknown): number | null => (typeof v === "number" && Number.isInteger(v) && v >= 0 ? v : null);
+  const s = n(x.scanned);
+  const of = n(x.of);
+  return s !== null && of !== null && of > s ? { scanned: s, of } : null;
+}
+
+/**
+ * The one line the hook prints when the heads-up could not be had (`why`: what went wrong, in a few words): the edit
+ * goes ahead unchecked, so the agent looks for itself.
+ */
+export function unavailableLine(why: string, path: string | null): string {
+  return `FireTrident: the heads-up was unavailable (${why}), so nobody checked whether trunk moved under ${path ?? "your files"} or a change waiting to land writes ${path ? "it" : "them"}; call inbox before you edit.`;
+}
+
+/** Why a heads-up answer was refused, as the unavailable line says it. */
+function refusedWhy(status: number): string {
+  if (status === 401 || status === 403) return `the server refused the hook's token or resume key (${status})`;
+  if (status === 404) return "the server does not know this colony or agent (404)";
+  return `the server answered ${status}`;
+}
+
+/** Whether an error is the check's time-out (AbortSignal.timeout rejects with a TimeoutError). */
+function timedOut(err: unknown): boolean {
+  const name = isObject(err) || err instanceof Error ? (err as { name?: unknown }).name : undefined;
+  return name === "TimeoutError" || name === "AbortError";
+}
+
+/** Why a heads-up call failed, as the unavailable line says it. */
+function failedWhy(err: unknown): string {
+  return timedOut(err) ? `no answer within ${CHECK_TIMEOUT_MS / 1000} s` : "the server could not be reached";
 }
 
 /** Claude Code's PreToolUse output carrying the line to the model (no decision: the normal permission flow goes on). */
@@ -342,8 +383,9 @@ async function hookTarget(input: string, io: HookIo): Promise<{ path: string | n
 }
 
 /**
- * `ft hook check`: one read of the agent's heads-up, one line when something waits, nothing otherwise. Never throws and
- * always answers 0: no colony or agent known, an unreachable or slow server, a refusal or a bad answer all print nothing.
+ * `ft hook check`: one read of the agent's heads-up, one line when something waits, nothing when nothing does. Once the
+ * colony and agent are known, an unreachable or slow server, a refusal or an answer it cannot read print one line saying
+ * the heads-up was unavailable. Never throws and always answers 0; with no colony or agent known it prints nothing.
  */
 export async function checkHook(cmd: HookCommand, flagUrl: string | undefined, io: HookIo): Promise<number> {
   try {
@@ -364,11 +406,31 @@ export async function checkHook(cmd: HookCommand, flagUrl: string | undefined, i
     } catch {
       // Half the Access pair: ask without it.
     }
-    const res = await io.fetch(url, { headers, signal: AbortSignal.timeout(CHECK_TIMEOUT_MS) });
-    if (!res.ok) return 0;
-    const body = (await res.json()) as unknown;
-    const line = headsUpLine(isObject(body) ? body.headsUp : null, path);
-    if (line) io.stdout(cmd.text ? line : hookOutput(line));
+    const say = (line: string): void => io.stdout(cmd.text ? line : hookOutput(line));
+    let res: Response;
+    try {
+      res = await io.fetch(url, { headers, signal: AbortSignal.timeout(CHECK_TIMEOUT_MS) });
+    } catch (err) {
+      say(unavailableLine(failedWhy(err), path));
+      return 0;
+    }
+    if (!res.ok) {
+      say(unavailableLine(refusedWhy(res.status), path));
+      return 0;
+    }
+    let body: unknown;
+    try {
+      body = (await res.json()) as unknown;
+    } catch (err) {
+      say(unavailableLine(timedOut(err) ? failedWhy(err) : "its answer could not be read", path));
+      return 0;
+    }
+    if (!isObject(body) || !("headsUp" in body)) {
+      say(unavailableLine("its answer could not be read", path));
+      return 0;
+    }
+    const line = headsUpLine(body.headsUp, path);
+    if (line) say(line);
   } catch {
     // Advisory: whatever failed, the edit goes on.
   }

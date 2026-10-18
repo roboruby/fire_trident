@@ -8,7 +8,8 @@ import { main, type Io } from "../src/run.ts";
 
 /**
  * `ft hook`: the Claude Code PreToolUse hook. install merges into the local settings (never the committed ones) and keeps
- * them out of git; uninstall removes exactly what it added; check prints one line or nothing and always exits 0.
+ * them out of git; uninstall removes exactly what it added; check prints one line or nothing and always exits 0, and a
+ * heads-up it could not get prints a line saying so rather than nothing.
  */
 
 const temporary: string[] = [];
@@ -183,27 +184,53 @@ describe("ft hook check", () => {
     expect(quiet.out).toEqual([]);
   });
 
-  it("always exits 0 and prints nothing: unreachable, refused, slow, no agent known, or bad arguments", async () => {
+  it("always exits 0, and says the heads-up was unavailable when unreachable, refused, slow or unreadable", async () => {
     const dir = clone();
+    const tail = "so nobody checked whether trunk moved under src/x.ts or a change waiting to land writes it; call inbox before you edit.";
     const down = io({ stdin: edit(dir), answer: () => Promise.reject(new TypeError("fetch failed")) });
-    expect(await main(["hook", "check"], down)).toBe(0);
+    expect(await main(["hook", "check", "--text"], down)).toBe(0);
+    expect(down.out).toEqual([`FireTrident: the heads-up was unavailable (the server could not be reached), ${tail}`]);
     const refused = io({ stdin: edit(dir), answer: () => json({ error: "unauthorized" }, 401) });
-    expect(await main(["hook", "check"], refused)).toBe(0);
+    expect(await main(["hook", "check", "--text"], refused)).toBe(0);
+    expect(refused.out).toEqual([`FireTrident: the heads-up was unavailable (the server refused the hook's token or resume key (401)), ${tail}`]);
+    const unknown = io({ stdin: edit(dir), answer: () => json({ error: "agent not found" }, 404) });
+    await main(["hook", "check", "--text"], unknown);
+    expect(unknown.out).toEqual([`FireTrident: the heads-up was unavailable (the server does not know this colony or agent (404)), ${tail}`]);
+    const failing = io({ stdin: edit(dir), answer: () => json({ error: "internal" }, 500) });
+    await main(["hook", "check", "--text"], failing);
+    expect(failing.out).toEqual([`FireTrident: the heads-up was unavailable (the server answered 500), ${tail}`]);
     const garbled = io({ stdin: edit(dir), answer: () => Promise.resolve(new Response("<html>", { status: 200 })) });
     expect(await main(["hook", "check"], garbled)).toBe(0);
+    // Claude Code's JSON, as for any line the hook prints.
+    expect(garbled.out).toEqual([hookOutput(`FireTrident: the heads-up was unavailable (its answer could not be read), ${tail}`)]);
     const t0 = Date.now();
     const slow = io({
       stdin: edit(dir),
       answer: (_url, init) => new Promise((_resolve, reject) => init.signal?.addEventListener("abort", () => reject(init.signal?.reason))),
     });
-    expect(await main(["hook", "check"], slow)).toBe(0);
+    expect(await main(["hook", "check", "--text"], slow)).toBe(0);
     expect(Date.now() - t0).toBeLessThan(3_000);
+    expect(slow.out).toEqual([`FireTrident: the heads-up was unavailable (no answer within 1.5 s), ${tail}`]);
+    for (const t of [down, refused, unknown, failing, garbled, slow]) expect(t.err).toEqual([]);
+  });
+
+  it("prints nothing when no colony or agent is known, or for bad arguments", async () => {
     const nobody = io({ stdin: JSON.stringify({ tool_input: { file_path: join(tempDir(), "a.ts") } }) });
     expect(await main(["hook", "check"], nobody)).toBe(0);
     expect(nobody.asked).toEqual([]);
     expect(await main(["hook", "check", "--bogus"], io())).toBe(0);
     expect(await main(["hook", "check"], io({ stdin: "not json" }))).toBe(0);
-    for (const t of [down, refused, garbled, slow, nobody]) expect([t.out, t.err]).toEqual([[], []]);
+    expect([nobody.out, nobody.err]).toEqual([[], []]);
+  });
+
+  it("says when the colony checked only the oldest of the changes waiting to land", async () => {
+    const dir = clone();
+    const partial = io({ stdin: edit(dir), answer: () => json({ ...HEADS_UP, headsUp: { moved: [], ahead: [], aheadScanned: { scanned: 200, of: 340 } } }) });
+    await main(["hook", "check", "--text"], partial);
+    expect(partial.out).toEqual(["FireTrident: only the oldest 200 of 340 changes waiting to land were checked, so one of the others may write src/x.ts; call inbox before you edit."]);
+    const found = io({ stdin: edit(dir), answer: () => json({ ...HEADS_UP, headsUp: { ...HEADS_UP.headsUp, aheadScanned: { scanned: 200, of: 340 } } }) });
+    await main(["hook", "check", "--text"], found);
+    expect(found.out).toEqual(["FireTrident: trunk moved under src/x.ts (lnd_y, 'Cache ’lookups’ now') and 1 more; only the oldest 200 of 340 changes waiting to land were checked; call inbox before you edit."]);
   });
 
   it("flags and the environment name the colony and agent over the clone's config", async () => {

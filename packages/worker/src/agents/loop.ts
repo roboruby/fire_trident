@@ -324,9 +324,12 @@ export interface ModelReply {
   late?: Promise<{ model: string; usage: TokenUsage | null } | null>;
 }
 
-/** Text generation, whichever provider serves the model. */
+/**
+ * Text generation, whichever provider serves the model. `valid` (optional): whether a reply's text is well formed; a
+ * hedged call (FT_HEDGE, colony/hedge.ts) counts a reply that is not as a failed attempt, so its copy may answer.
+ */
 export interface ModelClient {
-  complete(p: { model: string; messages: ChatMessage[]; maxTokens: number }): Promise<ModelReply>;
+  complete(p: { model: string; messages: ChatMessage[]; maxTokens: number; valid?: (text: string | null) => boolean }): Promise<ModelReply>;
 }
 
 /** Everything the loop needs. */

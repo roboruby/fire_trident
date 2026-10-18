@@ -54,16 +54,18 @@ interface AiRunner {
  * Anthropic provider when ANTHROPIC_API_KEY is set. No sampling parameters are
  * sent (current Anthropic models reject them) and no assistant prefill is used.
  * With `hedge` (FT_HEDGE, colony/hedge.ts), a call with no answer after the hedge's
- * wait goes out once more, and the reply says which copy answered.
+ * wait goes out once more, and the reply says which copy answered; a request's `valid`
+ * makes a reply whose text it refuses count as a failed attempt there.
  */
 export function modelClient(env: Pick<Env, "AI" | "ANTHROPIC_API_KEY"> & Partial<Pick<Env, "FT_DEFAULT_MODEL" | "FT_BULK_MODEL">>, hedge?: Hedge | null): ModelClient {
   return {
-    async complete(req: { model: string; messages: ChatMessage[]; maxTokens: number }): Promise<ModelReply> {
+    async complete(req: { model: string; messages: ChatMessage[]; maxTokens: number; valid?: (text: string | null) => boolean }): Promise<ModelReply> {
       // "default" and "bulk" name the server's models (a spec intent may ask for one by class).
       const alias = req.model === "default" ? env.FT_DEFAULT_MODEL : req.model === "bulk" ? env.FT_BULK_MODEL : undefined;
-      const p = alias ? { ...req, model: alias } : req;
+      const { valid, ...rest } = req;
+      const p = alias ? { ...rest, model: alias } : rest;
       if (usesAnthropic(env, p.model)) {
-        const r = await hedged((m, signal) => anthropicComplete(env.ANTHROPIC_API_KEY as string, { ...p, model: m }, signal), p.model, hedge);
+        const r = await hedged((m, signal) => anthropicComplete(env.ANTHROPIC_API_KEY as string, { ...p, model: m }, signal), p.model, hedge, Date.now, valid ? (v) => valid(v.text) : undefined);
         return withHedge({ ...r.value, model: r.model }, r, (v) => v.usage ?? null);
       }
       if (p.model.startsWith("claude-")) throw new Error(`model ${p.model} needs ANTHROPIC_API_KEY, which is not set`);
@@ -72,7 +74,7 @@ export function modelClient(env: Pick<Env, "AI" | "ANTHROPIC_API_KEY"> & Partial
       let result: Hedged<unknown>;
       try {
         result = await withTimeout(
-          hedged((m, signal) => runAi(ai, m, { messages: p.messages, max_tokens: p.maxTokens, ...modelOptions(m) }, signal), p.model, hedge),
+          hedged((m, signal) => runAi(ai, m, { messages: p.messages, max_tokens: p.maxTokens, ...modelOptions(m) }, signal), p.model, hedge, Date.now, valid ? (v) => valid(extractModelText(v)) : undefined),
           CALL_TIMEOUT_MS,
           `model ${p.model}`,
         );

@@ -5,6 +5,7 @@ import {
   HEADS_UP_UNWARNED,
   HEADS_UP_WARNED,
   HeadsUpBook,
+  LANE_SCAN,
   LANE_TTL_MS,
   TOLD_KEEP,
   cleanToldOf,
@@ -127,6 +128,22 @@ describe("heads-up: changes waiting ahead", () => {
     const r = c.book.answer("agt_me").report!;
     expect(r.ahead).toHaveLength(HEADS_UP_AHEAD);
     expect(r.moreAhead).toBe(2);
+    expect(r).not.toHaveProperty("aheadScanned");
+  });
+
+  it("says when it checked only the oldest LANE_SCAN changes in flight, even with nothing found among them", () => {
+    const c = colony();
+    // LANE_SCAN changes elsewhere, one with no written path at all, then a newer one on the agent's file past the cap.
+    for (let i = 0; i < LANE_SCAN - 1; i++) c.queue(`prp_${String(i).padStart(3, "0")}`, "int_x", "agt_x", "ready", 100 + i, ["docs/other.md"]);
+    c.queue("prp_empty", "int_x", "agt_x", "pending", 100 + LANE_SCAN, []);
+    c.queue("prp_hidden", "int_y", "agt_y", "ready", 1_000, ["src/a.ts"]);
+    c.queue("prp_hidden2", "int_y", "agt_y", "checking", 1_001, ["lib/z.ts"]);
+    const r = c.book.answer("agt_me").report;
+    expect(r).toEqual({ moved: [], ahead: [], aheadScanned: { scanned: LANE_SCAN, of: LANE_SCAN + 2 } });
+    // At exactly the cap nothing is left unread, so there is nothing to say.
+    const d = colony();
+    for (let i = 0; i < LANE_SCAN; i++) d.queue(`prp_${i}`, "int_x", "agt_x", "ready", 100 + i, ["docs/other.md"]);
+    expect(d.book.answer("agt_me").report).toBeNull();
   });
 });
 

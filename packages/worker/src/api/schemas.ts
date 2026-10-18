@@ -6,6 +6,23 @@ const Sha = z.string().regex(/^[0-9a-f]{40}([0-9a-f]{24})?$/, "expected a lowerc
 const PathString = z.string().trim().min(1).max(1024);
 const Name = z.string().trim().min(1).max(200);
 
+/** Whether `s` is an https:// URL with a host, written without spaces or control characters (what a preview link may be). */
+export function isHttpsUrl(s: string): boolean {
+  if (!/^https:\/\//i.test(s) || /[\s\u0000-\u001f\u007f]/.test(s)) return false;
+  try {
+    const u = new URL(s);
+    return u.protocol === "https:" && u.hostname !== "";
+  } catch {
+    return false;
+  }
+}
+
+/** An agent's preview link: https only, so no other scheme (javascript:, data:, http:) ever reaches a page as a link. */
+const PreviewUrl = z
+  .string()
+  .max(2048)
+  .refine(isHttpsUrl, { message: "the preview link must be an https:// URL (javascript:, data:, http: and other schemes are refused); send the https address of the preview, or leave previewUrl out" });
+
 /** POST /api/colonies */
 export const CreateColonyBody = z.object({
   name: Name,
@@ -94,7 +111,7 @@ export const ProposalBody = z.object({
     .object({
       checks: z.array(z.object({ name: z.string().max(200), ok: z.boolean(), ms: z.number().finite().min(0), detail: z.string().max(20_000).optional() })).max(200).optional(),
       notVerified: z.string().max(5_000).optional(),
-      previewUrl: z.string().url().max(2048).optional(),
+      previewUrl: PreviewUrl.optional(),
     })
     .optional(),
   /** One surprising fact the agent learned, for the colony's field guide (FT_FIELD_GUIDE; ignored where it is off). */

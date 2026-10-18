@@ -21,6 +21,7 @@ import { ConfirmedLine, DecidesFold, useDecides } from "./Decides.tsx";
 import { WhyLifecycles } from "./Lifecycle.tsx";
 import { HoldsLine, WalkLines } from "./WhyHolds.tsx";
 import { IssueLine } from "./IssueLink.tsx";
+import { PreviewLine } from "./PreviewLine.tsx";
 
 type NoteProposal = LineageNote["proposals"][number];
 
@@ -594,14 +595,8 @@ function ProposalChain({ p, path, store }: { p: NoteProposal; path: string; stor
           <div className="evid">
             <EvidenceList evidence={p.evidence} path={path} />
           </div>
-          {p.evidence?.previewUrl ? (
-            <span className="lin-preview-row">
-              <a className="link lin-preview" href={p.evidence.previewUrl} target="_blank" rel="noreferrer">
-                Preview
-              </a>{" "}
-              <SaidBy s={speaker("agent")} />
-            </span>
-          ) : null}
+          {/* The agent's preview: a link only for an https address; anything else (old data) as plain text. */}
+          <PreviewLine url={p.evidence?.previewUrl} />
         </div>
       </div>
       {revalidated.length ? <RevalidatedStep items={revalidated} /> : null}

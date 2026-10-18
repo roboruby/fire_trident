@@ -13,15 +13,16 @@ import { isMergeHold } from "../trunk/mergelock.ts";
  * The gate sends some changes to a person whatever the alert budget says (decide/gate.ts): a danger pattern that needs a
  * person (P1), the next proposal of an intent with a security finding (P2), a protected path (P3), a goal conflict (P4),
  * antibodies the reflex could not check (M2), a change too large for model review (L5), an acceptance line answered
- * unclear (L7), and no second opinion under the spend cap (L8). With many agents those alone can bury one person. Where
+ * unclear (L7), no second opinion under the spend cap (L8), and no second opinion because no reviewer model outside the
+ * author's family is configured (L9). With many agents those alone can bury one person. Where
  * the flag covers the colony, each of them is counted, and past the decide policy's escalationBatchPerHour of them in the
  * hour before (60 by default), the next batchable ones are batched: each still waits for a person (never landed, never
  * sent back), and the review queue shows one card per batch, the changes that escalated for the same reason (the same
  * rule; for P1 the same danger patterns), with their count and each one listed. A person approves all, rejects all or
  * opens each; an answer for a batch is that person's decision on each change it lists, one by one.
  *
- * Batchable: P1 when every hit is capability (a new process, network or eval use, a capability module), M2, L5, L7 and
- * L8. Never batched, one card each even past the budget, though they count against it: a change with an auth, secret,
+ * Batchable: P1 when every hit is capability (a new process, network or eval use, a capability module), M2, L5, L7, L8
+ * and L9. Never batched, one card each even past the budget, though they count against it: a change with an auth, secret,
  * governance, handoff, repair test-change or loosened-guard hit (NEVER_BATCHED), one that writes a protected path, a
  * security finding's next proposal (P2), a goal conflict (P4), and a change a person already decided that came back (a
  * held merge: heldByPerson). Deterministic: a change's batch is a function of its rule and the facts behind it. The table
@@ -52,6 +53,7 @@ const SHARED: Record<string, string> = {
   "L5 too large": "were too large for model review",
   "L7 acceptance unclear": "have an acceptance line the second opinion answered unclear",
   "L8 spend cap": "had no second opinion because the spend cap refused its model call",
+  "L9 no independent reviewer": "had no second opinion because no reviewer model outside their author's model family is configured",
 };
 
 /**

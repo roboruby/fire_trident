@@ -99,6 +99,7 @@ import { landedStaleText, missedRevisions, type MissedRevision } from "./directi
 import { landedAnywayText, redirectOutcome } from "./direction.ts";
 import type { LandedChange, RedirectOutcome } from "@fire_trident/core";
 import { FENCE_ANSWER_MS, type FenceAnswer } from "../trunk/direction.ts";
+import { fenceHeldBumps } from "../trunk/fencecheck.ts";
 import {
   ESCALATION_KINDS,
   MAX_ANSWER_CHARS,
@@ -158,7 +159,7 @@ import { readLifecycle, type LifecycleTrunk } from "./lifecycle.ts";
 import { reviewPreview, type ReviewPreview } from "../agents/preview.ts";
 import { RETURN_PATHS, extractUsage, returnReason, type LastReturn } from "../agents/prompt.ts";
 import { MAX_RESUME_KEY, MIN_RESUME_KEY, resumeDigest, resumeKeyMatches } from "../mcp/resume.ts";
-import { CONTEST_LOOK_MS, CONTEST_MIN, CONTEST_RETRY_MS, CONTEST_WAIT_MS, cleanAlternatives, contestEvidence, contestSeats, judgeModels, loadDiffs, migrateContest, pairJudge, selectWinner, supersededReason } from "../decide/contest.ts";
+import { CONTEST_LOOK_MS, CONTEST_MIN, CONTEST_RETRY_MS, CONTEST_WAIT_MS, cleanAlternatives, contestEvidence, contestSeats, independentJudge, loadDiffs, migrateContest, pairJudge, selectWinner, supersededReason } from "../decide/contest.ts";
 import type { ContestAlternative, ContestCandidate, ContestOutcome, ContestRound, JudgeIntent, PairJudge, PairVerdict } from "../decide/contest.ts";
 import { juryEnabled, juryMembers, pairJury, type JuryMember } from "../decide/jury.ts";
 import { whyAuthor } from "../decide/danger.ts";
@@ -3862,14 +3863,17 @@ export class ColonyDO extends DurableObject<Env> {
         hedge,
       });
     }
-    return pairJudge({
-      ai: this.judgeSpend(ai, intent.id),
-      models: judgeModels(authors, policy.secondOpinionModels),
-      limiter,
-      intent: judged,
-      onCall: () => this.bump("contest.judge.calls", 1, Date.now()),
-      hedge,
-    });
+    // Independence (decide/independence.ts): only models outside every contestant's family judge; with none, no model does.
+    return independentJudge(authors, policy.secondOpinionModels, (models) =>
+      pairJudge({
+        ai: this.judgeSpend(ai, intent.id),
+        models,
+        limiter,
+        intent: judged,
+        onCall: () => this.bump("contest.judge.calls", 1, Date.now()),
+        hedge,
+      }),
+    );
   }
 
   /** The jury's verdict on one pair, counted: a majority or a tie, and how many members voted consistently or not. */
@@ -4342,6 +4346,8 @@ export class ColonyDO extends DurableObject<Env> {
    */
   async emit(e: ColonyEvent | ColonyEvent[]): Promise<{ listeners: number; emitEveryMs: number }> {
     const list = Array.isArray(e) ? e : [e];
+    // Commit-point checks (trunk/fencecheck.ts): changes a landing cycle held because it could not read the direction record or the protected globs, counted in /metrics.
+    for (const [name, delta] of fenceHeldBumps(list)) this.bump(name, delta, Date.now());
     let region: string | null = null;
     for (const ev of list) {
       if ((ev.t === "mark" || ev.t === "sigma") && typeof ev.region === "string") {
