@@ -42,7 +42,7 @@ export function Compared() {
         <p className="l-section-lede">
           Each row is one mechanism measured without it and with it, on production, on a preview deployment or in the simulator, and links to its run. The{" "}
           <a href={LEDGER_HREF} target="_blank" rel="noreferrer">
-            README's ledger
+            full ledger
           </a>{" "}
           has every mechanism, including the ones that cost more than they earn.
         </p>

@@ -110,7 +110,8 @@ describe("how FireTrident answers the judging axes", () => {
     expect(out).toContain(html(NOTES_COMMAND));
   });
 
-  it("writes the README's version with full links", () => {
+  it("writes the docs' version with full links, which docs/mechanisms.md carries word for word", () => {
+    expect(read("../../../docs/mechanisms.md")).toContain(axesMarkdown());
     const md = axesMarkdown().split("\n");
     expect(md[0]).toBe("| Axis | How FireTrident answers it | Check it |");
     expect(md).toHaveLength(2 + AXES.length);

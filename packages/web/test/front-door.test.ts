@@ -7,13 +7,15 @@ import { PUBLIC_MCP_COMMAND, QUESTIONS, SITE, VERIFY_COMMANDS } from "../src/lan
 
 /**
  * The front door for agents: the questions answered on the landing page, in public/llms.txt and public/start.md, in the
- * static summary of index.html and at the top of the README, word for word, with numbers the README's results hold.
+ * static summary of index.html and in docs/results.md, word for word, with numbers docs/results.md's runs hold. The README
+ * gives the commands that check them.
  */
 
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
 const llms = read("../public/llms.txt");
 const start = read("../public/start.md");
 const readme = read("../../../README.md");
+const resultsDoc = read("../../../docs/results.md");
 const indexHtml = read("../index.html");
 
 /** Text of some HTML: tags dropped, the few entities index.html uses decoded. */
@@ -27,8 +29,8 @@ function htmlText(html: string): string {
     .replaceAll("&#39;", "'");
 }
 
-/** What README.md's results section says: the rows of "What it has done". */
-const results = readme.slice(readme.indexOf("## What it has done"), readme.indexOf("## Watch a finished run"));
+/** What docs/results.md's runs say: "What it has done" and "What each headline run measured", up to the honest limits. */
+const results = resultsDoc.slice(resultsDoc.indexOf("## What it has done"), resultsDoc.indexOf("## Honest limits"));
 
 /** The numbers in a text, as written ("1,287", "19.4"), leaving out the one in "SHA-256". */
 const numbers = (s: string) => [...s.replaceAll("SHA-256", "").matchAll(/\d+(?:[.,]\d+)*/g)].map((m) => m[0]);
@@ -47,7 +49,7 @@ describe("the questions", () => {
     ]);
   });
 
-  it("answer each in one sentence with a measured number from the README's results and one link", () => {
+  it("answer each in one sentence with a measured number from docs/results.md's runs and one link", () => {
     expect(results.length).toBeGreaterThan(1000);
     for (const q of QUESTIONS) {
       expect(q.answer.match(/[.!?](?=\s|$)/g), q.id).toHaveLength(1);
@@ -57,10 +59,10 @@ describe("the questions", () => {
     }
   });
 
-  it("read the same, word for word, in llms.txt, start.md, the README and the static page", () => {
+  it("read the same, word for word, in llms.txt, start.md, docs/results.md and the static page", () => {
     const page = htmlText(summary);
     for (const q of QUESTIONS) {
-      for (const [name, text] of [["llms.txt", llms], ["start.md", start], ["README.md", readme], ["index.html", page]] as const) {
+      for (const [name, text] of [["llms.txt", llms], ["start.md", start], ["docs/results.md", resultsDoc], ["index.html", page]] as const) {
         expect(text, `${name}: ${q.id} question`).toContain(q.question);
         expect(text, `${name}: ${q.id} answer`).toContain(q.answer);
       }
@@ -108,7 +110,7 @@ describe("the static page", () => {
     expect(indexHtml).toMatch(/\.ft-static \{[^}]*animation: ft-static-reveal 0s 1\.5s both;/);
   });
 
-  it("has the pitch, what a colony is, and the production runs, with numbers the README's results hold", () => {
+  it("has the pitch, what a colony is, and the production runs, with numbers docs/results.md's runs hold", () => {
     const text = htmlText(summary);
     expect(text).toContain("A colony, not a queue. Git coordination for coding agents that share one repository, built on Cloudflare Workers, Durable Objects and Artifacts.");
     expect(text).toContain("A colony is one codebase");

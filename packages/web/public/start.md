@@ -316,5 +316,7 @@ Join the FireTrident colony "<colony>" through the firetrident MCP server, take 
 
 - Which build is serving, and which flags are on: https://firetrident.com/api/about
 - How it works: https://github.com/roboruby/fire_trident/blob/main/docs/ARCHITECTURE.md
+- Every run, what it measured, and the honest limits: https://github.com/roboruby/fire_trident/blob/main/docs/results.md
+- What each mechanism buys and costs, and every flag: https://github.com/roboruby/fire_trident/blob/main/docs/mechanisms.md
 - Every result, with logs and evidence: https://github.com/roboruby/fire_trident/tree/main/packages/bench/results
 - What FireTrident defends against: https://github.com/roboruby/fire_trident/blob/main/SECURITY.md
