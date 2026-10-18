@@ -273,6 +273,19 @@ export interface Env {
    */
   FT_QUOTED_ACCEPTANCE?: string;
   /**
+   * Optional: the review view, "on", or a comma-separated list of colony ids; absent or "off" is off. It works on the lines
+   * quoted acceptance asks (FT_QUOTED_ACCEPTANCE), so it does nothing where that is off. Before any model, the decide stage
+   * checks each acceptance and keep line that names a file and what it exports (a function signature, an interface, a type
+   * alias, a constant, or that the file exists) by reading the files after the change, the changed files and the trunk files
+   * the line names (decide/keepcheck.ts, decide/tsexports.ts): a line it proves is met, checked by FireTrident; a line it
+   * disproves sends the change back with the exact mismatch (rule A1); a keep line that did not hold before the change either
+   * is unclear and not asked; every other line goes to the second opinion as before. The second opinion is asked only the
+   * lines left open, and then sees each changed file whole wherever it fits the review budgets (24,000 characters a file,
+   * 60,000 in all), and a "met" counts with a quote found in the changed file after the change. Its review receipt digests
+   * that view (decide/reviewview.ts).
+   */
+  FT_REVIEW_VIEW?: string;
+  /**
    * Optional: the contest jury, "on", or a comma-separated list of colony ids; absent or "off" is off. Where it covers a
    * colony, contest mode compares two tied changes with a jury of two or three small models from different families (the
    * decide policy's `juryModels`, outside the contestants' families) instead of one judge model: each member is asked in

@@ -59,6 +59,7 @@ import {
   type ReflexInput,
 } from "./reflex.ts";
 import { buildReviewView } from "./review.ts";
+import { reviewViewFor, viewReturn } from "./reviewview.ts";
 import { canaryDiscarded, isCanary } from "./canary.ts";
 import { promptShown, reflexShown } from "./receipt.ts";
 import { gateRecord } from "./ruleline.ts";
@@ -385,6 +386,12 @@ export class DecideEngine {
       ...(goal?.check ? [goal.check] : []),
     ];
     let final: GateVerdict = gate(base);
+    // Review view (FT_REVIEW_VIEW, decide/reviewview.ts): before its tests and any model, FireTrident checks the acceptance and
+    // keep lines that name an export, a signature, a type or a file in the files after the change; one it disproves sends the
+    // change back.
+    const view = final.action === "screen" ? await reviewViewFor(this.host, { intent, files: innate.files, view: repro?.view ?? innate.files, diffs, vaccine: Boolean(vaccine) }) : null;
+    if (view) checks.push(view.check);
+    if (view?.back) final = viewReturn(view.back, final);
     // Tests before landing (certify/preland.ts, FT_PRELAND): the test files the change reaches run before the gate decides,
     // unless it already goes back; a test that passed on trunk and fails with the change sends it back, before any model.
     const preland = vaccine || final.action === "return" ? null : ((await this.host.preland?.(p, prelandTexts(innate.files))) ?? null);
@@ -406,7 +413,7 @@ export class DecideEngine {
     if (final.action === "screen") {
       // Quoted acceptance (FT_QUOTED_ACCEPTANCE, decide/acceptance.ts): the intent's acceptance lines and the keep lines
       // the second opinion answers one by one; null keeps today's rule.
-      const acceptance = acceptanceFor(this.host, intent, repro?.view ?? innate.files, Boolean(vaccine));
+      const acceptance = view ? view.lines : acceptanceFor(this.host, intent, repro?.view ?? innate.files, Boolean(vaccine));
       // System 1, given the deterministic facts.
       const input: ReflexInput = {
         intent: { title: intent?.title ?? (p.declared.summary || p.intentId), why: intent?.why ?? "", whyBy },
@@ -485,10 +492,12 @@ export class DecideEngine {
         // Independence (decide/independence.ts): only models outside the author's family are asked; with none configured,
         // none is, and the gate sends the change to a person (L9). An author that reported no model is noted as unchecked.
         const pick = reviewerPick(this.host.agent(p.agentId)?.model, policy.secondOpinionModels);
-        const so: SecondOpinionRun = pick.refusal ? { opinion: null, model: "", ms: 0, error: pick.refusal } : await this.secondOpinion(p, input, policy, vaccine ? "other" : "review", pick.models);
+        // Review view: the second opinion is asked only the lines FireTrident left open, over whole files where they fit.
+        const asked = view ? view.input(input) : input;
+        const so: SecondOpinionRun = pick.refusal ? { opinion: null, model: "", ms: 0, error: pick.refusal } : await this.secondOpinion(p, asked, policy, vaccine ? "other" : "review", pick.models);
         llm = so.opinion;
         // Quoted acceptance: each line as the second opinion answered it, its quote looked for in the diff it was shown.
-        const accepted = acceptance && llm ? checkAcceptance(acceptance, llm.acceptance, secondOpinionDiff(diffs).shown) : undefined;
+        const accepted = acceptance && llm ? (view ? view.accepted(llm.acceptance) : checkAcceptance(acceptance, llm.acceptance, secondOpinionDiff(diffs).shown)) : undefined;
         // Spend cap (colony/spendcap.ts): no second opinion because the cap refused its call; the gate sends it to a person (L8).
         const capped = !llm && isSpendCapRefusal(so.error) ? { spendCap: so.error } : {};
         final = gate({ ...base, reflex, llm, ...(accepted ? { acceptance: accepted } : {}), ...capped, ...(pick.refusal ? { noReviewer: pick.refusal } : {}) });
@@ -512,7 +521,7 @@ export class DecideEngine {
             damage: final.damage,
             coverage: seen.llm,
             // The review receipt (decide/receipt.ts): a digest of the diff text the second opinion was given.
-            shown: await promptShown(input.diffs),
+            shown: await promptShown(asked.diffs),
             ...independenceNote(pick),
             ...destructiveRecord(destructive),
             ...(repro ? { reproduction: repro.note } : {}),

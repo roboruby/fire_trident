@@ -51,6 +51,25 @@ describe("acceptanceOf", () => {
     ]);
   });
 
+  it("marks the lines FireTrident checked itself (the review view), with what it found", () => {
+    const rows = acceptanceOf({
+      ...BASE,
+      acceptance: [
+        { kind: "intent", line: "src/core/money.ts exports isZero(m: Money): boolean", verdict: "met", basis: "checked", path: "src/core/money.ts", quote: "isZero(m: Money): boolean" },
+        { kind: "keep", line: "src/core/money.ts exports allocate(m: Money): Money[]", verdict: "not met", basis: "checked", path: "src/core/money.ts", problem: "src/core/money.ts does not export allocate, though it held before this change", landingId: "lnd_7" },
+        { kind: "keep", line: "src/core/money.ts exports isNegative(m: Money): boolean", verdict: "unclear", basis: "checked", path: "src/core/money.ts", problem: "it did not hold before this change either: src/core/money.ts does not export isNegative" },
+      ],
+    });
+    expect(rows).toEqual([
+      { place: "line 1", line: "src/core/money.ts exports isZero(m: Money): boolean", verdict: "met", basis: "checked", path: "src/core/money.ts", quote: "isZero(m: Money): boolean" },
+      { place: "keep line 1", line: "src/core/money.ts exports allocate(m: Money): Money[]", verdict: "not met", basis: "checked", why: "checked by FireTrident: src/core/money.ts does not export allocate, though it held before this change", landingId: "lnd_7" },
+      { place: "keep line 2", line: "src/core/money.ts exports isNegative(m: Money): boolean", verdict: "unclear", basis: "checked", why: "checked by FireTrident: it did not hold before this change either: src/core/money.ts does not export isNegative" },
+    ]);
+    const html = renderToStaticMarkup(createElement(AcceptanceLines, { rows }));
+    expect(html).toContain("checked by FireTrident<span class=\"mono\">: src/core/money.ts: isZero(m: Money): boolean</span>");
+    expect(html).toContain("checked by FireTrident: src/core/money.ts does not export allocate, though it held before this change");
+  });
+
   it("the Why tab marks a met on the model's word, and shows the quote for the others", () => {
     const rows = acceptanceOf({
       ...BASE,

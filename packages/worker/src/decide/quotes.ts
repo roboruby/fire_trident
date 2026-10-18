@@ -226,21 +226,34 @@ export type QuoteCheck = { ok: true; path: Path; quote: string } | { ok: false; 
 /**
  * Check one quote against the diff the model was shown: the named file must be one it was shown, and the quote
  * (whitespace collapsed, at least ACCEPTANCE_LIMITS.minQuote characters) must occur in the added and unchanged lines of
- * one of that file's hunks. A quote found only in removed lines, or nowhere, does not count.
+ * one of that file's hunks. A quote found only in removed lines, or nowhere, does not count. With `files` (the review
+ * view, FT_REVIEW_VIEW: each changed file's text after the change), a quote found anywhere in the named file's text
+ * after the change counts too.
  */
-export function checkQuote(path: string | undefined, quote: string | undefined, shown: readonly ShownFile[]): QuoteCheck {
+export function checkQuote(path: string | undefined, quote: string | undefined, shown: readonly ShownFile[], files?: ReadonlyMap<Path, string>): QuoteCheck {
   if (!path || plainPath(path) === "") return { ok: false, problem: "it named no file" };
   if (!quote || collapse(quote) === "") return { ok: false, problem: "it quoted no line" };
   const forms = quoteForms(quote);
   if (!forms.some((f) => f.length >= ACCEPTANCE_LIMITS.minQuote)) return { ok: false, problem: `its quote is shorter than ${ACCEPTANCE_LIMITS.minQuote} characters` };
   const named = plainPath(path);
   const file = shown.find((f) => f.path === named);
-  if (!file) return { ok: false, problem: `${cut(collapse(named), 120)} is not a file of the diff it was shown` };
-  const sides = newSides(file.hunks);
-  for (const f of forms) {
-    if (f.length < ACCEPTANCE_LIMITS.minQuote) continue;
-    if (sides.some((s) => s.includes(f))) return { ok: true, path: file.path, quote: f };
+  const after = files?.get(named);
+  if (!file && after === undefined) return { ok: false, problem: `${cut(collapse(named), 120)} is not a file of the diff it was shown` };
+  if (file) {
+    const sides = newSides(file.hunks);
+    for (const f of forms) {
+      if (f.length < ACCEPTANCE_LIMITS.minQuote) continue;
+      if (sides.some((s) => s.includes(f))) return { ok: true, path: file.path, quote: f };
+    }
   }
+  // The review view: the file after the change, whole, checked against its text.
+  if (after !== undefined) {
+    const whole = collapse(after);
+    const found = forms.find((f) => f.length >= ACCEPTANCE_LIMITS.minQuote && whole.includes(f));
+    if (found) return { ok: true, path: named, quote: found };
+    if (!file) return { ok: false, problem: `its quote is not in ${cut(collapse(named), 120)} after the change` };
+  }
+  if (!file) return { ok: false, problem: `${cut(collapse(named), 120)} is not a file of the diff it was shown` };
   const removed = removedLines(file.hunks);
   if (forms.some((f) => f.length >= ACCEPTANCE_LIMITS.minQuote && removed.some((r) => r.includes(f)))) return { ok: false, problem: `its quote is from a line the change removes from ${file.path}` };
   return { ok: false, problem: `its quote is not in the added or unchanged lines of ${file.path} it was shown` };
@@ -250,9 +263,10 @@ export function checkQuote(path: string | undefined, quote: string | undefined, 
  * Each acceptance line with what counts for it: the model's answer for its number, a "met" counted only when its quote
  * holds (checkQuote, `basis: "quote"`) or the line states an absence (isAbsence, `basis: "absence"`: on the model's word,
  * no quote needed), else unclear with the model's own answer kept as `said` and the problem in words. A line the model
- * did not answer, or was not asked (past the cap), is unclear. Only a line's first answer is read.
+ * did not answer, or was not asked (past the cap), is unclear. Only a line's first answer is read. `files` (the review view)
+ * lets a quote be found in a changed file's whole text after the change (checkQuote).
  */
-export function checkAcceptance(lines: readonly AcceptanceLine[], answers: readonly AcceptanceAnswer[] | undefined, shown: readonly ShownFile[]): NoteAcceptance[] {
+export function checkAcceptance(lines: readonly AcceptanceLine[], answers: readonly AcceptanceAnswer[] | undefined, shown: readonly ShownFile[], files?: ReadonlyMap<Path, string>): NoteAcceptance[] {
   const asked = askedLines(lines);
   const byLine = new Map<number, AcceptanceAnswer>();
   for (const a of answers ?? []) if (!byLine.has(a.line)) byLine.set(a.line, a);
@@ -275,7 +289,7 @@ export function checkAcceptance(lines: readonly AcceptanceLine[], answers: reado
       out.verdict = a.verdict;
       return out;
     }
-    const found = checkQuote(a.path, a.quote, shown);
+    const found = checkQuote(a.path, a.quote, shown, files);
     if (found.ok) {
       out.verdict = "met";
       out.basis = "quote";
@@ -307,8 +321,12 @@ function named(l: NoteAcceptance, lines: readonly NoteAcceptance[]): string {
   return `${place(l, lines)} "${cut(l.line, 160)}"${l.kind === "keep" && l.landingId ? ` (from landing ${l.landingId})` : ""}`;
 }
 
-/** What the model says it saw for a line it answered not met, when it named it: ` (it saw src/a.ts: "…")`; empty otherwise. */
+/**
+ * What the model says it saw for a line it answered not met, when it named it: ` (it saw src/a.ts: "…")`; for a line
+ * FireTrident checked itself (the review view), what it found: ` (checked by FireTrident: …)`; empty otherwise.
+ */
 function saw(l: NoteAcceptance): string {
+  if (l.basis === "checked") return l.problem ? ` (checked by FireTrident: ${cut(l.problem, 240)})` : "";
   if (!l.quote) return "";
   return ` (it saw ${l.path ? `${l.path}: ` : ""}"${cut(l.quote, 120)}")`;
 }
@@ -350,10 +368,19 @@ export function acceptanceGate(lines: readonly NoteAcceptance[] | undefined): Ac
     const count = `${own.length} line${own.length === 1 ? "" : "s"}`;
     // Lines met on the model's word (absences) are named, so a reader knows which lines the platform checked.
     const word = own.filter((l) => l.basis === "absence");
+    // Lines FireTrident checked itself in the files (the review view, FT_REVIEW_VIEW) are named too.
+    const checked = own.filter((l) => l.basis === "checked");
+    const quoted = own.length - word.length - checked.length;
     out.met =
-      word.length === 0
-        ? `every acceptance line is met, each with a quote found in the diff (${count})`
-        : `every acceptance line is met (${count}): ${own.length - word.length} with a quote found in the diff, ${word.length} on the model's word (${word.map((l) => place(l, lines)).join(", ")} ${word.length === 1 ? "states" : "state"} an absence, so there is no changed line to quote)`;
+      checked.length > 0
+        ? `every acceptance line is met (${count}): ${[
+            ...(quoted > 0 ? [`${quoted} with a quote found in the diff`] : []),
+            `${checked.length} checked by FireTrident in the files after the change (${checked.map((l) => place(l, lines)).join(", ")})`,
+            ...(word.length > 0 ? [`${word.length} on the model's word (${word.map((l) => place(l, lines)).join(", ")} ${word.length === 1 ? "states" : "state"} an absence)`] : []),
+          ].join(", ")}`
+        : word.length === 0
+          ? `every acceptance line is met, each with a quote found in the diff (${count})`
+          : `every acceptance line is met (${count}): ${own.length - word.length} with a quote found in the diff, ${word.length} on the model's word (${word.map((l) => place(l, lines)).join(", ")} ${word.length === 1 ? "states" : "state"} an absence, so there is no changed line to quote)`;
   }
   return out;
 }
@@ -363,6 +390,7 @@ export function acceptanceDetail(lines: readonly NoteAcceptance[]): string {
   return lines
     .map((l) => {
       const head = `${place(l, lines)} ${l.verdict}`;
+      if (l.basis === "checked") return `${head}: checked by FireTrident: ${l.verdict === "met" ? `${l.path ?? "?"}${l.quote ? ` ${cut(l.quote, 160)}` : ""}` : (l.problem ?? "")}`;
       if (l.verdict === "met") return l.basis === "absence" ? `${head}: on the model's word (it states an absence)` : `${head}: ${l.path ?? "?"} "${cut(l.quote ?? "", 120)}"`;
       if (l.problem) return `${head}: ${l.said ? `answered ${l.said} but ` : ""}${l.problem}`;
       return head;
@@ -386,7 +414,7 @@ export function noteAcceptance(x: unknown): NoteAcceptance[] | undefined {
     if ((r.kind !== "intent" && r.kind !== "keep") || typeof r.line !== "string" || typeof r.verdict !== "string" || !VERDICTS.has(r.verdict)) continue;
     const e: NoteAcceptance = { kind: r.kind, line: cut(collapse(r.line), ACCEPTANCE_LIMITS.lineChars), verdict: r.verdict as AcceptanceVerdict };
     if (typeof r.said === "string" && VERDICTS.has(r.said)) e.said = r.said as AcceptanceVerdict;
-    if (r.basis === "quote" || r.basis === "absence") e.basis = r.basis;
+    if (r.basis === "quote" || r.basis === "absence" || r.basis === "checked") e.basis = r.basis;
     if (typeof r.path === "string" && r.path !== "") e.path = r.path.slice(0, ACCEPTANCE_LIMITS.pathChars);
     if (typeof r.quote === "string" && r.quote !== "") e.quote = collapse(r.quote).slice(0, ACCEPTANCE_LIMITS.quoteChars);
     if (typeof r.problem === "string" && r.problem !== "") e.problem = collapse(r.problem).slice(0, 300);

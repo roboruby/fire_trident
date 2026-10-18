@@ -44,6 +44,22 @@ describe("acceptanceRows", () => {
     ]);
   });
 
+  it("marks the lines FireTrident checked itself (the review view), with what it found", () => {
+    const checked: NoteDecision = {
+      ...LLM,
+      acceptance: [
+        { kind: "intent", line: "src/core/money.ts exports isZero(m: Money): boolean", verdict: "met", basis: "checked", path: "src/core/money.ts", quote: "isZero(m: Money): boolean" },
+        { kind: "keep", line: "src/core/money.ts exports allocate(m: Money): Money[]", verdict: "not met", basis: "checked", path: "src/core/money.ts", problem: "src/core/money.ts does not export allocate, though it held before this change", landingId: "lnd_7" },
+        { kind: "keep", line: "src/core/money.ts exports isNegative(m: Money): boolean", verdict: "unclear", basis: "checked", path: "src/core/money.ts", problem: "it did not hold before this change either" },
+      ],
+    };
+    expect(acceptanceRows([checked], plain)).toEqual([
+      { k: "accept", v: '✓ line 1 "src/core/money.ts exports isZero(m: Money): boolean"  checked by FireTrident: src/core/money.ts isZero(m: Money): boolean' },
+      { k: "", v: '✗ keep line 1 "src/core/money.ts exports allocate(m: Money): Money[]" (from lnd_7)  not met: checked by FireTrident: src/core/money.ts does not export allocate, though it held before this change' },
+      { k: "", v: '? keep line 2 "src/core/money.ts exports isNegative(m: Money): boolean"  unclear: checked by FireTrident: it did not hold before this change either' },
+    ]);
+  });
+
   it("prints nothing for notes without them, or with odd data", () => {
     expect(acceptanceRows([], plain)).toEqual([]);
     expect(acceptanceRows(undefined, plain)).toEqual([]);
