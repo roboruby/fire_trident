@@ -227,9 +227,9 @@ function pushRange(out: string[], items: readonly string[], from: number, to: nu
  *
  * With `options.insertions` (the insertion rule): when every conflicting region is a pure insertion on both sides at
  * the same base line (neither side deletes or changes a base line there), each lands as the union of the two
- * insertions, ours first (core/insertions.ts insertionUnion), and the result says `rule: "insertions"`. One region that
- * edits or deletes base lines, or a union that would join two lines into one, leaves every conflict as git's rules
- * name it.
+ * insertions, ours first (core/insertions.ts insertionUnion: lines both start or end with land once), and the result
+ * says `rule: "insertions"`. One region that edits or deletes base lines, or a union that would land a construct twice
+ * or join two lines into one, leaves every conflict as git's rules name it.
  */
 export function mergeText(base: string, ours: string, theirs: string, maxEdits = MERGE_MAX_EDITS, options: MergeOptions = {}): TextMergeResult {
   if (ours === theirs || theirs === base) return { clean: true, text: ours };
