@@ -3,11 +3,24 @@ import type { CertView } from "./store.ts";
 
 /** Trunk certification as the UI words it (the trunk bar, the Why tab, the event log), with a red result's suspects and its first failing commit. */
 
-/** Tests that did not run: "2 skipped · 1 todo", or "" when every test ran. */
+/**
+ * Tests that did not run or count: "2 skipped · 1 todo · 3 unsupported" (unsupported: they used an API trunk
+ * certification does not support, and count apart from failures), or "" when every test ran.
+ */
 export function certNotRun(c: Pick<CertView, "counts">): string {
   const k = c.counts;
   if (!k) return "";
-  return [k.skipped > 0 ? `${fmtInt(k.skipped)} skipped` : "", k.todo > 0 ? `${fmtInt(k.todo)} todo` : ""].filter(Boolean).join(" · ");
+  const unsupported = k.unsupported ?? 0;
+  return [k.skipped > 0 ? `${fmtInt(k.skipped)} skipped` : "", k.todo > 0 ? `${fmtInt(k.todo)} todo` : "", unsupported > 0 ? `${fmtInt(unsupported)} unsupported` : ""].filter(Boolean).join(" · ");
+}
+
+/** The unsupported tests for a title: "\nNot supported here, counted apart:\n• name: API" (at most 5), or "". */
+export function certUnsupported(c: Pick<CertView, "counts" | "unsupportedTests">): string {
+  const list = c.unsupportedTests ?? [];
+  if (list.length === 0) return "";
+  const shown = list.slice(0, 5).map((u) => `• ${u.name}: ${u.api}`);
+  const more = Math.max(c.counts?.unsupported ?? list.length, list.length) - shown.length;
+  return `\nNot supported here, counted apart:\n${shown.join("\n")}${more > 0 ? `\n… and ${fmtInt(more)} more` : ""}`;
 }
 
 /**
@@ -190,7 +203,7 @@ export function certTitle(c: CertView): string {
   if (c.status === "skipped") return c.detail ?? "Nothing to certify";
   if (c.status === "green") {
     const passed = notRun ? `${fmtInt(k?.pass ?? 0)} of ${fmtInt(k?.tests ?? 0)} tests pass, ${notRun}` : `all ${fmtInt(k?.pass ?? 0)} tests pass`;
-    return `${shortSha(c.trunkSha)}: ${passed} (node:test in a Dynamic Worker${took})${reused}`;
+    return `${shortSha(c.trunkSha)}: ${passed} (node:test in a Dynamic Worker${took})${certUnsupported(c)}${reused}`;
   }
   const lines = (c.failing ?? []).slice(0, 10).map((f) => `• ${f.name}${f.error ? `: ${f.error}` : ""}`);
   const more = k ? k.fail + k.cancelled - lines.length : 0;
@@ -198,5 +211,5 @@ export function certTitle(c: CertView): string {
   const suspected =
     suspects.length > 0 ? `\nSuspects, newest first:\n${suspects.map((s) => `• ${s.ref}${s.title ? ` “${s.title}”` : ""}${s.paths ? ` changed ${s.paths}` : ""}${s.label ? ` (${s.label})` : ""}`).join("\n")}` : "";
   const firstRed = certFirstRed(c, "");
-  return `${shortSha(c.trunkSha)}: ${fmtInt(k ? k.fail + k.cancelled : lines.length)} of ${fmtInt(k?.tests ?? 0)} tests failing${notRun ? ` (${notRun})` : ""}${took}\n${lines.join("\n")}${more > 0 ? `\n… and ${more} more` : ""}${suspected}${firstRed ? `\n${firstRed.text}` : ""}${reused}`;
+  return `${shortSha(c.trunkSha)}: ${fmtInt(k ? k.fail + k.cancelled : lines.length)} of ${fmtInt(k?.tests ?? 0)} tests failing${notRun ? ` (${notRun})` : ""}${took}\n${lines.join("\n")}${more > 0 ? `\n… and ${more} more` : ""}${suspected}${firstRed ? `\n${firstRed.text}` : ""}${certUnsupported(c)}${reused}`;
 }

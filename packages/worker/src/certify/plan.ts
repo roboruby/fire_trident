@@ -1,7 +1,8 @@
 import type { Path } from "@fire_trident/core";
 import { relativeSpecifier } from "../agents/context.ts";
-import { classify, resolveExact, rewriteSpecifiers, type Compiled } from "./compile.ts";
+import { TEST_FILE, classify, importsFor, resolveExact, resolveFor, resolveVite, rewriteSpecifiers, rewriteVitest, type Compiled, type Runner } from "./compile.ts";
 import { NODE_TEST_SHIM } from "./shim.ts";
+import { VITEST_GLOBALS, VITEST_SHIM } from "./vitest.ts";
 
 /**
  * The module map one certification run loads into a Dynamic Worker. Each test file gets its own
@@ -10,14 +11,26 @@ import { NODE_TEST_SHIM } from "./shim.ts";
  * trunk paths (`t0/src/http.ts`), so relative imports resolve exactly as written and errors name
  * the real files. The harness (`__ft_certify__/main.js`) imports each file's shim, then the file,
  * runs its tests and answers one JSON report.
+ *
+ * A test file written for vitest gets its modules as vitest compiles them, with the relative imports
+ * vite resolves differently from Node (an extensionless path, a ".js" name of a ".ts" file, a
+ * directory) rewritten to the files they name; `vitest` names the vitest shim of its prefix, and the
+ * file imports the globals module first. When files share one module copy, node:test files share
+ * `t0/` and vitest files `t1/`, so a module compiled both ways never collides.
  */
 
 /** Where the harness and each prefix's node:test shim live inside the module map. */
 export const HARNESS_DIR = "__ft_certify__";
 export const MAIN_MODULE = `${HARNESS_DIR}/main.js`;
 export const SHIM_MODULE = `${HARNESS_DIR}/node-test.js`;
-/** Bumped whenever the shim or harness changes how results come out (part of the input digest). */
-export const RUNNER_VERSION = "ft-node-test/2";
+/** The vitest shim and the module that puts vitest's globals in place, beside each prefix's node:test shim when a file needs them. */
+export const VITEST_MODULE = `${HARNESS_DIR}/vitest.js`;
+export const VITEST_GLOBALS_MODULE = `${HARNESS_DIR}/vitest-globals.js`;
+/**
+ * Bumped whenever the shim or harness changes how results come out (part of the input digest). 3: describe suites
+ * collect in the Dynamic Worker (they failed there before), and the vitest shim.
+ */
+export const RUNNER_VERSION = "ft-node-test/3";
 /** How the harness starts the load error of a file whose runner could not start (its node:test shim failed to load). */
 export const RUNNER_FAILED = "runner failed: ";
 
@@ -52,17 +65,21 @@ export interface Plan {
   config: RunConfig;
 }
 
-/** The modules a test file reaches through relative imports (itself first), resolved exactly. */
+/**
+ * The modules a test file reaches through relative imports (itself first), resolved as its runner
+ * resolves them: exactly for node:test, as vite does for vitest (the runner the module map names).
+ */
 export function closureOf(test: Path, modules: ReadonlyMap<Path, Compiled>): Path[] {
   const files = new Set(modules.keys());
+  const runner: Runner = modules.get(test)?.runner ?? "node:test";
   const seen = new Set<Path>([test]);
   const order: Path[] = [test];
   for (let i = 0; i < order.length; i++) {
     const c = modules.get(order[i]!);
     if (!c) continue;
-    for (const spec of c.imports) {
+    for (const spec of importsFor(c, runner)) {
       if (classify(spec).kind !== "relative") continue;
-      const target = resolveExact(c.path, spec, files);
+      const target = resolveFor(runner, c.path, spec, files);
       if (target !== null && !seen.has(target)) {
         seen.add(target);
         order.push(target);
@@ -76,7 +93,31 @@ export function closureOf(test: Path, modules: ReadonlyMap<Path, Compiled>): Pat
 function moduleFor(c: Compiled): PlanModule {
   if (c.error !== undefined) return { js: `throw new SyntaxError(${JSON.stringify(c.error)});\n` };
   if (c.kind === "json") return { json: c.json ?? null };
-  return { js: rewriteSpecifiers(c.code ?? "", relativeSpecifier(c.path, SHIM_MODULE)) };
+  return { js: rewriteSpecifiers(c.code ?? "", relativeSpecifier(c.path, SHIM_MODULE), relativeSpecifier(c.path, VITEST_MODULE)) };
+}
+
+/**
+ * The code a module gets in the map of a vitest test file: vitest's compilation, its relative imports pointed at the
+ * files vite resolves them to among `files`, and, for a test file, the globals module imported first (on the first
+ * line, so line numbers in errors stay the file's own).
+ */
+function vitestModuleFor(c0: Compiled, files: ReadonlySet<Path>): PlanModule {
+  const c = c0.vitest ?? c0;
+  if (c.unsupported !== undefined) return { js: `throw new Error(${JSON.stringify(`not supported by trunk certification: ${c.unsupported}`)});\n` };
+  if (c.error !== undefined) return { js: `throw new SyntaxError(${JSON.stringify(c.error)});\n` };
+  if (c.kind === "json") return { json: c.json ?? null };
+  const paths = new Map<string, string>();
+  for (const spec of c.imports) {
+    if (classify(spec).kind !== "relative" || resolveExact(c.path, spec, files) !== null) continue;
+    const target = resolveVite(c.path, spec, files);
+    if (target !== null) paths.set(spec, relativeSpecifier(c.path, target));
+  }
+  let js = rewriteVitest(c.code ?? "", relativeSpecifier(c.path, SHIM_MODULE), relativeSpecifier(c.path, VITEST_MODULE), paths);
+  if (TEST_FILE.test(c.path)) {
+    const globals = `import ${JSON.stringify(relativeSpecifier(c.path, VITEST_GLOBALS_MODULE))};`;
+    js = js.startsWith("#!") ? js.replace("\n", `\n${globals}`) : globals + js;
+  }
+  return { js };
 }
 
 /** Build the module map and harness for one run. */
@@ -84,24 +125,32 @@ export function buildPlan(p: PlanInput): Plan {
   const isolate = p.isolate !== false;
   const modules: Record<string, PlanModule> = {};
   const files: Array<{ path: Path; prefix: string }> = [];
-  const prepared = new Map<Path, PlanModule>();
-  const prep = (path: Path): PlanModule | null => {
-    const hit = prepared.get(path);
+  const prepared = new Map<string, PlanModule>();
+  const known = new Set(p.modules.keys());
+  const prep = (path: Path, runner: Runner): PlanModule | null => {
+    const key = `${runner}\u0000${path}`;
+    const hit = prepared.get(key);
     if (hit) return hit;
     const c = p.modules.get(path);
     if (!c) return null;
-    const m = moduleFor(c);
-    prepared.set(path, m);
+    const m = runner === "vitest" ? vitestModuleFor(c, known) : moduleFor(c);
+    prepared.set(key, m);
     return m;
   };
   p.tests.forEach((test, i) => {
-    const prefix = isolate ? `t${i}/` : "t0/";
+    const runner: Runner = p.modules.get(test)?.runner ?? "node:test";
+    const prefix = isolate ? `t${i}/` : runner === "vitest" ? "t1/" : "t0/";
     files.push({ path: test, prefix });
-    for (const path of closureOf(test, p.modules)) {
-      const m = prep(path);
+    const closure = closureOf(test, p.modules);
+    for (const path of closure) {
+      const m = prep(path, runner);
       if (m) modules[prefix + path] = m;
     }
     modules[prefix + SHIM_MODULE] = { js: NODE_TEST_SHIM };
+    if (runner === "vitest" || closure.some((path) => p.modules.get(path)?.imports.includes("vitest"))) {
+      modules[prefix + VITEST_MODULE] = { js: VITEST_SHIM };
+      modules[prefix + VITEST_GLOBALS_MODULE] = { js: VITEST_GLOBALS };
+    }
   });
   modules[MAIN_MODULE] = { js: harnessSource(files, p.config) };
   let bytes = 0;

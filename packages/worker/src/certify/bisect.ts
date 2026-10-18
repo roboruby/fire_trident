@@ -2,10 +2,10 @@ import { revalidationEnabled } from "@fire_trident/core";
 import type { Certification, ColonyEvent, FailingTest, FileVersion, FirstRed, Id, Landing, Path, Sha } from "@fire_trident/core";
 import { newNonce } from "../agents/prompt.ts";
 import { resolveRelative } from "../agents/context.ts";
-import { MODULE_FILE, classify, compile } from "./compile.ts";
+import { MODULE_FILE, classify, configCandidates, viteCandidates } from "./compile.ts";
 import { reachOf, type FoundSuspect } from "./culprit.ts";
 import { isolateLanding, isolationLines, outcomesOf, proposalCount, revertProven } from "./isolate.ts";
-import { DEFAULT_CAPS, load, type CompileMemo, type IndexedFile } from "./load.ts";
+import { DEFAULT_CAPS, load, memoEntry, type CompileMemo, type IndexedFile } from "./load.ts";
 import { buildPlan, type Plan } from "./plan.ts";
 import { RANGE_MAX, type LandingRange, type RangeLanding, type RangeQuery } from "./range.ts";
 import { testName, type RunReport } from "./report.ts";
@@ -195,7 +195,9 @@ function loadable(path: Path): boolean {
  * The trunk index of what `files` load at one commit, read level by level along relative imports (one baseBlobs and
  * at most one readBlobs call a level). The first call also reads back the file the commit's landing wrote: when that
  * is not the blob it wrote, the commit could not be read, and the try fails rather than find no tests there. `over`
- * lays other blobs on paths of the commit (null: absent), as proposal isolation puts a proposal's files back.
+ * lays other blobs on paths of the commit (null: absent), as proposal isolation puts a proposal's files back. When a
+ * target file is written for vitest, imports are followed as vite resolves them (each file it could name is asked for)
+ * and the vitest configurations above the targets are read too, as certification reads them on trunk.
  */
 async function indexAt(trunk: BisectTrunk, commit: RangeLanding, files: readonly Path[], memo: ProbeMemo, over?: ReadonlyMap<Path, Sha | null>): Promise<IndexedFile[]> {
   if (!trunk.baseBlobs) throw new Error("cannot read older commits on this trunk writer");
@@ -203,8 +205,10 @@ async function indexAt(trunk: BisectTrunk, commit: RangeLanding, files: readonly
   const asked = new Set<Path>();
   let frontier = files.filter(loadable);
   let first = true;
+  let vitest = false;
   while (frontier.length > 0) {
-    const want = [...new Set(frontier)].filter((p) => !asked.has(p)).slice(0, Math.max(0, DEFAULT_CAPS.maxModules - asked.size));
+    // Following vitest's imports asks for paths that are not there: the cap then counts the files found.
+    const want = [...new Set(frontier)].filter((p) => !asked.has(p)).slice(0, Math.max(0, DEFAULT_CAPS.maxModules - (vitest ? out.size : asked.size)));
     if (want.length === 0) break;
     for (const p of want) asked.add(p);
     const witness = first ? commit.witness : undefined;
@@ -213,6 +217,7 @@ async function indexAt(trunk: BisectTrunk, commit: RangeLanding, files: readonly
     const at = new Map<Path, Sha | null>();
     for (const v of Array.isArray(answer) ? answer : []) if (v && typeof v.path === "string") at.set(v.path, typeof v.blob === "string" && v.blob !== "" ? v.blob : null);
     if (witness && at.get(witness.path) !== witness.blob) throw new Error(`could not read the commit ${commit.trunkSha.slice(0, 7)}`);
+    const level = first;
     first = false;
     if (over) for (const p of want) if (over.has(p)) at.set(p, over.get(p) ?? null);
     const present = want.flatMap((path): Array<[Path, Sha]> => {
@@ -228,17 +233,23 @@ async function indexAt(trunk: BisectTrunk, commit: RangeLanding, files: readonly
       if (!entry) {
         const text = texts[blob];
         if (typeof text !== "string") throw new Error(`could not read ${path} at ${commit.trunkSha.slice(0, 7)}`);
-        entry = { compiled: compile(path, text), nodeTest: text.includes("node:test") };
+        entry = memoEntry(path, text, vitest);
         memo.compiled.set(key, entry);
         memo.sizes.set(key, new TextEncoder().encode(text).length);
       }
       out.set(path, { path, blob, size: memo.sizes.get(key) ?? 0 });
-      for (const spec of entry.compiled.imports) {
+      if (level && (entry.hints?.vitest || entry.hints?.globals)) vitest = true;
+      for (const spec of vitest ? (entry.compiled.vitest?.imports ?? entry.compiled.imports) : entry.compiled.imports) {
         if (classify(spec).kind !== "relative") continue;
+        if (vitest) {
+          for (const p of viteCandidates(path, spec)) if (!asked.has(p) && loadable(p)) next.push(p);
+          continue;
+        }
         const target = resolveRelative(path, spec);
         if (target && !asked.has(target) && loadable(target)) next.push(target);
       }
     }
+    if (level && vitest) for (const p of configCandidates(files)) if (!asked.has(p)) next.push(p);
     frontier = next;
   }
   return [...out.values()].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));

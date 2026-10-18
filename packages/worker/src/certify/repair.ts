@@ -1,6 +1,7 @@
 import type { Certification, Id, IntentStatus, Path, Suspect, SuspectLabel } from "@fire_trident/core";
 import { newNonce } from "../agents/prompt.ts";
 import { capSuspects, hasLabel } from "./culprit.ts";
+import { excludeEntries } from "./exclude.ts";
 import { lostOrigin } from "./owed.ts";
 import { prelandGlobs } from "./preland.ts";
 
@@ -33,11 +34,16 @@ export interface CertifyPolicy {
    * land. Empty or absent: every change that reaches a test file.
    */
   prelandPaths?: string[];
+  /**
+   * Test files and tests ("path > suite > test") that count as unsupported instead of passing or failing (exclude.ts):
+   * known differences between the test Worker's runtime and the project's own. Absent or empty: none.
+   */
+  excludeTests?: string[];
 }
 
 export const DEFAULT_POLICY: CertifyPolicy = { enabled: true, repair: true, repairsPerHour: 3, timeoutMs: 60_000, testTimeoutMs: 10_000, minIntervalMs: 2_000 };
 
-const LIMITS: Record<Exclude<keyof CertifyPolicy, "enabled" | "repair" | "prelandPaths">, [number, number]> = {
+const LIMITS: Record<Exclude<keyof CertifyPolicy, "enabled" | "repair" | "prelandPaths" | "excludeTests">, [number, number]> = {
   repairsPerHour: [0, 60],
   timeoutMs: [5_000, 300_000],
   testTimeoutMs: [100, 120_000],
@@ -58,6 +64,12 @@ export function mergePolicy(base: CertifyPolicy, patch: unknown): { policy: Cert
       if (typeof globs === "string") return { error: globs };
       if (globs.length > 0) out.prelandPaths = globs;
       else delete out.prelandPaths;
+    } else if (k === "excludeTests") {
+      // Known runtime differences (exclude.ts): an empty list excludes nothing again.
+      const entries = excludeEntries(v);
+      if (typeof entries === "string") return { error: entries };
+      if (entries.length > 0) out.excludeTests = entries;
+      else delete out.excludeTests;
     } else if (k in LIMITS) {
       const [lo, hi] = LIMITS[k as keyof typeof LIMITS];
       if (typeof v !== "number" || !Number.isFinite(v) || v < lo || v > hi) return { error: `${k} must be a number from ${lo} to ${hi}` };

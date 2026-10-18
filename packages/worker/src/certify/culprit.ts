@@ -1,7 +1,7 @@
 import { revalidationEnabled } from "@fire_trident/core";
 import type { Id, Path, Sha, Suspect, SuspectLabel } from "@fire_trident/core";
 import { resolveRelative } from "../agents/context.ts";
-import { classify, resolveExact, type Compiled } from "./compile.ts";
+import { classify, importsFor, resolveFor, type Compiled } from "./compile.ts";
 
 /**
  * Culprit finding (FT_CULPRITS): when a certification run is red, name the changes that may have
@@ -80,14 +80,16 @@ export function culpritsEnabled(setting: string | undefined, colonyId: Id): bool
  */
 export function reachOf(file: Path, modules: ReadonlyMap<Path, Compiled> | null, max = SUSPECT_REACH): Path[] {
   const files = new Set(modules?.keys() ?? []);
+  // A vitest test file reaches what vite resolves its imports to (an extensionless path names the .ts file).
+  const runner = modules?.get(file)?.runner ?? "node:test";
   const order: Path[] = [file];
   const seen = new Set<Path>(order);
   for (let i = 0; i < order.length && order.length < max; i++) {
     const c = modules?.get(order[i]!);
     if (!c) continue;
-    for (const spec of c.imports) {
+    for (const spec of importsFor(c, runner)) {
       if (classify(spec).kind !== "relative") continue;
-      const target = resolveExact(c.path, spec, files) ?? resolveRelative(c.path, spec);
+      const target = resolveFor(runner, c.path, spec, files) ?? resolveRelative(c.path, spec);
       if (!target || seen.has(target)) continue;
       seen.add(target);
       order.push(target);

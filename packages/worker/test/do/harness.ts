@@ -565,7 +565,7 @@ export class TrunkDO extends DurableObject<Env> {
     s.certifyReads = (s.certifyReads ?? 0) + 1;
     await this.save(s);
     const files = Object.entries(s.files)
-      .filter(([path]) => /\.(ts|js|mjs|json)$/.test(path))
+      .filter(([path]) => /\.(ts|js|mjs|json|tsx|jsx|mts|cts)$/.test(path))
       .map(([path, f]) => ({ path, size: f.content.length, blob: f.blob }));
     const landingId = s.landings.find((l) => l.trunkSha === s.head)?.id ?? `lnd_external_${s.head.slice(0, 8)}`;
     return { trunkSha: s.head, landingId, files, truncated: false };
