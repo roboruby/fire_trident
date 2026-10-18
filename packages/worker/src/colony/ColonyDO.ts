@@ -204,6 +204,7 @@ import { ClosureLedger, abandonCause, closureOf, eventFields, reapCutoffs, silen
 import type { ClosureCause, ClosureReport, IntentClosure } from "@fire_trident/core";
 import { CoordMeter, coordTokensReport, headsUpBumps, type CoordTokensReport } from "./coordtokens.ts";
 import { ColonyAudit, type AuditAnswer, type AuditHost, type AuditReport, type CanaryAnswer } from "./audit.ts";
+import { spendReviewCode } from "./reviewcodes.ts";
 
 /**
  * Result of ColonyDO.take: an assignment, or advice to wait and retry. `review`: what review will
@@ -2693,6 +2694,15 @@ export class ColonyDO extends DurableObject<Env> {
     } else {
       await this.updateProposals([{ id: proposalId, patch: { status: d === "reject" ? "rejected" : "returned", reason: reason || `${d} by ${by}`, ...(tested.evidence ? { evidence: tested.evidence } : {}) } }]);
     }
+  }
+
+  /**
+   * Review from a chat client (mcp/review/server.ts): spend the decision code a person's click carries, once, before
+   * their decision; false when it was spent before or a later decision on the change voided it (colony/reviewcodes.ts).
+   */
+  async spendReviewCode(nonce: string, proposalId: Id, expiresAt: number): Promise<boolean> {
+    this.requireColony();
+    return spendReviewCode(this.sql, nonce, proposalId, expiresAt, Date.now());
   }
 
   /**

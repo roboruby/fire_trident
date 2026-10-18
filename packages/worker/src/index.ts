@@ -5,6 +5,7 @@ import { gitProxy } from "./api/git-proxy.ts";
 import { FireTridentMcp } from "./mcp/FireTridentMcp.ts";
 import { mcpRefusal } from "./mcp/gate.ts";
 import { publicMcp } from "./mcp/public.ts";
+import { reviewMcp } from "./mcp/review/server.ts";
 import { aboutResponse } from "./front/about.ts";
 import { deploymentPause } from "./api/pause.ts";
 import { frontDoor } from "./front/door.ts";
@@ -45,6 +46,9 @@ const mcpSse = FireTridentMcp.serveSSE("/sse", { binding: "MCP" });
 const mcpGate = (handler: typeof mcpHttp) => async (c: { req: { raw: Request }; env: Env; executionCtx: unknown }) =>
   (await mcpRefusal(c.req.raw, c.env)) ?? handler.fetch(c.req.raw, c.env, c.executionCtx as ExecutionContext);
 
+// A person's review from a chat client (mcp/review/server.ts): the admin token only, never FT_MCP_TOKEN; before /mcp/* so
+// the agents' gate never sees it.
+app.all("/mcp/review", (c) => reviewMcp(c.req.raw, c.env));
 app.all("/mcp", mcpGate(mcpHttp));
 app.all("/mcp/*", mcpGate(mcpHttp));
 app.all("/sse", mcpGate(mcpSse));
