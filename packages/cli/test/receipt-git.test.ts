@@ -85,21 +85,22 @@ beforeAll(async () => {
 
 afterAll(removeAll);
 
-describe("receipt lines from a clone", () => {
+describe("receipt lines from a clone", { timeout: 30_000 }, () => {
   it("prints nothing new for a note written before receipts", async () => {
-    expect(await both(repo.dir, sha.old!)).toEqual({ code: 0, out: "intact\nanswerable: matt (approved this change)" });
+    expect(await both(repo.dir, sha.old!)).toEqual({ code: 0, out: "intact\nanswerable: matt (approved this change)\non origin/main" });
   });
 
   it("prints each decision's head, what its decider was shown, and verified or stated, the same from both checkers", async () => {
     const r = await both(repo.dir, sha.receipt!, ["--keys", keys.keysFile]);
     expect(r.code).toBe(0);
     expect(r.out.split("\n")).toEqual([
-      `intact, signed by ${keys.keyId}`,
+      `intact, signed by ${keys.keyId}, full commit signed`,
       "answerable: dana@example.com, matt (1 of 2: dana@example.com approved this change; 1 of 2: matt approved this change)",
       "receipt: prp_1 2 of 5 decisions kept (the 3 earliest left out by the note's cap)",
       `receipt: prp_1 llm escalate by @cf/google/gemma at head 1234567890ab, shown the prompt's diff sha256:${"cd".repeat(8)}, clipped: saw 20 of 22 files`,
       `receipt: prp_1 human approve by dana@example.com (verified by Access) at head 1234567890ab, shown the review card sha256:${"ab".repeat(8)}`,
       "receipt: prp_2 human approve by matt (stated, not verified) at head 1234567890ab, shown the review card: no view was kept, clipped: the card served no view of the change",
+      "on origin/main",
     ]);
   });
 

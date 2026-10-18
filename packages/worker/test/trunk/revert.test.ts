@@ -12,6 +12,7 @@ import {
   sqlRevertTrunk,
   type LandedPath,
   type RevertCommit,
+  type RevertResult,
   type RevertTrunk,
 } from "../../src/trunk/revert.ts";
 
@@ -146,6 +147,8 @@ class Trunk {
   readonly commits: RevertCommit[] = [];
   between: (() => void) | null = null;
   notesStarted = 0;
+  /** The mode each path had in each commit, as modeAt answers it (absent: no modeAt, as a writer without it). */
+  modes: ((commit: Sha, path: Path) => Promise<string | null>) | null = null;
   failNotes = false;
   private readonly db: DatabaseSync;
   private readonly blobs = new Map<Sha, Uint8Array>();
@@ -211,6 +214,7 @@ class Trunk {
         return rows.length === 1 ? (JSON.parse(rows[0]!.data) as Landing) : null;
       },
       read: async (blob) => this.blobs.get(blob) ?? null,
+      ...(this.modes ? { modeAt: this.modes } : {}),
       serial: async (fn) => {
         const slipped = this.between;
         this.between = null;
@@ -382,14 +386,42 @@ describe("runRevert", () => {
     expect([u.commits.length, u.text("src/a.ts")]).toEqual([0, "export const a = 2;\n"]);
   });
 
-  it("answers 422 when a file to put back is not UTF-8 text, or the import check would read too much", async () => {
-    const t = new Trunk({ "src/logo.ts": new Uint8Array([0xff, 0xfe, 0x00, 0x41]) });
-    t.land("lnd_1", [{ id: "prp_a", intent: "int_a", writes: { "src/logo.ts": "export const logo = 1;\n" } }]);
-    expect(await runRevert(t.trunk(), "lnd_1", { by: "m", reason: "r", proposal: "prp_a" })).toEqual({ ok: false, status: 422, error: "src/logo.ts is not UTF-8 text; revert it by hand" });
+  it("puts a file that is not UTF-8 text back byte for byte, by its blob", async () => {
+    const logo = new Uint8Array([0xff, 0xfe, 0x00, 0x41, 0x89, 0x50, 0x4e, 0x47]);
+    const t = new Trunk({ "assets/logo.png": logo });
+    const before = t.blobOf("assets/logo.png");
+    t.land("lnd_1", [{ id: "prp_a", intent: "int_a", writes: { "assets/logo.png": "not a png\n" } }]);
+    const produced = t.blobOf("assets/logo.png");
+    const r = await runRevert(t.trunk(), "lnd_1", { by: "m", reason: "r", proposal: "prp_a" });
+    expect(r.ok).toBe(true);
+    expect(t.commits[0]?.files).toEqual([{ path: "assets/logo.png", blob: before, expect: produced, content: logo }]);
+    expect(t.blobOf("assets/logo.png")).toBe(before);
+  });
 
+  it("puts a file the landing deleted back with the mode it had, and refuses one whose mode it cannot read or put back", async () => {
+    const run = async (mode: string | null | "none"): Promise<{ t: Trunk; r: RevertResult }> => {
+      const t = new Trunk({ "bin/run.sh": "#!/bin/sh\necho hi\n", "src/a.ts": "export const a = 1;\n" });
+      const landing = t.land("lnd_1", [{ id: "prp_a", intent: "int_a", writes: { "bin/run.sh": null } }]);
+      if (mode !== "none") t.modes = async (commit, path) => (commit === landing.parentSha && path === "bin/run.sh" ? mode : null);
+      return { t, r: await runRevert(t.trunk(), "lnd_1", { by: "m", reason: "r" }) };
+    };
+    const exec = await run("100755");
+    expect(exec.r.ok).toBe(true);
+    expect(exec.t.commits[0]?.files.map((f) => [f.path, f.mode, f.content === null ? null : new TextDecoder().decode(f.content)])).toEqual([["bin/run.sh", "100755", "#!/bin/sh\necho hi\n"]]);
+    expect((await run("120000")).t.commits[0]?.files[0]?.mode).toBe("120000");
+    // A writer that cannot say (older code, a stand-in): the file comes back as trunk adds files, as before.
+    expect((await run("none")).t.commits[0]?.files[0]).not.toHaveProperty("mode");
+    const unread = await run(null);
+    expect(unread.r).toEqual({ ok: false, status: 422, error: "cannot read the mode bin/run.sh had before lnd_1; revert it by hand" });
+    const sub = await run("160000");
+    expect(sub.r).toEqual({ ok: false, status: 422, error: "bin/run.sh had mode 160000 before lnd_1, which a revert does not put back; revert it by hand" });
+    expect([unread.t.commits.length, sub.t.commits.length]).toEqual([0, 0]);
+  });
+
+  it("answers 422 when the import check would read too much", async () => {
     const { t: u } = twoProposals();
     u.sql.exec("UPDATE ft_files SET size = ? WHERE path = ?", IMPORT_SCAN.bytes + 1, "src/main.ts");
     expect(await runRevert(u.trunk(), "lnd_1", { by: "m", reason: "r", proposal: "prp_a" })).toEqual({ ok: false, status: 422, error: "too many files to check which ones import src/new.ts; revert prp_a of lnd_1 by hand" });
-    expect([t.commits.length, u.commits.length]).toEqual([0, 0]);
+    expect(u.commits.length).toBe(0);
   });
 });

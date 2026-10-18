@@ -645,7 +645,7 @@ export class TrunkDO extends DurableObject<Env> {
         }
         for (const f of commit.files) {
           if (f.content === null || f.blob === null) delete s.files[f.path];
-          else s.files[f.path] = { blob: f.blob, content: f.content };
+          else s.files[f.path] = { blob: f.blob, content: new TextDecoder().decode(f.content) };
         }
         const parent = s.head;
         const sha = this.commit(s);

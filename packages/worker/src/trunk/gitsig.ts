@@ -2,7 +2,7 @@ import type { Sha } from "@fire_trident/core";
 import { LANDING_IDENTITY, writeCommitObject, type GitRepo } from "../artifacts/git.ts";
 import type { Env } from "../env.ts";
 import { commitContent, objectId } from "./objects.ts";
-import { publishedKeys, type NoteSigner, type PublishedKey } from "./signature.ts";
+import { SigningFailed, publishedKeys, type NoteSigner, type PublishedKey } from "./signature.ts";
 import { writePending } from "./surgery.ts";
 
 /**
@@ -43,8 +43,6 @@ const VERSION = 1;
 /** Base64 columns a line of the armored signature, as ssh-keygen writes it. */
 const COLUMNS = 70;
 const enc = new TextEncoder();
-
-let signFailureLogged = false;
 
 /** `bytes` as an SSH wire string: a 4-byte big-endian length, then the bytes. */
 function sshString(bytes: Uint8Array | string): Uint8Array {
@@ -128,16 +126,15 @@ export function withSignatureHeader(content: Uint8Array, signature: string): Uin
 
 /**
  * `content` (a commit object as commitContent builds it) signed the stock git way by `signer`: the same bytes with a
- * gpgsig header. Unchanged when `signer` is null, and when signing fails (logged once; the commit goes on unsigned).
+ * gpgsig header. Unchanged when `signer` is null. Throws SigningFailed (logged and counted) when signing fails, so no
+ * commit goes out without its signature while the key is good (trunk/signature.ts).
  */
 export async function signCommit(content: Uint8Array, signer: Pick<NoteSigner, "key" | "signBytes"> | null): Promise<Uint8Array> {
   if (!signer) return content;
   try {
     return withSignatureHeader(content, await sshSignature(content, signer));
   } catch (e) {
-    if (!signFailureLogged) console.error(`a trunk commit was left without its git signature: signing it failed (${e instanceof Error ? e.name : "unknown error"})`);
-    signFailureLogged = true;
-    return content;
+    throw new SigningFailed("a trunk commit", e);
   }
 }
 

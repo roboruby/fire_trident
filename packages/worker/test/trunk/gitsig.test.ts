@@ -5,7 +5,7 @@ import { LANDING_IDENTITY, ensureRepo, memoryFs, writeCommitObject, type GitRepo
 import { sealNote, withNoteDigest } from "../../src/trunk/digest.ts";
 import { ALLOWED_SIGNERS_PATH, SIGNER_PRINCIPAL, allowedSignerLine, allowedSigners, allowedSignersResponse, signCommit, sshPublicKey, writeTrunkCommit } from "../../src/trunk/gitsig.ts";
 import { commitContent, objectId } from "../../src/trunk/objects.ts";
-import { checkSignature, noteSigner, publishedKeys, withSignature, type NoteSigner } from "../../src/trunk/signature.ts";
+import { SigningFailed, checkSignature, noteSigner, publishedKeys, signingFailures, withSignature, type NoteSigner } from "../../src/trunk/signature.ts";
 import { gitSignatureGood, readSshSignature, splitSigned } from "./sshsig-check.ts";
 
 /**
@@ -71,16 +71,18 @@ describe("the git signature of a trunk commit", () => {
     expect(await checkSignature({ tree: c.tree, parents: c.parents, message: c.message }, [k.signer.key])).toEqual({ status: "signed", keyId: k.signer.key.id });
   });
 
-  it("changes nothing without a signer, and leaves a commit unsigned (said once) when signing fails", async () => {
+  it("changes nothing without a signer, and never builds a commit unsigned when signing fails: it throws, logged and counted each time", async () => {
     const plain = await landingObject(null);
     expect(plain.signed).toBe(plain.unsigned);
     const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const k = await newKey();
     const failing = { key: k.signer.key, signBytes: async () => Promise.reject(new TypeError("no")) };
     const content = commitContent({ tree: TREE, parents: [], message: "x", name: "n", email: "e@x.invalid", timestamp: 1 });
-    expect(await signCommit(content, failing)).toBe(content);
-    expect(await signCommit(content, failing)).toBe(content);
-    expect(log.mock.calls.length).toBeLessThanOrEqual(1);
+    const before = signingFailures();
+    await expect(signCommit(content, failing)).rejects.toBeInstanceOf(SigningFailed);
+    await expect(signCommit(content, failing)).rejects.toThrow(/^a trunk commit was not signed, so it was held: signing failed \(TypeError\); its changes are tried again \(\d+ signing failures since this trunk writer started\)$/);
+    expect(signingFailures()).toBe(before + 2);
+    expect(log.mock.calls.length).toBe(2);
     for (const call of log.mock.calls) expect(String(call[0])).not.toContain(JSON.parse(k.secret).d);
   });
 
@@ -289,7 +291,7 @@ describe.skipIf(WHY !== "")(`stock git verify-commit on the trunk writer's commi
     expect(repo.git(["-c", "gpg.format=ssh", "-c", `gpg.ssh.allowedSignersFile=${onlyNow}`, "verify-commit", early]).status).not.toBe(0);
   }, STOCK_MS);
 
-  it("leaves the lineage note checks as they were: verify_note.mjs reads a commit with a gpgsig header as before", async () => {
+  it("leaves the lineage note check as it was, and verify_note.mjs --keys checks the gpgsig header too", async () => {
     const repo = stockRepo();
     const k = await newKey();
     const { text: noteText } = await sealNote({ ...note, landingId: "lnd_1" });
@@ -302,7 +304,8 @@ describe.skipIf(WHY !== "")(`stock git verify-commit on the trunk writer's commi
     const run = (args: string[]) => NODE.spawnSync(NODE.process.execPath, [VERIFY_NOTE, ...args], { cwd: repo.dir, encoding: "utf8", env: { ...NODE.process.env, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null" } });
     expect(run([sha]).stdout.split("\n")[0]).toBe("intact");
     const signed = run([sha, "--keys", keysFile]);
-    expect(signed.stdout.split("\n")[0]).toBe(`intact, signed by ${k.signer.key.id}`);
+    // With the keys it checks the gpgsig header too: the note and the whole commit are signed.
+    expect(signed.stdout.split("\n")[0]).toBe(`intact, signed by ${k.signer.key.id}, full commit signed`);
     expect(signed.status).toBe(0);
   }, STOCK_MS);
 });

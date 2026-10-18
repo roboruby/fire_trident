@@ -75,8 +75,11 @@ export interface Env {
    * /.well-known/firetrident-keys.json, GET /api/about names its key id, and the note checks say whether each commit is
    * signed. The same key also signs each commit the stock git way (a gpgsig header holding an SSH signature, namespace
    * "git": trunk/gitsig.ts), so `git verify-commit` with gpg.format=ssh and the allowed signers published at
-   * /.well-known/firetrident-allowed-signers checks it. Absent, or not such a key (logged once, never printed), landings
-   * stay unsigned and nothing fails.
+   * /.well-known/firetrident-allowed-signers checks it, and so do the note checks. Absent, landings stay unsigned and
+   * nothing fails. Set and not such a key (logged once, never printed), landings stay unsigned and the note checks
+   * (`ft verify`, GET /notes/verify's `signingProblem`) report it as a failure until it is fixed. With a key that loaded,
+   * a signature that fails at landing time is never skipped: that cycle lands nothing (logged and counted) and its
+   * changes are tried again.
    */
   FT_NOTE_KEY?: string;
   /**

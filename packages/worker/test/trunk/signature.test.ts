@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { landingMessage } from "@fire_trident/core";
 import type { LineageNote, Proposal } from "@fire_trident/core";
 import { sealNote, trailerDigest, withNoteDigest } from "../../src/trunk/digest.ts";
-import { KEYS_PATH, SIGNATURE_TRAILER, checkSignature, keyIdOf, keysResponse, noteKeyId, noteSigner, publishedKeys, retiredKeys, signedText, windowProblem, withSignature } from "../../src/trunk/signature.ts";
+import { KEYS_PATH, SIGNATURE_TRAILER, checkSignature, keyIdOf, keysResponse, noteKeyId, noteKeyProblem, noteSigner, publishedKeys, retiredKeys, signedText, signingFailures, windowProblem, withSignature } from "../../src/trunk/signature.ts";
 
 /** Signed lineage notes: the trunk writer's FT-Note-Signature trailer, its published key, and the check of both. */
 
@@ -144,13 +144,34 @@ describe("without a usable key", () => {
     expect((await landingCommit(bad[5])).message).toBe(withNoteDigest(landingMessage({ id: "lnd_1", intentIds: ["int_1"] }, [proposal], { int_1: "Add a thing" }), digest));
   });
 
-  it("leaves a commit unsigned when signing fails, and says so once", async () => {
+  it("never leaves a commit unsigned when signing fails: it throws, logged and counted each time", async () => {
     const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
-    const signer = (await noteSigner(await newKey()))!;
+    const secret = await newKey();
+    const signer = (await noteSigner(secret))!;
     const failing = { key: signer.key, sign: async () => Promise.reject(new TypeError("no")) };
-    expect(await withSignature("Land 1 change: x", failing, { digest: "0".repeat(64), tree: TREE, parents: [PARENT] })).toBe("Land 1 change: x");
-    expect(await withSignature("Land 1 change: x", failing, { digest: "0".repeat(64), tree: TREE, parents: [PARENT] })).toBe("Land 1 change: x");
-    expect(log.mock.calls.length).toBeLessThanOrEqual(1);
+    const before = signingFailures();
+    for (let i = 0; i < 2; i++) {
+      await expect(withSignature("Land 1 change: x", failing, { digest: "0".repeat(64), tree: TREE, parents: [PARENT] })).rejects.toThrow(
+        /^a trunk commit's lineage note was not signed, so it was held: signing failed \(TypeError\); its changes are tried again \(\d+ signing failures? since this trunk writer started\)$/,
+      );
+    }
+    expect(signingFailures()).toBe(before + 2);
+    expect(log).toHaveBeenCalledTimes(2);
+    for (const call of log.mock.calls) expect(String(call[0])).not.toContain(JSON.parse(secret).d);
+  });
+
+  it("says why a key that is set signs nothing, for the note checks to report, and nothing for a good key or none", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    expect(await noteKeyProblem(undefined)).toBeNull();
+    expect(await noteKeyProblem("  ")).toBeNull();
+    const good = await newKey();
+    expect(await noteKeyProblem(good)).toBeNull();
+    const problem = await noteKeyProblem("not json at all");
+    expect(problem).toMatch(/^FT_NOTE_KEY is set but cannot sign \(it is not JSON\), so landings go out unsigned: set it to an Ed25519 private key as a JWK/);
+    const a = JSON.parse(await newKey()) as Record<string, string>;
+    const halves = await noteKeyProblem(JSON.stringify({ ...a, d: undefined }));
+    expect(halves).toContain('(it has no 32-byte private half ("d"))');
+    expect(halves).not.toContain(a.x);
   });
 });
 
