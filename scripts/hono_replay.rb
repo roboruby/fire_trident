@@ -92,6 +92,11 @@ module HonoReplay
   PRIORITY = 3
   # How long a grading vitest run may take.
   VITEST_S = 900
+  # Left out of each colony's trunk certification (CertifyPolicy.excludeTests), never out of the grade: the two tests in
+  # Hono's suite at B that pass under Node and fail in workerd (a Request has no mode there; an abort's reason does not
+  # cross the proxy), measured by the vitest shim's agreement check. Without them the seed's certification reads red.
+  CERTIFY_EXCLUDE = ["src/helper/proxy/index.test.ts > Proxy Middleware > proxy > client disconnect",
+                     "src/request.test.ts > cloneRawRequest > clones consumed request object"].freeze
 
   # A run could not do what it should; the message says what happened.
   Failure = Contention::Failure
@@ -426,6 +431,10 @@ module HonoReplay
       @colony = created["id"] || @name
       @result[:colony] = @colony
       step("review to switch off for the seed") { api!(:post, "/colonies/#{@colony}/decide/policy", { enabled: false }) }
+      unless @opts[:certify_exclude].empty?
+        step("certification to leave out #{@opts[:certify_exclude].size} tests") { api!(:post, "/colonies/#{@colony}/certify/policy", { excludeTests: @opts[:certify_exclude] }) }
+        @result[:certify_exclude] = @opts[:certify_exclude]
+      end
       state = step("the colony's certification state") { api!(:get, "/colonies/#{@colony}/certifications?limit=1") }.first
       @result[:certification_on] = state["on"] == true
       @clock.say("created colony #{@colony} (#{fmt(secs)}), pool #{pool}; certification is #{state['on'] == true ? 'on' : "off (deployment #{state['deployment'].inspect}, runner #{state['runner'].inspect})"}; review is off until the seed lands")
@@ -748,6 +757,9 @@ module HonoReplay
       lines << ""
       lines << "Operator's note: #{sweep[:note]}" if sweep[:note]
       lines << "" if sweep[:note]
+      excluded = runs.flat_map { |r| Array(r[:certify_exclude]) }.uniq
+      lines << "Left out of each colony's trunk certification, not of the grade (they pass under Node and fail in workerd): #{excluded.map { |t| "`#{t}`" }.join(', ')}." unless excluded.empty?
+      lines << "" unless excluded.empty?
       lines << "```sh"
       lines << sweep[:command]
       lines << "```"
@@ -970,7 +982,7 @@ module HonoReplay
   def self.parse(argv)
     opts = { base: nil, agents: 8, sweep: nil, solo: false, solo_model: SOLO_MODEL, model: DEFAULT_MODEL, max_usd: 15.0,
              timeout: 2400.0, settle: 600.0, stall: 900.0, stall_report: 300.0, poll: 5.0, step_timeout: 180.0, seed_timeout: 900.0,
-             baseline_timeout: 1800.0, grade_timeout: 3600.0, red_baseline: false, person_wait: 120.0, person_every: 30.0, person_retest: 600.0,
+             baseline_timeout: 1800.0, grade_timeout: 3600.0, red_baseline: false, certify_exclude: CERTIFY_EXCLUDE, person_wait: 120.0, person_every: 30.0, person_retest: 600.0,
              person_max_approvals: 3, no_person: false, approve: false, no_grade: false, keep: false, name: "hono-replay-#{Time.now.utc.strftime('%m%d-%H%M')}",
              out: nil, workload: WORKLOAD, clone: nil, modules: nil, grade_worktree: nil, plan_only: false, dry: false }
     OptionParser.new do |o|
@@ -996,6 +1008,7 @@ module HonoReplay
       o.on("--baseline-timeout S", Float, "Time limit for the seed's certification (default 1800)") { |v| opts[:baseline_timeout] = v }
       o.on("--grade-timeout S", Float, "Time limit for reading trunk and grading (default 3600)") { |v| opts[:grade_timeout] = v }
       o.on("--red-baseline", "Run even when the seed's certification is red or an error") { opts[:red_baseline] = true }
+      o.on("--[no-]certify-exclude", "Leave the two tests that differ in workerd out of certification (default on)") { |v| opts[:certify_exclude] = v ? CERTIFY_EXCLUDE : [] }
       o.on("--person-wait S", Float, "Seconds a change waits before the scripted person answers it (default 120)") { |v| opts[:person_wait] = v }
       o.on("--person-every S", Float, "Seconds between the scripted person's passes (default 30)") { |v| opts[:person_every] = v }
       o.on("--person-retest S", Float, "Seconds a test run it asked for may take before the no-tests rule (default 600)") { |v| opts[:person_retest] = v }

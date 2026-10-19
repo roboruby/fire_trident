@@ -215,10 +215,12 @@ class HonoReplayTest < Minitest::Test
       assert_equal 3, run.dig("report", "intents", "landed")
       assert_equal "landed", run["stop"]
       assert run["deleted"]
+      assert_equal HonoReplay::CERTIFY_EXCLUDE, run["certify_exclude"], "the two workerd differences are left out of certification"
       readme = File.read(File.join(out, "README.md"))
       assert_includes readme, "| Scripted person: approved, returned (by the no-tests rule) | 1, 1 (0) |"
       assert_includes readme, "| Hidden tests (recorded vitest reports): intents passing | 2 of 3 |"
       assert_includes readme, "| #9003 | fix(router): match a trailing slash | landed | 2 | 2 | review 1 |"
+      assert_includes readme, "Left out of each colony's trunk certification, not of the grade"
       reqs = fx[:server].requests
       assert reqs.all? { |r| FakeDeployment.accessed?(r) }, "every request, git's too, carries the Access headers"
       assert(reqs.any? { |r| r.path == "/git/hono-test-8.git/info/refs" })

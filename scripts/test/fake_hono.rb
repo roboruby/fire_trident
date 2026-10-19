@@ -119,6 +119,7 @@ class FakeHono < FakeContention
     elsif req.method == "GET" && rest == "/escalations" then json(200, { colonyId: c[:id], total: open_reports(c).size, intents: open_reports(c) })
     elsif req.method == "POST" && (t = rest.match(%r{\A/proposals/([^/]+)/tests\z})) then retest(c, t[1], req.json)
     elsif req.method == "POST" && (d = rest.match(%r{\A/review/([^/]+)\z})) then decide(c, d[1], req.json)
+    elsif req.method == "POST" && rest == "/certify/policy" then c[:certify_policy] = req.json; json(200, { colonyId: c[:id], policy: req.json })
     elsif req.method == "POST" && (e = rest.match(%r{\A/intents/([^/]+)/escalation\z})) then resolve(c, e[1], req.json)
     else super
     end
