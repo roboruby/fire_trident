@@ -1,0 +1,1 @@
+{"numTotalTests":2,"numPassedTests":2,"numFailedTests":0,"success":true,"testResults":[{"name":"/fixture/grade/src/request.test.ts","status":"passed","message":"","assertionResults":[{"ancestorTitles":["header"],"title":"lowercases","status":"passed","failureMessages":[]},{"ancestorTitles":["header"],"title":"trims","status":"passed","failureMessages":[]}]}]}

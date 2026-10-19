@@ -1,0 +1,45 @@
+{
+  "note": "A small stand-in for a Hono clone, built into a git repository by scripts/test/fake_hono.rb: the base commit's files, then three pull requests merged into main, each a squash commit. Plain text, no real Hono code.",
+  "base": {
+    "subject": "chore: the base of the fixture (#9000)",
+    "files": {
+      "package.json": "{\n  \"name\": \"fixture\",\n  \"type\": \"module\"\n}\n",
+      "src/request.ts": "export function header(name: string): string {\n  return name.toLowerCase()\n}\n",
+      "src/request.test.ts": "import { header } from './request'\n\ndescribe('header', () => {\n  it('lowercases', () => {\n    expect(header('A')).toBe('a')\n  })\n})\n",
+      "src/utils/url.ts": "export function path(url: string): string {\n  return url.split('?')[0]\n}\n",
+      "src/utils/url.test.ts": "import { path } from './url'\n\ndescribe('path', () => {\n  it('drops the query', () => {\n    expect(path('/a?b')).toBe('/a')\n  })\n})\n",
+      "src/router/node.ts": "export function match(route: string, path: string): boolean {\n  return route === path\n}\n",
+      "src/router/node.test.ts": "import { match } from './node'\n\ndescribe('match', () => {\n  it('matches equal paths', () => {\n    expect(match('/a', '/a')).toBe(true)\n  })\n})\n",
+      "runtime-tests/bun/index.test.ts": "import { test } from 'bun:test'\n\ntest('bun', () => {})\n"
+    },
+    "binary": ["docs/images/logo.png"]
+  },
+  "prs": [
+    {
+      "number": 9001,
+      "subject": "fix(request): trim header names (#9001)",
+      "files": {
+        "src/request.ts": "export function header(name: string): string {\n  return name.trim().toLowerCase()\n}\n",
+        "src/request.test.ts": "import { header } from './request'\n\ndescribe('header', () => {\n  it('lowercases', () => {\n    expect(header('A')).toBe('a')\n  })\n  it('trims', () => {\n    expect(header(' A ')).toBe('a')\n  })\n})\n"
+      }
+    },
+    {
+      "number": 9002,
+      "subject": "fix(url): keep the fragment out of the path (#9002)",
+      "files": {
+        "src/request.ts": "export function header(name: string): string {\n  return name.trim().toLowerCase()\n}\n\nexport function url(raw: string): string {\n  return raw\n}\n",
+        "src/utils/url.ts": "export function path(url: string): string {\n  return url.split(/[?#]/)[0]\n}\n",
+        "src/utils/url.test.ts": "import { path } from './url'\n\ndescribe('path', () => {\n  it('drops the query', () => {\n    expect(path('/a?b')).toBe('/a')\n  })\n  it('drops the fragment', () => {\n    expect(path('/a#b')).toBe('/a')\n  })\n})\n"
+      }
+    },
+    {
+      "number": 9003,
+      "subject": "fix(router): match a trailing slash (#9003)",
+      "files": {
+        "src/utils/url.ts": "export function path(url: string): string {\n  return url.split(/[?#]/)[0].replace(/\\/+$/, '') || '/'\n}\n",
+        "src/router/node.ts": "import { path } from '../utils/url'\n\nexport function match(route: string, raw: string): boolean {\n  return route === path(raw)\n}\n",
+        "src/router/node.test.ts": "import { match } from './node'\n\ndescribe('match', () => {\n  it('matches equal paths', () => {\n    expect(match('/a', '/a')).toBe(true)\n  })\n  it('matches a trailing slash', () => {\n    expect(match('/a', '/a/')).toBe(true)\n  })\n})\n"
+      }
+    }
+  ]
+}

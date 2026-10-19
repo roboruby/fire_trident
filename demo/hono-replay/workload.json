@@ -1,0 +1,4173 @@
+{
+  "schema": "firetrident.hono-replay/v1",
+  "label": "MEASURED",
+  "repository": "honojs/hono",
+  "command": "ruby scripts/hono_replay_select.rb --clone <clone> --modules <modules> --base ab590e4e --until e2740d5a --quiet",
+  "base": {
+    "commit": "ab590e4ec8be6be06cf66bb3dcadd93d2841a835",
+    "date": "2026-07-10T18:15:02+09:00",
+    "subject": "fix(types): strip extra properties from array types in JSONParsed (#5103)"
+  },
+  "until": "e2740d5a1bd0b4254e517e3af8b60789284bc7bd",
+  "target": {
+    "commit": "72d207c42bf68ded1ae474091276a7acb362e33a",
+    "note": "B with every selected pull request laid on it in merge order (stock git merge-tree, a fixed identity and fixed dates, so the ids are the same in any clone), in the clone's object store only",
+    "own_tests": {
+      "files": 15,
+      "tests": 1087,
+      "passed": 1065,
+      "failed": 0,
+      "skipped": 22,
+      "load_failures": 0,
+      "success": true,
+      "failing": []
+    }
+  },
+  "seed": {
+    "exclude": [
+      {
+        "prefix": "runtime-tests/",
+        "why": "tests for Bun, Deno, workerd and other runtimes, with their own configurations"
+      },
+      {
+        "prefix": "benchmarks/",
+        "why": "benchmark projects with their own dependencies"
+      },
+      {
+        "prefix": "perf-measures/",
+        "why": "bundle-size and type-check measurement projects"
+      },
+      {
+        "prefix": "docs/images/",
+        "why": "binary images"
+      }
+    ],
+    "note": "B's tree but these, symlinks, binary files and files over the inline limit (scripts/hono_replay.rb)"
+  },
+  "visible_suite_at_base": {
+    "files": 98,
+    "vitest": {
+      "files": 121,
+      "tests": 3655,
+      "passed": 3629,
+      "failed": 0,
+      "skipped": 26,
+      "load_failures": 0,
+      "success": true,
+      "failing": []
+    }
+  },
+  "prs": [
+    {
+      "number": 5102,
+      "title": "fix(trie-router): match empty wildcard remainder after regexp param",
+      "merged_at": "2026-07-10T09:25:38Z",
+      "commit": "0fc7ffc94988d0dce19477d3e1cce29f3c2da1cb",
+      "why": "fixes #5087\n\n* The implementation ultimately matches #5088, as this is the simplest and clearest way to express the fix.\n* Corrected an apparent typo in src/router/trie-router/node.test.ts.\n* Added only the minimal common-router test needed to cover this regression.",
+      "acceptance": [],
+      "footprint": [
+        "src/router/common.case.test.ts",
+        "src/router/linear-router/router.test.ts",
+        "src/router/trie-router/node.test.ts",
+        "src/router/trie-router/node.ts"
+      ],
+      "src": [
+        "src/router/trie-router/node.ts"
+      ],
+      "tests": [
+        "src/router/common.case.test.ts",
+        "src/router/linear-router/router.test.ts",
+        "src/router/trie-router/node.test.ts"
+      ],
+      "laid": {
+        "before": "ab590e4ec8be6be06cf66bb3dcadd93d2841a835",
+        "after": "6f3dffbf6181935d3d8dd1d9d3652830702fbef0"
+      },
+      "hidden": [
+        {
+          "path": "src/router/common.case.test.ts",
+          "blob": "b829a4b62069af270230891b3a040e255e097e5d",
+          "new": false,
+          "bytes": 30518
+        },
+        {
+          "path": "src/router/linear-router/router.test.ts",
+          "blob": "d7625e2aa859f9b1f12ba06e113c9ba41fb6aeb8",
+          "new": false,
+          "bytes": 2053
+        },
+        {
+          "path": "src/router/trie-router/node.test.ts",
+          "blob": "46f7c3d54bdced1fbe19e46e85efda75a4caa6ea",
+          "new": false,
+          "bytes": 27178
+        }
+      ],
+      "run": [
+        "src/router/linear-router/router.test.ts",
+        "src/router/pattern-router/router.test.ts",
+        "src/router/reg-exp-router/prepared-router.test.ts",
+        "src/router/reg-exp-router/router.test.ts",
+        "src/router/smart-router/router.test.ts",
+        "src/router/trie-router/node.test.ts",
+        "src/router/trie-router/router.test.ts"
+      ],
+      "target_tests": [
+        "src/router/trie-router/node.test.ts: Multi match > Regexp > /regex-abc/123",
+        "src/router/trie-router/router.test.ts: TrieRouter > Common > Capture regex param with trailing wildcard on empty remainder > GET /123"
+      ],
+      "checks": {
+        "at_merge": {
+          "files": 7,
+          "tests": 553,
+          "passed": 531,
+          "failed": 0,
+          "skipped": 22,
+          "load_failures": 0,
+          "success": true,
+          "failing": []
+        },
+        "before": {
+          "files": 7,
+          "tests": 553,
+          "passed": 529,
+          "failed": 2,
+          "skipped": 22,
+          "load_failures": 0,
+          "success": false,
+          "seconds": 2.7,
+          "failing": [
+            "src/router/trie-router/node.test.ts: Multi match > Regexp > /regex-abc/123",
+            "src/router/trie-router/router.test.ts: TrieRouter > Common > Capture regex param with trailing wildcard on empty remainder > GET /123"
+          ]
+        },
+        "after": {
+          "files": 7,
+          "tests": 553,
+          "passed": 531,
+          "failed": 0,
+          "skipped": 22,
+          "load_failures": 0,
+          "success": true,
+          "seconds": 3.6,
+          "failing": []
+        },
+        "at_base": {
+          "files": 7,
+          "tests": 553,
+          "passed": 529,
+          "failed": 2,
+          "skipped": 22,
+          "load_failures": 0,
+          "success": false,
+          "seconds": 2.7,
+          "failing": [
+            "src/router/trie-router/node.test.ts: Multi match > Regexp > /regex-abc/123",
+            "src/router/trie-router/router.test.ts: TrieRouter > Common > Capture regex param with trailing wildcard on empty remainder > GET /123"
+          ]
+        },
+        "on_target": {
+          "files": 7,
+          "tests": 553,
+          "passed": 531,
+          "failed": 0,
+          "skipped": 22,
+          "load_failures": 0,
+          "success": true,
+          "seconds": 3.6,
+          "failing": []
+        }
+      },
+      "apis": {
+        "src/router/common.case.test.ts": {
+          "matchers": {
+            "toBe": 57,
+            "toEqual": 49
+          },
+          "negated": 0,
+          "resolves": 0,
+          "rejects": 0,
+          "asymmetric": {},
+          "vi": {},
+          "hooks": {
+            "beforeEach": 20
+          },
+          "modifiers": {},
+          "each_template": 0,
+          "type_tests": {},
+          "snapshots": {},
+          "vitest_imports": [
+            "RunnerTestSuite"
+          ],
+          "globals": [
+            "beforeEach",
+            "describe",
+            "expect",
+            "it"
+          ],
+          "environment": null,
+          "packages": [],
+          "node_builtins": [],
+          "relative_imports": 1,
+          "not_node": []
+        },
+        "src/router/linear-router/router.test.ts": {
+          "matchers": {
+            "toBe": 3,
+            "toThrowError": 1
+          },
+          "negated": 0,
+          "resolves": 0,
+          "rejects": 0,
+          "asymmetric": {},
+          "vi": {},
+          "hooks": {
+            "beforeEach": 3
+          },
+          "modifiers": {},
+          "each_template": 0,
+          "type_tests": {},
+          "snapshots": {},
+          "vitest_imports": [],
+          "globals": [
+            "beforeEach",
+            "describe",
+            "expect",
+            "it"
+          ],
+          "environment": null,
+          "packages": [],
+          "node_builtins": [],
+          "relative_imports": 3,
+          "not_node": []
+        },
+        "src/router/trie-router/node.test.ts": {
+          "matchers": {
+            "toBe": 43,
+            "toBeNull": 10,
+            "toEqual": 53
+          },
+          "negated": 11,
+          "resolves": 0,
+          "rejects": 0,
+          "asymmetric": {},
+          "vi": {},
+          "hooks": {},
+          "modifiers": {},
+          "each_template": 0,
+          "type_tests": {},
+          "snapshots": {},
+          "vitest_imports": [],
+          "globals": [
+            "describe",
+            "expect",
+            "it"
+          ],
+          "environment": null,
+          "packages": [],
+          "node_builtins": [],
+          "relative_imports": 1,
+          "not_node": []
+        }
+      },
+      "visible_apis": {
+        "src/router/common.case.test.ts": {
+          "matchers": {
+            "toBe": 53,
+            "toEqual": 47
+          },
+          "negated": 0,
+          "resolves": 0,
+          "rejects": 0,
+          "asymmetric": {},
+          "vi": {},
+          "hooks": {
+            "beforeEach": 18
+          },
+          "modifiers": {},
+          "each_template": 0,
+          "type_tests": {},
+          "snapshots": {},
+          "vitest_imports": [
+            "RunnerTestSuite"
+          ],
+          "globals": [
+            "beforeEach",
+            "describe",
+            "expect",
+            "it"
+          ],
+          "environment": null,
+          "packages": [],
+          "node_builtins": [],
+          "relative_imports": 1,
+          "not_node": []
+        },
+        "src/router/linear-router/router.test.ts": {
+          "matchers": {
+            "toBe": 3,
+            "toThrowError": 1
+          },
+          "negated": 0,
+          "resolves": 0,
+          "rejects": 0,
+          "asymmetric": {},
+          "vi": {},
+          "hooks": {
+            "beforeEach": 3
+          },
+          "modifiers": {},
+          "each_template": 0,
+          "type_tests": {},
+          "snapshots": {},
+          "vitest_imports": [],
+          "globals": [
+            "beforeEach",
+            "describe",
+            "expect",
+            "it"
+          ],
+          "environment": null,
+          "packages": [],
+          "node_builtins": [],
+          "relative_imports": 3,
+          "not_node": []
+        },
+        "src/router/trie-router/node.test.ts": {
+          "matchers": {
+            "toBe": 43,
+            "toBeNull": 10,
+            "toEqual": 53
+          },
+          "negated": 11,
+          "resolves": 0,
+          "rejects": 0,
+          "asymmetric": {},
+          "vi": {},
+          "hooks": {},
+          "modifiers": {},
+          "each_template": 0,
+          "type_tests": {},
+          "snapshots": {},
+          "vitest_imports": [],
+          "globals": [
+            "describe",
+            "expect",
+            "it"
+          ],
+          "environment": null,
+          "packages": [],
+          "node_builtins": [],
+          "relative_imports": 1,
+          "not_node": []
+        }
+      }
+    },
+    {
+      "number": 5133,
+      "title": "fix(request): fix multipart boundary mismatch in `cloneRawRequest`",
+      "merged_at": "2026-07-17T23:43:46Z",
+      "commit": "d7964503c956ae4af78597b7b11a05f9e5e73d2d",
+      "why": "Fixes #5129",
+      "acceptance": [],
+      "footprint": [
+        "src/request.test.ts",
+        "src/request.ts"
+      ],
+      "src": [
+        "src/request.ts"
+      ],
+      "tests": [
+        "src/request.test.ts"
+      ],
+      "laid": {
+        "before": "6f3dffbf6181935d3d8dd1d9d3652830702fbef0",
+        "after": "3a51115f676c0c94905ddd67d74c9e5deaa0772f"
+      },
+      "hidden": [
+        {
+          "path": "src/request.test.ts",
+          "blob": "d74a2f2c56628bb8e8b4b324929832e392bdc0cb",
+          "new": false,
+          "bytes": 19751
+        }
+      ],
+      "run": [
+        "src/request.test.ts"
+      ],
+      "target_tests": [
+        "src/request.test.ts: cloneRawRequest > clones consumed multipart request with a matching boundary"
+      ],
+      "checks": {
+        "at_merge": {
+          "files": 1,
+          "tests": 40,
+          "passed": 40,
+          "failed": 0,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": true,
+          "failing": []
+        },
+        "before": {
+          "files": 1,
+          "tests": 39,
+          "passed": 38,
+          "failed": 1,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": false,
+          "seconds": 2.5,
+          "failing": [
+            "src/request.test.ts: cloneRawRequest > clones consumed multipart request with a matching boundary"
+          ]
+        },
+        "after": {
+          "files": 1,
+          "tests": 39,
+          "passed": 39,
+          "failed": 0,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": true,
+          "seconds": 2.1,
+          "failing": []
+        },
+        "at_base": {
+          "files": 1,
+          "tests": 39,
+          "passed": 38,
+          "failed": 1,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": false,
+          "seconds": 2.0,
+          "failing": [
+            "src/request.test.ts: cloneRawRequest > clones consumed multipart request with a matching boundary"
+          ]
+        },
+        "on_target": {
+          "files": 1,
+          "tests": 39,
+          "passed": 39,
+          "failed": 0,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": true,
+          "seconds": 1.5,
+          "failing": []
+        }
+      },
+      "apis": {
+        "src/request.test.ts": {
+          "matchers": {
+            "toBe": 50,
+            "toBeInstanceOf": 6,
+            "toBeUndefined": 5,
+            "toContain": 1,
+            "toEqual": 37,
+            "toEqualTypeOf": 5,
+            "toMatchObject": 3,
+            "toThrow": 9
+          },
+          "negated": 14,
+          "resolves": 0,
+          "rejects": 1,
+          "asymmetric": {},
+          "vi": {},
+          "hooks": {
+            "beforeEach": 1
+          },
+          "modifiers": {},
+          "each_template": 0,
+          "type_tests": {
+            "expectTypeOf": 7
+          },
+          "snapshots": {},
+          "vitest_imports": [],
+          "globals": [
+            "beforeEach",
+            "describe",
+            "expect",
+            "it",
+            "test"
+          ],
+          "environment": null,
+          "packages": [],
+          "node_builtins": [],
+          "relative_imports": 3,
+          "not_node": []
+        }
+      },
+      "visible_apis": {
+        "src/request.test.ts": {
+          "matchers": {
+            "toBe": 48,
+            "toBeInstanceOf": 5,
+            "toBeUndefined": 5,
+            "toContain": 1,
+            "toEqual": 37,
+            "toEqualTypeOf": 5,
+            "toMatchObject": 3,
+            "toThrow": 9
+          },
+          "negated": 14,
+          "resolves": 0,
+          "rejects": 1,
+          "asymmetric": {},
+          "vi": {},
+          "hooks": {
+            "beforeEach": 1
+          },
+          "modifiers": {},
+          "each_template": 0,
+          "type_tests": {
+            "expectTypeOf": 7
+          },
+          "snapshots": {},
+          "vitest_imports": [],
+          "globals": [
+            "beforeEach",
+            "describe",
+            "expect",
+            "it",
+            "test"
+          ],
+          "environment": null,
+          "packages": [],
+          "node_builtins": [],
+          "relative_imports": 3,
+          "not_node": []
+        }
+      }
+    },
+    {
+      "number": 5161,
+      "title": "fix: use `Object.create(null)` when parsing query, headers, and params",
+      "merged_at": "2026-07-24T01:57:31Z",
+      "commit": "c85aead088659b98b8d05a1187a07d064e12ffe6",
+      "why": "A `__proto__` key in a request could change the prototype of the returned object. I use `Object.create(null)` to keep `__proto__` as a normal key. This is limited to that single object and does not touch `Object.prototype`, so it is not prototype pollution. This is a code-quality fix, not a security fix.\n\nBy the way, I am planning to create a utility function to do `Object.create(null)` to reduce the bundle size.",
+      "acceptance": [],
+      "footprint": [
+        "src/request.test.ts",
+        "src/request.ts",
+        "src/utils/accept.test.ts",
+        "src/utils/accept.ts",
+        "src/utils/url.test.ts",
+        "src/utils/url.ts"
+      ],
+      "src": [
+        "src/request.ts",
+        "src/utils/accept.ts",
+        "src/utils/url.ts"
+      ],
+      "tests": [
+        "src/request.test.ts",
+        "src/utils/accept.test.ts",
+        "src/utils/url.test.ts"
+      ],
+      "laid": {
+        "before": "3a51115f676c0c94905ddd67d74c9e5deaa0772f",
+        "after": "e02acdb7195532479dac12f42acf41e6166e1400"
+      },
+      "hidden": [
+        {
+          "path": "src/request.test.ts",
+          "blob": "cdb2628df0b2b6f037e0ade092cc943ad8ede755",
+          "new": false,
+          "bytes": 20021
+        },
+        {
+          "path": "src/utils/accept.test.ts",
+          "blob": "8b2aae3a0c620348676d0f8b43345939f4b73387",
+          "new": false,
+          "bytes": 8451
+        },
+        {
+          "path": "src/utils/url.test.ts",
+          "blob": "7274d5db7366249bad1c305bdbfc1828c5b3dc28",
+          "new": false,
+          "bytes": 14367
+        }
+      ],
+      "run": [
+        "src/request.test.ts",
+        "src/utils/accept.test.ts",
+        "src/utils/url.test.ts"
+      ],
+      "target_tests": [
+        "src/request.test.ts: headers > req.header() is not affected by a `__proto__` header name",
+        "src/utils/accept.test.ts: parseAccept Comprehensive Tests > Parameter Handling > treats `__proto__` as a normal parameter without changing the prototype",
+        "src/utils/url.test.ts: url > getQueryParams > should treat `__proto__` as a normal key without changing the prototype"
+      ],
+      "checks": {
+        "at_merge": {
+          "files": 3,
+          "tests": 104,
+          "passed": 104,
+          "failed": 0,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": true,
+          "failing": []
+        },
+        "before": {
+          "files": 3,
+          "tests": 103,
+          "passed": 100,
+          "failed": 3,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": false,
+          "seconds": 2.8,
+          "failing": [
+            "src/request.test.ts: headers > req.header() is not affected by a `__proto__` header name",
+            "src/utils/accept.test.ts: parseAccept Comprehensive Tests > Parameter Handling > treats `__proto__` as a normal parameter without changing the prototype",
+            "src/utils/url.test.ts: url > getQueryParams > should treat `__proto__` as a normal key without changing the prototype"
+          ]
+        },
+        "after": {
+          "files": 3,
+          "tests": 103,
+          "passed": 103,
+          "failed": 0,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": true,
+          "seconds": 2.9,
+          "failing": []
+        },
+        "at_base": {
+          "files": 3,
+          "tests": 103,
+          "passed": 99,
+          "failed": 4,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": false,
+          "seconds": 2.0,
+          "failing": [
+            "src/request.test.ts: headers > req.header() is not affected by a `__proto__` header name",
+            "src/request.test.ts: cloneRawRequest > clones consumed multipart request with a matching boundary",
+            "src/utils/accept.test.ts: parseAccept Comprehensive Tests > Parameter Handling > treats `__proto__` as a normal parameter without changing the prototype",
+            "src/utils/url.test.ts: url > getQueryParams > should treat `__proto__` as a normal key without changing the prototype"
+          ]
+        },
+        "on_target": {
+          "files": 3,
+          "tests": 103,
+          "passed": 103,
+          "failed": 0,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": true,
+          "seconds": 2.6,
+          "failing": []
+        }
+      },
+      "apis": {
+        "src/request.test.ts": {
+          "matchers": {
+            "toBe": 50,
+            "toBeInstanceOf": 6,
+            "toBeNull": 1,
+            "toBeUndefined": 5,
+            "toContain": 1,
+            "toEqual": 37,
+            "toEqualTypeOf": 5,
+            "toMatchObject": 3,
+            "toThrow": 9
+          },
+          "negated": 14,
+          "resolves": 0,
+          "rejects": 1,
+          "asymmetric": {},
+          "vi": {},
+          "hooks": {
+            "beforeEach": 1
+          },
+          "modifiers": {},
+          "each_template": 0,
+          "type_tests": {
+            "expectTypeOf": 7
+          },
+          "snapshots": {},
+          "vitest_imports": [],
+          "globals": [
+            "beforeEach",
+            "describe",
+            "expect",
+            "it",
+            "test"
+          ],
+          "environment": null,
+          "packages": [],
+          "node_builtins": [],
+          "relative_imports": 3,
+          "not_node": []
+        },
+        "src/utils/accept.test.ts": {
+          "matchers": {
+            "toBe": 14,
+            "toBeNull": 1,
+            "toEqual": 20,
+            "toThrow": 2
+          },
+          "negated": 2,
+          "resolves": 0,
+          "rejects": 0,
+          "asymmetric": {},
+          "vi": {},
+          "hooks": {},
+          "modifiers": {},
+          "each_template": 0,
+          "type_tests": {},
+          "snapshots": {},
+          "vitest_imports": [],
+          "globals": [
+            "describe",
+            "expect",
+            "test"
+          ],
+          "environment": null,
+          "packages": [],
+          "node_builtins": [],
+          "relative_imports": 1,
+          "not_node": []
+        },
+        "src/utils/url.test.ts": {
+          "matchers": {
+            "toBe": 67,
+            "toBeNull": 8,
+            "toEqual": 26,
+            "toStrictEqual": 11
+          },
+          "negated": 0,
+          "resolves": 0,
+          "rejects": 0,
+          "asymmetric": {},
+          "vi": {},
+          "hooks": {},
+          "modifiers": {
+            "it.each": 1
+          },
+          "each_template": 0,
+          "type_tests": {},
+          "snapshots": {},
+          "vitest_imports": [],
+          "globals": [
+            "describe",
+            "expect",
+            "it"
+          ],
+          "environment": null,
+          "packages": [],
+          "node_builtins": [],
+          "relative_imports": 1,
+          "not_node": []
+        }
+      },
+      "visible_apis": {
+        "src/request.test.ts": {
+          "matchers": {
+            "toBe": 48,
+            "toBeInstanceOf": 5,
+            "toBeUndefined": 5,
+            "toContain": 1,
+            "toEqual": 37,
+            "toEqualTypeOf": 5,
+            "toMatchObject": 3,
+            "toThrow": 9
+          },
+          "negated": 14,
+          "resolves": 0,
+          "rejects": 1,
+          "asymmetric": {},
+          "vi": {},
+          "hooks": {
+            "beforeEach": 1
+          },
+          "modifiers": {},
+          "each_template": 0,
+          "type_tests": {
+            "expectTypeOf": 7
+          },
+          "snapshots": {},
+          "vitest_imports": [],
+          "globals": [
+            "beforeEach",
+            "describe",
+            "expect",
+            "it",
+            "test"
+          ],
+          "environment": null,
+          "packages": [],
+          "node_builtins": [],
+          "relative_imports": 3,
+          "not_node": []
+        },
+        "src/utils/accept.test.ts": {
+          "matchers": {
+            "toBe": 13,
+            "toEqual": 20,
+            "toThrow": 2
+          },
+          "negated": 2,
+          "resolves": 0,
+          "rejects": 0,
+          "asymmetric": {},
+          "vi": {},
+          "hooks": {},
+          "modifiers": {},
+          "each_template": 0,
+          "type_tests": {},
+          "snapshots": {},
+          "vitest_imports": [],
+          "globals": [
+            "describe",
+            "expect",
+            "test"
+          ],
+          "environment": null,
+          "packages": [],
+          "node_builtins": [],
+          "relative_imports": 1,
+          "not_node": []
+        },
+        "src/utils/url.test.ts": {
+          "matchers": {
+            "toBe": 67,
+            "toBeNull": 7,
+            "toEqual": 25,
+            "toStrictEqual": 11
+          },
+          "negated": 0,
+          "resolves": 0,
+          "rejects": 0,
+          "asymmetric": {},
+          "vi": {},
+          "hooks": {},
+          "modifiers": {
+            "it.each": 1
+          },
+          "each_template": 0,
+          "type_tests": {},
+          "snapshots": {},
+          "vitest_imports": [],
+          "globals": [
+            "describe",
+            "expect",
+            "it"
+          ],
+          "environment": null,
+          "packages": [],
+          "node_builtins": [],
+          "relative_imports": 1,
+          "not_node": []
+        }
+      }
+    },
+    {
+      "number": 5164,
+      "title": "fix(cookie): relax name validation when parsing Cookie header",
+      "merged_at": "2026-07-26T05:04:10Z",
+      "commit": "09cf01c0a85d4e73439ff5fa26bb475d493a545c",
+      "why": "Fixes #3189",
+      "acceptance": [],
+      "footprint": [
+        "src/utils/cookie.test.ts",
+        "src/utils/cookie.ts"
+      ],
+      "src": [
+        "src/utils/cookie.ts"
+      ],
+      "tests": [
+        "src/utils/cookie.test.ts"
+      ],
+      "laid": {
+        "before": "e02acdb7195532479dac12f42acf41e6166e1400",
+        "after": "c5794af964ba45bb2bf0787b9a6ce48ee6304db1"
+      },
+      "hidden": [
+        {
+          "path": "src/utils/cookie.test.ts",
+          "blob": "38811255b724f5478f789c1ed3118f17dbb2193e",
+          "new": false,
+          "bytes": 19782
+        }
+      ],
+      "run": [
+        "src/utils/cookie.test.ts"
+      ],
+      "target_tests": [
+        "src/utils/cookie.test.ts: Parse cookie > Should parse cookies whose names are not RFC 6265 tokens",
+        "src/utils/cookie.test.ts: Parse cookie > Should parse one cookie specified by a name that is not an RFC 6265 token"
+      ],
+      "checks": {
+        "at_merge": {
+          "files": 1,
+          "tests": 46,
+          "passed": 46,
+          "failed": 0,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": true,
+          "failing": []
+        },
+        "before": {
+          "files": 1,
+          "tests": 46,
+          "passed": 44,
+          "failed": 2,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": false,
+          "seconds": 3.0,
+          "failing": [
+            "src/utils/cookie.test.ts: Parse cookie > Should parse cookies whose names are not RFC 6265 tokens",
+            "src/utils/cookie.test.ts: Parse cookie > Should parse one cookie specified by a name that is not an RFC 6265 token"
+          ]
+        },
+        "after": {
+          "files": 1,
+          "tests": 46,
+          "passed": 46,
+          "failed": 0,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": true,
+          "seconds": 3.1,
+          "failing": []
+        },
+        "at_base": {
+          "files": 1,
+          "tests": 46,
+          "passed": 44,
+          "failed": 2,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": false,
+          "seconds": 2.1,
+          "failing": [
+            "src/utils/cookie.test.ts: Parse cookie > Should parse cookies whose names are not RFC 6265 tokens",
+            "src/utils/cookie.test.ts: Parse cookie > Should parse one cookie specified by a name that is not an RFC 6265 token"
+          ]
+        },
+        "on_target": {
+          "files": 1,
+          "tests": 46,
+          "passed": 46,
+          "failed": 0,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": true,
+          "seconds": 1.7,
+          "failing": []
+        }
+      },
+      "apis": {
+        "src/utils/cookie.test.ts": {
+          "matchers": {
+            "toBe": 63,
+            "toBeUndefined": 17,
+            "toThrowError": 18
+          },
+          "negated": 0,
+          "resolves": 0,
+          "rejects": 0,
+          "asymmetric": {},
+          "vi": {},
+          "hooks": {},
+          "modifiers": {},
+          "each_template": 0,
+          "type_tests": {},
+          "snapshots": {},
+          "vitest_imports": [],
+          "globals": [
+            "describe",
+            "expect",
+            "it"
+          ],
+          "environment": null,
+          "packages": [],
+          "node_builtins": [],
+          "relative_imports": 2,
+          "not_node": []
+        }
+      },
+      "visible_apis": {
+        "src/utils/cookie.test.ts": {
+          "matchers": {
+            "toBe": 56,
+            "toBeUndefined": 14,
+            "toThrowError": 18
+          },
+          "negated": 0,
+          "resolves": 0,
+          "rejects": 0,
+          "asymmetric": {},
+          "vi": {},
+          "hooks": {},
+          "modifiers": {},
+          "each_template": 0,
+          "type_tests": {},
+          "snapshots": {},
+          "vitest_imports": [],
+          "globals": [
+            "describe",
+            "expect",
+            "it"
+          ],
+          "environment": null,
+          "packages": [],
+          "node_builtins": [],
+          "relative_imports": 2,
+          "not_node": []
+        }
+      }
+    },
+    {
+      "number": 5189,
+      "title": "fix(trie-router): count every slash a pattern consumes",
+      "merged_at": "2026-08-05T23:56:49Z",
+      "commit": "569b4191a291ef7a4116881e521c3a0179407332",
+      "why": "When a `:param{regexp}` match spans several path parts, `Node#search` requeues the child into `curNodesQueue[componentCount]` so it resumes at the part *after* the match. `componentCount` came from:\n\n```js\nconst componentCount = m[0].match(/\\//)?.length ?? 0\n```\n\nWithout the `g` flag, `String.prototype.match` returns a single-match array, so `.length` is `1` for **any** number of slashes. A pattern spanning three or more parts resumed one part too early and matched a part it had already consumed.\n\nTwo parts happen to give the right answer (one slash → `1`), which is why the existing `/foo/bar/file.html` case passes and this went unnoticed.\n\n## Symptoms\n\nBoth reproduce on a plain `new Hono()` — `RegExpRouter` reports `UnsupportedPathError` for these routes, so `SmartRouter` falls through to `TrieRouter`.\n\n**A route stops matching once the pattern spans 3+ parts.** `/:dirs{.+}/file.html` is the repo's own `Capture simple multiple directories` route:\n\n| path | before | after |\n| --- | --- | --- |\n| `/foo/file.html` | 200 | 200 |\n| `/foo/bar/file.html` | 200 | 200 |\n| `/foo/bar/baz/file.html` | **404** | 200 |\n| `/a/b/c/d/file.html` | **404** | 200 |\n…",
+      "acceptance": [],
+      "footprint": [
+        "src/router/common.case.test.ts",
+        "src/router/trie-router/node.test.ts",
+        "src/router/trie-router/node.ts"
+      ],
+      "src": [
+        "src/router/trie-router/node.ts"
+      ],
+      "tests": [
+        "src/router/common.case.test.ts",
+        "src/router/trie-router/node.test.ts"
+      ],
+      "laid": {
+        "before": "c5794af964ba45bb2bf0787b9a6ce48ee6304db1",
+        "after": "175a511c002629e9b717ac59a1f6ae8cde7f1008"
+      },
+      "hidden": [
+        {
+          "path": "src/router/common.case.test.ts",
+          "blob": "80e455be20d31fba3b896eeb96072ef8da2b75c5",
+          "new": false,
+          "bytes": 31034
+        },
+        {
+          "path": "src/router/trie-router/node.test.ts",
+          "blob": "af8f207e4758beee0526b006ec32feae37039ab9",
+          "new": false,
+          "bytes": 28125
+        }
+      ],
+      "run": [
+        "src/router/linear-router/router.test.ts",
+        "src/router/pattern-router/router.test.ts",
+        "src/router/reg-exp-router/prepared-router.test.ts",
+        "src/router/reg-exp-router/router.test.ts",
+        "src/router/smart-router/router.test.ts",
+        "src/router/trie-router/node.test.ts",
+        "src/router/trie-router/router.test.ts"
+      ],
+      "target_tests": [
+        "src/router/trie-router/node.test.ts: Pattern spanning multiple parts > followed by a wildcard > should return the handler once per matching part count",
+        "src/router/trie-router/node.test.ts: Pattern spanning multiple parts > followed by a static part > should match however many parts the pattern spans",
+        "src/router/trie-router/router.test.ts: TrieRouter > Common > Capture simple multiple directories > GET /foo/bar/baz/file.html",
+        "src/router/trie-router/router.test.ts: TrieRouter > Common > Capture simple multiple directories > GET /a/b/c/d/file.html"
+      ],
+      "checks": {
+        "at_merge": {
+          "files": 7,
+          "tests": 579,
+          "passed": 557,
+          "failed": 0,
+          "skipped": 22,
+          "load_failures": 0,
+          "success": true,
+          "failing": []
+        },
+        "before": {
+          "files": 7,
+          "tests": 567,
+          "passed": 541,
+          "failed": 4,
+          "skipped": 22,
+          "load_failures": 0,
+          "success": false,
+          "seconds": 3.0,
+          "failing": [
+            "src/router/trie-router/node.test.ts: Pattern spanning multiple parts > followed by a wildcard > should return the handler once per matching part count",
+            "src/router/trie-router/node.test.ts: Pattern spanning multiple parts > followed by a static part > should match however many parts the pattern spans",
+            "src/router/trie-router/router.test.ts: TrieRouter > Common > Capture simple multiple directories > GET /foo/bar/baz/file.html",
+            "src/router/trie-router/router.test.ts: TrieRouter > Common > Capture simple multiple directories > GET /a/b/c/d/file.html"
+          ]
+        },
+        "after": {
+          "files": 7,
+          "tests": 567,
+          "passed": 545,
+          "failed": 0,
+          "skipped": 22,
+          "load_failures": 0,
+          "success": true,
+          "seconds": 3.0,
+          "failing": []
+        },
+        "at_base": {
+          "files": 7,
+          "tests": 567,
+          "passed": 539,
+          "failed": 8,
+          "skipped": 20,
+          "load_failures": 0,
+          "success": false,
+          "seconds": 2.7,
+          "failing": [
+            "src/router/linear-router/router.test.ts: LinearRouter > Common > Capture regex param with trailing wildcard on empty remainder > GET /123",
+            "src/router/linear-router/router.test.ts: LinearRouter > Common > Capture regex param with trailing wildcard and sibling route > GET /regex-abc/123/ghi",
+            "src/router/trie-router/node.test.ts: Multi match > Regexp > /regex-abc/123",
+            "src/router/trie-router/node.test.ts: Pattern spanning multiple parts > followed by a wildcard > should return the handler once per matching part count",
+            "src/router/trie-router/node.test.ts: Pattern spanning multiple parts > followed by a static part > should match however many parts the pattern spans",
+            "src/router/trie-router/router.test.ts: TrieRouter > Common > Capture simple multiple directories > GET /foo/bar/baz/file.html",
+            "src/router/trie-router/router.test.ts: TrieRouter > Common > Capture simple multiple directories > GET /a/b/c/d/file.html",
+            "src/router/trie-router/router.test.ts: TrieRouter > Common > Capture regex param with trailing wildcard on empty remainder > GET /123"
+          ]
+        },
+        "on_target": {
+          "files": 7,
+          "tests": 567,
+          "passed": 545,
+          "failed": 0,
+          "skipped": 22,
+          "load_failures": 0,
+          "success": true,
+          "seconds": 2.5,
+          "failing": []
+        }
+      },
+      "apis": {
+        "src/router/common.case.test.ts": {
+          "matchers": {
+            "toBe": 57,
+            "toEqual": 49
+          },
+          "negated": 0,
+          "resolves": 0,
+          "rejects": 0,
+          "asymmetric": {},
+          "vi": {},
+          "hooks": {
+            "beforeEach": 20
+          },
+          "modifiers": {},
+          "each_template": 0,
+          "type_tests": {},
+          "snapshots": {},
+          "vitest_imports": [
+            "RunnerTestSuite"
+          ],
+          "globals": [
+            "beforeEach",
+            "describe",
+            "expect",
+            "it"
+          ],
+          "environment": null,
+          "packages": [],
+          "node_builtins": [],
+          "relative_imports": 1,
+          "not_node": []
+        },
+        "src/router/trie-router/node.test.ts": {
+          "matchers": {
+            "toBe": 45,
+            "toBeNull": 10,
+            "toEqual": 56
+          },
+          "negated": 11,
+          "resolves": 0,
+          "rejects": 0,
+          "asymmetric": {},
+          "vi": {},
+          "hooks": {},
+          "modifiers": {},
+          "each_template": 0,
+          "type_tests": {},
+          "snapshots": {},
+          "vitest_imports": [],
+          "globals": [
+            "describe",
+            "expect",
+            "it"
+          ],
+          "environment": null,
+          "packages": [],
+          "node_builtins": [],
+          "relative_imports": 1,
+          "not_node": []
+        }
+      },
+      "visible_apis": {
+        "src/router/common.case.test.ts": {
+          "matchers": {
+            "toBe": 53,
+            "toEqual": 47
+          },
+          "negated": 0,
+          "resolves": 0,
+          "rejects": 0,
+          "asymmetric": {},
+          "vi": {},
+          "hooks": {
+            "beforeEach": 18
+          },
+          "modifiers": {},
+          "each_template": 0,
+          "type_tests": {},
+          "snapshots": {},
+          "vitest_imports": [
+            "RunnerTestSuite"
+          ],
+          "globals": [
+            "beforeEach",
+            "describe",
+            "expect",
+            "it"
+          ],
+          "environment": null,
+          "packages": [],
+          "node_builtins": [],
+          "relative_imports": 1,
+          "not_node": []
+        },
+        "src/router/trie-router/node.test.ts": {
+          "matchers": {
+            "toBe": 43,
+            "toBeNull": 10,
+            "toEqual": 53
+          },
+          "negated": 11,
+          "resolves": 0,
+          "rejects": 0,
+          "asymmetric": {},
+          "vi": {},
+          "hooks": {},
+          "modifiers": {},
+          "each_template": 0,
+          "type_tests": {},
+          "snapshots": {},
+          "vitest_imports": [],
+          "globals": [
+            "describe",
+            "expect",
+            "it"
+          ],
+          "environment": null,
+          "packages": [],
+          "node_builtins": [],
+          "relative_imports": 1,
+          "not_node": []
+        }
+      }
+    },
+    {
+      "number": 4988,
+      "title": "fix(utils/stream): re-acquire writer lock when pipe() throws",
+      "merged_at": "2026-08-06T02:11:15Z",
+      "commit": "cd31bc196eb234bcaaae18ecf889784cf30004fd",
+      "why": "## Fix: Writer lock not re-acquired after `pipeTo()` failure\n\n### Problem\n\n`pipe()` calls `releaseLock()` before `await pipeTo()` but only re-acquires\nthe writer on the success path. If `pipeTo()` rejects (source error, client\ndisconnect), the writer is left released and subsequent `write()` / `close()`\ncalls are silently lost.\n\n### Fix\n\n- Wraps `pipeTo()` in `try/finally` so the writer is always re-acquired\n- Adds `preventAbort: true` so the destination stays writable after a source\n error — without it, the re-acquired writer targets an aborted stream and\n writes are still dropped\n\n### Tests\n\nThe added tests assert that a `write()` after a failed `pipe()` is delivered;\nthey fail without either part of the fix.\n\n---\n\nFixes #4981\n\n### Checklist",
+      "acceptance": [],
+      "footprint": [
+        "src/utils/stream.test.ts",
+        "src/utils/stream.ts"
+      ],
+      "src": [
+        "src/utils/stream.ts"
+      ],
+      "tests": [
+        "src/utils/stream.test.ts"
+      ],
+      "laid": {
+        "before": "175a511c002629e9b717ac59a1f6ae8cde7f1008",
+        "after": "05a1f95a9f4ade873b072bd401f21b0e7b211942"
+      },
+      "hidden": [
+        {
+          "path": "src/utils/stream.test.ts",
+          "blob": "c9edaf70e794c696ddf1ebd4e5b6b1f6a3ff6aef",
+          "new": false,
+          "bytes": 5591
+        }
+      ],
+      "run": [
+        "src/utils/stream.test.ts"
+      ],
+      "target_tests": [
+        "src/utils/stream.test.ts: StreamingApi > pipe() re-acquires writer lock when pipeTo() throws",
+        "src/utils/stream.test.ts: StreamingApi > pipe() can be called again after a previous pipe() throws"
+      ],
+      "checks": {
+        "at_merge": {
+          "files": 1,
+          "tests": 11,
+          "passed": 11,
+          "failed": 0,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": true,
+          "failing": []
+        },
+        "before": {
+          "files": 1,
+          "tests": 11,
+          "passed": 9,
+          "failed": 2,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": false,
+          "seconds": 1.8,
+          "failing": [
+            "src/utils/stream.test.ts: StreamingApi > pipe() re-acquires writer lock when pipeTo() throws",
+            "src/utils/stream.test.ts: StreamingApi > pipe() can be called again after a previous pipe() throws"
+          ]
+        },
+        "after": {
+          "files": 1,
+          "tests": 11,
+          "passed": 11,
+          "failed": 0,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": true,
+          "seconds": 1.8,
+          "failing": []
+        },
+        "at_base": {
+          "files": 1,
+          "tests": 11,
+          "passed": 9,
+          "failed": 2,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": false,
+          "seconds": 1.7,
+          "failing": [
+            "src/utils/stream.test.ts: StreamingApi > pipe() re-acquires writer lock when pipeTo() throws",
+            "src/utils/stream.test.ts: StreamingApi > pipe() can be called again after a previous pipe() throws"
+          ]
+        },
+        "on_target": {
+          "files": 1,
+          "tests": 11,
+          "passed": 11,
+          "failed": 0,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": true,
+          "seconds": 1.7,
+          "failing": []
+        }
+      },
+      "apis": {
+        "src/utils/stream.test.ts": {
+          "matchers": {
+            "toBe": 4,
+            "toBeCalled": 6,
+            "toEqual": 10,
+            "toHaveBeenCalledOnce": 4,
+            "toThrow": 4
+          },
+          "negated": 6,
+          "resolves": 0,
+          "rejects": 2,
+          "asymmetric": {},
+          "vi": {
+            "fn": 4
+          },
+          "hooks": {},
+          "modifiers": {},
+          "each_template": 0,
+          "type_tests": {},
+          "snapshots": {},
+          "vitest_imports": [],
+          "globals": [
+            "describe",
+            "expect",
+            "it",
+            "vi"
+          ],
+          "environment": null,
+          "packages": [],
+          "node_builtins": [],
+          "relative_imports": 1,
+          "not_node": []
+        }
+      },
+      "visible_apis": {
+        "src/utils/stream.test.ts": {
+          "matchers": {
+            "toBe": 4,
+            "toBeCalled": 6,
+            "toEqual": 8,
+            "toHaveBeenCalledOnce": 4,
+            "toThrow": 2
+          },
+          "negated": 6,
+          "resolves": 0,
+          "rejects": 0,
+          "asymmetric": {},
+          "vi": {
+            "fn": 4
+          },
+          "hooks": {},
+          "modifiers": {},
+          "each_template": 0,
+          "type_tests": {},
+          "snapshots": {},
+          "vitest_imports": [],
+          "globals": [
+            "describe",
+            "expect",
+            "it",
+            "vi"
+          ],
+          "environment": null,
+          "packages": [],
+          "node_builtins": [],
+          "relative_imports": 1,
+          "not_node": []
+        }
+      }
+    },
+    {
+      "number": 5202,
+      "title": "fix(client): serialize multiple cookies correctly",
+      "merged_at": "2026-08-09T07:53:34Z",
+      "commit": "f2a72d333aed37b1bf2c18540a0a1df9fdb5c58c",
+      "why": "## Summary\n\n- serialize RPC request cookies without response-only `Path` attributes\n- separate multiple cookie pairs with `; ` so every value reaches the server\n- extend the client regression test to cover multiple cookies and detect leaked attributes\n\nBefore this change, two cookies were sent as:\n\n```text\nhello=world; Path=/,goodbye=moon; Path=/\n```\n\nHono's cookie parser consequently interpreted the second pair as part of the `Path` attribute. The client now sends:\n\n```text\nhello=world; goodbye=moon\n```\n\n## Testing\n\n- `bun run test` (146 files passed; 4760 tests passed, 35 skipped)\n- `bun run test:bun` (26 tests passed)\n- `bun run build` (including publint)\n- `tsc -p tsconfig.spec.json --noEmit`\n- `eslint src/client/client.ts src/client/client.test.ts`\n- `prettier --check src/client/client.ts src/client/client.test.ts`",
+      "acceptance": [],
+      "footprint": [
+        "src/client/client.test.ts",
+        "src/client/client.ts"
+      ],
+      "src": [
+        "src/client/client.ts"
+      ],
+      "tests": [
+        "src/client/client.test.ts"
+      ],
+      "laid": {
+        "before": "05a1f95a9f4ade873b072bd401f21b0e7b211942",
+        "after": "f6f65e03414b9a9028ae4cd822575ab56e742e0a"
+      },
+      "hidden": [
+        {
+          "path": "src/client/client.test.ts",
+          "blob": "defedcde4b1b90d4c904918ecfcd3608798ff315",
+          "new": false,
+          "bytes": 57994
+        }
+      ],
+      "run": [
+        "src/client/client.test.ts"
+      ],
+      "target_tests": [
+        "src/client/client.test.ts: Basic - query, queries, form, path params, header and cookie > Should get 200 response - cookie"
+      ],
+      "checks": {
+        "at_merge": {
+          "files": 1,
+          "tests": 104,
+          "passed": 104,
+          "failed": 0,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": true,
+          "failing": []
+        },
+        "before": {
+          "files": 1,
+          "tests": 104,
+          "passed": 103,
+          "failed": 1,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": false,
+          "seconds": 2.2,
+          "failing": [
+            "src/client/client.test.ts: Basic - query, queries, form, path params, header and cookie > Should get 200 response - cookie"
+          ]
+        },
+        "after": {
+          "files": 1,
+          "tests": 104,
+          "passed": 104,
+          "failed": 0,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": true,
+          "seconds": 2.9,
+          "failing": []
+        },
+        "at_base": {
+          "files": 1,
+          "tests": 104,
+          "passed": 103,
+          "failed": 1,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": false,
+          "seconds": 2.8,
+          "failing": [
+            "src/client/client.test.ts: Basic - query, queries, form, path params, header and cookie > Should get 200 response - cookie"
+          ]
+        },
+        "on_target": {
+          "files": 1,
+          "tests": 104,
+          "passed": 104,
+          "failed": 0,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": true,
+          "seconds": 2.6,
+          "failing": []
+        }
+      },
+      "apis": {
+        "src/client/client.test.ts": {
+          "matchers": {
+            "toBe": 69,
+            "toEqual": 27,
+            "toEqualTypeOf": 11,
+            "toHaveBeenCalledTimes": 1,
+            "toHaveBeenCalledWith": 9,
+            "toMatch": 2,
+            "toMatchObject": 1,
+            "toMatchTypeOf": 5,
+            "toStrictEqual": 2
+          },
+          "negated": 0,
+          "resolves": 0,
+          "rejects": 0,
+          "asymmetric": {},
+          "vi": {
+            "clearAllMocks": 3,
+            "fn": 5,
+            "stubGlobal": 2
+          },
+          "hooks": {
+            "afterAll": 14,
+            "afterEach": 14,
+            "beforeAll": 14,
+            "beforeEach": 2
+          },
+          "modifiers": {
+            "describe.each": 1,
+            "it.each": 2
+          },
+          "each_template": 0,
+          "type_tests": {
+            "expectTypeOf": 21
+          },
+          "snapshots": {},
+          "vitest_imports": [
+            "expectTypeOf",
+            "vi"
+          ],
+          "globals": [
+            "afterAll",
+            "afterEach",
+            "beforeAll",
+            "beforeEach",
+            "describe",
+            "expect",
+            "it"
+          ],
+          "environment": null,
+          "packages": [
+            "msw"
+          ],
+          "node_builtins": [],
+          "relative_imports": 7,
+          "not_node": []
+        }
+      },
+      "visible_apis": {
+        "src/client/client.test.ts": {
+          "matchers": {
+            "toBe": 69,
+            "toEqual": 27,
+            "toEqualTypeOf": 11,
+            "toHaveBeenCalledTimes": 1,
+            "toHaveBeenCalledWith": 9,
+            "toMatch": 2,
+            "toMatchObject": 1,
+            "toMatchTypeOf": 5,
+            "toStrictEqual": 2
+          },
+          "negated": 0,
+          "resolves": 0,
+          "rejects": 0,
+          "asymmetric": {},
+          "vi": {
+            "clearAllMocks": 3,
+            "fn": 5,
+            "stubGlobal": 2
+          },
+          "hooks": {
+            "afterAll": 14,
+            "afterEach": 14,
+            "beforeAll": 14,
+            "beforeEach": 2
+          },
+          "modifiers": {
+            "describe.each": 1,
+            "it.each": 2
+          },
+          "each_template": 0,
+          "type_tests": {
+            "expectTypeOf": 21
+          },
+          "snapshots": {},
+          "vitest_imports": [
+            "expectTypeOf",
+            "vi"
+          ],
+          "globals": [
+            "afterAll",
+            "afterEach",
+            "beforeAll",
+            "beforeEach",
+            "describe",
+            "expect",
+            "it"
+          ],
+          "environment": null,
+          "packages": [
+            "msw"
+          ],
+          "node_builtins": [],
+          "relative_imports": 7,
+          "not_node": []
+        }
+      }
+    },
+    {
+      "number": 5209,
+      "title": "fix(url): strip trailing question mark correctly for optional params with regex quantifiers",
+      "merged_at": "2026-08-13T00:55:57Z",
+      "commit": "d982f637ebab758715f7e68ff35a7c4844450023",
+      "why": "Fixes `checkOptionalParameter` in `src/utils/url.ts` to properly strip the trailing `?` optional parameter indicator instead of stripping `?` quantifiers inside custom parameter regexes (e.g., `/:id{[0-9]?}?`).\n\n### Motivation & Problem\nWhen defining routes with optional parameters containing a RegExp with a `?` quantifier (such as `/:id{[0-9]?}?` or `/:lang{[a-z]{2}?}?`), `segment.replace('?', '')` replaces the **first** `?` encountered in the segment string.\n\nThis corrupts the inner RegExp (changing `[0-9]?` to `[0-9]`) and leaves the trailing `?` intact at the end of the segment (`/api/:id{[0-9]}?`), causing malformed route registration in the router matcher.\n\n### Solution\nChange `segment.replace('?', '')` to `segment.replace(/\\?$/, '')` in `checkOptionalParameter` so that only the trailing optional parameter indicator `?` at the end of the path segment is removed.\n\n### Testing\n- Added unit test case `checkOptionalParameter('/api/:id{[0-9]?}?')` in `src/utils/url.test.ts`.\n- Verified `npm test src/utils/url.test.ts` passes 100% cleanly.",
+      "acceptance": [],
+      "footprint": [
+        "src/utils/url.test.ts",
+        "src/utils/url.ts"
+      ],
+      "src": [
+        "src/utils/url.ts"
+      ],
+      "tests": [
+        "src/utils/url.test.ts"
+      ],
+      "laid": {
+        "before": "f6f65e03414b9a9028ae4cd822575ab56e742e0a",
+        "after": "de55b4dd8aef3aaba2c21e801dfca012f6fb8696"
+      },
+      "hidden": [
+        {
+          "path": "src/utils/url.test.ts",
+          "blob": "2fcd70d727027663f43cb7203b498b815ec33aeb",
+          "new": false,
+          "bytes": 14463
+        }
+      ],
+      "run": [
+        "src/utils/url.test.ts"
+      ],
+      "target_tests": [
+        "src/utils/url.test.ts: url > checkOptionalParameter > checkOptionalParameter"
+      ],
+      "checks": {
+        "at_merge": {
+          "files": 1,
+          "tests": 34,
+          "passed": 34,
+          "failed": 0,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": true,
+          "failing": []
+        },
+        "before": {
+          "files": 1,
+          "tests": 34,
+          "passed": 33,
+          "failed": 1,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": false,
+          "seconds": 2.1,
+          "failing": [
+            "src/utils/url.test.ts: url > checkOptionalParameter > checkOptionalParameter"
+          ]
+        },
+        "after": {
+          "files": 1,
+          "tests": 34,
+          "passed": 34,
+          "failed": 0,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": true,
+          "seconds": 1.6,
+          "failing": []
+        },
+        "at_base": {
+          "files": 1,
+          "tests": 34,
+          "passed": 32,
+          "failed": 2,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": false,
+          "seconds": 1.4,
+          "failing": [
+            "src/utils/url.test.ts: url > checkOptionalParameter > checkOptionalParameter",
+            "src/utils/url.test.ts: url > getQueryParams > should treat `__proto__` as a normal key without changing the prototype"
+          ]
+        },
+        "on_target": {
+          "files": 1,
+          "tests": 34,
+          "passed": 34,
+          "failed": 0,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": true,
+          "seconds": 1.9,
+          "failing": []
+        }
+      },
+      "apis": {
+        "src/utils/url.test.ts": {
+          "matchers": {
+            "toBe": 67,
+            "toBeNull": 8,
+            "toEqual": 27,
+            "toStrictEqual": 11
+          },
+          "negated": 0,
+          "resolves": 0,
+          "rejects": 0,
+          "asymmetric": {},
+          "vi": {},
+          "hooks": {},
+          "modifiers": {
+            "it.each": 1
+          },
+          "each_template": 0,
+          "type_tests": {},
+          "snapshots": {},
+          "vitest_imports": [],
+          "globals": [
+            "describe",
+            "expect",
+            "it"
+          ],
+          "environment": null,
+          "packages": [],
+          "node_builtins": [],
+          "relative_imports": 1,
+          "not_node": []
+        }
+      },
+      "visible_apis": {
+        "src/utils/url.test.ts": {
+          "matchers": {
+            "toBe": 67,
+            "toBeNull": 7,
+            "toEqual": 25,
+            "toStrictEqual": 11
+          },
+          "negated": 0,
+          "resolves": 0,
+          "rejects": 0,
+          "asymmetric": {},
+          "vi": {},
+          "hooks": {},
+          "modifiers": {
+            "it.each": 1
+          },
+          "each_template": 0,
+          "type_tests": {},
+          "snapshots": {},
+          "vitest_imports": [],
+          "globals": [
+            "describe",
+            "expect",
+            "it"
+          ],
+          "environment": null,
+          "packages": [],
+          "node_builtins": [],
+          "relative_imports": 1,
+          "not_node": []
+        }
+      }
+    },
+    {
+      "number": 5215,
+      "title": "fix(client): send falsy JSON bodies",
+      "merged_at": "2026-08-13T02:11:07Z",
+      "commit": "329b6f46865aad2fa1d0ac17fb53afc5a3216f1b",
+      "why": "## Summary\n\n- serialize falsy root JSON inputs (`false`, `0`, `\"\"`, and `null`) instead of treating them as absent\n- keep `undefined` as the signal for an omitted JSON body\n- add regression coverage through the complete `hc` → `app.request` path\n\n## Impact\n\nBefore this change, RPC endpoints accepting a JSON primitive silently received `{}` for these four inputs because the client omitted the body and JSON content type. This can change application behavior—for example, `false` may fail to disable a flag, while `0`, `\"\"`, or `null` may fail to clear a setting. Object and array bodies are unaffected.\n\n## Regression proof\n\n```sh\nvitest --run src/client/client.test.ts -t \"Should send falsy JSON value\"\n```\n\n- with `main`'s truthiness condition: **4 failed** (each expected primitive was received as `{}`)\n- with this PR: **4 passed**\n\n## Testing\n\n- `vitest --run src/client/client.test.ts` — 108 tests passed\n- `tsc -p tsconfig.spec.json --noEmit`\n- `eslint src/client/client.ts src/client/client.test.ts`\n- `prettier --check src/client/client.ts src/client/client.test.ts`",
+      "acceptance": [],
+      "footprint": [
+        "src/client/client.test.ts",
+        "src/client/client.ts"
+      ],
+      "src": [
+        "src/client/client.ts"
+      ],
+      "tests": [
+        "src/client/client.test.ts"
+      ],
+      "laid": {
+        "before": "de55b4dd8aef3aaba2c21e801dfca012f6fb8696",
+        "after": "3118080699a499d34114e08a695e62beecac9c1b"
+      },
+      "hidden": [
+        {
+          "path": "src/client/client.test.ts",
+          "blob": "141e3c97ceb180c8ec469978940e2329e017bef3",
+          "new": false,
+          "bytes": 58447
+        }
+      ],
+      "run": [
+        "src/client/client.test.ts"
+      ],
+      "target_tests": [
+        "src/client/client.test.ts: Use custom fetch (app.request) method > Should send falsy JSON value: false",
+        "src/client/client.test.ts: Use custom fetch (app.request) method > Should send falsy JSON value: 0",
+        "src/client/client.test.ts: Use custom fetch (app.request) method > Should send falsy JSON value: \"\"",
+        "src/client/client.test.ts: Use custom fetch (app.request) method > Should send falsy JSON value: null"
+      ],
+      "checks": {
+        "at_merge": {
+          "files": 1,
+          "tests": 108,
+          "passed": 108,
+          "failed": 0,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": true,
+          "failing": []
+        },
+        "before": {
+          "files": 1,
+          "tests": 108,
+          "passed": 104,
+          "failed": 4,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": false,
+          "seconds": 3.6,
+          "failing": [
+            "src/client/client.test.ts: Use custom fetch (app.request) method > Should send falsy JSON value: false",
+            "src/client/client.test.ts: Use custom fetch (app.request) method > Should send falsy JSON value: 0",
+            "src/client/client.test.ts: Use custom fetch (app.request) method > Should send falsy JSON value: \"\"",
+            "src/client/client.test.ts: Use custom fetch (app.request) method > Should send falsy JSON value: null"
+          ]
+        },
+        "after": {
+          "files": 1,
+          "tests": 108,
+          "passed": 108,
+          "failed": 0,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": true,
+          "seconds": 2.7,
+          "failing": []
+        },
+        "at_base": {
+          "files": 1,
+          "tests": 108,
+          "passed": 103,
+          "failed": 5,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": false,
+          "seconds": 2.7,
+          "failing": [
+            "src/client/client.test.ts: Basic - query, queries, form, path params, header and cookie > Should get 200 response - cookie",
+            "src/client/client.test.ts: Use custom fetch (app.request) method > Should send falsy JSON value: false",
+            "src/client/client.test.ts: Use custom fetch (app.request) method > Should send falsy JSON value: 0",
+            "src/client/client.test.ts: Use custom fetch (app.request) method > Should send falsy JSON value: \"\"",
+            "src/client/client.test.ts: Use custom fetch (app.request) method > Should send falsy JSON value: null"
+          ]
+        },
+        "on_target": {
+          "files": 1,
+          "tests": 108,
+          "passed": 108,
+          "failed": 0,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": true,
+          "seconds": 2.9,
+          "failing": []
+        }
+      },
+      "apis": {
+        "src/client/client.test.ts": {
+          "matchers": {
+            "toBe": 71,
+            "toEqual": 27,
+            "toEqualTypeOf": 11,
+            "toHaveBeenCalledTimes": 1,
+            "toHaveBeenCalledWith": 9,
+            "toMatch": 2,
+            "toMatchObject": 1,
+            "toMatchTypeOf": 5,
+            "toStrictEqual": 2
+          },
+          "negated": 0,
+          "resolves": 0,
+          "rejects": 0,
+          "asymmetric": {},
+          "vi": {
+            "clearAllMocks": 3,
+            "fn": 5,
+            "stubGlobal": 2
+          },
+          "hooks": {
+            "afterAll": 14,
+            "afterEach": 14,
+            "beforeAll": 14,
+            "beforeEach": 2
+          },
+          "modifiers": {
+            "describe.each": 1,
+            "it.each": 3
+          },
+          "each_template": 0,
+          "type_tests": {
+            "expectTypeOf": 21
+          },
+          "snapshots": {},
+          "vitest_imports": [
+            "expectTypeOf",
+            "vi"
+          ],
+          "globals": [
+            "afterAll",
+            "afterEach",
+            "beforeAll",
+            "beforeEach",
+            "describe",
+            "expect",
+            "it"
+          ],
+          "environment": null,
+          "packages": [
+            "msw"
+          ],
+          "node_builtins": [],
+          "relative_imports": 7,
+          "not_node": []
+        }
+      },
+      "visible_apis": {
+        "src/client/client.test.ts": {
+          "matchers": {
+            "toBe": 69,
+            "toEqual": 27,
+            "toEqualTypeOf": 11,
+            "toHaveBeenCalledTimes": 1,
+            "toHaveBeenCalledWith": 9,
+            "toMatch": 2,
+            "toMatchObject": 1,
+            "toMatchTypeOf": 5,
+            "toStrictEqual": 2
+          },
+          "negated": 0,
+          "resolves": 0,
+          "rejects": 0,
+          "asymmetric": {},
+          "vi": {
+            "clearAllMocks": 3,
+            "fn": 5,
+            "stubGlobal": 2
+          },
+          "hooks": {
+            "afterAll": 14,
+            "afterEach": 14,
+            "beforeAll": 14,
+            "beforeEach": 2
+          },
+          "modifiers": {
+            "describe.each": 1,
+            "it.each": 2
+          },
+          "each_template": 0,
+          "type_tests": {
+            "expectTypeOf": 21
+          },
+          "snapshots": {},
+          "vitest_imports": [
+            "expectTypeOf",
+            "vi"
+          ],
+          "globals": [
+            "afterAll",
+            "afterEach",
+            "beforeAll",
+            "beforeEach",
+            "describe",
+            "expect",
+            "it"
+          ],
+          "environment": null,
+          "packages": [
+            "msw"
+          ],
+          "node_builtins": [],
+          "relative_imports": 7,
+          "not_node": []
+        }
+      }
+    },
+    {
+      "number": 5236,
+      "title": "fix(trie-router): match suffix wildcard routes",
+      "merged_at": "2026-08-17T00:37:48Z",
+      "commit": "63bbcf508c74d9fe7a3e20f4dfe7ffacc566dcce",
+      "why": "Fixes #5219\n\nThis PR makes TrieRouter recognize a terminal segment ending in `*` as a suffix wildcard. The prefix is matched literally, so regular expression characters have no special meaning.\n\nThere are already two PRs addressing this issue (#5220 and #5230), but they either have a larger implementation footprint or do not cover all relevant cases. This approach is more compact and keeps the fix narrowly scoped to TrieRouter.\n\nIt slightly increases the bundle size, but planned follow-up PRs should more than offset that increase.",
+      "acceptance": [],
+      "footprint": [
+        "src/hono.test.ts",
+        "src/router/trie-router/node.test.ts",
+        "src/router/trie-router/node.ts",
+        "src/router/trie-router/router.ts"
+      ],
+      "src": [
+        "src/router/trie-router/node.ts",
+        "src/router/trie-router/router.ts"
+      ],
+      "tests": [
+        "src/hono.test.ts",
+        "src/router/trie-router/node.test.ts"
+      ],
+      "laid": {
+        "before": "3118080699a499d34114e08a695e62beecac9c1b",
+        "after": "8cca13fac376ef40928f3e5fd8d0585e7e501905"
+      },
+      "hidden": [
+        {
+          "path": "src/hono.test.ts",
+          "blob": "ea79c88a6ecdeb9bd2c21419cfca9218b83e48f3",
+          "new": false,
+          "bytes": 109995
+        },
+        {
+          "path": "src/router/trie-router/node.test.ts",
+          "blob": "5ba5d6852c1ba40e5fa69e7e6c5cbe8b6d488331",
+          "new": false,
+          "bytes": 28695
+        }
+      ],
+      "run": [
+        "src/hono.test.ts",
+        "src/router/trie-router/node.test.ts"
+      ],
+      "target_tests": [
+        "src/hono.test.ts: Routing > Should match a suffix wildcard after falling back to TrieRouter",
+        "src/router/trie-router/node.test.ts: Get with a suffix wildcard > matches /assets",
+        "src/router/trie-router/node.test.ts: Get with a suffix wildcard > matches /assets-v2",
+        "src/router/trie-router/node.test.ts: Get with a suffix wildcard > matches /assets/app.js",
+        "src/router/trie-router/node.test.ts: Get with a suffix wildcard > treats regular expression characters in the prefix literally",
+        "src/router/trie-router/node.test.ts: Get with a suffix wildcard > registers the pattern when its child already exists"
+      ],
+      "checks": {
+        "at_merge": {
+          "files": 2,
+          "tests": 299,
+          "passed": 299,
+          "failed": 0,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": true,
+          "failing": []
+        },
+        "before": {
+          "files": 2,
+          "tests": 296,
+          "passed": 290,
+          "failed": 6,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": false,
+          "seconds": 3.3,
+          "failing": [
+            "src/hono.test.ts: Routing > Should match a suffix wildcard after falling back to TrieRouter",
+            "src/router/trie-router/node.test.ts: Get with a suffix wildcard > matches /assets",
+            "src/router/trie-router/node.test.ts: Get with a suffix wildcard > matches /assets-v2",
+            "src/router/trie-router/node.test.ts: Get with a suffix wildcard > matches /assets/app.js",
+            "src/router/trie-router/node.test.ts: Get with a suffix wildcard > treats regular expression characters in the prefix literally",
+            "src/router/trie-router/node.test.ts: Get with a suffix wildcard > registers the pattern when its child already exists"
+          ]
+        },
+        "after": {
+          "files": 2,
+          "tests": 296,
+          "passed": 296,
+          "failed": 0,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": true,
+          "seconds": 4.0,
+          "failing": []
+        },
+        "at_base": {
+          "files": 2,
+          "tests": 296,
+          "passed": 287,
+          "failed": 9,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": false,
+          "seconds": 3.6,
+          "failing": [
+            "src/hono.test.ts: Routing > Should match a suffix wildcard after falling back to TrieRouter",
+            "src/router/trie-router/node.test.ts: Get with a suffix wildcard > matches /assets",
+            "src/router/trie-router/node.test.ts: Get with a suffix wildcard > matches /assets-v2",
+            "src/router/trie-router/node.test.ts: Get with a suffix wildcard > matches /assets/app.js",
+            "src/router/trie-router/node.test.ts: Get with a suffix wildcard > treats regular expression characters in the prefix literally",
+            "src/router/trie-router/node.test.ts: Get with a suffix wildcard > registers the pattern when its child already exists",
+            "src/router/trie-router/node.test.ts: Multi match > Regexp > /regex-abc/123",
+            "src/router/trie-router/node.test.ts: Pattern spanning multiple parts > followed by a wildcard > should return the handler once per matching part count",
+            "src/router/trie-router/node.test.ts: Pattern spanning multiple parts > followed by a static part > should match however many parts the pattern spans"
+          ]
+        },
+        "on_target": {
+          "files": 2,
+          "tests": 296,
+          "passed": 296,
+          "failed": 0,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": true,
+          "seconds": 3.7,
+          "failing": []
+        }
+      },
+      "apis": {
+        "src/hono.test.ts": {
+          "matchers": {
+            "toBe": 453,
+            "toBeNull": 42,
+            "toBeUndefined": 1,
+            "toEqual": 22,
+            "toEqualTypeOf": 9,
+            "toHaveBeenCalledWith": 2,
+            "toMatch": 11,
+            "toMatchTypeOf": 2,
+            "toThrow": 1,
+            "toThrowError": 1
+          },
+          "negated": 41,
+          "resolves": 0,
+          "rejects": 0,
+          "asymmetric": {
+            "any": 5
+          },
+          "vi": {
+            "fn": 2
+          },
+          "hooks": {
+            "beforeEach": 2
+          },
+          "modifiers": {
+            "describe.each": 1
+          },
+          "each_template": 0,
+          "type_tests": {
+            "expectTypeOf": 12
+          },
+          "snapshots": {},
+          "vitest_imports": [
+            "expectTypeOf"
+          ],
+          "globals": [
+            "beforeEach",
+            "describe",
+            "expect",
+            "it",
+            "test",
+            "vi"
+          ],
+          "environment": null,
+          "packages": [],
+          "node_builtins": [],
+          "relative_imports": 12,
+          "not_node": []
+        },
+        "src/router/trie-router/node.test.ts": {
+          "matchers": {
+            "toBe": 44,
+            "toBeNull": 10,
+            "toEqual": 60
+          },
+          "negated": 11,
+          "resolves": 0,
+          "rejects": 0,
+          "asymmetric": {},
+          "vi": {},
+          "hooks": {},
+          "modifiers": {
+            "it.each": 1
+          },
+          "each_template": 0,
+          "type_tests": {},
+          "snapshots": {},
+          "vitest_imports": [],
+          "globals": [
+            "describe",
+            "expect",
+            "it"
+          ],
+          "environment": null,
+          "packages": [],
+          "node_builtins": [],
+          "relative_imports": 1,
+          "not_node": []
+        }
+      },
+      "visible_apis": {
+        "src/hono.test.ts": {
+          "matchers": {
+            "toBe": 450,
+            "toBeNull": 42,
+            "toBeUndefined": 1,
+            "toEqual": 22,
+            "toEqualTypeOf": 9,
+            "toHaveBeenCalledWith": 2,
+            "toMatch": 11,
+            "toMatchTypeOf": 2,
+            "toThrow": 1,
+            "toThrowError": 1
+          },
+          "negated": 41,
+          "resolves": 0,
+          "rejects": 0,
+          "asymmetric": {
+            "any": 5
+          },
+          "vi": {
+            "fn": 2
+          },
+          "hooks": {
+            "beforeEach": 2
+          },
+          "modifiers": {
+            "describe.each": 1
+          },
+          "each_template": 0,
+          "type_tests": {
+            "expectTypeOf": 12
+          },
+          "snapshots": {},
+          "vitest_imports": [
+            "expectTypeOf"
+          ],
+          "globals": [
+            "beforeEach",
+            "describe",
+            "expect",
+            "it",
+            "test",
+            "vi"
+          ],
+          "environment": null,
+          "packages": [],
+          "node_builtins": [],
+          "relative_imports": 12,
+          "not_node": []
+        },
+        "src/router/trie-router/node.test.ts": {
+          "matchers": {
+            "toBe": 43,
+            "toBeNull": 10,
+            "toEqual": 53
+          },
+          "negated": 11,
+          "resolves": 0,
+          "rejects": 0,
+          "asymmetric": {},
+          "vi": {},
+          "hooks": {},
+          "modifiers": {},
+          "each_template": 0,
+          "type_tests": {},
+          "snapshots": {},
+          "vitest_imports": [],
+          "globals": [
+            "describe",
+            "expect",
+            "it"
+          ],
+          "environment": null,
+          "packages": [],
+          "node_builtins": [],
+          "relative_imports": 1,
+          "not_node": []
+        }
+      }
+    },
+    {
+      "number": 5268,
+      "title": "fix(request): handle params on unmatched requests",
+      "merged_at": "2026-08-19T10:58:41Z",
+      "commit": "7967760748503b50de7c315fe3aa76666a8e6cab",
+      "why": "Prevents `req.param()` from throwing when the request has no matched route.\n\nKeyed access returns `undefined`, while `req.param()` returns an empty object. Includes a regression test.",
+      "acceptance": [],
+      "footprint": [
+        "src/request.test.ts",
+        "src/request.ts"
+      ],
+      "src": [
+        "src/request.ts"
+      ],
+      "tests": [
+        "src/request.test.ts"
+      ],
+      "laid": {
+        "before": "8cca13fac376ef40928f3e5fd8d0585e7e501905",
+        "after": "2944296e31641cbd8427b13049166460a3916565"
+      },
+      "hidden": [
+        {
+          "path": "src/request.test.ts",
+          "blob": "6e2f6e64eef9e224e4f9406d340b8e5c165ce177",
+          "new": false,
+          "bytes": 20228
+        }
+      ],
+      "run": [
+        "src/request.test.ts"
+      ],
+      "target_tests": [
+        "src/request.test.ts: Param > req.param() on an unmatched request"
+      ],
+      "checks": {
+        "at_merge": {
+          "files": 1,
+          "tests": 42,
+          "passed": 42,
+          "failed": 0,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": true,
+          "failing": []
+        },
+        "before": {
+          "files": 1,
+          "tests": 41,
+          "passed": 40,
+          "failed": 1,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": false,
+          "seconds": 2.2,
+          "failing": [
+            "src/request.test.ts: Param > req.param() on an unmatched request"
+          ]
+        },
+        "after": {
+          "files": 1,
+          "tests": 41,
+          "passed": 41,
+          "failed": 0,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": true,
+          "seconds": 2.9,
+          "failing": []
+        },
+        "at_base": {
+          "files": 1,
+          "tests": 41,
+          "passed": 38,
+          "failed": 3,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": false,
+          "seconds": 2.6,
+          "failing": [
+            "src/request.test.ts: Param > req.param() on an unmatched request",
+            "src/request.test.ts: headers > req.header() is not affected by a `__proto__` header name",
+            "src/request.test.ts: cloneRawRequest > clones consumed multipart request with a matching boundary"
+          ]
+        },
+        "on_target": {
+          "files": 1,
+          "tests": 41,
+          "passed": 41,
+          "failed": 0,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": true,
+          "seconds": 1.5,
+          "failing": []
+        }
+      },
+      "apis": {
+        "src/request.test.ts": {
+          "matchers": {
+            "toBe": 50,
+            "toBeInstanceOf": 6,
+            "toBeNull": 1,
+            "toBeUndefined": 6,
+            "toContain": 1,
+            "toEqual": 38,
+            "toEqualTypeOf": 5,
+            "toMatchObject": 3,
+            "toThrow": 9
+          },
+          "negated": 14,
+          "resolves": 0,
+          "rejects": 1,
+          "asymmetric": {},
+          "vi": {},
+          "hooks": {
+            "beforeEach": 1
+          },
+          "modifiers": {},
+          "each_template": 0,
+          "type_tests": {
+            "expectTypeOf": 7
+          },
+          "snapshots": {},
+          "vitest_imports": [],
+          "globals": [
+            "beforeEach",
+            "describe",
+            "expect",
+            "it",
+            "test"
+          ],
+          "environment": null,
+          "packages": [],
+          "node_builtins": [],
+          "relative_imports": 3,
+          "not_node": []
+        }
+      },
+      "visible_apis": {
+        "src/request.test.ts": {
+          "matchers": {
+            "toBe": 48,
+            "toBeInstanceOf": 5,
+            "toBeUndefined": 5,
+            "toContain": 1,
+            "toEqual": 37,
+            "toEqualTypeOf": 5,
+            "toMatchObject": 3,
+            "toThrow": 9
+          },
+          "negated": 14,
+          "resolves": 0,
+          "rejects": 1,
+          "asymmetric": {},
+          "vi": {},
+          "hooks": {
+            "beforeEach": 1
+          },
+          "modifiers": {},
+          "each_template": 0,
+          "type_tests": {
+            "expectTypeOf": 7
+          },
+          "snapshots": {},
+          "vitest_imports": [],
+          "globals": [
+            "beforeEach",
+            "describe",
+            "expect",
+            "it",
+            "test"
+          ],
+          "environment": null,
+          "packages": [],
+          "node_builtins": [],
+          "relative_imports": 3,
+          "not_node": []
+        }
+      }
+    },
+    {
+      "number": 5244,
+      "title": "fix(client): skip undefined header and cookie values",
+      "merged_at": "2026-08-22T05:13:48Z",
+      "commit": "d6c0b0de163a3b709e4dc57de0e0e8581aa08b7b",
+      "why": "## Summary\n\n- skip `undefined` values when building RPC client headers and cookies\n- avoid sending an empty `Cookie` header when every cookie value is omitted\n- add a typed end-to-end regression test for both paths\n\n## Impact\n\nOptional header and cookie fields accepted by Hono's inferred RPC types no longer arrive as the literal string `\"undefined\"`. Omitted values now remain absent, preventing request logic from mistaking them for values supplied by the caller.\n\n## Regression proof\n\nBefore this fix, the new test received:\n\n- `x-optional: undefined` as the header value `\"undefined\"`\n- `optional: undefined` as the cookie `optional=undefined`\n\nAfter this fix, the optional header is absent and only `required=cookie-value` is serialized. Required values remain unchanged.\n\n## Testing\n\n- `vitest --run src/client/client.test.ts`: 109 passed\n- `tsc -p tsconfig.spec.json --pretty false`\n- `eslint src/client/client.ts src/client/client.test.ts`\n- `prettier --check src/client/client.ts src/client/client.test.ts`\n- Full `npm test`: 4,766 passed; the unrelated local `workerd` startup hook timed out on Windows",
+      "acceptance": [],
+      "footprint": [
+        "src/client/client.test.ts",
+        "src/client/client.ts"
+      ],
+      "src": [
+        "src/client/client.ts"
+      ],
+      "tests": [
+        "src/client/client.test.ts"
+      ],
+      "laid": {
+        "before": "2944296e31641cbd8427b13049166460a3916565",
+        "after": "2a16aff39cb339f4261e2d10b012e483c825c6e8"
+      },
+      "hidden": [
+        {
+          "path": "src/client/client.test.ts",
+          "blob": "3d92d54e0bed08f99773da1d6951ba131af53e04",
+          "new": false,
+          "bytes": 60151
+        }
+      ],
+      "run": [
+        "src/client/client.test.ts"
+      ],
+      "target_tests": [
+        "src/client/client.test.ts: Optional header and cookie values > Should skip undefined header and cookie values",
+        "src/client/client.test.ts: Optional header and cookie values > Should not send a Cookie header if all cookie values are undefined"
+      ],
+      "checks": {
+        "at_merge": {
+          "files": 1,
+          "tests": 110,
+          "passed": 110,
+          "failed": 0,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": true,
+          "failing": []
+        },
+        "before": {
+          "files": 1,
+          "tests": 110,
+          "passed": 108,
+          "failed": 2,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": false,
+          "seconds": 4.8,
+          "failing": [
+            "src/client/client.test.ts: Optional header and cookie values > Should skip undefined header and cookie values",
+            "src/client/client.test.ts: Optional header and cookie values > Should not send a Cookie header if all cookie values are undefined"
+          ]
+        },
+        "after": {
+          "files": 1,
+          "tests": 110,
+          "passed": 110,
+          "failed": 0,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": true,
+          "seconds": 3.0,
+          "failing": []
+        },
+        "at_base": {
+          "files": 1,
+          "tests": 110,
+          "passed": 103,
+          "failed": 7,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": false,
+          "seconds": 2.4,
+          "failing": [
+            "src/client/client.test.ts: Basic - query, queries, form, path params, header and cookie > Should get 200 response - cookie",
+            "src/client/client.test.ts: Optional header and cookie values > Should skip undefined header and cookie values",
+            "src/client/client.test.ts: Optional header and cookie values > Should not send a Cookie header if all cookie values are undefined",
+            "src/client/client.test.ts: Use custom fetch (app.request) method > Should send falsy JSON value: false",
+            "src/client/client.test.ts: Use custom fetch (app.request) method > Should send falsy JSON value: 0",
+            "src/client/client.test.ts: Use custom fetch (app.request) method > Should send falsy JSON value: \"\"",
+            "src/client/client.test.ts: Use custom fetch (app.request) method > Should send falsy JSON value: null"
+          ]
+        },
+        "on_target": {
+          "files": 1,
+          "tests": 110,
+          "passed": 110,
+          "failed": 0,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": true,
+          "seconds": 3.0,
+          "failing": []
+        }
+      },
+      "apis": {
+        "src/client/client.test.ts": {
+          "matchers": {
+            "toBe": 73,
+            "toEqual": 29,
+            "toEqualTypeOf": 11,
+            "toHaveBeenCalledTimes": 1,
+            "toHaveBeenCalledWith": 9,
+            "toMatch": 2,
+            "toMatchObject": 1,
+            "toMatchTypeOf": 5,
+            "toStrictEqual": 2
+          },
+          "negated": 0,
+          "resolves": 0,
+          "rejects": 0,
+          "asymmetric": {},
+          "vi": {
+            "clearAllMocks": 3,
+            "fn": 5,
+            "stubGlobal": 2
+          },
+          "hooks": {
+            "afterAll": 14,
+            "afterEach": 14,
+            "beforeAll": 14,
+            "beforeEach": 2
+          },
+          "modifiers": {
+            "describe.each": 1,
+            "it.each": 3
+          },
+          "each_template": 0,
+          "type_tests": {
+            "expectTypeOf": 21
+          },
+          "snapshots": {},
+          "vitest_imports": [
+            "expectTypeOf",
+            "vi"
+          ],
+          "globals": [
+            "afterAll",
+            "afterEach",
+            "beforeAll",
+            "beforeEach",
+            "describe",
+            "expect",
+            "it"
+          ],
+          "environment": null,
+          "packages": [
+            "msw"
+          ],
+          "node_builtins": [],
+          "relative_imports": 7,
+          "not_node": []
+        }
+      },
+      "visible_apis": {
+        "src/client/client.test.ts": {
+          "matchers": {
+            "toBe": 69,
+            "toEqual": 27,
+            "toEqualTypeOf": 11,
+            "toHaveBeenCalledTimes": 1,
+            "toHaveBeenCalledWith": 9,
+            "toMatch": 2,
+            "toMatchObject": 1,
+            "toMatchTypeOf": 5,
+            "toStrictEqual": 2
+          },
+          "negated": 0,
+          "resolves": 0,
+          "rejects": 0,
+          "asymmetric": {},
+          "vi": {
+            "clearAllMocks": 3,
+            "fn": 5,
+            "stubGlobal": 2
+          },
+          "hooks": {
+            "afterAll": 14,
+            "afterEach": 14,
+            "beforeAll": 14,
+            "beforeEach": 2
+          },
+          "modifiers": {
+            "describe.each": 1,
+            "it.each": 2
+          },
+          "each_template": 0,
+          "type_tests": {
+            "expectTypeOf": 21
+          },
+          "snapshots": {},
+          "vitest_imports": [
+            "expectTypeOf",
+            "vi"
+          ],
+          "globals": [
+            "afterAll",
+            "afterEach",
+            "beforeAll",
+            "beforeEach",
+            "describe",
+            "expect",
+            "it"
+          ],
+          "environment": null,
+          "packages": [
+            "msw"
+          ],
+          "node_builtins": [],
+          "relative_imports": 7,
+          "not_node": []
+        }
+      }
+    },
+    {
+      "number": 5282,
+      "title": "fix(request): drop stale content length for cloned FormData",
+      "merged_at": "2026-08-23T06:57:47Z",
+      "commit": "612b59c0227b421090d46721cd5a98243ad8c6ec",
+      "why": "## Summary\n\n- remove the inherited `Content-Length` when `cloneRawRequest()` reserializes consumed `FormData`\n- let the runtime determine representation headers for the newly encoded multipart body\n- add a regression test using a valid multipart request with an explicit original length\n\n## Impact\n\n`cloneRawRequest()` supports forwarding requests after validation or body parsing. Multipart reserialization changes the boundary and can change the encoded size, so retaining the original `Content-Length` can leave downstream transports with invalid framing metadata.\n\n## Regression proof\n\nOn the Node 22 runtime used for the regression test, the valid multipart fixture is 77 bytes. Before this fix, reserialization produced a 125-byte body while the clone still declared `Content-Length: 77`.\n\nAfter this fix, the stale header is absent and the cloned form remains parseable, allowing the transport to determine the new length. This completes the representation-header handling introduced in #5133.\n\n## Testing\n\n- `vitest --run src/request.test.ts`: 43 passed\n- `tsc -p tsconfig.spec.json --pretty false`\n- `eslint src/request.ts src/request.test.ts`: 0 errors\n…",
+      "acceptance": [],
+      "footprint": [
+        "src/request.test.ts",
+        "src/request.ts"
+      ],
+      "src": [
+        "src/request.ts"
+      ],
+      "tests": [
+        "src/request.test.ts"
+      ],
+      "laid": {
+        "before": "2a16aff39cb339f4261e2d10b012e483c825c6e8",
+        "after": "1a68322878443e73d5e8b4965a70a1a3dd9b6486"
+      },
+      "hidden": [
+        {
+          "path": "src/request.test.ts",
+          "blob": "c3c9f345acd21541caced97526fc8bd5bf75873f",
+          "new": false,
+          "bytes": 21041
+        }
+      ],
+      "run": [
+        "src/request.test.ts"
+      ],
+      "target_tests": [
+        "src/request.test.ts: cloneRawRequest > drops stale content length when cloning consumed multipart request"
+      ],
+      "checks": {
+        "at_merge": {
+          "files": 1,
+          "tests": 43,
+          "passed": 43,
+          "failed": 0,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": true,
+          "failing": []
+        },
+        "before": {
+          "files": 1,
+          "tests": 42,
+          "passed": 41,
+          "failed": 1,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": false,
+          "seconds": 2.9,
+          "failing": [
+            "src/request.test.ts: cloneRawRequest > drops stale content length when cloning consumed multipart request"
+          ]
+        },
+        "after": {
+          "files": 1,
+          "tests": 42,
+          "passed": 42,
+          "failed": 0,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": true,
+          "seconds": 2.7,
+          "failing": []
+        },
+        "at_base": {
+          "files": 1,
+          "tests": 42,
+          "passed": 38,
+          "failed": 4,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": false,
+          "seconds": 2.1,
+          "failing": [
+            "src/request.test.ts: Param > req.param() on an unmatched request",
+            "src/request.test.ts: headers > req.header() is not affected by a `__proto__` header name",
+            "src/request.test.ts: cloneRawRequest > clones consumed multipart request with a matching boundary",
+            "src/request.test.ts: cloneRawRequest > drops stale content length when cloning consumed multipart request"
+          ]
+        },
+        "on_target": {
+          "files": 1,
+          "tests": 42,
+          "passed": 42,
+          "failed": 0,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": true,
+          "seconds": 2.3,
+          "failing": []
+        }
+      },
+      "apis": {
+        "src/request.test.ts": {
+          "matchers": {
+            "toBe": 52,
+            "toBeInstanceOf": 6,
+            "toBeNull": 1,
+            "toBeUndefined": 6,
+            "toContain": 1,
+            "toEqual": 38,
+            "toEqualTypeOf": 5,
+            "toMatchObject": 3,
+            "toThrow": 9
+          },
+          "negated": 14,
+          "resolves": 0,
+          "rejects": 1,
+          "asymmetric": {},
+          "vi": {},
+          "hooks": {
+            "beforeEach": 1
+          },
+          "modifiers": {},
+          "each_template": 0,
+          "type_tests": {
+            "expectTypeOf": 7
+          },
+          "snapshots": {},
+          "vitest_imports": [],
+          "globals": [
+            "beforeEach",
+            "describe",
+            "expect",
+            "it",
+            "test"
+          ],
+          "environment": null,
+          "packages": [],
+          "node_builtins": [],
+          "relative_imports": 3,
+          "not_node": []
+        }
+      },
+      "visible_apis": {
+        "src/request.test.ts": {
+          "matchers": {
+            "toBe": 48,
+            "toBeInstanceOf": 5,
+            "toBeUndefined": 5,
+            "toContain": 1,
+            "toEqual": 37,
+            "toEqualTypeOf": 5,
+            "toMatchObject": 3,
+            "toThrow": 9
+          },
+          "negated": 14,
+          "resolves": 0,
+          "rejects": 1,
+          "asymmetric": {},
+          "vi": {},
+          "hooks": {
+            "beforeEach": 1
+          },
+          "modifiers": {},
+          "each_template": 0,
+          "type_tests": {
+            "expectTypeOf": 7
+          },
+          "snapshots": {},
+          "vitest_imports": [],
+          "globals": [
+            "beforeEach",
+            "describe",
+            "expect",
+            "it",
+            "test"
+          ],
+          "environment": null,
+          "packages": [],
+          "node_builtins": [],
+          "relative_imports": 3,
+          "not_node": []
+        }
+      }
+    },
+    {
+      "number": 5288,
+      "title": "fix(request): serialize cached JSON body in cloneRawRequest",
+      "merged_at": "2026-08-23T07:16:58Z",
+      "commit": "c409d855d91d1f0904d19439692216fcf789e6cb",
+      "why": "",
+      "acceptance": [],
+      "footprint": [
+        "src/request.test.ts",
+        "src/request.ts"
+      ],
+      "src": [
+        "src/request.ts"
+      ],
+      "tests": [
+        "src/request.test.ts"
+      ],
+      "laid": {
+        "before": "1a68322878443e73d5e8b4965a70a1a3dd9b6486",
+        "after": "5787865352d64bed01d3db2ec780b5d80d86bbd5"
+      },
+      "hidden": [
+        {
+          "path": "src/request.test.ts",
+          "blob": "fb6e9b5ee27097a70adafcaa0b238b5aaf513325",
+          "new": false,
+          "bytes": 21556
+        }
+      ],
+      "run": [
+        "src/request.test.ts"
+      ],
+      "target_tests": [
+        "src/request.test.ts: cloneRawRequest > clones request when external code populated bodyCache.json"
+      ],
+      "checks": {
+        "at_merge": {
+          "files": 1,
+          "tests": 44,
+          "passed": 44,
+          "failed": 0,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": true,
+          "failing": []
+        },
+        "before": {
+          "files": 1,
+          "tests": 43,
+          "passed": 42,
+          "failed": 1,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": false,
+          "seconds": 2.1,
+          "failing": [
+            "src/request.test.ts: cloneRawRequest > clones request when external code populated bodyCache.json"
+          ]
+        },
+        "after": {
+          "files": 1,
+          "tests": 43,
+          "passed": 43,
+          "failed": 0,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": true,
+          "seconds": 1.3,
+          "failing": []
+        },
+        "at_base": {
+          "files": 1,
+          "tests": 43,
+          "passed": 38,
+          "failed": 5,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": false,
+          "seconds": 1.9,
+          "failing": [
+            "src/request.test.ts: Param > req.param() on an unmatched request",
+            "src/request.test.ts: headers > req.header() is not affected by a `__proto__` header name",
+            "src/request.test.ts: cloneRawRequest > clones consumed multipart request with a matching boundary",
+            "src/request.test.ts: cloneRawRequest > drops stale content length when cloning consumed multipart request",
+            "src/request.test.ts: cloneRawRequest > clones request when external code populated bodyCache.json"
+          ]
+        },
+        "on_target": {
+          "files": 1,
+          "tests": 43,
+          "passed": 43,
+          "failed": 0,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": true,
+          "seconds": 1.5,
+          "failing": []
+        }
+      },
+      "apis": {
+        "src/request.test.ts": {
+          "matchers": {
+            "toBe": 52,
+            "toBeInstanceOf": 6,
+            "toBeNull": 1,
+            "toBeUndefined": 6,
+            "toContain": 1,
+            "toEqual": 39,
+            "toEqualTypeOf": 5,
+            "toMatchObject": 3,
+            "toThrow": 9
+          },
+          "negated": 14,
+          "resolves": 0,
+          "rejects": 1,
+          "asymmetric": {},
+          "vi": {},
+          "hooks": {
+            "beforeEach": 1
+          },
+          "modifiers": {},
+          "each_template": 0,
+          "type_tests": {
+            "expectTypeOf": 7
+          },
+          "snapshots": {},
+          "vitest_imports": [],
+          "globals": [
+            "beforeEach",
+            "describe",
+            "expect",
+            "it",
+            "test"
+          ],
+          "environment": null,
+          "packages": [],
+          "node_builtins": [],
+          "relative_imports": 3,
+          "not_node": []
+        }
+      },
+      "visible_apis": {
+        "src/request.test.ts": {
+          "matchers": {
+            "toBe": 48,
+            "toBeInstanceOf": 5,
+            "toBeUndefined": 5,
+            "toContain": 1,
+            "toEqual": 37,
+            "toEqualTypeOf": 5,
+            "toMatchObject": 3,
+            "toThrow": 9
+          },
+          "negated": 14,
+          "resolves": 0,
+          "rejects": 1,
+          "asymmetric": {},
+          "vi": {},
+          "hooks": {
+            "beforeEach": 1
+          },
+          "modifiers": {},
+          "each_template": 0,
+          "type_tests": {
+            "expectTypeOf": 7
+          },
+          "snapshots": {},
+          "vitest_imports": [],
+          "globals": [
+            "beforeEach",
+            "describe",
+            "expect",
+            "it",
+            "test"
+          ],
+          "environment": null,
+          "packages": [],
+          "node_builtins": [],
+          "relative_imports": 3,
+          "not_node": []
+        }
+      }
+    },
+    {
+      "number": 5246,
+      "title": "fix(cookie): allow parsing signed cookies with empty string values",
+      "merged_at": "2026-08-23T07:24:02Z",
+      "commit": "241ae4c72b7ab732e425f40ea28cd3af2e78d8a2",
+      "why": "Fixes an issue in `parseSigned` where valid signed cookies with empty string values (`\"\"`) were dropped during parsing.\n\n### Problem\n\nWhen serializing a signed cookie with an empty string value via `serializeSigned('key', '', secret)` (or `setSignedCookie(c, 'key', '', secret)`), the resulting cookie value is formatted as `.${signature}`.\n\nIn `src/utils/cookie.ts`:\n```ts\n    const signatureStartPos = value.lastIndexOf('.')\n    if (signatureStartPos < 1) {\n      continue\n    }\n```\n\nWhen value is .${signature}, value.lastIndexOf('.') is 0. Because signatureStartPos < 1 evaluates to true, parseSigned assumes the cookie is malformed and drops it, returning an empty object (and causing getSignedCookie to return undefined).\n\n### Solution\n\nChange the condition from signatureStartPos < 1 to signatureStartPos < 0 so that signed cookies with a signature starting at index 0 (empty signed value \"\") are properly verified and parsed.",
+      "acceptance": [],
+      "footprint": [
+        "src/helper/cookie/index.test.ts",
+        "src/utils/cookie.test.ts",
+        "src/utils/cookie.ts"
+      ],
+      "src": [
+        "src/utils/cookie.ts"
+      ],
+      "tests": [
+        "src/helper/cookie/index.test.ts",
+        "src/utils/cookie.test.ts"
+      ],
+      "laid": {
+        "before": "5787865352d64bed01d3db2ec780b5d80d86bbd5",
+        "after": "13db0c3267bc043aff6658ed5daf097bb11f4f60"
+      },
+      "hidden": [
+        {
+          "path": "src/helper/cookie/index.test.ts",
+          "blob": "7cef8211798bb9dc203a4f0fc5acf73c61c7d6fd",
+          "new": false,
+          "bytes": 18257
+        },
+        {
+          "path": "src/utils/cookie.test.ts",
+          "blob": "491d21b305e6ed388cdff9781ae77354bebf5c28",
+          "new": false,
+          "bytes": 20092
+        }
+      ],
+      "run": [
+        "src/helper/cookie/index.test.ts",
+        "src/utils/cookie.test.ts"
+      ],
+      "target_tests": [
+        "src/utils/cookie.test.ts: Parse cookie > Should parse signed cookie with empty string value",
+        "src/helper/cookie/index.test.ts: Cookie Middleware > Parse cookie > Get signed cookie with empty string value"
+      ],
+      "checks": {
+        "at_merge": {
+          "files": 2,
+          "tests": 77,
+          "passed": 77,
+          "failed": 0,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": true,
+          "failing": []
+        },
+        "before": {
+          "files": 2,
+          "tests": 77,
+          "passed": 75,
+          "failed": 2,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": false,
+          "seconds": 2.1,
+          "failing": [
+            "src/utils/cookie.test.ts: Parse cookie > Should parse signed cookie with empty string value",
+            "src/helper/cookie/index.test.ts: Cookie Middleware > Parse cookie > Get signed cookie with empty string value"
+          ]
+        },
+        "after": {
+          "files": 2,
+          "tests": 77,
+          "passed": 77,
+          "failed": 0,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": true,
+          "seconds": 1.8,
+          "failing": []
+        },
+        "at_base": {
+          "files": 2,
+          "tests": 77,
+          "passed": 73,
+          "failed": 4,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": false,
+          "seconds": 1.9,
+          "failing": [
+            "src/utils/cookie.test.ts: Parse cookie > Should parse cookies whose names are not RFC 6265 tokens",
+            "src/utils/cookie.test.ts: Parse cookie > Should parse one cookie specified by a name that is not an RFC 6265 token",
+            "src/utils/cookie.test.ts: Parse cookie > Should parse signed cookie with empty string value",
+            "src/helper/cookie/index.test.ts: Cookie Middleware > Parse cookie > Get signed cookie with empty string value"
+          ]
+        },
+        "on_target": {
+          "files": 2,
+          "tests": 77,
+          "passed": 77,
+          "failed": 0,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": true,
+          "seconds": 2.6,
+          "failing": []
+        }
+      },
+      "apis": {
+        "src/helper/cookie/index.test.ts": {
+          "matchers": {
+            "toBe": 50
+          },
+          "negated": 0,
+          "resolves": 0,
+          "rejects": 0,
+          "asymmetric": {},
+          "vi": {},
+          "hooks": {},
+          "modifiers": {
+            "describe.each": 1
+          },
+          "each_template": 0,
+          "type_tests": {},
+          "snapshots": {},
+          "vitest_imports": [],
+          "globals": [
+            "describe",
+            "expect",
+            "it"
+          ],
+          "environment": null,
+          "packages": [],
+          "node_builtins": [],
+          "relative_imports": 2,
+          "not_node": []
+        },
+        "src/utils/cookie.test.ts": {
+          "matchers": {
+            "toBe": 64,
+            "toBeUndefined": 17,
+            "toThrowError": 18
+          },
+          "negated": 0,
+          "resolves": 0,
+          "rejects": 0,
+          "asymmetric": {},
+          "vi": {},
+          "hooks": {},
+          "modifiers": {},
+          "each_template": 0,
+          "type_tests": {},
+          "snapshots": {},
+          "vitest_imports": [],
+          "globals": [
+            "describe",
+            "expect",
+            "it"
+          ],
+          "environment": null,
+          "packages": [],
+          "node_builtins": [],
+          "relative_imports": 2,
+          "not_node": []
+        }
+      },
+      "visible_apis": {
+        "src/helper/cookie/index.test.ts": {
+          "matchers": {
+            "toBe": 49
+          },
+          "negated": 0,
+          "resolves": 0,
+          "rejects": 0,
+          "asymmetric": {},
+          "vi": {},
+          "hooks": {},
+          "modifiers": {
+            "describe.each": 1
+          },
+          "each_template": 0,
+          "type_tests": {},
+          "snapshots": {},
+          "vitest_imports": [],
+          "globals": [
+            "describe",
+            "expect",
+            "it"
+          ],
+          "environment": null,
+          "packages": [],
+          "node_builtins": [],
+          "relative_imports": 2,
+          "not_node": []
+        },
+        "src/utils/cookie.test.ts": {
+          "matchers": {
+            "toBe": 56,
+            "toBeUndefined": 14,
+            "toThrowError": 18
+          },
+          "negated": 0,
+          "resolves": 0,
+          "rejects": 0,
+          "asymmetric": {},
+          "vi": {},
+          "hooks": {},
+          "modifiers": {},
+          "each_template": 0,
+          "type_tests": {},
+          "snapshots": {},
+          "vitest_imports": [],
+          "globals": [
+            "describe",
+            "expect",
+            "it"
+          ],
+          "environment": null,
+          "packages": [],
+          "node_builtins": [],
+          "relative_imports": 2,
+          "not_node": []
+        }
+      }
+    },
+    {
+      "number": 5274,
+      "title": "fix(utils/stream): do not let abort listeners crash abort()",
+      "merged_at": "2026-08-23T07:34:05Z",
+      "commit": "5e5b83d6ed963a2bc7d8384002e1c953648253b1",
+      "why": "`StreamingApi.abort()` invokes every abort subscriber bare:\n\n```ts\nthis.abortSubscribers.forEach((subscriber) => subscriber())\n```\n\n`onAbort` accepts `() => void | Promise<void>`, and the first built-in subscriber is async (`await reader.cancel()`), so two failure modes exist on the client-disconnect path that triggers `abort()`:\n\n- an async listener that rejects (cleanup RPC fails, resource already gone) becomes an unhandled promise rejection, which crashes the process under Node's default policy;\n- a listener that throws synchronously stops the `forEach`, so the remaining listeners never run, including the built-in reader cancel when user listeners were registered before it runs.\n\nThe fix contains errors per listener: sync throws are caught, and a returned promise gets a no-op catch. Silently containing them matches the policy `write()` in the same class already applies (\"Do nothing. If you want to handle errors, create a stream by yourself.\").\n\nTwo tests added next to the existing `abort()` specs:\n\n- a throwing listener must not prevent later listeners from running;\n…",
+      "acceptance": [],
+      "footprint": [
+        "src/utils/stream.test.ts",
+        "src/utils/stream.ts"
+      ],
+      "src": [
+        "src/utils/stream.ts"
+      ],
+      "tests": [
+        "src/utils/stream.test.ts"
+      ],
+      "laid": {
+        "before": "13db0c3267bc043aff6658ed5daf097bb11f4f60",
+        "after": "72d207c42bf68ded1ae474091276a7acb362e33a"
+      },
+      "hidden": [
+        {
+          "path": "src/utils/stream.test.ts",
+          "blob": "6f6209b9fe04e699f2cfabc9fc50d04b94555176",
+          "new": false,
+          "bytes": 7388
+        }
+      ],
+      "run": [
+        "src/utils/stream.test.ts"
+      ],
+      "target_tests": [
+        "src/utils/stream.test.ts: StreamingApi > abort() continues when an abort listener throws",
+        "src/utils/stream.test.ts: StreamingApi > abort() does not leave an unhandled rejection when an async listener rejects"
+      ],
+      "checks": {
+        "at_merge": {
+          "files": 1,
+          "tests": 14,
+          "passed": 14,
+          "failed": 0,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": true,
+          "failing": []
+        },
+        "before": {
+          "files": 1,
+          "tests": 14,
+          "passed": 12,
+          "failed": 2,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": false,
+          "seconds": 1.4,
+          "failing": [
+            "src/utils/stream.test.ts: StreamingApi > abort() continues when an abort listener throws",
+            "src/utils/stream.test.ts: StreamingApi > abort() does not leave an unhandled rejection when an async listener rejects"
+          ]
+        },
+        "after": {
+          "files": 1,
+          "tests": 14,
+          "passed": 14,
+          "failed": 0,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": true,
+          "seconds": 1.2,
+          "failing": []
+        },
+        "at_base": {
+          "files": 1,
+          "tests": 14,
+          "passed": 10,
+          "failed": 4,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": false,
+          "seconds": 2.2,
+          "failing": [
+            "src/utils/stream.test.ts: StreamingApi > pipe() re-acquires writer lock when pipeTo() throws",
+            "src/utils/stream.test.ts: StreamingApi > pipe() can be called again after a previous pipe() throws",
+            "src/utils/stream.test.ts: StreamingApi > abort() continues when an abort listener throws",
+            "src/utils/stream.test.ts: StreamingApi > abort() does not leave an unhandled rejection when an async listener rejects"
+          ]
+        },
+        "on_target": {
+          "files": 1,
+          "tests": 14,
+          "passed": 14,
+          "failed": 0,
+          "skipped": 0,
+          "load_failures": 0,
+          "success": true,
+          "seconds": 2.0,
+          "failing": []
+        }
+      },
+      "apis": {
+        "src/utils/stream.test.ts": {
+          "matchers": {
+            "toBe": 7,
+            "toBeCalled": 6,
+            "toEqual": 10,
+            "toHaveBeenCalled": 2,
+            "toHaveBeenCalledOnce": 5,
+            "toThrow": 4
+          },
+          "negated": 8,
+          "resolves": 0,
+          "rejects": 2,
+          "asymmetric": {},
+          "vi": {
+            "fn": 7
+          },
+          "hooks": {},
+          "modifiers": {},
+          "each_template": 0,
+          "type_tests": {},
+          "snapshots": {},
+          "vitest_imports": [],
+          "globals": [
+            "describe",
+            "expect",
+            "it",
+            "vi"
+          ],
+          "environment": null,
+          "packages": [],
+          "node_builtins": [],
+          "relative_imports": 1,
+          "not_node": []
+        }
+      },
+      "visible_apis": {
+        "src/utils/stream.test.ts": {
+          "matchers": {
+            "toBe": 4,
+            "toBeCalled": 6,
+            "toEqual": 8,
+            "toHaveBeenCalledOnce": 4,
+            "toThrow": 2
+          },
+          "negated": 6,
+          "resolves": 0,
+          "rejects": 0,
+          "asymmetric": {},
+          "vi": {
+            "fn": 4
+          },
+          "hooks": {},
+          "modifiers": {},
+          "each_template": 0,
+          "type_tests": {},
+          "snapshots": {},
+          "vitest_imports": [],
+          "globals": [
+            "describe",
+            "expect",
+            "it",
+            "vi"
+          ],
+          "environment": null,
+          "packages": [],
+          "node_builtins": [],
+          "relative_imports": 1,
+          "not_node": []
+        }
+      }
+    }
+  ],
+  "overlap": {
+    "edges": [
+      {
+        "a": 5102,
+        "b": 5189,
+        "files": [
+          "src/router/trie-router/node.ts"
+        ]
+      },
+      {
+        "a": 5102,
+        "b": 5236,
+        "files": [
+          "src/router/trie-router/node.ts"
+        ]
+      },
+      {
+        "a": 5133,
+        "b": 5161,
+        "files": [
+          "src/request.ts"
+        ]
+      },
+      {
+        "a": 5133,
+        "b": 5268,
+        "files": [
+          "src/request.ts"
+        ]
+      },
+      {
+        "a": 5133,
+        "b": 5282,
+        "files": [
+          "src/request.ts"
+        ]
+      },
+      {
+        "a": 5133,
+        "b": 5288,
+        "files": [
+          "src/request.ts"
+        ]
+      },
+      {
+        "a": 5161,
+        "b": 5209,
+        "files": [
+          "src/utils/url.ts"
+        ]
+      },
+      {
+        "a": 5161,
+        "b": 5268,
+        "files": [
+          "src/request.ts"
+        ]
+      },
+      {
+        "a": 5161,
+        "b": 5282,
+        "files": [
+          "src/request.ts"
+        ]
+      },
+      {
+        "a": 5161,
+        "b": 5288,
+        "files": [
+          "src/request.ts"
+        ]
+      },
+      {
+        "a": 5164,
+        "b": 5246,
+        "files": [
+          "src/utils/cookie.ts"
+        ]
+      },
+      {
+        "a": 5189,
+        "b": 5236,
+        "files": [
+          "src/router/trie-router/node.ts"
+        ]
+      },
+      {
+        "a": 4988,
+        "b": 5274,
+        "files": [
+          "src/utils/stream.ts"
+        ]
+      },
+      {
+        "a": 5202,
+        "b": 5215,
+        "files": [
+          "src/client/client.ts"
+        ]
+      },
+      {
+        "a": 5202,
+        "b": 5244,
+        "files": [
+          "src/client/client.ts"
+        ]
+      },
+      {
+        "a": 5215,
+        "b": 5244,
+        "files": [
+          "src/client/client.ts"
+        ]
+      },
+      {
+        "a": 5268,
+        "b": 5282,
+        "files": [
+          "src/request.ts"
+        ]
+      },
+      {
+        "a": 5268,
+        "b": 5288,
+        "files": [
+          "src/request.ts"
+        ]
+      },
+      {
+        "a": 5282,
+        "b": 5288,
+        "files": [
+          "src/request.ts"
+        ]
+      }
+    ],
+    "by_file": {
+      "src/client/client.ts": [
+        5202,
+        5215,
+        5244
+      ],
+      "src/request.ts": [
+        5133,
+        5161,
+        5268,
+        5282,
+        5288
+      ],
+      "src/router/trie-router/node.ts": [
+        5102,
+        5189,
+        5236
+      ],
+      "src/utils/cookie.ts": [
+        5164,
+        5246
+      ],
+      "src/utils/stream.ts": [
+        4988,
+        5274
+      ],
+      "src/utils/url.ts": [
+        5161,
+        5209
+      ]
+    },
+    "tests_by_file": {
+      "src/client/client.test.ts": [
+        5202,
+        5215,
+        5244
+      ],
+      "src/request.test.ts": [
+        5133,
+        5161,
+        5268,
+        5282,
+        5288
+      ],
+      "src/router/common.case.test.ts": [
+        5102,
+        5189
+      ],
+      "src/router/trie-router/node.test.ts": [
+        5102,
+        5189,
+        5236
+      ],
+      "src/utils/cookie.test.ts": [
+        5164,
+        5246
+      ],
+      "src/utils/stream.test.ts": [
+        4988,
+        5274
+      ],
+      "src/utils/url.test.ts": [
+        5161,
+        5209
+      ]
+    }
+  },
+  "apis": {
+    "hidden_files": [
+      "src/client/client.test.ts",
+      "src/helper/cookie/index.test.ts",
+      "src/hono.test.ts",
+      "src/request.test.ts",
+      "src/router/common.case.test.ts",
+      "src/router/linear-router/router.test.ts",
+      "src/router/trie-router/node.test.ts",
+      "src/utils/accept.test.ts",
+      "src/utils/cookie.test.ts",
+      "src/utils/stream.test.ts",
+      "src/utils/url.test.ts"
+    ],
+    "hidden": {
+      "matchers": {
+        "toBe": 884,
+        "toBeCalled": 6,
+        "toBeInstanceOf": 6,
+        "toBeNull": 62,
+        "toBeUndefined": 24,
+        "toContain": 1,
+        "toEqual": 256,
+        "toEqualTypeOf": 25,
+        "toHaveBeenCalled": 2,
+        "toHaveBeenCalledOnce": 5,
+        "toHaveBeenCalledTimes": 1,
+        "toHaveBeenCalledWith": 11,
+        "toMatch": 13,
+        "toMatchObject": 4,
+        "toMatchTypeOf": 7,
+        "toStrictEqual": 13,
+        "toThrow": 16,
+        "toThrowError": 20
+      },
+      "negated": 76,
+      "resolves": 0,
+      "rejects": 3,
+      "asymmetric": {
+        "any": 5
+      },
+      "vi": {
+        "clearAllMocks": 3,
+        "fn": 14,
+        "stubGlobal": 2
+      },
+      "hooks": {
+        "afterAll": 14,
+        "afterEach": 14,
+        "beforeAll": 14,
+        "beforeEach": 28
+      },
+      "modifiers": {
+        "describe.each": 3,
+        "it.each": 5
+      },
+      "each_template": 0,
+      "type_tests": {
+        "expectTypeOf": 40
+      },
+      "snapshots": {},
+      "vitest_imports": [
+        "RunnerTestSuite",
+        "expectTypeOf",
+        "vi"
+      ],
+      "globals": [
+        "afterAll",
+        "afterEach",
+        "beforeAll",
+        "beforeEach",
+        "describe",
+        "expect",
+        "it",
+        "test",
+        "vi"
+      ],
+      "packages": [
+        "msw"
+      ],
+      "node_builtins": [],
+      "relative_imports": 34,
+      "not_node": []
+    },
+    "visible_files": [
+      "src/client/client.test.ts",
+      "src/helper/cookie/index.test.ts",
+      "src/hono.test.ts",
+      "src/request.test.ts",
+      "src/router/common.case.test.ts",
+      "src/router/linear-router/router.test.ts",
+      "src/router/trie-router/node.test.ts",
+      "src/utils/accept.test.ts",
+      "src/utils/cookie.test.ts",
+      "src/utils/stream.test.ts",
+      "src/utils/url.test.ts"
+    ],
+    "visible": {
+      "matchers": {
+        "toBe": 855,
+        "toBeCalled": 6,
+        "toBeInstanceOf": 5,
+        "toBeNull": 59,
+        "toBeUndefined": 20,
+        "toContain": 1,
+        "toEqual": 239,
+        "toEqualTypeOf": 25,
+        "toHaveBeenCalledOnce": 4,
+        "toHaveBeenCalledTimes": 1,
+        "toHaveBeenCalledWith": 11,
+        "toMatch": 13,
+        "toMatchObject": 4,
+        "toMatchTypeOf": 7,
+        "toStrictEqual": 13,
+        "toThrow": 14,
+        "toThrowError": 20
+      },
+      "negated": 74,
+      "resolves": 0,
+      "rejects": 1,
+      "asymmetric": {
+        "any": 5
+      },
+      "vi": {
+        "clearAllMocks": 3,
+        "fn": 11,
+        "stubGlobal": 2
+      },
+      "hooks": {
+        "afterAll": 14,
+        "afterEach": 14,
+        "beforeAll": 14,
+        "beforeEach": 26
+      },
+      "modifiers": {
+        "describe.each": 3,
+        "it.each": 3
+      },
+      "each_template": 0,
+      "type_tests": {
+        "expectTypeOf": 40
+      },
+      "snapshots": {},
+      "vitest_imports": [
+        "RunnerTestSuite",
+        "expectTypeOf",
+        "vi"
+      ],
+      "globals": [
+        "afterAll",
+        "afterEach",
+        "beforeAll",
+        "beforeEach",
+        "describe",
+        "expect",
+        "it",
+        "test",
+        "vi"
+      ],
+      "packages": [
+        "msw"
+      ],
+      "node_builtins": [],
+      "relative_imports": 34,
+      "not_node": []
+    },
+    "suite_files": 98,
+    "suite": {
+      "matchers": {
+        "toBe": 2203,
+        "toBeCalled": 47,
+        "toBeCalledTimes": 6,
+        "toBeCalledWith": 12,
+        "toBeDefined": 5,
+        "toBeFalsy": 111,
+        "toBeFunction": 2,
+        "toBeGreaterThanOrEqual": 1,
+        "toBeInstanceOf": 21,
+        "toBeLessThan": 2,
+        "toBeLessThanOrEqual": 1,
+        "toBeNull": 370,
+        "toBeTruthy": 111,
+        "toBeUndefined": 102,
+        "toContain": 36,
+        "toEqual": 536,
+        "toEqualTypeOf": 646,
+        "toHaveBeenCalled": 64,
+        "toHaveBeenCalledOnce": 7,
+        "toHaveBeenCalledTimes": 5,
+        "toHaveBeenCalledWith": 22,
+        "toHaveBeenNthCalledWith": 3,
+        "toHaveLength": 5,
+        "toHaveProperty": 16,
+        "toMatch": 78,
+        "toMatchObject": 12,
+        "toMatchTypeOf": 13,
+        "toStrictEqual": 19,
+        "toThrow": 58,
+        "toThrowError": 47
+      },
+      "negated": 450,
+      "resolves": 1,
+      "rejects": 23,
+      "asymmetric": {
+        "any": 7,
+        "anything": 2,
+        "arrayContaining": 1,
+        "stringContaining": 1
+      },
+      "vi": {
+        "clearAllMocks": 3,
+        "fn": 108,
+        "resetModules": 2,
+        "restoreAllMocks": 1,
+        "spyOn": 16,
+        "stubEnv": 3,
+        "stubGlobal": 10,
+        "unstubAllEnvs": 3,
+        "unstubAllGlobals": 4,
+        "useFakeTimers": 4,
+        "useRealTimers": 3
+      },
+      "hooks": {
+        "afterAll": 23,
+        "afterEach": 18,
+        "beforeAll": 22,
+        "beforeEach": 51
+      },
+      "modifiers": {
+        "describe.each": 5,
+        "it.each": 12,
+        "it.skip": 3,
+        "test.each": 21
+      },
+      "each_template": 12,
+      "type_tests": {
+        "expectTypeOf": 701
+      },
+      "snapshots": {
+        "toMatchInlineSnapshot": 1,
+        "toThrowErrorMatchingInlineSnapshot": 3
+      },
+      "vitest_imports": [
+        "afterEach",
+        "beforeEach",
+        "describe",
+        "expect",
+        "expectTypeOf",
+        "it",
+        "vi"
+      ],
+      "globals": [
+        "afterAll",
+        "afterEach",
+        "beforeAll",
+        "beforeEach",
+        "describe",
+        "expect",
+        "it",
+        "test",
+        "vi"
+      ],
+      "packages": [
+        "crypto",
+        "esbuild",
+        "msw",
+        "zod"
+      ],
+      "node_builtins": [
+        "node:async_hooks",
+        "node:path/posix"
+      ],
+      "relative_imports": 284,
+      "not_node": [
+        "Deno"
+      ]
+    }
+  },
+  "considered": {
+    "commits": 89,
+    "candidates": 48,
+    "skipped": [
+      {
+        "sha": "cda1af200256",
+        "why": "no pull request number in the subject"
+      },
+      {
+        "number": 5107,
+        "sha": "29a3f73fd5eb",
+        "why": "changes no source under src/ (tests, docs or tooling only)"
+      },
+      {
+        "number": 5108,
+        "sha": "d3f97caa29bb",
+        "why": "changes no source under src/ (tests, docs or tooling only)"
+      },
+      {
+        "number": 5104,
+        "sha": "3bb9a0e3a7dc",
+        "why": "touches JSX (.tsx or src/jsx/)"
+      },
+      {
+        "sha": "b2ae3a2204a4",
+        "why": "no pull request number in the subject"
+      },
+      {
+        "number": 5116,
+        "sha": "fb9d7bf8fb0d",
+        "why": "changes no source under src/ (tests, docs or tooling only)"
+      },
+      {
+        "number": 5117,
+        "sha": "c285f9a49862",
+        "why": "changes no source under src/ (tests, docs or tooling only)"
+      },
+      {
+        "number": 5126,
+        "sha": "5f738971b57b",
+        "why": "adds or changes no test file under src/"
+      },
+      {
+        "number": 5130,
+        "sha": "21b44b6db611",
+        "why": "adds or changes no test file under src/"
+      },
+      {
+        "number": 5135,
+        "sha": "aeba9ece778f",
+        "why": "adds or changes no test file under src/"
+      },
+      {
+        "number": 5136,
+        "sha": "64c613ab0f15",
+        "why": "changes no source under src/ (tests, docs or tooling only)"
+      },
+      {
+        "sha": "cadff88bba34",
+        "why": "no pull request number in the subject"
+      },
+      {
+        "number": 5148,
+        "sha": "bf8608cb77f9",
+        "why": "changes no source under src/ (tests, docs or tooling only)"
+      },
+      {
+        "number": 5138,
+        "sha": "44f884321a1d",
+        "why": "adds or changes no test file under src/"
+      },
+      {
+        "number": 5145,
+        "sha": "a88c89dac6e2",
+        "why": "changes no source under src/ (tests, docs or tooling only)"
+      },
+      {
+        "sha": "26d8e42bfff7",
+        "why": "no pull request number in the subject"
+      },
+      {
+        "number": 5167,
+        "sha": "df653cea0450",
+        "why": "changes no source under src/ (tests, docs or tooling only)"
+      },
+      {
+        "number": 5166,
+        "sha": "224d2f5cbf2b",
+        "why": "adds or changes no test file under src/"
+      },
+      {
+        "number": 5168,
+        "sha": "aed146364d5c",
+        "why": "changes no source under src/ (tests, docs or tooling only)"
+      },
+      {
+        "sha": "51db3131d5e9",
+        "why": "no pull request number in the subject"
+      },
+      {
+        "sha": "93fc250d8b4d",
+        "why": "no pull request number in the subject"
+      },
+      {
+        "sha": "f70e2c316843",
+        "why": "no pull request number in the subject"
+      },
+      {
+        "sha": "720b56629079",
+        "why": "no pull request number in the subject"
+      },
+      {
+        "sha": "0c45036d6b0d",
+        "why": "no pull request number in the subject"
+      },
+      {
+        "number": 5182,
+        "sha": "9839ff32a349",
+        "why": "changes no source under src/ (tests, docs or tooling only)"
+      },
+      {
+        "sha": "734755ace341",
+        "why": "no pull request number in the subject"
+      },
+      {
+        "sha": "b0c2d90eb07f",
+        "why": "no pull request number in the subject"
+      },
+      {
+        "sha": "192768fbaf9a",
+        "why": "no pull request number in the subject"
+      },
+      {
+        "sha": "cf785287b5ab",
+        "why": "no pull request number in the subject"
+      },
+      {
+        "number": 5204,
+        "sha": "765d13b00913",
+        "why": "adds or changes no test file under src/"
+      },
+      {
+        "sha": "7075369e1f61",
+        "why": "no pull request number in the subject"
+      },
+      {
+        "sha": "41bdc4288ed7",
+        "why": "no pull request number in the subject"
+      },
+      {
+        "number": 5248,
+        "sha": "ef0739d5f6e8",
+        "why": "adds or changes no test file under src/"
+      },
+      {
+        "sha": "0293343dbf8f",
+        "why": "no pull request number in the subject"
+      },
+      {
+        "number": 5264,
+        "sha": "48e360fcaa10",
+        "why": "adds or changes no test file under src/"
+      },
+      {
+        "number": 5267,
+        "sha": "4b44abe1b5c7",
+        "why": "adds or changes no test file under src/"
+      },
+      {
+        "sha": "017000d6ad5b",
+        "why": "no pull request number in the subject"
+      },
+      {
+        "sha": "9c28d724c5a7",
+        "why": "no pull request number in the subject"
+      },
+      {
+        "sha": "3a67f7f3997e",
+        "why": "no pull request number in the subject"
+      },
+      {
+        "sha": "531e9c5a3ae0",
+        "why": "no pull request number in the subject"
+      },
+      {
+        "sha": "06880c4a2b04",
+        "why": "no pull request number in the subject"
+      }
+    ],
+    "dropped": []
+  }
+}
