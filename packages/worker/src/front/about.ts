@@ -4,6 +4,7 @@ import { publicColonies } from "../api/git-proxy.ts";
 import { parseBudget } from "../mcp/budget.ts";
 import { pushDelayMs } from "../trunk/direction.ts";
 import { defaultCapUsd } from "../colony/spendcap.ts";
+import { accountsOn } from "../accounts/config.ts";
 
 /**
  * GET /api/about: which build is serving (the git commit it was built from, the Worker version and its tag, when that
@@ -59,6 +60,7 @@ export const COLONY_FLAGS: readonly string[] = [
  * flag reads it (a variable can arrive as a JSON value when wrangler.jsonc writes it as a number or a boolean).
  */
 export const OTHER_FLAGS: Readonly<Record<string, (value: unknown) => boolean>> = {
+  FT_ACCOUNTS: (v) => accountsOn({ FT_ACCOUNTS: typeof v === "string" ? v : undefined }),
   FT_AGENT_CALL_BUDGET: (v) => typeof v === "string" && parseBudget(v) !== null,
   FT_DEFAULT_SPEND_CAP: (v) => defaultCapUsd(v) !== null,
   FT_IMPORT_WEIGHT: (v) => {
@@ -81,6 +83,8 @@ export const NOT_FLAGS: readonly string[] = [
   "FT_BULK_MODEL",
   "FT_COCHANGE_WEIGHT",
   "FT_DEFAULT_MODEL",
+  "FT_GITHUB_CLIENT_ID",
+  "FT_GITHUB_CLIENT_SECRET",
   "FT_GITHUB_TOKEN",
   "FT_HEDGE_MS",
   "FT_LATERAL_INHIBITION",
@@ -91,6 +95,7 @@ export const NOT_FLAGS: readonly string[] = [
   "FT_PUBLIC_URL",
   "FT_REFLEX_MODEL",
   "FT_RESOLVER_MODEL",
+  "FT_SESSION_KEY",
 ];
 
 /** What GET /api/about answers. Every field but `service` and `flags` is null when the deployment does not say. */

@@ -3,6 +3,8 @@ export type Route =
   | { kind: "landing" }
   /** "/limits": what FireTrident cannot do yet, why, what to do instead, and its status (limits/Limits.tsx). */
   | { kind: "limits" }
+  /** /account: sign in, the account's colonies and their tokens (account/Account.tsx; accounts on, FT_ACCOUNTS). */
+  | { kind: "account" }
   /** /connect: connect your agent, for one colony with ?colony=<id> (null without one; the page checks the id). */
   | { kind: "connect"; colonyId: string | null }
   | {
@@ -38,11 +40,12 @@ function flag(params: URLSearchParams, key: string): boolean {
 
 /**
  * "/" is the landing page; "/c/:colonyId" is one colony; "/limits" is the limits page; "/connect" connects an agent
- * (?colony=<id>). The old shortcuts "/?mock=1" and "/?director=1" still open the simulator colony.
+ * (?colony=<id>); "/account" is the account page. The old shortcuts "/?mock=1" and "/?director=1" still open the simulator colony.
  */
 export function parseRoute(pathname: string, search: string): Route {
   const params = new URLSearchParams(search);
   if (/^\/connect\/?$/.test(pathname)) return { kind: "connect", colonyId: params.get("colony")?.trim() || null };
+  if (/^\/account\/?$/.test(pathname)) return { kind: "account" };
   const mock = flag(params, "mock");
   const director = flag(params, "director");
   const debug = flag(params, "debug");

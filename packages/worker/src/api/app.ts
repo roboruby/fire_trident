@@ -55,6 +55,8 @@ import { bearerMatches } from "./token.ts";
 import { accessConfig, approverIdentity, recordedAs } from "./access.ts";
 import { commitAuthorRoutes } from "./commitauthor.ts";
 import { publicReadLimit } from "./ratelimit.ts";
+import { accountApprover, accountWrite } from "../accounts/scope.ts";
+import { releaseOwnership } from "../accounts/ownership.ts";
 
 /** Hono environment of the API. */
 export type ApiEnv = { Bindings: Env };
@@ -91,6 +93,11 @@ export { tokensEqual } from "./token.ts";
  * (fail closed), unless FT_OPEN_WRITES is "1", which is for local development only.
  */
 export const requireAdmin: MiddlewareHandler<ApiEnv> = async (c, next) => {
+  // Accounts (FT_ACCOUNTS, accounts/scope.ts): on a colony a person owns, a token scoped to it or the owner's session;
+  // null for every other request, which the admin token decides as before.
+  const scoped = await accountWrite(c);
+  if (scoped === "allow") return next();
+  if (scoped) return scoped;
   const expected = c.env.FT_ADMIN_TOKEN;
   if (expected) {
     const m = /^Bearer\s+(\S+)\s*$/i.exec(c.req.header("Authorization") ?? "");
@@ -186,6 +193,36 @@ async function requireColony(env: Env, colonyId: Id): Promise<void> {
 }
 
 /**
+ * Create a colony: its trunk (provisioned by `provision`), trunk writer, warm pool and colony object, then its registry
+ * entry. A colony that exists already answers 409 with it. The admin route (POST /api/colonies) and a person's own
+ * colony (POST /api/me/colonies, accounts/routes.ts, with its owner's storage) both create through here.
+ */
+export async function createColony(env: Env, provision: ApiDeps["provisionTrunk"], b: z.output<typeof CreateColonyBody>): Promise<{ status: 201 | 409; body: unknown }> {
+  const colonyId = slug(b.name);
+  if (!colonyId) throw ftError(400, "name must contain letters or digits");
+  const colony = colonyStub(env, colonyId);
+  const existing = await colony.getColony();
+  if (existing) {
+    await registerColony(env, { id: existing.id, name: existing.name, ...(existing.source ? { source: existing.source } : {}), createdAt: existing.createdAt });
+    return { status: 409, body: { error: `colony ${colonyId} already exists`, colony: existing } };
+  }
+  const provisioned = await provision(env, colonyId, b.source);
+  const trunk = provisioned.trunk;
+  const initialized = await trunkStub(env, colonyId).init({ colonyId, trunk });
+  await poolStub(env, colonyId).init({ colonyId, trunk, target: b.poolTarget ?? b.pool ?? DEFAULT_POOL_TARGET });
+  const created = await colony.init({
+    colonyId,
+    name: b.name,
+    trunk,
+    trunkSha: initialized?.trunkSha || provisioned.trunkSha,
+    ...(b.source ? { source: b.source } : {}),
+    ...(b.regionDepth !== undefined ? { regionDepth: b.regionDepth } : {}),
+  });
+  await registerColony(env, { id: created.id, name: created.name, ...(created.source ? { source: created.source } : {}), createdAt: created.createdAt });
+  return { status: 201, body: created };
+}
+
+/**
  * Build the REST API (mounted at /api). Route table:
  *   GET    /colonies                        every colony with live counters (?scan=1 re-scans trunks)
  *   POST   /colonies                        create/import a colony
@@ -266,28 +303,8 @@ export function createApi(deps: ApiDeps): Hono<ApiEnv> {
 
   app.post("/colonies", requireAdmin, async (c) => {
     const b = await body(c, CreateColonyBody);
-    const colonyId = slug(b.name);
-    if (!colonyId) throw ftError(400, "name must contain letters or digits");
-    const colony = colonyStub(c.env, colonyId);
-    const existing = await colony.getColony();
-    if (existing) {
-      await registerColony(c.env, { id: existing.id, name: existing.name, ...(existing.source ? { source: existing.source } : {}), createdAt: existing.createdAt });
-      return json({ error: `colony ${colonyId} already exists`, colony: existing }, 409);
-    }
-    const provisioned = await deps.provisionTrunk(c.env, colonyId, b.source);
-    const trunk = provisioned.trunk;
-    const initialized = await trunkStub(c.env, colonyId).init({ colonyId, trunk });
-    await poolStub(c.env, colonyId).init({ colonyId, trunk, target: b.poolTarget ?? b.pool ?? DEFAULT_POOL_TARGET });
-    const created = await colony.init({
-      colonyId,
-      name: b.name,
-      trunk,
-      trunkSha: initialized?.trunkSha || provisioned.trunkSha,
-      ...(b.source ? { source: b.source } : {}),
-      ...(b.regionDepth !== undefined ? { regionDepth: b.regionDepth } : {}),
-    });
-    await registerColony(c.env, { id: created.id, name: created.name, ...(created.source ? { source: created.source } : {}), createdAt: created.createdAt });
-    return json(created, 201);
+    const res = await createColony(c.env, deps.provisionTrunk, b);
+    return json(res.body, res.status);
   });
 
   app.get("/colonies/:id", async (c) => {
@@ -299,6 +316,8 @@ export function createApi(deps: ApiDeps): Hono<ApiEnv> {
 
   app.delete("/colonies/:id", requireAdminStrict, async (c) => {
     const report = await deleteColony(c.env, colonyParam(c));
+    // Accounts (FT_ACCOUNTS): a deleted colony is nobody's, and the tokens minted for it stop working (accounts/ownership.ts).
+    if (report.ok) await releaseOwnership(c.env, report.colonyId);
     if (report.ok) return json(report);
     const failed = [...report.agents.failed.map((f) => `agent ${f.agentId}: ${f.error}`), ...report.repos.failed.map((f) => `repo ${f.repo}: ${f.error}`)];
     return json({ ...report, error: `delete incomplete (retry to finish): ${failed.slice(0, 5).join("; ")}` }, 502);
@@ -589,7 +608,8 @@ export function createApi(deps: ApiDeps): Hono<ApiEnv> {
     const colonyId = colonyParam(c);
     const b = await body(c, DecisionBody);
     // Verified approvers (api/access.ts): with Access configured, the approver is the verified token's email, else the stated name.
-    const who = await approverIdentity(c.env, c.req.raw.headers, b.by);
+    // The owner of an owned colony deciding from their session is recorded as github:<login>, verified (accounts/scope.ts).
+    const who = accountApprover(c.req.raw, b.by) ?? (await approverIdentity(c.env, c.req.raw.headers, b.by));
     const res = await colonyStub(c.env, colonyId).decide(c.req.param("pid"), b.decision, b.reason, who.by, true, who);
     // Blind canaries (colony/audit.ts): a decided canary is revealed in the answer.
     return json({ ok: true, ...(res && typeof res === "object" ? res : {}), ...(accessConfig(c.env) ? { recorded: recordedAs(who) } : {}) });

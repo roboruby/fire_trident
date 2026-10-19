@@ -12,6 +12,8 @@ import { frontDoor } from "./front/door.ts";
 import { responseHeaders } from "./front/headers.ts";
 import { KEYS_PATH, keysResponse, noteKeyId } from "./trunk/signature.ts";
 import { ALLOWED_SIGNERS_PATH, allowedSignersResponse } from "./trunk/gitsig.ts";
+import { accountsApp } from "./accounts/routes.ts";
+import { scopedMcp } from "./accounts/mcpscope.ts";
 
 export { ColonyDO } from "./colony/ColonyDO.ts";
 export { RegionDO } from "./region/RegionDO.ts";
@@ -19,6 +21,7 @@ export { TrunkDO } from "./trunk/TrunkDO.ts";
 export { PoolDO } from "./pool/PoolDO.ts";
 export { AgentDO } from "./agents/AgentDO.ts";
 export { FireTridentMcp } from "./mcp/FireTridentMcp.ts";
+export { AccountsDO } from "./accounts/AccountsDO.ts";
 export { IngestWorkflow } from "./workflows/IngestWorkflow.ts";
 export { VerifyWorkflow } from "./workflows/VerifyWorkflow.ts";
 
@@ -29,6 +32,10 @@ app.use("*", responseHeaders);
 // Which build is serving (commit, Worker version, deploy time), which flags are on, by name only (front/about.ts), and
 // the id of the key that signs lineage notes (trunk/signature.ts).
 app.get("/api/about", async (c) => aboutResponse(c.env, await noteKeyId(c.env.FT_NOTE_KEY), await deploymentPause(c.env)));
+// Accounts (FT_ACCOUNTS, accounts/routes.ts): GitHub sign-in under /auth, a person's /api/me and the operator's
+// /api/accounts, each answering 404 while the flag is off; before /api, whose catch-all would answer them. The
+// orchestrator wires provisionOwned (the owner's storage) and grantFor (the owner's Cloudflare connection) here.
+app.route("/", accountsApp({}));
 app.route("/api", api);
 app.get("/healthz", (c) => c.json({ ok: true, service: "firetrident" }));
 // The public key that signs lineage notes, for any git client to check a commit's FT-Note-Signature (in run_worker_first).
@@ -41,10 +48,13 @@ const mcpSse = FireTridentMcp.serveSSE("/sse", { binding: "MCP" });
 /**
  * MCP clients must send FT_MCP_TOKEN as an `Authorization: Bearer` header (never in the URL), checked in
  * constant time. Without that secret the endpoint refuses (fail closed), unless FT_OPEN_WRITES is "1"
- * (local development only). See mcp/gate.ts.
+ * (local development only). See mcp/gate.ts. With FT_ACCOUNTS on, a token scoped to one owned colony opens /mcp for
+ * that colony only (accounts/mcpscope.ts); every other request reaches the gate as before.
  */
 const mcpGate = (handler: typeof mcpHttp) => async (c: { req: { raw: Request }; env: Env; executionCtx: unknown }) =>
-  (await mcpRefusal(c.req.raw, c.env)) ?? handler.fetch(c.req.raw, c.env, c.executionCtx as ExecutionContext);
+  (await scopedMcp(c.req.raw, c.env, (req) => handler.fetch(req, c.env, c.executionCtx as ExecutionContext))) ??
+  (await mcpRefusal(c.req.raw, c.env)) ??
+  handler.fetch(c.req.raw, c.env, c.executionCtx as ExecutionContext);
 
 // A person's review from a chat client (mcp/review/server.ts): the admin token only, never FT_MCP_TOKEN; before /mcp/* so
 // the agents' gate never sees it.

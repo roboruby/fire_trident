@@ -1,3 +1,4 @@
+import type { AccountsDO } from "./accounts/AccountsDO.ts";
 import type { AgentDO } from "./agents/AgentDO.ts";
 import type { ColonyDO } from "./colony/ColonyDO.ts";
 import type { FireTridentMcp } from "./mcp/FireTridentMcp.ts";
@@ -14,6 +15,8 @@ export interface Env {
   POOL: DurableObjectNamespace<PoolDO>;
   AGENT: DurableObjectNamespace<AgentDO>;
   MCP: DurableObjectNamespace<FireTridentMcp>;
+  /** The deployment's accounts (accounts/AccountsDO.ts), one instance by name; read only while FT_ACCOUNTS is on. */
+  ACCOUNTS?: DurableObjectNamespace<AccountsDO>;
   /** Trunks and lane repos (namespace ft-trunk). */
   ARTIFACTS: Artifacts;
   /** Workspace shards (namespaces ft-ws-0..3). Use workspaceBinding() to pick one. */
@@ -67,6 +70,25 @@ export interface Env {
    */
   FT_ACCESS_TEAM_DOMAIN?: string;
   FT_ACCESS_AUD?: string;
+  /**
+   * Optional: accounts, "on"; absent or anything else is off (deployment-wide, never per colony). On, a person signs in
+   * with GitHub (GET /auth/github/start; a new account needs an invite code the operator minted with POST
+   * /api/accounts/invites), owns up to 3 colonies created from the account page (/account, POST /api/me/colonies; their
+   * repositories and model calls on the person's own connected Cloudflare account), and mints tokens scoped to one of
+   * them with a role (agent, reviewer, owner) that open its writes on the API and /mcp (accounts/). A colony with no owner
+   * is an operator colony and behaves exactly as before, and the admin and MCP tokens keep working everywhere. Off, every
+   * accounts route answers 404, no account UI appears, and the accounts object is never read.
+   */
+  FT_ACCOUNTS?: string;
+  /** The GitHub OAuth app's client id for sign-in (a var); its callback URL is `${FT_PUBLIC_URL}/auth/github/callback`. */
+  FT_GITHUB_CLIENT_ID?: string;
+  /** Secret: the GitHub OAuth app's client secret. Sent only to github.com when a sign-in finishes, never logged. */
+  FT_GITHUB_CLIENT_SECRET?: string;
+  /**
+   * Secret: at least 32 random characters. Signs the session cookie (HMAC-SHA-256) and seals the sign-in cookies
+   * (AES-GCM), each under its own key derived with HKDF. Changing it signs everyone out. Without it, sign-in refuses.
+   */
+  FT_SESSION_KEY?: string;
   /**
    * Secret (optional): the key that signs lineage notes, an Ed25519 private key as a JWK JSON string
    * ({"kty":"OKP","crv":"Ed25519","d":"…","x":"…"}, with an optional "since": the ISO date it started signing). With it,
