@@ -14,7 +14,7 @@
     "directory": "../web/dist",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/", "/api", "/api/*", "/mcp", "/mcp/*", "/public/mcp", "/sse", "/sse/*", "/healthz", "/git/*", "/.well-known/firetrident-keys.json", "/.well-known/firetrident-allowed-signers"]
+    "run_worker_first": ["/", "/api", "/api/*", "/mcp", "/mcp/*", "/public/mcp", "/sse", "/sse/*", "/healthz", "/git/*", "/.well-known/firetrident-keys.json", "/.well-known/firetrident-allowed-signers", "/auth/*"]
   },
   "durable_objects": {
     "bindings": [
@@ -23,11 +23,13 @@
       { "name": "TRUNK", "class_name": "TrunkDO" },
       { "name": "POOL", "class_name": "PoolDO" },
       { "name": "AGENT", "class_name": "AgentDO" },
-      { "name": "MCP", "class_name": "FireTridentMcp" }
+      { "name": "MCP", "class_name": "FireTridentMcp" },
+      { "name": "ACCOUNTS", "class_name": "AccountsDO" }
     ]
   },
   "migrations": [
-    { "tag": "v1", "new_sqlite_classes": ["ColonyDO", "RegionDO", "TrunkDO", "PoolDO", "AgentDO", "FireTridentMcp"] }
+    { "tag": "v1", "new_sqlite_classes": ["ColonyDO", "RegionDO", "TrunkDO", "PoolDO", "AgentDO", "FireTridentMcp"] },
+    { "tag": "v2", "new_sqlite_classes": ["AccountsDO"] }
   ],
   "artifacts": [
     { "binding": "ARTIFACTS", "namespace": "ft-trunk" },
@@ -63,11 +65,13 @@
           { "name": "TRUNK", "class_name": "TrunkDO" },
           { "name": "POOL", "class_name": "PoolDO" },
           { "name": "AGENT", "class_name": "AgentDO" },
-          { "name": "MCP", "class_name": "FireTridentMcp" }
+          { "name": "MCP", "class_name": "FireTridentMcp" },
+          { "name": "ACCOUNTS", "class_name": "AccountsDO" }
         ]
       },
       "migrations": [
-        { "tag": "v1", "new_sqlite_classes": ["ColonyDO", "RegionDO", "TrunkDO", "PoolDO", "AgentDO", "FireTridentMcp"] }
+        { "tag": "v1", "new_sqlite_classes": ["ColonyDO", "RegionDO", "TrunkDO", "PoolDO", "AgentDO", "FireTridentMcp"] },
+        { "tag": "v2", "new_sqlite_classes": ["AccountsDO"] }
       ],
       "artifacts": [
         { "binding": "ARTIFACTS", "namespace": "ft-stg-trunk" },
@@ -112,7 +116,8 @@
         { "name": "TRUNK", "class_name": "TrunkDO" },
         { "name": "POOL", "class_name": "PoolDO" },
         { "name": "AGENT", "class_name": "AgentDO" },
-        { "name": "MCP", "class_name": "FireTridentMcp" }
+        { "name": "MCP", "class_name": "FireTridentMcp" },
+        { "name": "ACCOUNTS", "class_name": "AccountsDO" }
       ]
     },
     "workflows": [

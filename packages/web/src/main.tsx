@@ -1,6 +1,7 @@
 import { createRoot } from "react-dom/client";
 import { connectSite } from "@fire_trident/core";
 import { App } from "./App.tsx";
+import { AccountPage } from "./account/Account.tsx";
 import { ConnectPage } from "./connect/Connect.tsx";
 import { SITE } from "./landing/questions.ts";
 import { Landing } from "./landing/Landing.tsx";
@@ -18,6 +19,8 @@ const page =
     <Landing />
   ) : route.kind === "limits" ? (
     <Limits />
+  ) : route.kind === "account" ? (
+    <AccountPage />
   ) : route.kind === "connect" ? (
     <ConnectPage site={connectSite(location.origin) ?? SITE} colony={route.colonyId} />
   ) : route.recording !== null ? (

@@ -1,0 +1,200 @@
+/* The account page (/account): sign-in, the invite code, the Cloudflare slot, colonies and their tokens. Shares the tokens in styles.css. */
+
+.ac-main {
+  max-width: 880px;
+}
+
+.ac-text {
+  margin: 10px 0;
+  color: var(--text-2);
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.ac-strong {
+  color: var(--text);
+  font-weight: 650;
+}
+
+.ac-muted {
+  color: var(--text-3);
+  font-size: 13px;
+}
+
+.ac-notice,
+.ac-error {
+  margin: 12px 0;
+  padding: 10px 14px;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.ac-notice {
+  color: var(--text);
+  background: rgba(95, 208, 255, 0.07);
+}
+
+.ac-error {
+  color: #ffd3da;
+  border-color: rgba(255, 46, 79, 0.35);
+  background: rgba(255, 46, 79, 0.07);
+}
+
+.ac-link {
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.ac-card {
+  margin: 28px 0;
+  padding: 22px 24px;
+  border: 1px solid var(--line-2);
+  border-radius: 12px;
+  background: var(--panel);
+}
+
+.ac-h2 {
+  margin: 0 0 8px;
+  font-size: 19px;
+}
+
+.ac-h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.ac-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 18px 0;
+  align-items: flex-start;
+}
+
+.ac-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  color: var(--text-2);
+  font-size: 13px;
+}
+
+.ac-field input {
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  outline: none;
+  background: #080b11;
+  color: #dbe4f1;
+  font: 14px var(--sans);
+}
+
+.ac-field input.mono {
+  font: 12.5px var(--mono);
+}
+
+.ac-field input:focus {
+  border-color: rgba(243, 128, 32, 0.6);
+}
+
+.ac-days input {
+  width: 110px;
+}
+
+.ac-roles {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  color: var(--text-2);
+  font-size: 13.5px;
+}
+
+.ac-roles legend {
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+
+.ac-role {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  line-height: 1.5;
+}
+
+.ac-role b {
+  color: var(--text);
+}
+
+.ac-colonies,
+.ac-token-list {
+  margin: 14px 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ac-colony {
+  padding: 14px 0;
+  border-top: 1px solid var(--line);
+}
+
+.ac-colony-head,
+.ac-token {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
+.ac-colony-name {
+  color: var(--text);
+  font-weight: 650;
+}
+
+.ac-tokens {
+  margin-top: 12px;
+  padding-left: 14px;
+  border-left: 2px solid var(--line-2);
+}
+
+.ac-token {
+  padding: 8px 0;
+}
+
+.ac-token.is-dead {
+  opacity: 0.55;
+}
+
+.ac-token-label {
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.ac-chip {
+  padding: 2px 8px;
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.ac-minted {
+  margin: 14px 0;
+  padding: 14px;
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  background: rgba(243, 128, 32, 0.06);
+}
+
+.ac-cloudflare {
+  border-style: dashed;
+}
