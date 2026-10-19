@@ -1,5 +1,6 @@
 import type { AgentInfo, Id } from "@fire_trident/core";
 import type { Env } from "../env.ts";
+import { colonyOwnerOf } from "../artifacts/storage.ts";
 import { resolveModel } from "./llm.ts";
 import { agentStub, colonyStub, errorMessage } from "./rpc.ts";
 
@@ -110,6 +111,8 @@ export async function spawnSwarm(env: Env, colonyId: Id, opts: SpawnOptions): Pr
   const prefix = (opts.namePrefix ?? kind).trim().slice(0, 40) || kind;
   const colony = colonyStub(env, colonyId);
   const stamp = Date.now().toString(36).slice(-4);
+  // A colony a person owns: its agents read trunk from the owner's Cloudflare account (artifacts/storage.ts).
+  const owner = await colonyOwnerOf(env, colonyId);
 
   const agents: Array<AgentInfo & { assigned: string }> = [];
   const errors: string[] = [];
@@ -126,7 +129,7 @@ export async function spawnSwarm(env: Env, colonyId: Id, opts: SpawnOptions): Pr
   }
 
   const results = await inBatches(agents, START_CONCURRENCY, (a, i) =>
-    agentStub(env, a.id).start({ colonyId, agentId: a.id, model: a.assigned, kind, name: a.name, delayMs: staggerDelay(i, agents.length, staggerMs) }),
+    agentStub(env, a.id).start({ colonyId, agentId: a.id, model: a.assigned, kind, name: a.name, delayMs: staggerDelay(i, agents.length, staggerMs), ...(owner ? { owner } : {}) }),
   );
   const agentIds: Id[] = [];
   const models: Record<string, number> = {};

@@ -21,7 +21,8 @@ import {
   type MintedToken,
 } from "../artifacts/git.ts";
 import { durableFs } from "../artifacts/workspace.ts";
-import { TRUNK_NAMESPACE, bindingFor, seedRepoName, workspaceBinding, workspaceNamespace, workspaceRepoName } from "../artifacts/shards.ts";
+import { TRUNK_NAMESPACE, seedRepoName, workspaceNamespace, workspaceRepoName } from "../artifacts/shards.ts";
+import { colonyStorage, type ColonyStorage } from "../artifacts/storage.ts";
 import { CLEAN_AFTER_MS, SlotBook, TOKEN_TTL_S, reusable, type SlotRow, type SlotState, type SlotToken, type TokenOps } from "./slots.ts";
 import { LEGACY_FLOOR, LeaseGuard, QUIET_MS, SWEEP_EVERY_MS, nextSweepAt, oldLeases, shrunkTarget, sweepLeases } from "./upkeep.ts";
 
@@ -93,11 +94,11 @@ export class PoolDO extends DurableObject<Env> {
   private tokenOps(): TokenOps {
     return {
       mint: async (slot): Promise<SlotToken> => {
-        const t = await mintToken(workspaceBinding(this.env, slot.shard), slot.name, "write", TOKEN_TTL_S);
+        const t = await mintToken(this.storage().workspace(slot.shard), slot.name, "write", TOKEN_TTL_S);
         return { id: t.id, token: t.token, expiresAt: t.expiresAt };
       },
       revoke: async (slot, tokenId): Promise<void> => {
-        await withArtifactsRetry(() => withRepo(workspaceBinding(this.env, slot.shard), slot.name, (repo) => repo.revokeToken(tokenId)));
+        await withArtifactsRetry(() => withRepo(this.storage().workspace(slot.shard), slot.name, (repo) => repo.revokeToken(tokenId)));
       },
     };
   }
@@ -113,7 +114,8 @@ export class PoolDO extends DurableObject<Env> {
    */
   async init(p: { colonyId: Id; trunk: RepoRef; target: number }): Promise<void> {
     const prev = this.meta("trunk");
-    if (prev !== null && (JSON.parse(prev) as RepoRef).name !== p.trunk.name) {
+    const was = prev === null ? null : (JSON.parse(prev) as RepoRef);
+    if (was !== null && (was.name !== p.trunk.name || (was.owner ?? null) !== (p.trunk.owner ?? null))) {
       this.ctx.storage.transactionSync(() => {
         this.sql.exec(`DELETE FROM ft_pool_ws`);
         this.sql.exec(`DELETE FROM ft_pool_seeds`);
@@ -207,7 +209,8 @@ export class PoolDO extends DurableObject<Env> {
       const c = this.book.counts();
       if (c.ready < Math.ceil(this.target() / 4)) await this.schedule(250);
       return {
-        repo: { namespace: workspaceNamespace(row.shard), name: row.name, remote: row.remote ?? "" },
+        // A workspace in its colony owner's Cloudflare account says so, as the colony's trunk does (artifacts/storage.ts).
+        repo: { namespace: workspaceNamespace(row.shard), name: row.name, remote: row.remote ?? "", ...(st.trunk.owner ? { owner: st.trunk.owner } : {}) },
         token: ws.token,
         tokenExpiresAt: ws.expiresAt,
         baseSha: trunkSha,
@@ -276,7 +279,7 @@ export class PoolDO extends DurableObject<Env> {
       await Promise.all(
         jobs.slice(i, i + 4).map(async (j) => {
           try {
-            if (await withArtifactsRetry(() => workspaceBinding(this.env, j.shard).delete(j.name))) deleted++;
+            if (await withArtifactsRetry(() => this.storage().workspace(j.shard).delete(j.name))) deleted++;
           } catch (e) {
             errors.push(`${workspaceNamespace(j.shard)}/${j.name}: ${errorText(e)}`);
           }
@@ -482,7 +485,7 @@ export class PoolDO extends DurableObject<Env> {
     }
     const settle = (seed.pushed_at ?? 0) + SEED_SETTLE_MS - Date.now();
     if (settle > 0) await sleep(settle);
-    const binding = workspaceBinding(this.env, row.shard);
+    const binding = this.storage().workspace(row.shard);
     try {
       const remote = await forkWithRetry(binding, seed.name, row.name, `FireTrident workspace ${row.n} of ${this.meta("colony_id") ?? ""}`);
       const now = Date.now();
@@ -541,7 +544,7 @@ export class PoolDO extends DurableObject<Env> {
       const name = seedRepoName(st.colonyId);
       await Promise.all(
         todo.map(async (shard) => {
-          const binding = workspaceBinding(this.env, shard);
+          const binding = this.storage().workspace(shard);
           let remote = seeds.get(shard)?.remote;
           if (!remote) {
             remote = await createOrGet(binding, name, `FireTrident seed of ${st.colonyId} (mirrors trunk main)`);
@@ -607,8 +610,18 @@ export class PoolDO extends DurableObject<Env> {
     return this.gitRepo;
   }
 
+  /**
+   * This pool's colony's Artifacts storage (artifacts/storage.ts): the deployment's own bindings, or the Cloudflare
+   * account of the owner its stored trunk names. Read before init (a teardown of a half-made colony), it is the deployment's.
+   */
+  private storage(): ColonyStorage {
+    const trunk = this.meta("trunk");
+    return colonyStorage(this.env, trunk === null ? null : (JSON.parse(trunk) as RepoRef).owner);
+  }
+
   private trunkBinding(trunk: RepoRef): Artifacts {
-    return bindingFor(this.env, trunk.namespace || TRUNK_NAMESPACE) ?? this.env.ARTIFACTS;
+    const storage = colonyStorage(this.env, trunk.owner);
+    return storage.bindingFor(trunk.namespace || TRUNK_NAMESPACE) ?? storage.trunk;
   }
 
   /** Read-only trunk token shared by leases, re-minted with 15 minutes left. */

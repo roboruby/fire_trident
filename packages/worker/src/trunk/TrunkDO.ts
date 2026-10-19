@@ -84,7 +84,8 @@ import { exportImports } from "./imports.ts";
 import type { ExportImports } from "./plan.ts";
 import { modeAt, runRevert, sqlRevertTrunk, type RevertResult, type RevertTrunk } from "./revert.ts";
 import { durableFs } from "../artifacts/workspace.ts";
-import { TRUNK_NAMESPACE, bindingFor } from "../artifacts/shards.ts";
+import { TRUNK_NAMESPACE } from "../artifacts/shards.ts";
+import { colonyStorage } from "../artifacts/storage.ts";
 import { noteAlternatives, type ContestAlternative } from "../decide/contest.ts";
 import { noteUndoes, removedLineOwners, sqlLineageSource, type RemovedLinesAnswer, type RemovedLinesQuery } from "../decide/undone.ts";
 import type { DirectionInfo } from "../colony/direction.ts";
@@ -947,7 +948,7 @@ export class TrunkDO extends DurableObject<Env> {
   async mirrorTo(target: RepoRef, opts: { notes?: boolean } = {}): Promise<{ sha: Sha }> {
     return this.serial(async () => {
       const st = this.state();
-      const binding = bindingFor(this.env, target.namespace);
+      const binding = colonyStorage(this.env, st.trunk.owner).bindingFor(target.namespace);
       if (!binding) throw new Error(`no binding for namespace ${target.namespace}`);
       const tok = await mintToken(binding, target.name, "write", 600);
       const g = this.repo();
@@ -1255,7 +1256,7 @@ export class TrunkDO extends DurableObject<Env> {
     const prev = this.meta("trunk");
     if (prev !== null) {
       const old = JSON.parse(prev) as RepoRef;
-      if (old.name !== p.trunk.name || old.namespace !== p.trunk.namespace) this.reset();
+      if (old.name !== p.trunk.name || old.namespace !== p.trunk.namespace || (old.owner ?? null) !== (p.trunk.owner ?? null)) this.reset();
     }
     this.setMeta("colony_id", p.colonyId);
     this.setMeta("trunk", JSON.stringify(p.trunk));
@@ -2187,7 +2188,8 @@ export class TrunkDO extends DurableObject<Env> {
     const sizes = new Map<Path, number>();
     const needed = p.writeSet.filter((w) => w.blob !== null && w.blob !== this.indexBlob(w.path));
     if (needed.length === 0) return sizes;
-    const binding = bindingFor(this.env, p.workspace.namespace);
+    // The colony's own storage (artifacts/storage.ts) answers for the namespace: never the proposal's say.
+    const binding = colonyStorage(this.env, this.state().trunk.owner).bindingFor(p.workspace.namespace);
     if (!binding) throw new ProposalProblem(`unknown workspace namespace ${p.workspace.namespace}`);
     const g = this.repo();
     let repo: ArtifactsRepo;
@@ -3106,8 +3108,10 @@ export class TrunkDO extends DurableObject<Env> {
     }
   }
 
+  /** The binding of the trunk repo: the deployment's own, or its owner's Cloudflare account (artifacts/storage.ts). */
   private trunkBinding(trunk: RepoRef): Artifacts {
-    return bindingFor(this.env, trunk.namespace || TRUNK_NAMESPACE) ?? this.env.ARTIFACTS;
+    const storage = colonyStorage(this.env, trunk.owner);
+    return storage.bindingFor(trunk.namespace || TRUNK_NAMESPACE) ?? storage.trunk;
   }
 
   /**

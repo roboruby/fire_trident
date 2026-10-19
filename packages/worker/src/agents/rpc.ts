@@ -136,6 +136,8 @@ export interface AgentStartParams {
   name?: string;
   /** Delay before the first loop step (the swarm staggers starts with it). */
   delayMs?: number;
+  /** The account that owns the colony, when a person does: trunk reads go to its Cloudflare account (artifacts/storage.ts). */
+  owner?: string;
 }
 
 /** AgentDO methods used by the swarm and the API. */

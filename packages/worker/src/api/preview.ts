@@ -2,7 +2,7 @@ import type { Context, Hono } from "hono";
 import type { Id, Landing, Path, Sha } from "@fire_trident/core";
 import type { Env } from "../env.ts";
 import { dispose, withArtifactsRetry } from "../artifacts/git.ts";
-import { bindingFor } from "../artifacts/shards.ts";
+import { colonyStorage } from "../artifacts/storage.ts";
 import { ftError } from "../colony/errors.ts";
 import { LANDING_REF } from "../trunk/landing-note.ts";
 import type { ApiEnv } from "./app.ts";
@@ -131,7 +131,8 @@ export async function previewFile(env: Env, colonyId: Id, ref: string, path: Pat
   const { landing } = found;
   const blob = (await writer.baseBlobs(landing.trunkSha, [path]))[0]?.blob ?? null;
   if (!blob) throw ftError(404, `there is no file ${path} at commit ${landing.trunkSha.slice(0, 7)}: name a file the colony's trunk held there`);
-  const binding = bindingFor(env, record.trunk.namespace) ?? env.ARTIFACTS;
+  const storage = colonyStorage(env, record.trunk.owner);
+  const binding = storage.bindingFor(record.trunk.namespace) ?? storage.trunk;
   const bytes = await readBytes(binding, record.trunk.name, blob);
   if (bytes === "too-large") throw ftError(413, `${path} is over ${PREVIEW_FILE_BYTES / 1024} KB, too large to preview: read it from a plain git clone of the colony`);
   if (bytes === null) throw ftError(503, "the trunk repository did not return the file just now: try again in a moment");

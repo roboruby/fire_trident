@@ -18,6 +18,7 @@ import {
   type GitRepo,
 } from "./git.ts";
 import { TRUNK_NAMESPACE, trunkRepoName } from "./shards.ts";
+import type { ColonyStorage } from "./storage.ts";
 
 /** Commits of source history kept on import. */
 const IMPORT_DEPTH = 200;
@@ -27,11 +28,12 @@ const IMPORT_DEPTH = 200;
  * with the sha of `main`. With `source`, the trunk is imported from that public git URL
  * (`depth` 200); otherwise it is created empty and given an initial commit with a README.
  * Idempotent: an existing trunk is reused, and a trunk whose default branch is not `main`
- * gets a `main` branch at the same commit.
+ * gets a `main` branch at the same commit. With `storage` (artifacts/storage.ts) the trunk is made
+ * there instead of in env.ARTIFACTS, and the RepoRef names its owner.
  */
-export async function provisionTrunk(env: Env, colonyId: Id, source?: { url: string; branch?: string }): Promise<{ trunk: RepoRef; trunkSha: Sha }> {
+export async function provisionTrunk(env: Env, colonyId: Id, source?: { url: string; branch?: string }, storage?: ColonyStorage): Promise<{ trunk: RepoRef; trunkSha: Sha }> {
   const name = trunkRepoName(colonyId);
-  const ns = env.ARTIFACTS;
+  const ns = storage ? storage.trunk : env.ARTIFACTS;
   const description = `FireTrident trunk of ${colonyId}`;
   const existing = await getRepoIfExists(ns, name);
   dispose(existing);
@@ -66,15 +68,17 @@ export async function provisionTrunk(env: Env, colonyId: Id, source?: { url: str
       head = await mainHead(repo);
     }
     if (head === null) throw new Error(`trunk ${name} has no main branch`);
-    return { trunk: { namespace: TRUNK_NAMESPACE, name, remote: info.remote }, trunkSha: head };
+    const owner = storage?.owner ?? null;
+    return { trunk: { namespace: TRUNK_NAMESPACE, name, remote: info.remote, ...(owner !== null ? { owner } : {}) }, trunkSha: head };
   } finally {
     dispose(repo);
   }
 }
 
-/** Delete the colony's trunk repo (colony teardown). True when a repo was deleted. */
-export async function deprovisionTrunk(env: Env, colonyId: Id): Promise<boolean> {
-  return withArtifactsRetry(() => env.ARTIFACTS.delete(trunkRepoName(colonyId)));
+/** Delete the colony's trunk repo (colony teardown), from `storage` when given. True when a repo was deleted. */
+export async function deprovisionTrunk(env: Env, colonyId: Id, storage?: ColonyStorage): Promise<boolean> {
+  const ns = storage ? storage.trunk : env.ARTIFACTS;
+  return withArtifactsRetry(() => ns.delete(trunkRepoName(colonyId)));
 }
 
 /** Head of `main` through the binding, or null when the branch does not exist yet. */

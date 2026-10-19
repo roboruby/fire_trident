@@ -2,6 +2,7 @@ import { pushRefusal } from "@fire_trident/core";
 import type { Env } from "../env.ts";
 import { authHeaders, dispose, getRepoIfExists, mintToken, TokenCache } from "../artifacts/git.ts";
 import { trunkRepoName } from "../artifacts/shards.ts";
+import { colonyOwnerOf, colonyStorage } from "../artifacts/storage.ts";
 
 /**
  * Read-only plain git for public colonies, over git's smart HTTP protocol:
@@ -308,8 +309,28 @@ function plain(status: number, message: string): Response {
 export class ArtifactsTrunkAccess implements TrunkAccess {
   private readonly remotes = new Map<string, Promise<string | null>>();
   private readonly tokens = new Map<string, TokenCache>();
+  private readonly owned = new Map<string, Promise<Artifacts>>();
 
-  constructor(private readonly binding: Artifacts) {}
+  /**
+   * `ownedTrunk`, when given, answers the trunk binding of a colony a person owns, in that person's Cloudflare account
+   * (artifacts/storage.ts), and null for an operator colony, whose trunk is in `binding`. Its answer is kept per colony.
+   */
+  constructor(
+    private readonly binding: Artifacts,
+    private readonly ownedTrunk?: (colony: string) => Promise<Artifacts | null>,
+  ) {}
+
+  /** The binding that holds the colony's trunk; a failed lookup is not cached. */
+  private bindingOf(colony: string): Promise<Artifacts> {
+    if (!this.ownedTrunk) return Promise.resolve(this.binding);
+    let found = this.owned.get(colony);
+    if (!found) {
+      found = this.ownedTrunk(colony).then((b) => b ?? this.binding);
+      this.owned.set(colony, found);
+      found.catch(() => this.owned.delete(colony));
+    }
+    return found;
+  }
 
   /** The trunk's remote URL; a missing trunk or a failed lookup is not cached. */
   remote(colony: string): Promise<string | null> {
@@ -331,7 +352,7 @@ export class ArtifactsTrunkAccess implements TrunkAccess {
   async token(colony: string): Promise<string> {
     let cache = this.tokens.get(colony);
     if (!cache) {
-      cache = new TokenCache(() => mintToken(this.binding, trunkRepoName(colony), "read", READ_TOKEN_TTL_S), READ_TOKEN_MARGIN_MS);
+      cache = new TokenCache(async () => mintToken(await this.bindingOf(colony), trunkRepoName(colony), "read", READ_TOKEN_TTL_S), READ_TOKEN_MARGIN_MS);
       this.tokens.set(colony, cache);
     }
     return (await cache.get()).token;
@@ -343,7 +364,7 @@ export class ArtifactsTrunkAccess implements TrunkAccess {
   }
 
   private async lookup(colony: string): Promise<string | null> {
-    const repo = await getRepoIfExists(this.binding, trunkRepoName(colony), TRUNK_WAIT_MS);
+    const repo = await getRepoIfExists(await this.bindingOf(colony), trunkRepoName(colony), TRUNK_WAIT_MS);
     if (repo === null) return null;
     try {
       return (await repo.info()).remote;
@@ -357,6 +378,10 @@ let shared: ArtifactsTrunkAccess | null = null;
 
 /** The Worker's handler for /git/*: read-only plain git for the colonies in FT_PUBLIC_GIT. */
 export function gitProxy(req: Request, env: Env): Promise<Response> {
-  shared ??= new ArtifactsTrunkAccess(env.ARTIFACTS);
+  // A public colony a person owns is served from the trunk in their Cloudflare account (artifacts/storage.ts).
+  shared ??= new ArtifactsTrunkAccess(env.ARTIFACTS, async (colony) => {
+    const owner = await colonyOwnerOf(env, colony);
+    return owner ? colonyStorage(env, owner).trunk : null;
+  });
   return handleGitRequest(req, env.FT_PUBLIC_GIT, { trunk: shared, fetch: (url, init) => fetch(url, init) });
 }

@@ -1,6 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 import type { AgentInfo, AgentKind, Directive, Id, Intent } from "@fire_trident/core";
 import { trunkRepoName } from "../artifacts/shards.ts";
+import { colonyStorage } from "../artifacts/storage.ts";
 import type { Env } from "../env.ts";
 import { WorkspaceGit } from "./gitfs.ts";
 import { SqlJournal } from "./journal.ts";
@@ -100,7 +101,8 @@ export class AgentDO extends DurableObject<Env> {
     // Virtual checkouts read trunk by object id through the binding: the handle opens on a job's first read. Every
     // tick gets the reader, so a job taken with it keeps reading through it even after FT_VIRTUAL_CHECKOUT turns off.
     this.trunkRepo?.release();
-    const objects = trunkObjects(this.env.ARTIFACTS, trunkRepoName(colonyId));
+    // The trunk binding: the deployment's own, or the Cloudflare account of the colony's owner (artifacts/storage.ts).
+    const objects = trunkObjects(colonyStorage(this.env, this.journal.config()?.owner).trunk, trunkRepoName(colonyId));
     this.trunkRepo = objects;
     return {
       signal: this.stepAbort.signal,
@@ -189,6 +191,8 @@ export class AgentDO extends DurableObject<Env> {
       return this.status();
     }
     if (prev && prev.agentId !== p.agentId) this.journal.setJob(null);
+    // The colony's owner, learned at start and kept (a restart for the same colony that names none keeps the one known).
+    const owner = typeof p.owner === "string" && p.owner !== "" ? p.owner : prev?.colonyId === p.colonyId ? prev.owner : undefined;
     const cfg: AgentConfig = {
       colonyId: p.colonyId,
       agentId: p.agentId,
@@ -199,6 +203,7 @@ export class AgentDO extends DurableObject<Env> {
       epoch: (prev?.epoch ?? 0) + 1,
       startedAt: now,
       failures: 0,
+      ...(owner ? { owner } : {}),
     };
     this.journal.setConfig(cfg);
     const delay = Math.min(MAX_START_DELAY_MS, Math.max(0, Math.floor(p.delayMs ?? 0)));

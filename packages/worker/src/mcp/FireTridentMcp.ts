@@ -7,6 +7,7 @@ import type { RepoRef } from "@fire_trident/core";
 import type { Env } from "../env.ts";
 import { artifactsFor, colonyStub, regionStub, trunkStub } from "../agents/rpc.ts";
 import { withArtifactsRetry } from "../artifacts/git.ts";
+import { colonyStorage } from "../artifacts/storage.ts";
 import { ESCALATION_KINDS, MAX_REPORT_CHARS } from "../colony/direction.ts";
 import { inlineEnabled, inlineOffered } from "../colony/inline.ts";
 import { guideOffered } from "../colony/guide.ts";
@@ -82,8 +83,10 @@ export class FireTridentMcp extends McpAgent<Env, Record<string, never>, Record<
       region: (colonyId, region) => regionStub(env, colonyId, region),
       trunk: (colonyId) => trunkStub(env, colonyId) as McpTrunkRpc,
       inline: (colonyId) => inlineEnabled(env.FT_INLINE, colonyId),
-      repo: async (ref: Pick<RepoRef, "namespace" | "name">): Promise<RepoReader> => {
-        const ns = artifactsFor(env, ref.namespace);
+      repo: async (ref: Pick<RepoRef, "namespace" | "name" | "owner">): Promise<RepoReader> => {
+        // The refs read here are the colony's trunk and the session's lease, both as the platform recorded them: one in a
+        // colony owner's Cloudflare account names that owner and is read there (artifacts/storage.ts).
+        const ns = ref.owner ? colonyStorage(env, ref.owner).bindingFor(ref.namespace) : artifactsFor(env, ref.namespace);
         if (!ns) throw new Error(`[ft:400] no binding serves namespace ${ref.namespace}`);
         const r = await withArtifactsRetry(() => ns.get(ref.name));
         return {
