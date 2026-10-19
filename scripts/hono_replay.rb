@@ -97,6 +97,8 @@ module HonoReplay
   PRIORITY = 3
   # How long a grading vitest run may take.
   VITEST_S = 900
+  # The tests-before-landing path glob the colony holds while the seed lands: it matches no file.
+  SEED_NO_PRELAND = "-seed-lands-without-tests-before-landing-/**"
   # Left out of each colony's trunk certification (CertifyPolicy.excludeTests), never out of the grade: the two tests in
   # Hono's suite at B that pass under Node and fail in workerd (a Request has no mode there; an abort's reason does not
   # cross the proxy), measured by the vitest shim's agreement check. Without them the seed's certification reads red.
@@ -442,6 +444,9 @@ module HonoReplay
         step("certification to leave out #{@opts[:certify_exclude].size} tests") { api!(:post, "/colonies/#{@colony}/certify/policy", { excludeTests: @opts[:certify_exclude] }) }
         @result[:certify_exclude] = @opts[:certify_exclude]
       end
+      # Tests before landing (FT_PRELAND) would judge each seed change's test files without the source files the other
+      # seed changes carry; the seed is B's own tree, so the colony's tests-before-landing cover no path until it lands.
+      step("tests before landing to skip the seed") { api!(:post, "/colonies/#{@colony}/certify/policy", { prelandPaths: [SEED_NO_PRELAND] }) }
       state = step("the colony's certification state") { api!(:get, "/colonies/#{@colony}/certifications?limit=1") }.first
       @result[:certification_on] = state["on"] == true
       @clock.say("created colony #{@colony} (#{fmt(secs)}), pool #{pool}, region depth #{@result[:region_depth]}; certification is #{state['on'] == true ? 'on' : "off (deployment #{state['deployment'].inspect}, runner #{state['runner'].inspect})"}; review is off until the seed lands")
@@ -491,6 +496,7 @@ module HonoReplay
         raise Failure, "certification of the seed is #{cert['status']} (#{k['pass'].to_i}/#{k['tests'].to_i} pass): #{cert['detail'] || failing_text(cert)}; pass --red-baseline to run on it anyway"
       end
 
+      step("tests before landing to cover every change again") { api!(:post, "/colonies/#{@colony}/certify/policy", { prelandPaths: [] }) }
       @clock.say("the seed's certification at #{short(@seed_head)}: #{cert['status']}#{k['tests'] ? " (#{k['pass']}/#{k['tests']} tests)" : ''}#{Array(cert['unsupported']).empty? ? '' : ", #{Array(cert['unsupported']).size} test files it could not run"} (#{fmt(secs)})")
     end
 
