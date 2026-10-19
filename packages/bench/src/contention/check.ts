@@ -268,7 +268,7 @@ export async function checkRun(input: CheckInput): Promise<CheckReport> {
     summary:
       closed.length === 0
         ? "No increment came back as already on trunk."
-        : `${plural(closed.length, "increment")} came back as already on trunk (its edit merged into an identical one from the same base), so its +1 never applied and its agent was told there was nothing to redo.`,
+        : `${plural(closed.length, "increment")} came back as already on trunk (its edit matched one already there), so its +1 never applied and its agent was told there was nothing to redo.`,
     failures: closed.slice(0, EXAMPLES).map((r) => `task ${r.task.id} (${hotPath(r.task.hot)} COUNTER_${(r.task as Extract<Task, { kind: "increment" }>).counter}): ${r.proposals.at(-1)?.reason ?? "already on trunk"}`),
   });
 

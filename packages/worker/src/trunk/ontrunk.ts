@@ -23,6 +23,12 @@ import type { Id, Landing, OccResult, OnTrunkSource, Path, Proposal, Sha } from 
  *   (no failure mark), closes its intent as landed with the closure cause already_on_trunk naming that source, and counts
  *   `alreadyOnTrunk` apart from landings and returns.
  *
+ * A change that read a file it writes at a version trunk has since moved past is never closed here (core changesNothing,
+ * staleWrittenReads): trunk holding what it writes may be another change's identical edit while its own is still to
+ * make (two increments of one counter from one read both write 6), so it goes back stale like any stale change, and the
+ * redo, read on trunk as it is, lands its own edit or, a real duplicate, closes here. One that read those files at
+ * trunk's version, or did not read them, closes as above.
+ *
  * A retry of a change that did land still gets its landing (the trunk writer reads its landed index first), and the
  * commit point's checks (direction, protected paths, pause) still come first. Off: nothing here runs.
  */
@@ -49,7 +55,7 @@ export interface OnTrunk {
  * The plan's check (trunk/plan.ts planCycle): whether `p` would land nothing on trunk as `before` gives it (trunk with the
  * changes accepted ahead of it in the cycle), and if so the change accepted ahead of it that wrote one of its files: the
  * newest such change of its own batch (`batch`, in order), else the change of an earlier batch `ahead` names for the path.
- * Null when it would change something.
+ * Null when it would change something, or when it read a file it writes at a version `before` no longer has.
  */
 export function foundOnTrunk(p: Proposal, before: (path: Path) => Sha | null, batch: readonly Proposal[], ahead: ReadonlyMap<Path, { by: Id }>): OnTrunkFound | null {
   if (!changesNothing(p, before)) return null;
@@ -173,8 +179,8 @@ export function onTrunkSourceOf(raw: unknown): OnTrunkSource | null {
 
 /**
  * The lane's part (RegionDO tick): move each stale change whose every write trunk already holds (`trunk`: the blobs the
- * lane read) from `stale` to `valid`, keeping their order, with its stale paths in `candidates`, so the trunk writer
- * decides it. Returns how many moved.
+ * lane read), and that read none of those files at an older version, from `stale` to `valid`, keeping their order, with
+ * its stale paths in `candidates`, so the trunk writer decides it. Returns how many moved.
  */
 export function liftOnTrunk(stale: Array<{ p: Proposal; occ: OccResult }>, valid: Proposal[], candidates: Map<Id, OccResult["stale"]>, trunk: (path: Path) => Sha | null | undefined): number {
   const kept = stale.filter((s) => !changesNothing(s.p, trunk));

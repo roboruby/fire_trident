@@ -1,12 +1,15 @@
 /**
  * A fake colony for the contention-scale tests: the REST calls the run makes (register, declare with assignedTo, take,
  * propose inline, poll, metrics, create and delete), and a trunk writer that lands batches the way the real one decides
- * them: a change whose read set still matches lands; one stale only on files it writes is merged line by line with
- * core's mergeText when text merge is on; anything else goes back stale. Every batch is one commit with a lineage note
- * naming its proposals. It also serves as the run's trunk reader (no git). Not the platform: a stand-in to drive the
- * benchmark and its check end to end without a deployment.
+ * them, with core's own decisions: a change whose read set still matches lands; one stale only on files it writes is
+ * merged line by line with core's mergeText when text merge is on, with `staleRead` on each file it read at a version
+ * trunk moved past (core staleWrittenReads), so an edit it repeats from trunk sends it back stale; anything else goes
+ * back stale. With already on trunk, a change core's changesNothing finds has nothing left to land closes, before and
+ * after its merge. Every batch is one commit with a lineage note naming its proposals. It also serves as the run's
+ * trunk reader (no git). Not the platform: a stand-in to drive the benchmark and its check end to end without a
+ * deployment.
  */
-import { blobId, changesetId, mergeText, type FileVersion } from "@fire_trident/core";
+import { blobId, changesNothing, changesetId, mergeText, staleWrittenReads, type FileVersion } from "@fire_trident/core";
 import type { TrunkCommit } from "../src/contention/check.ts";
 import type { TrunkReader } from "../src/contention/trunk.ts";
 
@@ -169,6 +172,12 @@ export class FakeColony implements TrunkReader {
     if (a.intentId === p.intentId) a.intentId = null;
   }
 
+  /** Close a change as already on trunk. */
+  private closeOnTrunk(p: Prop): void {
+    this.settle(p, "already_on_trunk", "already on trunk: what this change writes is there already");
+    this.metrics.alreadyOnTrunk++;
+  }
+
   /** One trunk writer cycle: every queued proposal, in order, against the trunk and the ones accepted ahead of it. */
   private cycle(): void {
     if (this.queue.length === 0) return;
@@ -177,6 +186,11 @@ export class FakeColony implements TrunkReader {
     const accepted: Array<{ p: Prop; writeSet: FileVersion[]; merged: Array<{ path: string; rule?: string }> }> = [];
     for (const p of batch) {
       const blobOf = (path: string): string | null => (virtual.has(path) ? blobId(virtual.get(path)!) : null);
+      // Already on trunk, as the trunk writer checks it first (core changesNothing: every write there, no stale read of one).
+      if (this.opts.alreadyOnTrunk && changesNothing(p, blobOf)) {
+        this.closeOnTrunk(p);
+        continue;
+      }
       const stale = this.opts.skipOcc ? [] : p.readSet.filter((r) => blobOf(r.path) !== (r.blob ?? null));
       const writes = new Map(p.writeSet.map((w) => [w.path, p.contents[w.blob!]!]));
       const merged: Array<{ path: string; rule?: string }> = [];
@@ -187,23 +201,27 @@ export class FakeColony implements TrunkReader {
           continue;
         }
         const base = this.commits.get(p.baseSha)!.files;
-        let conflict: string | null = null;
+        const readStale = new Set(staleWrittenReads(p, blobOf));
+        let back: string | null = null;
         for (const s of stale) {
-          const r = mergeText(base.get(s.path) ?? "", virtual.get(s.path) ?? "", writes.get(s.path)!, undefined, { insertions: this.opts.insertions === true });
+          const r = mergeText(base.get(s.path) ?? "", virtual.get(s.path) ?? "", writes.get(s.path)!, undefined, { insertions: this.opts.insertions === true, staleRead: readStale.has(s.path) });
           if (!r.clean) {
-            conflict = `stale: ${s.path} changed after this change read it; text merge of ${s.path}: ${r.conflicts} conflicting hunk${r.conflicts === 1 ? "" : "s"}, at line ${r.lines.join(", ")} of its base`;
+            back = r.repeated
+              ? `stale: ${s.path} changed after this change read it; text merge stopped: this change repeats an edit trunk made after it read the file (${s.path} at line ${r.repeated.join(", ")} of its base)`
+              : `stale: ${s.path} changed after this change read it; text merge of ${s.path}: ${r.conflicts} conflicting hunk${r.conflicts === 1 ? "" : "s"}, at line ${r.lines.join(", ")} of its base`;
             break;
           }
           writes.set(s.path, r.text);
           merged.push({ path: s.path, ...(r.rule ? { rule: r.rule } : {}) });
         }
-        if (conflict) {
-          this.settle(p, "returned", conflict);
+        if (back) {
+          this.settle(p, "returned", back);
           continue;
         }
-        if (this.opts.alreadyOnTrunk && [...writes].every(([path, text]) => virtual.get(path) === text)) {
-          this.settle(p, "already_on_trunk", "already on trunk: what this change writes is there already");
-          this.metrics.alreadyOnTrunk++;
+        // Already on trunk again after the merge, as the trunk writer checks it (the merged writes, the same reads).
+        const landing = { readSet: p.readSet, writeSet: [...writes].map(([path, text]) => ({ path, blob: blobId(text) })) };
+        if (this.opts.alreadyOnTrunk && changesNothing(landing, blobOf)) {
+          this.closeOnTrunk(p);
           continue;
         }
       }

@@ -48,22 +48,33 @@ describe("a contention-scale run against a fake colony", () => {
     expect(JSON.stringify(report)).not.toContain("admin-secret-token");
   }, 30_000);
 
-  it("with text merge on, lands two increments of one counter made from one base as one, and the check reports the lost update", async () => {
+  it("with text merge on, sends back an increment whose edit repeats one that landed from the same read, and every counter equals its landed increments", async () => {
     const fake = new FakeColony({ textMerge: true, insertions: true, cycleMs: 300 });
-    const { report } = await runOn(fake, { hot: 1, counters: 1, intents: 8, mix: { register: 0, increment: 1, "read-own": 0 } });
-    expect(report.run.landedTasks).toBe(8);
-    expect(report.check?.counters.lostUpdates).toBeGreaterThan(0);
-    expect(report.check?.checks.filter((c) => !c.ok).map((c) => c.name)).toEqual(["every counter equals its landed increments"]);
+    const { report } = await runOn(fake, { hot: 1, counters: 2, intents: 12, mix: { register: 0, increment: 1, "read-own": 0 } });
+    expect(report.run.landedTasks).toBe(12);
+    expect(report.check?.checks.filter((c) => !c.ok).map((c) => c.name)).toEqual([]);
+    expect(report.check?.counters).toMatchObject({ lostUpdates: 0, doubleCounts: 0, landedIncrements: 12, total: 12 });
+    // Repeats went back stale and were redone on the current trunk; increments of the other counter still merged.
+    expect(report.returns.byCause["stale-read"]).toBeGreaterThan(0);
     expect(report.check?.merges.proposals).toBeGreaterThan(0);
   }, 30_000);
 
-  it("with already-on-trunk closing, reports the increments that never applied", async () => {
-    const fake = new FakeColony({ textMerge: true, alreadyOnTrunk: true, cycleMs: 300 });
+  it("with already-on-trunk closing too, closes no increment made from a stale read, and every check passes", async () => {
+    const fake = new FakeColony({ textMerge: true, insertions: true, alreadyOnTrunk: true, cycleMs: 300 });
     const { report } = await runOn(fake, { hot: 1, counters: 1, intents: 8, mix: { register: 0, increment: 1, "read-own": 0 } });
-    expect(report.run.ends["on-trunk"]).toBeGreaterThan(0);
+    expect(report.run.ends["on-trunk"] ?? 0).toBe(0);
+    expect(report.check?.counters).toMatchObject({ lostUpdates: 0, closedOnTrunk: 0, landedIncrements: 8, total: 8 });
+    expect(report.check?.checks.filter((c) => !c.ok).map((c) => c.name)).toEqual([]);
+    expect(fake.metrics.alreadyOnTrunk).toBe(0);
+  }, 30_000);
+
+  it("with text merge on and the insertion rule, lands the full mix with every check passing", async () => {
+    const fake = new FakeColony({ textMerge: true, insertions: true, alreadyOnTrunk: true, cycleMs: 50 });
+    const { report } = await runOn(fake, { intents: 60, modules: 12 }, { agents: 12 });
+    expect(report.check?.checks.filter((c) => !c.ok).map((c) => c.summary)).toEqual([]);
+    expect(report.run.landedTasks).toBe(60);
     expect(report.check?.counters.lostUpdates).toBe(0);
-    expect(report.check?.counters.closedOnTrunk).toBe(report.run.ends["on-trunk"]);
-    expect(report.check?.checks.filter((c) => !c.ok).map((c) => c.name)).toEqual(["no increment was closed as already on trunk"]);
+    expect(report.check?.merges.insertions).toBeGreaterThan(0);
   }, 30_000);
 
   it("catches a trunk writer that lands changes without checking what they read", async () => {

@@ -1,5 +1,6 @@
 import { runInDurableObject } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
+import { blobId } from "@fire_trident/core";
 import type { Intent, IntentClosure, Landing, Path, Proposal, RepoRef, Sha } from "@fire_trident/core";
 import { buildTree, ensureRepo, readLocalBlob, setRef, writeCommitObject, writeLocalBlob, type GitRepo } from "../../src/artifacts/git.ts";
 import { TrunkDO } from "../../src/trunk/TrunkDO.ts";
@@ -9,9 +10,11 @@ import { Writer, landed } from "./writer.ts";
 
 /**
  * Already on trunk (FT_ALREADY_ON_TRUNK) through the Durable Objects: two agents write the same edit from the same base.
- * The first lands; the second would change nothing. With the flag its lane sends it on to the trunk writer instead of
- * back as stale, the trunk writer lands no commit for it and names where the content came from, and the colony closes
- * its intent with the closure cause already_on_trunk and tells its agent there is nothing to do. Off: as before.
+ * The first lands; the second would change nothing. With the flag, when the second did not read the file (or read
+ * trunk's version), its lane sends it on to the trunk writer instead of back as stale, the trunk writer lands no commit
+ * for it and names where the content came from, and the colony closes its intent with the closure cause
+ * already_on_trunk and tells its agent there is nothing to do. One that read the file at the base the first landing
+ * moved goes back stale, flag or not: its edit may be its own to make. Off: as before.
  */
 
 const F = "src/app/main.ts";
@@ -33,9 +36,9 @@ async function setLane(colonyId: string, name: string, value: string): Promise<v
   });
 }
 
-/** Propose writing `blob` at F on the assignment's base. */
-async function proposeBlob(colonyId: string, a: Assignment, agentId: string, blob: Sha): Promise<Proposal> {
-  const read = await trunk(colonyId).baseBlobs(a.lease.baseSha, [F]);
+/** Propose writing `blob` at F on the assignment's base, having read F there (`reads`) or not. */
+async function proposeBlob(colonyId: string, a: Assignment, agentId: string, blob: Sha, reads = true): Promise<Proposal> {
+  const read = reads ? await trunk(colonyId).baseBlobs(a.lease.baseSha, [F]) : [];
   const res = await api<Proposal>("POST", `/colonies/${colonyId}/proposals`, {
     intentId: a.intent.id,
     agentId,
@@ -62,9 +65,10 @@ async function metrics(colonyId: string): Promise<Record<string, number>> {
 
 /**
  * Two agents, each handed an intent on F, take from the same trunk and write the same blob there. The lane lands the
- * first; the second waits in it, now stale against the first's landing, and its writes all on trunk.
+ * first; the second waits in it, now stale against the first's landing, and its writes all on trunk. `secondReads`:
+ * whether the second read F at the base (a stale read once the first lands) or wrote it without reading it.
  */
-async function sameEdit(): Promise<{ colonyId: string; first: Proposal; second: Proposal; firstLanding: Landing; secondIntent: Intent; secondAgent: string }> {
+async function sameEdit(secondReads = true): Promise<{ colonyId: string; first: Proposal; second: Proposal; firstLanding: Landing; secondIntent: Intent; secondAgent: string }> {
   const c = await newColony();
   const one = await addAgent(c.id, "first");
   const two = await addAgent(c.id, "second");
@@ -75,7 +79,7 @@ async function sameEdit(): Promise<{ colonyId: string; first: Proposal; second: 
   expect(b.lease.baseSha).toBe(a.lease.baseSha);
   const blob = fakeSha();
   const first = await proposeBlob(c.id, a, one.id, blob);
-  const second = await proposeBlob(c.id, b, two.id, blob);
+  const second = await proposeBlob(c.id, b, two.id, blob, secondReads);
   expect([first.status, second.status]).toEqual(["ready", "ready"]);
   // One lane batch takes one of two changes to one file: the first lands.
   await tick(c.id, "src");
@@ -97,8 +101,24 @@ describe("already on trunk in the lane and the colony (FT_ALREADY_ON_TRUNK)", ()
     expect((await intentOf(s.colonyId, s.secondIntent.id)).intent.status).toBe("open");
   });
 
-  it("on: the lane sends it to the trunk writer, and the colony closes it as already on trunk, naming the first landing", async () => {
-    const s = await sameEdit();
+  it("on: a change that read the file at the base the first landing moved goes back stale, as with the flag off", async () => {
+    const s = await sameEdit(true);
+    await setLane(s.colonyId, "src", "on");
+    // Even a trunk writer that would close it never sees it: the lane does not send a stale read on.
+    await trunk(s.colonyId).onTrunkOnLand([s.second.id]);
+    await tick(s.colonyId, "src");
+    const after = await proposal(s.colonyId, s.second.id);
+    expect(after.status).toBe("returned");
+    expect(after.reason).toMatch(/^stale: 1 path changed on trunk since read: src\/app\/main\.ts/);
+    expect(after.onTrunk).toBeUndefined();
+    // The return names the landing that moved the file, so its agent re-reads and decides.
+    expect(after.movedBy?.map((m) => m.landingId)).toEqual([s.firstLanding.id]);
+    expect((await intentOf(s.colonyId, s.secondIntent.id)).intent.status).toBe("open");
+    expect(await metrics(s.colonyId)).toMatchObject({ landedProposals: 1, alreadyOnTrunk: 0, returned: 1 });
+  });
+
+  it("on: a change that did not read the file goes to the trunk writer, and the colony closes it as already on trunk, naming the first landing", async () => {
+    const s = await sameEdit(false);
     await setLane(s.colonyId, "src", `other-colony,${s.colonyId}`);
     // The stand-in trunk writer closes it as the real one does (the real one is tested below).
     await trunk(s.colonyId).onTrunkOnLand([s.second.id]);
@@ -128,7 +148,7 @@ describe("already on trunk in the lane and the colony (FT_ALREADY_ON_TRUNK)", ()
   });
 
   it("on: a second report of the same close changes nothing (final, counted once)", async () => {
-    const s = await sameEdit();
+    const s = await sameEdit(false);
     await setLane(s.colonyId, "src", "on");
     await trunk(s.colonyId).onTrunkOnLand([s.second.id]);
     await tick(s.colonyId, "src");
@@ -264,5 +284,68 @@ describe("already on trunk in the trunk writer (FT_ALREADY_ON_TRUNK)", () => {
         expect((await w.cycles()).every((c) => c.alreadyOnTrunk === undefined)).toBe(true);
       });
     }
+  });
+});
+
+/** The blob trunk's index holds at a path, in the writer's own storage. */
+function fileBlob(w: Writer, path: Path): Sha | null {
+  const state = (w as unknown as { state: DurableObjectState }).state;
+  return state.storage.sql.exec<{ blob: string }>("SELECT blob FROM ft_files WHERE path = ?", path).toArray()[0]?.blob ?? null;
+}
+
+describe("a stale read in the trunk writer: two increments from one read never land as one", () => {
+  const counter = (n: number, more: Record<number, string> = {}): string => lines({ 3: `export const COUNTER = ${n};`, ...more });
+  const FILES5: Record<Path, string> = { [F]: counter(5), "README.md": "# on trunk\n" };
+  const readAt = (text: string) => [{ path: F, blob: blobId(text) }];
+
+  for (const onTrunk of ["on", undefined]) {
+    it(`text merge on, already on trunk ${onTrunk ?? "off"}: the second increment goes back stale naming the repeat, and its redo on trunk lands 7`, async () => {
+      await withWriter(FILES5, { FT_TEXT_MERGE: "on", FT_MERGE_INSERTIONS: "on", FT_ALREADY_ON_TRUNK: onTrunk }, async (w, count) => {
+        const a = { ...(await w.proposal({ [F]: counter(6) })), readSet: readAt(counter(5)) };
+        const b = { ...(await w.proposal({ [F]: counter(6) })), readSet: readAt(counter(5)) };
+        landed(await w.land(a));
+        const rb = await w.land(b);
+        expect(rb.landing).toBeUndefined();
+        expect(rb.onTrunk).toBeUndefined();
+        expect(rb.returned).toEqual([
+          {
+            proposalId: b.id,
+            reason: `stale: ${F} (expected ${blobId(counter(5))}, trunk has ${blobId(counter(6))}); text merge stopped: this change repeats an edit trunk made after it read the file (${F} at line 3 of its base), and the same edit made twice from one read is not merged as one, so re-read the file and make the change on trunk as it is now`,
+          },
+        ]);
+        // No conflict travels with it, so the conflict resolver never merges it once either.
+        expect(rb.returned[0]!.conflicts).toBeUndefined();
+        expect(count()).toBe(1);
+        // The redo reads trunk's version (6) and writes 7.
+        const redo = { ...(await w.proposal({ [F]: counter(7) })), readSet: readAt(counter(6)) };
+        landed(await w.land(redo));
+        expect(fileBlob(w, F)).toBe(blobId(counter(7)));
+        expect(count()).toBe(2);
+      });
+    });
+  }
+
+  it("text merge on: a stale read's edit to lines trunk did not touch still merges line by line", async () => {
+    await withWriter(FILES5, { FT_TEXT_MERGE: "on", FT_ALREADY_ON_TRUNK: "on" }, async (w) => {
+      const a = { ...(await w.proposal({ [F]: counter(6) })), readSet: readAt(counter(5)) };
+      const b = { ...(await w.proposal({ [F]: counter(5, { 6: "line six, edited" }) })), readSet: readAt(counter(5)) };
+      landed(await w.land(a));
+      const lb = landed(await w.land(b));
+      expect(lb.proposalIds).toEqual([b.id]);
+      expect(fileBlob(w, F)).toBe(blobId(counter(6, { 6: "line six, edited" })));
+    });
+  });
+
+  it("already on trunk on: a change that read trunk's version and writes it still closes (a real duplicate, found on the redo)", async () => {
+    await withWriter(FILES5, { FT_TEXT_MERGE: "on", FT_ALREADY_ON_TRUNK: "on" }, async (w, count) => {
+      const a = { ...(await w.proposal({ [F]: counter(6) })), readSet: readAt(counter(5)) };
+      // Built on the older base, but its agent read the file again after the first landed, and wrote what it found.
+      const b = { ...(await w.proposal({ [F]: counter(6) })), readSet: readAt(counter(6)) };
+      const la = landed(await w.land(a));
+      const rb = await w.land(b);
+      expect(rb.returned).toEqual([]);
+      expect(rb.onTrunk?.map((o) => o.source.landingId)).toEqual([la.id]);
+      expect(count()).toBe(1);
+    });
   });
 });

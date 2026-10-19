@@ -156,7 +156,9 @@ export function revalidationCandidate(p: Pick<Proposal, "readSet" | "writeSet" |
  * The part of text merge that needs no file contents (FT_TEXT_MERGE; the lane's and the trunk writer's pre-check): the
  * proposal is stale only on files it writes, each written with new content (not deleted), present both in what it
  * expected and on trunk, and not a lockfile. The trunk writer then merges each of them with trunk's version line by
- * line (textmerge.ts) and lands the change only when every merge is clean; anything else goes back as usual.
+ * line (textmerge.ts) and lands the change only when every merge is clean; anything else goes back as usual. A file it
+ * also read, at a version trunk has moved past (staleWrittenReads), is merged with `staleRead`: an edit it repeats from
+ * trunk sends it back stale instead of landing once.
  */
 export function textMergeCandidate(p: Pick<Proposal, "writeSet">, stale: OccResult["stale"]): boolean {
   if (stale.length === 0) return false;
@@ -166,14 +168,45 @@ export function textMergeCandidate(p: Pick<Proposal, "writeSet">, stale: OccResu
 }
 
 /**
- * Already on trunk (FT_ALREADY_ON_TRUNK): would landing this change on `trunk` change nothing? Yes when every file it
- * writes already holds the blob it writes there and every file it deletes is already absent (`undefined` from the index
- * means absent). A change that writes nothing is not one: there is no content to find on trunk. Whatever the change
- * read, and whatever base it started from, a change that changes nothing has nothing left to land.
+ * The files a change writes that it also read, at a version `trunk` no longer has (a read entry whose blob differs from
+ * trunk's; `undefined` from the index means absent), in write order, each once. On such a file the change's edits were
+ * made without seeing what trunk did since, so an edit that matches one of trunk's is not taken as already made: it may
+ * be the same update made twice (two increments of one counter from one read, both writing 6). Text merge refuses to
+ * count it once (core/textmerge.ts mergeText with `staleRead`), and the change is not closed as already on trunk
+ * (changesNothing); it goes back stale, its agent re-reads, and the redo either lands its own edit or finds it done. A
+ * file it writes without having read it is not one; read sets missing or malformed in old stored data read as no reads.
  */
-export function changesNothing(p: Pick<Proposal, "writeSet">, trunk: TrunkIndex): boolean {
+export function staleWrittenReads(p: Pick<Proposal, "writeSet"> & { readSet?: Proposal["readSet"] }, trunk: TrunkIndex): Path[] {
+  if (!Array.isArray(p.writeSet) || !Array.isArray(p.readSet)) return [];
+  const read = new Map<Path, Array<Sha | null>>();
+  for (const r of p.readSet) {
+    if (!r || typeof r.path !== "string") continue;
+    const seen = read.get(r.path) ?? [];
+    seen.push(r.blob ?? null);
+    read.set(r.path, seen);
+  }
+  const out = new Set<Path>();
+  for (const w of p.writeSet) {
+    if (!w || typeof w.path !== "string" || out.has(w.path)) continue;
+    const now = trunk(w.path) ?? null;
+    if ((read.get(w.path) ?? []).some((blob) => blob !== now)) out.add(w.path);
+  }
+  return [...out];
+}
+
+/**
+ * Already on trunk (FT_ALREADY_ON_TRUNK): does this change have nothing left to land on `trunk`? Yes when every file it
+ * writes already holds the blob it writes there, every file it deletes is already absent (`undefined` from the index
+ * means absent), and it read none of those files at a version trunk no longer has (staleWrittenReads): each was read at
+ * trunk's version, or not read. A change that writes nothing is not one: there is no content to find on trunk. A change
+ * whose read of a written file is stale is not one either, though trunk holds what it writes: that may be another
+ * change's identical edit, its own still to make (an increment both made from one read), so it goes back stale and its
+ * agent re-reads; a real duplicate then closes as already on trunk on the redo. The base it started from does not count.
+ */
+export function changesNothing(p: Pick<Proposal, "writeSet"> & { readSet?: Proposal["readSet"] }, trunk: TrunkIndex): boolean {
   if (!Array.isArray(p.writeSet) || p.writeSet.length === 0) return false;
-  return p.writeSet.every((w) => (trunk(w.path) ?? null) === (w.blob ?? null));
+  if (!p.writeSet.every((w) => (trunk(w.path) ?? null) === (w.blob ?? null))) return false;
+  return staleWrittenReads(p, trunk).length === 0;
 }
 
 /**

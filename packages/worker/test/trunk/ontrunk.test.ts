@@ -100,15 +100,45 @@ describe("planCycle: already on trunk (FT_ALREADY_ON_TRUNK)", () => {
     expect(plan.onTrunk).toBeUndefined();
   });
 
-  it("on, text merge off: a change from an older base whose writes trunk already holds lands nothing instead of going back stale", () => {
+  it("on, text merge off: a change from an older base whose writes trunk already holds lands nothing when it read none of them, or trunk's version", () => {
+    const now: Record<Path, Sha | null> = { [F]: fix, [G]: base };
+    const readSets: Array<Record<Path, Sha | null>> = [{}, { [F]: fix }, { [G]: base }];
+    for (const reads of readSets) {
+      const b = prop("b", { [F]: fix }, reads);
+      const on = planCycle([[entry(b, { [F]: base })]], (path) => now[path] ?? null, undefined, undefined, undefined, undefined, undefined, true);
+      expect(on.accepted).toEqual([[]]);
+      expect(on.returned).toEqual([[]]);
+      expect(on.onTrunk).toEqual([{ proposalId: "b" }]);
+    }
+    const off = planCycle([[entry(prop("b", { [F]: fix }), { [F]: base })]], (path) => now[path] ?? null);
+    expect(off.returned[0]![0]!.reason).toBe(`stale: ${F} (expected ${base}, trunk has ${fix})`);
+  });
+
+  it("on: a change that read a file it writes at a version trunk moved past goes back stale, with text merge off or on", () => {
+    // Its edit is the one trunk has, but it never saw trunk's: it may be its own to make (an increment both made from one read).
     const now: Record<Path, Sha | null> = { [F]: fix, [G]: base };
     const b = prop("b", { [F]: fix }, { [F]: base });
-    const on = planCycle([[entry(b, { [F]: base })]], (path) => now[path] ?? null, undefined, undefined, undefined, undefined, undefined, true);
-    expect(on.accepted).toEqual([[]]);
-    expect(on.returned).toEqual([[]]);
-    expect(on.onTrunk).toEqual([{ proposalId: "b" }]);
-    const off = planCycle([[entry(b, { [F]: base })]], (path) => now[path] ?? null);
-    expect(off.returned[0]![0]!.reason).toBe(`stale: ${F} (expected ${base}, trunk has ${fix})`);
+    const off = planCycle([[entry(b, { [F]: base })]], (path) => now[path] ?? null, undefined, undefined, undefined, undefined, undefined, true);
+    expect(off.onTrunk).toBeUndefined();
+    expect(off.returned[0]).toEqual([{ proposalId: "b", reason: `stale: ${F} (expected ${base}, trunk has ${fix})` }]);
+    const merged = planCycle([[entry(b, { [F]: base })]], (path) => now[path] ?? null, undefined, undefined, t.input, undefined, undefined, true);
+    expect(merged.onTrunk).toBeUndefined();
+    expect(merged.merged.size).toBe(0);
+    expect(merged.returned[0]).toEqual([
+      {
+        proposalId: "b",
+        reason: `stale: ${F} (expected ${base}, trunk has ${fix}); text merge stopped: this change repeats an edit trunk made after it read the file (${F} at line 2 of its base), and the same edit made twice from one read is not merged as one, so re-read the file and make the change on trunk as it is now`,
+      },
+    ]);
+  });
+
+  it("on: in one batch, a change that read the file before the first wrote it does not close: it conflicts in the landing", () => {
+    const a = prop("a", { [F]: fix });
+    const b = prop("b", { [F]: fix }, { [F]: base });
+    const plan = planCycle([[entry(a, trunk), entry(b, trunk)]], at, undefined, undefined, t.input, undefined, undefined, true);
+    expect(ids(plan.accepted)).toEqual([["a"]]);
+    expect(plan.onTrunk).toBeUndefined();
+    expect(plan.returned[0]).toEqual([{ proposalId: "b", reason: `conflicts with another proposal in this landing on ${F}` }]);
   });
 
   it("on: a merge whose result is the version it merged with lands nothing (trunk already holds that edit and more)", () => {
@@ -257,6 +287,11 @@ describe("the lane's steps", () => {
     expect(list.map((s) => s.p.id)).toEqual(["b"]);
     expect(valid.map((p) => p.id)).toEqual(["v", "a", "c"]);
     expect([...candidates.keys()]).toEqual(["a", "c"]);
+    // One that read the file at another version than trunk's stays stale: it goes back from the lane.
+    const read = [stale(prop("r", { [F]: X }, { [F]: Y })), stale(prop("s", { [F]: X }, { [F]: X }))];
+    expect(liftOnTrunk(read, valid, candidates, (path) => (path === F ? X : undefined))).toBe(1);
+    expect(read.map((s) => s.p.id)).toEqual(["r"]);
+    expect(valid.map((p) => p.id)).toEqual(["v", "a", "c", "s"]);
   });
 
   it("onTrunkUpdates reports each closed change once, never one that landed, and skips malformed entries", () => {

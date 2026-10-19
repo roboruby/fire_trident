@@ -121,7 +121,7 @@ describe("the edits", () => {
     expect(() => editFor(t, reads([[hotPath(0), null]]), 12)).toThrow(/not on the trunk/);
   });
 
-  it("edits merge line by line where they should, and two increments of one counter from one base merge as one (the lost update the check must catch)", () => {
+  it("edits merge line by line where they should, and two increments of one counter from one read never merge as one", () => {
     const a = insertEntry(hot0, "00000001")!;
     const b = insertEntry(hot0, "fffffff0")!;
     const both = mergeText(hot0, a, b);
@@ -130,7 +130,13 @@ describe("the edits", () => {
     const c1 = incrementCounter(hot0, 1).text;
     const counters = mergeText(hot0, c0, c1);
     expect(counters.clean && [counterValue(counters.text, 0), counterValue(counters.text, 1)]).toEqual([1, 1]);
+    // Merged as a blind write, the same increment counts once: the lost update the check must catch.
     const same = mergeText(hot0, c0, c0);
     expect(same.clean && counterValue(same.text, 0)).toBe(1);
+    // Every increment read the file first, so the platform merges it with `staleRead`: the repeat stops the merge.
+    const read = mergeText(hot0, c0, c0, undefined, { staleRead: true, insertions: true });
+    expect(read.clean).toBe(false);
+    expect(!read.clean && read.repeated).toEqual([hot0.split("\n").indexOf("export const COUNTER_0 = 0;") + 1]);
+    expect(mergeText(hot0, c0, c1, undefined, { staleRead: true, insertions: true })).toEqual(counters);
   });
 });

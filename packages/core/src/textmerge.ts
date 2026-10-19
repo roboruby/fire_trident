@@ -6,9 +6,10 @@ import type { Path, Sha } from "./types.ts";
  * trunk writer's FT_TEXT_MERGE). Three versions of a file meet: the change's base (what it started from), ours (the
  * version it would land on) and theirs (what the change wrote). Each version is split into lines that keep their own
  * endings ("\n" or "\r\n"; the last line may have none), and each side is diffed against the base. Edits to separate
- * regions of the base merge; the same edit made on both sides counts once; different edits that overlap, or that touch
- * with no unchanged base line between them, conflict, as git's default merge decides. Lines are copied whole from the
- * versions, so line endings and the final newline come out as the inputs have them. Pure and synchronous.
+ * regions of the base merge; the same edit made on both sides counts once, unless the change read the file at a version
+ * trunk has moved past (`staleRead`: then a repeated edit stops the merge, see mergeText); different edits that overlap,
+ * or that touch with no unchanged base line between them, conflict, as git's default merge decides. Lines are copied
+ * whole from the versions, so line endings and the final newline come out as the inputs have them. Pure and synchronous.
  */
 
 /** Largest version of a file (bytes) a text merge reads; a larger one is not merged. */
@@ -27,6 +28,12 @@ export type MergeRule = "insertions";
 /** How mergeText merges beyond git's default rules: `insertions` applies the insertion rule (see mergeText). */
 export interface MergeOptions {
   insertions?: boolean;
+  /**
+   * The change read this file at a version trunk has since moved past (core/occ.ts staleWrittenReads). Its edits were
+   * made without seeing trunk's, so one that matches an edit trunk made since the base is not taken as already made: it
+   * may be the same update made twice (two increments of one counter, both writing 6). See mergeText.
+   */
+  staleRead?: boolean;
 }
 
 /** What a three-way merge of one file gives: the merged text, or the conflicts that stop it. */
@@ -45,6 +52,12 @@ export type TextMergeResult =
       lines: number[];
       /** The sides were not compared: one changed more than the edit limit (MERGE_MAX_EDITS); `conflicts` is 0. */
       limited?: true;
+      /**
+       * With `staleRead`: where the change repeats an edit trunk made since the base, as 1-based lines of the base (one
+       * past its last line for an insertion at the end). `conflicts` is then 0 and `lines` empty: the change goes back
+       * stale, as it would without text merge, and is never handed on as a conflict to resolve.
+       */
+      repeated?: number[];
     };
 
 /**
@@ -230,9 +243,14 @@ function pushRange(out: string[], items: readonly string[], from: number, to: nu
  * insertions, ours first (core/insertions.ts insertionUnion: lines both start or end with land once), and the result
  * says `rule: "insertions"`. One region that edits or deletes base lines, or a union that would land a construct twice
  * or join two lines into one, leaves every conflict as git's rules name it.
+ *
+ * With `options.staleRead` (the change read this file at a version trunk has moved past), nothing the change did counts
+ * as already done: a region both sides edited the same way, and an insertion union that would leave out lines of the
+ * change because trunk inserted them there too, stop the merge with `repeated` (each such region's first base line),
+ * ahead of any conflict. Regions only one side edited, and unions that keep every line of both, merge as without it.
  */
 export function mergeText(base: string, ours: string, theirs: string, maxEdits = MERGE_MAX_EDITS, options: MergeOptions = {}): TextMergeResult {
-  if (ours === theirs || theirs === base) return { clean: true, text: ours };
+  if (theirs === base || (ours === theirs && !options.staleRead)) return { clean: true, text: ours };
   if (ours === base) return { clean: true, text: theirs };
   const ids = new Map<string, number>();
   const intern = (lines: string[]): Int32Array => {
@@ -271,6 +289,8 @@ export function mergeText(base: string, ours: string, theirs: string, maxEdits =
   // The insertion rule: conflicting regions it resolved, and whether one was left that it could not.
   let unioned = 0;
   let stuck = false;
+  // A stale read: regions where the change repeats what trunk did since the base.
+  const repeated: number[] = [];
   let pos = 0;
   let i = 0;
   let j = 0;
@@ -295,21 +315,34 @@ export function mergeText(base: string, ours: string, theirs: string, maxEdits =
     pushRange(out, baseLines, pos, start);
     const left = side(ourLines, ownIn, start, end);
     const right = side(theirLines, otherIn, start, end);
-    if (otherIn.length === 0 || (left.length === right.length && left.every((line, q) => line === right[q]))) pushRange(out, left, 0, left.length);
-    else if (ownIn.length === 0) pushRange(out, right, 0, right.length);
+    if (otherIn.length === 0 || (left.length === right.length && left.every((line, q) => line === right[q]))) {
+      // Both sides made this edit: once is right only when the change saw trunk's (its read is current).
+      if (options.staleRead && otherIn.length > 0 && ownIn.length > 0) repeated.push(start + 1);
+      pushRange(out, left, 0, left.length);
+    } else if (ownIn.length === 0) pushRange(out, right, 0, right.length);
     else {
       conflicts.push(start + 1);
       const union = options.insertions ? insertedUnion(ownIn, otherIn, ourLines, theirLines, start, end, baseLines.length) : null;
       if (union) {
+        // The union leaves out the change's lines trunk inserted there too: a repeat, when the change never saw them.
+        if (options.staleRead && union.length < insertedLines(ownIn) + insertedLines(otherIn)) repeated.push(start + 1);
         pushRange(out, union, 0, union.length);
         unioned++;
       } else stuck = true;
     }
     pos = end;
   }
+  if (repeated.length > 0) return { clean: false, conflicts: 0, lines: [], repeated };
   if (conflicts.length > 0 && (stuck || unioned === 0)) return { clean: false, conflicts: conflicts.length, lines: conflicts };
   pushRange(out, baseLines, pos, baseLines.length);
   return unioned > 0 ? { clean: true, text: out.join(""), rule: "insertions" } : { clean: true, text: out.join("") };
+}
+
+/** Lines one side's hunks of a region put in its place. */
+function insertedLines(hunks: readonly LineHunk[]): number {
+  let n = 0;
+  for (const h of hunks) n += h.b1 - h.b0;
+  return n;
 }
 
 /**

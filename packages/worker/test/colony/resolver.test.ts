@@ -88,7 +88,7 @@ function returned(over: Partial<Proposal> = {}): Proposal {
 const answer = (text: string): ModelReply => ({ text: `<file n="1">\n${text}</file>`, usage: { input: 120, output: 30, cached: 0, neurons: 0 }, model: "test-model" });
 
 /** A fake colony around one resolver. */
-function world(opts: { env?: Record<string, unknown>; reply?: (messages: ChatMessage[]) => Promise<ModelReply>; proposeStatus?: Proposal["status"]; proposeFails?: string; inline?: boolean } = {}) {
+function world(opts: { env?: Record<string, unknown>; reply?: (messages: ChatMessage[]) => Promise<ModelReply>; proposeStatus?: Proposal["status"]; proposeFails?: string; inline?: boolean; ours?: string } = {}) {
   const db = new DatabaseSync(":memory:");
   const sql: SqlRunner = {
     exec: (q, ...b) => {
@@ -106,9 +106,9 @@ function world(opts: { env?: Record<string, unknown>; reply?: (messages: ChatMes
   const proposals = new Map<string, Proposal>([["prp_b", returned()]]);
   const commits: Record<Sha, Record<string, Sha>> = {
     [BASE_SHA]: { [F]: blobId(BASE), [OTHER]: blobId(OTHER_BASE) },
-    [HEAD_SHA]: { [F]: blobId(OURS), [OTHER]: blobId(OTHER_BASE) },
+    [HEAD_SHA]: { [F]: blobId(opts.ours ?? OURS), [OTHER]: blobId(OTHER_BASE) },
   };
-  const blobs: Record<Sha, string> = { [blobId(BASE)]: BASE, [blobId(OURS)]: OURS, [blobId(OTHER_BASE)]: OTHER_BASE };
+  const blobs: Record<Sha, string> = { [blobId(BASE)]: BASE, [blobId(opts.ours ?? OURS)]: opts.ours ?? OURS, [blobId(OTHER_BASE)]: OTHER_BASE };
   if (opts.inline === false) Object.assign(blobs, { [blobId(THEIRS)]: THEIRS, [blobId(OTHER_TEXT)]: OTHER_TEXT });
   const proposed: ResolveInput[] = [];
   const notices: Array<{ agentId: string; intentId: string; message: string }> = [];
@@ -377,6 +377,24 @@ describe("validation before anything is proposed", () => {
     const w = await attempt(file({ 2: "export const v2 = 20;", 6: "export const six = { 66;", 8: "export const v8 = 80;" }));
     expect(w.proposed).toEqual([]);
     expect(w.job()?.reason).toMatch(/^the merge of src\/values\.ts does not parse: /);
+  });
+
+  it("stands when trunk has since made an edit the change repeats in a file it read at its base: a merge would land it once", async () => {
+    // After the return, another landing set v8 to 80 too, as the change did.
+    const ours = file({ 2: "export const v2 = 20;", 6: "export const six = 6;", 8: "export const v8 = 80;" });
+    const w = world({ ours });
+    hold(w);
+    await w.settle();
+    expect(w.calls).toEqual([]);
+    expect(w.proposed).toEqual([]);
+    expect(w.job()).toMatchObject({ state: "failed", reason: "the change read src/values.ts before trunk made the same edit at line 8 of its base, so a merge would land that edit once" });
+    expect(w.intents.get("int_b")).toMatchObject({ status: "open", assignedTo: null });
+    // A change that wrote the file without reading it merges as before: the same edit counts once.
+    const blind = world({ ours });
+    blind.proposals.set("prp_b", returned({ readSet: [{ path: "src/dep.ts", blob: DEP }] }));
+    hold(blind);
+    await blind.settle();
+    expect(blind.proposed).toHaveLength(1);
   });
 
   it("takes the model's CANNOT as the end of it", async () => {
