@@ -68,8 +68,8 @@ export const QUESTIONS: readonly Answer[] = [
     id: "why",
     question: "How is the why recorded?",
     answer:
-      "Every landed commit carries a JSON lineage note in git (the intent, the rule and who approved it, the agent and its model, every decision, the files read and written) and the note's SHA-256 in its FT-Note trailer, so any git client can check it: on a stock clone of a Hono run on a preview, scripts/verify_note.mjs found 8 of 8 notes intact.",
-    figure: "8 of 8",
+      "Every landed commit carries a JSON lineage note in git (the intent, the rule and who approved it, the agent and its model, every decision, the files read and written) and the note's SHA-256 in its FT-Note trailer, so any git client can check it: on a stock clone of the production colony signed-notes on 2026-10-19, scripts/verify_note.mjs found 1 of 1 notes intact.",
+    figure: "1 of 1",
     link: { label: "scripts/verify_note.mjs", href: `${REPO}/blob/main/scripts/verify_note.mjs` },
     command: VERIFY_COMMANDS,
   },
