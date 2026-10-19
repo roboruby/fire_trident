@@ -1,0 +1,35 @@
+{
+  "schema": "firetrident.hono-replay/v1",
+  "label": "FIXTURE",
+  "repository": "fixture/hono-replay",
+  "note": "The fixture's workload; scripts/test/fake_hono.rb fills in the commits and the hidden files' blob ids from the repository it builds out of repo.json.",
+  "seed": {
+    "exclude": [
+      { "prefix": "runtime-tests/", "why": "tests for other runtimes" },
+      { "prefix": "docs/images/", "why": "binary images" }
+    ]
+  },
+  "prs": [
+    {
+      "number": 9001, "title": "fix(request): trim header names", "merged_at": "2026-07-11T00:00:00Z",
+      "why": "Header names with spaces around them did not match. This trims them first.",
+      "acceptance": [], "footprint": ["src/request.test.ts", "src/request.ts"], "src": ["src/request.ts"], "tests": ["src/request.test.ts"],
+      "run": ["src/request.test.ts"], "target_tests": ["src/request.test.ts: header > trims"]
+    },
+    {
+      "number": 9002, "title": "fix(url): keep the fragment out of the path", "merged_at": "2026-07-12T00:00:00Z",
+      "why": "A fragment stayed in the path, so routes did not match.",
+      "acceptance": [], "footprint": ["src/request.ts", "src/utils/url.test.ts", "src/utils/url.ts"], "src": ["src/request.ts", "src/utils/url.ts"], "tests": ["src/utils/url.test.ts"],
+      "run": ["src/utils/url.test.ts"], "target_tests": ["src/utils/url.test.ts: path > drops the fragment"]
+    },
+    {
+      "number": 9003, "title": "fix(router): match a trailing slash", "merged_at": "2026-07-13T00:00:00Z",
+      "why": "",
+      "acceptance": [], "footprint": ["src/router/node.test.ts", "src/router/node.ts", "src/utils/url.ts"], "src": ["src/router/node.ts", "src/utils/url.ts"], "tests": ["src/router/node.test.ts"],
+      "run": ["src/router/node.test.ts"], "target_tests": ["src/router/node.test.ts: match > matches a trailing slash"]
+    }
+  ],
+  "overlap": {
+    "by_file": { "src/request.ts": [9001, 9002], "src/utils/url.ts": [9002, 9003] }
+  }
+}

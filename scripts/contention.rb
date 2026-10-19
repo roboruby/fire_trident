@@ -427,7 +427,7 @@ module Contention
           last_landed = landed
           last_progress = Stage.now
         end
-        approve_escalations if @opts[:approve] && metrics.dig("metrics", "reviewQueue").to_i.positive?
+        answer_queue(snap, metrics)
         # Movement: one of the run's intents changing status or holder. None for a while with intents open is a stall.
         now_moved = Array(snap["intents"]).select { |i| @intents.key?(i["id"]) }.map { |i| [i["id"], i["status"], i["assignedTo"]] }.sort
         if now_moved != moved
@@ -580,6 +580,12 @@ module Contention
       res = @http.request(:post, "/api/colonies/#{@colony}/swarm/stop", body: { reason: reason }, timeout: 60)
       @stopped = res.ok?
       @clock.say(res.ok? ? "stopped the agents (#{reason})" : "stopping the agents answered #{res.problem}")
+    end
+
+    # Once a poll: answer what waits for a person. Here, escalated changes are approved with --approve; a harness built
+    # on this run (scripts/hono_replay.rb) answers them its own way.
+    def answer_queue(_snap, metrics)
+      approve_escalations if @opts[:approve] && metrics.dig("metrics", "reviewQueue").to_i.positive?
     end
 
     # Answer escalated changes as the human reviewer (--approve).
