@@ -11,6 +11,8 @@ import { join } from "node:path";
 export interface LiveConfig {
   url: string;
   token?: string;
+  /** Headers sent with every request and the live feed's upgrade, such as Cloudflare Access's service-token pair; never printed. */
+  headers?: Record<string, string>;
 }
 
 /** Parse KEY=VALUE lines (blank lines and # comments ignored). */

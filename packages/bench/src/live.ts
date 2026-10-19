@@ -143,7 +143,7 @@ export class Client {
 
   /** Call /api/colonies/:colony{path}; returns the body or null (error recorded). */
   async call<T>(op: string, method: "GET" | "POST", path: string, body?: unknown): Promise<T | null> {
-    const headers: Record<string, string> = { accept: "application/json", "user-agent": "ft-bench-live/0.0.1" };
+    const headers: Record<string, string> = { accept: "application/json", "user-agent": "ft-bench-live/0.0.1", ...(this.cfg.headers ?? {}) };
     if (this.cfg.token) headers.authorization = `Bearer ${this.cfg.token}`;
     const init: RequestInit = { method, headers, signal: AbortSignal.timeout(this.timeoutMs) };
     if (body !== undefined) {
@@ -383,7 +383,7 @@ export async function ensureIntents(client: Client, target: number, regions: num
 
 /** Live event capture from /api/colonies/:id/live. */
 export class LiveFeed {
-  landings: Array<{ id: string; at: number; recvMs: number; proposalIds: string[] }> = [];
+  landings: Array<{ id: string; at: number; recvMs: number; proposalIds: string[]; trunkSha?: string }> = [];
   proposalStatus = new Map<string, { status: string; at: number; reason?: string }>();
   sigma: Array<{ at: number; recvMs: number; region: string; sigma: number }> = [];
   metrics: Array<{ at: number; recvMs: number; name: string; value: number }> = [];
@@ -398,7 +398,8 @@ export class LiveFeed {
   /** Connect; resolves once open (or after 5 s). A socket that drops is reopened until close(). */
   async connect(cfg: LiveConfig, colony: string): Promise<void> {
     const url = `${cfg.url.replace(/^http/, "ws")}/api/colonies/${encodeURIComponent(colony)}/live`;
-    const ws = new WebSocket(url);
+    // Node's WebSocket sends extra headers on the upgrade (Cloudflare Access's service token, when the config has one).
+    const ws = cfg.headers ? new WebSocket(url, { headers: cfg.headers } as unknown as string[]) : new WebSocket(url);
     this.ws = ws;
     ws.onmessage = (ev: MessageEvent) => this.onMessage(ev.data);
     await new Promise<void>((resolve) => {
@@ -454,7 +455,7 @@ export class LiveFeed {
     const recvMs = performance.now();
     for (const e of list) {
       this.events++;
-      if (e.t === "landing") this.landings.push({ id: e.landingId, at: e.at, recvMs, proposalIds: e.proposalIds });
+      if (e.t === "landing") this.landings.push({ id: e.landingId, at: e.at, recvMs, proposalIds: e.proposalIds, ...(typeof e.trunkSha === "string" ? { trunkSha: e.trunkSha } : {}) });
       else if (e.t === "proposal") {
         this.proposalStatus.set(e.proposalId, e.reason ? { status: e.status, at: e.at, reason: e.reason } : { status: e.status, at: e.at });
         if (TERMINAL.has(e.status)) for (const done of this.waiters.get(e.proposalId) ?? []) done(e.reason ? { status: e.status, reason: e.reason } : { status: e.status });
