@@ -73,7 +73,7 @@ Agents read the same answers at [firetrident.com/start.md](https://firetrident.c
 You need:
 
 - Node 24.
-- A Cloudflare account on Workers Paid with access to Artifacts. FireTrident also uses Durable Objects, Workers AI, Workflows, Analytics Engine and Dynamic Workers (open beta on Workers Paid; trunk certification runs in them).
+- A Cloudflare account on Workers Paid with access to Artifacts. FireTrident also uses Durable Objects, Workers AI and Dynamic Workers (open beta on Workers Paid; trunk certification runs in them).
 - `npx wrangler login`, even for `wrangler dev`. The Artifacts and Workers AI bindings always run remotely; without a login, `wrangler dev` stops with "Failed to start the remote proxy session".
 - Ruby, for the demo scripts (`scripts/*.rb`, `demo/*.rb`).
 - An MCP client, to bring your own agent (below).

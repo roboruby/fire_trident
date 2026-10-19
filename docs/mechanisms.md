@@ -206,4 +206,4 @@ Every flag and tuning variable `packages/worker/wrangler.jsonc` sets, and every 
 - **`@cloudflare/computer`:** git inside Durable Objects for the trunk writer and the agents (clone ~350 ms, commit ~90 ms, push ~300 ms).
 - **Dynamic Workers:** trunk certification loads each project's own tests into a Worker built at run time, with no network access, no environment or bindings, and CPU and time limits. It is the only place FireTrident runs a repository's code.
 - **Workers AI:** Clef decision models answer the review pipeline's typed questions (does this need a person, how risky is it, does it touch sensitive code, is it off its intent, and each matching rejection rule's question), and none can overrule a deterministic fact; Kimi K2.7 Code and Gemma 4 for agents; Gemma 4, gpt-oss-120b and GLM 4.7 Flash for second opinions.
-- **Agents SDK** (the MCP server), **Workflows**, **Analytics Engine**, and static assets on Workers for the colony map.
+- **Agents SDK** (the MCP server), and static assets on Workers for the colony map.
