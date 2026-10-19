@@ -73,6 +73,8 @@ export interface AgentConfig {
   /** Consecutive failed takes (drives backoff). */
   failures: number;
   lastError?: string;
+  /** The account that owns the colony (AgentStartParams.owner); absent for an operator colony. */
+  owner?: string;
 }
 
 /** A file the job read at its base commit. */

@@ -3,9 +3,9 @@ import type { NoteDecision } from "@fire_trident/core";
 /**
  * The review receipt in the web app (packages/worker/src/decide/receipt.ts): the head a decision was made on, the digest of
  * the view of the change its decider was shown (clipped when it left changed lines out) and, for a person, whether the
- * name was verified by Access or only stated. The review card shows the head and digest its decision will record, the
- * Why tab shows each recorded decision's, and the decision's toast says how the person was recorded. The words follow
- * `ft why` and `ft verify` (packages/cli/src/receipt.ts). Pure.
+ * name was verified (by Access, or by GitHub sign-in for a `github:<login>` approver) or only stated. The review card
+ * shows the head and digest its decision will record, the Why tab shows each recorded decision's, and the decision's
+ * toast says how the person was recorded. The words follow `ft why` and `ft verify` (packages/cli/src/receipt.ts). Pure.
  */
 
 /** A receipt as the page shows it: short forms for the line, full values for the tooltip. */
@@ -19,8 +19,16 @@ export interface ReceiptView {
   view: string;
   clipped: boolean;
   seen: string;
-  /** A person's decision: "verified by Access", "stated, not verified", or "" when the note does not say. */
+  /** A person's decision: "verified by Access", "verified by GitHub", "stated, not verified", or "" when the note does not say. */
   identity: string;
+}
+
+/**
+ * What verified a verified name: a `github:<login>` approver signed in with GitHub (the owner of a colony they own, worker
+ * accounts/scope.ts); any other verified name is the email Cloudflare Access verified.
+ */
+export function verifiedWords(by: unknown): string {
+  return typeof by === "string" && by.startsWith("github:") ? "verified by GitHub" : "verified by Access";
 }
 
 const VIEW_WORDS: Record<string, string> = { "reflex-state": "the reflex's diff", "prompt-diff": "the prompt's diff", "review-card": "the review card" };
@@ -29,10 +37,10 @@ const isRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v =
 const line = (v: unknown, max = 200): string => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, max) : "");
 
 /** A receipt from a head and a `shown` record, or null when there is neither. */
-function viewOf(head: unknown, shown: unknown, identity: unknown): ReceiptView | null {
+function viewOf(head: unknown, shown: unknown, identity: unknown, by?: unknown): ReceiptView | null {
   const h = typeof head === "string" && /^[0-9a-f]{40,64}$/.test(head) ? head : null;
   const s = isRecord(shown) ? shown : null;
-  const id = identity === "verified" ? "verified by Access" : identity === "stated" ? "stated, not verified" : "";
+  const id = identity === "verified" ? verifiedWords(by) : identity === "stated" ? "stated, not verified" : "";
   if (!h && !s && !id) return null;
   const digest = s && typeof s.digest === "string" && /^sha256:[0-9a-f]{64}$/.test(s.digest) ? s.digest : null;
   return {
@@ -50,7 +58,7 @@ function viewOf(head: unknown, shown: unknown, identity: unknown): ReceiptView |
 /** One recorded decision's receipt (the Why tab), or null for a note written before receipts. */
 export function decisionReceipt(d: NoteDecision | null | undefined): ReceiptView | null {
   if (!d) return null;
-  return viewOf(d.head, d.shown, d.layer === "human" ? d.identity : undefined);
+  return viewOf(d.head, d.shown, d.layer === "human" ? d.identity : undefined, d.by);
 }
 
 /** The receipt a review card serves (`reviewReceipt` on a queue item), or null from an older server. */
@@ -82,7 +90,7 @@ export function recordedText(res: unknown): string | null {
   const r = isRecord(res) && isRecord(res.recorded) ? res.recorded : null;
   if (!r || typeof r.by !== "string") return null;
   const who = line(r.by);
-  if (r.identity === "verified") return `Recorded as ${who}, verified by Access.`;
+  if (r.identity === "verified") return `Recorded as ${who}, ${verifiedWords(r.by)}.`;
   const why = line(r.why);
   return `Recorded as ${who}, stated and not verified${why ? `: ${why}` : ""}.`;
 }

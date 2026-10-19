@@ -35,6 +35,7 @@ import { IMPACT_DESCRIPTION } from "./impact.ts";
 import { IMPACT_DEPTH, IMPACT_ENTRIES } from "../trunk/impact.ts";
 import { capSuspects } from "../certify/culprit.ts";
 import { RETRY_AFTER_S, clientIp, mcpReads, publicReadRefusal, type PublicLimits } from "../api/ratelimit.ts";
+import { hideOwners } from "../accounts/ownership.ts";
 import type { ImpactReport, LandingTests } from "@fire_trident/core";
 
 /**
@@ -136,8 +137,9 @@ export const PUBLIC_DATA_NOTE = "Titles, whys, notes, reports and reasons here w
 /** An Artifacts remote's host names the account: public answers show `artifacts://<namespace>/<repo>.git`, as the public GET routes do (api/app.ts hideRemotes). */
 const ARTIFACTS_REMOTE = /https:\/\/[0-9a-f]{32}\.artifacts\.cloudflare\.net\/git\//g;
 
+/** And without the account that owns a colony's repositories (accounts/ownership.ts hideOwners). */
 function hideRemotes(text: string): string {
-  return text.replace(ARTIFACTS_REMOTE, "artifacts://");
+  return hideOwners(text.replace(ARTIFACTS_REMOTE, "artifacts://"));
 }
 
 function iso(ms: unknown): string | null {

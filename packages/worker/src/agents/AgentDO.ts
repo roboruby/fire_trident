@@ -1,6 +1,8 @@
 import { DurableObject } from "cloudflare:workers";
 import type { AgentInfo, AgentKind, Directive, Id, Intent } from "@fire_trident/core";
 import { trunkRepoName } from "../artifacts/shards.ts";
+import { colonyStorage } from "../artifacts/storage.ts";
+import { colonyModelsOf } from "../cloudflare/models.ts";
 import type { Env } from "../env.ts";
 import { WorkspaceGit } from "./gitfs.ts";
 import { SqlJournal } from "./journal.ts";
@@ -26,6 +28,8 @@ const MAX_START_DELAY_MS = 60_000;
  * push to a workspace this agent used before carry only the new objects.
  */
 const RESET_CLONE_EVERY = 200;
+/** When the colony owner's model access could not be read (a connection object that did not answer), try again after this. */
+const OWNER_MODELS_RETRY_MS = 30_000;
 
 /** AgentInfo plus the agent's own view of its work. Tokens never appear here. */
 export interface AgentStatus extends AgentInfo {
@@ -88,26 +92,31 @@ export class AgentDO extends DurableObject<Env> {
    * agent's journal. Spend cap (colony/spendcap.ts): each call reserved with the colony before it starts (twice when a
    * copy may go out) and settled after; with no cap the colony says so and the call goes as before.
    */
-  private modelFor(colonyId: Id): ModelClient {
+  private modelFor(colonyId: Id, models: Env = this.env): ModelClient {
     const hedge = hedgeFor(this.env, colonyId, "agent", { bump: (name, delta) => this.journal.bump(name, delta) });
-    return cappedClient(modelClient(this.env, hedge), agentCapGate(colonyStub(this.env, colonyId), this.journal.config()?.agentId ?? "", this.capMemo), hedge ? 2 : 1);
+    return cappedClient(modelClient(models, hedge), agentCapGate(colonyStub(this.env, colonyId), this.journal.config()?.agentId ?? "", this.capMemo), hedge ? 2 : 1);
   }
 
-  private deps(colonyId: Id): LoopDeps {
+  /**
+   * `models`: the env the tick's model calls read. The deployment's own (Workers AI) for an operator colony; for a colony
+   * a person owns, their Workers AI (cloudflare/models.ts), read by alarm() before the tick.
+   */
+  private deps(colonyId: Id, models: Env = this.env): LoopDeps {
     if (!this.git) this.git = new WorkspaceGit(this.ctx.storage);
     // One per tick: direct() aborts it when a directive makes the step in flight moot.
     this.stepAbort = new AbortController();
     // Virtual checkouts read trunk by object id through the binding: the handle opens on a job's first read. Every
     // tick gets the reader, so a job taken with it keeps reading through it even after FT_VIRTUAL_CHECKOUT turns off.
     this.trunkRepo?.release();
-    const objects = trunkObjects(this.env.ARTIFACTS, trunkRepoName(colonyId));
+    // The trunk binding: the deployment's own, or the Cloudflare account of the colony's owner (artifacts/storage.ts).
+    const objects = trunkObjects(colonyStorage(this.env, this.journal.config()?.owner).trunk, trunkRepoName(colonyId));
     this.trunkRepo = objects;
     return {
       signal: this.stepAbort.signal,
       colony: colonyStub(this.env, colonyId),
       trunk: trunkBlobsStub(this.env, colonyId),
       git: this.git,
-      model: this.modelFor(colonyId),
+      model: this.modelFor(colonyId, models),
       journal: this.journal,
       now: () => Date.now(),
       log: (line) => console.log(`agent ${this.journal.config()?.agentId ?? "?"}: ${line}`),
@@ -189,6 +198,8 @@ export class AgentDO extends DurableObject<Env> {
       return this.status();
     }
     if (prev && prev.agentId !== p.agentId) this.journal.setJob(null);
+    // The colony's owner, learned at start and kept (a restart for the same colony that names none keeps the one known).
+    const owner = typeof p.owner === "string" && p.owner !== "" ? p.owner : prev?.colonyId === p.colonyId ? prev.owner : undefined;
     const cfg: AgentConfig = {
       colonyId: p.colonyId,
       agentId: p.agentId,
@@ -199,6 +210,7 @@ export class AgentDO extends DurableObject<Env> {
       epoch: (prev?.epoch ?? 0) + 1,
       startedAt: now,
       failures: 0,
+      ...(owner ? { owner } : {}),
     };
     this.journal.setConfig(cfg);
     const delay = Math.min(MAX_START_DELAY_MS, Math.max(0, Math.floor(p.delayMs ?? 0)));
@@ -293,6 +305,23 @@ export class AgentDO extends DurableObject<Env> {
       await this.ctx.storage.setAlarm(busyAlarmAt(Date.now(), this.chosenAt));
       return;
     }
+    // A colony a person owns: its agents' models run on the owner's Workers AI (cloudflare/models.ts). Without it the
+    // agent stops with the sentence that says why; a connection that could not be read is tried again shortly.
+    let models: Env = this.env;
+    if (cfg.owner) {
+      try {
+        const owned = await colonyModelsOf(this.env, cfg.colonyId, cfg.owner);
+        if (owned.off) {
+          await this.stop(owned.off);
+          return;
+        }
+        models = owned.env;
+      } catch (e) {
+        console.warn(`agent ${cfg.agentId}: the colony owner's model access was not read (${errorMessage(e)}); trying again in 30 s`);
+        await this.ctx.storage.setAlarm(Date.now() + OWNER_MODELS_RETRY_MS);
+        return;
+      }
+    }
     this.ticking = true;
     this.chosenAt = null;
     try {
@@ -300,7 +329,7 @@ export class AgentDO extends DurableObject<Env> {
       const finishedBefore = this.finishedJobs();
       let sleepMs: number | null;
       try {
-        sleepMs = (await tick(this.deps(cfg.colonyId), DEFAULT_TICK_BUDGET_MS)).sleepMs;
+        sleepMs = (await tick(this.deps(cfg.colonyId, models), DEFAULT_TICK_BUDGET_MS)).sleepMs;
       } catch (e) {
         // A bug, not a step failure (those are journaled inside tick): back off and try again.
         console.error(`agent ${cfg.agentId} tick failed: ${errorMessage(e)}`);

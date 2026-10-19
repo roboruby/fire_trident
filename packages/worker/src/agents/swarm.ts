@@ -1,5 +1,7 @@
 import type { AgentInfo, Id } from "@fire_trident/core";
 import type { Env } from "../env.ts";
+import { colonyOwnerOf } from "../artifacts/storage.ts";
+import { colonyModelsOf } from "../cloudflare/models.ts";
 import { resolveModel } from "./llm.ts";
 import { agentStub, colonyStub, errorMessage } from "./rpc.ts";
 
@@ -110,6 +112,13 @@ export async function spawnSwarm(env: Env, colonyId: Id, opts: SpawnOptions): Pr
   const prefix = (opts.namePrefix ?? kind).trim().slice(0, 40) || kind;
   const colony = colonyStub(env, colonyId);
   const stamp = Date.now().toString(36).slice(-4);
+  // A colony a person owns: its agents read trunk from the owner's Cloudflare account (artifacts/storage.ts), and their
+  // models run on the owner's Workers AI (cloudflare/models.ts). Without Workers AI none starts, and the 409 says why.
+  const owner = await colonyOwnerOf(env, colonyId);
+  if (owner) {
+    const models = await colonyModelsOf(env, colonyId, owner);
+    if (models.off) throw new Error(`[ft:409] ${models.off}`);
+  }
 
   const agents: Array<AgentInfo & { assigned: string }> = [];
   const errors: string[] = [];
@@ -126,7 +135,7 @@ export async function spawnSwarm(env: Env, colonyId: Id, opts: SpawnOptions): Pr
   }
 
   const results = await inBatches(agents, START_CONCURRENCY, (a, i) =>
-    agentStub(env, a.id).start({ colonyId, agentId: a.id, model: a.assigned, kind, name: a.name, delayMs: staggerDelay(i, agents.length, staggerMs) }),
+    agentStub(env, a.id).start({ colonyId, agentId: a.id, model: a.assigned, kind, name: a.name, delayMs: staggerDelay(i, agents.length, staggerMs), ...(owner ? { owner } : {}) }),
   );
   const agentIds: Id[] = [];
   const models: Record<string, number> = {};

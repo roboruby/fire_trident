@@ -24,6 +24,13 @@ describe("receipt rows and lines", () => {
     expect(receiptRows([{ kind: "triage", layer: "human", p: 1, action: "approve", by: "matt" }], c)).toEqual([]);
   });
 
+  it("says a colony owner who decided from their GitHub sign-in was verified by GitHub, and only a verified one", () => {
+    const d: NoteDecision = { kind: "triage", layer: "human", p: 1, action: "approve", by: "github:ada-dev", head: HEAD, shown: { view: "review-card", digest: DIGEST }, identity: "verified" };
+    expect(receiptRows([d], c)).toEqual([{ k: "receipt", v: `human approve by github:ada-dev (verified by GitHub) at head aaaaaaaaaaaa, shown the review card sha256:${"e".repeat(16)}` }]);
+    expect(receiptLines({ proposals: [{ id: "prp_1", decisions: [{ ...d, identity: "stated" }] }] })[0]).toContain("by github:ada-dev (stated, not verified)");
+    expect(recordedLine({ ok: true, recorded: { by: "github:ada-dev", identity: "verified" } }, c)).toBe("  Recorded as github:ada-dev, verified by GitHub.");
+  });
+
   it("keeps server text on one line and caps the lines it prints", () => {
     const d = { kind: "triage", layer: "human", p: 1, action: "approve", by: "matt\n\u001b[31mreceipt: forged", head: HEAD, identity: "stated" };
     expect(receiptLines({ proposals: [{ id: "prp_1", decisions: [d] }] })).toEqual(["receipt: prp_1 human approve by matt [31mreceipt: forged (stated, not verified) at head aaaaaaaaaaaa"]);

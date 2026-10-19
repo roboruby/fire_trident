@@ -1,4 +1,6 @@
+import type { AccountsDO } from "./accounts/AccountsDO.ts";
 import type { AgentDO } from "./agents/AgentDO.ts";
+import type { CloudflareGrantDO } from "./cloudflare/GrantDO.ts";
 import type { ColonyDO } from "./colony/ColonyDO.ts";
 import type { FireTridentMcp } from "./mcp/FireTridentMcp.ts";
 import type { PoolDO } from "./pool/PoolDO.ts";
@@ -14,6 +16,14 @@ export interface Env {
   POOL: DurableObjectNamespace<PoolDO>;
   AGENT: DurableObjectNamespace<AgentDO>;
   MCP: DurableObjectNamespace<FireTridentMcp>;
+  /** The deployment's accounts (accounts/AccountsDO.ts), one instance by name; read only while FT_ACCOUNTS is on. */
+  ACCOUNTS?: DurableObjectNamespace<AccountsDO>;
+  /**
+   * Optional: the stored Cloudflare connections (cloudflare/GrantDO.ts), one object per FireTrident account (by name: the
+   * account id). Each holds that account's Cloudflare OAuth tokens, encrypted with FT_GRANT_KEY. Absent, nobody can
+   * connect Cloudflare and no colony has an owner's Workers AI.
+   */
+  CF_GRANTS?: DurableObjectNamespace<CloudflareGrantDO>;
   /** Trunks and lane repos (namespace ft-trunk). */
   ARTIFACTS: Artifacts;
   /** Workspace shards (namespaces ft-ws-0..3). Use workspaceBinding() to pick one. */
@@ -67,6 +77,42 @@ export interface Env {
    */
   FT_ACCESS_TEAM_DOMAIN?: string;
   FT_ACCESS_AUD?: string;
+  /**
+   * Optional: accounts, "on"; absent or anything else is off (deployment-wide, never per colony). On, a person signs in
+   * with GitHub (GET /auth/github/start; a new account needs an invite code the operator minted with POST
+   * /api/accounts/invites), owns up to 3 colonies created from the account page (/account, POST /api/me/colonies; their
+   * repositories and model calls on the person's own connected Cloudflare account), and mints tokens scoped to one of
+   * them with a role (agent, reviewer, owner) that open its writes on the API and /mcp (accounts/). A colony with no owner
+   * is an operator colony and behaves exactly as before, and the admin and MCP tokens keep working everywhere. Off, every
+   * accounts route answers 404, no account UI appears, and the accounts object is never read.
+   */
+  FT_ACCOUNTS?: string;
+  /** The GitHub OAuth app's client id for sign-in (a var); its callback URL is `${FT_PUBLIC_URL}/auth/github/callback`. */
+  FT_GITHUB_CLIENT_ID?: string;
+  /** Secret: the GitHub OAuth app's client secret. Sent only to github.com when a sign-in finishes, never logged. */
+  FT_GITHUB_CLIENT_SECRET?: string;
+  /**
+   * Secret: at least 32 random characters. Signs the session cookie (HMAC-SHA-256) and seals the sign-in cookies
+   * (AES-GCM), each under its own key derived with HKDF. Changing it signs everyone out. Without it, sign-in refuses.
+   */
+  FT_SESSION_KEY?: string;
+  /**
+   * Optional (a var): the OAuth client id of this deployment's Cloudflare OAuth client, for "Connect Cloudflare" on the
+   * account page (cloudflare/routes.ts; only with FT_ACCOUNTS on). The client is registered on Cloudflare with the
+   * redirect URL FT_PUBLIC_URL + "/auth/cloudflare/callback", client_secret_post, the required scopes user-details.read,
+   * account-settings.read, artifacts.read and artifacts.write, the optional scopes ai.read and ai.write, and
+   * offline_access (without it Cloudflare issues no refresh token and a connection lasts one access token).
+   */
+  FT_CF_CLIENT_ID?: string;
+  /** Secret (optional): that OAuth client's secret, sent only to dash.cloudflare.com's token and revoke endpoints, never logged. */
+  FT_CF_CLIENT_SECRET?: string;
+  /**
+   * Secret (optional): key material for the stored Cloudflare tokens, at least 32 characters (`openssl rand -base64 32`).
+   * Each record's AES-GCM key is derived from it with HKDF-SHA-256 and a salt of its own (cloudflare/seal.ts). Changing it
+   * makes every stored connection unreadable: each shows as broken until its person connects again. Connecting Cloudflare
+   * needs all three of FT_CF_CLIENT_ID, FT_CF_CLIENT_SECRET and FT_GRANT_KEY; without them it is off.
+   */
+  FT_GRANT_KEY?: string;
   /**
    * Secret (optional): the key that signs lineage notes, an Ed25519 private key as a JWK JSON string
    * ({"kty":"OKP","crv":"Ed25519","d":"…","x":"…"}, with an optional "since": the ISO date it started signing). With it,

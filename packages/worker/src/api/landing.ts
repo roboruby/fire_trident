@@ -2,7 +2,7 @@ import type { Context, Hono } from "hono";
 import type { Id, LandingDiff, LandingTests, LineageNote, NotesVerification, Path, Sha } from "@fire_trident/core";
 import type { Env } from "../env.ts";
 import { dispose, withArtifactsRetry } from "../artifacts/git.ts";
-import { bindingFor } from "../artifacts/shards.ts";
+import { colonyStorage } from "../artifacts/storage.ts";
 import { ftError } from "../colony/errors.ts";
 import { fileDiff } from "../decide/diff.ts";
 import { LANDING_REF } from "../trunk/landing-note.ts";
@@ -103,7 +103,8 @@ export async function landingDiff(env: Env, colonyId: Id, ref: string, path: Pat
   const base = { colonyId, landingId: landing.id, trunkSha: landing.trunkSha, parentSha: landing.parentSha, path, before, after };
   const none = { added: 0, removed: 0, hunks: "", truncated: false };
   if (before === after) return { ...base, ...none, status: "unchanged", detail: "This landing left the file as its parent commit had it." };
-  const binding = bindingFor(env, record.trunk.namespace) ?? env.ARTIFACTS;
+  const storage = colonyStorage(env, record.trunk.owner);
+  const binding = storage.bindingFor(record.trunk.namespace) ?? storage.trunk;
   const versions = await readVersions(binding, record.trunk.name, [before, after]);
   const [was, now] = versions;
   if (versions.some((v) => v?.kind === "too-large")) {

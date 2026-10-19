@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { AccountLink } from "../account/AccountLink.tsx";
 import { useAbout } from "../about.ts";
 import { loadColonies, type ColonyCard } from "../colonies.ts";
 import { BuildTag } from "../components/BuildTag.tsx";
@@ -114,6 +115,7 @@ export function Landing() {
           <a href="#run">Run it</a>
           <a href="/limits">Limits</a>
           <a href="/connect">Connect</a>
+          <AccountLink />
           <a href={DOCS} target="_blank" rel="noreferrer">
             Docs
           </a>

@@ -4,6 +4,7 @@ import { z } from "zod";
 import { ftError } from "../colony/errors.ts";
 import { MAX_BATCH_DECISION } from "../decide/batch.ts";
 import { approverIdentity } from "./access.ts";
+import { accountApprover } from "../accounts/scope.ts";
 import type { ApiEnv } from "./app.ts";
 
 /**
@@ -48,7 +49,8 @@ export function reviewBatchRoutes(app: Hono<ApiEnv>, admin: MiddlewareHandler<Ap
     const stub = colony(c);
     if (!(await stub.getColony())) throw ftError(404, "colony not found");
     // Verified approvers (api/access.ts): each change of the batch records the verified email, else the stated name.
-    const who = await approverIdentity(c.env, c.req.raw.headers, b.by);
+    // The owner of an owned colony deciding from their session is recorded as github:<login>, verified (accounts/scope.ts).
+    const who = accountApprover(c.req.raw, b.by) ?? (await approverIdentity(c.env, c.req.raw.headers, b.by));
     return json(await stub.decideBatch({ key: b.key, ids: b.ids, decision: b.decision, reason: b.reason, by: who.by }, who));
   });
 }

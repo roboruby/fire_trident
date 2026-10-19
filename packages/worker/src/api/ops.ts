@@ -3,6 +3,7 @@ import type { ColonySnapshot, Id } from "@fire_trident/core";
 import type { Env } from "../env.ts";
 import { withArtifactsRetry } from "../artifacts/git.ts";
 import { SESSIONS_NAMESPACE, TRUNK_NAMESPACE, colonySlug, workspaceNamespace } from "../artifacts/shards.ts";
+import { colonyOwnerOf, colonyStorage } from "../artifacts/storage.ts";
 import { REGISTRY_NAME, inPlatform, summaryOf } from "../colony/metrics.ts";
 import type { AgentListEntry, ColonySummary, RegistryEntry } from "../colony/metrics.ts";
 import { colonyIdsFromTrunks, isUnsupportedRpc, journalFields, mapLimit, messageOf, repoBelongsTo } from "./logic.ts";
@@ -324,7 +325,10 @@ export async function deleteColony(env: Env, colonyId: Id): Promise<DeleteReport
   // half-created (or half-deleted) colony, whose trunk and pool objects are cleaned up too.
   const slug = colonySlug(colonyId);
   const listed: Array<{ namespace: string; binding: Artifacts; names: string[] }> = [];
-  for (const { namespace, binding } of bindings(env)) {
+  // A colony a person owns keeps its repos in their Cloudflare account (artifacts/storage.ts): its namespaces there are
+  // swept instead. Its record names the owner; without a record, the accounts are asked.
+  const owner = record ? (record.trunk?.owner ?? null) : await colonyOwnerOf(env, colonyId);
+  for (const { namespace, binding } of owner ? colonyStorage(env, owner).namespaces() : bindings(env)) {
     try {
       listed.push({ namespace, binding, names: (await listRepoNames(binding)).filter((n) => repoBelongsTo(n, slug)) });
     } catch (err) {

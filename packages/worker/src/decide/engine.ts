@@ -38,6 +38,7 @@ import { CallLimiter } from "./limiter.ts";
 import { candidatePaths, mechanicalCheck, nameAssumptionCandidates, nameAssumptions, proofAssumptions, type MechanicalResult } from "./mechanical.ts";
 import { pickSecondOpinion, secondOpinionCandidates, type DecidePolicy } from "./policy.ts";
 import { NO_INDEPENDENT_RULE, independenceNote, reviewerPick } from "./independence.ts";
+import { NO_MODEL_RULE, noModelVerdict } from "./nomodels.ts";
 import { pushQuarantine } from "./quarantine.ts";
 import { askedLines, checkAcceptance, type KeepSource } from "./quotes.ts";
 import { REPRODUCED_LINES_METRIC, reproduceChange } from "./reproduce.ts";
@@ -144,6 +145,14 @@ export interface DecideHost {
    * without it calls the binding as it is.
    */
   capAi?(ai: AiRunner, use: CapUse): AiRunner;
+  /**
+   * A colony with no model to ask (a colony a person owns whose Cloudflare connection runs no models, decide/nomodels.ts):
+   * the sentence a person reads on the escalation that replaces a model's review; null where models run. A host without
+   * it (and every operator colony) has none, and review needs the Workers AI binding as before.
+   */
+  modelsOff?(): string | null;
+  /** Wait until the host knows whether it has models (a colony a person owns reads its owner's access); undefined: nothing to wait for. */
+  modelsReady?(): Promise<void> | undefined;
 }
 
 /** Decide runs in flight per colony. Most finish in the deterministic stage without a model call. */
@@ -160,7 +169,7 @@ const LLM_ATTEMPTS = 3;
 /** Trunk paths asked per proposal for import resolution. */
 const MAX_RESOLUTION_PATHS = 4_000;
 /** Escalations because no model could answer (decide/gate.ts L8, M2, L9): nothing was found wrong, so autonomy stands. */
-const UNREVIEWED = new Set(["L8 spend cap", "M2 antibodies unscreened", NO_INDEPENDENT_RULE]);
+const UNREVIEWED = new Set(["L8 spend cap", "M2 antibodies unscreened", NO_INDEPENDENT_RULE, NO_MODEL_RULE]);
 
 /** What one second-opinion run gives the decide stage: the opinion (null when none came), the model, how long, why none came. */
 type SecondOpinionRun = { opinion: SecondOpinion | null; model: string; ms: number; error: string; hedged?: HedgeRecord; hedgeNote?: string };
@@ -189,9 +198,12 @@ export class DecideEngine {
     this.store = new DecideStore(host.sql);
   }
 
-  /** True when proposals go through the reflex arc (AI bound and the policy on). */
+  /**
+   * True when proposals go through the reflex arc (AI bound and the policy on). A colony with no model to ask
+   * (decide/nomodels.ts) reviews too: its deterministic layers run and a person stands in for every model.
+   */
   enabled(): boolean {
-    return Boolean(this.host.env.AI) && this.store.policy().enabled;
+    return (Boolean(this.host.env.AI) || (this.host.modelsOff?.() ?? null) !== null) && this.store.policy().enabled;
   }
 
   /** Queue the pipeline for a proposal in "checking" (no-op if it is already running). */
@@ -225,6 +237,9 @@ export class DecideEngine {
 
   /** Decide one proposal; on any failure it goes back to its agent (it never lands by mistake). */
   async run(id: Id): Promise<void> {
+    // A colony a person owns decides once it knows whether it has models (never on a guess).
+    const ready = this.host.modelsReady?.();
+    if (ready) await ready;
     const p = this.host.proposal(id);
     if (!p || p.status !== "checking") return;
     try {
@@ -409,6 +424,10 @@ export class DecideEngine {
       this.host.seal(p.id, canaryDiscarded(final.reasons), { ...p.evidence, checks: [...p.evidence.checks, ...checks] });
       return;
     }
+
+    // No model to ask (decide/nomodels.ts): where review would screen with a model, a person decides instead.
+    const noModels = final.action === "screen" ? (this.host.modelsOff?.() ?? null) : null;
+    if (noModels !== null) final = noModelVerdict(noModels, final);
 
     if (final.action === "screen") {
       // Quoted acceptance (FT_QUOTED_ACCEPTANCE, decide/acceptance.ts): the intent's acceptance lines and the keep lines

@@ -82,12 +82,14 @@ export interface ApproverWho {
   stated?: string;
   /** Why the name is not verified, when verification is configured and failed. */
   why?: string;
+  /** What verified a verified name: Cloudflare Access (absent means Access), or the owner's GitHub sign-in (accounts/scope.ts). */
+  verifiedBy?: "access" | "github";
 }
 
 /** The identity fields of a person's decision row: stated unless `who` says verified (no `who` is a stated name). */
 export function identityAnswers(who: ApproverWho | null | undefined): Record<string, unknown> {
   if (!who || who.identity !== "verified") return { identity: "stated", ...(who?.why ? { unverified: who.why.slice(0, SEEN_CHARS) } : {}) };
-  return { identity: "verified", verifiedBy: "access", ...(who.stated && who.stated !== who.by ? { stated: who.stated.slice(0, 200) } : {}) };
+  return { identity: "verified", verifiedBy: who.verifiedBy ?? "access", ...(who.stated && who.stated !== who.by ? { stated: who.stated.slice(0, 200) } : {}) };
 }
 
 /** A stored `shown` read back field by field; undefined when it does not read as one (old or damaged rows never throw). */

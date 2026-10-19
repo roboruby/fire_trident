@@ -24,6 +24,12 @@ export interface RepoRef {
   name: string;
   /** Smart-HTTP remote returned by Artifacts. */
   remote: string;
+  /**
+   * The FireTrident account (`acc_...`) whose own Cloudflare account holds this repository; absent for the
+   * deployment's own Artifacts bindings (every colony made before accounts). Set by the platform when it makes the
+   * repository (the worker's artifacts/storage.ts), never taken from a request.
+   */
+  owner?: string;
 }
 
 /** A colony is one codebase: a trunk repo plus everything coordinating on it. */
