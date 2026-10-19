@@ -48,6 +48,7 @@ import type {
   WorkspaceLease,
 } from "@fire_trident/core";
 import type { Env } from "../env.ts";
+import { colonyStorage, storageEnv } from "../artifacts/storage.ts";
 import { scanRule } from "../morph/scan.ts";
 import type { RegionDO } from "../region/RegionDO.ts";
 import { errorText, ftError } from "./errors.ts";
@@ -3067,8 +3068,11 @@ export class ColonyDO extends DurableObject<Env> {
   /** The audit sample and canaries of this colony (colony/audit.ts), made on first use. */
   private audits(): ColonyAudit {
     if (this.auditing) return this.auditing;
+    const storageEnvOf = (): Env => this.storageEnv();
     const host: AuditHost = {
-      env: this.env,
+      get env() {
+        return storageEnvOf();
+      },
       sql: this.sql,
       decide: () => this.decider().store,
       colony: () => this.requireColony(),
@@ -3161,8 +3165,11 @@ export class ColonyDO extends DurableObject<Env> {
   /** The decide pipeline, with this colony as its host (created on first use). */
   private decider(): DecideEngine {
     if (this.decideEngine) return this.decideEngine;
+    const storageEnvOf = (): Env => this.storageEnv();
     const host: DecideHost = {
-      env: this.env,
+      get env() {
+        return storageEnvOf();
+      },
       sql: this.sql,
       waitUntil: (p) => this.ctx.waitUntil(p),
       colony: () => this.requireColony(),
@@ -3238,7 +3245,7 @@ export class ColonyDO extends DurableObject<Env> {
       // Tests before landing (certify/preland.ts, FT_PRELAND): whether they cover a change, and the certifier's check of it.
       prelandCovers: (p) => this.certifier.prelandCovers(p.writeSet.map((w) => w.path)),
       preland: async (p, texts) => {
-        const out = await this.certifier.precheck(p, prelandReader(this.env, p, texts));
+        const out = await this.certifier.precheck(p, prelandReader(this.storageEnv(), p, texts));
         if (out) this.bump(`preland.${out.run.status}`, 1, Date.now());
         return out;
       },
@@ -3938,7 +3945,7 @@ export class ColonyDO extends DurableObject<Env> {
   /** A contestant's change file by file, for the tie-break and the judge (tests replace it). */
   protected contestDiffs(p: Proposal): Promise<FileDiff[] | null> {
     const trunk = this.trunkStub() as unknown as TrunkRpc;
-    return loadDiffs(this.withContents(p), { env: this.env, trunk: this.requireColony().trunk, baseBlobs: (sha, paths) => trunk.baseBlobs(sha, paths) });
+    return loadDiffs(this.withContents(p), { env: this.storageEnv(), trunk: this.requireColony().trunk, baseBlobs: (sha, paths) => trunk.baseBlobs(sha, paths) });
   }
 
   /**
@@ -4168,7 +4175,7 @@ export class ColonyDO extends DurableObject<Env> {
       sandbox: () => this.certifier.sealedRuns(),
       certification: (sha) => this.certifier.get(sha),
       proposal: (id) => this.withContents(this.getProposalSync(id)),
-      reader: (p) => prelandReader(this.env, p),
+      reader: (p) => prelandReader(this.storageEnv(), p),
       // Evidence only, not a change of state: the row keeps its status and updated_at (replays and stuck checks read it).
       save: (id, run, replaces) => {
         const cur = this.getProposalSync(id);
@@ -6911,6 +6918,21 @@ export class ColonyDO extends DurableObject<Env> {
     if (source) colony.source = source;
     this.colonyCache = { colony, lastLandingAt: row.last_landing_at };
     return this.colonyCache;
+  }
+
+  /** The env of a colony a person owns, made once (storageEnv). */
+  private ownedEnv: { owner: string; env: Env } | null = null;
+
+  /**
+   * The env this colony's Artifacts reads and writes go through (workspace blobs, the quarantine repo): the
+   * deployment's own env for an operator colony, the same object; for a colony a person owns, its Artifacts bindings
+   * answer from the owner's Cloudflare account, as its trunk RepoRef says (artifacts/storage.ts).
+   */
+  private storageEnv(): Env {
+    const owner = this.loadColony()?.colony.trunk.owner;
+    if (!owner) return this.env;
+    if (this.ownedEnv?.owner !== owner) this.ownedEnv = { owner, env: storageEnv(this.env, colonyStorage(this.env, owner)) };
+    return this.ownedEnv.env;
   }
 
   private requireColony(): Colony {
