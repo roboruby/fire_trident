@@ -1,0 +1,1407 @@
+{
+  "kind": "hono-replay",
+  "label": "MEASURED",
+  "command": "ruby scripts/hono_replay.rb --base https://staging.firetrident.com --clone <clone> --modules <modules> --sweep 8,16 --name hono-replay --note 'Staging build 67baa13 (path-line fix, red brake reserves after admission, FT_PRELAND checks a change'\\''s own tests; the seed lands without tests before landing); colonies at regionDepth 3; #5236 dropped (15 intents). Flags: FT_LATERAL_INHIBITION=off, FT_MEGAFILE=off (as Oct 17), FT_RED_BRAKE, FT_REVIEW_VIEW (with FT_QUOTED_ACCEPTANCE), FT_INHIBIT_STRONGEST, FT_AGE_CAP, FT_PRELAND on; FT_DEFAULT_SPEND_CAP 5.'",
+  "base": "https://staging.firetrident.com",
+  "note": "Staging build 67baa13 (path-line fix, red brake reserves after admission, FT_PRELAND checks a change's own tests; the seed lands without tests before landing); colonies at regionDepth 3; #5236 dropped (15 intents). Flags: FT_LATERAL_INHIBITION=off, FT_MEGAFILE=off (as Oct 17), FT_RED_BRAKE, FT_REVIEW_VIEW (with FT_QUOTED_ACCEPTANCE), FT_INHIBIT_STRONGEST, FT_AGE_CAP, FT_PRELAND on; FT_DEFAULT_SPEND_CAP 5.",
+  "workload": {
+    "base": "ab590e4ec8be6be06cf66bb3dcadd93d2841a835",
+    "base_date": "2026-07-10T18:15:02+09:00",
+    "base_subject": "fix(types): strip extra properties from array types in JSONParsed (#5103)",
+    "seed_files": 346,
+    "shared": [
+      [
+        "src/request.ts",
+        [
+          5133,
+          5161,
+          5268,
+          5282,
+          5288
+        ]
+      ],
+      [
+        "src/client/client.ts",
+        [
+          5202,
+          5215,
+          5244
+        ]
+      ],
+      [
+        "src/router/trie-router/node.ts",
+        [
+          5102,
+          5189
+        ]
+      ],
+      [
+        "src/utils/cookie.ts",
+        [
+          5164,
+          5246
+        ]
+      ]
+    ],
+    "by_file": {
+      "src/client/client.ts": [
+        5202,
+        5215,
+        5244
+      ],
+      "src/request.ts": [
+        5133,
+        5161,
+        5268,
+        5282,
+        5288
+      ],
+      "src/router/trie-router/node.ts": [
+        5102,
+        5189
+      ],
+      "src/utils/cookie.ts": [
+        5164,
+        5246
+      ],
+      "src/utils/stream.ts": [
+        4988,
+        5274
+      ],
+      "src/utils/url.ts": [
+        5161,
+        5209
+      ]
+    },
+    "dropped": [
+      {
+        "number": 5236,
+        "reason": "its src/hono.test.ts is 109,470 characters at B and 109,990 right after it, more than the 86,016 characters an in-platform agent can write back in one reply (packages/worker/src/agents/prompt.ts MAX_REWRITE_CHARS), so no agent can produce the file and its intent can never land",
+        "by": "hand, after selection"
+      }
+    ],
+    "notes": [
+      "#5236 was dropped by hand after selection (considered.dropped says why). The selection now skips a pull request that changes a file longer than an agent can write back (scripts/hono_replay_select.rb), but it was not run again: that needs GitHub reads and fresh vitest runs, and could choose another pull request in its place.",
+      "The pull requests after #5236 were laid on B again without it (stock git, the same fixed identity and dates), so their laid commits and the target changed; every hidden file's blob id is unchanged, and the overlap and the API scan were recomputed from the remaining pull requests."
+    ],
+    "prs": [
+      {
+        "number": 5102,
+        "title": "fix(trie-router): match empty wildcard remainder after regexp param",
+        "merged_at": "2026-07-10T09:25:38Z",
+        "src": [
+          "src/router/trie-router/node.ts"
+        ],
+        "hidden": [
+          "src/router/common.case.test.ts",
+          "src/router/linear-router/router.test.ts",
+          "src/router/trie-router/node.test.ts"
+        ],
+        "target_tests": 2
+      },
+      {
+        "number": 5133,
+        "title": "fix(request): fix multipart boundary mismatch in `cloneRawRequest`",
+        "merged_at": "2026-07-17T23:43:46Z",
+        "src": [
+          "src/request.ts"
+        ],
+        "hidden": [
+          "src/request.test.ts"
+        ],
+        "target_tests": 1
+      },
+      {
+        "number": 5161,
+        "title": "fix: use `Object.create(null)` when parsing query, headers, and params",
+        "merged_at": "2026-07-24T01:57:31Z",
+        "src": [
+          "src/request.ts",
+          "src/utils/accept.ts",
+          "src/utils/url.ts"
+        ],
+        "hidden": [
+          "src/request.test.ts",
+          "src/utils/accept.test.ts",
+          "src/utils/url.test.ts"
+        ],
+        "target_tests": 3
+      },
+      {
+        "number": 5164,
+        "title": "fix(cookie): relax name validation when parsing Cookie header",
+        "merged_at": "2026-07-26T05:04:10Z",
+        "src": [
+          "src/utils/cookie.ts"
+        ],
+        "hidden": [
+          "src/utils/cookie.test.ts"
+        ],
+        "target_tests": 2
+      },
+      {
+        "number": 5189,
+        "title": "fix(trie-router): count every slash a pattern consumes",
+        "merged_at": "2026-08-05T23:56:49Z",
+        "src": [
+          "src/router/trie-router/node.ts"
+        ],
+        "hidden": [
+          "src/router/common.case.test.ts",
+          "src/router/trie-router/node.test.ts"
+        ],
+        "target_tests": 4
+      },
+      {
+        "number": 4988,
+        "title": "fix(utils/stream): re-acquire writer lock when pipe() throws",
+        "merged_at": "2026-08-06T02:11:15Z",
+        "src": [
+          "src/utils/stream.ts"
+        ],
+        "hidden": [
+          "src/utils/stream.test.ts"
+        ],
+        "target_tests": 2
+      },
+      {
+        "number": 5202,
+        "title": "fix(client): serialize multiple cookies correctly",
+        "merged_at": "2026-08-09T07:53:34Z",
+        "src": [
+          "src/client/client.ts"
+        ],
+        "hidden": [
+          "src/client/client.test.ts"
+        ],
+        "target_tests": 1
+      },
+      {
+        "number": 5209,
+        "title": "fix(url): strip trailing question mark correctly for optional params with regex quantifiers",
+        "merged_at": "2026-08-13T00:55:57Z",
+        "src": [
+          "src/utils/url.ts"
+        ],
+        "hidden": [
+          "src/utils/url.test.ts"
+        ],
+        "target_tests": 1
+      },
+      {
+        "number": 5215,
+        "title": "fix(client): send falsy JSON bodies",
+        "merged_at": "2026-08-13T02:11:07Z",
+        "src": [
+          "src/client/client.ts"
+        ],
+        "hidden": [
+          "src/client/client.test.ts"
+        ],
+        "target_tests": 4
+      },
+      {
+        "number": 5268,
+        "title": "fix(request): handle params on unmatched requests",
+        "merged_at": "2026-08-19T10:58:41Z",
+        "src": [
+          "src/request.ts"
+        ],
+        "hidden": [
+          "src/request.test.ts"
+        ],
+        "target_tests": 1
+      },
+      {
+        "number": 5244,
+        "title": "fix(client): skip undefined header and cookie values",
+        "merged_at": "2026-08-22T05:13:48Z",
+        "src": [
+          "src/client/client.ts"
+        ],
+        "hidden": [
+          "src/client/client.test.ts"
+        ],
+        "target_tests": 2
+      },
+      {
+        "number": 5282,
+        "title": "fix(request): drop stale content length for cloned FormData",
+        "merged_at": "2026-08-23T06:57:47Z",
+        "src": [
+          "src/request.ts"
+        ],
+        "hidden": [
+          "src/request.test.ts"
+        ],
+        "target_tests": 1
+      },
+      {
+        "number": 5288,
+        "title": "fix(request): serialize cached JSON body in cloneRawRequest",
+        "merged_at": "2026-08-23T07:16:58Z",
+        "src": [
+          "src/request.ts"
+        ],
+        "hidden": [
+          "src/request.test.ts"
+        ],
+        "target_tests": 1
+      },
+      {
+        "number": 5246,
+        "title": "fix(cookie): allow parsing signed cookies with empty string values",
+        "merged_at": "2026-08-23T07:24:02Z",
+        "src": [
+          "src/utils/cookie.ts"
+        ],
+        "hidden": [
+          "src/helper/cookie/index.test.ts",
+          "src/utils/cookie.test.ts"
+        ],
+        "target_tests": 2
+      },
+      {
+        "number": 5274,
+        "title": "fix(utils/stream): do not let abort listeners crash abort()",
+        "merged_at": "2026-08-23T07:34:05Z",
+        "src": [
+          "src/utils/stream.ts"
+        ],
+        "hidden": [
+          "src/utils/stream.test.ts"
+        ],
+        "target_tests": 2
+      }
+    ],
+    "seed_left": {
+      "under benchmarks/": 79,
+      "over the 256 KiB inline limit": 1,
+      "under docs/images/": 6,
+      "under perf-measures/": 12,
+      "under runtime-tests/": 46
+    }
+  },
+  "runs": [
+    {
+      "label": "8",
+      "agents": 8,
+      "model": "@cf/moonshotai/kimi-k2.7-code=1,@cf/zai-org/glm-5.3-flash=1,@cf/openai/gpt-oss-120b=2,@cf/google/gemma-4-26b-a4b-it",
+      "colony": "hono-replay-8",
+      "person": {
+        "decisions": [
+          {
+            "at_s": 603.3,
+            "proposal": "prp_mvfmavl4sjxz78",
+            "intent": "#5202",
+            "decision": "return",
+            "rule": "tests fail",
+            "reason": "scripted person: the visible tests fail on this change: src/helper/proxy/index.test.ts: Proxy Middleware > proxy > client disconnect; src/request.test.ts: cloneRawRequest > clones consumed request object. Make them pass and propose again.",
+            "tests": {
+              "status": "ran",
+              "tests": 2446,
+              "passed": 2328,
+              "failed": 2,
+              "onTrunk": {
+                "unknown": 2
+              }
+            },
+            "waited_s": 164.3,
+            "ok": true
+          },
+          {
+            "at_s": 698.5,
+            "proposal": "prp_mvfmdlxw7oud39",
+            "intent": "#5246",
+            "decision": "return",
+            "rule": "tests fail",
+            "reason": "scripted person: the visible tests fail on this change: src/helper/cookie/index.test.ts: Cookie Middleware > Parse cookie > get all as an object > Parse cookie with getCookie(); src/helper/cookie/index.test.ts: Cookie Middleware > Parse cookie > Get signed cookie with empty value; src/helper/cookie/index.test.ts: Cookie Middleware > Set cookie > Get cookie with secure prefix; src/helper/cookie/index.test.ts: Cookie Middleware > Set cookie > Get cookie with host prefix; src/helper/proxy/index.test.ts: Proxy Middleware > proxy > client disconnect (10 failing in all). Make them pass and propose again.",
+            "tests": {
+              "status": "ran",
+              "tests": 2455,
+              "passed": 2329,
+              "failed": 10,
+              "onTrunk": {
+                "unknown": 7,
+                "fails": 3
+              }
+            },
+            "waited_s": 160.8,
+            "ok": true
+          },
+          {
+            "at_s": 1715.7,
+            "proposal": "prp_mvfmz1mojwry7m",
+            "intent": "#5202",
+            "decision": "return",
+            "rule": "tests fail",
+            "reason": "scripted person: the visible tests fail on this change: src/helper/proxy/index.test.ts: Proxy Middleware > proxy > client disconnect; src/request.test.ts: cloneRawRequest > clones consumed request object (5 failing in all). Make them pass and propose again.",
+            "tests": {
+              "status": "ran",
+              "tests": 2453,
+              "passed": 2332,
+              "failed": 5,
+              "onTrunk": {
+                "unknown": 2,
+                "fails": 3
+              }
+            },
+            "waited_s": 165.9,
+            "ok": true
+          }
+        ],
+        "retests": 3,
+        "retests_refused": 0,
+        "reports": [
+          {
+            "at_s": 2048.0,
+            "intent": "int_mvfm93jwdqatal",
+            "kind": "impossible",
+            "waited_s": 134.5,
+            "ok": true
+          }
+        ],
+        "errors": []
+      },
+      "build": "67baa13",
+      "flags": [
+        "FT_A2A",
+        "FT_AGENT_CALL_BUDGET",
+        "FT_AGE_CAP",
+        "FT_ALREADY_ON_TRUNK",
+        "FT_BISECT",
+        "FT_CREDIT_TRAILERS",
+        "FT_CULPRITS",
+        "FT_DEFAULT_SPEND_CAP",
+        "FT_DELETION_GUARD",
+        "FT_ESCALATION_BATCH",
+        "FT_FIELD_GUIDE",
+        "FT_GOAL_CONFLICT",
+        "FT_HEADS_UP",
+        "FT_HEDGE",
+        "FT_INHIBIT_STRONGEST",
+        "FT_INLINE",
+        "FT_INTENT_SPEND",
+        "FT_LESSON_SCOPE",
+        "FT_MERGE_INSERTIONS",
+        "FT_MODEL_STEPUP",
+        "FT_PERSON_WAIT",
+        "FT_PRELAND",
+        "FT_PUBLIC_GIT",
+        "FT_PUBLIC_MCP",
+        "FT_QUOTED_ACCEPTANCE",
+        "FT_RED_BRAKE",
+        "FT_REPRODUCE",
+        "FT_RESOLVER",
+        "FT_RETURN_HUNKS",
+        "FT_REVIEW_VIEW",
+        "FT_TEXT_MERGE",
+        "FT_TRUNK_TESTS",
+        "FT_TWINS",
+        "FT_VIRTUAL_CHECKOUT"
+      ],
+      "region_depth": 3,
+      "certify_exclude": [
+        "src/helper/proxy/index.test.ts > Proxy Middleware > proxy > client disconnect",
+        "src/request.test.ts > cloneRawRequest > clones consumed request object"
+      ],
+      "certification_on": true,
+      "seed": {
+        "files": 346,
+        "bytes": 2423525,
+        "changes": 7,
+        "digest": "2955e216b06262d6344fbf343b6782ad842303e255ddf97feb16017aafcb496b",
+        "landings": 7,
+        "base": "ab590e4ec8be6be06cf66bb3dcadd93d2841a835",
+        "head": "fa1c0fd46bf5343445bfd88314ddb78859065569",
+        "tests": 2446,
+        "certification": {
+          "status": "green",
+          "counts": {
+            "tests": 2446,
+            "pass": 2328,
+            "fail": 0,
+            "cancelled": 0,
+            "skipped": 23,
+            "todo": 0,
+            "suites": 773,
+            "unsupported": 95
+          },
+          "failing": 0,
+          "unsupported": 6,
+          "detail": ""
+        },
+        "check": {
+          "files": 346,
+          "differ": [],
+          "differ_count": 0,
+          "extra": []
+        }
+      },
+      "review": {
+        "enabled": true,
+        "reflexModel": "@cf/cloudflare/clef",
+        "secondOpinionModels": [
+          "@cf/google/gemma-4-26b-a4b-it",
+          "@cf/openai/gpt-oss-120b",
+          "@cf/zai-org/glm-4.7-flash"
+        ]
+      },
+      "cap_set": true,
+      "models": {
+        "@cf/moonshotai/kimi-k2.7-code": 1,
+        "@cf/zai-org/glm-5.3-flash": 1,
+        "@cf/openai/gpt-oss-120b": 2,
+        "@cf/google/gemma-4-26b-a4b-it": 4
+      },
+      "started": 8,
+      "released_at": "2026-10-19T18:51:49Z",
+      "stalls": [
+        {
+          "at_s": 1137,
+          "for_s": 305.0,
+          "open": {
+            "open": 3,
+            "claimed": 4,
+            "proposed": 3
+          },
+          "reasons": [
+            "trunk is red at 5f04247 (3 failing)",
+            "claims on the open intents' files: src/request.ts claim 2.7 (need 19.0), src/request.test.ts claim 1.9 (need 9.0), src/utils/url.ts claim 1.7 (need 16.0), src/client/client.test.ts claim 1.2 (need 9.0)",
+            "agents: 3 proposing, 5 working, 3 waiting on their own changes"
+          ]
+        }
+      ],
+      "stop": "timeout",
+      "stop_detail": "10/15 intents landed after 2400 s",
+      "report": {
+        "intents": {
+          "total": 15,
+          "landed": 10,
+          "already_on_trunk": 0,
+          "not_landed": [
+            "#5102",
+            "#5161",
+            "#5202",
+            "#5215",
+            "#5244"
+          ],
+          "per_intent": [
+            {
+              "id": "#5102",
+              "intent": "int_mvfm22tf0tkuhe",
+              "title": "fix(trie-router): match empty wildcard remainder after regexp param",
+              "change": "fix",
+              "status": "open",
+              "proposals": 2,
+              "already_on_trunk": false,
+              "rounds": null,
+              "returns": {
+                "review": 2
+              },
+              "model_calls": 13,
+              "usd": 0.03171672,
+              "landed_at_s": null,
+              "hidden": "fail"
+            },
+            {
+              "id": "#5133",
+              "intent": "int_mvfm23brcwbh2a",
+              "title": "fix(request): fix multipart boundary mismatch in `cloneRawRequest`",
+              "change": "fix",
+              "status": "landed",
+              "proposals": 1,
+              "already_on_trunk": false,
+              "rounds": 1,
+              "returns": {},
+              "model_calls": 10,
+              "usd": 0.06897947,
+              "landed_at_s": 1223.7,
+              "hidden": "fail"
+            },
+            {
+              "id": "#5161",
+              "intent": "int_mvfm23fl8bmgyv",
+              "title": "fix: use `Object.create(null)` when parsing query, headers, and params",
+              "change": "fix",
+              "status": "open",
+              "proposals": 2,
+              "already_on_trunk": false,
+              "rounds": null,
+              "returns": {
+                "review": 2
+              },
+              "model_calls": 17,
+              "usd": 0.08607627,
+              "landed_at_s": null,
+              "hidden": "fail"
+            },
+            {
+              "id": "#5164",
+              "intent": "int_mvfm240a6nz0xd",
+              "title": "fix(cookie): relax name validation when parsing Cookie header",
+              "change": "fix",
+              "status": "landed",
+              "proposals": 2,
+              "already_on_trunk": false,
+              "rounds": 2,
+              "returns": {
+                "review": 1
+              },
+              "model_calls": 8,
+              "usd": 0.01119366,
+              "landed_at_s": 337.0,
+              "hidden": "pass"
+            },
+            {
+              "id": "#5189",
+              "intent": "int_mvfm245730lt24",
+              "title": "fix(trie-router): count every slash a pattern consumes",
+              "change": "fix",
+              "status": "landed",
+              "proposals": 2,
+              "already_on_trunk": false,
+              "rounds": 2,
+              "returns": {
+                "review": 1
+              },
+              "model_calls": 10,
+              "usd": 0.04765384,
+              "landed_at_s": 1487.4,
+              "hidden": "fail"
+            },
+            {
+              "id": "#4988",
+              "intent": "int_mvfm24aiwesrtw",
+              "title": "fix(utils/stream): re-acquire writer lock when pipe() throws",
+              "change": "fix",
+              "status": "landed",
+              "proposals": 1,
+              "already_on_trunk": false,
+              "rounds": 1,
+              "returns": {},
+              "model_calls": 4,
+              "usd": 0.00307375,
+              "landed_at_s": 119.4,
+              "hidden": "pass"
+            },
+            {
+              "id": "#5202",
+              "intent": "int_mvfm24jb3uvdtr",
+              "title": "fix(client): serialize multiple cookies correctly",
+              "change": "fix",
+              "status": "open",
+              "proposals": 2,
+              "already_on_trunk": false,
+              "rounds": null,
+              "returns": {
+                "review": 2
+              },
+              "model_calls": 7,
+              "usd": 0.09431995,
+              "landed_at_s": null,
+              "hidden": "fail"
+            },
+            {
+              "id": "#5209",
+              "intent": "int_mvfm24nx5tnh51",
+              "title": "fix(url): strip trailing question mark correctly for optional params with regex quantifiers",
+              "change": "fix",
+              "status": "landed",
+              "proposals": 2,
+              "already_on_trunk": false,
+              "rounds": 2,
+              "returns": {
+                "review": 1
+              },
+              "model_calls": 8,
+              "usd": 0.01167654,
+              "landed_at_s": 1224.0,
+              "hidden": "pass"
+            },
+            {
+              "id": "#5215",
+              "intent": "int_mvfm24vern5jtn",
+              "title": "fix(client): send falsy JSON bodies",
+              "change": "fix",
+              "status": "open",
+              "proposals": 0,
+              "already_on_trunk": false,
+              "rounds": null,
+              "returns": {},
+              "model_calls": 3,
+              "usd": 0.0068806,
+              "landed_at_s": null,
+              "hidden": "fail"
+            },
+            {
+              "id": "#5268",
+              "intent": "int_mvfm2545flmqis",
+              "title": "fix(request): handle params on unmatched requests",
+              "change": "fix",
+              "status": "landed",
+              "proposals": 1,
+              "already_on_trunk": false,
+              "rounds": 1,
+              "returns": {},
+              "model_calls": 4,
+              "usd": 0.00713002,
+              "landed_at_s": 213.4,
+              "hidden": "pass"
+            },
+            {
+              "id": "#5244",
+              "intent": "int_mvfm258e4tgg5a",
+              "title": "fix(client): skip undefined header and cookie values",
+              "change": "fix",
+              "status": "open",
+              "proposals": 0,
+              "already_on_trunk": false,
+              "rounds": null,
+              "returns": {},
+              "model_calls": 4,
+              "usd": 0.04522305,
+              "landed_at_s": null,
+              "hidden": "fail"
+            },
+            {
+              "id": "#5282",
+              "intent": "int_mvfm25cy2lnzpt",
+              "title": "fix(request): drop stale content length for cloned FormData",
+              "change": "fix",
+              "status": "landed",
+              "proposals": 1,
+              "already_on_trunk": false,
+              "rounds": 1,
+              "returns": {},
+              "model_calls": 4,
+              "usd": 0.00724179,
+              "landed_at_s": 314.1,
+              "hidden": "fail"
+            },
+            {
+              "id": "#5288",
+              "intent": "int_mvfm25m16qm35a",
+              "title": "fix(request): serialize cached JSON body in cloneRawRequest",
+              "change": "fix",
+              "status": "landed",
+              "proposals": 1,
+              "already_on_trunk": false,
+              "rounds": 1,
+              "returns": {},
+              "model_calls": 4,
+              "usd": 0.00641206,
+              "landed_at_s": 1237.9,
+              "hidden": "fail"
+            },
+            {
+              "id": "#5246",
+              "intent": "int_mvfm25qcvxg4fe",
+              "title": "fix(cookie): allow parsing signed cookies with empty string values",
+              "change": "fix",
+              "status": "landed",
+              "proposals": 2,
+              "already_on_trunk": false,
+              "rounds": 2,
+              "returns": {
+                "review": 1
+              },
+              "model_calls": 13,
+              "usd": 0.06974556,
+              "landed_at_s": 1955.0,
+              "hidden": "pass"
+            },
+            {
+              "id": "#5274",
+              "intent": "int_mvfm25v4fmzyz0",
+              "title": "fix(utils/stream): do not let abort listeners crash abort()",
+              "change": "fix",
+              "status": "landed",
+              "proposals": 1,
+              "already_on_trunk": false,
+              "rounds": 1,
+              "returns": {},
+              "model_calls": 4,
+              "usd": 0.00328207,
+              "landed_at_s": 193.4,
+              "hidden": "pass"
+            }
+          ]
+        },
+        "concurrency": {
+          "peak_in_flight": 9,
+          "mean_in_flight": 6.7,
+          "colony_intents": {}
+        },
+        "returns": {
+          "proposals": 20,
+          "landed": 10,
+          "already_on_trunk": 0,
+          "returned": 10,
+          "redirects": 0,
+          "rejected": 0,
+          "escalated_now": 0,
+          "in_flight": 0,
+          "by_cause": {
+            "stale": 0,
+            "text_merge": 0,
+            "review": 10,
+            "rule": 0,
+            "other": 0
+          },
+          "labels": {
+            "stale": "stale read",
+            "text_merge": "text-merge conflict",
+            "review": "review",
+            "rule": "rule",
+            "other": "other"
+          },
+          "other": {}
+        },
+        "cause_repeat": {
+          "rate": 0.4286,
+          "repeats": 3,
+          "eligible": 7,
+          "by_cause": {
+            "stale": {
+              "repeats": 0,
+              "eligible": 0,
+              "rate": null
+            },
+            "text_merge": {
+              "repeats": 0,
+              "eligible": 0,
+              "rate": null
+            },
+            "review": {
+              "repeats": 3,
+              "eligible": 7,
+              "rate": 0.4286
+            },
+            "rule": {
+              "repeats": 0,
+              "eligible": 0,
+              "rate": null
+            },
+            "other": {
+              "repeats": 0,
+              "eligible": 0,
+              "rate": null
+            }
+          }
+        },
+        "rounds": {
+          "landed": 10,
+          "median_rounds": 1.0,
+          "max_rounds": 2,
+          "median_calls": 6.0,
+          "calls_counted": true,
+          "by_cause": {
+            "stale": {
+              "intents": 0,
+              "median_rounds": null,
+              "median_calls": null,
+              "rounds": 0,
+              "calls": 0
+            },
+            "text_merge": {
+              "intents": 0,
+              "median_rounds": null,
+              "median_calls": null,
+              "rounds": 0,
+              "calls": 0
+            },
+            "review": {
+              "intents": 4,
+              "median_rounds": 2.0,
+              "median_calls": 9.0,
+              "rounds": 8,
+              "calls": 39
+            },
+            "rule": {
+              "intents": 0,
+              "median_rounds": null,
+              "median_calls": null,
+              "rounds": 0,
+              "calls": 0
+            },
+            "other": {
+              "intents": 0,
+              "median_rounds": null,
+              "median_calls": null,
+              "rounds": 0,
+              "calls": 0
+            },
+            "first try": {
+              "intents": 6,
+              "median_rounds": 1.0,
+              "median_calls": 4.0,
+              "rounds": 6,
+              "calls": 30
+            }
+          }
+        },
+        "red": {
+          "certifications": 13,
+          "red_results": 9,
+          "errors": 1,
+          "episodes": 2,
+          "open_at_end": 1,
+          "median_time_to_green_s": 16.6,
+          "max_time_to_green_s": 16.6,
+          "time_red_s": 2097.0,
+          "repair_intents": {
+            "declared": 2,
+            "landed": 0
+          },
+          "list": [
+            {
+              "red_sha": "b5509308dfda5183c5ec47b59d4e60f7ef3050d7",
+              "red_at_s": -24.5,
+              "failing": [
+                "src/adapter/lambda-edge/handler.test.ts",
+                "src/client/types.test.ts",
+                "src/helper/factory/index.test.ts",
+                "src/helper/ssg/utils.test.ts",
+                "src/hono.test.ts"
+              ],
+              "green_sha": "fa1c0fd46bf5343445bfd88314ddb78859065569",
+              "time_to_green_s": 16.6,
+              "time_red_s": 16.6,
+              "landings_during": 4,
+              "culprit": {
+                "by": "suspect",
+                "landing": "lnd_mvfm1mb5oyive7",
+                "proposals": [
+                  {
+                    "id": "prp_mvfm1kc1copqhr",
+                    "intent": "int_mvfm1cfsgudacc"
+                  }
+                ]
+              }
+            },
+            {
+              "red_sha": "4d30d8b41e3ee4954f8bc5947aad745d19d89056",
+              "red_at_s": 321.8,
+              "failing": [
+                "src/request.test.ts"
+              ],
+              "green_sha": null,
+              "time_to_green_s": null,
+              "time_red_s": 2080.4,
+              "landings_during": 6,
+              "culprit": {
+                "by": "first red",
+                "landing": "lnd_mvfm8x1y2ykonw",
+                "proposals": [
+                  {
+                    "id": "prp_mvfm8r0jbsdz74",
+                    "intent": "#5282"
+                  }
+                ]
+              }
+            }
+          ],
+          "brake": {
+            "held": 3,
+            "still_held": 0,
+            "went_on": {
+              "ceiling": 3
+            },
+            "median_held_s": 570.1,
+            "max_held_s": 846.8,
+            "reserved": 1,
+            "escalated": 0,
+            "stops": {
+              "ceiling": 1
+            },
+            "to_green_s": [
+              16.6
+            ]
+          }
+        },
+        "semantic": {
+          "pairs_landed": 1,
+          "observed": [
+            {
+              "second": "#5282",
+              "first": [
+                "#5268"
+              ],
+              "how": "broke its tests",
+              "episode": 2,
+              "red_sha": "4d30d8b41e3ee4954f8bc5947aad745d19d89056",
+              "culprit_by": "first red",
+              "failing": [
+                "src/request.test.ts"
+              ],
+              "designed": null
+            }
+          ],
+          "own_mistakes": 1,
+          "designed": []
+        },
+        "human_queue": {
+          "escalations": 3,
+          "held_merges": 0,
+          "agent_reports": 1,
+          "stuck": {},
+          "audit_items": null,
+          "audit_note": "this build keeps no audit queue",
+          "total": 4,
+          "waiting_at_end": 0,
+          "median_time_in_queue_s": 174.4,
+          "max_time_in_queue_s": 197.0,
+          "items": [
+            {
+              "kind": "review escalation",
+              "subject": "prp_mvfmavl4sjxz78",
+              "intent": "#5202",
+              "answer": "returned",
+              "opened_at_s": 405.9,
+              "time_in_queue_s": 197.0
+            },
+            {
+              "kind": "review escalation",
+              "subject": "prp_mvfmdlxw7oud39",
+              "intent": "#5246",
+              "answer": "returned",
+              "opened_at_s": 533.4,
+              "time_in_queue_s": 164.2
+            },
+            {
+              "kind": "review escalation",
+              "subject": "prp_mvfmz1mojwry7m",
+              "intent": "#5202",
+              "answer": "returned",
+              "opened_at_s": 1532.6,
+              "time_in_queue_s": 182.6
+            },
+            {
+              "kind": "agent report",
+              "subject": "int_mvfm93jwdqatal",
+              "intent": "int_mvfm93jwdqatal",
+              "report_kind": "impossible",
+              "answer": "dismiss",
+              "opened_at_s": 1881.7,
+              "time_in_queue_s": 166.3
+            }
+          ]
+        },
+        "spend": {
+          "usd": 0.73816456,
+          "by_layer": {
+            "agents": 0.71643285,
+            "review": 0.02173171,
+            "judge": 0,
+            "resolver": 0,
+            "other": 0
+          },
+          "by_model": {
+            "@cf/google/gemma-4-26b-a4b-it": {
+              "usd": 0.129463,
+              "input": 654196,
+              "output": 213478,
+              "agents": 4,
+              "agent_calls": 44
+            },
+            "@cf/moonshotai/kimi-k2.7-code": {
+              "usd": 0.34757745,
+              "input": 111151,
+              "output": 60496,
+              "agents": 1,
+              "agent_calls": 10
+            },
+            "@cf/openai/gpt-oss-120b": {
+              "usd": 0.23964165,
+              "input": 336249,
+              "output": 162606,
+              "agents": 2,
+              "agent_calls": 24
+            },
+            "@cf/zai-org/glm-5.3-flash": {
+              "usd": 0.01282025,
+              "input": 43315,
+              "output": 12646,
+              "agents": 1,
+              "agent_calls": 7
+            },
+            "@cf/cloudflare/clef": {
+              "usd": 0.00817488,
+              "input": 34062,
+              "output": 0,
+              "agents": 0,
+              "agent_calls": 0
+            },
+            "@cf/zai-org/glm-4.7-flash": {
+              "usd": 0.00048733,
+              "input": 6250,
+              "output": 273,
+              "agents": 0,
+              "agent_calls": 0
+            }
+          },
+          "unpriced": {},
+          "agent_calls": 85,
+          "review_calls": 35,
+          "model_calls": 120,
+          "per_landed_intent": 0.073816,
+          "colony_per_landed_intent": 0.04342144,
+          "cap": {
+            "usd": 15,
+            "reviewReserveUsd": 1.5,
+            "spentUsd": 0.7821828,
+            "state": "open"
+          }
+        },
+        "wall": {
+          "release_to_last_landing_s": null,
+          "last_landing_so_far_s": 1955.0,
+          "release_to_green_s": null,
+          "run_s": 2402.1
+        }
+      },
+      "end_at": 1792438311569,
+      "release_at": 1792435909427,
+      "grade": {
+        "method": "vitest (Hono's main project) on B with the run's changes laid over it and each intent's hidden test files copied in; an intent passes when every one of its own tests passes",
+        "files": {
+          "#5102": "fail",
+          "#5133": "fail",
+          "#5161": "fail",
+          "#5164": "pass",
+          "#5189": "fail",
+          "#4988": "pass",
+          "#5202": "fail",
+          "#5209": "pass",
+          "#5215": "fail",
+          "#5268": "pass",
+          "#5244": "fail",
+          "#5282": "fail",
+          "#5288": "fail",
+          "#5246": "pass",
+          "#5274": "pass"
+        },
+        "passed": 6,
+        "failed": 9,
+        "other": 0,
+        "per_intent": {
+          "#5102": {
+            "verdict": "fail",
+            "files_pass": false,
+            "tests": 553,
+            "passed": 529,
+            "failed": 2,
+            "target_tests": 2,
+            "target_passed": 0,
+            "failing": [
+              "src/router/trie-router/node.test.ts: Multi match > Regexp > /regex-abc/123",
+              "src/router/trie-router/router.test.ts: TrieRouter > Common > Capture regex param with trailing wildcard on empty remainder > GET /123"
+            ],
+            "seconds": 0.6
+          },
+          "#5133": {
+            "verdict": "fail",
+            "files_pass": false,
+            "tests": 39,
+            "passed": 38,
+            "failed": 1,
+            "target_tests": 1,
+            "target_passed": 0,
+            "failing": [
+              "src/request.test.ts: cloneRawRequest > clones consumed multipart request with a matching boundary"
+            ],
+            "seconds": 0.3
+          },
+          "#5161": {
+            "verdict": "fail",
+            "files_pass": false,
+            "tests": 103,
+            "passed": 99,
+            "failed": 4,
+            "target_tests": 3,
+            "target_passed": 0,
+            "failing": [
+              "src/request.test.ts: headers > req.header() is not affected by a `__proto__` header name",
+              "src/request.test.ts: cloneRawRequest > clones consumed multipart request with a matching boundary",
+              "src/utils/accept.test.ts: parseAccept Comprehensive Tests > Parameter Handling > treats `__proto__` as a normal parameter without changing the prototype",
+              "src/utils/url.test.ts: url > getQueryParams > should treat `__proto__` as a normal key without changing the prototype"
+            ],
+            "seconds": 0.4
+          },
+          "#5164": {
+            "verdict": "pass",
+            "files_pass": false,
+            "tests": 46,
+            "passed": 43,
+            "failed": 3,
+            "target_tests": 2,
+            "target_passed": 2,
+            "failing": [
+              "src/utils/cookie.test.ts: Parse cookie > Should ignore invalid cookie names",
+              "src/utils/cookie.test.ts: Parse cookie > Should ignore cookie names containing non-ASCII or control characters",
+              "src/utils/cookie.test.ts: Parse cookie > Should not collapse NBSP-prefixed cookie names when parsing all cookies"
+            ],
+            "seconds": 0.3
+          },
+          "#5189": {
+            "verdict": "fail",
+            "files_pass": false,
+            "tests": 567,
+            "passed": 542,
+            "failed": 5,
+            "target_tests": 4,
+            "target_passed": 3,
+            "failing": [
+              "src/router/linear-router/router.test.ts: LinearRouter > Common > Capture regex param with trailing wildcard on empty remainder > GET /123",
+              "src/router/linear-router/router.test.ts: LinearRouter > Common > Capture regex param with trailing wildcard and sibling route > GET /regex-abc/123/ghi",
+              "src/router/trie-router/node.test.ts: Multi match > Regexp > /regex-abc/123",
+              "src/router/trie-router/node.test.ts: Pattern spanning multiple parts > followed by a wildcard > should return the handler once per matching part count",
+              "src/router/trie-router/router.test.ts: TrieRouter > Common > Capture regex param with trailing wildcard on empty remainder > GET /123"
+            ],
+            "seconds": 0.4
+          },
+          "#4988": {
+            "verdict": "pass",
+            "files_pass": true,
+            "tests": 11,
+            "passed": 11,
+            "failed": 0,
+            "target_tests": 2,
+            "target_passed": 2,
+            "failing": [],
+            "seconds": 0.3
+          },
+          "#5202": {
+            "verdict": "fail",
+            "files_pass": false,
+            "tests": 104,
+            "passed": 103,
+            "failed": 1,
+            "target_tests": 1,
+            "target_passed": 0,
+            "failing": [
+              "src/client/client.test.ts: Basic - query, queries, form, path params, header and cookie > Should get 200 response - cookie"
+            ],
+            "seconds": 0.5
+          },
+          "#5209": {
+            "verdict": "pass",
+            "files_pass": false,
+            "tests": 34,
+            "passed": 33,
+            "failed": 1,
+            "target_tests": 1,
+            "target_passed": 1,
+            "failing": [
+              "src/utils/url.test.ts: url > getQueryParams > should treat `__proto__` as a normal key without changing the prototype"
+            ],
+            "seconds": 0.3
+          },
+          "#5215": {
+            "verdict": "fail",
+            "files_pass": false,
+            "tests": 108,
+            "passed": 103,
+            "failed": 5,
+            "target_tests": 4,
+            "target_passed": 0,
+            "failing": [
+              "src/client/client.test.ts: Basic - query, queries, form, path params, header and cookie > Should get 200 response - cookie",
+              "src/client/client.test.ts: Use custom fetch (app.request) method > Should send falsy JSON value: false",
+              "src/client/client.test.ts: Use custom fetch (app.request) method > Should send falsy JSON value: 0",
+              "src/client/client.test.ts: Use custom fetch (app.request) method > Should send falsy JSON value: \"\"",
+              "src/client/client.test.ts: Use custom fetch (app.request) method > Should send falsy JSON value: null"
+            ],
+            "seconds": 0.5
+          },
+          "#5268": {
+            "verdict": "pass",
+            "files_pass": false,
+            "tests": 41,
+            "passed": 39,
+            "failed": 2,
+            "target_tests": 1,
+            "target_passed": 1,
+            "failing": [
+              "src/request.test.ts: headers > req.header() is not affected by a `__proto__` header name",
+              "src/request.test.ts: cloneRawRequest > clones consumed multipart request with a matching boundary"
+            ],
+            "seconds": 0.3
+          },
+          "#5244": {
+            "verdict": "fail",
+            "files_pass": false,
+            "tests": 110,
+            "passed": 103,
+            "failed": 7,
+            "target_tests": 2,
+            "target_passed": 0,
+            "failing": [
+              "src/client/client.test.ts: Basic - query, queries, form, path params, header and cookie > Should get 200 response - cookie",
+              "src/client/client.test.ts: Optional header and cookie values > Should skip undefined header and cookie values",
+              "src/client/client.test.ts: Optional header and cookie values > Should not send a Cookie header if all cookie values are undefined",
+              "src/client/client.test.ts: Use custom fetch (app.request) method > Should send falsy JSON value: false",
+              "src/client/client.test.ts: Use custom fetch (app.request) method > Should send falsy JSON value: 0",
+              "src/client/client.test.ts: Use custom fetch (app.request) method > Should send falsy JSON value: \"\"",
+              "src/client/client.test.ts: Use custom fetch (app.request) method > Should send falsy JSON value: null"
+            ],
+            "seconds": 0.5
+          },
+          "#5282": {
+            "verdict": "fail",
+            "files_pass": false,
+            "tests": 42,
+            "passed": 39,
+            "failed": 3,
+            "target_tests": 1,
+            "target_passed": 0,
+            "failing": [
+              "src/request.test.ts: headers > req.header() is not affected by a `__proto__` header name",
+              "src/request.test.ts: cloneRawRequest > clones consumed multipart request with a matching boundary",
+              "src/request.test.ts: cloneRawRequest > drops stale content length when cloning consumed multipart request"
+            ],
+            "seconds": 0.3
+          },
+          "#5288": {
+            "verdict": "fail",
+            "files_pass": false,
+            "tests": 43,
+            "passed": 39,
+            "failed": 4,
+            "target_tests": 1,
+            "target_passed": 0,
+            "failing": [
+              "src/request.test.ts: headers > req.header() is not affected by a `__proto__` header name",
+              "src/request.test.ts: cloneRawRequest > clones consumed multipart request with a matching boundary",
+              "src/request.test.ts: cloneRawRequest > drops stale content length when cloning consumed multipart request",
+              "src/request.test.ts: cloneRawRequest > clones request when external code populated bodyCache.json"
+            ],
+            "seconds": 0.3
+          },
+          "#5246": {
+            "verdict": "pass",
+            "files_pass": false,
+            "tests": 77,
+            "passed": 74,
+            "failed": 3,
+            "target_tests": 2,
+            "target_passed": 2,
+            "failing": [
+              "src/utils/cookie.test.ts: Parse cookie > Should ignore invalid cookie names",
+              "src/utils/cookie.test.ts: Parse cookie > Should ignore cookie names containing non-ASCII or control characters",
+              "src/utils/cookie.test.ts: Parse cookie > Should not collapse NBSP-prefixed cookie names when parsing all cookies"
+            ],
+            "seconds": 0.4
+          },
+          "#5274": {
+            "verdict": "pass",
+            "files_pass": true,
+            "tests": 14,
+            "passed": 14,
+            "failed": 0,
+            "target_tests": 2,
+            "target_passed": 2,
+            "failing": [],
+            "seconds": 0.3
+          }
+        },
+        "target_tests": 29,
+        "target_passed": 13,
+        "suite": {
+          "files": 121,
+          "tests": 3683,
+          "passed": 3651,
+          "failed": 6,
+          "skipped": 26,
+          "load_failures": 0,
+          "success": false,
+          "failing": [
+            "src/request.test.ts: Body methods with caching > req.json()",
+            "src/request.test.ts: cloneRawRequest > clones FormData and drops stale Content-Length",
+            "src/validator/validator.test.ts: Raw Request cloning after validation > Should allow the `cloneRawRequest` util to clone the request object after validation",
+            "src/utils/cookie.test.ts: Parse cookie > Should ignore invalid cookie names",
+            "src/utils/cookie.test.ts: Parse cookie > Should not collapse NBSP-prefixed cookie names when parsing all cookies",
+            "src/helper/cookie/index.test.ts: Cookie Middleware > Parse cookie > Get signed cookie with empty value"
+          ]
+        },
+        "delta": {
+          "files": 12,
+          "added_or_changed": 12,
+          "deleted": 0,
+          "paths": [
+            "src/helper/cookie/index.test.ts",
+            "src/request.test.ts",
+            "src/request.ts",
+            "src/router/common.case.test.ts",
+            "src/router/trie-router/node.test.ts",
+            "src/router/trie-router/node.ts",
+            "src/utils/cookie.test.ts",
+            "src/utils/cookie.ts",
+            "src/utils/stream.test.ts",
+            "src/utils/stream.ts",
+            "src/utils/url.test.ts",
+            "src/utils/url.ts"
+          ]
+        },
+        "trunk_sha": "faf7c72f84104ac5a068968a33229d9662fba7b9",
+        "read_by": "public git",
+        "by": "real vitest"
+      },
+      "deleted": true
+    },
+    {
+      "label": "16",
+      "agents": 16,
+      "model": "@cf/moonshotai/kimi-k2.7-code=1,@cf/zai-org/glm-5.3-flash=1,@cf/openai/gpt-oss-120b=2,@cf/google/gemma-4-26b-a4b-it",
+      "colony": "hono-replay-16",
+      "person": {
+        "decisions": [],
+        "retests": 0,
+        "retests_refused": 0,
+        "reports": [],
+        "errors": []
+      },
+      "build": "67baa13",
+      "flags": [
+        "FT_A2A",
+        "FT_AGENT_CALL_BUDGET",
+        "FT_AGE_CAP",
+        "FT_ALREADY_ON_TRUNK",
+        "FT_BISECT",
+        "FT_CREDIT_TRAILERS",
+        "FT_CULPRITS",
+        "FT_DEFAULT_SPEND_CAP",
+        "FT_DELETION_GUARD",
+        "FT_ESCALATION_BATCH",
+        "FT_FIELD_GUIDE",
+        "FT_GOAL_CONFLICT",
+        "FT_HEADS_UP",
+        "FT_HEDGE",
+        "FT_INHIBIT_STRONGEST",
+        "FT_INLINE",
+        "FT_INTENT_SPEND",
+        "FT_LESSON_SCOPE",
+        "FT_MERGE_INSERTIONS",
+        "FT_MODEL_STEPUP",
+        "FT_PERSON_WAIT",
+        "FT_PRELAND",
+        "FT_PUBLIC_GIT",
+        "FT_PUBLIC_MCP",
+        "FT_QUOTED_ACCEPTANCE",
+        "FT_RED_BRAKE",
+        "FT_REPRODUCE",
+        "FT_RESOLVER",
+        "FT_RETURN_HUNKS",
+        "FT_REVIEW_VIEW",
+        "FT_TEXT_MERGE",
+        "FT_TRUNK_TESTS",
+        "FT_TWINS",
+        "FT_VIRTUAL_CHECKOUT"
+      ],
+      "stop": "failed",
+      "stop_detail": "creating colony hono-replay-16: HTTP 500: Expected \"unpack ok\" or \"unpack [error message]\" but received \"\"."
+    }
+  ],
+  "transitions": []
+}
