@@ -6,7 +6,11 @@ import type { Plan } from "../../src/certify/plan.ts";
 import {
   PRELAND_CHECK,
   PRELAND_FILES,
+  deletedPassing,
+  deletionAsked,
   judgeRun,
+  namesFile,
+  ownTests,
   prelandCheck,
   prelandGlobs,
   prelandMatches,
@@ -441,5 +445,242 @@ describe("the certifier's precheck (tests before landing)", () => {
     expect(await narrow.certifier.precheck(bad.p, bad.read)).toBeNull();
     expect(narrow.certifier.prelandCovers(["src/api/x.ts"])).toBe(true);
     expect(narrow.runner.loads).toHaveLength(0);
+  });
+});
+
+/**
+ * The change's own tests (FT_PRELAND): a test file the change adds or edits whose new tests fail with it sends it back,
+ * and so does deleting a test file that passed on trunk, unless a person's intent names that file.
+ */
+const NEG_FAILS = 'import { test } from "node:test";\nimport assert from "node:assert/strict";\nimport { sub } from "../src/math.ts";\ntest("subtracts negatives", () => {\n  assert.equal(sub(-1, -1), 1);\n});\n';
+const NEG_PASSES = NEG_FAILS.replace("sub(-1, -1), 1", "sub(-1, -1), 0");
+const OTHER_TS = 'export const name = "a";\n';
+
+describe("which test files are the change's own", () => {
+  it("lists the test files it adds, edits and deletes by path, without the ones the policy excludes whole", () => {
+    const before = { tests: ["test/a.test.ts", "test/b.test.ts", "test/c.test.ts", "test/x.test.ts"] };
+    const after = { tests: ["test/a.test.ts", "test/b.test.ts", "test/new.test.ts", "test/x.test.ts", "test/y.test.ts"] };
+    const writes = [
+      { path: "test/new.test.ts", blob: "n" },
+      { path: "test/b.test.ts", blob: "b" },
+      { path: "test/c.test.ts", blob: null },
+      { path: "src/a.ts", blob: "s" },
+      { path: "test/x.test.ts", blob: "x" },
+      { path: "test/y.test.ts", blob: "y" },
+      { path: "test/gone.test.ts", blob: null },
+    ];
+    expect(ownTests(before, after, writes)).toEqual({ added: ["test/new.test.ts", "test/y.test.ts"], edited: ["test/b.test.ts", "test/x.test.ts"], deleted: ["test/c.test.ts"] });
+    expect(ownTests(before, after, writes, (p) => p === "test/x.test.ts" || p === "test/y.test.ts")).toEqual({ added: ["test/new.test.ts"], edited: ["test/b.test.ts"], deleted: ["test/c.test.ts"] });
+  });
+
+  it("lets a change delete a test file only when a person declared its intent and named the file's path", () => {
+    const human = (why: string, extra: Record<string, unknown> = {}) => ({ source: "human", title: "Retire the old parser", why, ...extra });
+    expect(deletionAsked(human("Delete src/old.test.ts: the parser it covers is gone."), "src/old.test.ts")).toBe(true);
+    expect(deletionAsked(human("Remove `./src/old.test.ts`."), "src/old.test.ts")).toBe(true);
+    expect(deletionAsked(human("Nothing here.", { acceptance: ["src/old.test.ts no longer exists"] }), "src/old.test.ts")).toBe(true);
+    expect(deletionAsked({ source: "human", title: "Delete src/old.test.ts", why: "" }, "src/old.test.ts")).toBe(true);
+    // The file's name alone, a longer path or name, another source, or no intent: not asked.
+    expect(deletionAsked(human("Delete old.test.ts."), "src/old.test.ts")).toBe(false);
+    expect(deletionAsked(human("Delete lib/src/old.test.ts and src/old.test.tsx."), "src/old.test.ts")).toBe(false);
+    expect(deletionAsked(human("Delete src/old.test.ts.bak."), "src/old.test.ts")).toBe(false);
+    expect(deletionAsked({ source: "agent", title: "Delete src/old.test.ts", why: "src/old.test.ts" }, "src/old.test.ts")).toBe(false);
+    expect(deletionAsked({ source: "external", title: "Delete src/old.test.ts", why: "" }, "src/old.test.ts")).toBe(false);
+    expect(deletionAsked(null, "src/old.test.ts")).toBe(false);
+    expect(namesFile("see src/a+b.test.ts", "src/a+b.test.ts")).toBe(true);
+  });
+
+  it("holds a deleted test file that loaded and passed a test on trunk, not one that failed, did not load or has no result", () => {
+    const result = (path: Path, tests: Array<[string, "pass" | "fail"]>, loadError: string | null = null): FileResult => ({ path, loadError, tests: tests.map(([name, status]) => ({ name, file: path, status })), suites: [] });
+    const trunk = new Map([
+      ["t/a.test.ts", result("t/a.test.ts", [["one", "pass"], ["two", "fail"]])],
+      ["t/b.test.ts", result("t/b.test.ts", [["red", "fail"]])],
+      ["t/c.test.ts", result("t/c.test.ts", [], "SyntaxError")],
+      ["t/d.test.ts", result("t/d.test.ts", [["excluded", "pass"]])],
+    ]);
+    const files = ["t/a.test.ts", "t/b.test.ts", "t/c.test.ts", "t/d.test.ts", "t/none.test.ts"];
+    expect(deletedPassing(files, trunk, (f, n) => f === "t/d.test.ts" && n === "excluded")).toEqual([{ file: "t/a.test.ts", name: "t/a.test.ts", kind: "deleted" }]);
+    expect(deletedPassing(files, trunk).map((b) => b.file)).toEqual(["t/a.test.ts", "t/d.test.ts"]);
+  });
+});
+
+describe("judging the change's own test files", () => {
+  const trunkResult = (path: Path, tests: Array<[string, "pass" | "fail"]>, loadError: string | null = null): FileResult => ({
+    path,
+    loadError,
+    tests: tests.map(([name, status]) => ({ name, file: path, status })),
+    suites: [],
+  });
+  const report = (files: RunReport["files"], tests: RunReport["tests"]): RunReport => ({ runner: "r", files, tests, suites: [], ms: 1 });
+
+  it("holds a failing test trunk's result does not list; a test failing there too, or one the policy excludes, stays known", () => {
+    const trunk = new Map([["t/a.test.ts", trunkResult("t/a.test.ts", [["passes", "pass"], ["was red", "fail"]])]]);
+    const run = report(
+      [
+        { path: "t/a.test.ts", ms: 1, tests: 4, loadError: null },
+        { path: "t/new.test.ts", ms: 1, tests: 1, loadError: null },
+      ],
+      [
+        { name: "passes", file: "t/a.test.ts", status: "pass" },
+        { name: "was red", file: "t/a.test.ts", status: "fail", error: "still red" },
+        { name: "added", file: "t/a.test.ts", status: "fail", error: "Expected 1, got 0" },
+        { name: "runtime gap", file: "t/a.test.ts", status: "fail", error: "not in this runtime" },
+        { name: "brand new", file: "t/new.test.ts", status: "fail", error: "nope" },
+      ],
+    );
+    const own = new Set(["t/a.test.ts", "t/new.test.ts"]);
+    const j = judgeRun(run, ["t/a.test.ts", "t/new.test.ts"], trunk, { own, excluded: (f, n) => f === "t/a.test.ts" && n === "runtime gap" });
+    expect(j).toEqual({
+      tests: 5,
+      passed: 1,
+      failed: 4,
+      known: 2,
+      broke: [
+        { file: "t/a.test.ts", name: "added", error: "Expected 1, got 0", kind: "own" },
+        { file: "t/new.test.ts", name: "brand new", error: "nope", kind: "own" },
+      ],
+      unjudged: [],
+    });
+    // Not the change's own files: the same run holds nothing (as before).
+    expect(judgeRun(run, ["t/a.test.ts", "t/new.test.ts"], trunk).broke).toEqual([]);
+  });
+
+  it("holds an own file that fails to load when it is new or loaded on trunk, not when it failed to load there too", () => {
+    const trunk = new Map([
+      ["t/edited.test.ts", trunkResult("t/edited.test.ts", [["red", "fail"]])],
+      ["t/broken.test.ts", trunkResult("t/broken.test.ts", [], "SyntaxError: on trunk")],
+    ]);
+    const run = report(
+      [
+        { path: "t/new.test.ts", ms: 1, tests: 0, loadError: "ReferenceError: src is not defined" },
+        { path: "t/edited.test.ts", ms: 1, tests: 0, loadError: "SyntaxError: now" },
+        { path: "t/broken.test.ts", ms: 1, tests: 0, loadError: "SyntaxError: still" },
+      ],
+      [],
+    );
+    const files = ["t/new.test.ts", "t/edited.test.ts", "t/broken.test.ts"];
+    const j = judgeRun(run, files, trunk, { own: new Set(files) });
+    expect(j.broke).toEqual([
+      { file: "t/new.test.ts", name: "t/new.test.ts", error: "ReferenceError: src is not defined", kind: "own" },
+      { file: "t/edited.test.ts", name: "t/edited.test.ts", error: "SyntaxError: now", kind: "own" },
+    ]);
+    expect(j).toMatchObject({ tests: 3, failed: 3, known: 1 });
+  });
+
+  it("says what the change's own tests and deleted files did, and what to do next, in a sentence", () => {
+    const own = { file: "test/neg.test.ts", name: "subtracts negatives", error: "Expected 1, got 0", kind: "own" as const };
+    expect(prelandReason([own])).toBe(
+      'Tests before landing: the test "subtracts negatives" in test/neg.test.ts, a test file this change adds or edits, fails with it: Expected 1, got 0. A change cannot land tests its own code fails: fix the code, or the test if it asks for the wrong behavior, then propose again.',
+    );
+    expect(prelandReason([{ file: "src/router/node.test.ts", name: "src/router/node.test.ts", error: "ReferenceError: src is not defined", kind: "own" }])).toBe(
+      "Tests before landing: the test file src/router/node.test.ts, which this change adds or edits, fails to load: ReferenceError: src is not defined. A change cannot land tests its own code fails: fix the code, or the test if it asks for the wrong behavior, then propose again.",
+    );
+    expect(prelandReason([{ file: "src/url.test.ts", name: "src/url.test.ts", kind: "deleted" }])).toBe(
+      "Tests before landing: this change deletes the test file src/url.test.ts, whose tests passed on trunk. Keep that file (a passing test file is deleted only when the intent a person declared names its path), then propose again.",
+    );
+    expect(
+      prelandReason([
+        { file: "src/url.test.ts", name: "src/url.test.ts", kind: "deleted" },
+        { file: "src/cookie.test.ts", name: "src/cookie.test.ts", kind: "deleted" },
+        { file: "test/math.test.ts", name: "subtracts", error: "8 !== 2" },
+        own,
+        { ...own, name: "adds" },
+      ]),
+    ).toBe(
+      'Tests before landing: the test "subtracts" in test/math.test.ts passed on trunk and fails with this change: 8 !== 2; 2 tests in test files this change adds or edits fail with it: the test "subtracts negatives" in test/neg.test.ts: Expected 1, got 0; the test "adds" in test/neg.test.ts: Expected 1, got 0; this change deletes 2 test files whose tests passed on trunk: src/url.test.ts; src/cookie.test.ts. Fix the change so that test passes again (a test that passed on trunk is the specification); a change cannot land tests its own code fails: fix the code, or the test if it asks for the wrong behavior; keep those files (a passing test file is deleted only when the intent a person declared names its path), then propose again.',
+    );
+  });
+});
+
+describe("the certifier's precheck of the change's own tests", () => {
+  const seed = { "src/math.ts": MATH_OK, "test/math.test.ts": MATH_TEST, "src/other.ts": OTHER_TS, "test/other.test.ts": OTHER_TEST };
+
+  it("sends back a change that adds a test its code fails, naming it, and passes one that adds a passing test", async () => {
+    const trunk = new Trunk();
+    const head = trunk.commit(seed);
+    const { certifier } = setup(trunk);
+    expect((await certify(certifier, trunk)).status).toBe("green");
+
+    const bad = change(head, { "test/neg.test.ts": NEG_FAILS });
+    const failed = await certifier.precheck(bad.p, bad.read);
+    expect(failed?.run).toMatchObject({ status: "failed", trunkSha: head, files: ["test/neg.test.ts"], tests: 1, passed: 0, failed: 1 });
+    expect(failed?.run.broke).toEqual([{ file: "test/neg.test.ts", name: "subtracts negatives", error: "AssertionError (strictEqual): actual 0, expected 1 (at test/neg.test.ts:5)", kind: "own" }]);
+    expect(failed?.reason).toBe(
+      'Tests before landing: the test "subtracts negatives" in test/neg.test.ts, a test file this change adds or edits, fails with it: AssertionError (strictEqual): actual 0, expected 1 (at test/neg.test.ts:5). A change cannot land tests its own code fails: fix the code, or the test if it asks for the wrong behavior, then propose again.',
+    );
+    expect(failed?.check).toMatchObject({ name: PRELAND_CHECK, ok: false });
+
+    // A passing new test file runs first, ahead of the trunk test file the change's code edit reaches.
+    const good = change(head, { "src/math.ts": `// Subtraction.\n${MATH_OK}`, "test/neg.test.ts": NEG_PASSES });
+    expect((await certifier.precheck(good.p, good.read))?.run).toMatchObject({ status: "passed", files: ["test/neg.test.ts", "test/math.test.ts"], tests: 2, passed: 2, failed: 0 });
+  });
+
+  it("holds a new failing test in a test file it edits, but not a test that failed on trunk too", async () => {
+    const trunk = new Trunk();
+    const head = trunk.commit({ ...seed, "test/math.test.ts": KNOWN_TEST });
+    const { certifier } = setup(trunk);
+    expect((await certify(certifier, trunk)).status).toBe("red");
+    const added = 'test("subtracts negatives", () => {\n  assert.equal(sub(-1, -1), 1);\n});\n';
+    const bad = change(head, { "test/math.test.ts": `${KNOWN_TEST}${added}` });
+    const failed = await certifier.precheck(bad.p, bad.read);
+    expect(failed?.run).toMatchObject({ status: "failed", files: ["test/math.test.ts"], tests: 3, passed: 1, failed: 2, known: 1, broke: [{ file: "test/math.test.ts", name: "subtracts negatives", kind: "own" }] });
+    const good = change(head, { "test/math.test.ts": `${KNOWN_TEST}${added.replace("sub(-1, -1), 1", "sub(-1, -1), 0")}` });
+    expect((await certifier.precheck(good.p, good.read))?.run).toMatchObject({ status: "passed", tests: 3, passed: 2, failed: 1, known: 1 });
+  });
+
+  it("sends back a change that deletes a passing test file unless a person's intent names it", async () => {
+    const trunk = new Trunk();
+    const head = trunk.commit(seed);
+    const { certifier } = setup(trunk);
+    expect((await certify(certifier, trunk)).status).toBe("green");
+    const gone = change(head, { "test/math.test.ts": null });
+    const sent = await certifier.precheck(gone.p, gone.read);
+    expect(sent?.run).toMatchObject({ status: "failed", trunkSha: head, files: [], tests: 0, broke: [{ file: "test/math.test.ts", name: "test/math.test.ts", kind: "deleted" }] });
+    expect(sent?.reason).toBe(
+      "Tests before landing: this change deletes the test file test/math.test.ts, whose tests passed on trunk. Keep that file (a passing test file is deleted only when the intent a person declared names its path), then propose again.",
+    );
+    // An agent's intent, or a person's that names only the file's name, does not ask for it.
+    expect((await certifier.precheck(gone.p, gone.read, { source: "agent", title: "Delete test/math.test.ts", why: "" }))?.run.status).toBe("failed");
+    expect((await certifier.precheck(gone.p, gone.read, { source: "human", title: "Drop math.test.ts", why: "" }))?.run.status).toBe("failed");
+    // A person's intent that names it: the deletion is theirs, and nothing else reaches the change.
+    const asked = await certifier.precheck(gone.p, gone.read, { source: "human", title: "Retire subtraction tests", why: "Delete test/math.test.ts; subtraction moves out." });
+    expect(asked?.run).toMatchObject({ status: "unchecked", reason: "no test file on trunk reaches the files it changes" });
+
+    // Deleted with a code change that breaks another test: both are named.
+    const both = change(head, { "test/math.test.ts": null, "src/other.ts": "export const name = 1;\n" });
+    const out = await certifier.precheck(both.p, both.read);
+    expect(out?.run).toMatchObject({ status: "failed", files: ["test/other.test.ts"], broke: [{ file: "test/math.test.ts", kind: "deleted" }, { file: "test/other.test.ts", name: "names" }] });
+    expect(out?.reason).toMatch(/^Tests before landing: the test "names" in test\/other\.test\.ts passed on trunk and fails with this change: .*; this change deletes the test file test\/math\.test\.ts, whose tests passed on trunk\. Fix the change so that test passes again/);
+  });
+
+  it("keeps the limits: own test files count against the five, and a run that cannot finish still sends a deletion back", async () => {
+    const trunk = new Trunk();
+    const head = trunk.commit(seed);
+    const { certifier, mode } = setup(trunk);
+    expect((await certify(certifier, trunk)).status).toBe("green");
+    const six: Record<Path, string> = {};
+    for (const n of [1, 2, 3, 4, 5, 6]) six[`test/n${n}.test.ts`] = NEG_PASSES.replace("subtracts negatives", `n${n}`);
+    const many = change(head, six);
+    const out = await certifier.precheck(many.p, many.read);
+    expect(out?.run).toMatchObject({ status: "passed", files: ["test/n1.test.ts", "test/n2.test.ts", "test/n3.test.ts", "test/n4.test.ts", "test/n5.test.ts"], reached: 6, tests: 5, passed: 5 });
+    expect(out?.check.detail).toContain("1 more test file reach it, left to certification after landing");
+
+    mode.current = { kind: "hang" };
+    const gone = change(head, { "test/math.test.ts": null, "src/other.ts": 'export const name = "b";\n' });
+    expect((await certifier.precheck(gone.p, gone.read))?.run).toMatchObject({ status: "failed", files: [], broke: [{ file: "test/math.test.ts", kind: "deleted" }] });
+    // Without a deletion, a run that cannot finish lets the change go on, not checked, as before.
+    const added = change(head, { "test/neg.test.ts": NEG_FAILS });
+    expect((await certifier.precheck(added.p, added.read))?.run).toMatchObject({ status: "unchecked", reason: "the tests took longer than 2 s" });
+  }, 30_000);
+
+  it("leaves out the change's own tests the certify policy excludes", async () => {
+    const trunk = new Trunk();
+    const head = trunk.commit(seed);
+    const byFile = setup(trunk, { policy: { excludeTests: ["test/neg.test.ts"] } });
+    expect((await certify(byFile.certifier, trunk)).status).toBe("green");
+    const bad = change(head, { "test/neg.test.ts": NEG_FAILS });
+    expect((await byFile.certifier.precheck(bad.p, bad.read))?.run).toMatchObject({ status: "unchecked", reason: "no test file on trunk reaches the files it changes" });
+    const byName = setup(trunk, { policy: { excludeTests: ["test/neg.test.ts > subtracts negatives"] } });
+    expect((await certify(byName.certifier, trunk)).status).toBe("green");
+    expect((await byName.certifier.precheck(bad.p, bad.read))?.run).toMatchObject({ status: "passed", files: ["test/neg.test.ts"], tests: 1, failed: 1, known: 1 });
   });
 });

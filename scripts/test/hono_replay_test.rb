@@ -14,6 +14,7 @@ require "stringio"
 require "tmpdir"
 require_relative "fake_hono"
 require_relative "../hono_replay"
+require_relative "../hono_replay_select"
 
 class HonoReplayTest < Minitest::Test
   SCRIPT = File.expand_path("../hono_replay.rb", __dir__)
@@ -165,6 +166,29 @@ class HonoReplayTest < Minitest::Test
     assert_equal "ruby scripts/hono_replay.rb --base https://staging.firetrident.com --clone <clone> --modules <modules> --sweep 8,16 --solo", cmd
   end
 
+  def test_the_region_depth_is_three_unless_set_and_must_be_one_to_eight
+    assert_equal 3, HonoReplay.parse([])[:region_depth]
+    assert_equal 1, HonoReplay.parse(%w[--region-depth 1])[:region_depth]
+    err = assert_raises(Stage::ConfigError) { HonoReplay.parse(%w[--region-depth 9]) }
+    assert_equal "--region-depth must be 1 to 8 (as POST /api/colonies takes it): 9", err.message
+    assert_includes HonoReplay.plan_lines({ "prs" => [{ "footprint" => %w[a] }], "base" => { "commit" => "a" * 40 } }, HonoReplay.parse(%w[--region-depth 2])).first, "at region depth 2"
+  end
+
+  def test_the_workload_holds_no_pull_request_an_agent_cannot_write_and_says_why_5236_went
+    w = HonoReplay.load
+    cap = HonoReplaySelect.output_cap[:chars]
+    refute_includes w["prs"].map { |p| p["number"] }, 5236
+    assert(w["prs"].all? { |p| p["hidden"].all? { |h| h["bytes"] <= cap } }, "every hidden file fits an agent's whole-file output (bytes are never fewer than characters)")
+    dropped = w.dig("considered", "dropped").find { |d| d["number"] == 5236 }
+    assert dropped["reason"].start_with?("its src/hono.test.ts is 109,470 characters at B and 109,990 right after it, more than the 86,016 characters an in-platform agent can write back in one reply")
+    assert_equal({ "chars" => 86_016, "source" => "packages/worker/src/agents/prompt.ts MAX_REWRITE_CHARS" }, w.dig("considered", "output_cap"))
+    assert_equal 2, w["notes"].size
+    assert(w["prs"].none? { |p| w.dig("overlap", "by_file").values.flatten.include?(5236) || p["laid"].values.include?(nil) })
+    section = HonoReplay::Results.workload_section(HonoReplay.workload_summary(w, []).merge(seed_left: {})).join("\n")
+    assert_includes section, "Dropped from the workload after selection: #5236: its src/hono.test.ts is 109,470 characters at B"
+    assert_includes section, "Workload note: #5236 was dropped by hand after selection"
+  end
+
   # --- the whole harness on recorded fixtures -------------------------------------------------------------------------
 
   FAST = %w[--poll 0.05 --step-timeout 20 --seed-timeout 20 --baseline-timeout 20 --grade-timeout 60 --timeout 30 --stall 20 --settle 5
@@ -216,11 +240,16 @@ class HonoReplayTest < Minitest::Test
       assert_equal "landed", run["stop"]
       assert run["deleted"]
       assert_equal HonoReplay::CERTIFY_EXCLUDE, run["certify_exclude"], "the two workerd differences are left out of certification"
+      created = fx[:server].requests.find { |r| r.method == "POST" && r.path == "/api/colonies" }
+      assert_equal 3, created.json["regionDepth"], "each colony is created at region depth 3 by default"
+      assert_equal 3, run["region_depth"]
       readme = File.read(File.join(out, "README.md"))
       assert_includes readme, "| Scripted person: approved, returned (by the no-tests rule) | 1, 1 (0) |"
       assert_includes readme, "| Hidden tests (recorded vitest reports): intents passing | 2 of 3 |"
       assert_includes readme, "| #9003 | fix(router): match a trailing slash | landed | 2 | 2 | review 1 |"
       assert_includes readme, "Left out of each colony's trunk certification, not of the grade"
+      assert_includes readme, "Each colony was created at region depth 3 (`--region-depth`, default 3)."
+      assert_includes readme, "region depth 3; flags on:"
       reqs = fx[:server].requests
       assert reqs.all? { |r| FakeDeployment.accessed?(r) }, "every request, git's too, carries the Access headers"
       assert(reqs.any? { |r| r.path == "/git/hono-test-8.git/info/refs" })

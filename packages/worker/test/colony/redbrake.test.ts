@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Certification, ColonyEvent, Id, Path, Proposal, TrunkHealth } from "@fire_trident/core";
 import { migrateClosure } from "../../src/colony/closure.ts";
 import { migrateDirection } from "../../src/colony/direction.ts";
-import { CEILING_MS, CONE_MAX, FAILURES, RedBrake, brakeText, coneOf, holdMessage, meetsCone, redBrakeEnabled, releaseMessage, repairHint, summarize, withBrake, type RedBrakeHost } from "../../src/colony/redbrake.ts";
+import { CEILING_MS, CONE_MAX, FAILURES, RedBrake, brakeText, closedRegions, coneOf, holdMessage, meetsCone, redBrakeEnabled, releaseMessage, repairHint, summarize, withBrake, type RedBrakeHost } from "../../src/colony/redbrake.ts";
 import { cleanModelHint } from "../../src/colony/stepup.ts";
 import { StuckDetector } from "../../src/colony/stuck.ts";
 
@@ -170,6 +170,18 @@ describe("the cone and the switch", () => {
     expect(coneOf(["test/a.test.ts"], wide)).toHaveLength(CONE_MAX);
     expect(meetsCone(change("p", "i", ["src/math.ts", "README.md", "src/math.ts"]), new Set(["src/math.ts"]))).toEqual(["src/math.ts"]);
     expect(meetsCone(change("p", "i", ["README.md"]), new Set(["src/math.ts"]))).toEqual([]);
+  });
+
+  it("finds the repair's regions closed to the asking agent before it is reserved; a region with no view is not closed", () => {
+    const views = new Map([
+      ["src", { open: false }],
+      ["test", { open: true }],
+      ["docs", { open: false }],
+    ]);
+    expect(closedRegions(["src", "test", "src", "lib"], views)).toEqual(["src"]);
+    expect(closedRegions(["test", "lib"], views)).toEqual([]);
+    expect(closedRegions(new Map([["docs", 1], ["src", 2]]).keys(), views)).toEqual(["docs", "src"]);
+    expect(closedRegions([], views)).toEqual([]);
   });
 
   it("reads FT_RED_BRAKE like FT_REVALIDATE: on, or a list of colony ids; off when absent", () => {

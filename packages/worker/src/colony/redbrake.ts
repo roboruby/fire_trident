@@ -82,6 +82,18 @@ export function meetsCone(p: Pick<Proposal, "writeSet">, cone: ReadonlySet<Path>
   return out;
 }
 
+/**
+ * The repair's regions that the asking agent's own field views show closed (their admission is at its cap), in order.
+ * The take reads them before it reserves the repair: a closed region would refuse the take, and reserving first then
+ * reopened the repair on every ask while the region stayed closed (444 reservations and releases in 140 s in the
+ * measured replay). A region with no view (it could not be read) is not closed here, as in every take (fail open).
+ */
+export function closedRegions(regions: Iterable<string>, views: ReadonlyMap<string, { open: boolean }>): string[] {
+  const out: string[] = [];
+  for (const region of regions) if (views.get(region)?.open === false && !out.includes(region)) out.push(region);
+  return out;
+}
+
 /** The take's model hint for a red trunk's repair: the stronger model class, whatever its returns (colony/stepup.ts). */
 export function repairHint(returns: number): ModelHint {
   return {

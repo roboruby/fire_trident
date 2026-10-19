@@ -10,7 +10,7 @@
   },
   "until": "e2740d5a1bd0b4254e517e3af8b60789284bc7bd",
   "target": {
-    "commit": "72d207c42bf68ded1ae474091276a7acb362e33a",
+    "commit": "5dd323f1ff70a06fd234bd8837e01d7a2d65aae4",
     "note": "B with every selected pull request laid on it in merge order (stock git merge-tree, a fixed identity and fixed dates, so the ids are the same in any clone), in the clone's object store only",
     "own_tests": {
       "files": 15,
@@ -21,7 +21,8 @@
       "load_failures": 0,
       "success": true,
       "failing": []
-    }
+    },
+    "own_tests_note": "own_tests was measured on the earlier target with #5236 (72d207c42bf6) and was not run again on this one."
   },
   "seed": {
     "exclude": [
@@ -2045,293 +2046,6 @@
       }
     },
     {
-      "number": 5236,
-      "title": "fix(trie-router): match suffix wildcard routes",
-      "merged_at": "2026-08-17T00:37:48Z",
-      "commit": "63bbcf508c74d9fe7a3e20f4dfe7ffacc566dcce",
-      "why": "Fixes #5219\n\nThis PR makes TrieRouter recognize a terminal segment ending in `*` as a suffix wildcard. The prefix is matched literally, so regular expression characters have no special meaning.\n\nThere are already two PRs addressing this issue (#5220 and #5230), but they either have a larger implementation footprint or do not cover all relevant cases. This approach is more compact and keeps the fix narrowly scoped to TrieRouter.\n\nIt slightly increases the bundle size, but planned follow-up PRs should more than offset that increase.",
-      "acceptance": [],
-      "footprint": [
-        "src/hono.test.ts",
-        "src/router/trie-router/node.test.ts",
-        "src/router/trie-router/node.ts",
-        "src/router/trie-router/router.ts"
-      ],
-      "src": [
-        "src/router/trie-router/node.ts",
-        "src/router/trie-router/router.ts"
-      ],
-      "tests": [
-        "src/hono.test.ts",
-        "src/router/trie-router/node.test.ts"
-      ],
-      "laid": {
-        "before": "3118080699a499d34114e08a695e62beecac9c1b",
-        "after": "8cca13fac376ef40928f3e5fd8d0585e7e501905"
-      },
-      "hidden": [
-        {
-          "path": "src/hono.test.ts",
-          "blob": "ea79c88a6ecdeb9bd2c21419cfca9218b83e48f3",
-          "new": false,
-          "bytes": 109995
-        },
-        {
-          "path": "src/router/trie-router/node.test.ts",
-          "blob": "5ba5d6852c1ba40e5fa69e7e6c5cbe8b6d488331",
-          "new": false,
-          "bytes": 28695
-        }
-      ],
-      "run": [
-        "src/hono.test.ts",
-        "src/router/trie-router/node.test.ts"
-      ],
-      "target_tests": [
-        "src/hono.test.ts: Routing > Should match a suffix wildcard after falling back to TrieRouter",
-        "src/router/trie-router/node.test.ts: Get with a suffix wildcard > matches /assets",
-        "src/router/trie-router/node.test.ts: Get with a suffix wildcard > matches /assets-v2",
-        "src/router/trie-router/node.test.ts: Get with a suffix wildcard > matches /assets/app.js",
-        "src/router/trie-router/node.test.ts: Get with a suffix wildcard > treats regular expression characters in the prefix literally",
-        "src/router/trie-router/node.test.ts: Get with a suffix wildcard > registers the pattern when its child already exists"
-      ],
-      "checks": {
-        "at_merge": {
-          "files": 2,
-          "tests": 299,
-          "passed": 299,
-          "failed": 0,
-          "skipped": 0,
-          "load_failures": 0,
-          "success": true,
-          "failing": []
-        },
-        "before": {
-          "files": 2,
-          "tests": 296,
-          "passed": 290,
-          "failed": 6,
-          "skipped": 0,
-          "load_failures": 0,
-          "success": false,
-          "seconds": 3.3,
-          "failing": [
-            "src/hono.test.ts: Routing > Should match a suffix wildcard after falling back to TrieRouter",
-            "src/router/trie-router/node.test.ts: Get with a suffix wildcard > matches /assets",
-            "src/router/trie-router/node.test.ts: Get with a suffix wildcard > matches /assets-v2",
-            "src/router/trie-router/node.test.ts: Get with a suffix wildcard > matches /assets/app.js",
-            "src/router/trie-router/node.test.ts: Get with a suffix wildcard > treats regular expression characters in the prefix literally",
-            "src/router/trie-router/node.test.ts: Get with a suffix wildcard > registers the pattern when its child already exists"
-          ]
-        },
-        "after": {
-          "files": 2,
-          "tests": 296,
-          "passed": 296,
-          "failed": 0,
-          "skipped": 0,
-          "load_failures": 0,
-          "success": true,
-          "seconds": 4.0,
-          "failing": []
-        },
-        "at_base": {
-          "files": 2,
-          "tests": 296,
-          "passed": 287,
-          "failed": 9,
-          "skipped": 0,
-          "load_failures": 0,
-          "success": false,
-          "seconds": 3.6,
-          "failing": [
-            "src/hono.test.ts: Routing > Should match a suffix wildcard after falling back to TrieRouter",
-            "src/router/trie-router/node.test.ts: Get with a suffix wildcard > matches /assets",
-            "src/router/trie-router/node.test.ts: Get with a suffix wildcard > matches /assets-v2",
-            "src/router/trie-router/node.test.ts: Get with a suffix wildcard > matches /assets/app.js",
-            "src/router/trie-router/node.test.ts: Get with a suffix wildcard > treats regular expression characters in the prefix literally",
-            "src/router/trie-router/node.test.ts: Get with a suffix wildcard > registers the pattern when its child already exists",
-            "src/router/trie-router/node.test.ts: Multi match > Regexp > /regex-abc/123",
-            "src/router/trie-router/node.test.ts: Pattern spanning multiple parts > followed by a wildcard > should return the handler once per matching part count",
-            "src/router/trie-router/node.test.ts: Pattern spanning multiple parts > followed by a static part > should match however many parts the pattern spans"
-          ]
-        },
-        "on_target": {
-          "files": 2,
-          "tests": 296,
-          "passed": 296,
-          "failed": 0,
-          "skipped": 0,
-          "load_failures": 0,
-          "success": true,
-          "seconds": 3.7,
-          "failing": []
-        }
-      },
-      "apis": {
-        "src/hono.test.ts": {
-          "matchers": {
-            "toBe": 453,
-            "toBeNull": 42,
-            "toBeUndefined": 1,
-            "toEqual": 22,
-            "toEqualTypeOf": 9,
-            "toHaveBeenCalledWith": 2,
-            "toMatch": 11,
-            "toMatchTypeOf": 2,
-            "toThrow": 1,
-            "toThrowError": 1
-          },
-          "negated": 41,
-          "resolves": 0,
-          "rejects": 0,
-          "asymmetric": {
-            "any": 5
-          },
-          "vi": {
-            "fn": 2
-          },
-          "hooks": {
-            "beforeEach": 2
-          },
-          "modifiers": {
-            "describe.each": 1
-          },
-          "each_template": 0,
-          "type_tests": {
-            "expectTypeOf": 12
-          },
-          "snapshots": {},
-          "vitest_imports": [
-            "expectTypeOf"
-          ],
-          "globals": [
-            "beforeEach",
-            "describe",
-            "expect",
-            "it",
-            "test",
-            "vi"
-          ],
-          "environment": null,
-          "packages": [],
-          "node_builtins": [],
-          "relative_imports": 12,
-          "not_node": []
-        },
-        "src/router/trie-router/node.test.ts": {
-          "matchers": {
-            "toBe": 44,
-            "toBeNull": 10,
-            "toEqual": 60
-          },
-          "negated": 11,
-          "resolves": 0,
-          "rejects": 0,
-          "asymmetric": {},
-          "vi": {},
-          "hooks": {},
-          "modifiers": {
-            "it.each": 1
-          },
-          "each_template": 0,
-          "type_tests": {},
-          "snapshots": {},
-          "vitest_imports": [],
-          "globals": [
-            "describe",
-            "expect",
-            "it"
-          ],
-          "environment": null,
-          "packages": [],
-          "node_builtins": [],
-          "relative_imports": 1,
-          "not_node": []
-        }
-      },
-      "visible_apis": {
-        "src/hono.test.ts": {
-          "matchers": {
-            "toBe": 450,
-            "toBeNull": 42,
-            "toBeUndefined": 1,
-            "toEqual": 22,
-            "toEqualTypeOf": 9,
-            "toHaveBeenCalledWith": 2,
-            "toMatch": 11,
-            "toMatchTypeOf": 2,
-            "toThrow": 1,
-            "toThrowError": 1
-          },
-          "negated": 41,
-          "resolves": 0,
-          "rejects": 0,
-          "asymmetric": {
-            "any": 5
-          },
-          "vi": {
-            "fn": 2
-          },
-          "hooks": {
-            "beforeEach": 2
-          },
-          "modifiers": {
-            "describe.each": 1
-          },
-          "each_template": 0,
-          "type_tests": {
-            "expectTypeOf": 12
-          },
-          "snapshots": {},
-          "vitest_imports": [
-            "expectTypeOf"
-          ],
-          "globals": [
-            "beforeEach",
-            "describe",
-            "expect",
-            "it",
-            "test",
-            "vi"
-          ],
-          "environment": null,
-          "packages": [],
-          "node_builtins": [],
-          "relative_imports": 12,
-          "not_node": []
-        },
-        "src/router/trie-router/node.test.ts": {
-          "matchers": {
-            "toBe": 43,
-            "toBeNull": 10,
-            "toEqual": 53
-          },
-          "negated": 11,
-          "resolves": 0,
-          "rejects": 0,
-          "asymmetric": {},
-          "vi": {},
-          "hooks": {},
-          "modifiers": {},
-          "each_template": 0,
-          "type_tests": {},
-          "snapshots": {},
-          "vitest_imports": [],
-          "globals": [
-            "describe",
-            "expect",
-            "it"
-          ],
-          "environment": null,
-          "packages": [],
-          "node_builtins": [],
-          "relative_imports": 1,
-          "not_node": []
-        }
-      }
-    },
-    {
       "number": 5268,
       "title": "fix(request): handle params on unmatched requests",
       "merged_at": "2026-08-19T10:58:41Z",
@@ -2349,8 +2063,8 @@
         "src/request.test.ts"
       ],
       "laid": {
-        "before": "8cca13fac376ef40928f3e5fd8d0585e7e501905",
-        "after": "2944296e31641cbd8427b13049166460a3916565"
+        "before": "3118080699a499d34114e08a695e62beecac9c1b",
+        "after": "63f5d2b18fe8b4e586e1217b780b657ceb1fc224"
       },
       "hidden": [
         {
@@ -2530,8 +2244,8 @@
         "src/client/client.test.ts"
       ],
       "laid": {
-        "before": "2944296e31641cbd8427b13049166460a3916565",
-        "after": "2a16aff39cb339f4261e2d10b012e483c825c6e8"
+        "before": "63f5d2b18fe8b4e586e1217b780b657ceb1fc224",
+        "after": "6ab1fac25429ba5c767981d2370151568fa3f1d9"
       },
       "hidden": [
         {
@@ -2752,8 +2466,8 @@
         "src/request.test.ts"
       ],
       "laid": {
-        "before": "2a16aff39cb339f4261e2d10b012e483c825c6e8",
-        "after": "1a68322878443e73d5e8b4965a70a1a3dd9b6486"
+        "before": "6ab1fac25429ba5c767981d2370151568fa3f1d9",
+        "after": "e78b29a9821603f931b8fb913b0ee7ff1172de35"
       },
       "hidden": [
         {
@@ -2934,8 +2648,8 @@
         "src/request.test.ts"
       ],
       "laid": {
-        "before": "1a68322878443e73d5e8b4965a70a1a3dd9b6486",
-        "after": "5787865352d64bed01d3db2ec780b5d80d86bbd5"
+        "before": "e78b29a9821603f931b8fb913b0ee7ff1172de35",
+        "after": "8a97d31c20a9df759648c4f4c62b62da16d55347"
       },
       "hidden": [
         {
@@ -3119,8 +2833,8 @@
         "src/utils/cookie.test.ts"
       ],
       "laid": {
-        "before": "5787865352d64bed01d3db2ec780b5d80d86bbd5",
-        "after": "13db0c3267bc043aff6658ed5daf097bb11f4f60"
+        "before": "8a97d31c20a9df759648c4f4c62b62da16d55347",
+        "after": "3d77d0c774c9a9b8ac8f5aed8d0466e76ce6e9df"
       },
       "hidden": [
         {
@@ -3343,8 +3057,8 @@
         "src/utils/stream.test.ts"
       ],
       "laid": {
-        "before": "13db0c3267bc043aff6658ed5daf097bb11f4f60",
-        "after": "72d207c42bf68ded1ae474091276a7acb362e33a"
+        "before": "3d77d0c774c9a9b8ac8f5aed8d0466e76ce6e9df",
+        "after": "5dd323f1ff70a06fd234bd8837e01d7a2d65aae4"
       },
       "hidden": [
         {
@@ -3508,13 +3222,6 @@
         ]
       },
       {
-        "a": 5102,
-        "b": 5236,
-        "files": [
-          "src/router/trie-router/node.ts"
-        ]
-      },
-      {
         "a": 5133,
         "b": 5161,
         "files": [
@@ -3575,13 +3282,6 @@
         "b": 5246,
         "files": [
           "src/utils/cookie.ts"
-        ]
-      },
-      {
-        "a": 5189,
-        "b": 5236,
-        "files": [
-          "src/router/trie-router/node.ts"
         ]
       },
       {
@@ -3649,8 +3349,7 @@
       ],
       "src/router/trie-router/node.ts": [
         5102,
-        5189,
-        5236
+        5189
       ],
       "src/utils/cookie.ts": [
         5164,
@@ -3684,8 +3383,7 @@
       ],
       "src/router/trie-router/node.test.ts": [
         5102,
-        5189,
-        5236
+        5189
       ],
       "src/utils/cookie.test.ts": [
         5164,
@@ -3705,7 +3403,6 @@
     "hidden_files": [
       "src/client/client.test.ts",
       "src/helper/cookie/index.test.ts",
-      "src/hono.test.ts",
       "src/request.test.ts",
       "src/router/common.case.test.ts",
       "src/router/linear-router/router.test.ts",
@@ -3717,49 +3414,47 @@
     ],
     "hidden": {
       "matchers": {
-        "toBe": 884,
+        "toBe": 432,
         "toBeCalled": 6,
         "toBeInstanceOf": 6,
-        "toBeNull": 62,
-        "toBeUndefined": 24,
+        "toBeNull": 20,
+        "toBeUndefined": 23,
         "toContain": 1,
-        "toEqual": 256,
-        "toEqualTypeOf": 25,
+        "toEqual": 230,
+        "toEqualTypeOf": 16,
         "toHaveBeenCalled": 2,
         "toHaveBeenCalledOnce": 5,
         "toHaveBeenCalledTimes": 1,
-        "toHaveBeenCalledWith": 11,
-        "toMatch": 13,
+        "toHaveBeenCalledWith": 9,
+        "toMatch": 2,
         "toMatchObject": 4,
-        "toMatchTypeOf": 7,
+        "toMatchTypeOf": 5,
         "toStrictEqual": 13,
-        "toThrow": 16,
-        "toThrowError": 20
+        "toThrow": 15,
+        "toThrowError": 19
       },
-      "negated": 76,
+      "negated": 35,
       "resolves": 0,
       "rejects": 3,
-      "asymmetric": {
-        "any": 5
-      },
+      "asymmetric": {},
       "vi": {
         "clearAllMocks": 3,
-        "fn": 14,
+        "fn": 12,
         "stubGlobal": 2
       },
       "hooks": {
         "afterAll": 14,
         "afterEach": 14,
         "beforeAll": 14,
-        "beforeEach": 28
+        "beforeEach": 26
       },
       "modifiers": {
-        "describe.each": 3,
-        "it.each": 5
+        "describe.each": 2,
+        "it.each": 4
       },
       "each_template": 0,
       "type_tests": {
-        "expectTypeOf": 40
+        "expectTypeOf": 28
       },
       "snapshots": {},
       "vitest_imports": [
@@ -3782,13 +3477,12 @@
         "msw"
       ],
       "node_builtins": [],
-      "relative_imports": 34,
+      "relative_imports": 22,
       "not_node": []
     },
     "visible_files": [
       "src/client/client.test.ts",
       "src/helper/cookie/index.test.ts",
-      "src/hono.test.ts",
       "src/request.test.ts",
       "src/router/common.case.test.ts",
       "src/router/linear-router/router.test.ts",
@@ -3800,48 +3494,46 @@
     ],
     "visible": {
       "matchers": {
-        "toBe": 855,
+        "toBe": 405,
         "toBeCalled": 6,
         "toBeInstanceOf": 5,
-        "toBeNull": 59,
-        "toBeUndefined": 20,
+        "toBeNull": 17,
+        "toBeUndefined": 19,
         "toContain": 1,
-        "toEqual": 239,
-        "toEqualTypeOf": 25,
+        "toEqual": 217,
+        "toEqualTypeOf": 16,
         "toHaveBeenCalledOnce": 4,
         "toHaveBeenCalledTimes": 1,
-        "toHaveBeenCalledWith": 11,
-        "toMatch": 13,
+        "toHaveBeenCalledWith": 9,
+        "toMatch": 2,
         "toMatchObject": 4,
-        "toMatchTypeOf": 7,
+        "toMatchTypeOf": 5,
         "toStrictEqual": 13,
-        "toThrow": 14,
-        "toThrowError": 20
+        "toThrow": 13,
+        "toThrowError": 19
       },
-      "negated": 74,
+      "negated": 33,
       "resolves": 0,
       "rejects": 1,
-      "asymmetric": {
-        "any": 5
-      },
+      "asymmetric": {},
       "vi": {
         "clearAllMocks": 3,
-        "fn": 11,
+        "fn": 9,
         "stubGlobal": 2
       },
       "hooks": {
         "afterAll": 14,
         "afterEach": 14,
         "beforeAll": 14,
-        "beforeEach": 26
+        "beforeEach": 24
       },
       "modifiers": {
-        "describe.each": 3,
+        "describe.each": 2,
         "it.each": 3
       },
       "each_template": 0,
       "type_tests": {
-        "expectTypeOf": 40
+        "expectTypeOf": 28
       },
       "snapshots": {},
       "vitest_imports": [
@@ -3864,7 +3556,7 @@
         "msw"
       ],
       "node_builtins": [],
-      "relative_imports": 34,
+      "relative_imports": 22,
       "not_node": []
     },
     "suite_files": 98,
@@ -4168,6 +3860,20 @@
         "why": "no pull request number in the subject"
       }
     ],
-    "dropped": []
-  }
+    "dropped": [
+      {
+        "number": 5236,
+        "reason": "its src/hono.test.ts is 109,470 characters at B and 109,990 right after it, more than the 86,016 characters an in-platform agent can write back in one reply (packages/worker/src/agents/prompt.ts MAX_REWRITE_CHARS), so no agent can produce the file and its intent can never land",
+        "by": "hand, after selection"
+      }
+    ],
+    "output_cap": {
+      "chars": 86016,
+      "source": "packages/worker/src/agents/prompt.ts MAX_REWRITE_CHARS"
+    }
+  },
+  "notes": [
+    "#5236 was dropped by hand after selection (considered.dropped says why). The selection now skips a pull request that changes a file longer than an agent can write back (scripts/hono_replay_select.rb), but it was not run again: that needs GitHub reads and fresh vitest runs, and could choose another pull request in its place.",
+    "The pull requests after #5236 were laid on B again without it (stock git, the same fixed identity and dates), so their laid commits and the target changed; every hidden file's blob id is unchanged, and the overlap and the API scan were recomputed from the remaining pull requests."
+  ]
 }

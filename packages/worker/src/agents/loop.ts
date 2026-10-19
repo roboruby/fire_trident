@@ -1156,7 +1156,7 @@ async function writeFile(
     if (reply.finishReason === "length" && !text.includes("</file>")) {
       problem = "the reply was cut off before </file>; return the complete file and nothing else";
     } else {
-      const parsed = parseFileReply(text, original);
+      const parsed = parseFileReply(text, original, path);
       if (!parsed.ok) problem = parsed.reason;
       else {
         await loadSources(parsed.content);
@@ -1190,7 +1190,7 @@ export function judgeReply(rule: Rule | null, path: Path, original: string | nul
   if (finishReason === "length" && !text.includes("</file>")) {
     return { ok: false, problem: "the reply was cut off before </file>; return the complete file and nothing else" };
   }
-  const parsed = parseFileReply(text, original);
+  const parsed = parseFileReply(text, original, path);
   if (!parsed.ok) return { ok: false, problem: parsed.reason };
   if (rule && original !== null) {
     const rc = recheck(rule, path, original, parsed.content);

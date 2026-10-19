@@ -694,13 +694,42 @@ export type ParsedFile = { ok: true; content: string } | { ok: false; reason: st
 const THINK = /<think(?:ing)?>[\s\S]*?<\/think(?:ing)?>/gi;
 
 /**
+ * Does a line only name the file being written: its path alone ("src/a.ts", "./src/a.ts", in backticks or not), or
+ * after "Path:" or "File:", the header the prompts write above a file? Models sometimes echo it as the file's first
+ * line, where a script reads it as a division of undefined names and throws on load ("src is not defined").
+ */
+function namesPath(line: string, path: Path): boolean {
+  let s = line.trim();
+  const label = /^(?:path|file)\s*:\s*/i.exec(s);
+  if (label) s = s.slice(label[0].length);
+  s = s.replace(/^`([^`]*)`$/, "$1").trim();
+  if (s.startsWith("./")) s = s.slice(2);
+  return s !== "" && s === path;
+}
+
+/**
+ * `content` without a first line that only names `path` (namesPath) and the blank lines right after it, unless the
+ * original file starts with that same line (then it is the file's own) or with a blank line (then the blank lines stay).
+ */
+function withoutPathLine(content: string, original: string | null, path: Path | undefined): string {
+  if (!path) return content;
+  const first = /^([^\r\n]*)(?:\r\n|\r|\n)/.exec(content);
+  if (!first || !namesPath(first[1]!, path)) return content;
+  if (original !== null && /^[^\r\n]*/.exec(original)![0].trim() === first[1]!.trim()) return content;
+  const rest = content.slice(first[0].length);
+  return original !== null && /^[ \t]*(?:\r\n|\r|\n)/.test(original) ? rest : rest.replace(/^(?:[ \t]*(?:\r\n|\r|\n))+/, "");
+}
+
+/**
  * Pull the updated file out of a model reply: the text between the first
  * `<file>` and the last `</file>` (reasoning blocks removed first). One newline
  * after the opening tag and one before the closing tag are layout, not content.
- * A fence the model wrapped inside the tags is removed. The original's final
- * newline convention and CRLF line endings are restored.
+ * A first line that only names the file's own `path` (namesPath), before or
+ * inside a fence, is dropped. A fence the model wrapped inside the tags is
+ * removed. The original's final newline convention and CRLF line endings are
+ * restored.
  */
-export function parseFileReply(reply: string, original: string | null): ParsedFile {
+export function parseFileReply(reply: string, original: string | null, path?: Path): ParsedFile {
   const text = reply.replace(THINK, "");
   const start = text.indexOf("<file>");
   const end = text.lastIndexOf("</file>");
@@ -708,8 +737,9 @@ export function parseFileReply(reply: string, original: string | null): ParsedFi
   let content = text.slice(start + 6, end);
   if (content.startsWith("\r\n")) content = content.slice(2);
   else if (content.startsWith("\n")) content = content.slice(1);
+  content = withoutPathLine(content, original, path);
   const fence = /^(`{3,}|~{3,})[^\n]*\n([\s\S]*?)\n?\1\s*$/.exec(content);
-  if (fence && !(original ?? "").trimStart().startsWith(fence[1]!)) content = `${fence[2]}\n`;
+  if (fence && !(original ?? "").trimStart().startsWith(fence[1]!)) content = withoutPathLine(`${fence[2]}\n`, original, path);
   // The file ends with exactly the newline run the original ended with (one "\n" for new files).
   content = content.replace(/(?:\r\n|\r|\n)+$/, "");
   const tail = original === null ? "\n" : (/(?:\r\n|\r|\n)+$/.exec(original)?.[0] ?? "");

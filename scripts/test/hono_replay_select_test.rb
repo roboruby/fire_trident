@@ -59,6 +59,41 @@ class HonoReplaySelectTest < Minitest::Test
     assert_nil S.classify(commit("fix(body): x (#3)", changed), { "src/utils/body.test.ts" => "it('reads', () => expect(1).toBe(1))" })[:skip]
   end
 
+  def test_a_pull_request_changing_a_file_longer_than_an_agent_can_write_is_not_a_candidate
+    changed = [%w[M src/hono.ts], %w[M src/hono.test.ts]]
+    big = S.classify(commit("feat(hono): x (#5236)", changed), {}, sizes: { "src/hono.ts" => 900, "src/hono.test.ts" => 109_470 }, cap: 86_016)
+    assert_equal "src/hono.test.ts is 109,470 characters, more than the 86,016 an in-platform agent can write back in one reply, so no agent can write it", big[:skip]
+    assert_equal 5236, big[:number]
+    assert_nil S.classify(commit("feat(hono): x (#5236)", changed), {}, sizes: { "src/hono.test.ts" => 86_016, "src/gone.ts" => nil }, cap: 86_016)[:skip], "a file of exactly the cap can be written"
+    assert_nil S.classify(commit("feat(hono): x (#5236)", changed), {}, sizes: { "src/hono.test.ts" => 109_470 })[:skip], "no cap, no size check"
+    assert_equal ["src/a.ts", 90_000], S.too_large({ "src/b.ts" => 95_000, "src/a.ts" => 90_000, "src/c.ts" => 10 }, 86_016), "the first by path"
+  end
+
+  def test_the_output_cap_is_read_from_the_worker_and_counted_as_javascript_counts
+    cap = S.output_cap
+    assert_equal({ chars: 86_016, source: "packages/worker/src/agents/prompt.ts MAX_REWRITE_CHARS" }, cap, "the worker's MAX_REWRITE_CHARS")
+    text = File.read(S::PROMPT_TS)
+    assert_equal 12_288 * 3, S.rewrite_cap(text.sub("MAX_REWRITE_TOKENS = 32_768;", "MAX_REWRITE_TOKENS = 16_384;"))[:chars], "it follows the worker's constants"
+    moved = S.rewrite_cap(text.sub(/^export const MAX_REWRITE_CHARS = .*$/, "export const MAX_REWRITE_CHARS = 90_000;"))
+    assert_equal S::REWRITE_CAP_FALLBACK, moved[:chars]
+    assert_includes moved[:source], "no longer defines MAX_REWRITE_CHARS as this script reads it"
+    assert_equal S::REWRITE_CAP_FALLBACK, S.rewrite_cap("")[:chars]
+    assert_equal 4, S.chars("a\u{1F600}é".b), "an emoji is two UTF-16 code units, an accented letter one"
+    assert_equal 3, S.chars("\xFF\xFEa".b), "bytes that are not UTF-8 count one each"
+  end
+
+  def test_a_file_is_measured_right_before_and_right_after_its_pull_request
+    Dir.mktmpdir do |dir|
+      repo, workload = FakeHono.build(dir)
+      sha = workload["prs"][0]["commit"]
+      sizes = S.footprint_chars(repo, sha, ["src/request.ts", "src/request.test.ts", "src/nothing.ts"])
+      before = repo.show("#{sha}^", "src/request.ts").bytesize
+      after = repo.show(sha, "src/request.ts").bytesize
+      assert_equal [before, after].max, sizes["src/request.ts"]
+      assert_nil sizes["src/nothing.ts"], "a file at neither"
+    end
+  end
+
   # --- overlap and selection ------------------------------------------------------------------------------------------
 
   def test_overlap_is_over_source_files_and_groups_connect_through_them

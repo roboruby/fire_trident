@@ -9,10 +9,10 @@
 # leave them right after it), the vitest targets that run them, and its own tests (the ones that fail right before it
 # and pass right after it). For each run, on a throwaway colony:
 #
-#   1. create colony <name>-<agents> with review off, and land the seed: B's tree from a local clone, but for the paths
-#      the workload leaves out (runtime tests, benchmarks, binary images) and files the inline path cannot carry, as
-#      inline changes of at most 64 files and 500 KB each (core INLINE_LIMITS), one scripted seed agent per change, all
-#      proposed at once
+#   1. create colony <name>-<agents> at region depth 3 (--region-depth) with review off, and land the seed: B's tree
+#      from a local clone, but for the paths the workload leaves out (runtime tests, benchmarks, binary images) and files
+#      the inline path cannot carry, as inline changes of at most 64 files and 500 KB each (core INLINE_LIMITS), one
+#      scripted seed agent per change, all proposed at once
 #   2. wait for certification of the seed's commit (green is the baseline; red or an error stops the run unless
 #      --red-baseline; skipped means trunk certification had nothing it could run, and red episodes are not measured)
 #   3. switch review on, set the colony's spend cap, and declare one intent per pull request (source human, equal
@@ -50,7 +50,7 @@
 # Usage:
 #   FT_TOKEN=<admin token> ruby scripts/hono_replay.rb --base https://staging.firetrident.com --clone <hono clone>
 #     --modules <node_modules> [--sweep 8,16 --solo | --agents 8] [--name hono-replay] [--workload FILE]
-#     [--max-usd 15] [--timeout 2400] [--settle 600] [--stall 900] [--stall-report 300] [--poll 5] [--step-timeout 180]
+#     [--region-depth 3] [--max-usd 15] [--timeout 2400] [--settle 600] [--stall 900] [--stall-report 300] [--poll 5] [--step-timeout 180]
 #     [--seed-timeout 900] [--baseline-timeout 1800] [--red-baseline] [--person-wait 120] [--person-every 30]
 #     [--person-retest 600] [--person-max-approvals 3] [--no-person] [--no-grade] [--keep] [--out DIR] [--note TEXT]
 #   ruby scripts/hono_replay.rb --plan [--sweep 8,16 --solo] [--clone DIR]   the plan and the cost ESTIMATE; sends nothing
@@ -88,6 +88,11 @@ module HonoReplay
   SOLO_MODEL = Contention::SOLO_MODEL
   # core INLINE_LIMITS (64 files, 256 KiB a file, 512 KiB a change), the total kept under its limit.
   INLINE = { files: 64, file_bytes: 256 * 1024, total_bytes: 500 * 1024 }.freeze
+  # The region depth each colony is created with. Every file of the workload lives under src/: at the default depth 1
+  # the whole workload is one region, `src`, and admission (each region admits while its working agents are fewer than
+  # max(3, 2 x its landings in the last minute)) holds a run at about three working agents whatever its agent count. At
+  # depth 3 the footprints spread over src, src/utils, src/client and src/router/trie-router, each with its own slots.
+  REGION_DEPTH = 3
   # The priority every intent is declared with (as the contention spec's).
   PRIORITY = 3
   # How long a grading vitest run may take.
@@ -422,7 +427,7 @@ module HonoReplay
     def create_colony
       pool = [[@n + 6, @chunks.size + 2].max, 256].min
       created, secs = step("the deployment to create colony #{@name}") do
-        res = api(:post, "/colonies", { name: @name, pool: pool })
+        res = api(:post, "/colonies", { name: @name, pool: pool, regionDepth: @opts[:region_depth] })
         raise Failure, "colony #{@name} already exists: pass another --name" if res.code == 409
         raise Failure, "creating colony #{@name}: #{res.problem}" unless res.ok? && res.json
 
@@ -430,6 +435,8 @@ module HonoReplay
       end
       @colony = created["id"] || @name
       @result[:colony] = @colony
+      # The depth the colony reports, else the one asked for (the deployment answers with the colony it made).
+      @result[:region_depth] = created["regionDepth"] || @opts[:region_depth]
       step("review to switch off for the seed") { api!(:post, "/colonies/#{@colony}/decide/policy", { enabled: false }) }
       unless @opts[:certify_exclude].empty?
         step("certification to leave out #{@opts[:certify_exclude].size} tests") { api!(:post, "/colonies/#{@colony}/certify/policy", { excludeTests: @opts[:certify_exclude] }) }
@@ -437,7 +444,7 @@ module HonoReplay
       end
       state = step("the colony's certification state") { api!(:get, "/colonies/#{@colony}/certifications?limit=1") }.first
       @result[:certification_on] = state["on"] == true
-      @clock.say("created colony #{@colony} (#{fmt(secs)}), pool #{pool}; certification is #{state['on'] == true ? 'on' : "off (deployment #{state['deployment'].inspect}, runner #{state['runner'].inspect})"}; review is off until the seed lands")
+      @clock.say("created colony #{@colony} (#{fmt(secs)}), pool #{pool}, region depth #{@result[:region_depth]}; certification is #{state['on'] == true ? 'on' : "off (deployment #{state['deployment'].inspect}, runner #{state['runner'].inspect})"}; review is off until the seed lands")
     end
 
     # B's tree as inline changes, one scripted seed agent each, all proposed before any is waited on.
@@ -757,6 +764,12 @@ module HonoReplay
       lines << ""
       lines << "Operator's note: #{sweep[:note]}" if sweep[:note]
       lines << "" if sweep[:note]
+      depths = runs.map { |r| r[:region_depth] }.compact.uniq
+      unless depths.empty?
+        lines << "Each colony was created at region depth #{depths.join(', ')} (`--region-depth`, default #{REGION_DEPTH}). Admission is decided per region (a region admits while its working agents are fewer than max(3, 2 x its landings in the last minute)), " \
+                 "and every file of this workload is under src/: at depth 1 the whole workload is one region and a run holds about three working agents whatever its agent count."
+        lines << ""
+      end
       excluded = runs.flat_map { |r| Array(r[:certify_exclude]) }.uniq
       lines << "Left out of each colony's trunk certification, not of the grade (they pass under Node and fail in workerd): #{excluded.map { |t| "`#{t}`" }.join(', ')}." unless excluded.empty?
       lines << "" unless excluded.empty?
@@ -847,7 +860,7 @@ module HonoReplay
       out = ["## #{agents(r)} (colony #{r[:colony]})", ""]
       seed = r[:seed] || {}
       check = seed[:check]
-      out << "Model mix `#{r[:model]}`; flags on: #{Array(r[:flags]).join(', ')}; seed #{seed[:files]} files in #{seed[:changes]} inline changes, digest #{seed[:digest].to_s[0, 12]}" \
+      out << "Model mix `#{r[:model]}`; region depth #{r[:region_depth] || 'n/a'}; flags on: #{Array(r[:flags]).join(', ')}; seed #{seed[:files]} files in #{seed[:changes]} inline changes, digest #{seed[:digest].to_s[0, 12]}" \
              "#{check ? ", #{check[:differ_count].zero? && check[:extra].empty? ? 'trunk held it exactly' : "trunk differed on #{check[:differ_count]} files"}" : ''}; spend cap #{r[:cap_set] ? 'set' : 'not set'}."
       out << ""
       unless x
@@ -914,6 +927,10 @@ module HonoReplay
       out << ""
       out << "Shared source files: #{w[:by_file].map { |f, ns| "`#{f}` (#{ns.map { |n| "##{n}" }.join(', ')})" }.join('; ')}."
       out << ""
+      Array(w[:dropped]).each { |d| out << "Dropped from the workload after selection: ##{d['number'] || d[:number]}: #{(d['reason'] || d[:reason]).to_s.sub(/\.?\z/, '.')}" }
+      out << "" unless Array(w[:dropped]).empty?
+      Array(w[:notes]).each { |n| out << "Workload note: #{n}" }
+      out << "" unless Array(w[:notes]).empty?
       out << "The seed is B's tree, #{w[:seed_files]} files, but for #{w[:seed_left].to_h.map { |why, k| "#{k} #{why}" }.join(', ')}: those stay in the scratch worktree the grade runs in." unless w[:seed_left].to_h.empty?
       out << "" unless w[:seed_left].to_h.empty?
       out
@@ -964,7 +981,7 @@ module HonoReplay
   end
 
   def self.plan_lines(workload, opts, hono_bytes: nil)
-    lines = ["plan: #{opts[:plan].size} run#{opts[:plan].size == 1 ? '' : 's'} of #{workload['prs'].size} intents (honojs/hono pull requests after #{workload.dig('base', 'commit')[0, 12]}), each on a fresh colony named #{opts[:name]}-<label>"]
+    lines = ["plan: #{opts[:plan].size} run#{opts[:plan].size == 1 ? '' : 's'} of #{workload['prs'].size} intents (honojs/hono pull requests after #{workload.dig('base', 'commit')[0, 12]}), each on a fresh colony named #{opts[:name]}-<label> at region depth #{opts[:region_depth]}"]
     total = 0.0
     opts[:plan].each do |p|
       e = estimate(workload, p[:agents], p[:model], hono_bytes: hono_bytes)
@@ -983,7 +1000,7 @@ module HonoReplay
     opts = { base: nil, agents: 8, sweep: nil, solo: false, solo_model: SOLO_MODEL, model: DEFAULT_MODEL, max_usd: 15.0,
              timeout: 2400.0, settle: 600.0, stall: 900.0, stall_report: 300.0, poll: 5.0, step_timeout: 180.0, seed_timeout: 900.0,
              baseline_timeout: 1800.0, grade_timeout: 3600.0, red_baseline: false, certify_exclude: CERTIFY_EXCLUDE, person_wait: 120.0, person_every: 30.0, person_retest: 600.0,
-             person_max_approvals: 3, no_person: false, approve: false, no_grade: false, keep: false, name: "hono-replay-#{Time.now.utc.strftime('%m%d-%H%M')}",
+             person_max_approvals: 3, region_depth: REGION_DEPTH, no_person: false, approve: false, no_grade: false, keep: false, name: "hono-replay-#{Time.now.utc.strftime('%m%d-%H%M')}",
              out: nil, workload: WORKLOAD, clone: nil, modules: nil, grade_worktree: nil, plan_only: false, dry: false }
     OptionParser.new do |o|
       o.banner = "Usage: FT_TOKEN=... ruby scripts/hono_replay.rb --base <url> --clone <hono clone> --modules <node_modules> [options]"
@@ -997,6 +1014,7 @@ module HonoReplay
       o.on("--solo", "Add a run with 1 agent on the same intents") { opts[:solo] = true }
       o.on("--solo-model MODEL", "The solo agent's model (default #{SOLO_MODEL})") { |v| opts[:solo_model] = v }
       o.on("--model SPEC", "Model id or mix (default the contention run's)") { |v| opts[:model] = v }
+      o.on("--region-depth N", Integer, "Path segments that make a region in each colony, 1 to 8 (default #{REGION_DEPTH})") { |v| opts[:region_depth] = v }
       o.on("--max-usd USD", Float, "Hard spend stop per run (default 15)") { |v| opts[:max_usd] = v }
       o.on("--timeout S", Float, "Stop following a run S seconds after its release (default 2400)") { |v| opts[:timeout] = v }
       o.on("--settle S", Float, "After every intent landed, wait up to S seconds for green (default 600)") { |v| opts[:settle] = v }
@@ -1025,6 +1043,7 @@ module HonoReplay
     end.parse!(argv)
     counts = opts[:sweep] || [opts[:agents]]
     raise Stage::ConfigError, "agent counts must be 1 to 64: #{counts.join(',')}" unless counts.all? { |c| c.between?(1, 64) }
+    raise Stage::ConfigError, "--region-depth must be 1 to 8 (as POST /api/colonies takes it): #{opts[:region_depth]}" unless opts[:region_depth].between?(1, 8)
     raise Stage::ConfigError, "--max-usd must be above 0" unless opts[:max_usd].positive?
     raise Stage::ConfigError, "--poll must be above 0" unless opts[:poll].positive?
     raise Stage::ConfigError, "--name must be a colony name prefix: lowercase letters, digits and hyphens" unless opts[:name].match?(/\A[a-z0-9][a-z0-9-]{0,38}\z/)
@@ -1151,6 +1170,7 @@ module HonoReplay
       base: workload.dig("base", "commit"), base_date: workload.dig("base", "date"), base_subject: workload.dig("base", "subject"), seed_files: seed.size,
       shared: workload.dig("overlap", "by_file").to_h.sort_by { |f, ns| [-ns.size, f] }.first(4),
       by_file: workload.dig("overlap", "by_file").to_h,
+      dropped: Array(workload.dig("considered", "dropped")), notes: Array(workload["notes"]),
       prs: workload["prs"].map do |p|
         { number: p["number"], title: p["title"], merged_at: p["merged_at"], src: p["src"], hidden: p["hidden"].map { |h| h["path"] }, target_tests: Array(p["target_tests"]).size }
       end

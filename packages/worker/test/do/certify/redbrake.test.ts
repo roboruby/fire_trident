@@ -1,8 +1,8 @@
 import { runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
-import type { Certification, ColonyEvent, ColonySnapshot, Intent, Proposal, RedBrakeReport, StuckReport, TrunkHealth } from "@fire_trident/core";
+import type { Certification, ColonyEvent, ColonySnapshot, FieldReading, Intent, Proposal, RedBrakeReport, StuckReport, TrunkHealth } from "@fire_trident/core";
 import { CEILING_MS } from "../../../src/colony/redbrake.ts";
-import { addAgent, addIntent, api, colony, eventually, externalLanding, fakeSha, headSha, newColony, proposal, tick, trunk } from "../helpers.ts";
+import { addAgent, addIntent, api, colony, eventually, externalLanding, fakeSha, headSha, newColony, proposal, region, tick, trunk } from "../helpers.ts";
 import type { Assignment } from "../helpers.ts";
 
 /**
@@ -154,6 +154,42 @@ describe("the red brake (FT_RED_BRAKE)", () => {
     if (m.trunkHealth?.status !== "measured") throw new Error("trunk health not measured");
     expect(m.trunkHealth.brake?.held.changes).toBe(1);
     expect(m.trunkHealth.detail.at(-1)).toMatch(/^Red brake: held 1 change for \d+ s in all over 1 red episode; 1 episode back to green in \d+ s at p50\.$/);
+  });
+
+  it("leaves the repair open and unreserved while its region's admission is closed, and gives it to the next ask once a slot frees", async () => {
+    const { id, repair } = await redColony(true);
+    const admission = async (): Promise<FieldReading["admission"]> => ((await region(id, "src").reading()) as FieldReading).admission;
+    // Agents holding other files in src fill the region to its admission cap.
+    const holders: Array<{ agentId: string; a: Assignment }> = [];
+    for (let n = 0; n < 12 && (await admission()).open; n++) holders.push(await holder(id, `Hold ${n}`, [`src/h${n}.ts`]));
+    expect(await admission()).toMatchObject({ open: false });
+    const repairEvents = async (): Promise<number> =>
+      (await api<{ events: ColonyEvent[] }>("GET", `/colonies/${id}/events?source=recorded`)).body.events.filter((e) => e.t === "intent" && e.intentId === repair.id).length;
+    const before = await repairEvents();
+
+    // Every ask waits on admission, and none of them reserves the repair and opens it again.
+    const d = await addAgent(id, "Repairer");
+    for (let n = 0; n < 5; n++) expect(await takeAny(id, d.id)).toMatchObject({ wait: true, reason: "admission closed in every candidate region" });
+    expect(await repairEvents()).toBe(before);
+    const snap = (await api<ColonySnapshot>("GET", `/colonies/${id}`)).body;
+    expect(snap.intents.find((i) => i.id === repair.id)).toMatchObject({ status: "open" });
+    expect(snap.intents.find((i) => i.id === repair.id)?.assignedTo).toBeUndefined();
+    expect((await brakeEvents(id)).map((e) => e.action)).not.toContain("reserve");
+
+    // A holder's change lands, its claims go, and the next ask takes the repair: one reservation in all.
+    const h = holders[0]!;
+    const done = await proposeFiles(id, h.a, h.agentId, { [h.a.intent.footprint[0]!]: "export const h = 1;\n" });
+    await tick(id, "src");
+    expect((await proposal(id, done.id)).status).toBe("landed");
+    // The region's reading and the colony's view of it catch up within a second or so.
+    const got = await eventually(
+      () => takeAny(id, d.id),
+      (r) => !("wait" in r),
+      5_000,
+    );
+    if ("wait" in got) throw new Error(`expected the repair, got wait: ${got.reason}`);
+    expect(got.intent.id).toBe(repair.id);
+    expect((await brakeEvents(id)).filter((e) => e.action === "reserve")).toHaveLength(1);
   });
 
   it("is today's behavior with the flag off: the repair waits behind the claim and the change lands on red", async () => {
