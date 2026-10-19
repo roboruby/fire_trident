@@ -1,0 +1,37 @@
+# scripts/verify_note.mjs on a stock git clone of production colony signed-notes (https://firetrident.com/c/signed-notes)
+# run 2026-10-19T15:53:07Z, git version 2.55.0, node v24.14.0
+# ../verify_note.mjs is this repository's scripts/verify_note.mjs at 959a5c5, sha256 f3c1729b00e5c57f
+# read only: git clone and fetch, and a GET of the deployment's public keys
+
+$ git clone https://firetrident.com/git/signed-notes.git && cd signed-notes
+Cloning into 'signed-notes'...
+$ git fetch origin refs/notes/firetrident:refs/notes/firetrident
+From https://firetrident.com/git/signed-notes
+ * [new ref]         refs/notes/firetrident -> refs/notes/firetrident
+$ git log --format='%H %cI %s'
+6687a2205e845de64e9792032b338f1b8150177e 2026-10-14T16:00:41Z Land 1 change: Add notes/signed.md
+426a4110c78fe61d5ba3ee52ed24801b4c299eef 2026-10-14T16:00:17Z Initial commit
+$ git notes --ref=firetrident list   # <note blob> <commit>
+6cf63a534e93c1e16c34a1a84a7e3fba390123a7 6687a2205e845de64e9792032b338f1b8150177e
+
+# each landed commit with a note, newest first, up to 20: 1 found
+$ node ../verify_note.mjs 6687a2205e845de64e9792032b338f1b8150177e
+intact
+answerable: unknown (the note was written before notes recorded who asked for each intent)
+on origin/main
+exit 0
+
+# the same with the deployment's signing keys, and the whole first-parent chain
+$ node ../verify_note.mjs 6687a2205e845de64e9792032b338f1b8150177e --keys https://firetrident.com/.well-known/firetrident-keys.json
+intact, signed by 7980151ea697807b, signed before full-commit signatures
+answerable: unknown (the note was written before notes recorded who asked for each intent)
+on origin/main
+exit 0
+$ node ../verify_note.mjs --all --keys https://firetrident.com/.well-known/firetrident-keys.json
+6687a2205e84  intact, signed by 7980151ea697807b, signed before full-commit signatures, paths match (1 file), answerable: unknown (the note was written before notes recorded who asked for each intent)
+426a4110c78f  not a landing (no FT-Note trailer)
+origin/main reaches every commit the notes name (1 note)
+checked 1 landing in 2 commits: 1 intact, 1 signed, 0 full commits signed, 1 paths match, 0 failures (skipped: 1 not a landing)
+exit 0
+
+summary: signed-notes, landed commits with a note: 1; intact: 1 of 1

@@ -93,7 +93,7 @@
           <h2>How is work reviewed?</h2>
           <p>Every change goes to deterministic proof first, then to decision models, a second model from another family and a person, each only when the cheaper layer is unsure: all 282 rule edits of the Hono run on production landed on deterministic proof. <a href="/c/hono?path=src/index.ts">See a proof-path landing</a></p>
           <h2>How is the why recorded?</h2>
-          <p>Every landed commit carries a JSON lineage note in git (the intent, the rule and who approved it, the agent and its model, every decision, the files read and written) and the note's SHA-256 in its FT-Note trailer, so any git client can check it: on a stock clone of a Hono run on a preview, scripts/verify_note.mjs found 8 of 8 notes intact. Check the newest note of colony byo-demo yourself, with no account and no token:</p>
+          <p>Every landed commit carries a JSON lineage note in git (the intent, the rule and who approved it, the agent and its model, every decision, the files read and written) and the note's SHA-256 in its FT-Note trailer, so any git client can check it: on a stock clone of the production colony signed-notes on 2026-10-19, scripts/verify_note.mjs found 1 of 1 notes intact. Check the newest note of colony byo-demo yourself, with no account and no token:</p>
           <pre><code>git clone https://firetrident.com/git/byo-demo.git &amp;&amp; cd byo-demo
 git fetch origin refs/notes/firetrident:refs/notes/firetrident
 git log --notes=firetrident -1

@@ -1,0 +1,123 @@
+# The starting violation count of colony openspec-e2e (rule rul_mv4u4yd2uwx4e5, "Node built-ins use node:"), recounted
+# run 2026-10-19T15:54:26Z, git version 2.55.0, node v24.14.0, jq 1.7.1-apple
+# CLONE is a stock clone of the colony's source repository, outside this repository. Production was read with GET only, no token.
+
+# 1. The commit the colony imported: the base of its first landed proposal (the first landing, 2026-10-12 05:53 UTC).
+$ curl -s https://firetrident.com/api/colonies/openspec-e2e/proposals/prp_mv4u5u3he9gb49 | jq -c '{id, intentId, status, baseSha}'
+{"id":"prp_mv4u5u3he9gb49","intentId":"int_mv4u4ymtv94cn5","status":"landed","baseSha":"9111a7654d7800391459431fff4eaf66e33a3d2e"}
+$ curl -s https://firetrident.com/api/colonies/openspec-e2e | jq -c '.colony.source'
+{"url":"https://github.com/Fission-AI/OpenSpec","branch":"main"}
+
+$ git clone https://github.com/Fission-AI/OpenSpec.git $CLONE
+Cloning into 'OpenSpec'...
+$ git -C $CLONE checkout -q --detach 9111a7654d7800391459431fff4eaf66e33a3d2e
+$ git -C $CLONE log -1 --format='%H %cI %s'
+9111a7654d7800391459431fff4eaf66e33a3d2e 2026-10-06T00:21:34Z fix(security): accept the unpatched braces advisory in pnpm audit (#2048)
+# main's first-parent history around it: the next commit on main came 2026-10-14, so this was main's head when the colony was created (2026-10-12 05:52 UTC)
+$ git -C $CLONE log --first-parent --format='%H %cI %s' origin/main | grep -B1 -A1 9111a7654d7800391459431fff4eaf66e33a3d2e
+43820cae297d266dc6707c4474b2ce46b81838f4 2026-10-14T19:12:20Z chore(deps): bump @inquirer/core from 12.0.3 to 12.0.4 in the production-dependencies group (#2071)
+9111a7654d7800391459431fff4eaf66e33a3d2e 2026-10-06T00:21:34Z fix(security): accept the unpatched braces advisory in pnpm audit (#2048)
+87c3595ace6a2e22957f39ebe5b74c2f2316e0cb 2026-10-05T23:17:54Z Version Packages (#2024)
+$ git -C $CLONE ls-files | wc -l   # the colony's trunk: 1,287 files
+1287
+
+# 2. The count, with the colony's own scan (scripts/rule_scan.ts: scanFiles of packages/worker/src/morph/scan.ts, core checkFile).
+# With this repository's current code the rule does not run: its pattern is 258 characters, and the 256-character cap on
+# rule patterns came on 2026-10-18 (ef79836).
+$ node scripts/rule_scan.ts --repo $CLONE --colony openspec-e2e --rule rul_mv4u4yd2uwx4e5 --base https://firetrident.com
+rule rul_mv4u4yd2uwx4e5: spec.pattern is 258 characters long; at most 256 are allowed
+exit 1
+
+# So it runs on the scan code as it stood when the colony was created: core and packages/worker/src/morph at 6c0a42a (2026-10-12 05:51 UTC; morph.ts and scan.ts
+# are the same from efe0198, 05:15 UTC, to d235cf4, 06:40 UTC), exported outside this repository with the same scripts/rule_scan.ts.
+$ git log -1 --format='%h %cI %s' 6c0a42a
+6c0a42a 2026-10-12T01:51:04-04:00 Lanes pass compact lineage context to TrunkDO.land (no full snapshot per landing)
+$ git log --format='%h %s' efe0198~1..d235cf4 -- packages/core/src/morph.ts packages/worker/src/morph/scan.ts
+efe0198 Morphology scanner, ft CLI, demo candidates (hono primary), new-project spec; snapshot carries rules
+$ mkdir ft-6c0a42a && git archive 6c0a42a packages/core packages/worker/src/morph packages/worker/src/env.ts | tar -x -C ft-6c0a42a
+$ cp scripts/rule_scan.ts ft-6c0a42a/scripts/ && ln -s ../../packages/core ft-6c0a42a/node_modules/@fire_trident/core   # plus {"type":"module"}
+$ cd ft-6c0a42a && node scripts/rule_scan.ts --repo ../$CLONE --colony openspec-e2e --rule rul_mv4u4yd2uwx4e5 --base https://firetrident.com
+rule: rul_mv4u4yd2uwx4e5 (forbid-pattern) "Node built-ins are imported with the node: protocol", from GET https://firetrident.com/api/colonies/openspec-e2e
+spec: {"pattern":"(\\bfrom\\s*|\\bimport\\s*\\(\\s*|\\brequire\\(\\s*)([\"\\x27])(path|fs/promises|fs|os|module|child_process|crypto|url|http|https|util|events|stream|readline|zlib|assert|buffer|net|tty|worker_threads|perf_hooks|timers|v8|vm|dns|querystring|string_decoder|async_hooks)\\2","flags":"g","include":["src/**/*.ts"],"hint":"Import Node built-ins with the node: protocol ('fs' becomes 'node:fs').","replacement":"$1$2node:$3$2"}
+repo: https://github.com/Fission-AI/OpenSpec.git at 9111a7654d7800391459431fff4eaf66e33a3d2e 2026-10-06T00:21:34Z fix(security): accept the unpatched braces advisory in pnpm audit (#2048)
+files: 1287 tracked, 210 scanned (source files the rule's globs name, at most 524288 bytes)
+src/cli/index.ts: 4 (lines 2, 3, 4, 5)
+src/commands/change.ts: 2 (lines 1, 2)
+src/commands/feedback.ts: 3 (lines 1, 2, 3)
+src/commands/spec.ts: 2 (lines 1, 2)
+src/commands/validate.ts: 2 (lines 2, 22)
+src/commands/workflow/instructions.ts: 2 (lines 9, 10)
+src/commands/workflow/new-change.ts: 2 (lines 12, 162)
+src/commands/workflow/shared.ts: 2 (lines 9, 14)
+src/commands/workflow/templates.ts: 1 (line 8)
+src/core/archive.ts: 3 (lines 1, 2, 3)
+src/core/available-tools.ts: 2 (lines 8, 9)
+src/core/command-generation/adapters/amazon-q.ts: 1 (line 7)
+src/core/command-generation/adapters/antigravity.ts: 1 (line 7)
+src/core/command-generation/adapters/atomcode.ts: 1 (line 8)
+src/core/command-generation/adapters/auggie.ts: 1 (line 7)
+src/core/command-generation/adapters/bob.ts: 1 (line 8)
+src/core/command-generation/adapters/claude.ts: 1 (line 7)
+src/core/command-generation/adapters/cline.ts: 1 (line 8)
+src/core/command-generation/adapters/codeassistant.ts: 1 (line 9)
+src/core/command-generation/adapters/codebuddy.ts: 1 (line 7)
+src/core/command-generation/adapters/codestudio.ts: 1 (line 7)
+src/core/command-generation/adapters/command-code.ts: 1 (line 10)
+src/core/command-generation/adapters/continue.ts: 1 (line 7)
+src/core/command-generation/adapters/costrict.ts: 1 (line 7)
+src/core/command-generation/adapters/crush.ts: 1 (line 7)
+src/core/command-generation/adapters/cursor.ts: 1 (line 8)
+src/core/command-generation/adapters/devin.ts: 1 (line 9)
+src/core/command-generation/adapters/easycode.ts: 1 (line 8)
+src/core/command-generation/adapters/factory.ts: 1 (line 7)
+src/core/command-generation/adapters/gemini.ts: 1 (line 7)
+src/core/command-generation/adapters/gigacode.ts: 1 (line 11)
+src/core/command-generation/adapters/github-copilot.ts: 1 (line 7)
+src/core/command-generation/adapters/iflow.ts: 1 (line 7)
+src/core/command-generation/adapters/junie.ts: 1 (line 7)
+src/core/command-generation/adapters/kilocode.ts: 1 (line 8)
+src/core/command-generation/adapters/kiro.ts: 1 (line 7)
+src/core/command-generation/adapters/lingma.ts: 1 (line 7)
+src/core/command-generation/adapters/oh-my-pi.ts: 1 (line 9)
+src/core/command-generation/adapters/opencode.ts: 1 (line 7)
+src/core/command-generation/adapters/pi.ts: 1 (line 8)
+src/core/command-generation/adapters/qoder.ts: 1 (line 7)
+src/core/command-generation/adapters/qwen.ts: 1 (line 11)
+src/core/command-generation/adapters/roocode.ts: 1 (line 8)
+src/core/command-generation/adapters/trae.ts: 1 (line 7)
+src/core/command-generation/adapters/zcode.ts: 1 (line 10)
+src/core/command-generation/invocation.ts: 1 (line 25)
+src/core/completions/installers/bash-installer.ts: 3 (lines 1, 2, 3)
+src/core/completions/installers/fish-installer.ts: 3 (lines 1, 2, 3)
+src/core/completions/installers/powershell-installer.ts: 3 (lines 1, 2, 3)
+src/core/completions/installers/zsh-installer.ts: 3 (lines 1, 2, 3)
+src/core/converters/json-converter.ts: 2 (lines 1, 2)
+src/core/github-copilot/cloud-agent.ts: 2 (lines 10, 11)
+src/core/init.ts: 3 (lines 8, 11, 12)
+src/core/legacy-cleanup.ts: 4 (lines 6, 7, 8, 9)
+src/core/list.ts: 3 (lines 1, 2, 4)
+src/core/migration.ts: 2 (lines 23, 24)
+src/core/parsers/change-parser.ts: 2 (lines 5, 6)
+src/core/profile-sync-drift.ts: 2 (lines 1, 2)
+src/core/project-config.ts: 2 (lines 1, 2)
+src/core/shared-skill-target.ts: 2 (lines 1, 2)
+src/core/shared/tool-detection.ts: 2 (lines 7, 8)
+src/core/specs-apply.ts: 3 (lines 8, 9, 10)
+src/core/update.ts: 3 (lines 8, 11, 12)
+src/core/validation/validator.ts: 2 (lines 2, 3)
+src/core/version-check.ts: 8 (lines 1, 2, 3, 4, 5, 665, 666, 668)
+src/core/view.ts: 2 (lines 1, 2)
+src/telemetry/config.ts: 3 (lines 5, 6, 7)
+src/telemetry/index.ts: 1 (line 22)
+src/utils/change-utils.ts: 1 (line 1)
+src/utils/file-system.ts: 2 (lines 1, 2)
+src/utils/item-discovery.ts: 2 (lines 1, 2)
+src/utils/nested-change.ts: 2 (lines 1, 2)
+src/utils/spec-discovery.ts: 2 (lines 1, 2)
+src/utils/task-progress.ts: 2 (lines 1, 2)
+total: 131 violations in 74 files
+exit 0
+
+# 3. The colony's own record agrees: its first violations event, written when the rule was declared (2026-10-12 05:52:27 UTC).
+$ curl -s 'https://firetrident.com/api/colonies/openspec-e2e/events?after=0&limit=1000' | jq -c '[.events[] | select(.t == "violations")][0]'
+{"t":"violations","at":1791784347221,"total":131,"byRule":{"rul_mv4u4yd2uwx4e5":131},"seq":75}

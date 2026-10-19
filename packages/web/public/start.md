@@ -46,7 +46,7 @@ Tour of that colony, seven steps with each sentence filled from its record: http
 
 ## How is the why recorded?
 
-Every landed commit carries a JSON lineage note in git (the intent, the rule and who approved it, the agent and its model, every decision, the files read and written) and the note's SHA-256 in its FT-Note trailer, so any git client can check it: on a stock clone of a Hono run on a preview, scripts/verify_note.mjs found 8 of 8 notes intact.
+Every landed commit carries a JSON lineage note in git (the intent, the rule and who approved it, the agent and its model, every decision, the files read and written) and the note's SHA-256 in its FT-Note trailer, so any git client can check it: on a stock clone of the production colony signed-notes on 2026-10-19, scripts/verify_note.mjs found 1 of 1 notes intact.
 
 Check one yourself with stock git, no account and no token. The newest note of the showcase colony byo-demo is sealed; the newest notes of hono predate sealing.
 
