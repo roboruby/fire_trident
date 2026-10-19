@@ -119,8 +119,12 @@ function matchSegment(pattern: string, text: string): boolean {
 const SCRIPT_FILE = /\.[cm]?[jt]sx?$/i;
 const ALL_FILES = ["**/*"];
 
-/** Longest rule pattern (spec.pattern or spec.module) a rule may have, in characters. */
-export const MAX_RULE_PATTERN = 256;
+/**
+ * Longest rule pattern (spec.pattern or spec.module) a rule may have, in characters. checkFile validates every rule it
+ * scans, rules stored before the cap included, so the cap sits well above the longest kept rule: the Node built-ins
+ * rule of the OpenSpec colonies is 258 characters.
+ */
+export const MAX_RULE_PATTERN = 1_024;
 /**
  * Characters of one line (or one import specifier) a rule's pattern is tested on. Agents write the text rules scan and a
  * line has no length limit, so a longer line is tested on its first MAX_RULE_LINE characters: that bounds what any

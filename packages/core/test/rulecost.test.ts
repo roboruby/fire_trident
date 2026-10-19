@@ -62,6 +62,10 @@ describe("validateRule: what a pattern may cost", () => {
   });
 
   it("still takes the rules the demos and docs add", () => {
+    // The Node built-ins rule the OpenSpec colonies hold: rules stored before the cap are scanned against it too.
+    const builtins = String.raw`(\bfrom\s*|\bimport\s*\(\s*|\brequire\(\s*)(["\x27])(path|fs/promises|fs|os|module|child_process|crypto|url|http|https|util|events|stream|readline|zlib|assert|buffer|net|tty|worker_threads|perf_hooks|timers|v8|vm|dns|querystring|string_decoder|async_hooks)\2`;
+    expect(builtins.length).toBe(258);
+    expect(validateRule(rule("forbid-pattern", { pattern: builtins, flags: "g" }))).toEqual([]);
     for (const p of ["console\\.log\\(", "TODO(?!\\()", ":\\s*any\\b", "new Date\\(|\\.getTime\\(\\)", "Math\\.random\\(|Date\\.now\\(", "new Response\\(\\s*JSON\\.stringify|Response\\.json\\("]) {
       expect(validateRule(pattern(p)), p).toEqual([]);
     }
