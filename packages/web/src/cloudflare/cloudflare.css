@@ -1,0 +1,129 @@
+/* The "Connect Cloudflare" panel on the account page. Shares the tokens and .btn in styles.css. */
+
+.cf-panel {
+  display: grid;
+  gap: 12px;
+  padding: 18px 20px;
+  border: 1px solid var(--line-2);
+  border-radius: 12px;
+  background: var(--panel);
+}
+
+.cf-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 650;
+}
+
+.cf-state,
+.cf-lede {
+  margin: 0;
+  color: var(--text-2);
+  line-height: 1.5;
+}
+
+.cf-state strong {
+  color: var(--text);
+}
+
+.cf-notice {
+  margin: 0;
+  padding: 8px 12px;
+  border: 1px solid rgba(95, 208, 255, 0.25);
+  border-radius: 8px;
+  background: rgba(95, 208, 255, 0.07);
+  color: var(--text);
+}
+
+.cf-warn {
+  margin: 0;
+  padding: 8px 12px;
+  border: 1px solid rgba(255, 181, 61, 0.3);
+  border-radius: 8px;
+  background: rgba(255, 181, 61, 0.08);
+  color: var(--text);
+}
+
+.cf-id {
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+.cf-scopes {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cf-scopes li {
+  display: grid;
+  grid-template-columns: minmax(150px, 190px) 1fr;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.cf-scopes li.is-off {
+  opacity: 0.65;
+}
+
+.cf-scope-label {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.cf-scope-why {
+  color: var(--text-2);
+}
+
+.cf-mark {
+  display: inline-block;
+  width: 16px;
+  color: var(--trail);
+}
+
+.is-off .cf-mark {
+  color: var(--text-3);
+}
+
+.cf-accounts {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.cf-legend {
+  margin-bottom: 4px;
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+.cf-account {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.cf-actions,
+.cf-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.cf-confirm > span {
+  flex-basis: 100%;
+  color: var(--text-2);
+}
+
+@media (max-width: 640px) {
+  .cf-scopes li {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+}
