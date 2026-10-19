@@ -8,7 +8,9 @@
 #      pull request, its number at the end of the subject). Keep a pull request that changes source under src/ (not
 #      only tests or docs) and adds or changes a test file (src/**/*.test.ts) whose tests run on Node: none touches
 #      JSX (.tsx or src/jsx/) or a Bun, Deno or Cloudflare Workers adapter, and no test file uses Bun, Deno, workerd or
-#      Fastly APIs.
+#      Fastly APIs. No file it changes under src/ may be longer, right before it or right after it, than an in-platform
+#      agent can write back in one reply (the worker's MAX_REWRITE_CHARS, read from packages/worker/src/agents/prompt.ts,
+#      86,016 characters as JavaScript counts them): no agent could write such a file, so its intent could never land.
 #   2. Overlap: two pull requests overlap when they change the same source file (not a test file). Only pull requests
 #      that overlap another are candidates.
 #   3. Validity, with real vitest in a scratch worktree of the clone (Hono's main vitest project, B's node_modules):
@@ -64,6 +66,10 @@ module HonoReplaySelect
     ["perf-measures/", "bundle-size and type-check measurement projects"],
     ["docs/images/", "binary images"]
   ].freeze
+  # Where the worker sets an in-platform agent's whole-file output cap, and the cap when that file cannot be read as
+  # expected: (MAX_REWRITE_TOKENS 32,768 - REWRITE_HEADROOM_TOKENS 4,096) * CHARS_PER_OUTPUT_TOKEN 3.
+  PROMPT_TS = File.join(ROOT, "packages", "worker", "src", "agents", "prompt.ts")
+  REWRITE_CAP_FALLBACK = 86_016
   # A why longer than this is cut at a line.
   WHY_CHARS = 1_200
   # Lines of a description that speak to an agent (or a model) rather than describe the change.
@@ -86,8 +92,9 @@ module HonoReplaySelect
   def test_file?(path) = path.match?(/\.test\.tsx?\z/)
 
   # One commit of main as a candidate, or the reason it is not one. `commit`: { sha:, date:, subject:, changed:
-  # [[status, path]] }; `texts`: test path => its text after the commit (for the runtime check).
-  def classify(commit, texts = {})
+  # [[status, path]] }; `texts`: test path => its text after the commit (for the runtime check); `sizes`: path => the
+  # characters of a file it changes under src/ (the longer of right before and right after it), checked against `cap`.
+  def classify(commit, texts = {}, sizes: {}, cap: nil)
     pr = pr_number(commit[:subject])
     return { sha: commit[:sha], skip: "no pull request number in the subject" } unless pr
 
@@ -100,10 +107,52 @@ module HonoReplaySelect
              elsif paths.any? { |p| p.start_with?("src/") && (p.end_with?(".tsx") || p.start_with?("src/jsx/")) } then "touches JSX (.tsx or src/jsx/)"
              elsif (o = src.find { |p| OTHER_RUNTIME.match?(p) }) then "changes an adapter for another runtime (#{o})"
              elsif (t = tests.find { |p| !HonoTree::Api.not_node(texts[p]).empty? }) then "#{t} uses #{HonoTree::Api.not_node(texts[t]).join(', ')} APIs"
+             elsif (big = too_large(sizes, cap)) then too_large_reason(*big, cap)
              end
     return base.merge(skip: reason) if reason
 
     base.merge(src: src.sort, tests: tests.sort, footprint: paths.select { |p| p.start_with?("src/") }.sort, hub: src.count { |p| hub?(p) })
+  end
+
+  # The first file (by path) longer than `cap` characters, as [path, characters], or nil (also when there is no cap).
+  def too_large(sizes, cap)
+    return nil unless cap
+
+    sizes.to_h.compact.select { |_, n| n > cap }.min_by { |p, _| p }
+  end
+
+  # Why a pull request is skipped when one of its files is longer than the cap.
+  def too_large_reason(path, n, cap)
+    "#{path} is #{group(n)} characters, more than the #{group(cap)} an in-platform agent can write back in one reply, so no agent can write it"
+  end
+
+  # A count with thousands separators.
+  def group(n) = n.to_i.to_s.reverse.scan(/\d{1,3}/).join(",").reverse
+
+  # The length of a file's bytes as JavaScript counts a string (UTF-16 code units), the unit of the worker's cap; bytes
+  # that are not UTF-8 count one each.
+  def chars(bytes)
+    text = bytes.to_s.dup.force_encoding(Encoding::UTF_8)
+    text.valid_encoding? ? text.encode(Encoding::UTF_16LE).bytesize / 2 : bytes.to_s.bytesize
+  end
+
+  # The agents' whole-file output cap from the text of the worker's agents/prompt.ts: { chars:, source: }. The cap is
+  # MAX_REWRITE_CHARS = (MAX_REWRITE_TOKENS - REWRITE_HEADROOM_TOKENS) * CHARS_PER_OUTPUT_TOKEN; when the text does not
+  # define it that way with numeric constants, the cap is REWRITE_CAP_FALLBACK and `source` says why.
+  def rewrite_cap(text)
+    num = ->(name) { text.to_s[/^export const #{name} = ([\d_]+);$/, 1]&.delete("_")&.to_i }
+    tokens, headroom, per = num.call("MAX_REWRITE_TOKENS"), num.call("REWRITE_HEADROOM_TOKENS"), num.call("CHARS_PER_OUTPUT_TOKEN")
+    formula = text.to_s.match?(/^export const MAX_REWRITE_CHARS = \(MAX_REWRITE_TOKENS - REWRITE_HEADROOM_TOKENS\) \* CHARS_PER_OUTPUT_TOKEN;$/)
+    if tokens && headroom && per && formula && tokens > headroom && per.positive?
+      { chars: (tokens - headroom) * per, source: "packages/worker/src/agents/prompt.ts MAX_REWRITE_CHARS" }
+    else
+      { chars: REWRITE_CAP_FALLBACK, source: "#{group(REWRITE_CAP_FALLBACK)} characters, the value when this was written: packages/worker/src/agents/prompt.ts no longer defines MAX_REWRITE_CHARS as this script reads it" }
+    end
+  end
+
+  # The cap as the worker in this checkout sets it (rewrite_cap), or the fallback when its file is missing.
+  def output_cap(path = PROMPT_TS)
+    rewrite_cap(File.file?(path) ? File.read(path, encoding: "UTF-8") : "")
   end
 
   # Source files shared between pull requests: { edges: [[a, b, [files]]], by_file: { file => [numbers] } }, over
@@ -250,6 +299,15 @@ module HonoReplaySelect
 
   # --- the clone ----------------------------------------------------------------------------------------------------
 
+  # The characters of each of `paths` right before the commit and right after it, the longer of the two (nil when the
+  # file is at neither): what an agent redoing the pull request reads and must write back whole.
+  def footprint_chars(repo, sha, paths)
+    paths.to_h do |p|
+      sizes = [repo.show("#{sha}^", p), repo.show(sha, p)].compact.map { |b| chars(b) }
+      [p, sizes.max]
+    end
+  end
+
   # main's first-parent commits after `base` up to `upto`, oldest first: { sha:, date:, subject:, changed: }.
   def history(repo, base, upto)
     log = repo.git("log", "--first-parent", "--reverse", "--format=%H%x1f%cI%x1f%s", "#{base}..#{upto}")
@@ -385,13 +443,18 @@ module HonoReplaySelect
     wt = HonoTree::Worktree.new(repo, opts[:worktree], node_modules: opts[:modules])
     verifier = Verifier.new(repo, wt, base, cache: opts[:cache], log: log)
 
+    cap = output_cap
+    log.call("an agent writes at most #{group(cap[:chars])} characters of a file back in one reply (#{cap[:source]}): a pull request changing a longer file is skipped")
     commits = history(repo, base, upto)
     classified = commits.map do |c|
       texts = c[:changed].map(&:last).select { |p| HonoTree::TEST_FILE.match?(p) }.to_h { |p| [p, repo.show(c[:sha], p)] }
-      classify(c, texts)
+      first = classify(c, texts)
+      # Sizes are read only for what passes every other check (two reads per file).
+      first[:skip] ? first : classify(c, texts, sizes: footprint_chars(repo, c[:sha], first[:footprint]), cap: cap[:chars])
     end
     cands = classified.reject { |c| c[:skip] }
-    log.call("read #{commits.size} commits of main after #{base[0, 8]}; #{cands.size} pull requests change source and tests that run on Node")
+    big = classified.select { |c| c[:skip].to_s.include?("an in-platform agent can write back") }
+    log.call("read #{commits.size} commits of main after #{base[0, 8]}; #{cands.size} pull requests change source and tests that run on Node#{big.empty? ? '' : " (#{big.size} more change a file too long for an agent to write: #{big.map { |c| "##{c[:number]}" }.join(', ')})"}")
     linked = groups(cands).flatten.to_set
     pool = cands.select { |c| linked.include?(c[:number]) }
     log.call("#{pool.size} of them share a source file with another; their test files at their own merge commits:")
@@ -444,7 +507,7 @@ module HonoReplaySelect
     suite = verifier.run(base, [], all: true)
     log.call("the target's own test files")
     own = verifier.run(result[:chain][:head], sel.flat_map { |c| verifier.targets(c, result[:chain][:head]) }.uniq.sort)
-    workload = build(repo, base, upto, result, merges, verifier, dropped, cands, classified, suite, own, opts, original, log)
+    workload = build(repo, base, upto, result, merges, verifier, dropped, cands, classified, suite, own, opts, original, log, cap: cap)
     FileUtils.mkdir_p(File.dirname(opts[:out]))
     File.write(opts[:out], "#{JSON.pretty_generate(workload)}\n")
     report(workload).each { |l| puts l }
@@ -461,7 +524,7 @@ module HonoReplaySelect
   def summary_of(r) = r[:counts].to_h.merge(success: r[:success], failing: HonoTree::Vitest.failing(r).first(40)).compact
 
   # The workload written to demo/hono-replay/workload.json.
-  def build(repo, base, upto, result, merges, verifier, dropped, cands, classified, suite, own, opts, argv, log)
+  def build(repo, base, upto, result, merges, verifier, dropped, cands, classified, suite, own, opts, argv, log, cap: output_cap)
     head = repo.git("log", "-1", "--format=%cI%x1f%s", base).strip.split("\x1f", 2)
     chain = result[:chain]
     prs = result[:sel].each_with_index.map do |c, i|
@@ -498,7 +561,7 @@ module HonoReplaySelect
       apis: { hidden_files: hidden_scan.keys.sort, hidden: HonoTree::Api.merge(hidden_scan.values),
               visible_files: visible_scan.keys.sort, visible: HonoTree::Api.merge(visible_scan.values),
               suite_files: suite_files.size, suite: HonoTree::Api.merge(suite_files.map { |p| HonoTree::Api.scan(repo.show(base, p)) }) },
-      considered: { commits: classified.size, candidates: cands.size,
+      considered: { commits: classified.size, candidates: cands.size, output_cap: cap,
                     skipped: classified.select { |c| c[:skip] }.map { |c| { number: c[:number], sha: c[:sha][0, 12], why: c[:skip] }.compact },
                     dropped: dropped }
     }
@@ -531,6 +594,8 @@ module HonoReplaySelect
     lines << "hidden test files (#{w[:apis][:hidden_files].size} distinct) use: matchers #{h[:matchers].map { |k, v| "#{k}×#{v}" }.join(', ')}; .not×#{h[:negated]}, resolves×#{h[:resolves]}, rejects×#{h[:rejects]}"
     lines << "  asymmetric #{h[:asymmetric].inspect}; vi #{h[:vi].inspect}; hooks #{h[:hooks].inspect}; modifiers #{h[:modifiers].inspect}; type tests #{h[:type_tests].inspect}; snapshots #{h[:snapshots].inspect}"
     lines << "  imports: vitest #{h[:vitest_imports].inspect}, globals #{h[:globals].inspect}, packages #{h[:packages].inspect}, node #{h[:node_builtins].inspect}"
+    big = w[:considered][:skipped].select { |c| c[:why].to_s.include?("an in-platform agent can write back") }
+    lines << "skipped as too long for an agent to write (cap #{group(w.dig(:considered, :output_cap, :chars))} characters): #{big.map { |c| "##{c[:number]} (#{c[:why][/\A\S+ is [\d,]+ characters/]})" }.join('; ')}" unless big.empty?
     lines << "dropped: #{w[:considered][:dropped].map { |d| "##{d[:number]} (#{d[:reason][0, 90]})" }.join('; ')}"
     lines
   end
