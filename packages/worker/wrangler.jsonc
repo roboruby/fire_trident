@@ -24,12 +24,13 @@
       { "name": "POOL", "class_name": "PoolDO" },
       { "name": "AGENT", "class_name": "AgentDO" },
       { "name": "MCP", "class_name": "FireTridentMcp" },
-      { "name": "ACCOUNTS", "class_name": "AccountsDO" }
+      { "name": "ACCOUNTS", "class_name": "AccountsDO" },
+      { "name": "CF_GRANTS", "class_name": "CloudflareGrantDO" }
     ]
   },
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["ColonyDO", "RegionDO", "TrunkDO", "PoolDO", "AgentDO", "FireTridentMcp"] },
-    { "tag": "v2", "new_sqlite_classes": ["AccountsDO"] }
+    { "tag": "v2", "new_sqlite_classes": ["AccountsDO", "CloudflareGrantDO"] }
   ],
   "artifacts": [
     { "binding": "ARTIFACTS", "namespace": "ft-trunk" },
@@ -66,12 +67,13 @@
           { "name": "POOL", "class_name": "PoolDO" },
           { "name": "AGENT", "class_name": "AgentDO" },
           { "name": "MCP", "class_name": "FireTridentMcp" },
-          { "name": "ACCOUNTS", "class_name": "AccountsDO" }
+          { "name": "ACCOUNTS", "class_name": "AccountsDO" },
+          { "name": "CF_GRANTS", "class_name": "CloudflareGrantDO" }
         ]
       },
       "migrations": [
         { "tag": "v1", "new_sqlite_classes": ["ColonyDO", "RegionDO", "TrunkDO", "PoolDO", "AgentDO", "FireTridentMcp"] },
-        { "tag": "v2", "new_sqlite_classes": ["AccountsDO"] }
+        { "tag": "v2", "new_sqlite_classes": ["AccountsDO", "CloudflareGrantDO"] }
       ],
       "artifacts": [
         { "binding": "ARTIFACTS", "namespace": "ft-stg-trunk" },
@@ -117,7 +119,8 @@
         { "name": "POOL", "class_name": "PoolDO" },
         { "name": "AGENT", "class_name": "AgentDO" },
         { "name": "MCP", "class_name": "FireTridentMcp" },
-        { "name": "ACCOUNTS", "class_name": "AccountsDO" }
+        { "name": "ACCOUNTS", "class_name": "AccountsDO" },
+        { "name": "CF_GRANTS", "class_name": "CloudflareGrantDO" }
       ]
     },
     "workflows": [

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { TridentMark } from "../components/TopBar.tsx";
 import { Code } from "../landing/RunIt.tsx";
 import { colonyHref } from "../route.ts";
-import { CloudflareSlot } from "./CloudflareSlot.tsx";
+import { CloudflarePanel } from "../cloudflare/CloudflarePanel.tsx";
 import { ROLE_TEXT, TOKEN_ROLES, errorOf, parseMe, parseTokens, send, shortDate, signinText, tokenState, whoText, type Me, type OwnedColony, type TokenRole, type TokenView } from "./account.ts";
 import "../landing/landing.css";
 import "./account.css";
@@ -173,17 +173,18 @@ export function SignedIn({ me, onChange }: { me: Extract<Me, { signedIn: true }>
   return (
     <>
       <h1 className="l-h2">Signed in as {whoText(me.account.github)}.</h1>
-      <CloudflareSlot status={me.cloudflare} />
+      <CloudflarePanel onChange={() => void onChange()} />
       <section className="ac-card">
         <h2 className="ac-h2">Your colonies</h2>
         <p className="ac-text">
           You own {me.colonies.length} of the {me.limits.colonies} colonies an account may have. Each may run up to {me.limits.agentsPerColony} in-platform agents (agents FireTrident runs for you) and have up to{" "}
           {me.limits.tokensPerColony} live tokens.
         </p>
+        {me.colonies.length > 0 && me.modelsOff ? <p className="ac-text">{me.modelsOff}</p> : null}
         {me.colonies.length > 0 ? (
           <ul className="ac-colonies">
             {me.colonies.map((c) => (
-              <ColonyRow key={c.id} colony={c} maxDays={me.limits.tokenDays} />
+              <ColonyRow key={c.id} colony={c} maxDays={me.limits.tokenDays} onDeleted={onChange} />
             ))}
           </ul>
         ) : null}
@@ -245,9 +246,24 @@ function CreateColony({ connected, onCreated }: { connected: boolean; onCreated:
   );
 }
 
-/** One owned colony, with its tokens. */
-function ColonyRow({ colony, maxDays }: { colony: OwnedColony; maxDays: number }) {
+/** One owned colony, with its tokens, and deleting it (asked twice: its repositories go from your Cloudflare account). */
+function ColonyRow({ colony, maxDays, onDeleted }: { colony: OwnedColony; maxDays: number; onDeleted: () => Promise<void> }) {
   const [open, setOpen] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const remove = async () => {
+    setBusy(true);
+    setError(null);
+    const res = await send("DELETE", `/api/me/colonies/${encodeURIComponent(colony.id)}`).catch(() => null);
+    setBusy(false);
+    if (!res) return setError("The server could not be reached.");
+    if (!res.ok) return setError(await errorOf(res));
+    setConfirming(false);
+    await onDeleted();
+  };
+
   return (
     <li className="ac-colony">
       <div className="ac-colony-head">
@@ -259,7 +275,24 @@ function ColonyRow({ colony, maxDays }: { colony: OwnedColony; maxDays: number }
         <button type="button" className="btn" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
           {open ? "Hide tokens" : "Tokens"}
         </button>
+        {confirming ? null : (
+          <button type="button" className="btn btn-reject" onClick={() => setConfirming(true)}>
+            Delete
+          </button>
+        )}
       </div>
+      {confirming ? (
+        <p className="ac-text">
+          Delete {colony.name ?? colony.id}? Its repositories are deleted from your Cloudflare account, its agents stop and its tokens stop working. This cannot be undone.{" "}
+          <button type="button" className="btn btn-reject" disabled={busy} onClick={() => void remove()}>
+            {busy ? "Deleting…" : "Yes, delete it"}
+          </button>{" "}
+          <button type="button" className="btn" disabled={busy} onClick={() => setConfirming(false)}>
+            Keep it
+          </button>
+        </p>
+      ) : null}
+      {error ? <p className="ac-error">{error}</p> : null}
       {open ? <Tokens colonyId={colony.id} maxDays={maxDays} /> : null}
     </li>
   );

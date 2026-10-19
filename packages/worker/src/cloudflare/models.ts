@@ -1,3 +1,5 @@
+import type { Env } from "../env.ts";
+import { resolverGrantFor } from "../artifacts/storage.ts";
 import { CF_API, hasWorkersAi, type ConnectEnv } from "./config.ts";
 import { cloudflareGrantFor } from "./grant.ts";
 import { ACCOUNT_ID, type HttpFetch } from "./oauth.ts";
@@ -25,6 +27,12 @@ export const MODELS_OFF: Readonly<Record<ModelsOffReason, string>> = {
     "In-platform agents and model review are off: this colony's Cloudflare connection has no Workers AI access. Connect again and allow Workers AI, or bring your own agents over MCP.",
   not_connected:
     "In-platform agents and model review are off: this colony's owner has no working Cloudflare connection. Connect Cloudflare again on the account page, or bring your own agents over MCP.",
+};
+
+/** What a person reads on a change review would have put to a model, in a colony whose models are off (decide/nomodels.ts). */
+export const PERSON_DECIDES: Readonly<Record<ModelsOffReason, string>> = {
+  no_workers_ai: "No model is connected for this colony (its Cloudflare connection has no Workers AI access), so a person decides.",
+  not_connected: "No model is connected for this colony (its owner has no working Cloudflare connection), so a person decides.",
 };
 
 /** The typed refusal: an owned colony may not run models here. `message` is the sentence to show; status 409. */
@@ -149,22 +157,42 @@ export interface ColonyModels<E> {
   runner: ModelRunner | null;
   /** Null, or the sentence that says why in-platform agents and model review are off. */
   off: string | null;
+  /** Why they are off (null when they are not). */
+  reason: ModelsOffReason | null;
 }
 
 /**
  * The one hook model call sites use: the env their model calls read, for one colony. Operator colony: `env` itself (the
- * same object: nothing changes). Owned colony with Workers AI: a copy of `env` whose AI is the owner's REST runner.
- * Owned colony without it: a copy whose AI is absent, which every call site already reads as "no Workers AI" (the decide
- * pipeline's review off, no contest judge, no resolver), with `off` saying why. For every owned colony the copy also
- * drops ANTHROPIC_API_KEY, so no call of an owned colony is billed to the deployment's model key.
+ * same object: nothing changes). Owned colony with Workers AI: `env` layered under an AI that is the owner's REST runner
+ * (withModels). Owned colony without it: `env` layered under no AI, which every call site already reads as "no Workers
+ * AI" (the decide pipeline's review off, no contest judge, no resolver), with `off` saying why. For every owned colony
+ * the layer also hides ANTHROPIC_API_KEY, so no call of an owned colony is billed to the deployment's model key.
  */
 export async function colonyModels<E extends ModelEnv>(env: E, colonyId: string, owner: AccountId | null, deps: ModelDeps = {}): Promise<ColonyModels<E>> {
-  if (owner === null) return { env, runner: (env.AI as ModelRunner | undefined) ?? null, off: null };
+  if (owner === null) return { env, runner: (env.AI as ModelRunner | undefined) ?? null, off: null, reason: null };
   try {
     const runner = await modelRunnerFor(env, colonyId, owner, deps);
-    return { env: { ...env, AI: runner, ANTHROPIC_API_KEY: undefined }, runner, off: null };
+    return { env: withModels(env, runner), runner, off: null, reason: null };
   } catch (e) {
     if (!(e instanceof ModelsOff)) throw e;
-    return { env: { ...env, AI: undefined, ANTHROPIC_API_KEY: undefined }, runner: null, off: e.message };
+    return { env: withModels(env, undefined), runner: null, off: e.message, reason: e.reason };
   }
+}
+
+/**
+ * `env` with `ai` as its Workers AI and no deployment model key. Every other binding and variable reads through to `env`
+ * (its prototype), so an env that is itself layered (a colony's storage env, artifacts/storage.ts storageEnv) keeps
+ * every layer.
+ */
+export function withModels<E extends ModelEnv>(env: E, ai: ModelRunner | undefined): E {
+  return Object.create(env, { AI: { value: ai, enumerable: true }, ANTHROPIC_API_KEY: { value: undefined, enumerable: true } }) as E;
+}
+
+/**
+ * colonyModels with the account connections the Worker installed for colony storage (artifacts/storage.ts
+ * setStorageResolver), so one resolver decides where an owned colony's repositories and its models go. The colony
+ * object, the agent object and the swarm call this.
+ */
+export function colonyModelsOf<E extends Env>(env: E, colonyId: string, owner: AccountId | null): Promise<ColonyModels<E>> {
+  return colonyModels(env, colonyId, owner, { grantFor: resolverGrantFor(env) });
 }

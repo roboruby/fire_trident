@@ -56,7 +56,7 @@ import { accessConfig, approverIdentity, recordedAs } from "./access.ts";
 import { commitAuthorRoutes } from "./commitauthor.ts";
 import { publicReadLimit } from "./ratelimit.ts";
 import { accountApprover, accountWrite } from "../accounts/scope.ts";
-import { releaseOwnership } from "../accounts/ownership.ts";
+import { hideOwners, releaseOwnership } from "../accounts/ownership.ts";
 
 /** Hono environment of the API. */
 export type ApiEnv = { Bindings: Env };
@@ -119,13 +119,16 @@ export async function isAdminRequest(c: Context<ApiEnv>): Promise<boolean> {
 /** An Artifacts remote's host names the account: public readers get `artifacts://<namespace>/<repo>.git` instead. */
 const ARTIFACTS_REMOTE = /https:\/\/[0-9a-f]{32}\.artifacts\.cloudflare\.net\/git\//g;
 
-/** Public JSON reads show Artifacts remotes without the account id; callers with the admin token see them as they are. */
+/**
+ * Public JSON reads show Artifacts remotes without the account id, and repository references without the FireTrident
+ * account that owns them (accounts/ownership.ts hideOwners); callers with the admin token see them as they are.
+ */
 export const hideRemotes: MiddlewareHandler<ApiEnv> = async (c, next) => {
   await next();
   if (c.req.method !== "GET" || !(c.res.headers.get("content-type") ?? "").includes("application/json")) return;
   if (await isAdminRequest(c)) return;
   const text = await c.res.text();
-  c.res = new Response(text.replace(ARTIFACTS_REMOTE, "artifacts://"), c.res);
+  c.res = new Response(hideOwners(text.replace(ARTIFACTS_REMOTE, "artifacts://")), c.res);
 };
 
 /** Destructive routes always need the admin token: they refuse outright when FT_ADMIN_TOKEN is not configured. */
@@ -609,10 +612,12 @@ export function createApi(deps: ApiDeps): Hono<ApiEnv> {
     const b = await body(c, DecisionBody);
     // Verified approvers (api/access.ts): with Access configured, the approver is the verified token's email, else the stated name.
     // The owner of an owned colony deciding from their session is recorded as github:<login>, verified (accounts/scope.ts).
-    const who = accountApprover(c.req.raw, b.by) ?? (await approverIdentity(c.env, c.req.raw.headers, b.by));
+    const owner = accountApprover(c.req.raw, b.by);
+    const who = owner ?? (await approverIdentity(c.env, c.req.raw.headers, b.by));
     const res = await colonyStub(c.env, colonyId).decide(c.req.param("pid"), b.decision, b.reason, who.by, true, who);
-    // Blind canaries (colony/audit.ts): a decided canary is revealed in the answer.
-    return json({ ok: true, ...(res && typeof res === "object" ? res : {}), ...(accessConfig(c.env) ? { recorded: recordedAs(who) } : {}) });
+    // Blind canaries (colony/audit.ts): a decided canary is revealed in the answer. The answer says how the person was
+    // recorded wherever a name can be verified: with Access configured, and for an owner signed in with GitHub.
+    return json({ ok: true, ...(res && typeof res === "object" ? res : {}), ...(accessConfig(c.env) || owner ? { recorded: recordedAs(who) } : {}) });
   });
 
   app.post("/colonies/:id/landings/:ref/revert", requireAdmin, async (c) => {

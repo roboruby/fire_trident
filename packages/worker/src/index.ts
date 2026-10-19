@@ -14,6 +14,11 @@ import { KEYS_PATH, keysResponse, noteKeyId } from "./trunk/signature.ts";
 import { ALLOWED_SIGNERS_PATH, allowedSignersResponse } from "./trunk/gitsig.ts";
 import { accountsApp } from "./accounts/routes.ts";
 import { scopedMcp } from "./accounts/mcpscope.ts";
+import { colonyOwner } from "./accounts/ownership.ts";
+import { currentAccount } from "./accounts/session.ts";
+import { cloudflareRoutes } from "./cloudflare/routes.ts";
+import { cloudflareGrantFor } from "./cloudflare/grant.ts";
+import { provisionOwnedTrunk, setStorageResolver } from "./artifacts/storage.ts";
 
 export { ColonyDO } from "./colony/ColonyDO.ts";
 export { RegionDO } from "./region/RegionDO.ts";
@@ -22,8 +27,14 @@ export { PoolDO } from "./pool/PoolDO.ts";
 export { AgentDO } from "./agents/AgentDO.ts";
 export { FireTridentMcp } from "./mcp/FireTridentMcp.ts";
 export { AccountsDO } from "./accounts/AccountsDO.ts";
+export { CloudflareGrantDO } from "./cloudflare/GrantDO.ts";
 export { IngestWorkflow } from "./workflows/IngestWorkflow.ts";
 export { VerifyWorkflow } from "./workflows/VerifyWorkflow.ts";
+
+// Where an owned colony's repositories and models live (FT_ACCOUNTS): its owner from the accounts object, that owner's
+// Cloudflare connection from the grant objects. Every Durable Object of this Worker shares the module, so they all find
+// owners and connections the same way; an operator colony (no owner) never asks either.
+setStorageResolver({ ownerOf: colonyOwner, grantFor: cloudflareGrantFor });
 
 const app = new Hono<{ Bindings: Env }>();
 // Security headers on every answer, and no-store on JSON that sets no caching of its own (front/headers.ts). First, so
@@ -32,10 +43,12 @@ app.use("*", responseHeaders);
 // Which build is serving (commit, Worker version, deploy time), which flags are on, by name only (front/about.ts), and
 // the id of the key that signs lineage notes (trunk/signature.ts).
 app.get("/api/about", async (c) => aboutResponse(c.env, await noteKeyId(c.env.FT_NOTE_KEY), await deploymentPause(c.env)));
-// Accounts (FT_ACCOUNTS, accounts/routes.ts): GitHub sign-in under /auth, a person's /api/me and the operator's
-// /api/accounts, each answering 404 while the flag is off; before /api, whose catch-all would answer them. The
-// orchestrator wires provisionOwned (the owner's storage) and grantFor (the owner's Cloudflare connection) here.
-app.route("/", accountsApp({}));
+// Accounts (FT_ACCOUNTS): GitHub sign-in under /auth/github, a person's /api/me and the operator's /api/accounts
+// (accounts/routes.ts), and "Connect Cloudflare" under /auth/cloudflare and /api/me/cloudflare (cloudflare/routes.ts),
+// each answering 404 while the flag is off; before /api, whose catch-all would answer them. A person's colony is
+// provisioned on their own Cloudflare account (artifacts/storage.ts) and needs their connection (cloudflare/grant.ts).
+app.route("/", cloudflareRoutes({ currentAccount }));
+app.route("/", accountsApp({ provisionOwned: provisionOwnedTrunk, grantFor: cloudflareGrantFor }));
 app.route("/api", api);
 app.get("/healthz", (c) => c.json({ ok: true, service: "firetrident" }));
 // The public key that signs lineage notes, for any git client to check a commit's FT-Note-Signature (in run_worker_first).

@@ -49,6 +49,7 @@ import type {
 } from "@fire_trident/core";
 import type { Env } from "../env.ts";
 import { colonyStorage, storageEnv } from "../artifacts/storage.ts";
+import { PERSON_DECIDES, colonyModelsOf, withModels, type ColonyModels } from "../cloudflare/models.ts";
 import { scanRule } from "../morph/scan.ts";
 import type { RegionDO } from "../region/RegionDO.ts";
 import { errorText, ftError } from "./errors.ts";
@@ -2199,6 +2200,8 @@ export class ColonyDO extends DurableObject<Env> {
    * became of the agent's `lesson`.
    */
   async propose(input: ProposalInput): Promise<Proposal & { lesson?: LessonReceipt }> {
+    // A colony a person owns: its owner's model access, read before anything else (cloudflare/models.ts).
+    if (this.colonyOwnerId()) await this.refreshModels();
     const colony = this.requireColony();
     this.requireAgent(input.agentId);
     const intentRow = this.intentRow(input.intentId);
@@ -2695,6 +2698,8 @@ export class ColonyDO extends DurableObject<Env> {
    * `who` (api/access.ts): how the route named the person, verified by Access or stated; absent, `by` is recorded as stated.
    */
   async decide(proposalId: Id, d: "approve" | "reject" | "return", reason: string, by: string, mint = true, who?: ApproverWho): Promise<CanaryAnswer | void> {
+    // A colony a person owns: its owner's model access, read before anything else (cloudflare/models.ts).
+    if (this.colonyOwnerId()) await this.refreshModels();
     const colony = this.requireColony();
     if (d !== "approve" && d !== "reject" && d !== "return") throw ftError(400, `unknown decision ${String(d)}`);
     // The review receipt (decide/receipt.ts): what the person's card served of the change, digested before anything is decided.
@@ -2765,6 +2770,8 @@ export class ColonyDO extends DurableObject<Env> {
    * 409 where FT_ESCALATION_BATCH does not cover the colony.
    */
   async decideBatch(d: BatchDecision, who?: ApproverWho): Promise<BatchAnswer> {
+    // A colony a person owns: its owner's model access, read before anything else (cloudflare/models.ts).
+    if (this.colonyOwnerId()) await this.refreshModels();
     const colony = this.requireColony();
     if (!escalationBatchOn(this.env.FT_ESCALATION_BATCH, colony.id)) throw ftError(409, "escalation batching is off for this colony (FT_ESCALATION_BATCH), so there is no batch to answer; decide each change on its own card");
     const batches = new EscalationBatches(this.sql);
@@ -3165,10 +3172,11 @@ export class ColonyDO extends DurableObject<Env> {
   /** The decide pipeline, with this colony as its host (created on first use). */
   private decider(): DecideEngine {
     if (this.decideEngine) return this.decideEngine;
-    const storageEnvOf = (): Env => this.storageEnv();
+    // The env of the stage's reads and model calls: this colony's storage, and its owner's models (modelEnv).
+    const modelEnvOf = (): Env => this.modelEnv();
     const host: DecideHost = {
       get env() {
-        return storageEnvOf();
+        return modelEnvOf();
       },
       sql: this.sql,
       waitUntil: (p) => this.ctx.waitUntil(p),
@@ -3249,6 +3257,10 @@ export class ColonyDO extends DurableObject<Env> {
         if (out) this.bump(`preland.${out.run.status}`, 1, Date.now());
         return out;
       },
+      // A colony a person owns with no models (decide/nomodels.ts): a person stands in for every model; each run waits
+      // until the owner's model access has been read. An operator colony has neither.
+      modelsOff: () => this.modelsOffReason(),
+      modelsReady: () => (this.colonyOwnerId() ? this.refreshModels() : undefined),
     };
     this.decideEngine = new DecideEngine(host);
     return this.decideEngine;
@@ -3871,7 +3883,8 @@ export class ColonyDO extends DurableObject<Env> {
    * families, on the decide engine's call limiter.
    */
   private contestJudge(intent: Intent, authors: Array<string | undefined>): PairJudge | null {
-    const bound = (this.env as unknown as { AI?: AiRunner }).AI;
+    // The deployment's Workers AI, or the owner's for a colony a person owns (modelEnv).
+    const bound = (this.modelEnv() as unknown as { AI?: AiRunner }).AI;
     if (!bound) return null;
     // Spend cap (colony/spendcap.ts): each judge call reserved against the cap; a refused one reads as the judge unavailable (a tie).
     const ai = this.capped(bound, "judge");
@@ -5141,6 +5154,8 @@ export class ColonyDO extends DurableObject<Env> {
 
   /** Metrics tick: while UI sockets are connected, re-send live metrics that changed (all every 30 s), reap silent agents and publish newly stuck work. */
   async alarm(): Promise<void> {
+    // A colony a person owns: its owner's model access, read before the contest judge may run (cloudflare/models.ts).
+    if (this.colonyOwnerId()) await this.refreshModels();
     // Contest mode: contests whose deadline passed are decided (the alarm is shared with this tick).
     await this.contestAlarm(Date.now());
     // Red brake (FT_RED_BRAKE, colony/redbrake.ts): held changes go on at the ceiling, or when the repair is reported or gone.
@@ -6271,7 +6286,8 @@ export class ColonyDO extends DurableObject<Env> {
   private resolver(): Resolver {
     return (this.resolverRun ??= new Resolver({
       sql: this.sql,
-      env: () => this.env,
+      // The deployment's Workers AI, or the owner's for a colony a person owns (modelEnv).
+      env: () => this.modelEnv(),
       colonyId: () => this.requireColony().id,
       now: () => Date.now(),
       waitUntil: (p) => this.ctx.waitUntil(p),
@@ -6281,7 +6297,7 @@ export class ColonyDO extends DurableObject<Env> {
       model: () => {
         const hedge = hedgeFor(this.env, this.requireColony().id, "resolver", { admit: (m) => this.decider().limiter.acquire(m, 0), bump: (name, delta) => void this.bump(name, delta, Date.now()) });
         // Spend cap (colony/spendcap.ts): the call reserved against the cap (twice with a hedge); a refused one fails the resolution.
-        return cappedClient(resolverClient(this.env, (name, delta) => void this.bump(name, delta, Date.now()), hedge), localGate(this.spendCaps(), "resolver", (m) => modelOfClass(this.env, m)), hedge ? 2 : 1);
+        return cappedClient(resolverClient(this.modelEnv(), (name, delta) => void this.bump(name, delta, Date.now()), hedge), localGate(this.spendCaps(), "resolver", (m) => modelOfClass(this.env, m)), hedge ? 2 : 1);
       },
       // An in-platform agent named "resolver", registered on first use (synchronously: a return is being settled).
       agent: (known, model) => {
@@ -6933,6 +6949,72 @@ export class ColonyDO extends DurableObject<Env> {
     if (!owner) return this.env;
     if (this.ownedEnv?.owner !== owner) this.ownedEnv = { owner, env: storageEnv(this.env, colonyStorage(this.env, owner)) };
     return this.ownedEnv.env;
+  }
+
+  // =========================================================================
+  // Models of a colony a person owns (cloudflare/models.ts)
+  // =========================================================================
+
+  /** How long the owner's model access, once read, stands before the next entry point reads it again. */
+  private static readonly MODELS_TTL_MS = 60_000;
+  /** The owner's model access as last read: their Workers AI, or off with the sentence that says why. */
+  private ownedModels: { owner: string; at: number; models: ColonyModels<Env> } | null = null;
+  /** A read of it in flight, shared by the entry points that wait for it. */
+  private modelsReading: Promise<void> | null = null;
+
+  /** The account that owns this colony, as its trunk RepoRef names it (artifacts/storage.ts); undefined for an operator colony. */
+  private colonyOwnerId(): string | undefined {
+    return this.loadColony()?.colony.trunk.owner || undefined;
+  }
+
+  /**
+   * Read the owner's model access (colonyModelsOf) when it was never read or is older than MODELS_TTL_MS. The entry points
+   * that may lead to model calls (propose, a person's decision, the alarm, each decide run) await it; only a colony a
+   * person owns calls it. A failed read keeps what was read before (or none, which modelEnv reads as off).
+   */
+  private refreshModels(): Promise<void> {
+    const owner = this.colonyOwnerId();
+    if (!owner) return Promise.resolve();
+    const known = this.ownedModels;
+    if (known && known.owner === owner && Date.now() - known.at < ColonyDO.MODELS_TTL_MS) return Promise.resolve();
+    this.modelsReading ??= (async () => {
+      try {
+        const models = await colonyModelsOf(this.storageEnv(), this.requireColony().id, owner);
+        this.ownedModels = { owner, at: Date.now(), models };
+      } catch (err) {
+        console.warn(`colony ${this.loadColony()?.colony.id ?? "?"}: the owner's model access was not read (${errorText(err)}); it stays as it was`);
+      } finally {
+        this.modelsReading = null;
+      }
+    })();
+    return this.modelsReading;
+  }
+
+  /**
+   * The env this colony's model call sites read (the decide stage, the contest judge, the conflict resolver), over its
+   * storage env. An operator colony: the deployment's env itself, Workers AI as before. A colony a person owns: the
+   * owner's Workers AI as last read, or no AI at all when the owner's connection has no Workers AI or was not read yet:
+   * then review asks a person wherever it would ask a model (modelsOffReason), and the contest judge and the resolver
+   * are off.
+   */
+  private modelEnv(): Env {
+    const owner = this.colonyOwnerId();
+    if (!owner) return this.storageEnv();
+    const known = this.ownedModels;
+    return known && known.owner === owner ? known.models.env : withModels(this.storageEnv(), undefined);
+  }
+
+  /**
+   * Null for an operator colony, and for a colony a person owns whose models run; otherwise the sentence a person reads
+   * on a change review would have put to a model (cloudflare/models.ts PERSON_DECIDES). Access not read (yet, or the
+   * read failed) counts as no working connection: it fails closed.
+   */
+  private modelsOffReason(): string | null {
+    const owner = this.colonyOwnerId();
+    if (!owner) return null;
+    const known = this.ownedModels;
+    if (!known || known.owner !== owner) return PERSON_DECIDES.not_connected;
+    return known.models.reason ? PERSON_DECIDES[known.models.reason] : null;
   }
 
   private requireColony(): Colony {

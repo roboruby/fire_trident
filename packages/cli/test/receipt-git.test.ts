@@ -81,6 +81,13 @@ beforeAll(async () => {
     },
     { signer: key.signer },
   );
+  // A colony's owner who decided from their GitHub sign-in (worker accounts/scope.ts): github:<login>, verified.
+  const github: NoteDecision[] = [{ kind: "triage", layer: "human", p: 1, action: "approve", by: "github:ada-dev", head: HEAD, shown: { view: "review-card", digest: CARD }, identity: "verified" }];
+  sha.github = await repo.landing(
+    { "src/c.ts": "c\n" },
+    { landingId: "lnd_g", proposals: [proposal({ id: "prp_3", writeSet: [{ path: "src/c.ts", blob: repo.blob("c\n") }], decisions: github })] },
+    { signer: key.signer },
+  );
 });
 
 afterAll(removeAll);
@@ -102,6 +109,12 @@ describe("receipt lines from a clone", { timeout: 30_000 }, () => {
       "receipt: prp_2 human approve by matt (stated, not verified) at head 1234567890ab, shown the review card: no view was kept, clipped: the card served no view of the change",
       "on origin/main",
     ]);
+  });
+
+  it("says verified by GitHub for a github:<login> approver, the same from both checkers", async () => {
+    const r = await both(repo.dir, sha.github!, ["--keys", keys.keysFile]);
+    expect(r.code).toBe(0);
+    expect(r.out.split("\n")).toContain(`receipt: prp_3 human approve by github:ada-dev (verified by GitHub) at head 1234567890ab, shown the review card sha256:${"ab".repeat(8)}`);
   });
 
   it("catches a changed receipt: it is inside the note's digest", async () => {

@@ -1,5 +1,7 @@
 import type { Id, RepoRef, Sha } from "@fire_trident/core";
 import { WORKSPACE_SHARDS, type Env } from "../env.ts";
+import { accountsOn } from "../accounts/config.ts";
+import type { AccountId, CloudflareGrant } from "../cloudflare/types.ts";
 import { provisionTrunk } from "./colony.ts";
 import { errorText } from "./git.ts";
 import { ArtifactsRestError, artifactsOverRest, type RestArtifactsOptions, type RestCredentials } from "./rest.ts";
@@ -28,16 +30,8 @@ import { SESSIONS_NAMESPACE, TRUNK_NAMESPACE, bindingFor, shardOf, workspaceBind
  * plain sentence instead of falling back to the deployment's bindings.
  */
 
-/** A FireTrident account id (`acc_...`). */
-export type AccountId = string;
-
-/** A person's Cloudflare connection: the Cloudflare account it reaches, a current access token, and the scopes granted. */
-export interface CloudflareGrant {
-  /** The Cloudflare account. */
-  accountId: string;
-  accessToken: string;
-  scopes: string[];
-}
+/** A FireTrident account id (`acc_...`) and a person's Cloudflare connection, as the Cloudflare module defines them. */
+export type { AccountId, CloudflareGrant };
 
 /** The connection of a FireTrident account, refreshed when needed; null when it has none or the refresh failed. */
 export type GrantFor = (account: AccountId) => Promise<CloudflareGrant | null>;
@@ -157,11 +151,6 @@ let resolver: StorageResolver | null = null;
 /** Install the resolver (once, where the Worker starts); null removes it (tests). */
 export function setStorageResolver(r: StorageResolver | null): void {
   resolver = r;
-}
-
-/** Whether accounts are on for this deployment (FT_ACCOUNTS is "on"). */
-function accountsOn(env: Env): boolean {
-  return (env as unknown as { FT_ACCOUNTS?: string }).FT_ACCOUNTS?.trim() === "on";
 }
 
 /** The installed resolver's grantFor for this env; with none installed every account reads as not connected. */

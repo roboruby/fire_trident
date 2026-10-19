@@ -54,6 +54,7 @@ const SHARED: Record<string, string> = {
   "L7 acceptance unclear": "have an acceptance line the second opinion answered unclear",
   "L8 spend cap": "had no second opinion because the spend cap refused its model call",
   "L9 no independent reviewer": "had no second opinion because no reviewer model outside their author's model family is configured",
+  "N1 no model connected": "had no model to review them because their colony's Cloudflare connection runs no models",
 };
 
 /**

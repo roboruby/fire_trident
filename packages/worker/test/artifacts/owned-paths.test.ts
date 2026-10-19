@@ -37,11 +37,14 @@ function env(extra: Record<string, unknown> = {}): Env {
   return { ARTIFACTS: tripwire("ARTIFACTS"), WS0: tripwire("WS0"), WS1: tripwire("WS1"), WS2: tripwire("WS2"), WS3: tripwire("WS3"), SESSIONS: tripwire("SESSIONS"), FT_ACCOUNTS: "on", FT_DEFAULT_MODEL: "m", FT_BULK_MODEL: "b", ...extra } as unknown as Env;
 }
 
-const grant = (): CloudflareGrant => ({ accountId: fake.accountId, accessToken: fake.accessToken, scopes: ["artifacts.read", "artifacts.write"] });
+/** The owner's connection: Artifacts, and Workers AI unless a test says otherwise (in-platform agents need it). */
+let scopes: string[];
+const grant = (): CloudflareGrant => ({ accountId: fake.accountId, accessToken: fake.accessToken, scopes });
 
 beforeEach(() => {
   fake = new FakeArtifacts();
   touched = [];
+  scopes = ["artifacts.read", "artifacts.write", "ai.read", "ai.write"];
   forgetKnownNamespaces();
   vi.stubGlobal("fetch", fake.fetch);
   setStorageResolver({ ownerOf: async (_e, colonyId) => (colonyId.startsWith("own") ? OWNER : null), grantFor: async (_e, a) => (a === OWNER ? grant() : null) });
@@ -99,6 +102,18 @@ describe("the swarm", () => {
     const off = swarmEnv({ FT_ACCOUNTS: undefined });
     await spawnSwarm(off.e, "own-colony", { count: 1, staggerMs: 0 });
     expect("owner" in off.starts[0]!).toBe(false);
+  });
+
+  it("starts no agent on an owned colony whose connection has no Workers AI, and says why (409)", async () => {
+    scopes = ["artifacts.read", "artifacts.write"];
+    const owned = swarmEnv();
+    await expect(spawnSwarm(owned.e, "own-colony", { count: 2, staggerMs: 0 })).rejects.toThrow(
+      "[ft:409] In-platform agents and model review are off: this colony's Cloudflare connection has no Workers AI access.",
+    );
+    expect(owned.starts).toEqual([]);
+    // An operator colony is not asked about it.
+    const plain = swarmEnv();
+    expect((await spawnSwarm(plain.e, "plain-colony", { count: 1, staggerMs: 0 })).started).toBe(1);
   });
 });
 

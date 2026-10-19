@@ -97,6 +97,23 @@ export interface Env {
    */
   FT_SESSION_KEY?: string;
   /**
+   * Optional (a var): the OAuth client id of this deployment's Cloudflare OAuth client, for "Connect Cloudflare" on the
+   * account page (cloudflare/routes.ts; only with FT_ACCOUNTS on). The client is registered on Cloudflare with the
+   * redirect URL FT_PUBLIC_URL + "/auth/cloudflare/callback", client_secret_post, the required scopes user-details.read,
+   * account-settings.read, artifacts.read and artifacts.write, the optional scopes ai.read and ai.write, and
+   * offline_access (without it Cloudflare issues no refresh token and a connection lasts one access token).
+   */
+  FT_CF_CLIENT_ID?: string;
+  /** Secret (optional): that OAuth client's secret, sent only to dash.cloudflare.com's token and revoke endpoints, never logged. */
+  FT_CF_CLIENT_SECRET?: string;
+  /**
+   * Secret (optional): key material for the stored Cloudflare tokens, at least 32 characters (`openssl rand -base64 32`).
+   * Each record's AES-GCM key is derived from it with HKDF-SHA-256 and a salt of its own (cloudflare/seal.ts). Changing it
+   * makes every stored connection unreadable: each shows as broken until its person connects again. Connecting Cloudflare
+   * needs all three of FT_CF_CLIENT_ID, FT_CF_CLIENT_SECRET and FT_GRANT_KEY; without them it is off.
+   */
+  FT_GRANT_KEY?: string;
+  /**
    * Secret (optional): the key that signs lineage notes, an Ed25519 private key as a JWK JSON string
    * ({"kty":"OKP","crv":"Ed25519","d":"…","x":"…"}, with an optional "since": the ISO date it started signing). With it,
    * the trunk writer signs each landing commit it builds (an FT-Note-Signature trailer just above FT-Note, over the note's
@@ -438,23 +455,6 @@ export interface Env {
    * may change that repository's issues. Sent only to api.github.com, never logged.
    */
   FT_GITHUB_TOKEN?: string;
-/**
- * Optional (a var): the OAuth client id of this deployment's Cloudflare OAuth client, for "Connect Cloudflare" on the
- * account page (cloudflare/routes.ts; only with FT_ACCOUNTS on). The client is registered on Cloudflare with the
- * redirect URL FT_PUBLIC_URL + "/auth/cloudflare/callback", client_secret_post, the required scopes user-details.read,
- * account-settings.read, artifacts.read and artifacts.write, the optional scopes ai.read and ai.write, and
- * offline_access (without it Cloudflare issues no refresh token and a connection lasts one access token).
- */
-FT_CF_CLIENT_ID?: string;
-/** Secret (optional): that OAuth client's secret, sent only to dash.cloudflare.com's token and revoke endpoints, never logged. */
-FT_CF_CLIENT_SECRET?: string;
-/**
- * Secret (optional): key material for the stored Cloudflare tokens, at least 32 characters (`openssl rand -base64 32`).
- * Each record's AES-GCM key is derived from it with HKDF-SHA-256 and a salt of its own (cloudflare/seal.ts). Changing it
- * makes every stored connection unreadable: each shows as broken until its person connects again. Connecting Cloudflare
- * needs all three of FT_CF_CLIENT_ID, FT_CF_CLIENT_SECRET and FT_GRANT_KEY; without them it is off.
- */
-FT_GRANT_KEY?: string;
   /**
    * Optional: a call budget for each MCP session at /mcp and /sse, "on" (4 tool calls a second, 20 at once after a
    * pause) or "<calls per second>,<burst>" such as "8,40"; absent, "off" or anything else is off. Global, since a

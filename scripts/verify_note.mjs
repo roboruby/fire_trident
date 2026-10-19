@@ -41,7 +41,8 @@
 // with --all, each landing's line ends with it.
 // Then, for a note with review receipts, one "receipt: <proposal> <layer> <action> by <who> at head <commit>, shown <view>
 // sha256:<16 hex>" line a decision: the head it was made on, a digest of the view its decider was shown ("clipped" when
-// it left changed lines out), and for a person "(verified by Access)" or "(stated, not verified)" (one commit only).
+// it left changed lines out), and for a person "(verified by Access)", "(verified by GitHub)" for a github:<login>
+// approver, or "(stated, not verified)" (one commit only).
 // Exits 0 when every check passes, 1 when one fails, 2 when the arguments, the clone or the keys cannot be read.
 // packages/cli/src/clonecheck.ts (ft verify --all) does the same; packages/cli/test/clonecheck-git.test.ts holds them in step.
 import { execFileSync } from "node:child_process";
@@ -484,7 +485,8 @@ const answerableOf = (raw) => {
 const VIEW_WORDS = { "reflex-state": "the reflex's diff", "prompt-diff": "the prompt's diff", "review-card": "the review card" };
 const MAX_RECEIPTS = 50;
 const one = (v, max = 200) => (typeof v === "string" ? v.replace(/[\u0000-\u001f\u007f-\u009f]+/g, " ").replace(/\s+/g, " ").trim().slice(0, max) : "");
-const identityWords = (v) => (v === "verified" ? "(verified by Access)" : v === "stated" ? "(stated, not verified)" : "");
+// A github:<login> approver signed in with GitHub (the owner of a colony they own); any other verified name is Access's.
+const identityWords = (v, by) => (v === "verified" ? (typeof by === "string" && by.startsWith("github:") ? "(verified by GitHub)" : "(verified by Access)") : v === "stated" ? "(stated, not verified)" : "");
 const shownWords = (s) => {
   if (!obj(s)) return "";
   const view = VIEW_WORDS[one(s.view)] ?? (one(s.view, 40) || "a view");
@@ -494,7 +496,7 @@ const shownWords = (s) => {
 };
 const receiptText = (d) => {
   const by = one(d.by) || "unnamed";
-  const who = d.layer === "human" ? [by, identityWords(d.identity)].filter(Boolean).join(" ") : by;
+  const who = d.layer === "human" ? [by, identityWords(d.identity, d.by)].filter(Boolean).join(" ") : by;
   const head = typeof d.head === "string" && /^[0-9a-f]{40,64}$/.test(d.head) ? ` at head ${d.head.slice(0, 12)}` : "";
   const shown = shownWords(d.shown);
   return `${one(d.layer, 20) || "?"} ${one(d.action, 20) || "?"} by ${who}${head}${shown ? `, ${shown}` : ""}`;

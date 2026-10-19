@@ -4,10 +4,11 @@ import type { Colors } from "./format.ts";
 /**
  * The review receipt in the CLI (packages/worker/src/decide/receipt.ts): each decision a lineage note keeps records the
  * proposal head it was made on, a digest of the view of the change the decider was shown (clipped when it left changed
- * lines out) and, for a person, whether the name was verified by Access or only stated; the oldest kept decision says how
- * many earlier ones the note's cap left out. `ft verify --commit` prints one line a decision after the answerable line,
- * as scripts/verify_note.mjs does (test/receipt-git.test.ts holds them in step), and `ft why` shows the same under each
- * change. Notes written before receipts print nothing new. Pure.
+ * lines out) and, for a person, whether the name was verified (by Access, or by GitHub sign-in for a `github:<login>`
+ * approver) or only stated; the oldest kept decision says how many earlier ones the note's cap left out. `ft verify
+ * --commit` prints one line a decision after the answerable line, as scripts/verify_note.mjs does
+ * (test/receipt-git.test.ts holds them in step), and `ft why` shows the same under each change. Notes written before
+ * receipts print nothing new. Pure.
  */
 
 /** Receipt lines `ft verify` prints for one note at most; the rest are counted. */
@@ -23,9 +24,20 @@ function hasReceipt(d: Record<string, unknown>): boolean {
   return typeof d.head === "string" || isRecord(d.shown) || d.identity === "verified" || d.identity === "stated";
 }
 
-/** How a person's decision names them: "(verified by Access)", "(stated, not verified)", or "" when the note does not say. */
-export function identityWords(identity: unknown): string {
-  return identity === "verified" ? "(verified by Access)" : identity === "stated" ? "(stated, not verified)" : "";
+/**
+ * What verified a verified name: a `github:<login>` approver signed in with GitHub (the owner of a colony they own, worker
+ * accounts/scope.ts); any other verified name is the email Cloudflare Access verified.
+ */
+export function verifiedWords(by: unknown): string {
+  return typeof by === "string" && by.startsWith("github:") ? "verified by GitHub" : "verified by Access";
+}
+
+/**
+ * How a person's decision names them: "(verified by Access)", "(verified by GitHub)" for a `github:<login>` approver,
+ * "(stated, not verified)", or "" when the note does not say.
+ */
+export function identityWords(identity: unknown, by?: unknown): string {
+  return identity === "verified" ? `(${verifiedWords(by)})` : identity === "stated" ? "(stated, not verified)" : "";
 }
 
 /** What the decider was shown, in words: "shown the review card sha256:<16 hex>", ", clipped: <how much>" when clipped. */
@@ -40,7 +52,7 @@ export function shownWords(shown: unknown): string {
 /** One decision's receipt after "<layer> <action> by <who>": the identity words, the head and what it was shown. */
 export function receiptText(d: Record<string, unknown>): string {
   const by = line(d.by) || "unnamed";
-  const who = d.layer === "human" ? [by, identityWords(d.identity)].filter(Boolean).join(" ") : by;
+  const who = d.layer === "human" ? [by, identityWords(d.identity, d.by)].filter(Boolean).join(" ") : by;
   const head = typeof d.head === "string" && /^[0-9a-f]{40,64}$/.test(d.head) ? ` at head ${d.head.slice(0, 12)}` : "";
   const shown = shownWords(d.shown);
   return `${line(d.layer, 20) || "?"} ${line(d.action, 20) || "?"} by ${who}${head}${shown ? `, ${shown}` : ""}`;
@@ -98,7 +110,7 @@ export function recordedLine(res: unknown, c: Colors): string | null {
   const r = isRecord(res) && isRecord(res.recorded) ? res.recorded : null;
   if (!r || typeof r.by !== "string") return null;
   const who = line(r.by);
-  if (r.identity === "verified") return c.dim(`  Recorded as ${who}, verified by Access.`);
+  if (r.identity === "verified") return c.dim(`  Recorded as ${who}, ${verifiedWords(r.by)}.`);
   const why = line(r.why);
   return c.dim(`  Recorded as ${who}, stated and not verified${why ? `: ${why}` : ""}.`);
 }

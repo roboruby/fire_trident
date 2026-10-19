@@ -39,6 +39,8 @@ export type Me =
       colonies: OwnedColony[];
       /** Whether the account's Cloudflare connection exists, as the server knows it. */
       cloudflare: "connected" | "not-connected" | "unknown";
+      /** Present when the connection has no Workers AI: the sentence that says in-platform agents and model review are off. */
+      modelsOff?: string;
       limits: Limits;
     };
 
@@ -98,7 +100,8 @@ export function parseMe(x: unknown): Me | null {
     return [{ id: cid, name: str(r.name), state: r.state === "pending" ? "pending" : "active", createdAt: num(r.createdAt) ?? 0 }];
   });
   const cloudflare = o.cloudflare === "connected" || o.cloudflare === "not-connected" ? o.cloudflare : "unknown";
-  return { signedIn: true, account: { id, github: { id: ghId, login, ...(name ? { name } : {}) } }, colonies, cloudflare, limits };
+  const modelsOff = str(o.modelsOff, 400);
+  return { signedIn: true, account: { id, github: { id: ghId, login, ...(name ? { name } : {}) } }, colonies, cloudflare, ...(modelsOff ? { modelsOff } : {}), limits };
 }
 
 /** A token list's entries, each read field by field; entries that do not read are left out. */

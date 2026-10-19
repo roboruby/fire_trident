@@ -181,8 +181,11 @@ export function CloudflarePanelView(props: CloudflarePanelViewProps) {
   );
 }
 
-/** The panel: loads the connection, then connects, chooses and disconnects through the Worker. */
-export function CloudflarePanel({ fetchFn, search }: { fetchFn?: PanelFetch; search?: string } = {}) {
+/**
+ * The panel: loads the connection, then connects, chooses and disconnects through the Worker. `onChange` hears the state
+ * after each action (the account page reloads what depends on the connection, such as whether it may create a colony).
+ */
+export function CloudflarePanel({ fetchFn, search, onChange }: { fetchFn?: PanelFetch; search?: string; onChange?: (state: PanelState) => void } = {}) {
   const f: PanelFetch = fetchFn ?? ((input, init) => fetch(input, init));
   const [state, setState] = useState<PanelState>({ kind: "loading" });
   const [busy, setBusy] = useState(false);
@@ -205,6 +208,7 @@ export function CloudflarePanel({ fetchFn, search }: { fetchFn?: PanelFetch; sea
       setState(s);
       setBusy(false);
       setConfirming(false);
+      onChange?.(s);
     });
   };
   return (

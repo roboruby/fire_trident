@@ -27,15 +27,11 @@ export interface Account extends CurrentAccount {
 }
 
 /**
- * A person's connection to their own Cloudflare account, as the Cloudflare connection module hands it out. The accounts
- * module only asks whether one exists (a person without one cannot create a colony); it never reads the token.
+ * A person's connection to their own Cloudflare account, as the Cloudflare connection module hands it out (its type,
+ * cloudflare/types.ts). The accounts module only asks whether one exists (a person without one cannot create a colony);
+ * it never reads the token.
  */
-export interface CloudflareGrant {
-  /** The Cloudflare account id. */
-  accountId: string;
-  accessToken: string;
-  scopes: string[];
-}
+export type { CloudflareGrant } from "../cloudflare/types.ts";
 
 /** What a scoped token may do on its one colony: an agent's work, review decisions, or both plus settings and tokens. */
 export type TokenRole = "agent" | "reviewer" | "owner";

@@ -22,6 +22,14 @@ describe("the review receipt on the page", () => {
     expect(html).toContain(DIGEST);
   });
 
+  it("says a colony owner who decided from their GitHub sign-in was verified by GitHub, and only a verified one", () => {
+    const d: NoteDecision = { kind: "triage", layer: "human", p: 1, action: "approve", by: "github:ada-dev", head: HEAD, shown: { view: "review-card", digest: DIGEST }, identity: "verified" };
+    expect(receiptText(decisionReceipt(d)!)).toBe(`verified by GitHub · at head aaaaaaaaaaaa · shown the review card sha256:${"e".repeat(16)}`);
+    expect(renderToStaticMarkup(createElement(DecisionReceipt, { d }))).toContain("receipt · verified by GitHub");
+    expect(receiptText(decisionReceipt({ ...d, identity: "stated" })!)).toMatch(/^stated, not verified · /);
+    expect(recordedText({ ok: true, recorded: { by: "github:ada-dev", identity: "verified" } })).toBe("Recorded as github:ada-dev, verified by GitHub.");
+  });
+
   it("says how many decisions the note's cap left out", () => {
     const ds = [{ kind: "triage", layer: "llm", p: 1, action: "land", earlier: 4 }, { kind: "triage", layer: "llm", p: 1, action: "land" }];
     expect(earlierText(ds)).toBe("2 of 6 decisions kept (the 4 earliest left out by the note's cap)");

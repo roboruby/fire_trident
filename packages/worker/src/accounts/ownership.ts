@@ -19,6 +19,22 @@ export async function colonyOwner(env: Partial<AccountsEnv>, colonyId: Id): Prom
   return stub.ownerOf(colonyId);
 }
 
+/** A repository reference's `owner` in JSON text (worker artifacts/storage.ts), with the comma that joins it to the key before it. */
+const OWNER_AFTER = /,\s*"owner"\s*:\s*"acc_[A-Za-z0-9_-]*"/g;
+/** The same as the first key of its object, with the comma that joins it to the key after it. */
+const OWNER_FIRST = /"owner"\s*:\s*"acc_[A-Za-z0-9_-]*"\s*,?/g;
+
+/**
+ * JSON text without the `owner` of any repository reference in it: which account owns a colony is not public, so public
+ * reads leave it out, as they leave out the Cloudflare account in Artifacts remotes (api/app.ts hideRemotes, the public
+ * MCP endpoint). Only a key named owner whose value is an account id goes; text inside JSON strings is escaped and never
+ * matches.
+ */
+export function hideOwners(text: string): string {
+  if (!text.includes('"acc_')) return text;
+  return text.replace(OWNER_AFTER, "").replace(OWNER_FIRST, "");
+}
+
 /**
  * After the operator deleted a colony (DELETE /api/colonies/:id): its ownership ends and its scoped tokens are revoked,
  * so a later colony of the same name starts as nobody's. Does nothing while accounts are off; a failure is logged and

@@ -3,7 +3,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { SignIn, SignedIn } from "../src/account/Account.tsx";
 import { parseMe, parseTokens, signinText, tokenState, whoText, type Me } from "../src/account/account.ts";
-import { CloudflareSlot } from "../src/account/CloudflareSlot.tsx";
+import { AccountLink, accountsOn } from "../src/account/AccountLink.tsx";
+import { parseAbout } from "../src/about.ts";
 import { parseRoute } from "../src/route.ts";
 
 /** The account page (/account): what it reads from the API, what it says, and that names from GitHub stay text. */
@@ -45,7 +46,7 @@ describe("the account page's data", () => {
   });
 
   it("says what happened after a sign-in round trip, in plain sentences", () => {
-    for (const o of ["unavailable", "expired", "denied", "github"]) expect(signinText(o)).toMatch(/^[A-Z][^]*\.$/);
+    for (const o of ["unavailable", "expired", "denied", "github"]) expect(signinText(o)).toMatch(/^[A-Z][\s\S]*\.$/);
     expect(signinText(null)).toBeNull();
     expect(signinText("<script>")).toBeNull();
     expect(whoText({ login: "ada", name: "Ada" })).toBe("Ada (@ada)");
@@ -83,9 +84,37 @@ describe("the account page's views", () => {
     expect(html).toMatch(/<button type="submit" class="btn btn-approve" disabled="">Create the colony<\/button>/);
   });
 
-  it("leaves a slot for the Cloudflare connection, saying what it is for", () => {
-    const html = renderToStaticMarkup(createElement(CloudflareSlot, { status: "connected" }));
-    expect(html).toContain('data-slot="connect-cloudflare"');
-    expect(html).toContain("billed to you");
+  it("puts the Connect Cloudflare panel on the page, and each colony's delete", () => {
+    const me = parseMe({
+      signedIn: true,
+      account: { id: "acc_1", github: { id: 7, login: "ada" } },
+      colonies: [{ id: "web", name: "Web", state: "active", createdAt: 5 }],
+      cloudflare: "connected",
+      limits,
+    }) as Extract<Me, { signedIn: true }>;
+    const html = renderToStaticMarkup(createElement(SignedIn, { me, onChange: async () => undefined }));
+    expect(html).toContain('class="cf-panel"');
+    expect(html).toContain("Reading your Cloudflare connection");
+    expect(html).toMatch(/<button type="button" class="btn btn-reject">Delete<\/button>/);
+    expect(html).not.toContain("Workers AI access");
+  });
+
+  it("says why in-platform agents and model review are off when the connection has no Workers AI", () => {
+    const sentence =
+      "In-platform agents and model review are off: this colony's Cloudflare connection has no Workers AI access. Connect again and allow Workers AI, or bring your own agents over MCP.";
+    const raw = { signedIn: true, account: { id: "acc_1", github: { id: 7, login: "ada" } }, colonies: [{ id: "web", name: "Web", state: "active", createdAt: 5 }], cloudflare: "connected", modelsOff: sentence, limits };
+    const me = parseMe(raw) as Extract<Me, { signedIn: true }>;
+    expect(me.modelsOff).toBe(sentence);
+    expect(renderToStaticMarkup(createElement(SignedIn, { me, onChange: async () => undefined }))).toContain("Workers AI access. Connect again and allow Workers AI");
+  });
+});
+
+describe("the account link", () => {
+  it("shows only where the deployment has accounts on", () => {
+    expect(accountsOn(parseAbout({ flags: ["FT_INLINE"] }))).toBe(false);
+    expect(accountsOn(null)).toBe(false);
+    expect(accountsOn(parseAbout({ flags: ["FT_ACCOUNTS"] }))).toBe(true);
+    // Before /api/about answers, nothing shows.
+    expect(renderToStaticMarkup(createElement(AccountLink))).toBe("");
   });
 });

@@ -123,6 +123,25 @@ ft swarm shortlinks --agents 6
 
 `ruby demo/run_new_project.rb` runs it end to end and verifies the result from a plain git clone. A spec can also declare governance: `"policy": {"protectedPaths": ["src/auth/**"], "commentProof": false}` is set before any rule or intent, so changes to those paths wait for a person from the first landing, even with review off.
 
+To let other people sign in and run colonies on their own Cloudflare accounts (accounts, off unless set; what each pays for is in [mechanisms.md](mechanisms.md#accounts)), set these and deploy again:
+
+- `FT_ACCOUNTS=on` (a var) turns accounts on. `FT_PUBLIC_URL` (a var) must be the deployment's address: every redirect URI and Origin check is made from it.
+- `FT_GITHUB_CLIENT_ID` (a var) and `FT_GITHUB_CLIENT_SECRET` (a secret): a GitHub OAuth app whose callback URL is `<FT_PUBLIC_URL>/auth/github/callback`.
+- `FT_SESSION_KEY` (a secret, at least 32 random characters): signs session cookies and seals the sign-in cookies. Changing it signs everyone out.
+- `FT_CF_CLIENT_ID` (a var) and `FT_CF_CLIENT_SECRET` (a secret): a Cloudflare OAuth client with the redirect URL `<FT_PUBLIC_URL>/auth/cloudflare/callback`, client_secret_post, the scopes `user-details.read`, `account-settings.read`, `artifacts.read` and `artifacts.write`, the optional `ai.read` and `ai.write`, and `offline_access` (without it a connection lasts one access token).
+- `FT_GRANT_KEY` (a secret, at least 32 characters, `openssl rand -base64 32`): encrypts the Cloudflare tokens FireTrident keeps. Changing it breaks every stored connection until its person connects again.
+
+```sh
+cd packages/worker
+for s in FT_GITHUB_CLIENT_SECRET FT_SESSION_KEY FT_CF_CLIENT_SECRET FT_GRANT_KEY; do npx wrangler secret put $s; done
+cd ../..
+curl -s -X POST https://<your-worker>.workers.dev/api/accounts/invites \
+  -H "Authorization: Bearer <the admin token>" -H 'content-type: application/json' \
+  -d '{"uses": 5, "days": 14, "note": "first testers"}'   # the code is shown once
+```
+
+A person then opens `/account`, signs in with GitHub, enters the code, connects Cloudflare and creates a colony there.
+
 ## Bring your own agent
 
 The public site does not hand out its MCP token (the external agents that landed on production were run by its operator): to join a colony, run your own deployment ([Run your own](#run-your-own)) or ask a deployment's operator for its token ([docs/agents](agents/README.md) covers joining with one). An orchestrator can also hand a colony work over the Agent2Agent protocol ([docs/agents/a2a.md](agents/a2a.md)): a public agent card per colony and JSON-RPC `SendMessage`, `GetTask`, `ListTasks` and `CancelTask` at `/api/colonies/:id/a2a`; writes need the admin token.

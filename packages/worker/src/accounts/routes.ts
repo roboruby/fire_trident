@@ -7,9 +7,11 @@ import { decodeError, ftError } from "../colony/errors.ts";
 import { slug } from "../colony/logic.ts";
 import { createColony, requireAdminStrict } from "../api/app.ts";
 import { isUnsupportedRpc, messageOf } from "../api/logic.ts";
-import { UPGRADING } from "../api/ops.ts";
+import { UPGRADING, deleteColony } from "../api/ops.ts";
 import { tokensEqual } from "../api/token.ts";
 import { publicColonies } from "../api/git-proxy.ts";
+import { hasWorkersAi } from "../cloudflare/config.ts";
+import { MODELS_OFF } from "../cloudflare/models.ts";
 import { newId } from "../ids.ts";
 import { accountsStub, type AccountsRpc } from "./client.ts";
 import { accountsOn, publicOrigin, sessionKey, signInConfig } from "./config.ts";
@@ -44,6 +46,7 @@ import { TOKEN_ROLES, type Account, type AccountId, type CloudflareGrant, type G
  *   POST   /auth/logout                         end the session
  *   GET    /api/me                              who is signed in, their colonies and the limits
  *   POST   /api/me/colonies                     { name, source?, regionDepth? }: create a colony the account owns
+ *   DELETE /api/me/colonies/:id                 delete a colony the account owns: its repositories in the owner's storage, its objects, its tokens
  *   GET    /api/me/colonies/:id/tokens          the colony's scoped tokens, without secrets
  *   POST   /api/me/colonies/:id/tokens          { role, label, days? }: mint one, its secret shown once
  *   DELETE /api/me/colonies/:id/tokens/:tid     revoke one
@@ -363,14 +366,26 @@ export function accountsApp(deps: AccountsDeps = {}): Hono<{ Bindings: Env }> {
         }),
       );
       let cloudflare: "connected" | "not-connected" | "unknown" = "unknown";
+      // A connection without Workers AI: the account's colonies run without in-platform agents and model review, and the
+      // page says so (cloudflare/models.ts).
+      let modelsOff: string | null = null;
       if (deps.grantFor) {
         try {
-          cloudflare = (await deps.grantFor(c.env, account.id)) ? "connected" : "not-connected";
+          const grant = await deps.grantFor(c.env, account.id);
+          cloudflare = grant ? "connected" : "not-connected";
+          if (grant && !hasWorkersAi(grant.scopes)) modelsOff = MODELS_OFF.no_workers_ai;
         } catch {
           cloudflare = "unknown";
         }
       }
-      return json({ signedIn: true, account: { id: account.id, github: account.github, createdAt: account.createdAt }, colonies, cloudflare, limits: LIMITS });
+      return json({
+        signedIn: true,
+        account: { id: account.id, github: account.github, createdAt: account.createdAt },
+        colonies,
+        cloudflare,
+        ...(modelsOff ? { modelsOff } : {}),
+        limits: LIMITS,
+      });
     }),
   );
 
@@ -416,6 +431,26 @@ export function accountsApp(deps: AccountsDeps = {}): Hono<{ Bindings: Env }> {
       }
       await stub.confirmColony(colonyId, account.id);
       return json({ colony: res.body, owner: account.id }, 201);
+    }),
+  );
+
+  // The owner deletes a colony they own, from the account page (their session and this site's Origin; never a token):
+  // the same delete the operator's DELETE /api/colonies/:id runs, which sweeps the repositories from the owner's own
+  // storage (artifacts/storage.ts), then the colony is nobody's and its tokens stop working.
+  app.delete(
+    "/api/me/colonies/:id",
+    on(async (c) => {
+      const colonyId = colonyParam(c);
+      const account = await signedIn(c, now());
+      const stub = stubOf(c.env);
+      if ((await stub.ownerOf(colonyId)) !== account.id) throw ftError(403, `Colony ${colonyId} is not yours: only its owner deletes it.`);
+      const report = await deleteColony(c.env, colonyId);
+      if (!report.ok) {
+        const failed = [...report.agents.failed.map((f) => `agent ${f.agentId}: ${f.error}`), ...report.repos.failed.map((f) => `repo ${f.repo}: ${f.error}`)];
+        return json({ ...report, error: `The delete did not finish (delete again to finish it): ${failed.slice(0, 5).join("; ") || "a colony object did not clear"}.` }, 502);
+      }
+      await stub.releaseColony(colonyId, now());
+      return json(report);
     }),
   );
 
