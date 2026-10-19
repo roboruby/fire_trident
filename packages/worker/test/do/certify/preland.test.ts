@@ -70,6 +70,30 @@ async function proposeMath(colonyId: string, title: string, text: string): Promi
   });
 }
 
+/** An agent takes a new intent (declared by a person through the API) on `files` and proposes them inline (null deletes a file). */
+async function proposeFiles(colonyId: string, title: string, files: Record<Path, string | null>, why = `Why: ${title.toLowerCase()}.`): Promise<Proposal> {
+  const paths = Object.keys(files) as Path[];
+  const agent = await addAgent(colonyId, title);
+  const intent = await addIntent(colonyId, paths, { title, why, assignedTo: agent.id });
+  const a = await take(colonyId, agent.id);
+  const writeSet: FileVersion[] = paths.map((path) => ({ path, blob: files[path] === null ? null : blobId(files[path]!) }));
+  const contents = Object.fromEntries(paths.filter((p) => files[p] !== null).map((p) => [blobId(files[p]!), files[p]!]));
+  await trunk(colonyId).setContents(contents);
+  return colony(colonyId).propose({
+    colonyId,
+    intentId: intent.id,
+    agentId: agent.id,
+    workspace: a.lease.repo,
+    baseSha: a.lease.baseSha,
+    headSha: changesetId(a.lease.baseSha, writeSet),
+    writeSet,
+    readSet: await trunk(colonyId).baseBlobs(a.lease.baseSha, paths),
+    declared: { footprint: paths, summary: title },
+    evidence: { checks: [], notVerified: "Not verified: the colony's tests decide." },
+    contents,
+  });
+}
+
 /** The proposal once its decide stage has settled it (it leaves "checking"). */
 async function decided(colonyId: string, id: string): Promise<Proposal> {
   return eventually(() => proposal(colonyId, id), (p) => p.status !== "checking", 20_000);
@@ -105,6 +129,30 @@ describe("tests before landing (FT_PRELAND)", () => {
     // Counted per outcome.
     const metrics = (await api<{ counters?: Record<string, number> }>("GET", `/colonies/${colonyId}/metrics`)).body;
     expect(JSON.stringify(metrics)).toMatch(/"preland\.failed":1/);
+  }, 120_000);
+
+  it("sends back a change whose own new test fails, and one deleting a passing test file unless the person's intent names it", async () => {
+    const { colonyId, green } = await project(true);
+    const failing = 'import { test } from "node:test";\nimport assert from "node:assert/strict";\nimport { sub } from "../src/math.ts";\ntest("subtracts negatives", () => {\n  assert.equal(sub(-1, -1), 1);\n});\n';
+    const added = await decided(colonyId, (await proposeFiles(colonyId, "Cover negatives", { "test/neg.test.ts": failing })).id);
+    expect(added.status).toBe("returned");
+    expect(added.reason).toMatch(/^Tests before landing: the test "subtracts negatives" in test\/neg\.test\.ts, a test file this change adds or edits, fails with it: .*A change cannot land tests its own code fails/);
+    expect(added.evidence.preland).toMatchObject({ status: "failed", files: ["test/neg.test.ts"], broke: [{ file: "test/neg.test.ts", name: "subtracts negatives", kind: "own" }] });
+
+    // The intent a person declared does not name the file: the deletion goes back.
+    const tidy = await decided(colonyId, (await proposeFiles(colonyId, "Tidy the tests", { "test/math.test.ts": null })).id);
+    expect(tidy.status).toBe("returned");
+    expect(tidy.reason).toBe(
+      "Tests before landing: this change deletes the test file test/math.test.ts, whose tests passed on trunk. Keep that file (a passing test file is deleted only when the intent a person declared names its path), then propose again.",
+    );
+    expect(await headSha(colonyId)).toBe(green);
+    // It names the file: the deletion is the person's, and it lands.
+    const asked = await decided(colonyId, (await proposeFiles(colonyId, "Retire the subtraction tests", { "test/math.test.ts": null }, "Delete test/math.test.ts: subtraction moves to another package.")).id);
+    expect(asked.status).toBe("ready");
+    expect(asked.evidence.preland?.status).toBe("unchecked");
+    // The "test" lane is not held by the harness: its own alarm may land it first.
+    await tick(colonyId, "test");
+    expect((await eventually(() => proposal(colonyId, asked.id), (p) => p.status === "landed", 10_000)).status).toBe("landed");
   }, 120_000);
 
   it("is off unless FT_PRELAND names the colony: the breaking change lands and certification goes red after landing", async () => {

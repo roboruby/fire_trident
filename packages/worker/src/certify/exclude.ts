@@ -34,6 +34,14 @@ function entryOf(entry: string): { file: Path; name: string | null } {
   return at < 0 ? { file: entry, name: null } : { file: entry.slice(0, at), name: entry.slice(at + 3) };
 }
 
+/** What a policy's entries exclude: a test file whole, or one test of a file by its name ("suite > test", as results name it). */
+export function exclusions(entries: readonly string[] | undefined): { file(path: Path): boolean; test(path: Path, name: string): boolean } {
+  const parsed = (entries ?? []).map(entryOf);
+  const files = new Set(parsed.filter((e) => e.name === null).map((e) => e.file));
+  const names = new Set(parsed.filter((e) => e.name !== null).map((e) => `${e.file}\u0000${e.name}`));
+  return { file: (path) => files.has(path), test: (path, name) => files.has(path) || names.has(`${path}\u0000${name}`) };
+}
+
 /** Leave out the test files the policy excludes whole: they move from `tests` to `unsupported` with the reason. */
 export function excludeFiles(loaded: Loaded, entries: readonly string[] | undefined): void {
   const files = new Set((entries ?? []).map(entryOf).filter((e) => e.name === null).map((e) => e.file));

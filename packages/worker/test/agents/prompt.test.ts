@@ -4,6 +4,7 @@ import { checkFile } from "@fire_trident/core";
 import { TreeIndex } from "../../src/agents/context.ts";
 import { ESCALATE_TEXT, RETURN_PATHS, RETURN_REASON_CHARS, buildEditMessages, buildSpecifierMessages, buildWriteMessages, cleanLastReturn, extractFinishReason, extractModelText, historyBlock, maxTokensFor, parseEscalateReply, parseFileReply, retryMessages, returnBlock, reviewBlock, violationProblem } from "../../src/agents/prompt.ts";
 import type { LastReturn } from "../../src/agents/prompt.ts";
+import { judgeReply } from "../../src/agents/loop.ts";
 
 const rule: Rule = {
   id: "rul_1",
@@ -95,6 +96,55 @@ describe("parseFileReply", () => {
     expect(parseFileReply("no tags here", "x\n").ok).toBe(false);
     expect(parseFileReply("<file>\n\n</file>", "x\n").ok).toBe(false);
     expect(parseFileReply("<file>\na\n// ... rest of file unchanged\n</file>", "a\nb\n")).toMatchObject({ ok: false });
+  });
+});
+
+describe("parseFileReply: a first line that only names the file", () => {
+  // The replay's shapes: line 1 of the landed file was its own path, so loading it threw "ReferenceError: src is not defined".
+  const NODE = "src/router/trie-router/node.ts";
+  const NODE_TS = 'import { METHOD_NAME_ALL } from "../../router";\nexport class Node {}\n';
+  const TEST = "src/router/node.test.ts";
+  const TEST_TS = 'import { describe, it, expect } from "vitest";\ndescribe("node", () => {\n  it("works", () => expect(1).toBe(1));\n});\n';
+
+  it("drops the file's own path on line 1 of an existing file and of a new one", () => {
+    expect(parseFileReply(`<file>\n${NODE}\n${NODE_TS}</file>`, NODE_TS, NODE)).toEqual({ ok: true, content: NODE_TS });
+    expect(parseFileReply(`<file>\n${TEST}\n${TEST_TS}</file>`, null, TEST)).toEqual({ ok: true, content: TEST_TS });
+    // With the blank line that set it apart, and with CRLF.
+    expect(parseFileReply(`<file>\n${TEST}\n\n${TEST_TS}</file>`, null, TEST)).toEqual({ ok: true, content: TEST_TS });
+    expect(parseFileReply(`<file>\r\n${NODE}\r\n${NODE_TS.replace(/\n/g, "\r\n")}</file>`, NODE_TS.replace(/\n/g, "\r\n"), NODE)).toEqual({ ok: true, content: NODE_TS.replace(/\n/g, "\r\n") });
+  });
+
+  it("drops the prompts' header forms: ./path, `path`, Path: path and File: path", () => {
+    for (const line of [`./${NODE}`, `\`${NODE}\``, `Path: ${NODE}`, `File: \`${NODE}\``, `  path:${NODE}  `]) {
+      expect(parseFileReply(`<file>\n${line}\n${NODE_TS}</file>`, NODE_TS, NODE)).toEqual({ ok: true, content: NODE_TS });
+    }
+  });
+
+  it("drops it before a fence and inside one", () => {
+    expect(parseFileReply(`<file>\n${NODE}\n\`\`\`ts\n${NODE_TS}\`\`\`\n</file>`, NODE_TS, NODE)).toEqual({ ok: true, content: NODE_TS });
+    expect(parseFileReply(`<file>\n\`\`\`ts\n${NODE}\n${NODE_TS}\`\`\`\n</file>`, NODE_TS, NODE)).toEqual({ ok: true, content: NODE_TS });
+  });
+
+  it("drops only that: another path, a path with code after it, a comment naming it, a later line, or no path given", () => {
+    const keep = (body: string, original: string | null = NODE_TS, path = NODE): void => {
+      expect(parseFileReply(`<file>\n${body}</file>`, original, path)).toEqual({ ok: true, content: body });
+    };
+    keep(`src/router/trie-router/index.ts\n${NODE_TS}`);
+    keep(`${NODE}; export const x = 1;\n${NODE_TS}`);
+    keep(`// ${NODE}\n${NODE_TS}`);
+    keep(`${NODE_TS}${NODE}\n`);
+    expect(parseFileReply(`<file>\n${NODE}\n${NODE_TS}</file>`, NODE_TS)).toEqual({ ok: true, content: `${NODE}\n${NODE_TS}` });
+    keep(`Path: src/other.ts\n${NODE_TS}`);
+  });
+
+  it("keeps a first line the original file starts with too, and the original's leading blank line", () => {
+    const listing = `${NODE}\nsrc/router.ts\n`;
+    expect(parseFileReply(`<file>\n${NODE}\nsrc/router.ts\nsrc/hono.ts\n</file>`, listing, NODE)).toEqual({ ok: true, content: `${NODE}\nsrc/router.ts\nsrc/hono.ts\n` });
+    expect(parseFileReply(`<file>\n${NODE}\n\n${NODE_TS}</file>`, `\n${NODE_TS}`, NODE)).toEqual({ ok: true, content: `\n${NODE_TS}` });
+  });
+
+  it("is what judgeReply accepts for a path", () => {
+    expect(judgeReply(null, NODE, NODE_TS, `<file>\n${NODE}\n${NODE_TS}</file>`)).toEqual({ ok: true, content: NODE_TS, detail: "no rule to re-check" });
   });
 });
 

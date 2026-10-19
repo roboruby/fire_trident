@@ -215,7 +215,7 @@ import { ColonyAudit, type AuditAnswer, type AuditHost, type AuditReport, type C
 import { onTrunkSourceOf, onTrunkText } from "../trunk/ontrunk.ts";
 import type { OnTrunkSource } from "@fire_trident/core";
 import { spendReviewCode } from "./reviewcodes.ts";
-import { RedBrake, redBrakeEnabled, withBrake } from "./redbrake.ts";
+import { RedBrake, closedRegions, redBrakeEnabled, withBrake } from "./redbrake.ts";
 import type { RedBrakeReport } from "@fire_trident/core";
 
 /**
@@ -3238,7 +3238,9 @@ export class ColonyDO extends DurableObject<Env> {
       // Tests before landing (certify/preland.ts, FT_PRELAND): whether they cover a change, and the certifier's check of it.
       prelandCovers: (p) => this.certifier.prelandCovers(p.writeSet.map((w) => w.path)),
       preland: async (p, texts) => {
-        const out = await this.certifier.precheck(p, prelandReader(this.env, p, texts));
+        // The change's intent: a passing test file may be deleted only where a person declared it and named the file.
+        const row = this.intentRow(p.intentId);
+        const out = await this.certifier.precheck(p, prelandReader(this.env, p, texts), row ? this.toIntent(row, this.requireColony().id) : null);
         if (out) this.bump(`preland.${out.run.status}`, 1, Date.now());
         return out;
       },
@@ -4281,13 +4283,20 @@ export class ColonyDO extends DurableObject<Env> {
    * intent, whatever its region, thresholds and other agents' claims (the megafile alarm's holds still apply). Null when
    * the brake does not hold, the repair is not open for taking, or a region of the repair closed admission (the take
    * goes on as usual, so a closed region cannot keep every agent waiting); any other failed lease is the take's answer.
+   * A region the agent's readings show closed is seen before the reservation (redbrake.ts closedRegions), so the repair
+   * stays open and unreserved while it waits for a slot.
    */
   private async repairFirst(agentId: Id, kind: AgentKind, colonyId: Id, now: number): Promise<TakeResult | null> {
     const id = this.redBrake().first(now);
     const row = id ? this.intentRow(id) : undefined;
     if (!id || !row) return null;
     const offered = this.megafiles().offerable([{ id: row.id, footprint: row.footprint, priority: row.priority, created_at: row.created_at }], (r) => this.footprintOf(r.id, r.footprint));
-    if (offered.rows.length === 0 || !this.reserve(id, agentId)) return null;
+    if (offered.rows.length === 0) return null;
+    // Admission first, as every take reads it: a closed region would refuse the take, so the repair is not reserved for it.
+    const depth = this.requireColony().regionDepth;
+    const wanted = new Map([...groupByRegion(this.footprintOf(row.id, row.footprint), depth)].map(([region, paths]) => [region, new Set(paths)]));
+    if (closedRegions(wanted.keys(), this.fieldViews(agentId, await this.readRegions(wanted), depth)).length > 0) return null;
+    if (!this.reserve(id, agentId)) return null;
     const got = await this.leaseAndClaim(agentId, kind, this.toIntent(this.intentRow(id) ?? row, colonyId));
     if ("wait" in got) return got.reason.startsWith("admission closed") ? null : got;
     this.redBrake().reserved(id, agentId, Date.now());

@@ -705,8 +705,12 @@ export interface PrelandRun {
   failed: number;
   /** Failing tests that failed on trunk too: not held against the change. */
   known?: number;
-  /** Tests that passed on trunk and failed with the change, with their errors (at most 5). */
-  broke?: Array<{ file: Path; name: string; error?: string }>;
+  /**
+   * Tests that passed on trunk and failed with the change, with their errors (at most 5). `kind` "own": a failing test of a
+   * test file the change adds or edits that trunk's result does not list; "deleted": a test file the change deletes that
+   * passed a test on trunk (`name` is the file). Absent: the test passed on trunk (entries made before `kind` have none).
+   */
+  broke?: Array<{ file: Path; name: string; error?: string; kind?: "own" | "deleted" }>;
   /** Wall time of the check, from its start to its verdict. */
   ms: number;
   /** Why it was not checked (`unchecked`), in words. */

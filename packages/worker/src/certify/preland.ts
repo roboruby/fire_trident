@@ -8,6 +8,7 @@ import { normalizeGlob } from "../decide/policy.ts";
 import { sha256Hex } from "../trunk/digest.ts";
 import { RUN_DEPENDENT, fileKeyText, type FileResult } from "./cache.ts";
 import { MODULE_FILE } from "./compile.ts";
+import { exclusions } from "./exclude.ts";
 import { DEFAULT_CAPS, load, type CompileMemo, type IndexedFile, type Loaded } from "./load.ts";
 import { RUNNER_VERSION, buildPlan, closureOf, type Plan } from "./plan.ts";
 import { testName, type RunReport } from "./report.ts";
@@ -25,6 +26,14 @@ import { testName, type RunReport } from "./report.ts";
  * A test that passed there and fails with the change sends the change back to its agent, naming the test and its error.
  * A test that did not pass there (it failed too, or it is new) is not held against the change. A test file with no such
  * result (certification has not run it on that tree) is not run.
+ *
+ * The change's own tests are held to more: an agent must not land tests its own code fails. A test file the change adds
+ * runs with no trunk result (every test in it is the change's), and in a test file it adds or edits, a failing test that
+ * trunk's result does not list (new, or renamed) sends it back too; one trunk's result lists as failing is still not held
+ * against it. These files come first and count against PRELAND_FILES like any other. A test file the change deletes is
+ * not run: when trunk's result shows it loaded and passed a test (one the certify policy does not exclude), deleting it
+ * would lose that test, and the change goes back naming the file, unless its intent was declared by a person (source
+ * human) and its title, why or acceptance names the file's path.
  *
  * It fails open: a time-out (PRELAND_MS), a runner problem, no trunk result to compare with, or PRELAND_CONCURRENCY
  * checks already running in the colony (after waiting PRELAND_WAIT_MS for one to end) let the change go on as it would
@@ -121,11 +130,16 @@ export function reachingTests(base: Pick<Loaded, "tests" | "modules">, after: Pi
 // ---------------------------------------------------------------------------
 // Judging a run (pure)
 
-/** A test that passed on trunk and failed with the change; `name` is the file's own path when the file failed to load. */
+/**
+ * A test held against the change; `name` is the file's own path when the file failed to load (or, "deleted", is gone).
+ * Kind absent: it passed on trunk and failed with the change. "own": it failed in a test file the change adds or edits,
+ * and trunk's result does not list it. "deleted": the change deletes the test file, which passed a test on trunk.
+ */
 export interface BrokenTest {
   file: Path;
   name: string;
   error?: string;
+  kind?: "own" | "deleted";
 }
 
 /** What a run with the change says against trunk's results for the same files. */
@@ -133,7 +147,7 @@ export interface Judgment {
   tests: number;
   passed: number;
   failed: number;
-  /** Failing tests that did not pass on trunk (they failed there too, or are new): not held against the change. */
+  /** Failing tests that did not pass on trunk (they failed there too, or are new outside the change's own files): not held against the change. */
   known: number;
   broke: BrokenTest[];
   /** Files whose results depended on the run, not the code (it ran out of time, a runner could not start), or that it did not report. */
@@ -153,9 +167,16 @@ function oneLine(s: unknown, n: number): string {
  * Judge each file of a run with the change against trunk's result for it. A failing or cancelled test that passed on
  * trunk is broken; any other failing test is known. A file that fails to load with the change is broken when it loaded
  * on trunk and passed a test there, and counts as one failing test either way (as certification counts it). A file
- * whose result depended on the run itself is left unjudged.
+ * whose result depended on the run itself is left unjudged. In the change's `own` test files (it adds or edits them), a
+ * failing test that trunk's result does not list, and that `excluded` does not name, is broken too (kind "own"), and so
+ * is the file failing to load when it loaded on trunk or is new.
  */
-export function judgeRun(report: RunReport, files: readonly Path[], trunk: ReadonlyMap<Path, FileResult>): Judgment {
+export function judgeRun(
+  report: RunReport,
+  files: readonly Path[],
+  trunk: ReadonlyMap<Path, FileResult>,
+  opts: { own?: ReadonlySet<Path>; excluded?: (file: Path, name: string) => boolean } = {},
+): Judgment {
   const out: Judgment = { tests: 0, passed: 0, failed: 0, known: 0, broke: [], unjudged: [] };
   for (const file of files) {
     const meta = (Array.isArray(report.files) ? report.files : []).find((f) => f && f.path === file);
@@ -169,18 +190,23 @@ export function judgeRun(report: RunReport, files: readonly Path[], trunk: Reado
     }
     const before = trunk.get(file);
     const passedOnTrunk = new Set((before?.tests ?? []).filter((t) => t.status === "pass").map((t) => t.name));
+    // The change's own test file: a failing test trunk's result does not list is the change's own.
+    const mine = opts.own?.has(file) === true;
+    const listed = new Set((before?.tests ?? []).map((t) => t.name));
     for (const t of tests) {
       out.tests++;
       if (t.status === "pass") out.passed++;
       if (NOT_FAILING.has(t.status)) continue;
       out.failed++;
       if (passedOnTrunk.has(t.name)) out.broke.push({ file, name: t.name, ...(t.error ? { error: t.error } : {}) });
+      else if (mine && !listed.has(t.name) && opts.excluded?.(file, t.name) !== true) out.broke.push({ file, name: t.name, ...(t.error ? { error: t.error } : {}), kind: "own" });
       else out.known++;
     }
     if (meta.loadError && !tests.some((t) => !NOT_FAILING.has(t.status))) {
       out.tests++;
       out.failed++;
       if (before && before.loadError === null && passedOnTrunk.size > 0) out.broke.push({ file, name: file, error: String(meta.loadError) });
+      else if (mine && (!before || before.loadError === null)) out.broke.push({ file, name: file, error: String(meta.loadError), kind: "own" });
       else out.known++;
     }
   }
@@ -192,9 +218,18 @@ function brokenLabel(b: BrokenTest): string {
   return b.name === b.file ? `the test file ${oneLine(b.file, NAME_CHARS)} (it loaded on trunk and fails to load)` : `the test "${oneLine(b.name, NAME_CHARS)}" in ${oneLine(b.file, NAME_CHARS)}`;
 }
 
-/** What a change's agent reads when its tests sent it back: the tests that broke, their errors, and what to do next. */
+/** How a test of the change's own test files reads in a list: `the test "x" in t/a.test.ts`, or the file that does not load. */
+function ownLabel(b: BrokenTest): string {
+  return b.name === b.file ? `the test file ${oneLine(b.file, NAME_CHARS)} (it fails to load)` : `the test "${oneLine(b.name, NAME_CHARS)}" in ${oneLine(b.file, NAME_CHARS)}`;
+}
+
+/**
+ * What a change's agent reads when its tests sent it back: the tests that broke, their errors, and what to do next.
+ * Tests that passed on trunk, tests of the change's own test files and deleted test files each get their sentence part.
+ */
 export function prelandReason(broke: readonly BrokenTest[]): string {
   const err = (b: BrokenTest): string => (b.error ? `: ${oneLine(b.error, ERROR_CHARS)}` : "");
+  if (broke.some((b) => b.kind === "own" || b.kind === "deleted")) return mixedReason(broke, err);
   if (broke.length === 1) {
     const b = broke[0]!;
     return `Tests before landing: ${brokenLabel(b)} passed on trunk and fails with this change${err(b)}. Fix the change so it passes again (the test is the specification), then propose again.`;
@@ -202,6 +237,31 @@ export function prelandReason(broke: readonly BrokenTest[]): string {
   const named = broke.slice(0, REASON_LISTED).map((b) => `${brokenLabel(b)}${err(b)}`);
   const more = broke.length > REASON_LISTED ? `; and ${broke.length - REASON_LISTED} more` : "";
   return `Tests before landing: ${broke.length} tests that passed on trunk fail with this change: ${named.join("; ")}${more}. Fix the change so they pass again (the tests are the specification), then propose again.`;
+}
+
+/** prelandReason when the change's own or deleted test files are among what it holds against the change. */
+function mixedReason(broke: readonly BrokenTest[], err: (b: BrokenTest) => string): string {
+  const regress = broke.filter((b) => b.kind !== "own" && b.kind !== "deleted");
+  const own = broke.filter((b) => b.kind === "own");
+  const gone = broke.filter((b) => b.kind === "deleted");
+  const listed = (list: BrokenTest[], label: (b: BrokenTest) => string): string =>
+    list.slice(0, REASON_LISTED).map((b) => `${label(b)}${err(b)}`).join("; ") + (list.length > REASON_LISTED ? `; and ${list.length - REASON_LISTED} more` : "");
+  const parts: string[] = [];
+  const advice: string[] = [];
+  if (regress.length === 1) parts.push(`${brokenLabel(regress[0]!)} passed on trunk and fails with this change${err(regress[0]!)}`);
+  else if (regress.length > 1) parts.push(`${regress.length} tests that passed on trunk fail with this change: ${listed(regress, brokenLabel)}`);
+  if (regress.length > 0) advice.push(`fix the change so ${regress.length === 1 ? "that test passes" : "those tests pass"} again (a test that passed on trunk is the specification)`);
+  const o = own[0];
+  if (own.length === 1 && o) {
+    const file = oneLine(o.file, NAME_CHARS);
+    parts.push(o.name === o.file ? `the test file ${file}, which this change adds or edits, fails to load${err(o)}` : `the test "${oneLine(o.name, NAME_CHARS)}" in ${file}, a test file this change adds or edits, fails with it${err(o)}`);
+  } else if (own.length > 1) parts.push(`${own.length} tests in test files this change adds or edits fail with it: ${listed(own, ownLabel)}`);
+  if (own.length > 0) advice.push("a change cannot land tests its own code fails: fix the code, or the test if it asks for the wrong behavior");
+  if (gone.length === 1) parts.push(`this change deletes the test file ${oneLine(gone[0]!.file, NAME_CHARS)}, whose tests passed on trunk`);
+  else if (gone.length > 1) parts.push(`this change deletes ${gone.length} test files whose tests passed on trunk: ${listed(gone, (b) => oneLine(b.file, NAME_CHARS))}`);
+  if (gone.length > 0) advice.push(`keep ${gone.length === 1 ? "that file" : "those files"} (a passing test file is deleted only when the intent a person declared names its path)`);
+  const said = advice.join("; ");
+  return `Tests before landing: ${parts.join("; ")}. ${said.charAt(0).toUpperCase()}${said.slice(1)}, then propose again.`;
 }
 
 /** "1 test file", "3 test files". */
@@ -248,7 +308,59 @@ export interface PrelandHost {
   results(keys: ReadonlyMap<Path, string>): Map<Path, FileResult>;
   /** The colony's per-test limit (its certification policy), part of each file's key. */
   testTimeoutMs(): number;
+  /** The certify policy's excludeTests (exclude.ts): the change's own tests they name are not held against it. */
+  excludeTests?(): readonly string[] | undefined;
   now?(): number;
+}
+
+/** What the check reads of a change's intent: who declared it, and the text a person wrote for it. */
+export interface PrelandIntent {
+  source: string;
+  title: string;
+  why: string;
+  acceptance?: readonly string[];
+}
+
+/** Does `text` name `path`: the path itself (or "./" and the path), not as part of a longer path or name? */
+export function namesFile(text: string, path: Path): boolean {
+  if (typeof text !== "string" || typeof path !== "string" || path === "") return false;
+  const escaped = path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?:^|[^\\w./-])(?:\\./)?${escaped}(?![\\w/-]|\\.\\w)`).test(text);
+}
+
+/** May a change delete the test file `path`: its intent was declared by a person (source human) and its title, why or acceptance names the path? */
+export function deletionAsked(intent: PrelandIntent | null | undefined, path: Path): boolean {
+  if (!intent || intent.source !== "human") return false;
+  const text = [intent.title, intent.why, ...(Array.isArray(intent.acceptance) ? intent.acceptance : [])].filter((t): t is string => typeof t === "string").join("\n");
+  return namesFile(text, path);
+}
+
+/**
+ * The change's own test files: the ones it adds and the ones it edits (test files with the change, written by it; added
+ * when trunk at the base did not run them), and the ones it deletes (test files trunk ran at the base), each by path.
+ * Files the certify policy excludes whole are left out.
+ */
+export function ownTests(
+  before: Pick<Loaded, "tests">,
+  after: Pick<Loaded, "tests">,
+  writes: ReadonlyArray<{ path: Path; blob: Sha | null }>,
+  excludedFile: (path: Path) => boolean = () => false,
+): { added: Path[]; edited: Path[]; deleted: Path[] } {
+  const onBase = new Set(before.tests);
+  const withChange = new Set(after.tests);
+  const written = [...new Set(writes.filter((w) => w.blob !== null).map((w) => w.path))].filter((p) => withChange.has(p) && !excludedFile(p)).sort();
+  const removed = [...new Set(writes.filter((w) => w.blob === null).map((w) => w.path))].filter((p) => onBase.has(p) && !excludedFile(p)).sort();
+  return { added: written.filter((p) => !onBase.has(p)), edited: written.filter((p) => onBase.has(p)), deleted: removed };
+}
+
+/** Of the test files a change deletes, the ones trunk's result shows loaded and passing a test the policy does not exclude. */
+export function deletedPassing(files: readonly Path[], trunk: ReadonlyMap<Path, FileResult>, excludedTest: (file: Path, name: string) => boolean = () => false): BrokenTest[] {
+  const out: BrokenTest[] = [];
+  for (const file of files) {
+    const r = trunk.get(file);
+    if (r && r.loadError === null && (r.tests ?? []).some((t) => t.status === "pass" && !excludedTest(file, t.name))) out.push({ file, name: file, kind: "deleted" });
+  }
+  return out;
 }
 
 /** One check's outcome: the run as recorded, its evidence check, and, when it failed, the sentence the change's agent reads. */
@@ -306,8 +418,11 @@ export class PrelandChecks {
     return this.limiter.active;
   }
 
-  /** Check one change (see the module comment). Never throws: every problem lets the change go on, not checked. */
-  async check(p: Proposal, readNew: PrelandReader): Promise<PrelandOutcome> {
+  /**
+   * Check one change (see the module comment); `intent` decides whether it may delete a passing test file. Never throws:
+   * every problem lets the change go on, not checked.
+   */
+  async check(p: Proposal, readNew: PrelandReader, intent?: PrelandIntent | null): Promise<PrelandOutcome> {
     const start = this.now();
     const finish = (v: Verdict): PrelandOutcome => {
       const run: PrelandRun = { ...v, ms: Math.max(0, Math.round(this.now() - start)) };
@@ -316,7 +431,7 @@ export class PrelandChecks {
     };
     const release = await this.limiter.acquire("preland", start + PRELAND_WAIT_MS);
     if (!release) return finish(unchecked(`busy: ${PRELAND_CONCURRENCY} test runs before landing were already going in this colony`));
-    const work = this.checkNow(p, readNew, this.now() + PRELAND_MS);
+    const work = this.checkNow(p, readNew, this.now() + PRELAND_MS, intent ?? null);
     // The slot is held until the work ends, even past the time-out, so no more than PRELAND_CONCURRENCY run at once.
     work.then(release, release);
     try {
@@ -329,7 +444,7 @@ export class PrelandChecks {
   }
 
   /** The check itself, within `deadline`. Throws on a trunk, read or runner problem (check() records it as not checked). */
-  private async checkNow(p: Proposal, readNew: PrelandReader, deadline: number): Promise<Verdict> {
+  private async checkNow(p: Proposal, readNew: PrelandReader, deadline: number, intent: PrelandIntent | null): Promise<Verdict> {
     const host = this.host;
     const writes = (Array.isArray(p.writeSet) ? p.writeSet : []).filter((w) => w && typeof w.path === "string" && loadable(w.path));
     if (writes.length === 0) return unchecked("it changes no file a test can load");
@@ -382,29 +497,50 @@ export class PrelandChecks {
 
     // The test files that reach the change, and trunk's result for each as it is at the base.
     const reached = reachingTests(before, after, new Set(writes.map((w) => w.path)));
-    if (reached.length === 0) return unchecked("no test file on trunk reaches the files it changes", at);
+    // The change's own test files: added ones run with no trunk result, edited ones lead (they reach it first), and deleted
+    // ones are judged from trunk's result without a run, unless a person's intent names them.
+    const excluded = exclusions(host.excludeTests?.());
+    const mine = ownTests(before, after, writes, excluded.file);
+    const deleted = mine.deleted.filter((f) => !deletionAsked(intent, f));
+    if (reached.length === 0 && mine.added.length === 0 && deleted.length === 0) return unchecked("no test file on trunk reaches the files it changes", at);
     const keys = new Map<Path, string>();
-    for (const t of reached) keys.set(t, await sha256Hex(fileKeyText(t, closureOf(t, before.modules), before.blobs, RUNNER_VERSION, host.testTimeoutMs())));
+    for (const t of [...reached, ...deleted]) keys.set(t, await sha256Hex(fileKeyText(t, closureOf(t, before.modules), before.blobs, RUNNER_VERSION, host.testTimeoutMs())));
     const onTrunk = host.results(keys);
-    const files = reached.filter((t) => onTrunk.has(t)).slice(0, PRELAND_FILES);
-    const reach = reached.length > files.length ? { reached: reached.length } : {};
+    const gone = deletedPassing(deleted, onTrunk, excluded.test);
+    const added = new Set(mine.added);
+    const ordered = [...new Set([...[...mine.added, ...mine.edited].sort(), ...reached])];
+    const files = ordered.filter((t) => added.has(t) || onTrunk.has(t)).slice(0, PRELAND_FILES);
+    const total = reached.length + mine.added.length;
+    const reach = total > files.length ? { reached: total } : {};
+    const listed = (broke: BrokenTest[]): NonNullable<PrelandRun["broke"]> =>
+      broke.slice(0, BROKE_LISTED).map((b) => ({ file: b.file, name: testName(b.name), ...(b.error ? { error: oneLine(b.error, ERROR_CHARS) } : {}), ...(b.kind ? { kind: b.kind } : {}) }));
+    // Deleted passing test files send the change back even when nothing runs, or the run cannot finish.
+    const goneOnly: Verdict = { status: "failed", trunkSha: at, files: [], ...reach, tests: 0, passed: 0, failed: 0, broke: listed(gone) };
     if (files.length === 0) {
+      if (gone.length > 0) return goneOnly;
+      if (reached.length === 0) return unchecked(`no test file on trunk reaches the files it changes, and no trunk result shows a passing test in the ${plural(deleted.length, "test file")} it deletes`, at);
       return unchecked(`no trunk result to compare with: certification has not run the ${plural(reached.length, "test file")} that reach it on its base yet`, at);
     }
 
     // Run them with the change, in certification's sandbox.
     const left = deadline - this.now();
-    if (left < MIN_RUN_MS) throw LATE;
+    if (left < MIN_RUN_MS) {
+      if (gone.length > 0) return goneOnly;
+      throw LATE;
+    }
     const config = { testTimeoutMs: host.testTimeoutMs(), budgetMs: Math.max(MIN_RUN_MS, left - 200) };
     let plan = buildPlan({ tests: files, modules: after.modules, config });
     if (plan.bytes > ISOLATE_MAX_CHARS) plan = buildPlan({ tests: files, modules: after.modules, config, isolate: false });
-    const report = await host.run(plan, left);
-    const j = judgeRun(report, files, onTrunk);
-    const counted = { trunkSha: at, files, ...reach, tests: j.tests, passed: j.passed, failed: j.failed, ...(j.known > 0 ? { known: j.known } : {}) };
-    if (j.broke.length > 0) {
-      const broke = j.broke.slice(0, BROKE_LISTED).map((b) => ({ file: b.file, name: testName(b.name), ...(b.error ? { error: oneLine(b.error, ERROR_CHARS) } : {}) }));
-      return { status: "failed", ...counted, broke };
+    let report: RunReport;
+    try {
+      report = await host.run(plan, left);
+    } catch (err) {
+      if (gone.length > 0) return goneOnly;
+      throw err;
     }
+    const j = judgeRun(report, files, onTrunk, { own: new Set([...mine.added, ...mine.edited]), excluded: excluded.test });
+    const counted = { trunkSha: at, files, ...reach, tests: j.tests, passed: j.passed, failed: j.failed, ...(j.known > 0 ? { known: j.known } : {}) };
+    if (gone.length > 0 || j.broke.length > 0) return { status: "failed", ...counted, broke: listed([...gone, ...j.broke]) };
     if (j.unjudged.length === files.length) return unchecked(`the tests ran out of time or the runner could not start them (${plural(files.length, "test file")})`, at);
     const partial = j.unjudged.length > 0 ? { reason: `${plural(j.unjudged.length, "test file")} ran out of time or could not start, so ${j.unjudged.length === 1 ? "it was" : "they were"} not checked` } : {};
     return { status: "passed", ...counted, ...partial };

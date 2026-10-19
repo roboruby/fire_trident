@@ -1,6 +1,6 @@
 import type { Certification, CertificationStatus, ColonyEvent, FailingTest, FileVersion, FirstRed, Id, Landing, LineageNote, NoteCertification, Path, Proposal, Sha } from "@fire_trident/core";
 import { FirstRedSearch } from "./bisect.ts";
-import { PrelandChecks, prelandMatches, type PrelandOutcome, type PrelandReader } from "./preland.ts";
+import { PrelandChecks, prelandMatches, type PrelandIntent, type PrelandOutcome, type PrelandReader } from "./preland.ts";
 import type { SealedRuns } from "./reviewtests.ts";
 import { TEST_FILE } from "./compile.ts";
 import { SUSPECTS_MAX, SUSPECT_MS, capSuspects, findSuspects, markFirstRed, publicSuspect, type FoundSuspect, type LandedOn, type SinceGreen } from "./culprit.ts";
@@ -592,9 +592,10 @@ export class Certifier {
   /**
    * Tests before landing (preland.ts): the test files a change reaches, run on its base with its files laid over it (read
    * with `readNew`) in the same test Worker as run() uses, each judged against this colony's stored result for it on
-   * trunk. Null when they do not cover the change (see prelandCovers); otherwise never throws.
+   * trunk. Null when they do not cover the change (see prelandCovers); otherwise never throws. `intent` (the change's)
+   * decides whether it may delete a passing test file: a person declared it and named the file.
    */
-  async precheck(p: Proposal, readNew: PrelandReader): Promise<PrelandOutcome | null> {
+  async precheck(p: Proposal, readNew: PrelandReader, intent?: PrelandIntent | null): Promise<PrelandOutcome | null> {
     if (!this.prelandCovers((Array.isArray(p?.writeSet) ? p.writeSet : []).map((w) => w.path))) return null;
     this.prelandChecks ??= new PrelandChecks({
       trunk: () => this.host.trunk(),
@@ -602,9 +603,10 @@ export class Certifier {
       run: (plan, timeoutMs) => this.run(plan, { ...this.policy(), timeoutMs }),
       results: (keys) => this.cachedFiles(keys),
       testTimeoutMs: () => this.policy().testTimeoutMs,
+      excludeTests: () => this.policy().excludeTests,
     });
     try {
-      return await this.prelandChecks.check(p, readNew);
+      return await this.prelandChecks.check(p, readNew, intent);
     } finally {
       for (const k of this.memo.keys()) {
         if (this.memo.size <= MEMO_ENTRIES) break;
