@@ -1,5 +1,6 @@
 import type { AccountsDO } from "./accounts/AccountsDO.ts";
 import type { AgentDO } from "./agents/AgentDO.ts";
+import type { CloudflareGrantDO } from "./cloudflare/GrantDO.ts";
 import type { ColonyDO } from "./colony/ColonyDO.ts";
 import type { FireTridentMcp } from "./mcp/FireTridentMcp.ts";
 import type { PoolDO } from "./pool/PoolDO.ts";
@@ -17,6 +18,12 @@ export interface Env {
   MCP: DurableObjectNamespace<FireTridentMcp>;
   /** The deployment's accounts (accounts/AccountsDO.ts), one instance by name; read only while FT_ACCOUNTS is on. */
   ACCOUNTS?: DurableObjectNamespace<AccountsDO>;
+  /**
+   * Optional: the stored Cloudflare connections (cloudflare/GrantDO.ts), one object per FireTrident account (by name: the
+   * account id). Each holds that account's Cloudflare OAuth tokens, encrypted with FT_GRANT_KEY. Absent, nobody can
+   * connect Cloudflare and no colony has an owner's Workers AI.
+   */
+  CF_GRANTS?: DurableObjectNamespace<CloudflareGrantDO>;
   /** Trunks and lane repos (namespace ft-trunk). */
   ARTIFACTS: Artifacts;
   /** Workspace shards (namespaces ft-ws-0..3). Use workspaceBinding() to pick one. */
@@ -431,6 +438,23 @@ export interface Env {
    * may change that repository's issues. Sent only to api.github.com, never logged.
    */
   FT_GITHUB_TOKEN?: string;
+/**
+ * Optional (a var): the OAuth client id of this deployment's Cloudflare OAuth client, for "Connect Cloudflare" on the
+ * account page (cloudflare/routes.ts; only with FT_ACCOUNTS on). The client is registered on Cloudflare with the
+ * redirect URL FT_PUBLIC_URL + "/auth/cloudflare/callback", client_secret_post, the required scopes user-details.read,
+ * account-settings.read, artifacts.read and artifacts.write, the optional scopes ai.read and ai.write, and
+ * offline_access (without it Cloudflare issues no refresh token and a connection lasts one access token).
+ */
+FT_CF_CLIENT_ID?: string;
+/** Secret (optional): that OAuth client's secret, sent only to dash.cloudflare.com's token and revoke endpoints, never logged. */
+FT_CF_CLIENT_SECRET?: string;
+/**
+ * Secret (optional): key material for the stored Cloudflare tokens, at least 32 characters (`openssl rand -base64 32`).
+ * Each record's AES-GCM key is derived from it with HKDF-SHA-256 and a salt of its own (cloudflare/seal.ts). Changing it
+ * makes every stored connection unreadable: each shows as broken until its person connects again. Connecting Cloudflare
+ * needs all three of FT_CF_CLIENT_ID, FT_CF_CLIENT_SECRET and FT_GRANT_KEY; without them it is off.
+ */
+FT_GRANT_KEY?: string;
   /**
    * Optional: a call budget for each MCP session at /mcp and /sse, "on" (4 tool calls a second, 20 at once after a
    * pause) or "<calls per second>,<burst>" such as "8,40"; absent, "off" or anything else is off. Global, since a
