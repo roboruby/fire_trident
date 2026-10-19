@@ -1,0 +1,199 @@
+[20:29:26] contention-scale: node packages/bench/src/scenarios/contention-scale.ts --base https://staging.firetrident.com --scenario contention-scale --agents 200 --intents 600
+[20:29:27] note: FT_ALREADY_ON_TRUNK is on (for some colony): an increment whose edit merges into an identical one closes as already on trunk instead of landing an empty change
+[20:29:27] note: FT_PRELAND is on (for some colony): tests run before each landing
+[20:29:27] note: FT_TRUNK_TESTS is on (for some colony): trunk certification runs the generated test after landings
+[20:29:27] deployment build 1a51ebe; flags on: FT_A2A, FT_ACCOUNTS, FT_AGENT_CALL_BUDGET, FT_AGE_CAP, FT_ALREADY_ON_TRUNK, FT_BISECT, FT_CREDIT_TRAILERS, FT_CULPRITS, FT_DEFAULT_SPEND_CAP, FT_DELETION_GUARD, FT_ESCALATION_BATCH, FT_FIELD_GUIDE, FT_GOAL_CONFLICT, FT_HEADS_UP, FT_HEDGE, FT_INHIBIT_STRONGEST, FT_INLINE, FT_INTENT_SPEND, FT_LESSON_SCOPE, FT_MERGE_INSERTIONS, FT_MODEL_STEPUP, FT_PERSON_WAIT, FT_PRELAND, FT_PUBLIC_GIT, FT_PUBLIC_MCP, FT_QUOTED_ACCEPTANCE, FT_RED_BRAKE, FT_REPRODUCE, FT_RESOLVER, FT_RETURN_HUNKS, FT_REVIEW_VIEW, FT_TEXT_MERGE, FT_TRUNK_TESTS, FT_TWINS, FT_VIRTUAL_CHECKOUT
+[20:29:53] created colony contention-scale-200 (region depth 2, pool 208)
+[20:29:54] live feed connected
+[20:30:40] seeded 413 files in 7 landings (45.7 s) at d7b8fc5dd208
+[20:30:40] 200 agents on 600 tasks (ramp 4 s, timeout 1800 s)
+[20:30:50] 10 s: 28 of 600 tasks landed, 32 changes back, 194 holding (peak 197), 0 failed calls
+[20:31:00] 20 s: 69 of 600 tasks landed, 131 changes back, 199 holding (peak 200), 1 failed calls
+[20:31:10] 30 s: 121 of 600 tasks landed, 238 changes back, 193 holding (peak 200), 6 failed calls
+[20:31:20] 40 s: 164 of 600 tasks landed, 379 changes back, 200 holding (peak 200), 6 failed calls
+[20:31:30] 50 s: 217 of 600 tasks landed, 549 changes back, 184 holding (peak 200), 6 failed calls
+[20:31:40] 60 s: 248 of 600 tasks landed, 686 changes back, 174 holding (peak 200), 9 failed calls
+[20:31:50] 70 s: 282 of 600 tasks landed, 821 changes back, 189 holding (peak 200), 9 failed calls
+[20:32:00] 80 s: 326 of 600 tasks landed, 967 changes back, 194 holding (peak 200), 9 failed calls
+[20:32:10] 90 s: 376 of 600 tasks landed, 1136 changes back, 127 holding (peak 200), 9 failed calls
+[20:32:20] 100 s: 430 of 600 tasks landed, 1224 changes back, 74 holding (peak 200), 9 failed calls
+[20:32:30] 110 s: 465 of 600 tasks landed, 1269 changes back, 34 holding (peak 200), 16 failed calls
+[20:32:40] 120 s: 485 of 600 tasks landed, 1285 changes back, 11 holding (peak 200), 21 failed calls
+[20:32:50] 130 s: 488 of 600 tasks landed, 1287 changes back, 10 holding (peak 200), 23 failed calls
+[20:33:00] 140 s: 488 of 600 tasks landed, 1287 changes back, 6 holding (peak 200), 23 failed calls
+[20:33:11] 150 s: 488 of 600 tasks landed, 1287 changes back, 7 holding (peak 200), 24 failed calls
+[20:33:21] 160 s: 488 of 600 tasks landed, 1287 changes back, 9 holding (peak 200), 24 failed calls
+[20:33:31] 170 s: 488 of 600 tasks landed, 1287 changes back, 9 holding (peak 200), 24 failed calls
+[20:33:41] 180 s: 488 of 600 tasks landed, 1287 changes back, 9 holding (peak 200), 24 failed calls
+[20:33:51] 190 s: 488 of 600 tasks landed, 1287 changes back, 8 holding (peak 200), 24 failed calls
+[20:34:01] 200 s: 488 of 600 tasks landed, 1287 changes back, 8 holding (peak 200), 24 failed calls
+[20:34:11] 210 s: 488 of 600 tasks landed, 1287 changes back, 7 holding (peak 200), 24 failed calls
+[20:34:21] 220 s: 488 of 600 tasks landed, 1287 changes back, 9 holding (peak 200), 24 failed calls
+[20:34:31] 230 s: 488 of 600 tasks landed, 1287 changes back, 6 holding (peak 200), 24 failed calls
+[20:34:41] 240 s: 488 of 600 tasks landed, 1287 changes back, 4 holding (peak 200), 24 failed calls
+[20:34:51] 250 s: 488 of 600 tasks landed, 1287 changes back, 7 holding (peak 200), 24 failed calls
+[20:35:01] 260 s: 488 of 600 tasks landed, 1287 changes back, 8 holding (peak 200), 24 failed calls
+[20:35:11] 270 s: 488 of 600 tasks landed, 1287 changes back, 11 holding (peak 200), 24 failed calls
+[20:35:21] 280 s: 488 of 600 tasks landed, 1287 changes back, 10 holding (peak 200), 24 failed calls
+[20:35:31] 290 s: 488 of 600 tasks landed, 1287 changes back, 10 holding (peak 200), 24 failed calls
+[20:35:41] 300 s: 488 of 600 tasks landed, 1287 changes back, 10 holding (peak 200), 24 failed calls
+[20:35:51] 310 s: 488 of 600 tasks landed, 1287 changes back, 6 holding (peak 200), 24 failed calls
+[20:36:01] 320 s: 488 of 600 tasks landed, 1287 changes back, 8 holding (peak 200), 24 failed calls
+[20:36:11] 330 s: 488 of 600 tasks landed, 1287 changes back, 11 holding (peak 200), 24 failed calls
+[20:36:21] 340 s: 488 of 600 tasks landed, 1287 changes back, 6 holding (peak 200), 24 failed calls
+[20:36:30] 350 s: 488 of 600 tasks landed, 1287 changes back, 9 holding (peak 200), 24 failed calls
+[20:36:40] 360 s: 488 of 600 tasks landed, 1287 changes back, 10 holding (peak 200), 24 failed calls
+[20:36:50] 370 s: 488 of 600 tasks landed, 1287 changes back, 8 holding (peak 200), 24 failed calls
+[20:37:00] 380 s: 488 of 600 tasks landed, 1287 changes back, 7 holding (peak 200), 24 failed calls
+[20:37:10] 390 s: 488 of 600 tasks landed, 1287 changes back, 8 holding (peak 200), 24 failed calls
+[20:37:20] 400 s: 488 of 600 tasks landed, 1287 changes back, 10 holding (peak 200), 24 failed calls
+[20:37:30] 410 s: 488 of 600 tasks landed, 1287 changes back, 7 holding (peak 200), 24 failed calls
+[20:37:40] 420 s: 488 of 600 tasks landed, 1287 changes back, 10 holding (peak 200), 24 failed calls
+[20:37:50] 430 s: 488 of 600 tasks landed, 1287 changes back, 7 holding (peak 200), 24 failed calls
+[20:38:00] 440 s: 488 of 600 tasks landed, 1287 changes back, 9 holding (peak 200), 24 failed calls
+[20:38:11] 450 s: 488 of 600 tasks landed, 1287 changes back, 10 holding (peak 200), 24 failed calls
+[20:38:21] 460 s: 488 of 600 tasks landed, 1287 changes back, 7 holding (peak 200), 24 failed calls
+[20:38:31] 470 s: 488 of 600 tasks landed, 1287 changes back, 7 holding (peak 200), 24 failed calls
+[20:38:41] 480 s: 488 of 600 tasks landed, 1287 changes back, 7 holding (peak 200), 24 failed calls
+[20:38:51] 490 s: 488 of 600 tasks landed, 1287 changes back, 7 holding (peak 200), 24 failed calls
+[20:39:01] 500 s: 488 of 600 tasks landed, 1287 changes back, 9 holding (peak 200), 24 failed calls
+[20:39:11] 510 s: 488 of 600 tasks landed, 1287 changes back, 10 holding (peak 200), 24 failed calls
+[20:39:21] 520 s: 488 of 600 tasks landed, 1287 changes back, 11 holding (peak 200), 24 failed calls
+[20:39:31] 530 s: 488 of 600 tasks landed, 1287 changes back, 6 holding (peak 200), 24 failed calls
+[20:39:41] 540 s: 488 of 600 tasks landed, 1287 changes back, 8 holding (peak 200), 24 failed calls
+[20:39:51] 550 s: 488 of 600 tasks landed, 1287 changes back, 6 holding (peak 200), 24 failed calls
+[20:40:01] 560 s: 488 of 600 tasks landed, 1287 changes back, 10 holding (peak 200), 24 failed calls
+[20:40:11] 570 s: 488 of 600 tasks landed, 1287 changes back, 9 holding (peak 200), 24 failed calls
+[20:40:21] 580 s: 488 of 600 tasks landed, 1287 changes back, 12 holding (peak 200), 24 failed calls
+[20:40:31] 590 s: 488 of 600 tasks landed, 1287 changes back, 10 holding (peak 200), 24 failed calls
+[20:40:41] 600 s: 488 of 600 tasks landed, 1287 changes back, 11 holding (peak 200), 24 failed calls
+[20:40:51] 610 s: 488 of 600 tasks landed, 1287 changes back, 9 holding (peak 200), 24 failed calls
+[20:41:01] 620 s: 488 of 600 tasks landed, 1287 changes back, 10 holding (peak 200), 24 failed calls
+[20:41:11] 630 s: 488 of 600 tasks landed, 1287 changes back, 11 holding (peak 200), 24 failed calls
+[20:41:21] 640 s: 488 of 600 tasks landed, 1287 changes back, 8 holding (peak 200), 24 failed calls
+[20:41:31] 650 s: 488 of 600 tasks landed, 1287 changes back, 10 holding (peak 200), 24 failed calls
+[20:41:41] 660 s: 488 of 600 tasks landed, 1287 changes back, 10 holding (peak 200), 24 failed calls
+[20:41:51] 670 s: 488 of 600 tasks landed, 1287 changes back, 10 holding (peak 200), 24 failed calls
+[20:42:01] 680 s: 488 of 600 tasks landed, 1287 changes back, 9 holding (peak 200), 24 failed calls
+[20:42:11] 690 s: 488 of 600 tasks landed, 1287 changes back, 9 holding (peak 200), 24 failed calls
+[20:42:21] 700 s: 488 of 600 tasks landed, 1287 changes back, 11 holding (peak 200), 24 failed calls
+[20:42:31] 710 s: 488 of 600 tasks landed, 1287 changes back, 10 holding (peak 200), 24 failed calls
+[20:42:41] 720 s: 488 of 600 tasks landed, 1287 changes back, 10 holding (peak 200), 24 failed calls
+[20:42:51] 730 s: 488 of 600 tasks landed, 1287 changes back, 12 holding (peak 200), 24 failed calls
+[20:43:01] 740 s: 488 of 600 tasks landed, 1287 changes back, 11 holding (peak 200), 24 failed calls
+[20:43:11] 750 s: 488 of 600 tasks landed, 1287 changes back, 10 holding (peak 200), 24 failed calls
+[20:43:21] 760 s: 488 of 600 tasks landed, 1287 changes back, 10 holding (peak 200), 24 failed calls
+[20:43:31] 770 s: 488 of 600 tasks landed, 1287 changes back, 10 holding (peak 200), 24 failed calls
+[20:43:41] 780 s: 488 of 600 tasks landed, 1287 changes back, 12 holding (peak 200), 24 failed calls
+[20:43:51] 790 s: 488 of 600 tasks landed, 1287 changes back, 11 holding (peak 200), 24 failed calls
+[20:44:01] 800 s: 488 of 600 tasks landed, 1287 changes back, 11 holding (peak 200), 24 failed calls
+[20:44:11] 810 s: 488 of 600 tasks landed, 1287 changes back, 12 holding (peak 200), 24 failed calls
+[20:44:21] 820 s: 488 of 600 tasks landed, 1287 changes back, 12 holding (peak 200), 24 failed calls
+[20:44:31] 830 s: 488 of 600 tasks landed, 1287 changes back, 12 holding (peak 200), 24 failed calls
+[20:44:41] 840 s: 488 of 600 tasks landed, 1287 changes back, 11 holding (peak 200), 24 failed calls
+[20:44:51] 850 s: 488 of 600 tasks landed, 1287 changes back, 12 holding (peak 200), 24 failed calls
+[20:45:01] 860 s: 488 of 600 tasks landed, 1287 changes back, 10 holding (peak 200), 24 failed calls
+[20:45:11] 870 s: 488 of 600 tasks landed, 1287 changes back, 11 holding (peak 200), 24 failed calls
+[20:45:21] 880 s: 488 of 600 tasks landed, 1287 changes back, 11 holding (peak 200), 24 failed calls
+[20:45:31] 890 s: 488 of 600 tasks landed, 1287 changes back, 11 holding (peak 200), 24 failed calls
+[20:45:41] 900 s: 488 of 600 tasks landed, 1287 changes back, 11 holding (peak 200), 24 failed calls
+[20:45:51] 910 s: 488 of 600 tasks landed, 1287 changes back, 12 holding (peak 200), 24 failed calls
+[20:46:01] 920 s: 488 of 600 tasks landed, 1287 changes back, 11 holding (peak 200), 24 failed calls
+[20:46:11] 930 s: 488 of 600 tasks landed, 1287 changes back, 12 holding (peak 200), 24 failed calls
+[20:46:21] 940 s: 488 of 600 tasks landed, 1287 changes back, 12 holding (peak 200), 24 failed calls
+[20:46:31] 950 s: 488 of 600 tasks landed, 1287 changes back, 11 holding (peak 200), 24 failed calls
+[20:46:41] 960 s: 488 of 600 tasks landed, 1287 changes back, 10 holding (peak 200), 24 failed calls
+[20:46:51] 970 s: 488 of 600 tasks landed, 1287 changes back, 10 holding (peak 200), 24 failed calls
+[20:47:01] 980 s: 488 of 600 tasks landed, 1287 changes back, 12 holding (peak 200), 24 failed calls
+[20:47:11] 990 s: 488 of 600 tasks landed, 1287 changes back, 11 holding (peak 200), 24 failed calls
+[20:47:21] 1000 s: 488 of 600 tasks landed, 1287 changes back, 11 holding (peak 200), 24 failed calls
+[20:47:31] 1010 s: 488 of 600 tasks landed, 1287 changes back, 11 holding (peak 200), 24 failed calls
+[20:47:41] 1020 s: 488 of 600 tasks landed, 1287 changes back, 11 holding (peak 200), 24 failed calls
+[20:47:51] 1030 s: 488 of 600 tasks landed, 1287 changes back, 10 holding (peak 200), 24 failed calls
+[20:48:01] 1040 s: 488 of 600 tasks landed, 1287 changes back, 11 holding (peak 200), 24 failed calls
+[20:48:11] 1050 s: 488 of 600 tasks landed, 1287 changes back, 10 holding (peak 200), 24 failed calls
+[20:48:21] 1060 s: 488 of 600 tasks landed, 1287 changes back, 12 holding (peak 200), 24 failed calls
+[20:48:31] 1070 s: 488 of 600 tasks landed, 1287 changes back, 12 holding (peak 200), 24 failed calls
+[20:48:41] 1080 s: 488 of 600 tasks landed, 1287 changes back, 12 holding (peak 200), 24 failed calls
+[20:48:51] 1090 s: 488 of 600 tasks landed, 1287 changes back, 12 holding (peak 200), 24 failed calls
+[20:49:01] 1100 s: 488 of 600 tasks landed, 1287 changes back, 11 holding (peak 200), 24 failed calls
+[20:49:11] 1110 s: 488 of 600 tasks landed, 1287 changes back, 11 holding (peak 200), 24 failed calls
+[20:49:21] 1120 s: 488 of 600 tasks landed, 1287 changes back, 11 holding (peak 200), 24 failed calls
+[20:49:31] 1130 s: 488 of 600 tasks landed, 1287 changes back, 11 holding (peak 200), 24 failed calls
+[20:49:41] 1140 s: 488 of 600 tasks landed, 1287 changes back, 8 holding (peak 200), 24 failed calls
+[20:49:51] 1150 s: 488 of 600 tasks landed, 1287 changes back, 11 holding (peak 200), 24 failed calls
+[20:50:01] 1160 s: 488 of 600 tasks landed, 1287 changes back, 11 holding (peak 200), 24 failed calls
+[20:50:11] 1170 s: 488 of 600 tasks landed, 1287 changes back, 12 holding (peak 200), 24 failed calls
+[20:50:21] 1180 s: 488 of 600 tasks landed, 1287 changes back, 12 holding (peak 200), 24 failed calls
+[20:50:31] 1190 s: 488 of 600 tasks landed, 1287 changes back, 12 holding (peak 200), 24 failed calls
+[20:50:41] 1200 s: 488 of 600 tasks landed, 1287 changes back, 11 holding (peak 200), 24 failed calls
+[20:50:51] 1210 s: 488 of 600 tasks landed, 1287 changes back, 12 holding (peak 200), 24 failed calls
+[20:51:01] 1220 s: 488 of 600 tasks landed, 1287 changes back, 12 holding (peak 200), 24 failed calls
+[20:51:11] 1230 s: 488 of 600 tasks landed, 1287 changes back, 12 holding (peak 200), 24 failed calls
+[20:51:21] 1240 s: 488 of 600 tasks landed, 1287 changes back, 10 holding (peak 200), 24 failed calls
+[20:51:31] 1250 s: 488 of 600 tasks landed, 1287 changes back, 10 holding (peak 200), 24 failed calls
+[20:51:41] 1260 s: 488 of 600 tasks landed, 1287 changes back, 12 holding (peak 200), 24 failed calls
+[20:51:51] 1270 s: 488 of 600 tasks landed, 1287 changes back, 11 holding (peak 200), 24 failed calls
+[20:52:01] 1280 s: 488 of 600 tasks landed, 1287 changes back, 9 holding (peak 200), 24 failed calls
+[20:52:11] 1290 s: 488 of 600 tasks landed, 1287 changes back, 3 holding (peak 200), 24 failed calls
+[20:52:21] 1300 s: 488 of 600 tasks landed, 1287 changes back, 11 holding (peak 200), 24 failed calls
+[20:52:31] 1310 s: 488 of 600 tasks landed, 1287 changes back, 11 holding (peak 200), 24 failed calls
+[20:52:41] 1320 s: 488 of 600 tasks landed, 1287 changes back, 11 holding (peak 200), 24 failed calls
+[20:52:51] 1330 s: 488 of 600 tasks landed, 1287 changes back, 11 holding (peak 200), 24 failed calls
+[20:53:01] 1340 s: 488 of 600 tasks landed, 1287 changes back, 11 holding (peak 200), 24 failed calls
+[20:53:11] 1350 s: 488 of 600 tasks landed, 1287 changes back, 11 holding (peak 200), 24 failed calls
+[20:53:21] 1360 s: 488 of 600 tasks landed, 1287 changes back, 12 holding (peak 200), 24 failed calls
+[20:53:31] 1370 s: 488 of 600 tasks landed, 1287 changes back, 11 holding (peak 200), 24 failed calls
+[20:53:41] 1380 s: 488 of 600 tasks landed, 1287 changes back, 11 holding (peak 200), 24 failed calls
+[20:53:51] 1390 s: 488 of 600 tasks landed, 1287 changes back, 12 holding (peak 200), 24 failed calls
+[20:54:01] 1400 s: 488 of 600 tasks landed, 1287 changes back, 11 holding (peak 200), 24 failed calls
+[20:54:11] 1410 s: 488 of 600 tasks landed, 1287 changes back, 12 holding (peak 200), 24 failed calls
+[20:54:21] 1420 s: 488 of 600 tasks landed, 1287 changes back, 11 holding (peak 200), 24 failed calls
+[20:54:31] 1430 s: 488 of 600 tasks landed, 1287 changes back, 12 holding (peak 200), 24 failed calls
+[20:54:41] 1440 s: 488 of 600 tasks landed, 1287 changes back, 11 holding (peak 200), 24 failed calls
+[20:54:51] 1450 s: 488 of 600 tasks landed, 1287 changes back, 11 holding (peak 200), 24 failed calls
+[20:55:01] 1460 s: 488 of 600 tasks landed, 1287 changes back, 12 holding (peak 200), 24 failed calls
+[20:55:11] 1470 s: 488 of 600 tasks landed, 1287 changes back, 10 holding (peak 200), 24 failed calls
+[20:55:21] 1480 s: 488 of 600 tasks landed, 1287 changes back, 11 holding (peak 200), 24 failed calls
+[20:55:31] 1490 s: 488 of 600 tasks landed, 1287 changes back, 12 holding (peak 200), 24 failed calls
+[20:55:41] 1500 s: 488 of 600 tasks landed, 1287 changes back, 11 holding (peak 200), 24 failed calls
+[20:55:51] 1510 s: 488 of 600 tasks landed, 1287 changes back, 11 holding (peak 200), 24 failed calls
+[20:56:01] 1520 s: 488 of 600 tasks landed, 1287 changes back, 11 holding (peak 200), 24 failed calls
+[20:56:11] 1530 s: 488 of 600 tasks landed, 1287 changes back, 12 holding (peak 200), 24 failed calls
+[20:56:21] 1540 s: 488 of 600 tasks landed, 1287 changes back, 11 holding (peak 200), 24 failed calls
+[20:56:31] 1550 s: 488 of 600 tasks landed, 1287 changes back, 12 holding (peak 200), 24 failed calls
+[20:56:41] 1560 s: 488 of 600 tasks landed, 1287 changes back, 10 holding (peak 200), 24 failed calls
+[20:56:51] 1570 s: 488 of 600 tasks landed, 1287 changes back, 12 holding (peak 200), 24 failed calls
+[20:57:01] 1580 s: 488 of 600 tasks landed, 1287 changes back, 12 holding (peak 200), 24 failed calls
+[20:57:11] 1590 s: 488 of 600 tasks landed, 1287 changes back, 12 holding (peak 200), 24 failed calls
+[20:57:21] 1600 s: 488 of 600 tasks landed, 1287 changes back, 12 holding (peak 200), 24 failed calls
+[20:57:31] 1610 s: 488 of 600 tasks landed, 1287 changes back, 12 holding (peak 200), 24 failed calls
+[20:57:41] 1620 s: 488 of 600 tasks landed, 1287 changes back, 12 holding (peak 200), 24 failed calls
+[20:57:51] 1630 s: 488 of 600 tasks landed, 1287 changes back, 10 holding (peak 200), 24 failed calls
+[20:58:01] 1640 s: 488 of 600 tasks landed, 1287 changes back, 11 holding (peak 200), 24 failed calls
+[20:58:11] 1650 s: 488 of 600 tasks landed, 1287 changes back, 10 holding (peak 200), 24 failed calls
+[20:58:21] 1660 s: 488 of 600 tasks landed, 1287 changes back, 10 holding (peak 200), 24 failed calls
+[20:58:31] 1670 s: 488 of 600 tasks landed, 1287 changes back, 12 holding (peak 200), 24 failed calls
+[20:58:41] 1680 s: 488 of 600 tasks landed, 1287 changes back, 10 holding (peak 200), 24 failed calls
+[20:58:51] 1690 s: 488 of 600 tasks landed, 1287 changes back, 11 holding (peak 200), 24 failed calls
+[20:59:01] 1700 s: 488 of 600 tasks landed, 1287 changes back, 12 holding (peak 200), 24 failed calls
+[20:59:11] 1710 s: 488 of 600 tasks landed, 1287 changes back, 12 holding (peak 200), 24 failed calls
+[20:59:21] 1720 s: 488 of 600 tasks landed, 1287 changes back, 10 holding (peak 200), 24 failed calls
+[20:59:31] 1730 s: 488 of 600 tasks landed, 1287 changes back, 12 holding (peak 200), 24 failed calls
+[20:59:41] 1740 s: 488 of 600 tasks landed, 1287 changes back, 12 holding (peak 200), 24 failed calls
+[20:59:51] 1750 s: 488 of 600 tasks landed, 1287 changes back, 10 holding (peak 200), 24 failed calls
+[21:00:01] 1760 s: 488 of 600 tasks landed, 1287 changes back, 12 holding (peak 200), 24 failed calls
+[21:00:11] 1770 s: 488 of 600 tasks landed, 1287 changes back, 11 holding (peak 200), 24 failed calls
+[21:00:21] 1780 s: 488 of 600 tasks landed, 1287 changes back, 11 holding (peak 200), 24 failed calls
+[21:00:31] 1790 s: 488 of 600 tasks landed, 1287 changes back, 11 holding (peak 200), 24 failed calls
+[21:00:41] 1800 s: 488 of 600 tasks landed, 1287 changes back, 7 holding (peak 200), 24 failed calls
+[21:00:41] agents done after 1801.0 s: 488 of 600 tasks landed, 1287 changes came back
+[21:00:46] PASS  every file parses: 413 files at c7a53335d247: all parse; the tree holds the seeded files and no others.
+[21:00:46] PASS  registry entries appear exactly once: 199 landed register tasks: 0 duplicated, 0 missing, 0 present without a landing, 0 seed entries gone, 0 unknown.
+[21:00:46] PASS  every counter equals its landed increments: 40 counters, 98 landed increments, counters adding up to 98: 0 lost updates, 0 counted twice.
+[21:00:46] FAIL  no increment was closed as already on trunk: 100 increments came back as already on trunk (its edit merged into an identical one from the same base), so its +1 never applied and its agent was told there was nothing to redo.
+[21:00:46] PASS  every read-own constant matches the trunk it landed on: 191 landed read-own changes: 0 constants differ from the registry they landed on, 0 landed on a version they did not read, 0 landed behind a writer of their file in the same commit, 0 set without a landing.
+[21:00:46] PASS  the agents' outcomes agree with the lineage notes: 488 proposals reported landed, 488 proposals of this run in the notes: 0 reported landed but not in a note, 0 in a note but reported otherwise, 0 tasks landed twice.
+[21:04:00] deleted colony contention-scale-200
+[21:04:00] 488 of 600 tasks landed in 454 commits (220.2 landings and 236.7 changes a minute); propose to landed p50 10762 ms, p95 37641 ms; 1287 came back; peak holders 200 (38 on one hot file)
+[21:04:00] SOME CHECKS FAILED
