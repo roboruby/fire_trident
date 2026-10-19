@@ -166,6 +166,21 @@ describe("commutation: changes in flight built before a recipe landed", () => {
     expect(plan.returned[0]![0]!.reason).toMatch(/recipe rcp_x \(landing lnd_x\) could not rewrite src\/run\.ts \(its rewrite would add a danger pattern \(capability/);
   });
 
+  it("already on trunk: reads the change's reads through the recipe, closing one that read trunk's version and sending back a stale read", () => {
+    const merge: TextMergeInput = { text: (b) => texts.get(b) ?? null, blobOf: blob };
+    // Read before the rename at the version the rename made trunk's: current through the recipe, and its write is there.
+    const current: Record<Path, Sha | null> = { "src/use.ts": blob(through(RENAME, "src/use.ts", USE_EDITED)) };
+    const p = proposal("i", { "src/use.ts": blob(USE_EDITED) }, { "src/use.ts": blob(USE_EDITED) });
+    const closed = planCycle([[entry(p, { "src/use.ts": blob(USE_EDITED) })]], (path) => current[path] ?? null, undefined, undefined, merge, undefined, input(), true);
+    expect(closed.onTrunk).toEqual([{ proposalId: "i" }]);
+    expect(closed.accepted).toEqual([[]]);
+    // Read before trunk also gained thrice(): the same edit, but not one it saw, so it goes back.
+    const q = proposal("j", { "src/use.ts": blob(USE_EDITED) }, { "src/use.ts": blob(USE) });
+    const back = planCycle([[entry(q, { "src/use.ts": blob(USE) })]], (path) => current[path] ?? null, undefined, undefined, merge, undefined, input(), true);
+    expect(back.onTrunk).toBeUndefined();
+    expect(back.returned[0]![0]!.reason).toMatch(/^stale: src\/use\.ts .*text merge stopped: this change repeats an edit trunk made after it read the file/);
+  });
+
   it("leaves a change alone when no recipe applies to it", () => {
     const trunk = renamedTrunk();
     const at = (path: Path): Sha | null => trunk[path] ?? null;

@@ -12,11 +12,14 @@
 #      deletes the colony (--keep leaves it)
 #
 # With --conflict both agents change line 6: A lands, and B goes back with a reason naming the conflicting hunk. With
-# --same both make the same change to line 6 from the same trunk (FT_ALREADY_ON_TRUNK): A lands, and B lands no commit
-# and is not sent back: it closes as already on trunk, naming A's landing, and its intent closes with the cause
-# already_on_trunk. With --dup both append the same function at the end of the file from the same trunk, and B a second
-# function after it (FT_TEXT_MERGE and FT_MERGE_INSERTIONS): A lands, and B lands as an insertion merge that holds the
-# shared function once, then B's second function, never the shared one twice.
+# --same both make the same change to line 6 from the same trunk (FT_ALREADY_ON_TRUNK): A lands, and B, which read the
+# file before A landed, goes back stale (its edit may be its own to make, as two increments of one counter both writing
+# the same value are); B redoes it on trunk as A left it, finds the edit there, and its redo lands no commit and is not
+# sent back: it closes as already on trunk, naming A's landing, and B's intent closes with the cause already_on_trunk.
+# With --dup both append the same function at the end of the file from the same trunk, and B a second function after
+# it (FT_TEXT_MERGE and FT_MERGE_INSERTIONS): A lands, B goes back stale instead of being merged with A's function once
+# (it read the file before A landed), and B's redo on trunk as A left it appends only its second function and lands:
+# the shared function once, then B's second function, never the shared one twice.
 #
 # Every agent is this script over the HTTP API with inline changes (synthetic agents): no git, no model calls. Each step
 # has a hard time limit; a step that runs out says what it was waiting for, and the script exits 3.
@@ -133,7 +136,7 @@ module BeatTwoAgents
       res = @http.request(:get, "/api/about", timeout: [@step_timeout, 15].min, auth: false)
       about = res.ok? && res.json.is_a?(Hash) ? res.json : nil
       what = { merge: "two agents edit one file; text merge lands both", conflict: "two agents change the same line of one file",
-               same: "two agents make the same change to one file; the second is already on trunk",
+               same: "two agents make the same change to one file; the second goes back, and its redo is already on trunk",
                dup: "two agents append the same function to one file; it lands once" }.fetch(@mode)
       @clock.say("beat: #{what}, on #{@http.base}#{about&.dig('commit') ? " (build #{about['commit']})" : ''}")
       unless about
@@ -152,12 +155,13 @@ module BeatTwoAgents
       @clock.say("text merge (FT_TEXT_MERGE)#{insertions} and inline changes (FT_INLINE) are on here")
     end
 
-    # --same needs FT_ALREADY_ON_TRUNK; text merge may be on or off (B is already on trunk either way).
+    # --same needs FT_ALREADY_ON_TRUNK; text merge may be on or off (B goes back stale either way, and its redo is
+    # already on trunk either way).
     def same_flags
       raise Failure, "already on trunk is off on this deployment (FT_ALREADY_ON_TRUNK is not on in /api/about), so this beat cannot show it" unless @flags.include?("FT_ALREADY_ON_TRUNK")
 
-      merge = @flags.include?("FT_TEXT_MERGE") ? "on (without the flag B would land as a commit that changes nothing)" : "off (without the flag B would go back stale)"
-      @clock.say("already on trunk (FT_ALREADY_ON_TRUNK) and inline changes (FT_INLINE) are on here; text merge is #{merge}")
+      merge = @flags.include?("FT_TEXT_MERGE") ? "on" : "off"
+      @clock.say("already on trunk (FT_ALREADY_ON_TRUNK) and inline changes (FT_INLINE) are on here; text merge is #{merge} (without the flag B's redo would land as a commit that changes nothing)")
     end
 
     def create_colony
@@ -240,6 +244,17 @@ module BeatTwoAgents
       p
     end
 
+    # B's redo after its change went back: it takes its intent again, on trunk as A's landing left it, reads the file
+    # there (A's version) and writes `text` (the full file as B wants it now).
+    def redo_second(text, what_it_does)
+      took, secs = step("agent B to be handed its intent again") { take(@agent_b, @intent_b["id"], "agent B") }
+      @took_b = took
+      p, secs2 = step("agent B's redo to settle") { settle(propose(@agent_b, @took_b, @text_a, text, "#{what_it_does} (redo)"), "agent B") }
+      what = { "landed" => "landed in #{p['landingId']}", "returned" => "went back", "already_on_trunk" => "closed as already on trunk" }.fetch(p["status"], p["status"])
+      @clock.say("agent B redid it: took its intent again on #{short(took.dig('lease', 'baseSha'))}, read agent A's version and #{what_it_does}: #{what} (#{fmt(secs + secs2)})")
+      p
+    end
+
     # What an agent did, as the narration says it: "changed line 6", "appended total()".
     def did(line, text)
       return "appended #{text.split(' and ').map { |f| "#{f}()" }.join(' and ')}" if APPENDS.key?(text)
@@ -298,24 +313,28 @@ module BeatTwoAgents
       Stage::EXIT_PASS
     end
 
-    # B landed nothing and did not go back: it closed as already on trunk naming A's landing, trunk did not move for it,
-    # and its intent closed with the cause already_on_trunk.
+    # B read the file before A landed, so its identical change went back stale: its edit may be its own to make. Its redo,
+    # on trunk as A left it, landed nothing and did not go back: it closed as already on trunk naming A's landing, trunk
+    # did not move for it, and B's intent closed with the cause already_on_trunk.
     def same_verdict(first, second)
       line = @edit_b[0]
       lineage = [[line, first, why(line)]]
       landings_table([["agent A", first, @intent_a, "line #{line}"]], lineage)
       file_lines(@text_a, "after agent A's landing (blob #{short(Stage.blob_id(@text_a))}); agent B wrote the same text", { line => "agent A, #{first['landingId']}" })
       lineage_lines(lineage, nil)
-      unless second["status"] == "already_on_trunk"
-        how = second["status"] == "landed" ? "landed in #{second['landingId']} (a commit that changes nothing)" : second["status"]
-        raise Failure, "agent B's change #{how} instead of closing as already on trunk#{reason_of(second)}; is FT_ALREADY_ON_TRUNK on for colony #{@colony}?"
+      stale_back(second, "it read #{@path} before agent A's landing, so its edit may be its own to make")
+      @clock.print("agent B's change #{second['id']} (line #{line}: #{@edit_b[1]}) went back: #{second['reason']}")
+      again = redo_second(@text_b, "made the same change")
+      unless again["status"] == "already_on_trunk"
+        how = again["status"] == "landed" ? "landed in #{again['landingId']} (a commit that changes nothing)" : again["status"]
+        raise Failure, "agent B's redo #{how} instead of closing as already on trunk#{reason_of(again)}; is FT_ALREADY_ON_TRUNK on for colony #{@colony}?"
       end
 
-      @clock.print("agent B's change #{second['id']} (line #{line}: #{@edit_b[1]}) closed as already on trunk: #{second['reason']}")
+      @clock.print("agent B's redo #{again['id']} (line #{line}: #{@edit_b[1]}) closed as already on trunk: #{again['reason']}")
       problems = []
-      from = second["onTrunk"] || {}
+      from = again["onTrunk"] || {}
       problems << "its source names #{from['landingId'] || "trunk #{short(from['trunkSha'])}"}, not agent A's landing #{first['landingId']}" unless from["landingId"] == first["landingId"]
-      problems << "it carries a landing (#{second['landingId']})" if second["landingId"]
+      problems << "it carries a landing (#{again['landingId']})" if again["landingId"]
       owner = lineage.first[2].first&.dig("landing", "id")
       problems << "ft why for line #{line} names #{owner || 'no landing'} first, not agent A's #{first['landingId']}" unless owner == first["landingId"]
       intent, = step("agent B's intent to show its closure") { api!(:get, "/colonies/#{@colony}/intents/#{@intent_b['id']}") }
@@ -325,41 +344,45 @@ module BeatTwoAgents
       problems << "agent B's intent closed with #{closure['cause'].inspect}, not already_on_trunk" unless closure["cause"] == "already_on_trunk"
       raise Failure, problems.join("; ") unless problems.empty?
 
-      @clock.say("PASS one landing; agent B's identical change closed as already on trunk from #{first['landingId']}, with no commit and no return")
+      @clock.say("PASS one landing; agent B's identical change went back stale, and its redo closed as already on trunk from #{first['landingId']}, with no commit")
       Stage::EXIT_PASS
     end
 
-    # --dup: B landed as an insertion merge whose result is the seed, the shared function once, then B's second function;
-    # `why` names A for the shared function and B for the second one.
-    def dup_verdict(first, second)
-      raise Failure, "agent B's change went back (#{second['status']}#{reason_of(second)}) instead of landing with the shared function once" unless second["status"] == "landed"
+    # B's first change must have gone back stale (`why` says why it should have); anything else fails the beat.
+    def stale_back(second, why)
+      return if second["status"] == "returned" && second["reason"].to_s.start_with?("stale")
 
+      how = { "landed" => "landed in #{second['landingId']}", "already_on_trunk" => "closed as already on trunk", "returned" => "went back" }.fetch(second["status"], second["status"])
+      raise Failure, "agent B's change #{how}#{reason_of(second)} instead of going back stale: #{why}"
+    end
+
+    # --dup: B's append, which repeats A's function, went back stale instead of being merged with it once (B read the file
+    # before A landed); B's redo on trunk as A left it landed the file with the shared function once, then B's second
+    # function; `why` names A for the shared function and B's redo for the second one.
+    def dup_verdict(first, second)
+      stale_back(second, "it read #{@path} before agent A's landing and repeats agent A's total(), which a merge would land once")
+      @clock.print("agent B's change #{second['id']} (appended total() and largest()) went back: #{second['reason']}")
       once = @seed_text + SHARED_FN + SECOND_FN
-      twice = @seed_text + SHARED_FN + SHARED_FN + SECOND_FN
+      again = redo_second(once, "appended largest() after it")
+      raise Failure, "agent B's redo went back (#{again['status']}#{reason_of(again)}) instead of landing" unless again["status"] == "landed"
+
       shared_at = BeatTwoAgents.line_of(once, "total")
       second_at = BeatTwoAgents.line_of(once, "largest")
-      lineage = [[shared_at, first], [second_at, second]].map { |line, p| [line, p, why(line)] }
-      merged_entry = lineage.last[2].first
-      merged = Array(note_of(merged_entry, second["id"])&.dig("merged")).find { |m| m["path"] == @path }
+      lineage = [[shared_at, first], [second_at, again]].map { |line, p| [line, p, why(line)] }
+      wrote = Array(note_of(lineage.last[2].first, again["id"])&.dig("writeSet")).find { |w| w["path"] == @path }
       problems = []
-      if merged.nil?
-        problems << "neither the lineage note of agent B's change nor its landing records a merge of #{@path}" unless Array(merged_entry&.dig("landing", "merged")).any? { |m| m["proposalId"] == second["id"] && m["path"] == @path }
-      elsif merged["result"] == Stage.blob_id(twice)
-        problems << "the merge landed the shared function twice (blob #{short(merged['result'])})"
-      elsif merged["result"] != Stage.blob_id(once)
-        problems << "the merge landed blob #{short(merged['result'])}, not the file with the shared function once and the second after it (#{short(Stage.blob_id(once))})"
-      end
+      problems << "agent B's redo landed blob #{short(wrote&.dig('blob'))}, not the file with the shared function once and the second after it (#{short(Stage.blob_id(once))})" unless wrote&.dig("blob") == Stage.blob_id(once)
       lineage.each do |line, p, entries|
         owner = entries.first&.dig("landing", "id")
         problems << "ft why for line #{line} names #{owner || 'no landing'} first, not #{p['landingId']}" unless owner == p["landingId"]
       end
 
-      landings_table([["agent A", first, @intent_a, "appended total()"], ["agent B", second, @intent_b, "appended total() and largest(), merged onto #{first['landingId']}#{merged&.dig('rule') == 'insertions' ? ' by the insertion rule' : ''}"]], lineage)
-      file_lines(once, "after both landings (blob #{short(Stage.blob_id(once))}: total() once, then largest())", { shared_at => "agent A, #{first['landingId']}", second_at => "agent B, #{second['landingId']}" })
-      lineage_lines(lineage, merged)
+      landings_table([["agent A", first, @intent_a, "appended total()"], ["agent B", again, @intent_b, "appended largest() after it, on trunk as #{first['landingId']} left it"]], lineage)
+      file_lines(once, "after both landings (blob #{short(Stage.blob_id(once))}: total() once, then largest())", { shared_at => "agent A, #{first['landingId']}", second_at => "agent B, #{again['landingId']}" })
+      lineage_lines(lineage, nil)
       raise Failure, problems.join("; ") unless problems.empty?
 
-      @clock.say("PASS both changes landed; agent B's as an insertion merge that holds the shared function once")
+      @clock.say("PASS agent B's repeat of the shared function went back stale, and its redo landed the second function after it: the shared function once")
       Stage::EXIT_PASS
     end
 
@@ -527,8 +550,8 @@ module BeatTwoAgents
       o.banner = "Usage: FT_TOKEN=... ruby scripts/beat_two_agents.rb --base <url> [options]"
       o.on("--base URL", "The deployment, e.g. https://staging.firetrident.com") { |v| opts[:base] = v }
       o.on("--conflict", "Both agents change the same line: one lands, one goes back naming the hunk") { opts[:conflict] = true }
-      o.on("--same", "Both agents make the same change (FT_ALREADY_ON_TRUNK): one lands, the other closes as already on trunk") { opts[:same] = true }
-      o.on("--dup", "Both agents append the same function, B a second after it (FT_MERGE_INSERTIONS): it lands once") { opts[:dup] = true }
+      o.on("--same", "Both agents make the same change (FT_ALREADY_ON_TRUNK): one lands, the other goes back and its redo closes as already on trunk") { opts[:same] = true }
+      o.on("--dup", "Both agents append the same function, B a second after it (FT_MERGE_INSERTIONS): B goes back, its redo lands; the function lands once") { opts[:dup] = true }
       o.on("--keep", "Keep the colony the beat creates (default: delete it at the end)") { opts[:keep] = true }
       o.on("--name NAME", "Name of the new colony (default beat-<time>)") { |v| opts[:name] = v }
       o.on("--colony ID", "Run on this existing colony instead (never deleted; its review policy is left as it is)") { |v| opts[:colony] = v }

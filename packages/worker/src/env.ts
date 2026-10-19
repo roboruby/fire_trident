@@ -174,6 +174,8 @@ export interface Env {
    * Optional: text merge, "on", or a comma-separated list of colony ids; absent or "off" is off. A change stale only on
    * files it writes (trunk changed them after its base) lands when each of them merges cleanly, line by line, with the
    * version it would land on (core/textmerge.ts); otherwise it goes back as before, a conflict named in the reason.
+   * A file the change also read, at a version trunk has moved past, never merges an edit once: an edit that repeats one
+   * trunk made since sends the change back stale, naming the landing, so no update is lost.
    */
   FT_TEXT_MERGE?: string;
   /**
@@ -183,7 +185,8 @@ export interface Env {
    * inserted there (core/insertions.ts); its merged entry records `rule: "insertions"`, and the trunk writer counts
    * `trunk.mergedInsertions`. Lines both insertions start or end with land once; a union that would land the same
    * construct twice is refused, and imports compare with their quotes made alike. A hunk that edits or deletes a base
-   * line still sends the change back, naming the hunk.
+   * line still sends the change back, naming the hunk. On a file the change read at a version trunk has moved past, a
+   * union that would drop the change's lines trunk also inserted sends it back stale instead.
    */
   FT_MERGE_INSERTIONS?: string;
   /**
@@ -195,6 +198,8 @@ export interface Env {
    * last changed those files, else the trunk head), and its agent is told there is nothing to do (trunk/ontrunk.ts). Its
    * lane sends such a change on to the trunk writer instead of back as stale. Counted apart: `alreadyOnTrunk` in the
    * colony's metrics and `trunk.alreadyOnTrunk` per cycle. A retry of a change that did land still gets its landing.
+   * A change that read a file it writes at an older version than trunk's goes back stale instead, so its agent re-reads
+   * and decides; its redo closes as already on trunk when the work really is done.
    */
   FT_ALREADY_ON_TRUNK?: string;
   /**

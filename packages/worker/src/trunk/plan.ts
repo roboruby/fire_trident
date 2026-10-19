@@ -10,7 +10,7 @@
  * trunk as it will be once every earlier accepted proposal of the cycle has landed. That is
  * what serving the batches one commit at a time would decide, without a push per batch.
  */
-import { mergeProblem, mergeText, onlyGrew, revalidate, revalidationEnabled, textMergeCandidate, validateProposal } from "@fire_trident/core";
+import { mergeProblem, mergeText, onlyGrew, revalidate, revalidationEnabled, staleWrittenReads, textMergeCandidate, validateProposal } from "@fire_trident/core";
 import type { ExportSurface, ExportedNames, FileVersion, GrewOnly, Id, Landing, MergeConflict, OccResult, Path, Proposal, Revalidated, Sha, TextMerged } from "@fire_trident/core";
 import { exportedNames, resolveModule } from "../decide/mechanical.ts";
 import { topStatements } from "../decide/statements.ts";
@@ -203,7 +203,11 @@ function changedText(c: { path: Path; line: number; why: "edited" | "added" }): 
  *   never merged (binary, over 512 KB, a lockfile) leaves it to the rules above, and a conflict is named
  *   in the reason and carried in the return's `conflicts` (for the conflict resolver). With `merge.insertions`
  *   (FT_MERGE_INSERTIONS), a file whose only conflicts are insertions by both sides at one place merges as their
- *   union, recorded with `rule: "insertions"`. Without `merge`, stale means back as before.
+ *   union, recorded with `rule: "insertions"`. Without `merge`, stale means back as before. A file the proposal also
+ *   read, at a version the virtual trunk has moved past (core staleWrittenReads), never has an edit of the proposal
+ *   counted as already made: one that repeats an edit trunk made since its base (the same lines changed the same way, or
+ *   lines the insertion rule would land once) sends it back stale, naming where, with no `conflicts` (core mergeText
+ *   with `staleRead`); edits to lines trunk did not touch still merge.
  * - Merge locks (a proposal's `lock`, see trunk/mergelock.ts mergeHold): a change a person approved, or one with a danger
  *   pattern a person must see or a protected write, whose clean merge would land a result no person approved goes back
  *   to a person with the trunk delta (`held`); one whose merge conflicts goes back without `conflicts`.
@@ -312,8 +316,9 @@ export function planCycle(
       const r = p.readSet.map((f) => f.path);
       const assumptions = p.assumptions ?? [];
       // Already on trunk (trunk/ontrunk.ts): a proposal whose every write trunk holds, as the proposals ahead of it leave
-      // it, lands nothing; it is not in this landing, so it conflicts with none of it either.
-      const already = alreadyOnTrunk ? foundOnTrunk(p, before, ok, ahead) : null;
+      // it, lands nothing; it is not in this landing, so it conflicts with none of it either. Its reads as checked (moved
+      // through a recipe) say whether it read a file it writes at an older version, which is never closed here.
+      const already = alreadyOnTrunk ? foundOnTrunk({ ...p, readSet: checked.readSet }, before, ok, ahead) : null;
       if (already) {
         onTrunk.push(already);
         continue;
@@ -339,7 +344,7 @@ export function planCycle(
       let kept: Revalidated[] | null = null;
       let files: TextMerged[] | null = null;
       if (!occ.eligible) {
-        const tried = merge ? mergeWrites(p, occ.stale, base, virtual, textOf, merge.blobOf, merge.insertions === true) : null;
+        const tried = merge ? mergeWrites(p, occ.stale, base, virtual, textOf, merge.blobOf, merge.insertions === true, new Set(staleWrittenReads(checked, virtual))) : null;
         const rv = tried?.ok || !exportedOf ? null : revalidate(checked, occ.stale, exportedOf, grewOnly);
         if (tried?.ok) {
           // The change goes on with its merged files: what it lands, and what later batches see.
@@ -360,16 +365,18 @@ export function planCycle(
           const changed = rv?.ok === false && rv.changed ? `; ${changedText(rv.changed)}` : "";
           const conflicted = tried && !tried.ok && tried.conflicts.length > 0 ? tried.conflicts : null;
           const conflicts = conflicted ? `; ${conflictText(conflicted)}` : "";
+          // A repeated edit from a stale read goes back as a plain stale return: no conflict for the resolver to merge once.
+          const repeats = tried && !tried.ok && tried.repeated ? `; ${repeatText(tried.repeated)}` : "";
           // Recipes: the versions a recipe made that a conflict names are stored with the cycle, so its quotes can be read.
           if (commuted && conflicted) for (const c of conflicted) for (const b of [c.base, c.theirs]) if (produced.has(b)) mergedTexts.set(b, produced.get(b)!.text);
-          const reason = `stale: ${detail}${broken}${changed}${conflicts}`;
+          const reason = `stale: ${detail}${broken}${changed}${conflicts}${repeats}`;
           // A locked change never goes on to the conflict resolver (merge locks): its conflicts stay in the reason only.
           back.push({ proposalId: p.id, reason: commuted ? refusedText(reason, commuted, occ.stale) : reason, ...(conflicted && !lock ? { conflicts: conflicted } : {}) });
           continue;
         }
       }
       // Already on trunk: a clean merge whose every file came out as the version it merged with lands nothing either.
-      const mergedAway = alreadyOnTrunk && files ? foundOnTrunk(p, before, ok, ahead) : null;
+      const mergedAway = alreadyOnTrunk && files ? foundOnTrunk({ ...p, readSet: checked.readSet }, before, ok, ahead) : null;
       if (mergedAway) {
         onTrunk.push(mergedAway);
         continue;
@@ -437,8 +444,11 @@ export function planCycle(
   return { accepted, returned, revalidated, merged, mergedTexts, ...(exportRun ? { exportsUncovered: exportRun.uncovered } : {}), ...(applied.size > 0 ? { recipes: applied } : {}), ...(onTrunk.length > 0 ? { onTrunk } : {}) };
 }
 
-/** The merge of one stale proposal's files (mergeWrites): the files and their merged texts by blob id, or the conflicts that stopped it. */
-type MergeTry = { ok: true; files: TextMerged[]; texts: Map<Sha, string> } | { ok: false; conflicts: MergeConflict[] };
+/**
+ * The merge of one stale proposal's files (mergeWrites): the files and their merged texts by blob id, or the conflicts
+ * that stopped it; `repeated`: the files read stale where it repeats an edit trunk made, which stopped it before any conflict.
+ */
+type MergeTry = { ok: true; files: TextMerged[]; texts: Map<Sha, string> } | { ok: false; conflicts: MergeConflict[]; repeated?: Array<{ path: Path; lines: number[] }> };
 
 /**
  * Text merge for one stale proposal (see planCycle), or null when it is not a candidate (textMergeCandidate). Every
@@ -446,7 +456,9 @@ type MergeTry = { ok: true; files: TextMerged[]; texts: Map<Sha, string> } | { o
  * mergeable (core mergeProblem), or nothing is merged and no conflict is named; then each file is merged (core
  * mergeText): its base, the virtual trunk's version (ours) and the proposal's (theirs). `conflicts` lists the files
  * whose merge conflicted, with their three blobs and where each conflicting hunk starts in the base. `insertions`: the
- * insertion rule (FT_MERGE_INSERTIONS) applies, and a file it merged records `rule: "insertions"`.
+ * insertion rule (FT_MERGE_INSERTIONS) applies, and a file it merged records `rule: "insertions"`. `readStale`: the files
+ * the proposal read at a version the virtual trunk moved past, merged with `staleRead`; where it repeats an edit trunk
+ * made, `repeated` names the file and lines, and no conflict is carried.
  */
 function mergeWrites(
   p: Proposal,
@@ -456,6 +468,7 @@ function mergeWrites(
   textOf: (blob: Sha) => string | null,
   blobOf: (text: string) => Sha,
   insertions = false,
+  readStale: ReadonlySet<Path> = new Set(),
 ): MergeTry | null {
   if (!textMergeCandidate(p, stale)) return null;
   const started = new Map(base.map((f) => [f.path, f.blob ?? null]));
@@ -474,11 +487,13 @@ function mergeWrites(
   const files: TextMerged[] = [];
   const texts = new Map<Sha, string>();
   const conflicts: MergeConflict[] = [];
+  const repeated: Array<{ path: Path; lines: number[] }> = [];
   let limited = false;
   for (const f of todo) {
-    const r = mergeText(...f.texts, undefined, { insertions });
+    const r = mergeText(...f.texts, undefined, { insertions, staleRead: readStale.has(f.path) });
     if (!r.clean) {
-      if (r.conflicts > 0) conflicts.push({ path: f.path, base: f.base, trunk: f.trunk, theirs: f.theirs, lines: r.lines });
+      if (r.repeated) repeated.push({ path: f.path, lines: r.repeated });
+      else if (r.conflicts > 0) conflicts.push({ path: f.path, base: f.base, trunk: f.trunk, theirs: f.theirs, lines: r.lines });
       else limited = true;
       continue;
     }
@@ -486,8 +501,18 @@ function mergeWrites(
     texts.set(result, r.text);
     files.push({ path: f.path, base: f.base, trunk: f.trunk, theirs: f.theirs, result, ...(r.rule ? { rule: r.rule } : {}) });
   }
+  if (repeated.length > 0) return { ok: false, conflicts: [], repeated };
   if (conflicts.length > 0 || limited) return { ok: false, conflicts };
   return { ok: true, files, texts };
+}
+
+/**
+ * Where a proposal that read a file at a version trunk moved past repeats an edit trunk made since (mergeWrites), as its
+ * stale return states it: each file and the base lines, and what to do.
+ */
+function repeatText(repeated: Array<{ path: Path; lines: number[] }>): string {
+  const where = repeated.map((r) => `${r.path} at line${r.lines.length === 1 ? "" : "s"} ${listText(r.lines.map(String), MERGE_LINES_NAMED)} of its base`).join(", ");
+  return `text merge stopped: this change repeats an edit trunk made after it read the file (${where}), and the same edit made twice from one read is not merged as one, so re-read the file and make the change on trunk as it is now`;
 }
 
 /** Conflicting hunks a reason places at most, per file. */

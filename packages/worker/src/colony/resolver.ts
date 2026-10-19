@@ -1,4 +1,4 @@
-import { blobId, changesetId, inlineProblem, isLockfile, mergeContentProblem, revalidationEnabled, utf8Length } from "@fire_trident/core";
+import { blobId, changesetId, inlineProblem, isLockfile, mergeContentProblem, mergeText, revalidationEnabled, staleWrittenReads, utf8Length } from "@fire_trident/core";
 import type { CheckResult, ColonyEvent, Evidence, FileVersion, Id, MergeConflict, NoteResolves, Path, Proposal, Sha } from "@fire_trident/core";
 import type { Env } from "../env.ts";
 import { modelClient, resolveModel, usesAnthropic } from "../agents/llm.ts";
@@ -25,10 +25,11 @@ import { malformedReply, retryCheck } from "./resolver-retry.ts";
  * - The colony holds the intent for its resolver agent (an in-platform agent named "resolver") instead of reopening it,
  *   and the change's agent finds a notice in its inbox. Then, asynchronously and never inside a trunk cycle: the base,
  *   trunk and change versions of each file trunk moved are read (at most RESOLVE_MAX_FILES files of RESOLVE_FILE_BYTES),
- *   files that merge cleanly are merged as text merge would, and one model call (through the decide stage's limiter)
- *   writes each conflicting file whole, keeping both changes, or answers CANNOT. A malformed reply (it cannot be parsed,
- *   or leaves a conflict marker) is asked for once more, counted like any call and recorded in the evidence
- *   (colony/resolver-retry.ts). Everything agents, people and the repository wrote is fenced as data
+ *   files that merge cleanly are merged as text merge would (a file the change read at a version trunk moved past, where
+ *   it repeats an edit trunk made since, ends it: merging would land that edit once), and one model call (through the
+ *   decide stage's limiter) writes each conflicting file whole, keeping both changes, or answers CANNOT. A malformed
+ *   reply (it cannot be parsed, or leaves a conflict marker) is asked for once more, counted like any call and recorded
+ *   in the evidence (colony/resolver-retry.ts). Everything agents, people and the repository wrote is fenced as data
  *   (colony/resolver-prompt.ts).
  * - The merge is validated before anything is proposed (colony/resolver-merge.ts): every line outside the conflicting
  *   hunks is exactly the clean merge of both changes, no conflicting hunk is either side's version whole, every line
@@ -488,6 +489,9 @@ export class Resolver {
       wanted.add(now.get(w.path)!);
     }
     const texts = await this.texts(p, [...wanted]);
+    // The files the change read at a version trunk has moved past (core staleWrittenReads): an edit of it that repeats one
+    // trunk made since is never merged once, as the trunk writer decides (core mergeText with `staleRead`).
+    const readStale = new Set(staleWrittenReads(p, (path) => now.get(path) ?? null));
     const files: Moved[] = [];
     for (const w of moved) {
       const base = texts.get(then.get(w.path)!);
@@ -499,6 +503,10 @@ export class Resolver {
       if (Math.max(utf8Length(base), utf8Length(ours), utf8Length(theirs)) > RESOLVE_FILE_BYTES) return { fail: `${w.path} is over ${RESOLVE_FILE_BYTES / 1024} KB` };
       const merge = mergeSides(base, ours, theirs);
       if (!merge.clean && merge.limited) return { fail: `${w.path} changed too much on one side to merge line by line` };
+      if (readStale.has(w.path)) {
+        const repeat = mergeText(base, ours, theirs, undefined, { staleRead: true });
+        if (!repeat.clean && repeat.repeated) return { fail: `the change read ${w.path} before trunk made the same edit at line ${repeat.repeated[0]} of its base, so a merge would land that edit once` };
+      }
       files.push({ path: w.path, base, ours, theirs, merge });
     }
     const conflicted = files.filter((f): f is Moved & { merge: ConflictedMerge & { clean: false } } => !f.merge.clean);

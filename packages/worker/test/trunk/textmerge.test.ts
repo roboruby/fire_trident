@@ -129,7 +129,7 @@ describe("planCycle: text merge (FT_TEXT_MERGE)", () => {
     expect([...plan.mergedTexts.keys()]).toEqual([ab, abc]);
   });
 
-  it("lands a change whose edit is already on trunk (the same edit made twice counts once)", () => {
+  it("lands a change that did not read the file whose edit is already on trunk (the same edit made twice counts once)", () => {
     const t = loaded();
     const base = t.blob(lines());
     const same = t.blob(lines({ 1: "fixed" }));
@@ -138,6 +138,64 @@ describe("planCycle: text merge (FT_TEXT_MERGE)", () => {
     expect(plan.returned).toEqual([[], [], []]);
     expect(plan.merged.get("b")).toEqual([{ path: F, base, trunk: same, theirs: same, result: same }]);
     expect(plan.merged.get("c")![0]!.result).toBe(more);
+  });
+
+  it("returns a change that read the file at its base when its edit repeats one trunk made since, naming where, with no conflict", () => {
+    const t = loaded();
+    const base = t.blob(lines({ 3: "count = 5" }));
+    const six = t.blob(lines({ 3: "count = 6" }));
+    // Two increments from one read: the first lands, the second, built on the same read, goes back.
+    const a = prop("a", { [F]: six }, { [F]: base });
+    const b = prop("b", { [F]: six }, { [F]: base });
+    const plan = planCycle([[entry(a, { [F]: base })], [entry(b, { [F]: base })]], () => base, undefined, undefined, t.input);
+    expect(plan.accepted.map((x) => x.map((p) => p.id))).toEqual([["a"], []]);
+    expect(plan.merged.size).toBe(0);
+    expect(plan.returned[1]).toEqual([
+      {
+        proposalId: "b",
+        reason: `stale: ${F} (expected ${base}, trunk has ${six}, landing ahead in this cycle from a); text merge stopped: this change repeats an edit trunk made after it read the file (${F} at line 3 of its base), and the same edit made twice from one read is not merged as one, so re-read the file and make the change on trunk as it is now`,
+      },
+    ]);
+    // The redo reads 6 on trunk and writes 7: current, it lands as it is.
+    const seven = t.blob(lines({ 3: "count = 7" }));
+    const redo = planCycle([[entry(prop("b2", { [F]: seven }, { [F]: six }), { [F]: six })]], () => six, undefined, undefined, t.input);
+    expect(redo.accepted[0]!.map((p) => p.writeSet)).toEqual([[{ path: F, blob: seven }]]);
+    // With the insertion rule on too, and with a second, separate edit: still back, and the repeat is named ahead of a conflict.
+    const both = t.blob(lines({ 3: "count = 6", 5: "mine five" }));
+    const conflicting = t.blob(lines({ 3: "count = 6", 6: "mine six" }));
+    const onTrunk = t.blob(lines({ 3: "count = 6", 6: "trunk six" }));
+    const input: TextMergeInput = { ...t.input, insertions: true };
+    expect(planCycle([[entry(prop("c", { [F]: both }, { [F]: base }), { [F]: base })]], () => six, undefined, undefined, input).returned[0]![0]!.reason).toMatch(/text merge stopped: this change repeats an edit trunk made after it read the file \(src\/app\/main\.ts at line 3 of its base\)/);
+    const repeatAndConflict = planCycle([[entry(prop("d", { [F]: conflicting }, { [F]: base }), { [F]: base })]], () => onTrunk, undefined, undefined, input).returned[0]![0]!;
+    expect(repeatAndConflict.conflicts).toBeUndefined();
+    expect(repeatAndConflict.reason).toMatch(/at line 3 of its base\), and the same edit/);
+    expect(repeatAndConflict.reason).not.toMatch(/conflicting hunk/);
+  });
+
+  it("merges as before when the change read the file at trunk's version: the same edit there is the one it saw", () => {
+    const t = loaded();
+    const base = t.blob(lines());
+    const fixed = t.blob(lines({ 1: "fixed" }));
+    const more = t.blob(lines({ 1: "fixed", 6: "and more" }));
+    // Built on the older base, but it read the file after the fix landed and kept the fix: lands merged.
+    const plan = planCycle([[entry(prop("p", { [F]: more }, { [F]: fixed }), { [F]: base })]], () => fixed, undefined, undefined, t.input);
+    expect(plan.returned).toEqual([[]]);
+    expect(plan.merged.get("p")).toEqual([{ path: F, base, trunk: fixed, theirs: more, result: more }]);
+  });
+
+  it("with the insertion rule, returns a stale read whose union would leave out a line trunk inserted too, and lands a union of different lines", () => {
+    const t = loaded();
+    const base = t.blob(lines());
+    const add = (...extra: string[]): string => `${lines()}${extra.map((l) => `${l}\n`).join("")}`;
+    const input: TextMergeInput = { ...t.input, insertions: true };
+    const onTrunk = t.blob(add("export const x = 1;", "export const y = 2;"));
+    const same = prop("same", { [F]: t.blob(add("export const y = 2;")) }, { [F]: base });
+    const back = planCycle([[entry(same, { [F]: base })]], () => onTrunk, undefined, undefined, input);
+    expect(back.returned[0]![0]!.reason).toMatch(/text merge stopped: this change repeats an edit trunk made after it read the file \(src\/app\/main\.ts at line 7 of its base\)/);
+    const other = prop("other", { [F]: t.blob(add("export const z = 3;")) }, { [F]: base });
+    const lands = planCycle([[entry(other, { [F]: base })]], () => onTrunk, undefined, undefined, input);
+    expect(lands.returned).toEqual([[]]);
+    expect(lands.merged.get("other")![0]).toMatchObject({ rule: "insertions", result: blobId(add("export const x = 1;", "export const y = 2;", "export const z = 3;")) });
   });
 
   it("keeps the lane's rule inside one batch: two changes to one file in one commit still conflict", () => {

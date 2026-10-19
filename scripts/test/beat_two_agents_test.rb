@@ -2,9 +2,11 @@
 
 # Tests for scripts/beat_two_agents.rb, run as a command against a fake colony API on 127.0.0.1 that keeps a trunk of
 # texts, takes inline changes, merges a stale one line by line as text merge does (or sends it back naming the
-# conflicting hunk), closes one whose text trunk already holds as already on trunk when asked to (FT_ALREADY_ON_TRUNK),
-# lands two appends to the file as their union when insertion merges are on (FT_MERGE_INSERTIONS), and answers why per
-# line with the line's writer first.
+# conflicting hunk, or, when it read the file before trunk moved, the edit it repeats from trunk), closes one whose text
+# trunk already holds as already on trunk when asked to (FT_ALREADY_ON_TRUNK) and its read is current, lands two
+# appends to the file as their union when insertion merges are on (FT_MERGE_INSERTIONS) and the change's repeats
+# nothing of trunk's, reopens a returned change's intent for its agent's redo, and answers why per line with the line's
+# writer first. `merge_repeats` stands in for a platform that merged a repeated edit from a stale read once.
 #
 #   ruby scripts/test/beat_two_agents_test.rb
 require "minitest/autorun"
@@ -18,9 +20,9 @@ require_relative "../stage"
 class FakeColony
   attr_reader :created
 
-  def initialize(flags: %w[FT_INLINE FT_RESOLVER FT_TEXT_MERGE], text_merge: true, settle_after: 0, settle_limit: nil, leak: false, on_trunk: false, dup_twice: false)
+  def initialize(flags: %w[FT_INLINE FT_RESOLVER FT_TEXT_MERGE], text_merge: true, settle_after: 0, settle_limit: nil, leak: false, on_trunk: false, merge_repeats: false)
     @flags = flags
-    @dup_twice = dup_twice
+    @merge_repeats = merge_repeats
     @text_merge = text_merge
     @on_trunk = on_trunk
     @settle_after = settle_after
@@ -130,24 +132,33 @@ class FakeColony
     path = p["path"]
     base = @trees.fetch(p["baseSha"])[path]
     trunk = @trees.fetch(@head)[path]
-    return land(p, p["text"], nil) if base == trunk
-    return already(p, path) if @on_trunk && p["text"] == trunk
-
     blob = ->(t) { t ? Stage.blob_id(t) : "0" * 40 }
+    # It read the file at a version trunk has moved past: an edit it repeats from trunk is never merged once.
+    read = Array(p["readSet"]).find { |r| r["path"] == path }
+    stale_read = !read.nil? && read["blob"] != blob.(trunk) && !@merge_repeats
+    return already(p, path) if @on_trunk && p["text"] == trunk && !stale_read
+    return land(p, p["text"], nil) if base == trunk
+
     stale = "stale: #{path} (expected #{blob.(base)}, trunk has #{blob.(trunk)})"
+    repeat = ->(line) { back(p, "#{stale}; text merge stopped: this change repeats an edit trunk made after it read the file (#{path} at line #{line} of its base)") }
     return back(p, stale) unless @text_merge
-    return union(p, base, trunk) if @flags.include?("FT_MERGE_INSERTIONS") && appended?(base, trunk) && appended?(base, p["text"])
+    return union(p, base, trunk, stale_read ? repeat : nil) if @flags.include?("FT_MERGE_INSERTIONS") && appended?(base, trunk) && appended?(base, p["text"])
 
     b, t, o = [base, trunk, p["text"]].map(&:lines)
     conflict = nil
+    repeated = nil
     merged = b.each_index.map do |i|
       if o[i] == b[i] then t[i]
-      elsif t[i] == b[i] || t[i] == o[i] then o[i]
+      elsif t[i] == b[i] then o[i]
+      elsif t[i] == o[i]
+        repeated ||= i + 1
+        o[i]
       else
         conflict ||= i + 1
         o[i]
       end
     end.join
+    return repeat.(repeated) if repeated && stale_read
     return back(p, "#{stale}; text merge of #{path}: 1 conflicting hunk, at line #{conflict} of its base", [{ path: path, base: blob.(base), trunk: blob.(trunk), theirs: blob.(p["text"]), lines: [conflict] }]) if conflict
 
     land(p, merged, { "path" => path, "base" => blob.(base), "trunk" => blob.(trunk), "theirs" => blob.(p["text"]), "result" => blob.(merged) })
@@ -155,12 +166,14 @@ class FakeColony
 
   def appended?(base, text) = text.length > base.length && text.start_with?(base)
 
-  # The insertion rule for two appends: trunk's append, then the change's past what trunk's already holds (dup_twice:
-  # the change's whole append again, as the rule did before it set aside what both start with).
-  def union(p, base, trunk)
+  # The insertion rule for two appends: trunk's append, then the change's past what trunk's already holds; a change that
+  # read the file before trunk's append (`repeat`) goes back instead of having what trunk's holds left out.
+  def union(p, base, trunk, repeat)
     ours = trunk[base.length..]
     theirs = p["text"][base.length..]
-    merged = base + ours + (!@dup_twice && theirs.start_with?(ours) ? theirs[ours.length..] : theirs)
+    return repeat.(base.lines.length + 1) if repeat && theirs.start_with?(ours)
+
+    merged = base + ours + (theirs.start_with?(ours) ? theirs[ours.length..] : theirs)
     blob = ->(t) { Stage.blob_id(t) }
     land(p, merged, { "path" => p["path"], "base" => blob.(base), "trunk" => blob.(trunk), "theirs" => blob.(p["text"]), "result" => blob.(merged), "rule" => "insertions" })
   end
@@ -178,10 +191,12 @@ class FakeColony
     intent["closure"] = { "cause" => "already_on_trunk", "status" => "landed", "agentId" => p["agentId"], "onTrunk" => p["onTrunk"] }
   end
 
+  # A return: the proposal goes back, and its intent is open again for its agent to take and redo.
   def back(p, reason, conflicts = nil)
     p["status"] = "returned"
     p["reason"] = reason
     p["mergeConflicts"] = conflicts if conflicts
+    @intents[p["intentId"]]["status"] = "open"
   end
 
   def land(p, text, merged)
@@ -271,15 +286,18 @@ class BeatTwoAgentsTest < Minitest::Test
     assert_includes out, "deleted colony beat-"
   end
 
-  def test_same_mode_shows_one_landing_and_the_second_change_closed_as_already_on_trunk
+  def test_same_mode_shows_one_landing_the_second_change_back_stale_and_its_redo_closed_as_already_on_trunk
     out, err, code, reqs = run_beat(FakeColony.new(flags: %w[FT_INLINE FT_TEXT_MERGE FT_ALREADY_ON_TRUNK], on_trunk: true), "--same")
     assert_equal 0, code, out + err
-    order = ["beat: two agents make the same change to one file; the second is already on trunk",
+    order = ["beat: two agents make the same change to one file; the second goes back, and its redo is already on trunk",
              "already on trunk (FT_ALREADY_ON_TRUNK) and inline changes (FT_INLINE) are on here; text merge is on",
-             "agent A changed line 6: landed in lnd_", "agent B changed line 6 on ", ", the trunk before A landed: closed as already on trunk",
-             "    6  export const v6 = 60;", "<- agent A", "closed as already on trunk: Your change is already on trunk: what it writes is there already, landed by agent agt_",
+             "agent A changed line 6: landed in lnd_", "agent B changed line 6 on ", ", the trunk before A landed: went back",
+             "    6  export const v6 = 60;", "<- agent A",
+             "(line 6: export const v6 = 60;) went back: stale: src/values.ts (expected ", "text merge stopped: this change repeats an edit trunk made after it read the file (src/values.ts at line 6 of its base)",
+             "agent B redid it: took its intent again on ", "read agent A's version and made the same change: closed as already on trunk",
+             "closed as already on trunk: Your change is already on trunk: what it writes is there already, landed by agent agt_",
              "agent B's intent int_", ": landed, closure already_on_trunk from lnd_",
-             "PASS one landing; agent B's identical change closed as already on trunk from lnd_", "deleted colony beat-"]
+             "PASS one landing; agent B's identical change went back stale, and its redo closed as already on trunk from lnd_", "deleted colony beat-"]
     at = 0
     order.each do |piece|
       found = out.index(piece, at)
@@ -290,10 +308,17 @@ class BeatTwoAgentsTest < Minitest::Test
     assert_no_secrets(out + err)
   end
 
-  def test_same_mode_fails_when_the_second_change_lands_as_an_empty_commit
+  def test_same_mode_fails_when_the_redo_lands_as_an_empty_commit
     out, err, code, reqs = run_beat(FakeColony.new(flags: %w[FT_INLINE FT_TEXT_MERGE FT_ALREADY_ON_TRUNK]), "--same")
     assert_equal 1, code, out + err
-    assert_match(/FAIL agent B's change landed in lnd_\d+ \(a commit that changes nothing\) instead of closing as already on trunk; is FT_ALREADY_ON_TRUNK on for colony beat-/, out)
+    assert_match(/FAIL agent B's redo landed in lnd_\d+ \(a commit that changes nothing\) instead of closing as already on trunk; is FT_ALREADY_ON_TRUNK on for colony beat-/, out)
+    assert(reqs.any? { |r| r.method == "DELETE" })
+  end
+
+  def test_same_mode_fails_when_the_second_change_closes_though_it_read_the_file_before_the_first_landed
+    out, err, code, reqs = run_beat(FakeColony.new(flags: %w[FT_INLINE FT_TEXT_MERGE FT_ALREADY_ON_TRUNK], on_trunk: true, merge_repeats: true), "--same")
+    assert_equal 1, code, out + err
+    assert_match(/FAIL agent B's change closed as already on trunk: Your change is already on trunk: .* instead of going back stale: it read src\/values.ts before agent A's landing, so its edit may be its own to make/, out)
     assert(reqs.any? { |r| r.method == "DELETE" })
   end
 
@@ -308,16 +333,18 @@ class BeatTwoAgentsTest < Minitest::Test
     assert_empty reqs
   end
 
-  def test_dup_mode_lands_the_shared_function_once
+  def test_dup_mode_sends_the_repeat_back_and_its_redo_lands_the_shared_function_once
     out, err, code, = run_beat(FakeColony.new(flags: %w[FT_INLINE FT_TEXT_MERGE FT_MERGE_INSERTIONS]), "--dup")
     assert_equal 0, code, out + err
     order = ["beat: two agents append the same function to one file; it lands once",
              "text merge (FT_TEXT_MERGE), insertion merges (FT_MERGE_INSERTIONS) and inline changes (FT_INLINE) are on here",
-             "agent A appended total(): landed in lnd_", "agent B appended total() and largest() on ", ", the trunk before A landed: landed in lnd_",
-             "\"Append total() and largest() to src/values.ts\"", "merged onto lnd_", "by the insertion rule",
+             "agent A appended total(): landed in lnd_", "agent B appended total() and largest() on ", ", the trunk before A landed: went back",
+             "(appended total() and largest()) went back: stale: src/values.ts", "this change repeats an edit trunk made after it read the file (src/values.ts at line 13 of its base)",
+             "agent B redid it: took its intent again on ", "read agent A's version and appended largest() after it: landed in lnd_",
+             "\"Append total() and largest() to src/values.ts\"", "appended largest() after it, on trunk as lnd_",
              "src/values.ts after both landings", "total() once, then largest()",
              "   14  export function total(values: number[]): number {", "<- agent A", "   18  export function largest(values: number[]): number {", "<- agent B",
-             "src/values.ts:14", "src/values.ts:18", "PASS both changes landed; agent B's as an insertion merge that holds the shared function once", "deleted colony beat-"]
+             "src/values.ts:14", "src/values.ts:18", "PASS agent B's repeat of the shared function went back stale, and its redo landed the second function after it: the shared function once", "deleted colony beat-"]
     at = 0
     order.each do |piece|
       found = out.index(piece, at)
@@ -327,10 +354,10 @@ class BeatTwoAgentsTest < Minitest::Test
     assert_equal 1, out.scan("   14  export function total(").length
   end
 
-  def test_dup_mode_fails_when_the_shared_function_lands_twice
-    out, err, code, reqs = run_beat(FakeColony.new(flags: %w[FT_INLINE FT_TEXT_MERGE FT_MERGE_INSERTIONS], dup_twice: true), "--dup")
+  def test_dup_mode_fails_when_the_repeat_is_merged_instead_of_going_back
+    out, err, code, reqs = run_beat(FakeColony.new(flags: %w[FT_INLINE FT_TEXT_MERGE FT_MERGE_INSERTIONS], merge_repeats: true), "--dup")
     assert_equal 1, code, out + err
-    assert_match(/FAIL the merge landed the shared function twice \(blob \h{7}\)/, out)
+    assert_match(/FAIL agent B's change landed in lnd_\d+ instead of going back stale: it read src\/values.ts before agent A's landing and repeats agent A's total\(\)/, out)
     assert(reqs.any? { |r| r.method == "DELETE" })
   end
 

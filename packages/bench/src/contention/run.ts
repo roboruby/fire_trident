@@ -240,7 +240,7 @@ export const WANTED_FLAGS: Readonly<Record<string, string>> = {
 export const NOTED_FLAGS: Readonly<Record<string, string>> = {
   FT_MEGAFILE: "the megafile alarm may hold a hot file for a split no agent takes: changes to it then go back until the hold lifts",
   FT_ASYNC_PUBLISH: "with asynchronous publishing a take on a hot file waits for publishing and can lose its assignment",
-  FT_ALREADY_ON_TRUNK: "an increment whose edit merges into an identical one closes as already on trunk instead of landing an empty change",
+  FT_ALREADY_ON_TRUNK: "a change whose every write is on trunk already closes without a commit when it read those files at trunk's version or not at all; an increment made from a stale read goes back instead",
   FT_PRELAND: "tests run before each landing",
   FT_TRUNK_TESTS: "trunk certification runs the generated test after landings",
 };
