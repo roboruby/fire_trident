@@ -20,17 +20,11 @@ const fmtSigma = (n: number): string => n.toFixed(2);
 export function TridentMark({ size = 30 }: { size?: number }) {
   return (
     <svg className="mark" viewBox="0 0 32 32" width={size} height={size} aria-hidden="true">
-      <defs>
-        <linearGradient id="ft-mark" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#ffb469" />
-          <stop offset="1" stopColor="#f38020" />
-        </linearGradient>
-      </defs>
-      <g fill="none" stroke="url(#ft-mark)" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round">
+      <g fill="none" stroke="#f38020" strokeWidth="2.6" strokeLinecap="round">
         <path d="M16 6.5V29" />
         <path d="M7.5 9v4a8.5 8.5 0 0 0 17 0V9" />
       </g>
-      <g fill="url(#ft-mark)">
+      <g fill="#f38020">
         <path d="M16 1.6l3.1 5h-6.2z" />
         <path d="M7.5 4.2l2.7 4.6H4.8z" />
         <path d="M24.5 4.2l2.7 4.6h-5.4z" />

@@ -114,7 +114,7 @@ export function Landing() {
       <div className="l-glow" aria-hidden="true" />
       <header className="l-nav">
         <a className="l-brand" href="/">
-          <TridentMark size={26} />
+          <TridentMark size={28} />
           <span>FireTrident</span>
         </a>
         <nav className="l-links">
