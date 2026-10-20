@@ -1185,8 +1185,7 @@ a.lc:hover .lc-open {
 }
 
 .rs-spec .rs-headline {
-  color: var(--accent-2);
-  text-shadow: 0 0 26px rgba(243, 128, 32, 0.25);
+  color: var(--trail);
 }
 
 .rs-mcp .rs-headline {
@@ -1387,9 +1386,9 @@ a.lc:hover .lc-open {
   text-shadow: 0 0 22px rgba(31, 224, 142, 0.24);
 }
 
-/* A row that costs more than it earns: its "with" value is not a gain. */
+/* A row that costs more than it earns: its "with" value is a caution, not a gain and not a failure. */
 .cm-costs .cm-on .cm-val {
-  color: #ff8a9a;
+  color: var(--accent-2);
   text-shadow: none;
 }
 
@@ -1609,7 +1608,7 @@ a.lc:hover .lc-open {
   line-height: 1.05;
   letter-spacing: -0.03em;
   font-variant-numeric: tabular-nums;
-  color: var(--accent-2);
+  color: var(--trail);
 }
 
 .qa-a {
