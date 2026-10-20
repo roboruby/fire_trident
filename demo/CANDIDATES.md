@@ -157,7 +157,7 @@ pnpm exec vitest run
 - **Slow suite.** 58 test files spawn child processes (mostly the built CLI), workers are capped at 4, and CI allows 15 minutes. Use `vitest related` per proposal and the full suite only to certify green.
 - **Repo weight.** The working tree is twice Hono's, including a 368 KB test file.
 
-## Other finalists: rule and replacement status
+## Other candidates: rule and replacement status
 
 | Repo | Best rule found | Count | Safe per-line replacement? | Why not chosen |
 | --- | --- | --- | --- | --- |
