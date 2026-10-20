@@ -639,6 +639,8 @@ export interface ReplayOptions {
   speed?: number;
   offsetS?: number;
   delayS?: number;
+  /** What answers the replay's reads; the page's fetch by default (a recording's fetch in the landing page's hero). */
+  fetch?: typeof fetch;
 }
 
 /**
@@ -672,7 +674,8 @@ export class ReplayBackend implements Backend {
   }
 
   private async getJson<T>(suffix: string): Promise<T> {
-    const res = await fetch(this.url(suffix), { headers: { accept: "application/json" } });
+    const read = this.opts.fetch ?? ((input: RequestInfo | URL, init?: RequestInit) => fetch(input, init));
+    const res = await read(this.url(suffix), { headers: { accept: "application/json" } });
     if (!res.ok) throw new HttpError(res.status, `${res.status} ${res.statusText}`.trim());
     return (await res.json()) as T;
   }

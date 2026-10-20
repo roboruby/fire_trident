@@ -200,16 +200,19 @@ describe("the section", () => {
     expect(page.match(/<input type="text"/g)).toHaveLength(4);
   });
 
-  it("is titled plainly and sits right after the with-and-without panel, before the questions", () => {
+  it("is titled plainly and sits after the people section, before the take-back section, one scene open at a time", () => {
     expect(page).toContain('<section class="l-section" id="try">');
     expect(page).toContain('<h2 class="l-h2">Try the rules.</h2>');
     const landing = read("../src/landing/Landing.tsx");
-    const compared = landing.indexOf("<Compared />");
+    const people = landing.indexOf("<Exceptions />");
     const tryIt = landing.indexOf("<TryIt />");
-    expect(compared).toBeGreaterThan(0);
-    expect(landing.slice(compared + "<Compared />".length, tryIt).trim()).toBe("");
-    expect(landing.indexOf("<Questions />")).toBeGreaterThan(tryIt);
+    expect(people).toBeGreaterThan(0);
+    expect(landing.slice(people + "<Exceptions />".length, tryIt).trim()).toBe("");
+    expect(landing.indexOf("<TakeBack />")).toBeGreaterThan(tryIt);
     expect(landing).toContain('<a href="#try">Try it</a>');
+    expect(page.match(/role="tab"/g)).toHaveLength(5);
+    expect(page.match(/<div class="tr-pane" hidden="">/g)).toHaveLength(4);
+    expect(page).toContain('<div class="tr-pane"><article class="tr-scene" id="try-merge">');
   });
 
   it("runs with no server: the scenes import only the core package, React, each other and the fifth scene's data, and never fetch", () => {

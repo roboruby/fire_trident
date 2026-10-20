@@ -1111,7 +1111,7 @@ a.lc:hover .lc-open {
 
 .rs-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 16px;
 }
 
@@ -1277,10 +1277,16 @@ a.lc:hover .lc-open {
 
 @media (max-width: 1080px) {
   .rs-grid {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .rs {
     min-height: 0;
+  }
+}
+
+@media (max-width: 720px) {
+  .rs-grid {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
@@ -1954,4 +1960,128 @@ a.lc:hover .lc-open {
 
 .tr-result.is-failed {
   border-left-color: var(--danger);
+}
+
+/* the hero's replay pill: the run on production, not a simulation */
+
+.hc-pill.is-replay {
+  border-color: rgba(31, 224, 142, 0.5);
+  color: var(--trail);
+}
+
+/* the answers: a one-line answer under each question, the number read in context, and the links to check it */
+
+.qa-short {
+  margin: 10px 0 0;
+  padding-left: 22px;
+  position: relative;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--text);
+  text-wrap: pretty;
+}
+
+.qa-short::before {
+  content: "✓";
+  position: absolute;
+  left: 0;
+  top: 0;
+  font-weight: 800;
+  color: var(--trail);
+}
+
+.qa-evidence {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  margin-top: 14px;
+}
+
+.qa-ev-k {
+  font-size: 13.5px;
+  color: var(--text-3);
+}
+
+.qa-evidence .qa-fig {
+  margin-top: 0;
+  font-size: clamp(22px, 2vw, 28px);
+}
+
+.qa-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 22px;
+}
+
+/* with and without: where the switch stands, then its name */
+
+.cm-state {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  margin-top: 8px;
+  font-size: 12.5px;
+  font-weight: 650;
+  color: var(--text-2);
+}
+
+.cm-state-on > span:first-child {
+  color: var(--trail);
+}
+
+.cm-state-off > span:first-child {
+  color: var(--text-3);
+}
+
+.cm-state .cm-flag {
+  margin-top: 0;
+}
+
+/* try the rules: one scene open at a time */
+
+.tr-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.tr-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 14px;
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  background: #0b1018;
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.tr-tab:hover {
+  color: var(--text);
+}
+
+.tr-tab.is-on {
+  border-color: rgba(243, 128, 32, 0.6);
+  background: rgba(243, 128, 32, 0.1);
+  color: var(--text);
+}
+
+.tr-tab-n {
+  font-size: 11.5px;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent-2);
+}
+
+.tr-pane[hidden] {
+  display: none;
 }

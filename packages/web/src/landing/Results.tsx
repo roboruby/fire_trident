@@ -29,10 +29,8 @@ const SHOWCASE: ReadonlyArray<Showcase> = [
   { id: "hono", kind: "rule" },
   { id: "shortlinks", kind: "spec", measured: "60/60 tests pass from a plain clone" },
   { id: "shortlinks-review", kind: "certify", measured: "67/67 from a plain clone; acceptance 7/7" },
-  { id: "first-red", kind: "firstred", replay: "t=3&speed=2" },
-  { id: "byo-demo", kind: "mcp" },
   { id: "scale", kind: "scale", measured: "2,730 changes a minute over the run, median 9.6 s to land (the load generator's timing)", replay: "t=32&speed=4" },
-  { id: "order-backend", kind: "goals" },
+  { id: "byo-demo", kind: "mcp" },
   { id: "signed-notes", kind: "signed" },
 ];
 
@@ -254,9 +252,9 @@ export function Results() {
   return (
     <section className="l-section" id="results">
       <div className="l-section-head">
-        <div className="l-kicker">Results</div>
-        <h2 className="l-h2">Real runs on production. Replay any of them.</h2>
-        <p className="l-section-lede">Every number below comes from the colony's own API. A replay plays the run back from its record, at up to 16 times speed.</p>
+        <div className="l-kicker">Runs on production</div>
+        <h2 className="l-h2">Six real runs. Replay any of them.</h2>
+        <p className="l-section-lede">Every number below comes from the colony's own API. A replay plays the run back from its record, at up to 16 times speed, and a tour tells it step by step.</p>
       </div>
       <div className="rs-grid">
         {results.map((r, i) => (r === undefined ? <div className="rs rs-skeleton" key={list[i]?.id ?? i} /> : r === null ? null : <Card key={r.id} r={r} />))}

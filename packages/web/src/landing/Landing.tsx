@@ -4,27 +4,27 @@ import { useAbout } from "../about.ts";
 import { loadColonies, type ColonyCard } from "../colonies.ts";
 import { BuildTag } from "../components/BuildTag.tsx";
 import { TridentMark } from "../components/TopBar.tsx";
-import { fmtInt, timeAgo } from "../format.ts";
+import { fmtInt } from "../format.ts";
 import { colonyHref } from "../route.ts";
 import { PITCH, PITCH_MORE } from "./axes.ts";
-import { Axes } from "./Axes.tsx";
 import { Compared } from "./Compared.tsx";
 import { Exceptions } from "./Exceptions.tsx";
 import { HeroColony } from "./HeroColony.tsx";
-import { LiveColonies, rankColonies, statusOf } from "./LiveColonies.tsx";
+import { rankColonies, statusOf } from "./LiveColonies.tsx";
 import { Prongs } from "./Prongs.tsx";
 import { Questions } from "./Questions.tsx";
 import { Results } from "./Results.tsx";
-import { RunIt, SERVER } from "./RunIt.tsx";
+import { RunIt } from "./RunIt.tsx";
 import { TakeBack } from "./TakeBack.tsx";
 import { TryIt } from "./TryIt.tsx";
 import "./landing.css";
 
 const REPO = "https://github.com/roboruby/fire_trident";
 const DOCS = `${REPO}/blob/main/docs/ARCHITECTURE.md`;
-const POLL_MS = 5000;
+/** The colony cards refresh this often: enough to notice a colony at work, without a stream of reads. */
+const POLL_MS = 60_000;
 
-/** Live colony cards, refreshed every few seconds (?colonies=a,b overrides the server's list). */
+/** The colony cards (?colonies=a,b overrides the server's list), refreshed now and then. */
 function useColonies(): ColonyCard[] | null {
   const [cards, setCards] = useState<ColonyCard[] | null>(null);
   useEffect(() => {
@@ -58,7 +58,7 @@ function useColonies(): ColonyCard[] | null {
   return cards;
 }
 
-/** One line of real numbers from the first live colony, under the hero's buttons. */
+/** One line of real numbers from the showcase colony (or a colony at work right now), under the hero's buttons. */
 function Proof({ card }: { card: ColonyCard | undefined }) {
   if (!card || card.error) return null;
   const landed = card.counters.get("landedintents") ?? card.counters.get("intentslanded");
@@ -68,7 +68,6 @@ function Proof({ card }: { card: ColonyCard | undefined }) {
   if (v !== null) parts.push(v === 0 ? "every rule satisfied" : `${fmtInt(v)} violations left`);
   if (landed !== undefined) parts.push(`${fmtInt(landed)} intents landed`);
   if (landings !== undefined) parts.push(`${fmtInt(landings)} commits`);
-  if (card.lastLandingAt) parts.push(`last landing ${timeAgo(card.lastLandingAt)}`);
   if (!parts.length) return null;
   return (
     <a className="l-proof" href={colonyHref(card.id)}>
@@ -79,10 +78,10 @@ function Proof({ card }: { card: ColonyCard | undefined }) {
   );
 }
 
-/** The colony the hero button opens when nothing is working right now. */
+/** The run the hero shows, plays and links: the Hono run on production. */
 const SHOWCASE_ID = "hono";
 
-/** The landing page: what FireTrident is, the colonies running now, how it works, and how to run it. */
+/** The landing page: what FireTrident is, the questions it answers, the runs on production, how it works, and how to run it. */
 export function Landing() {
   const cards = useColonies();
   const about = useAbout();
@@ -91,12 +90,11 @@ export function Landing() {
   }, []);
   const ranked = cards ? rankColonies(cards) : null;
   const first = ranked?.find((c) => !c.error);
-  // A colony at work right now comes first; otherwise the showcase run, replayed from its record.
+  // A colony at work right now is worth a button of its own; otherwise the hero's run, full screen.
   const live = first && statusOf(first) === "working" ? first : undefined;
   const showcase = cards?.find((c) => c.id === SHOWCASE_ID && !c.error);
-  const hero = live ?? showcase ?? first;
-  const heroHref = live ? colonyHref(live.id) : showcase ? colonyHref(showcase.id, { replay: true }) : first ? colonyHref(first.id) : colonyHref("demo", { mock: true });
-  const heroLabel = live ? "Watch a live colony" : showcase ? "Watch the Hono run" : "Watch a colony";
+  const hero = showcase ?? live ?? first;
+  const replayHref = colonyHref(SHOWCASE_ID, { replay: true });
   // The tour tells the showcase run from its record: offered while the colonies load and whenever the showcase is there.
   const tourable = cards === null || !!showcase;
   return (
@@ -108,10 +106,10 @@ export function Landing() {
           <span>FireTrident</span>
         </a>
         <nav className="l-links">
+          <a href="#questions">Answers</a>
           <a href="#results">Results</a>
-          <a href="#try">Try it</a>
-          <a href="#colonies">Colonies</a>
           <a href="#how">How it works</a>
+          <a href="#try">Try it</a>
           <a href="#run">Run it</a>
           <a href="/limits">Limits</a>
           <a href="/connect">Connect</a>
@@ -136,16 +134,19 @@ export function Landing() {
           </p>
           <div className="l-ctas">
             {tourable ? (
-              <a className="l-btn l-btn-primary" href={colonyHref(SHOWCASE_ID, { tour: true })} title="Two minutes through a finished run, told from its own record">
+              <a className="l-btn l-btn-primary" href={colonyHref(SHOWCASE_ID, { tour: true })} title="Two minutes through the Hono run, told from its own record">
                 Take the tour
               </a>
             ) : null}
-            <a className={`l-btn${tourable ? "" : " l-btn-primary"}`} href={heroHref}>
-              {heroLabel}
-            </a>
-            <a className="l-btn" href={colonyHref("demo", { mock: true })}>
-              Open the simulator
-            </a>
+            {live ? (
+              <a className="l-btn" href={colonyHref(live.id)}>
+                Watch a live colony
+              </a>
+            ) : (
+              <a className={`l-btn${tourable ? "" : " l-btn-primary"}`} href={replayHref}>
+                Open the full replay
+              </a>
+            )}
           </div>
           <Proof card={hero} />
         </div>
@@ -154,26 +155,9 @@ export function Landing() {
         </div>
       </section>
 
-      <Results />
-
-      <Compared />
-
-      <TryIt />
-
-      <TakeBack />
-
       <Questions />
 
-      <Axes />
-
-      <section className="l-section" id="colonies">
-        <div className="l-section-head">
-          <div className="l-kicker">Running now</div>
-          <h2 className="l-h2">Live colonies</h2>
-          <p className="l-section-lede">Real repositories in Artifacts, remodeled by agents on {SERVER.replace("https://", "")}. Counters update as they work.</p>
-        </div>
-        <LiveColonies cards={ranked} />
-      </section>
+      <Results />
 
       <section className="l-section" id="how">
         <div className="l-section-head">
@@ -186,12 +170,22 @@ export function Landing() {
         <Prongs />
       </section>
 
+      <Compared />
+
       <Exceptions />
+
+      <TryIt />
+
+      <TakeBack />
 
       <section className="l-section" id="run">
         <div className="l-section-head">
           <div className="l-kicker">Run it</div>
           <h2 className="l-h2">One command to a colony.</h2>
+          <p className="l-section-lede">
+            Read any colony here without a token, or run your own deployment and import a repository. The <a href={colonyHref("demo", { mock: true })}>simulator</a> runs a colony in your browser, with
+            no server at all.
+          </p>
         </div>
         <RunIt />
       </section>
@@ -203,7 +197,7 @@ export function Landing() {
           <span className="l-foot-muted">MIT licensed</span>
           <BuildTag about={about} />
         </div>
-        <div className="l-foot-built">Built on Cloudflare Workers, Durable Objects, Artifacts, Workflows and Workers AI.</div>
+        <div className="l-foot-built">Built on Cloudflare Workers, Durable Objects, Artifacts and Workers AI.</div>
         <nav className="l-foot-links">
           <a href={REPO} target="_blank" rel="noreferrer">
             github.com/roboruby/fire_trident

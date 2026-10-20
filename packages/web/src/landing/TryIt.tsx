@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import {
   GOAL_INTENTS,
   GOAL_LANDING,
@@ -338,8 +338,29 @@ export function GitMergeScene({ initial = "catch" }: { initial?: TwinId }) {
   );
 }
 
-/** The "try the rules" section of the landing page, right after the with-and-without panel. */
+/** The scenes, as the tabs name them (each scene's own title stays on the scene). */
+const TABS: ReadonlyArray<{ id: string; n: number; label: string }> = [
+  { id: "merge", n: 1, label: "Text merge" },
+  { id: "read", n: 2, label: "A stale read" },
+  { id: "goals", n: 3, label: "Goal conflict" },
+  { id: "twins", n: 4, label: "Twin intents" },
+  { id: "gitmerge", n: 5, label: "Git would have merged this" },
+];
+
+/** The scene the address bar names (#try-<id>), else the first. */
+function sceneFromHash(): string {
+  const m = typeof location !== "undefined" ? /^#try-([a-z]+)$/.exec(location.hash) : null;
+  return m && TABS.some((t) => t.id === m[1]) ? (m[1] as string) : "merge";
+}
+
+/** The "try the rules" section of the landing page: five scenes, one open at a time, each running a core check on the visitor's text. */
 export function TryIt() {
+  const [active, setActive] = useState(sceneFromHash);
+  useEffect(() => {
+    const onHash = () => setActive(sceneFromHash());
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
   return (
     <section className="l-section" id="try">
       <div className="l-section-head">
@@ -349,13 +370,31 @@ export function TryIt() {
           The checks that decide what lands are pure functions in the core package the server runs. Each scene runs one of them here, on the text you edit, with the options production passes; nothing is sent anywhere and no token is needed. The result changes as you type.
         </p>
       </div>
-      <div className="tr">
-        <MergeScene />
-        <ReadScene />
-        <GoalScene />
-        <TwinScene />
-        <GitMergeScene />
-      </div>
+<div className="tr-tabs" role="tablist" aria-label="Scenes">
+  {TABS.map((t) => (
+    <button key={t.id} type="button" role="tab" id={`try-tab-${t.id}`} aria-selected={active === t.id} aria-controls={`try-${t.id}`} className={`tr-tab${active === t.id ? " is-on" : ""}`} onClick={() => setActive(t.id)}>
+      <span className="tr-tab-n">{t.n}</span>
+      {t.label}
+    </button>
+  ))}
+</div>
+<div className="tr">
+  <div className="tr-pane" hidden={active !== "merge"}>
+    <MergeScene />
+  </div>
+  <div className="tr-pane" hidden={active !== "read"}>
+    <ReadScene />
+  </div>
+  <div className="tr-pane" hidden={active !== "goals"}>
+    <GoalScene />
+  </div>
+  <div className="tr-pane" hidden={active !== "twins"}>
+    <TwinScene />
+  </div>
+  <div className="tr-pane" hidden={active !== "gitmerge"}>
+    <GitMergeScene />
+  </div>
+</div>
     </section>
   );
 }

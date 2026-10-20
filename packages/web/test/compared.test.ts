@@ -3,7 +3,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { Compared } from "../src/landing/Compared.tsx";
-import { COMPARED, LEDGER_HREF, MEASURED_TITLE, resultsHref } from "../src/landing/compared.ts";
+import { COMPARED, LEDGER_HREF, MEASURED_TITLE, resultsHref, STATE_LABEL } from "../src/landing/compared.ts";
 import { REPO } from "../src/landing/questions.ts";
 
 /**
@@ -97,9 +97,11 @@ describe("the panel", () => {
     expect(out.match(/<article class="cm-row /g)).toHaveLength(COMPARED.length);
   });
 
-  it("names each flag, or says the mechanism is built in", () => {
+  it("names each flag, or says the mechanism is built in, and says where the switch stands", () => {
     for (const r of COMPARED) if (r.flag !== null) expect(out).toContain(`<code class="cm-flag">${r.flag}</code>`);
     expect(out).toContain('<span class="cm-flag">built in</span>');
+    for (const r of COMPARED) expect(out).toContain(`<div class="cm-state cm-state-${r.state}"><span>${STATE_LABEL[r.state]}</span>`);
+    expect(COMPARED.filter((r) => r.state === "off").map((r) => r.id)).toEqual(["async-publish"]);
   });
 
   it("links to the ledger in docs/mechanisms.md, which holds every mechanism", () => {
@@ -109,12 +111,13 @@ describe("the panel", () => {
     expect(ledgerRows.length).toBeGreaterThan(COMPARED.length);
   });
 
-  it("sits right after the results strip, before the questions", () => {
+  it("sits after how it works, before the people section", () => {
     const landing = read("../src/landing/Landing.tsx");
-    const results = landing.indexOf("<Results />");
-    const compared = landing.indexOf("<Compared />");
-    expect(results).toBeGreaterThan(0);
-    expect(landing.slice(results + "<Results />".length, compared).trim()).toBe("");
-    expect(landing.indexOf("<Questions />")).toBeGreaterThan(compared);
+    const at = (tag: string) => landing.indexOf(tag);
+    expect(at("<Questions />")).toBeGreaterThan(0);
+    expect(at("<Results />")).toBeGreaterThan(at("<Questions />"));
+    expect(at("<Prongs />")).toBeGreaterThan(at("<Results />"));
+    expect(at("<Compared />")).toBeGreaterThan(at("<Prongs />"));
+    expect(at("<Exceptions />")).toBeGreaterThan(at("<Compared />"));
   });
 });

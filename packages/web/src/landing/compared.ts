@@ -13,6 +13,16 @@ export type Measured = "production" | "preview" | "simulated";
 /** How a row reads: it earns what it costs, it trades one number for another, or it costs more than it earns. */
 export type Verdict = "earns" | "trade" | "costs";
 
+/** Where the switch stands: on in every deployment config, built into the landing path, or off in production. */
+export type State = "on" | "built-in" | "off";
+
+/** What each state says on the page. */
+export const STATE_LABEL: Readonly<Record<State, string>> = {
+  on: "On everywhere",
+  "built-in": "Always on",
+  off: "Off in production",
+};
+
 /** One mechanism, measured with it off and on. */
 export interface Comparison {
   /** The anchor on the landing page. */
@@ -21,6 +31,8 @@ export interface Comparison {
   mechanism: string;
   /** The flag that switches it, or null for a mechanism that is always on. */
   flag: string | null;
+  /** Where that switch stands today. */
+  state: State;
   /** The number the mechanism exists to move, and under what load. */
   metric: string;
   /** The value with the mechanism off. */
@@ -56,6 +68,7 @@ export const COMPARED: readonly Comparison[] = [
     id: "after-landing",
     mechanism: "Testing after landing",
     flag: "FT_TRUNK_TESTS",
+    state: "on",
     metric: "Landings a minute, 1,000 agents, 30-second tests",
     off: "1.9",
     on: "164",
@@ -68,6 +81,7 @@ export const COMPARED: readonly Comparison[] = [
     id: "group-commit",
     mechanism: "Group commit",
     flag: null,
+    state: "built-in",
     metric: "Landings a minute, 200 synthetic agents",
     off: "126",
     on: "690",
@@ -77,33 +91,10 @@ export const COMPARED: readonly Comparison[] = [
     folder: "2026-10-12-g1",
   },
   {
-    id: "inline",
-    mechanism: "Inline changes",
-    flag: "FT_INLINE",
-    metric: "Landings a minute, 5,000 synthetic agents",
-    off: "1,821",
-    on: "3,842",
-    note: "The trunk writer stops reading each change from a workspace, so its cycle takes 2.8 s instead of 5.1 s.",
-    verdict: "earns",
-    label: "preview",
-    folder: "2026-10-13-round4",
-  },
-  {
-    id: "revalidate",
-    mechanism: "Import-name revalidation",
-    flag: "FT_REVALIDATE",
-    metric: "Of 30 changes importing a file that then changed, how many went back",
-    off: "30 of 30",
-    on: "0 of 30",
-    note: "All 30 landed on their first proposal. It checks that the imported names still exist and that the files read only grew, not what new code does; off in production.",
-    verdict: "earns",
-    label: "preview",
-    folder: "2026-10-13-round2",
-  },
-  {
     id: "text-merge",
     mechanism: "Text merge",
     flag: "FT_TEXT_MERGE",
+    state: "on",
     metric: "Two edits to different lines of one file, from the same trunk",
     off: "second sent back",
     on: "both landed",
@@ -116,6 +107,7 @@ export const COMPARED: readonly Comparison[] = [
     id: "goal-conflict",
     mechanism: "Goal-conflict check",
     flag: "FT_GOAL_CONFLICT",
+    state: "on",
     metric: "Three agents each move one backend to a different language",
     off: "the last silently won",
     on: "two waited for a person",
@@ -128,6 +120,7 @@ export const COMPARED: readonly Comparison[] = [
     id: "call-budget",
     mechanism: "Call budget",
     flag: "FT_AGENT_CALL_BUDGET",
+    state: "on",
     metric: "Greedy polling calls that reached the colony in 120 s",
     off: "56,450",
     on: "7,974",
@@ -140,10 +133,11 @@ export const COMPARED: readonly Comparison[] = [
     id: "async-publish",
     mechanism: "Asynchronous publishing",
     flag: "FT_ASYNC_PUBLISH",
+    state: "off",
     metric: "Landings a minute, 5,000 synthetic agents",
     off: "3,842",
-    on: "3,776 and 2,759",
-    note: "Costs more than it earns at this scale: shorter trunk cycles, no more landings, and the slowest landings waited longer. Off in production.",
+    on: "3,776",
+    note: "Costs more than it earns at this scale (a second run landed 2,759 a minute): shorter trunk cycles, no more landings, and the slowest landings waited longer. Off in production.",
     verdict: "costs",
     label: "preview",
     folder: "2026-10-13-round4",

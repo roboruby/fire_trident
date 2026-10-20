@@ -130,15 +130,18 @@ describe("the static page", () => {
 describe("the landing section", () => {
   const html = renderToStaticMarkup(createElement(Questions));
 
-  it("shows each question with its number and its link, after the results", () => {
+  it("shows each question with its one-line answer, its number in context and its link, before the results", () => {
     for (const q of QUESTIONS) {
       expect(html).toContain(`id="q-${q.id}"`);
       expect(html).toContain(q.question);
       expect(html).toContain(`<div class="qa-fig">${q.figure}</div>`);
       expect(html).toContain(q.answer.replaceAll("'", "&#x27;"));
+      expect(html).toContain(`<p class="qa-short">${q.short.replaceAll("'", "&#x27;")}</p>`);
+      expect(html).toContain(`<span class="qa-ev-k">${q.evidence.replaceAll("'", "&#x27;")}</span>`);
     }
     const landing = read("../src/landing/Landing.tsx");
-    expect(landing.indexOf("<Questions />")).toBeGreaterThan(landing.indexOf("<Results />"));
+    expect(landing.indexOf("<Questions />")).toBeGreaterThan(0);
+    expect(landing.indexOf("<Questions />")).toBeLessThan(landing.indexOf("<Results />"));
   });
 
   it("keeps the site's own pages on the deployment serving it, and opens the rest in a new tab", () => {

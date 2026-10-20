@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { ColonyFooter } from "../src/components/ColonyFooter.tsx";
 import { AXES, NOTES_COMMAND, PITCH, PITCH_MORE, TAKE_BACK_COMMANDS, axesMarkdown } from "../src/landing/axes.ts";
 import { Axes } from "../src/landing/Axes.tsx";
+import { QUESTIONS } from "../src/landing/questions.ts";
 import { TakeBack } from "../src/landing/TakeBack.tsx";
 import { ARTIFACTS_LESSONS, GROUPS, LIMITS, STATUS_LABEL } from "../src/limits/limits.ts";
 import { Limits } from "../src/limits/Limits.tsx";
@@ -142,7 +143,7 @@ describe("take the work back, and the pitch", () => {
     expect(out).not.toMatch(/two-way sync|syncs automatically|keeps .* in sync/i);
   });
 
-  it("shows the pitch line in the hero, the take-back section under Try it, and the axes table on the landing page", () => {
+  it("shows the pitch line in the hero, the take-back section under Try it, and the axes' checks inside the answers", () => {
     // The landing page draws a live colony in its hero, so it is read as source here; its sections render above.
     const landing = read("../src/landing/Landing.tsx");
     expect(PITCH).toBe("A colony sits beside your forge.");
@@ -154,8 +155,10 @@ describe("take the work back, and the pitch", () => {
     const tryIt = landing.indexOf("<TryIt />");
     const back = landing.indexOf("<TakeBack />");
     expect(landing.slice(tryIt + "<TryIt />".length, back).trim()).toBe("");
-    expect(landing.indexOf("<Questions />")).toBeGreaterThan(back);
-    expect(landing.indexOf("<Axes />")).toBeGreaterThan(landing.indexOf("<Questions />"));
+    expect(landing.indexOf("<Questions />")).toBeLessThan(back);
+    expect(landing).not.toContain("<Axes />");
+    const more = QUESTIONS.flatMap((q) => (q.more ?? []).map((m) => m.href));
+    for (const a of AXES) if ("href" in a.check) expect([...more, ...QUESTIONS.map((q) => q.link.href.replace(/^https:\/\/firetrident\.com/, ""))]).toContain(a.check.href);
     expect(PITCH_MORE).toContain("you give it a target, and it converges, certifies and tells you why");
   });
 });
