@@ -1,0 +1,31 @@
+[runner] 2026-10-20T01:53:03.759Z node /app/packages/bench/src/scenarios/contention-scale.ts --base https://staging.firetrident.com --scenario contention-scale --agents 50 --intents 150 --out /data/results/r50
+[01:53:04] contention-scale: node packages/bench/src/scenarios/contention-scale.ts --base https://staging.firetrident.com --scenario contention-scale --agents 50 --intents 150 --out /data/results/r50
+[01:53:04] note: FT_MEGAFILE is on (for some colony): the megafile alarm may hold a hot file for a split no agent takes: changes to it then go back until the hold lifts
+[01:53:04] note: FT_ALREADY_ON_TRUNK is on (for some colony): a change whose every write is on trunk already closes without a commit when it read those files at trunk's version or not at all; an increment made from a stale read goes back instead
+[01:53:04] note: FT_PRELAND is on (for some colony): tests run before each landing
+[01:53:04] note: FT_TRUNK_TESTS is on (for some colony): trunk certification runs the generated test after landings
+[01:53:04] deployment build 9f00539; flags on: FT_A2A, FT_ACCOUNTS, FT_AGENT_CALL_BUDGET, FT_AGE_CAP, FT_ALREADY_ON_TRUNK, FT_BISECT, FT_CREDIT_TRAILERS, FT_CULPRITS, FT_DEFAULT_SPEND_CAP, FT_DELETION_GUARD, FT_ESCALATION_BATCH, FT_FIELD_GUIDE, FT_GOAL_CONFLICT, FT_HEADS_UP, FT_HEDGE, FT_INHIBIT_STRONGEST, FT_INLINE, FT_INTENT_SPEND, FT_LESSON_SCOPE, FT_MEGAFILE, FT_MERGE_INSERTIONS, FT_MODEL_STEPUP, FT_PERSON_WAIT, FT_PRELAND, FT_PUBLIC_GIT, FT_PUBLIC_MCP, FT_QUOTED_ACCEPTANCE, FT_RED_BRAKE, FT_REPRODUCE, FT_RESOLVER, FT_RETURN_HUNKS, FT_REVIEW_VIEW, FT_TEXT_MERGE, FT_TRUNK_TESTS, FT_TWINS, FT_VIRTUAL_CHECKOUT
+[01:53:26] created colony contention-scale-50 (region depth 2, pool 58)
+[01:53:27] live feed connected
+[01:54:13] seeded 413 files in 7 landings (46.2 s) at 68f0d75d395b
+[01:54:13] 50 agents on 150 tasks (ramp 1 s, timeout 1800 s)
+[01:54:23] 10 s: 22 of 150 tasks landed, 5 changes back, 48 holding (peak 50), 0 failed calls
+[01:54:33] 20 s: 44 of 150 tasks landed, 22 changes back, 50 holding (peak 50), 0 failed calls
+[01:54:43] 30 s: 68 of 150 tasks landed, 58 changes back, 46 holding (peak 50), 0 failed calls
+[01:54:53] 40 s: 96 of 150 tasks landed, 90 changes back, 50 holding (peak 50), 0 failed calls
+[01:55:03] 50 s: 126 of 150 tasks landed, 130 changes back, 21 holding (peak 50), 0 failed calls
+[01:55:13] 60 s: 146 of 150 tasks landed, 143 changes back, 2 holding (peak 50), 0 failed calls
+[01:55:17] agents done after 63.5 s: 148 of 150 tasks landed, 144 changes came back
+[01:55:20] PASS  every file parses: 413 files at 0da8fcc5da49: all parse; the tree holds the seeded files and no others.
+[01:55:20] PASS  registry entries appear exactly once: 50 landed register tasks: 0 duplicated, 0 missing, 0 present without a landing, 0 seed entries gone, 0 unknown.
+[01:55:20] PASS  every counter equals its landed increments: 40 counters, 48 landed increments, counters adding up to 48: 0 lost updates, 0 counted twice.
+[01:55:20] PASS  no increment was closed as already on trunk: No increment came back as already on trunk.
+[01:55:20] PASS  every read-own constant matches the trunk it landed on: 50 landed read-own changes: 0 constants differ from the registry they landed on, 0 landed on a version they did not read, 0 landed behind a writer of their file in the same commit, 0 set without a landing.
+[01:55:20] PASS  the agents' outcomes agree with the lineage notes: 148 proposals reported landed, 148 proposals of this run in the notes: 0 reported landed but not in a note, 0 in a note but reported otherwise, 0 tasks landed twice.
+[01:56:13] deleted colony contention-scale-50
+[01:56:13] 148 of 150 tasks landed in 144 commits (139.3 landings and 143.2 changes a minute); propose to landed p50 7466 ms, p95 18024 ms; 144 came back; peak holders 50 (9 on one hot file)
+[01:56:13] ALL CHECKS PASSED
+wrote ../data/results/r50/README.md, ../data/results/r50/contention-scale-n50.json, ../data/results/r50/run-n50.log
+[runner] 2026-10-20T01:56:13.990Z exit code 0 signal null
+[watch] run r50 ended at 2026-10-20T01:56:13.990Z: exit code 0 signal nil
+watch exit 0
