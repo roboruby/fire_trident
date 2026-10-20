@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
@@ -118,5 +119,16 @@ describe("the account link", () => {
     expect(accountsOn(parseAbout({ flags: ["FT_ACCOUNTS"] }))).toBe(true);
     // Before /api/about answers, nothing shows.
     expect(renderToStaticMarkup(createElement(AccountLink))).toBe("");
+  });
+
+  it("offers Sign in and Request invite as buttons on the landing page, after the GitHub mark", () => {
+    const landing = readFileSync(new URL("../src/landing/Landing.tsx", import.meta.url), "utf8");
+    const mark = landing.indexOf("<GithubMark />");
+    expect(mark).toBeGreaterThan(0);
+    expect(landing.indexOf("<AccountLink />")).toBeGreaterThan(mark);
+    expect(landing).not.toContain("Source\n");
+    const link = readFileSync(new URL("../src/account/AccountLink.tsx", import.meta.url), "utf8");
+    expect(link).toContain('href="/auth/github/start"');
+    expect(link).toContain('href="/account?request=1"');
   });
 });

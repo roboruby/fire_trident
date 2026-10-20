@@ -69,9 +69,31 @@
 }
 
 .l-gh {
-  padding: 6px 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
   border: 1px solid var(--line-2);
-  border-radius: 8px;
+  border-radius: 50%;
+  color: var(--text-2);
+}
+
+.l-gh:hover {
+  border-color: var(--text-3);
+  color: var(--text);
+}
+
+/* the account buttons in the nav (account/AccountLink.tsx): smaller than the hero's */
+.l-links .l-btn-nav {
+  height: 36px;
+  padding: 0 14px;
+  font-size: 13.5px;
+  color: var(--text);
+}
+
+.l-links .l-btn-nav.l-btn-primary {
+  color: #fff;
 }
 
 /* hero */

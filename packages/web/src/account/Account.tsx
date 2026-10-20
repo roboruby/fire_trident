@@ -203,7 +203,7 @@ function loadTurnstile(): Promise<void> {
  * sign-in here. Offered only where the deployment has requests set up (GET /api/accounts/invite-requests/config).
  */
 export function RequestInvite({ login: known }: { login?: string } = {}) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(() => typeof location !== "undefined" && new URLSearchParams(location.search).get("request") === "1");
   const [siteKey, setSiteKey] = useState<string | null | undefined>(undefined);
   const [login, setLogin] = useState(known ?? "");
   const [email, setEmail] = useState("");
