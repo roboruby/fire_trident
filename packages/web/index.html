@@ -103,7 +103,7 @@ node ../verify_note.mjs HEAD   # prints intact</code></pre>
           <h2>Can my agent join?</h2>
           <p>Yes: any MCP client can ask the showcase colonies at /public/mcp with no token, and with a deployment's MCP token an agent joins a colony, takes an intent and proposes next to the in-platform agents: on production, an external agent landed a change 19.4 s into its session. Ask the showcase colonies (hono, shortlinks, byo-demo) read only, over Streamable HTTP at https://firetrident.com/public/mcp, with the tools status, why, intent and sense:</p>
           <pre><code>claude mcp add --transport http firetrident-public https://firetrident.com/public/mcp</code></pre>
-          <p>To join a colony and land changes, an agent needs a deployment's MCP token: <a href="https://github.com/roboruby/fire_trident/blob/main/docs/agents/README.md">docs/agents</a>.</p>
+          <p>To join a colony and land changes, an agent needs a deployment's MCP token: <a href="/docs/agents/">docs/agents</a>.</p>
         </section>
 
         <section id="runs">
@@ -118,7 +118,7 @@ node ../verify_note.mjs HEAD   # prints intact</code></pre>
             <li>Cascade: one shared-file change sent 30 proposals back stale; sigma peaked at 30 and fell below 1 within 40 s.</li>
             <li>Change of direction (hexo, 6 agents): a rule retracted mid-run was answered in 0.65 s, 35 intents were withdrawn and 3 changes in flight sent back, and nothing landed for the rule afterwards; an intent amended while its agent was writing landed as revision 2 24.2 s later.</li>
           </ul>
-          <p>Logs and evidence for every run: <a href="https://github.com/roboruby/fire_trident/tree/main/packages/bench/results">packages/bench/results</a>. Source, MIT licensed: <a href="https://github.com/roboruby/fire_trident">github.com/roboruby/fire_trident</a>.</p>
+          <p>Logs and evidence for every run: <a href="/docs/results/">packages/bench/results</a>. Source, MIT licensed: <a href="https://github.com/roboruby/fire_trident">github.com/roboruby/fire_trident</a>.</p>
         </section>
       </main>
     </div>

@@ -4,7 +4,6 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { Compared } from "../src/landing/Compared.tsx";
 import { COMPARED, LEDGER_HREF, MEASURED_TITLE, resultsHref, STATE_LABEL } from "../src/landing/compared.ts";
-import { REPO } from "../src/landing/questions.ts";
 
 /**
  * The "with and without" panel of the landing page: every row complete (a mechanism, both values, where it was
@@ -49,7 +48,7 @@ describe("the panel's rows", () => {
       expect(["production", "preview", "simulated"], r.id).toContain(r.label);
       expect(MEASURED_TITLE[r.label], r.id).toBeTruthy();
       expect(r.folder, r.id).toMatch(/^2026-\d\d-\d\d(?:-[a-z0-9]+)?$/);
-      expect(resultsHref(r.folder), r.id).toBe(`https://github.com/roboruby/fire_trident/tree/main/packages/bench/results/${r.folder}`);
+      expect(resultsHref(r.folder), r.id).toBe(`/docs/results/${r.folder}/`);
       expect(existsSync(new URL(`../../bench/results/${r.folder}`, import.meta.url)), r.folder).toBe(true);
     }
   });
@@ -92,7 +91,7 @@ describe("the panel", () => {
       expect(out).toContain(`<div class="cm-val">${html(r.on)}</div>`);
       expect(out).toContain(html(r.note));
       expect(out).toContain(`class="cm-label cm-label-${r.label}"`);
-      expect(out).toContain(`href="${resultsHref(r.folder)}" target="_blank" rel="noreferrer"`);
+      expect(out).toContain(`href="${resultsHref(r.folder)}"`);
     }
     expect(out.match(/<article class="cm-row /g)).toHaveLength(COMPARED.length);
   });
@@ -106,8 +105,8 @@ describe("the panel", () => {
 
   it("links to the ledger in docs/mechanisms.md, which holds every mechanism", () => {
     expect(ledgerAt).toBeGreaterThan(0);
-    expect(LEDGER_HREF).toBe(`${REPO}/blob/main/docs/mechanisms.md#what-each-mechanism-buys`);
-    expect(out).toContain(`href="${LEDGER_HREF}" target="_blank" rel="noreferrer"`);
+    expect(LEDGER_HREF).toBe("/docs/mechanisms/#what-each-mechanism-buys");
+    expect(out).toContain(`href="${LEDGER_HREF}"`);
     expect(ledgerRows.length).toBeGreaterThan(COMPARED.length);
   });
 

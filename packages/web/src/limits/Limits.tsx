@@ -1,7 +1,6 @@
 import { useEffect } from "react";
 import { SiteNav } from "../components/SiteNav.tsx";
 import { TridentMark } from "../components/TopBar.tsx";
-import { REPO } from "../landing/questions.ts";
 import { ARTIFACTS_LESSONS, GROUPS, LIMITS, STATUS_LABEL, type Limit } from "./limits.ts";
 import "../landing/landing.css";
 import "./limits.css";
@@ -72,7 +71,7 @@ export function Limits() {
           <div className="l-kicker">Built on Artifacts</div>
           <h2 className="l-h2">What Artifacts taught us.</h2>
           <p className="l-section-lede">
-            Measured in a spike against the live service before the first line of the trunk writer (<a href={`${REPO}/blob/main/spike/RESULTS.md`}>spike/RESULTS.md</a>), each with what the code does about it.
+            Measured in a spike against the live service before the first line of the trunk writer (<a href="/docs/spike/">the spike's results</a>), each with what the code does about it.
           </p>
         </div>
         <div className="lm-lessons">
@@ -96,9 +95,7 @@ export function Limits() {
         </div>
         <nav className="l-foot-links">
           <a href="/">Home</a>
-          <a href={`${REPO}/blob/main/docs/results.md#honest-limits`} target="_blank" rel="noreferrer">
-            The honest limits
-          </a>
+          <a href="/docs/results/#honest-limits">The honest limits</a>
           <a href="/c/hono?replay=1">Replay the Hono run</a>
         </nav>
       </footer>

@@ -1,5 +1,3 @@
-import { REPO } from "./questions.ts";
-
 /**
  * The landing page's "with and without" panel: a few mechanisms, each measured with it off and on, chosen from the
  * ledger in docs/mechanisms.md ("What each mechanism buys"), which holds every mechanism with its source. Every number here is
@@ -47,12 +45,12 @@ export interface Comparison {
   folder: string;
 }
 
-/** The ledger in docs/mechanisms.md, every mechanism with its source. */
-export const LEDGER_HREF = `${REPO}/blob/main/docs/mechanisms.md#what-each-mechanism-buys`;
+/** The ledger in docs/mechanisms.md, every mechanism with its source, as a page of the site. */
+export const LEDGER_HREF = "/docs/mechanisms/#what-each-mechanism-buys";
 
-/** A results folder on GitHub. */
+/** A run's page on the site: its README, or its file list, rendered from packages/bench/results at build time. */
 export function resultsHref(folder: string): string {
-  return `${REPO}/tree/main/packages/bench/results/${folder}`;
+  return `/docs/results/${folder}/`;
 }
 
 /** What each label means, for the label's tooltip. */

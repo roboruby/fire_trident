@@ -26,7 +26,7 @@ export const PUBLIC_MCP_SERVER_NAME = "firetrident-public";
 export const MCP_TOKEN_ENV = "FT_MCP_TOKEN";
 
 /** The guide to bringing an agent: tools, errors and troubleshooting. */
-export const AGENT_DOCS = "https://github.com/roboruby/fire_trident/blob/main/docs/agents/README.md";
+export const AGENT_DOCS = "https://firetrident.com/docs/agents/";
 
 /** The clients a connection is given for, in the order every page shows them. */
 export const CONNECT_CLIENTS = ["claude-code", "claude", "codex", "cursor", "vscode", "http"] as const;

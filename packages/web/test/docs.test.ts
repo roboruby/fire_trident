@@ -65,17 +65,33 @@ function linkProblems(page: string): string[] {
 const PAGES = ["README.md", "SECURITY.md", ...walk("docs").filter((p) => p.endsWith(".md"))];
 
 /** Links from the site and the front door to a heading of a page in this repository, as [page, anchor]. */
+/** The markdown file a page of the site's docs renders (packages/web/scripts/docs.mjs): "/docs/mechanisms/" is docs/mechanisms.md. */
+function docsPage(slug: string): string {
+  if (slug === "") return "README.md";
+  const fixed: Record<string, string> = { architecture: "docs/ARCHITECTURE.md", agents: "docs/agents/README.md", spike: "spike/RESULTS.md", changelog: "CHANGELOG.md", contributing: "CONTRIBUTING.md", security: "SECURITY.md" };
+  if (fixed[slug]) return fixed[slug];
+  const run = /^results\/([^/]+)$/.exec(slug);
+  if (run) return `packages/bench/results/${run[1]}/README.md`;
+  const agent = /^agents\/([^/]+)$/.exec(slug);
+  if (agent) return `docs/agents/${agent[1]}.md`;
+  return `docs/${slug}.md`;
+}
+
 function siteLinks(): Array<{ from: string; page: string; hash: string }> {
   const files = [...walk("packages/web/src"), "packages/web/public/llms.txt", "packages/web/public/start.md", "packages/web/index.html", "packages/core/src/connect.ts"];
   const out: Array<{ from: string; page: string; hash: string }> = [];
   for (const from of files) {
-    const text = read(from).replaceAll("${REPO}", REPO);
+    const text = read(from).replaceAll("${REPO}", REPO).replaceAll("${SITE}", "https://firetrident.com");
     for (const m of text.matchAll(/https:\/\/github\.com\/roboruby\/fire_trident(?:\/blob\/main\/([^\s#`"')<>]+))?#([a-z0-9_-]+)/g)) {
       const page = m[1] ?? "README.md";
       const hash = m[2] ?? "";
       // #readme is the host's own anchor for a repository's README.
       if (m[1] === undefined && hash === "readme") continue;
       out.push({ from, page, hash });
+    }
+    // The same documents as pages of the site: /docs/<page>/#heading.
+    for (const m of text.matchAll(/(?:https:\/\/firetrident\.com)?\/docs\/([a-z0-9-]+(?:\/[a-z0-9.-]+)?)?\/?#([a-z0-9_-]+)/g)) {
+      out.push({ from, page: docsPage(m[1] ?? ""), hash: m[2] ?? "" });
     }
   }
   return out;

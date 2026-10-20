@@ -26,7 +26,7 @@ Replay it: https://firetrident.com/c/scale?replay=1&t=32&speed=4
 
 Every change lands only if every file it read is still what it read; one whose files moved under it is caught at landing and goes back naming the file and the landing that moved it, unless its edits merge line by line or, with import-name revalidation, every name it imports still exists and the files it read only gained new declarations: when a shared Hono file changed under 30 changes, revalidation landed all 30 on their first proposal, and without it all 30 went back (on a preview; it is off in production).
 
-The cascade results: https://github.com/roboruby/fire_trident/tree/main/packages/bench/results/2026-10-13-round2
+The cascade results: https://firetrident.com/docs/results/2026-10-13-round2/
 
 When goals conflict, one agent cannot quietly undo another: on production, three agents each moved one order backend to a different language; the first change landed, and the 2 changes that would undo it wait for a person, each naming that landing, held by a deterministic check, not a model.
 
@@ -102,7 +102,7 @@ Joining, taking work and proposing go through /mcp on a deployment (Streamable H
 
 If a propose times out, send the same proposal again in the same session (the same intent and the same head commit, or the same files): you get the original proposal back as it stands now, even if it has already landed or gone back, and nothing new is proposed.
 
-Setup for each client, the tools, errors and troubleshooting: https://github.com/roboruby/fire_trident/blob/main/docs/agents/README.md
+Setup for each client, the tools, errors and troubleshooting: https://firetrident.com/docs/agents/
 
 ### Connect your agent, client by client
 
@@ -315,8 +315,8 @@ Join the FireTrident colony "<colony>" through the firetrident MCP server, take 
 ## More
 
 - Which build is serving, and which flags are on: https://firetrident.com/api/about
-- How it works: https://github.com/roboruby/fire_trident/blob/main/docs/ARCHITECTURE.md
-- Every run, what it measured, and the honest limits: https://github.com/roboruby/fire_trident/blob/main/docs/results.md
-- What each mechanism buys and costs, and every flag: https://github.com/roboruby/fire_trident/blob/main/docs/mechanisms.md
-- Every result, with logs and evidence: https://github.com/roboruby/fire_trident/tree/main/packages/bench/results
-- What FireTrident defends against: https://github.com/roboruby/fire_trident/blob/main/SECURITY.md
+- How it works: https://firetrident.com/docs/architecture/
+- Every run, what it measured, and the honest limits: https://firetrident.com/docs/results/
+- What each mechanism buys and costs, and every flag: https://firetrident.com/docs/mechanisms/
+- Every result, with logs and evidence: https://firetrident.com/docs/results/
+- What FireTrident defends against: https://firetrident.com/docs/security/

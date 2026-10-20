@@ -13,7 +13,7 @@ npx fire_trident certify shortlinks
 # Plain git works too: certified branch, lineage notes
 git clone -b certified ${SERVER}/git/shortlinks.git
 
-# Writes need a token: run your own FireTrident (README)
+# Writes need a token: run your own FireTrident (/docs/try-it/)
 npm i -g fire_trident
 export FT_URL=https://<your-worker>.workers.dev FT_TOKEN=<your-token>
 ft import https://github.com/honojs/hono

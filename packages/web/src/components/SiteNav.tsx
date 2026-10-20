@@ -4,8 +4,10 @@ import { TridentMark } from "./TopBar.tsx";
 
 /** The source repository. */
 export const REPO = "https://github.com/roboruby/fire_trident";
-/** The architecture document, the site's "Docs" link. */
-export const DOCS = `${REPO}/blob/main/docs/ARCHITECTURE.md`;
+/** The documentation pages (scripts/docs.mjs renders the repository's markdown into dist/docs at build time). */
+export const DOCS = "/docs/";
+/** The architecture document, as a page of the site. */
+export const ARCHITECTURE = "/docs/architecture/";
 
 /** GitHub's mark, for the link to the source. */
 export function GithubMark() {
@@ -39,9 +41,7 @@ export function SiteNav({ extra, account = true }: { extra?: ReactNode; account?
         <a href="/#run">Run it</a>
         <a href="/limits">Limits</a>
         <a href="/connect">Connect</a>
-        <a href={DOCS} target="_blank" rel="noreferrer">
-          Docs
-        </a>
+        <a href={DOCS}>Docs</a>
         {extra}
         <a className="l-gh" href={REPO} target="_blank" rel="noreferrer" aria-label="Source on GitHub" title="Source on GitHub">
           <GithubMark />

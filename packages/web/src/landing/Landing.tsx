@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useAbout } from "../about.ts";
 import { loadColonies, type ColonyCard } from "../colonies.ts";
 import { BuildTag } from "../components/BuildTag.tsx";
-import { DOCS, REPO, SiteNav } from "../components/SiteNav.tsx";
+import { ARCHITECTURE, REPO, SiteNav } from "../components/SiteNav.tsx";
 import { TridentMark } from "../components/TopBar.tsx";
 import { fmtInt } from "../format.ts";
 import { colonyHref } from "../route.ts";
@@ -179,9 +179,7 @@ export function Landing() {
           <a href={REPO} target="_blank" rel="noreferrer">
             github.com/roboruby/fire_trident
           </a>
-          <a href={DOCS} target="_blank" rel="noreferrer">
-            Architecture
-          </a>
+          <a href={ARCHITECTURE}>Architecture</a>
           <a href={colonyHref("demo", { mock: true })}>Simulator</a>
           <a href="/limits">Limits</a>
         </nav>

@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { AGENT_DOCS, MCP_TOOLS, PUBLIC_MCP_TOOLS, connectInfo, isConnectColony } from "@fire_trident/core";
+import { MCP_TOOLS, PUBLIC_MCP_TOOLS, connectInfo, isConnectColony } from "@fire_trident/core";
 import { SiteNav } from "../components/SiteNav.tsx";
 import { Code } from "../landing/RunIt.tsx";
 import { colonyHref } from "../route.ts";
@@ -26,9 +26,7 @@ export function ConnectPage({ site, colony }: { site: string; colony: string | n
         extra={
           <>
             {id ? <a href={colonyHref(id)}>The colony</a> : null}
-            <a href={AGENT_DOCS} target="_blank" rel="noreferrer">
-              Agent docs
-            </a>
+            <a href="/docs/agents/">Agent docs</a>
           </>
         }
       />

@@ -65,7 +65,7 @@ export const QUESTIONS: readonly Answer[] = [
       "Every change lands only if every file it read is still what it read; one whose files moved under it is caught at landing and goes back naming the file and the landing that moved it, unless its edits merge line by line or, with import-name revalidation, every name it imports still exists and the files it read only gained new declarations: when a shared Hono file changed under 30 changes, revalidation landed all 30 on their first proposal, and without it all 30 went back (on a preview; it is off in production).",
     figure: "30 of 30",
     evidence: "Changes that landed first try after a shared file changed under them:",
-    link: { label: "The cascade results", href: `${REPO}/tree/main/packages/bench/results/2026-10-13-round2` },
+    link: { label: "The cascade results", href: `${SITE}/docs/results/2026-10-13-round2/` },
     more: [{ label: "Run the text merge in your browser", href: "/#try-merge" }],
   },
   {
@@ -97,7 +97,7 @@ export const QUESTIONS: readonly Answer[] = [
       "Yes: any MCP client can ask the showcase colonies at /public/mcp with no token, and with a deployment's MCP token an agent joins a colony, takes an intent and proposes next to the in-platform agents: on production, an external agent landed a change 19.4 s into its session.",
     figure: "19.4 s",
     evidence: "An outside agent joined over MCP and landed its first change in",
-    link: { label: "Join with a token (docs/agents)", href: `${REPO}/blob/main/docs/agents/README.md` },
+    link: { label: "Join with a token (docs/agents)", href: `${SITE}/docs/agents/` },
     command: PUBLIC_MCP_COMMAND,
   },
 ];

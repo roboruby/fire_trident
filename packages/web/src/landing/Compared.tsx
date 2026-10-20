@@ -26,7 +26,7 @@ function Row({ row }: { row: Comparison }) {
           <span className={`cm-label cm-label-${row.label}`} title={MEASURED_TITLE[row.label]}>
             {row.label}
           </span>
-          <a className="cm-link" href={resultsHref(row.folder)} target="_blank" rel="noreferrer">
+          <a className="cm-link" href={resultsHref(row.folder)}>
             results/{row.folder} →
           </a>
         </div>
@@ -45,9 +45,7 @@ export function Compared() {
         <p className="l-section-lede">
           Each row is one mechanism measured without it and with it, and links to its run. A mechanism is a switch in a deployment&apos;s config, set by whoever runs that deployment, so it is the same for
           everyone on firetrident.com and yours to set on your own copy; nothing here is set per user. The{" "}
-          <a href={LEDGER_HREF} target="_blank" rel="noreferrer">
-            full ledger
-          </a>{" "}
+          <a href={LEDGER_HREF}>full ledger</a>{" "}
           has every switch, including the ones that cost more than they earn.
         </p>
       </div>

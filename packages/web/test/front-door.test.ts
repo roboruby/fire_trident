@@ -97,7 +97,7 @@ describe("llms.txt and start.md", () => {
   it("say how to ask a showcase colony with no token and how to join one with a token", () => {
     for (const text of [llms, start]) {
       expect(text).toContain(`${SITE}/public/mcp`);
-      expect(text).toContain("docs/agents/README.md");
+      expect(text).toContain("/docs/agents/");
       expect(text).toContain("Authorization: Bearer");
     }
     expect(start).toContain('"method":"tools/call"');
@@ -148,7 +148,8 @@ describe("the landing section", () => {
     expect(html).toContain('href="/c/hono?replay=1"');
     expect(html).toContain('href="/c/hono?path=src/index.ts"');
     expect(html).not.toContain(`href="${SITE}/c/`);
-    expect(html).toContain('href="https://github.com/roboruby/fire_trident/tree/main/packages/bench/results/2026-10-13-round2" target="_blank" rel="noreferrer"');
+    expect(html).toContain('href="/docs/results/2026-10-13-round2/"');
+    expect(html).toContain('href="https://github.com/roboruby/fire_trident/blob/main/scripts/verify_note.mjs" target="_blank" rel="noreferrer"');
   });
 
   it("gives the two commands as code to copy", () => {
