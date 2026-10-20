@@ -124,12 +124,14 @@ describe("the account link", () => {
     expect(first).toContain('href="/account?request=1"');
   });
 
-  it("offers Sign in and Request invite as buttons on the landing page, after the GitHub mark", () => {
-    const landing = readFileSync(new URL("../src/landing/Landing.tsx", import.meta.url), "utf8");
-    const mark = landing.indexOf("<GithubMark />");
+  it("offers Sign in and Request invite as buttons in the site's nav, after the GitHub mark, on every page but the account page", () => {
+    const nav = readFileSync(new URL("../src/components/SiteNav.tsx", import.meta.url), "utf8");
+    const mark = nav.indexOf("<GithubMark />");
     expect(mark).toBeGreaterThan(0);
-    expect(landing.indexOf("<AccountLink />")).toBeGreaterThan(mark);
-    expect(landing).not.toContain("Source\n");
+    expect(nav.indexOf("<AccountLink />")).toBeGreaterThan(mark);
+    expect(nav).not.toContain("Source\n");
+    for (const page of ["../src/landing/Landing.tsx", "../src/limits/Limits.tsx", "../src/connect/Connect.tsx"]) expect(readFileSync(new URL(page, import.meta.url), "utf8")).toContain("<SiteNav");
+    expect(readFileSync(new URL("../src/account/Account.tsx", import.meta.url), "utf8")).toContain("<SiteNav\n        account={false}");
     const link = readFileSync(new URL("../src/account/AccountLink.tsx", import.meta.url), "utf8");
     expect(link).toContain('href="/auth/github/start"');
     expect(link).toContain('href="/account?request=1"');

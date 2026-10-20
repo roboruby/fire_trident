@@ -53,11 +53,11 @@ export const LIMITS: readonly Limit[] = [
   {
     id: "accounts",
     group: "forge",
-    cannot: "Sign in, invite a teammate, or give someone a role.",
-    why: "A deployment has no accounts: one admin token makes every write, one MCP token admits every outside agent, and the name on an approval is whatever the person typed.",
-    instead: "Keep people and permissions in your forge. Give the admin token to the operator only and put the deployment behind Cloudflare Access to choose who opens it; reads need no token.",
+    cannot: "Run a colony as a team, or give a person a role.",
+    why: "A person signs in with GitHub, by invite code or an approved request, owns up to three colonies and mints the tokens that let agents and reviewers work on them. A role belongs to a token, not to a person: there are no teams or organizations, no per-person permissions, and a colony has one owner.",
+    instead: "Mint a reviewer or agent token for each teammate from the colony's row on your account page, and keep teams and permissions in your forge; reads need no account.",
     status: "planned",
-    check: { label: "Every colony on the site, read with no account", command: "npx fire_trident colonies" },
+    check: { label: "Sign in and mint a token for a teammate", href: "/account" },
   },
   {
     id: "pull-requests",
@@ -206,8 +206,8 @@ export const LIMITS: readonly Limit[] = [
   {
     id: "model-contention",
     group: "colony",
-    cannot: "Point to a model-driven run in which agents' changes contended at landing.",
-    why: "In every model-driven run so far no change came back stale, and on the Hono rule each intent edits its own file; contest mode, where three in-platform agents raced one intent, picks one change before any lands. Contention at landing was measured with synthetic or scripted agents the script placed (the cascade, import-name revalidation, text merge, goal conflicts) and in the simulator.",
+    cannot: "Point to a model-driven run in which many changes came back stale at landing.",
+    why: "In the one model-driven run built to contend, sixteen intents on one module, fourteen landed, one change came back for a merge conflict and none stale; on the Hono rule each intent edits its own file, and contest mode picks one change before any lands. Contention at landing in volume was measured with synthetic or scripted agents the script placed (the cascade, import-name revalidation, text merge, goal conflicts) and in the simulator.",
     instead: "Read each headline run's models, review setting and overlap in docs/results.md before comparing numbers, and measure a colony's own code sharing and returns with scripts/coordination.rb.",
     status: "planned",
     check: { label: "A run's code sharing and returns, from its public record", command: `ruby scripts/coordination.rb --url ${SITE} --colony hono` },

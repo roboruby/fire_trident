@@ -209,7 +209,7 @@ describe("the section", () => {
     expect(people).toBeGreaterThan(0);
     expect(landing.slice(people + "<Exceptions />".length, tryIt).trim()).toBe("");
     expect(landing.indexOf("<TakeBack />")).toBeGreaterThan(tryIt);
-    expect(landing).toContain('<a href="#try">Try it</a>');
+    expect(read("../src/components/SiteNav.tsx")).toContain('<a href="/#try">Try it</a>');
     expect(page.match(/role="tab"/g)).toHaveLength(5);
     expect(page.match(/<div class="tr-pane" hidden="">/g)).toHaveLength(4);
     expect(page).toContain('<div class="tr-pane"><article class="tr-scene" id="try-merge">');

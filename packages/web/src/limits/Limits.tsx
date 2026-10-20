@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { SiteNav } from "../components/SiteNav.tsx";
 import { TridentMark } from "../components/TopBar.tsx";
 import { REPO } from "../landing/questions.ts";
 import { ARTIFACTS_LESSONS, GROUPS, LIMITS, STATUS_LABEL, type Limit } from "./limits.ts";
@@ -42,20 +43,7 @@ export function Limits() {
   }, []);
   return (
     <div className="landing lm-page">
-      <header className="l-nav">
-        <a className="l-brand" href="/">
-          <TridentMark size={26} />
-          <span>FireTrident</span>
-        </a>
-        <nav className="l-links">
-          <a href="/#axes">Judging axes</a>
-          <a href="/#take-back">Take the work back</a>
-          <a href="#artifacts">Artifacts</a>
-          <a className="l-gh" href={REPO} target="_blank" rel="noreferrer">
-            Source
-          </a>
-        </nav>
-      </header>
+      <SiteNav extra={<a href="#artifacts">Artifacts</a>} />
 
       <section className="l-section lm-intro">
         <div className="l-kicker">Limits</div>

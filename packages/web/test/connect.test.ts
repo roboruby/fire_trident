@@ -98,7 +98,7 @@ describe("the landing page's column and the colony page's links", () => {
     expect(out).toContain('href="/connect"');
     expect(out).not.toContain("Bearer &lt;your-token&gt;");
     for (const t of MCP_TOOLS) expect(out).toContain(`<code>${t}</code>`);
-    expect(read("../src/landing/Landing.tsx")).toContain('<a href="/connect">Connect</a>');
+    expect(read("../src/components/SiteNav.tsx")).toContain('<a href="/connect">Connect</a>');
   });
 
   it("put the colony's connect page and SKILL.md under its name", () => {

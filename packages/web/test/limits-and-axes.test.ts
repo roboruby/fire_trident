@@ -29,7 +29,7 @@ describe("the limits page", () => {
     expect(parseRoute("/", "")).toEqual({ kind: "landing" });
   });
 
-  it("puts the rows where a team's forge is ahead first: no accounts, no pull requests, no issues", () => {
+  it("puts the rows where a team's forge is ahead first: no teams, no pull requests, no issues", () => {
     expect(GROUPS.map((g) => g.id)).toEqual(["forge", "colony"]);
     expect(LIMITS.slice(0, 3).map((l) => l.id)).toEqual(["accounts", "pull-requests", "issues"]);
     const lastForge = LIMITS.map((l) => l.group).lastIndexOf("forge");
@@ -79,7 +79,8 @@ describe("the limits page", () => {
   });
 
   it("is linked from the landing page and the colony page's footer", () => {
-    expect(read("../src/landing/Landing.tsx").match(/href="\/limits"/g)?.length).toBeGreaterThanOrEqual(2);
+    expect(read("../src/components/SiteNav.tsx")).toContain('<a href="/limits">Limits</a>');
+    expect(read("../src/landing/Landing.tsx")).toContain('<a href="/limits">Limits</a>');
     expect(renderToStaticMarkup(createElement(ColonyFooter))).toContain('<a href="/limits">');
   });
 });

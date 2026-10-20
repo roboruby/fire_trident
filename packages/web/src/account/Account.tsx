@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
-import { TridentMark } from "../components/TopBar.tsx";
+import { SiteNav } from "../components/SiteNav.tsx";
 import { Code } from "../landing/RunIt.tsx";
 import { colonyHref } from "../route.ts";
 import { CloudflarePanel } from "../cloudflare/CloudflarePanel.tsx";
@@ -49,20 +49,16 @@ export function AccountPage() {
 
   return (
     <div className="landing ac-page">
-      <header className="l-nav">
-        <a className="l-brand" href="/">
-          <TridentMark size={26} />
-          <span>FireTrident</span>
-        </a>
-        <nav className="l-links">
-          <a href="/connect">Connect an agent</a>
-          {load.kind === "ready" && load.me.signedIn ? (
+      <SiteNav
+        account={false}
+        extra={
+          load.kind === "ready" && load.me.signedIn ? (
             <button type="button" className="ac-link" onClick={() => void signOut()}>
               Sign out
             </button>
-          ) : null}
-        </nav>
-      </header>
+          ) : null
+        }
+      />
       <main className="l-section ac-main">
         <div className="l-kicker">Your account</div>
         {notice ? (

@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { AGENT_DOCS, MCP_TOOLS, PUBLIC_MCP_TOOLS, connectInfo, isConnectColony } from "@fire_trident/core";
-import { TridentMark } from "../components/TopBar.tsx";
+import { SiteNav } from "../components/SiteNav.tsx";
 import { Code } from "../landing/RunIt.tsx";
 import { colonyHref } from "../route.ts";
 import { ConnectClients } from "./ConnectClients.tsx";
@@ -22,18 +22,16 @@ export function ConnectPage({ site, colony }: { site: string; colony: string | n
   return (
     <div className="landing cx-page">
       <div className="l-glow" aria-hidden="true" />
-      <header className="l-nav">
-        <a className="l-brand" href="/">
-          <TridentMark size={26} />
-          <span>FireTrident</span>
-        </a>
-        <nav className="l-links">
-          {id ? <a href={colonyHref(id)}>The colony</a> : null}
-          <a href={AGENT_DOCS} target="_blank" rel="noreferrer">
-            Agent docs
-          </a>
-        </nav>
-      </header>
+      <SiteNav
+        extra={
+          <>
+            {id ? <a href={colonyHref(id)}>The colony</a> : null}
+            <a href={AGENT_DOCS} target="_blank" rel="noreferrer">
+              Agent docs
+            </a>
+          </>
+        }
+      />
 
       <section className="l-section cx-top">
         <div className="l-section-head">
