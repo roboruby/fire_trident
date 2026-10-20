@@ -118,7 +118,10 @@ describe("the account link", () => {
     expect(accountsOn(null)).toBe(false);
     expect(accountsOn(parseAbout({ flags: ["FT_ACCOUNTS"] }))).toBe(true);
     // Before /api/about answers, nothing shows.
-    expect(renderToStaticMarkup(createElement(AccountLink))).toBe("");
+    // Before the server answers, the buttons show (so the nav does not fill in late); they go only when it says accounts are off.
+    const first = renderToStaticMarkup(createElement(AccountLink));
+    expect(first).toContain('href="/auth/github/start"');
+    expect(first).toContain('href="/account?request=1"');
   });
 
   it("offers Sign in and Request invite as buttons on the landing page, after the GitHub mark", () => {
