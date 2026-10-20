@@ -86,6 +86,16 @@ export function Landing() {
   useEffect(() => {
     document.title = "FireTrident · A colony, not a queue";
   }, []);
+  // A link into a section from another page (/#questions, /#try-merge): the browser scrolled before the sections were
+  // drawn, so scroll again once they are. Same-page anchors need nothing.
+  useEffect(() => {
+    const id = decodeURIComponent(location.hash.slice(1));
+    if (!id) return;
+    const timers = [50, 400].map((ms) => window.setTimeout(() => document.getElementById(id)?.scrollIntoView(), ms));
+    return () => {
+      for (const t of timers) window.clearTimeout(t);
+    };
+  }, []);
   const ranked = cards ? rankColonies(cards) : null;
   const first = ranked?.find((c) => !c.error);
   // A colony at work right now is worth a button of its own; otherwise the hero's run, full screen.
