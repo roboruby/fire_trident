@@ -1,0 +1,200 @@
+[04:44:39] contention-scale: node packages/bench/src/scenarios/contention-scale.ts --base https://staging.firetrident.com --scenario contention-scale --agents 1000 --intents 3000 --out /data/results/platform
+[04:44:39] note: FT_MEGAFILE is on (for some colony): the megafile alarm may hold a hot file for a split no agent takes: changes to it then go back until the hold lifts
+[04:44:39] note: FT_ALREADY_ON_TRUNK is on (for some colony): a change whose every write is on trunk already closes without a commit when it read those files at trunk's version or not at all; an increment made from a stale read goes back instead
+[04:44:39] note: FT_PRELAND is on (for some colony): tests run before each landing
+[04:44:39] note: FT_TRUNK_TESTS is on (for some colony): trunk certification runs the generated test after landings
+[04:44:39] deployment build 9f00539; flags on: FT_A2A, FT_ACCOUNTS, FT_AGENT_CALL_BUDGET, FT_AGE_CAP, FT_ALREADY_ON_TRUNK, FT_BISECT, FT_CREDIT_TRAILERS, FT_CULPRITS, FT_DEFAULT_SPEND_CAP, FT_DELETION_GUARD, FT_ESCALATION_BATCH, FT_FIELD_GUIDE, FT_GOAL_CONFLICT, FT_HEADS_UP, FT_HEDGE, FT_INHIBIT_STRONGEST, FT_INLINE, FT_INTENT_SPEND, FT_LESSON_SCOPE, FT_MEGAFILE, FT_MERGE_INSERTIONS, FT_MODEL_STEPUP, FT_PERSON_WAIT, FT_PRELAND, FT_PUBLIC_GIT, FT_PUBLIC_MCP, FT_QUOTED_ACCEPTANCE, FT_RED_BRAKE, FT_REPRODUCE, FT_RESOLVER, FT_RETURN_HUNKS, FT_REVIEW_VIEW, FT_TEXT_MERGE, FT_TRUNK_TESTS, FT_TWINS, FT_VIRTUAL_CHECKOUT
+[04:44:59] created colony contention-scale-1000 (region depth 2, pool 1008)
+[04:44:59] live feed connected
+[04:45:38] seeded 413 files in 7 landings (38.6 s) at f22877345e33
+[04:45:38] 1000 agents on 3000 tasks (ramp 10 s, timeout 1800 s)
+[04:45:48] 10 s: 10 of 3000 tasks landed, 2 changes back, 161 holding (peak 161), 0 failed calls
+[04:45:58] 20 s: 43 of 3000 tasks landed, 74 changes back, 136 holding (peak 175), 0 failed calls
+[04:46:08] 30 s: 59 of 3000 tasks landed, 102 changes back, 154 holding (peak 175), 0 failed calls
+[04:46:18] 40 s: 81 of 3000 tasks landed, 138 changes back, 201 holding (peak 211), 0 failed calls
+[04:46:28] 50 s: 111 of 3000 tasks landed, 212 changes back, 148 holding (peak 211), 0 failed calls
+[04:46:38] 60 s: 130 of 3000 tasks landed, 285 changes back, 108 holding (peak 211), 0 failed calls
+[04:46:48] 70 s: 150 of 3000 tasks landed, 372 changes back, 135 holding (peak 211), 0 failed calls
+[04:46:58] 80 s: 174 of 3000 tasks landed, 460 changes back, 132 holding (peak 211), 0 failed calls
+[04:47:08] 90 s: 211 of 3000 tasks landed, 544 changes back, 137 holding (peak 211), 0 failed calls
+[04:47:18] 100 s: 246 of 3000 tasks landed, 614 changes back, 174 holding (peak 211), 0 failed calls
+[04:47:28] 110 s: 305 of 3000 tasks landed, 727 changes back, 169 holding (peak 211), 0 failed calls
+[04:47:38] 120 s: 375 of 3000 tasks landed, 845 changes back, 163 holding (peak 211), 0 failed calls
+[04:47:48] 130 s: 422 of 3000 tasks landed, 955 changes back, 152 holding (peak 211), 0 failed calls
+[04:47:58] 140 s: 495 of 3000 tasks landed, 1094 changes back, 165 holding (peak 211), 0 failed calls
+[04:48:08] 150 s: 580 of 3000 tasks landed, 1200 changes back, 158 holding (peak 211), 0 failed calls
+[04:48:18] 160 s: 635 of 3000 tasks landed, 1316 changes back, 180 holding (peak 211), 0 failed calls
+[04:48:28] 170 s: 705 of 3000 tasks landed, 1446 changes back, 169 holding (peak 211), 0 failed calls
+[04:48:38] 180 s: 767 of 3000 tasks landed, 1557 changes back, 199 holding (peak 211), 0 failed calls
+[04:48:48] 190 s: 838 of 3000 tasks landed, 1703 changes back, 213 holding (peak 227), 0 failed calls
+[04:48:58] 200 s: 882 of 3000 tasks landed, 1912 changes back, 208 holding (peak 231), 0 failed calls
+[04:49:08] 210 s: 996 of 3000 tasks landed, 2042 changes back, 54 holding (peak 231), 0 failed calls
+[04:49:18] 220 s: 1056 of 3000 tasks landed, 2082 changes back, 14 holding (peak 231), 0 failed calls
+[04:49:28] 230 s: 1079 of 3000 tasks landed, 2130 changes back, 12 holding (peak 231), 0 failed calls
+[04:49:38] 240 s: 1109 of 3000 tasks landed, 2176 changes back, 14 holding (peak 231), 0 failed calls
+[04:49:48] 250 s: 1128 of 3000 tasks landed, 2222 changes back, 9 holding (peak 231), 0 failed calls
+[04:49:58] 260 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[04:50:08] 270 s: 1151 of 3000 tasks landed, 2255 changes back, 1 holding (peak 231), 0 failed calls
+[04:50:18] 280 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[04:50:28] 290 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[04:50:38] 300 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[04:50:48] 310 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[04:50:58] 320 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[04:51:08] 330 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[04:51:18] 340 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[04:51:28] 350 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[04:51:38] 360 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[04:51:48] 370 s: 1151 of 3000 tasks landed, 2255 changes back, 1 holding (peak 231), 0 failed calls
+[04:51:58] 380 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[04:52:08] 390 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[04:52:18] 400 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[04:52:28] 410 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[04:52:38] 420 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[04:52:48] 430 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[04:52:58] 440 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[04:53:08] 450 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[04:53:18] 460 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[04:53:28] 470 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[04:53:38] 480 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[04:53:48] 490 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[04:53:58] 500 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[04:54:08] 510 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[04:54:18] 520 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[04:54:28] 530 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[04:54:38] 540 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[04:54:48] 550 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[04:54:58] 560 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[04:55:08] 570 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[04:55:18] 580 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[04:55:28] 590 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[04:55:38] 600 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[04:55:48] 610 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[04:55:58] 620 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[04:56:08] 630 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[04:56:18] 640 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[04:56:28] 650 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[04:56:38] 660 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[04:56:48] 670 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[04:56:58] 680 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[04:57:08] 690 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[04:57:18] 700 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[04:57:28] 710 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[04:57:38] 720 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[04:57:48] 730 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[04:57:58] 740 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[04:58:08] 750 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[04:58:18] 760 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[04:58:28] 770 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[04:58:38] 780 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[04:58:48] 790 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[04:58:58] 800 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[04:59:08] 810 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[04:59:18] 820 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[04:59:28] 830 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[04:59:38] 840 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[04:59:48] 850 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[04:59:58] 860 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:00:08] 870 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:00:18] 880 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:00:28] 890 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:00:38] 900 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:00:48] 910 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:00:58] 920 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:01:08] 930 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:01:18] 940 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:01:28] 950 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:01:38] 960 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:01:48] 970 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:01:58] 980 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:02:08] 990 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:02:18] 1000 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:02:28] 1010 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:02:38] 1020 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:02:48] 1030 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:02:58] 1040 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:03:08] 1050 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:03:18] 1060 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:03:28] 1070 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:03:38] 1080 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:03:48] 1090 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:03:58] 1100 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:04:08] 1110 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:04:18] 1120 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:04:28] 1130 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:04:38] 1140 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:04:48] 1150 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:04:58] 1160 s: 1151 of 3000 tasks landed, 2255 changes back, 0 holding (peak 231), 0 failed calls
+[05:05:08] 1170 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:05:18] 1180 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:05:28] 1190 s: 1151 of 3000 tasks landed, 2255 changes back, 1 holding (peak 231), 0 failed calls
+[05:05:38] 1200 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:05:48] 1210 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:05:58] 1220 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:06:08] 1230 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:06:18] 1240 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:06:28] 1250 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:06:38] 1260 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:06:48] 1270 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:06:58] 1280 s: 1151 of 3000 tasks landed, 2255 changes back, 1 holding (peak 231), 0 failed calls
+[05:07:08] 1290 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:07:18] 1300 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:07:28] 1310 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:07:38] 1320 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:07:48] 1330 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:07:58] 1340 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:08:08] 1350 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:08:18] 1360 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:08:28] 1370 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:08:38] 1380 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:08:48] 1390 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:08:58] 1400 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:09:08] 1410 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:09:18] 1420 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:09:28] 1430 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:09:38] 1440 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:09:48] 1450 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:09:58] 1460 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:10:08] 1470 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:10:18] 1480 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:10:28] 1490 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:10:38] 1500 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:10:48] 1510 s: 1151 of 3000 tasks landed, 2255 changes back, 1 holding (peak 231), 0 failed calls
+[05:10:58] 1520 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:11:08] 1530 s: 1151 of 3000 tasks landed, 2255 changes back, 1 holding (peak 231), 0 failed calls
+[05:11:18] 1540 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:11:28] 1550 s: 1151 of 3000 tasks landed, 2255 changes back, 1 holding (peak 231), 0 failed calls
+[05:11:38] 1560 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:11:48] 1570 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:11:58] 1580 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:12:08] 1590 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:12:18] 1600 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:12:28] 1610 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:12:38] 1620 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:12:48] 1630 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:12:58] 1640 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:13:08] 1650 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:13:18] 1660 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:13:28] 1670 s: 1151 of 3000 tasks landed, 2255 changes back, 1 holding (peak 231), 0 failed calls
+[05:13:38] 1680 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:13:48] 1690 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:13:58] 1700 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:14:08] 1710 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:14:18] 1720 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:14:28] 1730 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:14:38] 1740 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:14:48] 1750 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:14:58] 1760 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:15:08] 1770 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:15:18] 1780 s: 1151 of 3000 tasks landed, 2255 changes back, 1 holding (peak 231), 0 failed calls
+[05:15:28] 1790 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:15:38] 1800 s: 1151 of 3000 tasks landed, 2255 changes back, 2 holding (peak 231), 0 failed calls
+[05:15:39] agents done after 1800.5 s: 1151 of 3000 tasks landed, 2255 changes came back
+[05:15:44] PASS  every file parses: 413 files at 0fa8dc5f9e53: all parse; the tree holds the seeded files and no others.
+[05:15:44] PASS  registry entries appear exactly once: 104 landed register tasks: 0 duplicated, 0 missing, 0 present without a landing, 0 seed entries gone, 0 unknown.
+[05:15:44] PASS  every counter equals its landed increments: 40 counters, 52 landed increments, counters adding up to 52: 0 lost updates, 0 counted twice.
+[05:15:44] PASS  no increment was closed as already on trunk: No increment came back as already on trunk.
+[05:15:44] PASS  every read-own constant matches the trunk it landed on: 998 landed read-own changes: 0 constants differ from the registry they landed on, 0 landed on a version they did not read, 0 landed behind a writer of their file in the same commit, 0 set without a landing.
+[05:15:44] FAIL  the agents' outcomes agree with the lineage notes: 1,151 proposals reported landed, 1,154 proposals of this run in the notes: 0 reported landed but not in a note, 3 in a note but reported otherwise, 0 tasks landed twice.
+[05:26:30] deleted colony contention-scale-1000
+[05:26:30] 1151 of 3000 tasks landed in 808 commits (188.0 landings and 268.5 changes a minute); propose to landed p50 6085 ms, p95 22222 ms; 2255 came back; peak holders 231 (35 on one hot file)
+[05:26:30] SOME CHECKS FAILED

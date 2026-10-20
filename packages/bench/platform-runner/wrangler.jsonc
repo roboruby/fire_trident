@@ -1,0 +1,24 @@
+// Throwaway Worker that runs packages/bench/src/scenarios/contention-scale.ts from inside Cloudflare's network, in a
+// Cloudflare Container, so the client's connections do not go over a home uplink. See README.md here. Deploy with
+// wrangler from this directory; delete the Worker, the container application and its image when the runs are done.
+{
+  "name": "ft-bench-runner",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-10-11",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "observability": { "enabled": true },
+  "vars": { "FT_BASE": "https://staging.firetrident.com" },
+  // Secrets (wrangler secret bulk): FT_TOKEN, CF_ACCESS_CLIENT_ID, CF_ACCESS_CLIENT_SECRET, RUNNER_KEY.
+  "containers": [
+    {
+      "class_name": "BenchRunner",
+      "image": "./Dockerfile",
+      "max_instances": 1,
+      // 2 vCPU, 8 GiB, 16 GB disk: 1,000 agents hold a git mirror, a cat-file process and thousands of connections.
+      "instance_type": "standard-3"
+    }
+  ],
+  "durable_objects": { "bindings": [{ "name": "RUNNER", "class_name": "BenchRunner" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["BenchRunner"] }]
+}

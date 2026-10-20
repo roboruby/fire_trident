@@ -1,0 +1,7 @@
+{
+  "name": "ft-bench-platform-runner",
+  "private": true,
+  "type": "module",
+  "description": "Throwaway Worker + Container that runs the contention-scale scenario from inside Cloudflare (see README.md)",
+  "dependencies": { "@cloudflare/containers": "0.3.7" }
+}

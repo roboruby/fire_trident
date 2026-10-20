@@ -1,0 +1,46 @@
+[runner] 2026-10-20T02:12:00.260Z FT_BENCH_CONNECTIONS=256 UV_THREADPOOL_SIZE=16 node --import /app/dispatcher.mjs /app/packages/bench/src/scenarios/contention-scale.ts --base https://staging.firetrident.com --scenario contention-scale --agents 1000 --intents 3000 --out /data/results/platform
+[dispatcher] global fetch shares at most 256 keep-alive connections per origin (connect timeout 30 s, DNS cached 120 s)
+[02:12:00] contention-scale: node packages/bench/src/scenarios/contention-scale.ts --base https://staging.firetrident.com --scenario contention-scale --agents 1000 --intents 3000 --out /data/results/platform
+[02:12:00] note: FT_MEGAFILE is on (for some colony): the megafile alarm may hold a hot file for a split no agent takes: changes to it then go back until the hold lifts
+[02:12:00] note: FT_ALREADY_ON_TRUNK is on (for some colony): a change whose every write is on trunk already closes without a commit when it read those files at trunk's version or not at all; an increment made from a stale read goes back instead
+[02:12:00] note: FT_PRELAND is on (for some colony): tests run before each landing
+[02:12:00] note: FT_TRUNK_TESTS is on (for some colony): trunk certification runs the generated test after landings
+[02:12:00] deployment build 9f00539; flags on: FT_A2A, FT_ACCOUNTS, FT_AGENT_CALL_BUDGET, FT_AGE_CAP, FT_ALREADY_ON_TRUNK, FT_BISECT, FT_CREDIT_TRAILERS, FT_CULPRITS, FT_DEFAULT_SPEND_CAP, FT_DELETION_GUARD, FT_ESCALATION_BATCH, FT_FIELD_GUIDE, FT_GOAL_CONFLICT, FT_HEADS_UP, FT_HEDGE, FT_INHIBIT_STRONGEST, FT_INLINE, FT_INTENT_SPEND, FT_LESSON_SCOPE, FT_MEGAFILE, FT_MERGE_INSERTIONS, FT_MODEL_STEPUP, FT_PERSON_WAIT, FT_PRELAND, FT_PUBLIC_GIT, FT_PUBLIC_MCP, FT_QUOTED_ACCEPTANCE, FT_RED_BRAKE, FT_REPRODUCE, FT_RESOLVER, FT_RETURN_HUNKS, FT_REVIEW_VIEW, FT_TEXT_MERGE, FT_TRUNK_TESTS, FT_TWINS, FT_VIRTUAL_CHECKOUT
+[02:12:20] created colony contention-scale-1000 (region depth 2, pool 1008)
+[02:12:20] live feed connected
+[02:12:55] seeded 413 files in 7 landings (34.7 s) at b8dd26fec5e6
+[02:12:55] 1000 agents on 3000 tasks (ramp 10 s, timeout 1800 s)
+[02:13:05] 10 s: 14 of 3000 tasks landed, 1 changes back, 176 holding (peak 180), 0 failed calls
+[02:13:15] 20 s: 43 of 3000 tasks landed, 83 changes back, 146 holding (peak 193), 0 failed calls
+[02:13:25] 30 s: 70 of 3000 tasks landed, 98 changes back, 182 holding (peak 193), 0 failed calls
+[02:13:35] 40 s: 92 of 3000 tasks landed, 158 changes back, 186 holding (peak 197), 0 failed calls
+[02:13:45] 50 s: 113 of 3000 tasks landed, 219 changes back, 181 holding (peak 198), 0 failed calls
+[02:13:55] 60 s: 140 of 3000 tasks landed, 295 changes back, 124 holding (peak 198), 0 failed calls
+[02:14:05] 70 s: 161 of 3000 tasks landed, 348 changes back, 121 holding (peak 198), 0 failed calls
+[02:14:15] 80 s: 177 of 3000 tasks landed, 436 changes back, 98 holding (peak 198), 0 failed calls
+[02:14:25] 90 s: 194 of 3000 tasks landed, 504 changes back, 107 holding (peak 198), 0 failed calls
+[02:14:35] 100 s: 212 of 3000 tasks landed, 559 changes back, 142 holding (peak 198), 0 failed calls
+[02:14:45] 110 s: 248 of 3000 tasks landed, 636 changes back, 127 holding (peak 198), 0 failed calls
+[02:14:55] 120 s: 311 of 3000 tasks landed, 733 changes back, 94 holding (peak 198), 0 failed calls
+[02:15:05] 130 s: 349 of 3000 tasks landed, 782 changes back, 133 holding (peak 198), 0 failed calls
+[02:15:15] 140 s: 404 of 3000 tasks landed, 869 changes back, 87 holding (peak 198), 0 failed calls
+[02:15:25] 150 s: 460 of 3000 tasks landed, 938 changes back, 127 holding (peak 198), 0 failed calls
+[02:15:35] 160 s: 499 of 3000 tasks landed, 1041 changes back, 116 holding (peak 198), 0 failed calls
+[02:15:45] 170 s: 555 of 3000 tasks landed, 1118 changes back, 125 holding (peak 198), 0 failed calls
+[02:15:55] 180 s: 597 of 3000 tasks landed, 1221 changes back, 144 holding (peak 198), 0 failed calls
+[02:16:05] 190 s: 652 of 3000 tasks landed, 1333 changes back, 156 holding (peak 198), 0 failed calls
+[02:16:15] 200 s: 710 of 3000 tasks landed, 1443 changes back, 183 holding (peak 198), 0 failed calls
+[02:16:25] 210 s: 786 of 3000 tasks landed, 1591 changes back, 183 holding (peak 215), 0 failed calls
+[02:16:35] 220 s: 865 of 3000 tasks landed, 1747 changes back, 176 holding (peak 215), 0 failed calls
+[02:16:45] 230 s: 955 of 3000 tasks landed, 1929 changes back, 120 holding (peak 215), 0 failed calls
+[02:16:55] 240 s: 1057 of 3000 tasks landed, 2018 changes back, 24 holding (peak 215), 0 failed calls
+[02:17:05] 250 s: 1101 of 3000 tasks landed, 2064 changes back, 22 holding (peak 215), 0 failed calls
+[02:17:15] 260 s: 1130 of 3000 tasks landed, 2118 changes back, 18 holding (peak 215), 0 failed calls
+[02:17:25] 270 s: 1153 of 3000 tasks landed, 2173 changes back, 5 holding (peak 215), 0 failed calls
+[02:17:33] agents done after 278.4 s: 1168 of 3000 tasks landed, 2201 changes came back
+[02:17:37] PASS  every file parses: 413 files at b7fa1eb4d5d0: all parse; the tree holds the seeded files and no others.
+[02:17:37] PASS  registry entries appear exactly once: 125 landed register tasks: 0 duplicated, 0 missing, 0 present without a landing, 0 seed entries gone, 0 unknown.
+[02:17:37] PASS  every counter equals its landed increments: 40 counters, 53 landed increments, counters adding up to 53: 0 lost updates, 0 counted twice.
+[02:17:37] PASS  no increment was closed as already on trunk: No increment came back as already on trunk.
+[02:17:37] PASS  every read-own constant matches the trunk it landed on: 1,000 landed read-own changes: 0 constants differ from the registry they landed on, 0 landed on a version they did not read, 0 landed behind a writer of their file in the same commit, 0 set without a landing.
+[02:17:37] FAIL  the agents' outcomes agree with the lineage notes: 1,168 proposals reported landed, 1,178 proposals of this run in the notes: 0 reported landed but not in a note, 10 in a note but reported otherwise, 0 tasks landed twice.

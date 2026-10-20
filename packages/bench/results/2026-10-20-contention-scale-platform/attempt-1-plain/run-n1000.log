@@ -1,0 +1,25 @@
+[01:56:53] contention-scale: node packages/bench/src/scenarios/contention-scale.ts --base https://staging.firetrident.com --scenario contention-scale --agents 1000 --intents 3000 --out /data/results/platform
+[01:56:54] note: FT_MEGAFILE is on (for some colony): the megafile alarm may hold a hot file for a split no agent takes: changes to it then go back until the hold lifts
+[01:56:54] note: FT_ALREADY_ON_TRUNK is on (for some colony): a change whose every write is on trunk already closes without a commit when it read those files at trunk's version or not at all; an increment made from a stale read goes back instead
+[01:56:54] note: FT_PRELAND is on (for some colony): tests run before each landing
+[01:56:54] note: FT_TRUNK_TESTS is on (for some colony): trunk certification runs the generated test after landings
+[01:56:54] deployment build 9f00539; flags on: FT_A2A, FT_ACCOUNTS, FT_AGENT_CALL_BUDGET, FT_AGE_CAP, FT_ALREADY_ON_TRUNK, FT_BISECT, FT_CREDIT_TRAILERS, FT_CULPRITS, FT_DEFAULT_SPEND_CAP, FT_DELETION_GUARD, FT_ESCALATION_BATCH, FT_FIELD_GUIDE, FT_GOAL_CONFLICT, FT_HEADS_UP, FT_HEDGE, FT_INHIBIT_STRONGEST, FT_INLINE, FT_INTENT_SPEND, FT_LESSON_SCOPE, FT_MEGAFILE, FT_MERGE_INSERTIONS, FT_MODEL_STEPUP, FT_PERSON_WAIT, FT_PRELAND, FT_PUBLIC_GIT, FT_PUBLIC_MCP, FT_QUOTED_ACCEPTANCE, FT_RED_BRAKE, FT_REPRODUCE, FT_RESOLVER, FT_RETURN_HUNKS, FT_REVIEW_VIEW, FT_TEXT_MERGE, FT_TRUNK_TESTS, FT_TWINS, FT_VIRTUAL_CHECKOUT
+[01:57:17] created colony contention-scale-1000 (region depth 2, pool 1008)
+[01:57:17] live feed connected
+[01:57:53] seeded 413 files in 7 landings (36.4 s) at d1e166292ae9
+[01:57:53] 1000 agents on 3000 tasks (ramp 10 s, timeout 1800 s)
+[01:58:03] 10 s: 14 of 3000 tasks landed, 12 changes back, 157 holding (peak 162), 0 failed calls
+[01:58:13] 20 s: 39 of 3000 tasks landed, 65 changes back, 177 holding (peak 185), 322 failed calls
+[01:58:13] stopping early: error rate 39% over 5 s at 20 s
+[01:58:23] 30 s: 66 of 3000 tasks landed, 100 changes back, 187 holding (peak 230), 506 failed calls
+[01:58:33] 40 s: 100 of 3000 tasks landed, 173 changes back, 78 holding (peak 230), 506 failed calls
+[01:58:42] agents done after 48.8 s: 129 of 3000 tasks landed, 222 changes came back
+[01:58:45] PASS  every file parses: 413 files at 72a78ae62ad8: all parse; the tree holds the seeded files and no others.
+[01:58:45] PASS  registry entries appear exactly once: 79 landed register tasks: 0 duplicated, 0 missing, 0 present without a landing, 0 seed entries gone, 0 unknown.
+[01:58:45] PASS  every counter equals its landed increments: 40 counters, 45 landed increments, counters adding up to 45: 0 lost updates, 0 counted twice.
+[01:58:45] PASS  no increment was closed as already on trunk: No increment came back as already on trunk.
+[01:58:45] PASS  every read-own constant matches the trunk it landed on: 6 landed read-own changes: 0 constants differ from the registry they landed on, 0 landed on a version they did not read, 0 landed behind a writer of their file in the same commit, 0 set without a landing.
+[01:58:45] FAIL  the agents' outcomes agree with the lineage notes: 129 proposals reported landed, 130 proposals of this run in the notes: 0 reported landed but not in a note, 1 in a note but reported otherwise, 0 tasks landed twice.
+[02:04:17] deleted colony contention-scale-1000
+[02:04:17] 129 of 3000 tasks landed in 130 commits (168.9 landings and 168.9 changes a minute); propose to landed p50 17926 ms, p95 30678 ms; 222 came back; peak holders 230 (31 on one hot file)
+[02:04:17] SOME CHECKS FAILED
