@@ -70,8 +70,8 @@ describe("ft intent show", () => {
     expect(text).toContain("    ○ Certified           not certified yet: trunk certification is off for this colony");
     expect(text).toContain("    ↗ Taken back          outside FireTrident: push certified as a branch and open a pull request");
     expect(text).toContain("                          git push <your-origin> certified:refs/heads/firetrident/certified");
-    expect(text).toContain("    ↗ Merged by a person  outside FireTrident: a person merges it on your GitHub");
-    expect(text).toContain("FireTrident lands to its own trunk and never merges into your repository; the last two steps happen on your GitHub.");
+    expect(text).toContain("    ↗ Merged by a person  outside FireTrident: a person merges it in your repository");
+    expect(text).toContain("FireTrident lands to its own trunk and never merges into your repository; the last two steps happen in your repository.");
     expect(text).toContain("  changes   prp_1 Returned after confirmed: stale: src/a.ts changed since you read it");
   });
 
@@ -115,7 +115,7 @@ describe("ft why", () => {
     // Certified by its own note, or by the status read's newest green commit landed after it.
     const own = formatWhy({ path: "src/a.ts" }, [entry({ status: "green", runner: "node:test" })], {}, c, NOW);
     expect(own).toContain("→ ✓ certified → ↗ taken back");
-    expect(own).toContain("           next: push certified to your GitHub as a branch and open a pull request: git push <your-origin> certified:refs/heads/firetrident/certified");
+    expect(own).toContain("           next: push certified to your repository as a branch and open a pull request: git push <your-origin> certified:refs/heads/firetrident/certified");
     const later = formatWhy({ path: "src/a.ts" }, [entry()], { greenSha: GREEN, landings: [{ ...entry().landing, id: "lnd_2", trunkSha: GREEN, at: NOW }] }, c, NOW);
     expect(later).toContain("→ ✓ certified → ↗ taken back");
     // A test row saying the colony has no tests this platform can run.

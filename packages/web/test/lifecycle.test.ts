@@ -78,18 +78,18 @@ describe("the strip on a Why card", () => {
     expect(out).toMatch(/<li class="life-step is-done is-reached" aria-current="step">.*Certified/);
     expect(out).toContain('class="life-step is-outside"');
     expect(out).toContain("Next, outside FireTrident:");
-    expect(out).toContain("FireTrident lands to its own trunk and never merges into your repository; the last two steps happen on your GitHub.");
+    expect(out).toContain("FireTrident lands to its own trunk and never merges into your repository; the last two steps happen in your repository.");
     // In the simulator there is no API to link to; the take-back commands are the landing page's.
     const mock = html(createElement(WhyLifecycles, { store: s, backend: { mode: "mock" } as unknown as Backend, entry: entry(), proposals: entry().note.proposals, auto: false }));
     expect(mock).not.toContain("/api/colonies");
     expect(mock).toContain('href="/#take-back"');
   });
 
-  it("lists every step on demand, with the take-back command, and never draws GitHub's steps as done", () => {
+  it("lists every step on demand, with the take-back command, and never draws the repository's steps as done", () => {
     const strip = whyLifecycle(store({ greenSha: GREEN }), entry().landing, entry().note.proposals[0]!, entry().note, null);
     const out = html(createElement(LifecycleStrip, { s: strip, href: () => null, now: NOW, open: true }));
     expect(out).toContain('<code class="life-cmd">git push &lt;your-origin&gt; certified:refs/heads/firetrident/certified</code>');
-    expect(out).toContain("outside FireTrident: a person merges it on your GitHub");
+    expect(out).toContain("outside FireTrident: a person merges it in your repository");
     expect(out).not.toMatch(/life-item is-done[^"]*"><span class="life-item-k"><span class="life-mark" aria-hidden="true">✓<\/span>Taken back/);
     expect(strip.steps.filter((x) => x.key === "taken-back" || x.key === "merged").map((x) => x.state)).toEqual(["outside", "outside"]);
   });

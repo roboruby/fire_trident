@@ -3,7 +3,7 @@ import { SITE } from "../landing/questions.ts";
 
 /**
  * The limits page (/limits, Limits.tsx): what you cannot do with FireTrident, why, what to do instead, and its status,
- * drawn from the honest limits in docs/results.md. The rows where GitHub, or wherever the repository lives, does better come first. Each row links
+ * drawn from the honest limits in docs/results.md. The rows where the service that hosts the repository does better come first. Each row links
  * a page of the site or gives a command that shows the limit or its workaround. Then what building on Artifacts taught
  * us (spike/RESULTS.md), each finding with the workaround the code uses.
  */
@@ -24,7 +24,7 @@ export type LimitCheck = { label: string; href: string } | { label: string; comm
 /** One limit in Why / Instead / Status form. */
 export interface Limit {
   id: string;
-  /** "forge": where GitHub (the team's repository host) does better; "colony": where a colony stops. */
+  /** "forge": where the service that hosts the repository does better; "colony": where a colony stops. */
   group: "forge" | "colony";
   /** What you cannot do, as a sentence starting with a verb ("Sign in, ..."). */
   cannot: string;
@@ -38,8 +38,8 @@ export interface Limit {
 export const GROUPS: ReadonlyArray<{ id: Limit["group"]; title: string; lede: string }> = [
   {
     id: "forge",
-    title: "Where GitHub is ahead",
-    lede: "A colony sits beside your GitHub, not in place of it. These are the things GitHub, or wherever your repository lives, does that FireTrident does not.",
+    title: "Where your code host is ahead",
+    lede: "A colony sits beside your codebase, not in place of it. These are the things the service that hosts your repository does that FireTrident does not.",
   },
   {
     id: "colony",
@@ -48,14 +48,14 @@ export const GROUPS: ReadonlyArray<{ id: Limit["group"]; title: string; lede: st
   },
 ];
 
-/** Every limit, the GitHub rows first (teams, pull requests, issues). */
+/** Every limit, the code host's rows first (teams, pull requests, issues). */
 export const LIMITS: readonly Limit[] = [
   {
     id: "accounts",
     group: "forge",
     cannot: "Run a colony as a team, or give a person a role.",
     why: "A person signs in with GitHub, by invite code or an approved request, owns up to three colonies and mints the tokens that let agents and reviewers work on them. A role belongs to a token, not to a person: there are no teams or organizations, no per-person permissions, and a colony has one owner.",
-    instead: "Mint a reviewer or agent token for each teammate from the colony's row on your account page, and keep teams and permissions on GitHub; reads need no account.",
+    instead: "Mint a reviewer or agent token for each teammate from the colony's row on your account page, and keep teams and permissions with your code host; reads need no account.",
     status: "planned",
     check: { label: "Sign in and mint a token for a teammate", href: "/account" },
   },
@@ -64,7 +64,7 @@ export const LIMITS: readonly Limit[] = [
     group: "forge",
     cannot: "Open a pull request against a colony, or comment on one line of a change.",
     why: "Agents send proposals: the files they read, the files they wrote, the evidence and what they did not verify. A deterministic proof, models and then a person decide each one, and a person approves, returns or rejects the whole change with a reason.",
-    instead: "Take the certified work back to GitHub as a branch and open the pull request there. Changes that reach a person show in the Review tab and in ft review, danger lines first.",
+    instead: "Take the certified work back to your repository as a branch and open the pull request there. Changes that reach a person show in the Review tab and in ft review, danger lines first.",
     status: "planned",
     check: { label: "Clone what a colony certified", command: `git clone -b certified ${SITE}/git/shortlinks.git` },
   },
@@ -73,7 +73,7 @@ export const LIMITS: readonly Limit[] = [
     group: "forge",
     cannot: "File an issue, label it, or talk it over in a thread.",
     why: "Work is an intent: a title, a why and the files it will touch, declared by a person, a rule or an agent and chosen by agents from the field. An intent keeps its revisions and an agent's report that it cannot be done as written, but no discussion.",
-    instead: "Talk it over in GitHub's issues, then give the colony the outcome: an intent with acceptance lines, or a rule when a pattern can find every case (each match becomes a need).",
+    instead: "Talk it over in your repository's issues, then give the colony the outcome: an intent with acceptance lines, or a rule when a pattern can find every case (each match becomes a need).",
     status: "unscheduled",
     check: { label: "The Hono run's intents, in the Intents tab", href: "/c/hono?replay=1" },
   },
@@ -82,7 +82,7 @@ export const LIMITS: readonly Limit[] = [
     group: "forge",
     cannot: "Keep a colony and your repository in step in both directions.",
     why: "A colony imports your repository once, from its URL. Nothing watches your repository afterwards, and FireTrident holds no credential that could push to it.",
-    instead: "Import again to start from your newest commits, and take the work back by hand: clone certified with stock git and push it to GitHub as a branch.",
+    instead: "Import again to start from your newest commits, and take the work back by hand: clone certified with stock git and push it to your repository as a branch.",
     status: "planned",
     check: { label: "The take-back commands", href: "/#take-back" },
   },

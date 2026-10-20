@@ -68,7 +68,7 @@ describe("a landed change", () => {
     expect(s.text).toBe("Certified: certified commit ccccccc includes it; next, outside FireTrident: push certified as a branch and open a pull request");
   });
 
-  it("never marks the two steps on the team's GitHub as done, and gives the take-back command", () => {
+  it("never marks the two steps in the team's repository as done, and gives the take-back command", () => {
     const s = changeLifecycle(landed);
     expect(at(s, "taken-back")).toEqual({
       key: "taken-back",
@@ -78,9 +78,9 @@ describe("a landed change", () => {
       command: TAKE_BACK_PUSH,
       link: { kind: "take-back", id: "take-back" },
     });
-    expect(at(s, "merged")).toMatchObject({ label: "Merged by a person", state: "outside", text: "outside FireTrident: a person merges it on your GitHub" });
+    expect(at(s, "merged")).toMatchObject({ label: "Merged by a person", state: "outside", text: "outside FireTrident: a person merges it in your repository" });
     expect(TAKE_BACK_PUSH).toBe("git push <your-origin> certified:refs/heads/firetrident/certified");
-    expect(LIFECYCLE_CAPTION).toBe("FireTrident lands to its own trunk and never merges into your repository; the last two steps happen on your GitHub.");
+    expect(LIFECYCLE_CAPTION).toBe("FireTrident lands to its own trunk and never merges into your repository; the last two steps happen in your repository.");
   });
 
   it("stops at landed while no certification includes it, and says why", () => {

@@ -13,7 +13,7 @@ import { parseRoute } from "../src/route.ts";
 
 /**
  * A judge's first five minutes outside the colony page: the limits page (Why / Instead / Status, the rows where a team's
- * GitHub is ahead first, what Artifacts taught us), the judging-axes table, the take-back commands and the pitch line.
+ * the code host is ahead first, what Artifacts taught us), the judging-axes table, the take-back commands and the pitch line.
  */
 
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
@@ -29,7 +29,7 @@ describe("the limits page", () => {
     expect(parseRoute("/", "")).toEqual({ kind: "landing" });
   });
 
-  it("puts the rows where GitHub is ahead first: no teams, no pull requests, no issues", () => {
+  it("puts the rows where the code host is ahead first: no teams, no pull requests, no issues", () => {
     expect(GROUPS.map((g) => g.id)).toEqual(["forge", "colony"]);
     expect(LIMITS.slice(0, 3).map((l) => l.id)).toEqual(["accounts", "pull-requests", "issues"]);
     const lastForge = LIMITS.map((l) => l.group).lastIndexOf("forge");
@@ -59,7 +59,7 @@ describe("the limits page", () => {
       expect(out).toContain(`<dt>Why</dt><dd>${html(l.why)}</dd><dt>Instead</dt><dd>${html(l.instead)}</dd><dt>Status</dt>`);
       expect(out).toContain(`<span class="lm-status lm-status-${l.status}">${STATUS_LABEL[l.status]}</span>`);
     }
-    expect(out.indexOf("Where GitHub is ahead")).toBeLessThan(out.indexOf("Where a colony stops"));
+    expect(out.indexOf("Where your code host is ahead")).toBeLessThan(out.indexOf("Where a colony stops"));
     expect(out.match(/<article class="lm-row"/g)).toHaveLength(LIMITS.length);
   });
 
@@ -147,7 +147,7 @@ describe("take the work back, and the pitch", () => {
   it("shows the pitch line in the hero, the take-back section under Try it, and the axes' checks inside the answers", () => {
     // The landing page draws a live colony in its hero, so it is read as source here; its sections render above.
     const landing = read("../src/landing/Landing.tsx");
-    expect(PITCH).toBe("A colony sits beside your GitHub.");
+    expect(PITCH).toBe("A colony sits beside your codebase.");
     const h1 = landing.indexOf('<h1 className="l-h1">A colony, not a queue.</h1>');
     const pitch = landing.indexOf('<p className="l-pitch">\n            <b>{PITCH}</b> {PITCH_MORE}\n          </p>');
     expect(h1).toBeGreaterThan(0);

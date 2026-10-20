@@ -2,16 +2,16 @@ import { SITE } from "./questions.ts";
 
 /**
  * The landing page's table of how FireTrident answers each judging axis (Axes.tsx), the pitch line, and the commands
- * that take a colony's certified work back to the team's GitHub (TakeBack.tsx). docs/mechanisms.md carries the same table:
+ * that take a colony's certified work back to the team's repository (TakeBack.tsx). docs/mechanisms.md carries the same table:
  * axesMarkdown() writes it, word for word, with links to the public site.
  */
 
-/** The pitch, where the landing page pitches: a colony sits beside the team's GitHub, not in place of it. */
-export const PITCH = "A colony sits beside your GitHub.";
+/** The pitch, where the landing page pitches: a colony sits beside the team's codebase, not in place of it. */
+export const PITCH = "A colony sits beside your codebase.";
 
 /** What the pitch means, in what exists today: give it a target, it converges and certifies, and the work goes back as a branch. */
 export const PITCH_MORE =
-  "You don't send it pull requests: you give it a target, and it converges, certifies and tells you why. What it certified goes back to your GitHub as a branch.";
+  "You don't send it pull requests: you give it a target, and it converges, certifies and tells you why. What it certified goes back to your repository as a branch.";
 
 /** How a row is checked: a page of the site (a live replay or an in-browser scene), or a command to run. */
 export type AxisCheck = { label: string; href: string } | { label: string; command: string };
@@ -84,14 +84,14 @@ export const TAKE_BACK_COLONY = "shortlinks";
 
 /**
  * Take the work back: clone what the colony certified with stock git, bring its lineage notes, push both to the
- * team's GitHub (the commit's trailers travel with it, the notes with their own ref), then open a pull request there.
+ * team's repository (the commit's trailers travel with it, the notes with their own ref), then open a pull request there.
  */
 export const TAKE_BACK_COMMANDS = [
   "# What the colony certified, with stock git and no account",
   `git clone -b certified ${SITE}/git/${TAKE_BACK_COLONY}.git && cd ${TAKE_BACK_COLONY}`,
   "# Its lineage notes (each commit already carries its FT-* trailers)",
   "git fetch origin refs/notes/firetrident:refs/notes/firetrident",
-  "# Push both to your GitHub: certified as a branch, the notes beside it",
+  "# Push both to your repository: certified as a branch, the notes beside it",
   "git push <your-origin> certified:refs/heads/firetrident/certified",
   "git push <your-origin> refs/notes/firetrident",
   "# Then open a pull request from firetrident/certified on GitHub",

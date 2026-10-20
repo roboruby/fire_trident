@@ -10,10 +10,10 @@ import "./lifecycle.css";
  * The lifecycle strip (core/lifecycle.ts, lifecycle.ts): one row of steps from declared to merged by a person, each
  * linked to its evidence, the step reached highlighted, and where a change left the path; under it the reached step's
  * words, what comes next, the caption, and every step in a list a person can open. The last two steps happen in the
- * team's GitHub and are never drawn as done. The row wraps on a narrow screen and the list stacks.
+ * team's repository and are never drawn as done. The row wraps on a narrow screen and the list stacks.
  */
 
-/** Each state's mark: done, not yet, on the team's GitHub, does not apply. */
+/** Each state's mark: done, not yet, in the team's repository, does not apply. */
 const MARK: Record<LifecycleStep["state"], string> = { done: "✓", todo: "○", outside: "↗", none: "–" };
 
 /** Link text or plain text, as the step's evidence allows. */
