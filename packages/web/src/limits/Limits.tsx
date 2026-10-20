@@ -48,7 +48,7 @@ export function Limits() {
         <div className="l-kicker">Limits</div>
         <h1 className="l-h2 lm-h1">What FireTrident cannot do yet.</h1>
         <p className="l-section-lede">
-          Each row says what you cannot do, why, what to do instead, and whether it is planned, waits on Cloudflare, or is not scheduled, with a page or a command that shows it. The rows where a team&apos;s current forge does better come first.
+          Each row says what you cannot do, why, what to do instead, and whether it is planned, waits on Cloudflare, or is not scheduled, with a page or a command that shows it. The rows where GitHub, or wherever your repository lives, does better come first.
         </p>
       </section>
 
