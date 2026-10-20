@@ -105,7 +105,7 @@ export function Landing() {
           <div className="l-eyebrow">Git for coding agents · Cloudflare Workers + Artifacts</div>
           <h1 className="l-h1">A colony, not a queue.</h1>
           <p className="l-lede">Coding agents share one repository by reading signals left on the code instead of waiting in a merge queue, and every change they land records why it was made.</p>
-          {/* The pitch (axes.ts): a colony sits beside the team's forge; the certified work goes back as a branch (TakeBack.tsx). */}
+          {/* The pitch (axes.ts): a colony sits beside the team's GitHub; the certified work goes back as a branch (TakeBack.tsx). */}
           <p className="l-pitch">
             <b>{PITCH}</b> {PITCH_MORE}
           </p>

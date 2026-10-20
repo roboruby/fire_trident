@@ -35,7 +35,7 @@ export function LimitRow({ limit }: { limit: Limit }) {
   );
 }
 
-/** The limits page (/limits): the rows where a team's forge does better first, then where a colony stops, then what Artifacts taught us. */
+/** The limits page (/limits): the rows where GitHub does better first, then where a colony stops, then what Artifacts taught us. */
 export function Limits() {
   useEffect(() => {
     document.title = "Limits · FireTrident";

@@ -89,7 +89,7 @@ a.life-chip:focus-visible {
   box-shadow: 0 0 0 1px rgba(31, 224, 142, 0.25);
 }
 
-/* The forge's steps: never done here. */
+/* GitHub's steps: never done here. */
 .life-step.is-outside .life-chip {
   border-style: dashed;
   color: var(--text-3);

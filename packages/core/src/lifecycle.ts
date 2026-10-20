@@ -16,7 +16,7 @@ import { shortModel } from "./testdelta.ts";
  *   certified  the green certification that includes it, "not certified yet", or "no tests this platform can run"
  *   taken back pushing `certified` to the team's origin as a branch and opening a pull request: FireTrident cannot see
  *              this, so the step is always shown as outside FireTrident, with the command, and never as done
- *   merged     a person merging it in the team's forge: outside FireTrident too
+ *   merged     a person merging it on the team's GitHub: outside FireTrident too
  *
  * Off the path: returned (with the reason and the landing that beat it), escalated (waiting for a person), withdrawn,
  * and reaped (the closure ledger took the intent back from a silent agent). The worker reads the facts from what the
@@ -43,7 +43,7 @@ export const LIFECYCLE_LABEL: Record<LifecycleStepKey, string> = {
 };
 
 /**
- * `done`: the change reached it; `todo`: not yet; `outside`: it happens in the team's forge, which FireTrident cannot
+ * `done`: the change reached it; `todo`: not yet; `outside`: it happens on the team's GitHub, which FireTrident cannot
  * see, so it is never done here; `none`: it does not apply (no tests this platform can run).
  */
 export type LifecycleStepState = "done" | "todo" | "outside" | "none";
@@ -117,7 +117,7 @@ export interface IntentLifecycle {
 }
 
 /** What every strip says under it. */
-export const LIFECYCLE_CAPTION = "FireTrident lands to its own trunk and never merges into your repository; the last two steps happen in your forge.";
+export const LIFECYCLE_CAPTION = "FireTrident lands to its own trunk and never merges into your repository; the last two steps happen on your GitHub.";
 
 /** The take-back command, run in a clone of the colony's `certified` branch (git clone -b certified <site>/git/<colony>.git). */
 export const TAKE_BACK_PUSH = "git push <your-origin> certified:refs/heads/firetrident/certified";
@@ -368,7 +368,7 @@ export function changeLifecycle(f: LifecycleFacts): ChangeLifecycle {
     step("certified", "todo", `not certified yet${cert?.reason ? `: ${clip(cert.reason, 120)}` : ""}`, { link: { kind: "certification", id: landing.id } });
   }
   step("taken-back", "outside", "outside FireTrident: push certified as a branch and open a pull request", { command: TAKE_BACK_PUSH, link: { kind: "take-back", id: "take-back" } });
-  step("merged", "outside", "outside FireTrident: a person merges it in your forge");
+  step("merged", "outside", "outside FireTrident: a person merges it on your GitHub");
 
   let reached: LifecycleStepKey = "declared";
   for (const s of steps) if (s.state === "done") reached = s.key;

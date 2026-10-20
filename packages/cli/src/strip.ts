@@ -23,7 +23,7 @@ import {
  * The lifecycle strip in the CLI (lifecycle.ts, a copy of core's, words it): `ft intent show` reads the intent's strip
  * (GET /api/colonies/:id/intents/:iid/lifecycle, a public read) and prints a row per step with its evidence and time,
  * where a change left the path, the caption, and the intent's other changes; `ft why` prints each landed change's strip
- * in one line from its lineage note, and what comes next. The last two steps happen in the team's forge and are never
+ * in one line from its lineage note, and what comes next. The last two steps happen on the team's GitHub and are never
  * marked done.
  */
 
@@ -32,7 +32,7 @@ export function lifecycleRequest(colony: string, intentId: string): ApiRequest {
   return { method: "GET", path: colonyPath(colony, `/intents/${encodeURIComponent(intentId)}/lifecycle`) };
 }
 
-/** Each state's mark: done, not yet, in the team's forge, does not apply. */
+/** Each state's mark: done, not yet, on the team's GitHub, does not apply. */
 const MARK: Record<LifecycleStep["state"], string> = { done: "✓", todo: "○", outside: "↗", none: "–" };
 
 /** Text from the server as one terminal line: no control characters. */
@@ -138,7 +138,7 @@ export function whyLifecycleRows(landing: Landing, entry: unknown, certification
   const intent = typeof id === "string" ? ctx.intents?.get(id) : undefined;
   const s = changeLifecycle(noteLifecycleFacts(landing, entry, { ...(intent ? { createdAt: intent.createdAt } : {}), certified: certifiedFor(landing, certification, ctx) }));
   const cert = s.steps.find((x) => x.key === "certified");
-  const next = cert?.state === "done" ? `${c.dim("next: push certified to your forge as a branch and open a pull request:")} ${TAKE_BACK_PUSH}` : c.dim(plain(cert?.text ?? ""));
+  const next = cert?.state === "done" ? `${c.dim("next: push certified to your GitHub as a branch and open a pull request:")} ${TAKE_BACK_PUSH}` : c.dim(plain(cert?.text ?? ""));
   return [
     { k: "path", v: stripLine(s, c) },
     { k: "", v: next },

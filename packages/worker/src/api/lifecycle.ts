@@ -7,7 +7,7 @@ import type { ApiEnv } from "./app.ts";
 /**
  * An intent's lifecycle strip (colony/lifecycle.ts; registered by createApi). No flag: a read that changes nothing.
  *   GET /colonies/:id/intents/:iid/lifecycle   declared, claimed, proposed, confirmed, landed and certified, each with its
- *                                              evidence and time, the two steps that happen in the team's forge (never
+ *                                              evidence and time, the two steps that happen on the team's GitHub (never
  *                                              done here), and where a change left the path (returned, escalated,
  *                                              withdrawn, reaped): for the change the intent stands on now and each of its
  *                                              changes, newest first. Public, like the intent's own read.
