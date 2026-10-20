@@ -101,7 +101,7 @@
         "git log --notes=firetrident -1",
         "",
         "# Check that note against its commit's FT-Note digest: prints intact",
-        "curl -fsSLO {repo}/raw/main/scripts/verify_note.mjs",
+        "curl -fsSLO https://firetrident.com/docs/files/scripts/verify_note.mjs",
         "node verify_note.mjs HEAD"
       ]
     }

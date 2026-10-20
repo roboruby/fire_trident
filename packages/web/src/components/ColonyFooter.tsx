@@ -6,7 +6,7 @@ export function ColonyFooter() {
   return (
     <footer className="app-foot">
       <a href="/limits">What FireTrident cannot do yet</a>
-      <a href="/#axes">How it answers the judging axes</a>
+      <a href="/#questions">How it answers the questions</a>
       <a href="/#take-back">Take the work back</a>
       <a href="/">All colonies</a>
     </footer>
