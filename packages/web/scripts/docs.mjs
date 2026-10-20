@@ -1,9 +1,11 @@
 // The documentation pages of the site. After `vite build`, the repository's markdown (the README, docs/, the agent
-// guides, the Artifacts spike, the changelog, contributing and security notes, and every measured run's README) is
-// rendered into dist/docs/<page>/index.html, so firetrident.com/docs/... serves the documents of the deployed build
-// rather than the repository's. Links between documents become links between pages; links to files the site does not
-// publish (logs, JSON, code) point at the repository. `npm run build` in this package runs it.
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+// guides, the Artifacts spike, the changelog, contributing and security notes, every measured run's README and every
+// other markdown file beside it) is rendered into dist/docs/<page>/index.html, so firetrident.com/docs/... serves the
+// documents of the deployed build rather than the repository's. Every file under packages/bench/results (logs, JSON,
+// reports) is published beside its run, and any other file a document links to (a script, the license) is published
+// under /docs/files/<repository path>, so no link leaves the site for something the site can hold; only a folder
+// outside the results still points at the repository. `npm run build` in this package runs it.
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, posix, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Marked } from "marked";
@@ -17,10 +19,31 @@ const RESULTS = "packages/bench/results";
 
 /** A markdown file's name as a path segment: "ARCHITECTURE.md" is "architecture", "AGENTS.template.md" is "agents-template". */
 const slug = (file) => file.replace(/\.md$/, "").replace(/\./g, "-").toLowerCase();
+/** A repository path as page segments: "sweep/coordination-10-agents.md" is "sweep/coordination-10-agents". */
+const slugPath = (p) => p.split("/").map(slug).join("/");
 
 /** The pages, by the repository path they come from: a markdown file, or a results folder with no README (a file list). */
 const pages = new Map();
 const put = (repo, path, group, label) => pages.set(repo, { repo, path, group, label });
+/** Every other file the site publishes, by repository path: where it is written under dist, and what a link to it says. */
+const files = new Map();
+
+/** Extensions a browser shows in place; a file with any other gets .txt appended so it reads as text instead of downloading. */
+const SHOWN = new Set(["html", "json", "js", "mjs", "css", "svg", "png", "jpg", "jpeg", "gif", "webp", "txt", "csv", "pdf"]);
+
+/** Where a repository file is published: beside its run for a results file, under /docs/files/ for anything else. */
+function publish(clean) {
+  if (files.has(clean)) return files.get(clean);
+  const under = clean.startsWith(`${RESULTS}/`) ? `/docs/results/${clean.slice(RESULTS.length + 1)}` : `/docs/files/${clean}`;
+  let base = posix.basename(under);
+  if (base === "index.html") base = "report.html"; // index.html is the folder's own page
+  const ext = base.includes(".") ? base.slice(base.lastIndexOf(".") + 1).toLowerCase() : "";
+  const at = posix.join(posix.dirname(under), SHOWN.has(ext) ? base : `${base}.txt`);
+  // The static assets serve x.html at /x and redirect /x.html there, so a link says /x.
+  const entry = { at, href: at.replace(/\.html$/, "") };
+  files.set(clean, entry);
+  return entry;
+}
 
 put("README.md", "/docs/", "start", "Start here");
 put("docs/try-it.md", "/docs/try-it/", "start", "Try it");
@@ -40,14 +63,37 @@ put("spike/RESULTS.md", "/docs/spike/", "evidence", "The Artifacts spike");
 put("CHANGELOG.md", "/docs/changelog/", "project", "Changelog");
 put("CONTRIBUTING.md", "/docs/contributing/", "project", "Contributing");
 if (existsSync(join(ROOT, "SECURITY.md"))) put("SECURITY.md", "/docs/security/", "project", "Security");
+
+/** The measured runs, newest first. */
 const runs = readdirSync(join(ROOT, RESULTS))
   .filter((d) => statSync(join(ROOT, RESULTS, d)).isDirectory())
   .sort()
   .reverse();
-for (const d of runs) {
-  const readme = `${RESULTS}/${d}/README.md`;
-  put(existsSync(join(ROOT, readme)) ? readme : `${RESULTS}/${d}`, `/docs/results/${d}/`, "runs", d);
+
+/**
+ * Every folder and file under the results: a README is its folder's page, another markdown file is a page of its own,
+ * a folder with no README is a file list, and every other file is published as it is.
+ */
+function walkResults(rel) {
+  const dir = rel ? `${RESULTS}/${rel}` : RESULTS;
+  const names = readdirSync(join(ROOT, dir)).sort();
+  if (rel) {
+    if (names.includes("README.md")) put(`${dir}/README.md`, `/docs/results/${rel}/`, "runs", rel);
+    else put(dir, `/docs/results/${rel}/`, "runs", rel);
+  }
+  for (const name of names) {
+    const repo = `${dir}/${name}`;
+    const sub = rel ? `${rel}/${name}` : name;
+    if (statSync(join(ROOT, repo)).isDirectory()) {
+      walkResults(sub);
+      continue;
+    }
+    if (name === "README.md") continue;
+    if (name.endsWith(".md")) put(repo, `/docs/results/${slugPath(sub)}/`, "runs", sub.replace(/\.md$/, ""));
+    else publish(repo);
+  }
 }
+walkResults("");
 
 /** The page a repository path names: the file itself, or a folder's README, or a folder published as a file list. */
 function pageFor(repoPath) {
@@ -55,28 +101,37 @@ function pageFor(repoPath) {
   return pages.get(clean) ?? pages.get(`${clean}/README.md`) ?? null;
 }
 
-/** Where a link in `fromRepo` goes on the site: a page, the repository, or where it already pointed. */
+/**
+ * Where a repository path lives on the site: its page, its published file, or (a folder outside the results, a path
+ * that does not exist) the repository. A markdown file met here for the first time becomes a page under /docs/files/.
+ */
+function place(clean, hash) {
+  if (clean === RESULTS) return "/docs/results/#every-measured-run";
+  const page = pageFor(clean);
+  if (page) return page.path + hash;
+  const onDisk = join(ROOT, clean);
+  if (!existsSync(onDisk)) return `${REPO}/blob/main/${clean}${hash}`;
+  if (statSync(onDisk).isDirectory()) return `${REPO}/tree/main/${clean}`;
+  if (clean.endsWith(".md")) {
+    put(clean, `/docs/files/${slugPath(clean)}/`, "files", clean);
+    return pages.get(clean).path + hash;
+  }
+  return publish(clean).href + hash;
+}
+
+/** Where a link in `fromRepo` goes on the site: a page, a published file, the repository, or where it already pointed. */
 function rewrite(fromRepo, href) {
   if (!href || href.startsWith("#") || /^mailto:/i.test(href)) return href;
   if (/^https?:/i.test(href)) {
     const m = /^https:\/\/github\.com\/roboruby\/fire_trident\/(?:blob|tree)\/main\/([^#?]*)(#.*)?$/.exec(href);
-    if (m) {
-      const page = pageFor(m[1]);
-      if (page) return page.path + (m[2] ?? "");
-    }
-    return href;
+    return m ? place(m[1].replace(/\/+$/, ""), m[2] ?? "") : href;
   }
   const hashAt = href.indexOf("#");
   const target = hashAt === -1 ? href : href.slice(0, hashAt);
   const hash = hashAt === -1 ? "" : href.slice(hashAt);
   if (target === "") return hash;
-  const abs = posix.normalize(posix.join(posix.dirname(fromRepo), target));
-  const clean = abs.replace(/\/+$/, "").replace(/^\.\//, "");
-  const page = pageFor(clean);
-  if (page) return page.path + hash;
-  const onDisk = join(ROOT, clean);
-  if (existsSync(onDisk) && statSync(onDisk).isDirectory()) return `${REPO}/tree/main/${clean}`;
-  return `${REPO}/blob/main/${clean}${hash}`;
+  const clean = posix.normalize(posix.join(posix.dirname(fromRepo), target)).replace(/\/+$/, "").replace(/^\.\//, "");
+  return place(clean, hash);
 }
 
 const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -152,7 +207,7 @@ article p,article li{color:var(--text-2)}article li{margin:4px 0}article strong{
 article code{font:13.5px var(--mono);padding:1px 5px;border-radius:5px;background:#131a26;color:var(--text)}article pre{overflow:auto;padding:14px 16px;border:1px solid var(--line);border-radius:10px;background:#0b1018}article pre code{padding:0;background:none;font-size:13px;line-height:1.55}
 article table{display:block;overflow-x:auto;border-collapse:collapse;margin:16px 0;font-size:14px}article th,article td{padding:8px 12px;border:1px solid var(--line);vertical-align:top;text-align:left}article th{color:var(--text);background:#0b1018}article td{color:var(--text-2)}
 article blockquote{margin:16px 0;padding:4px 16px;border-left:3px solid var(--line-2);color:var(--text-3)}article hr{border:0;border-top:1px solid var(--line);margin:32px 0}article img{max-width:100%}
-.runs{columns:2;column-gap:24px;font-size:14px}@media(max-width:640px){.runs{columns:1}}
+.runs,.files{columns:2;column-gap:24px;font-size:14px}@media(max-width:640px){.runs,.files{columns:1}}
 footer{max-width:880px;margin:0 auto;padding:0 24px 48px;font-size:13px;color:var(--text-3);border-top:1px solid var(--line)}footer p{margin:16px 0 0}
 `;
 
@@ -165,7 +220,7 @@ function strip(current) {
 }
 
 function html({ title, body, path, repo }) {
-  const source = repo ? `<p>This page is <code>${esc(repo)}</code> of the deployed build, rendered at build time. <a href="${REPO}/blob/main/${esc(repo)}" target="_blank" rel="noreferrer">The file in the repository</a>.</p>` : "";
+  const source = repo ? `<p>This page is <code>${esc(repo)}</code> of the deployed build, rendered at build time.</p>` : "";
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -194,33 +249,58 @@ function titleOf(md, label) {
   return m ? m[1].replace(/[*_`]/g, "") : label;
 }
 
-/** A results folder with no README: its files, each linked to the repository. */
+/** What a results folder holds, each entry linked to its page or its published file. */
+function folderList(repoDir) {
+  const names = readdirSync(join(ROOT, repoDir)).sort();
+  return names
+    .map((name) => {
+      const repo = `${repoDir}/${name}`;
+      const dir = statSync(join(ROOT, repo)).isDirectory();
+      return `<li><a href="${esc(place(repo, ""))}"><code>${esc(dir ? `${name}/` : name)}</code></a></li>`;
+    })
+    .join("\n");
+}
+
+/** A results folder with no README: its files. */
 function fileListPage(repoDir, label) {
-  const files = readdirSync(join(ROOT, repoDir)).sort();
-  const items = files.map((f) => `<li><a href="${REPO}/blob/main/${esc(`${repoDir}/${f}`)}" target="_blank" rel="noreferrer"><code>${esc(f)}</code></a></li>`).join("\n");
-  return `<h1 id="run">${esc(label)}</h1>\n<p>This run has no README; its logs and data are in the repository.</p>\n<ul>\n${items}\n</ul>\n`;
+  return `<h1 id="run">${esc(label)}</h1>\n<p>This folder has no README. Its logs and data:</p>\n<ul class="files">\n${folderList(repoDir)}\n</ul>\n`;
+}
+
+/** Under a run's README: everything beside it. */
+function inThisFolder(repoDir) {
+  return `<h2 id="in-this-folder">In this folder <a class="anchor" href="#in-this-folder" aria-hidden="true">#</a></h2>\n<ul class="files">\n${folderList(repoDir)}\n</ul>\n`;
 }
 
 /** Every measured run, newest first, appended to the results page. */
 function runsList() {
   const items = runs.map((d) => `<li><a href="/docs/results/${d}/">${esc(d)}</a></li>`).join("\n");
-  return `<h2 id="every-measured-run">Every measured run <a class="anchor" href="#every-measured-run" aria-hidden="true">#</a></h2>\n<p>Each run's README, newest first. Logs and data files are in the repository.</p>\n<ul class="runs">\n${items}\n</ul>\n`;
+  return `<h2 id="every-measured-run">Every measured run <a class="anchor" href="#every-measured-run" aria-hidden="true">#</a></h2>\n<p>Each run's README, newest first, with its logs and data files beside it.</p>\n<ul class="runs">\n${items}\n</ul>\n`;
 }
 
 if (!existsSync(DIST)) {
   console.error("docs: packages/web/dist is missing; run vite build first");
   process.exit(1);
 }
-let count = 0;
-for (const page of pages.values()) {
+// A page's links may bring in a markdown file the site did not list (place() adds it), so the pass runs until every
+// page it knows is written.
+const written = new Set();
+for (;;) {
+  const page = [...pages.values()].find((p) => !written.has(p.repo));
+  if (!page) break;
+  written.add(page.repo);
   const isDir = !page.repo.endsWith(".md");
   const md = isDir ? null : readFileSync(join(ROOT, page.repo), "utf8");
   const title = isDir ? page.label : titleOf(md, page.label);
   let body = isDir ? fileListPage(page.repo, page.label) : render(page.repo, md);
   if (page.repo === "docs/results.md") body += runsList();
+  if (page.repo.startsWith(`${RESULTS}/`) && page.repo.endsWith("/README.md")) body += inThisFolder(posix.dirname(page.repo));
   const dir = join(DIST, page.path);
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, "index.html"), html({ title, body, path: page.path, repo: isDir ? null : page.repo }));
-  count++;
 }
-console.log(`docs: ${count} pages under dist/docs`);
+for (const [repo, { at }] of files) {
+  const to = join(DIST, at);
+  mkdirSync(dirname(to), { recursive: true });
+  copyFileSync(join(ROOT, repo), to);
+}
+console.log(`docs: ${written.size} pages and ${files.size} files under dist/docs`);

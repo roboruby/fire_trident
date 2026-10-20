@@ -149,7 +149,7 @@ describe("the landing section", () => {
     expect(html).toContain('href="/c/hono?path=src/index.ts"');
     expect(html).not.toContain(`href="${SITE}/c/`);
     expect(html).toContain('href="/docs/results/2026-10-13-round2/"');
-    expect(html).toContain('href="https://github.com/roboruby/fire_trident/blob/main/scripts/verify_note.mjs" target="_blank" rel="noreferrer"');
+    expect(html).toContain('href="/docs/files/scripts/verify_note.mjs"');
   });
 
   it("gives the two commands as code to copy", () => {

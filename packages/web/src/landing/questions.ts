@@ -86,7 +86,7 @@ export const QUESTIONS: readonly Answer[] = [
       "Every landed commit carries a JSON lineage note in git (the intent, the rule and who approved it, the agent and its model, every decision, the files read and written) and the note's SHA-256 in its FT-Note trailer, so any git client can check it: on a stock clone of the production colony signed-notes on 2026-10-19, scripts/verify_note.mjs found 1 of 1 notes intact.",
     figure: "1 of 1",
     evidence: "Lineage notes checked from a stock clone, intact:",
-    link: { label: "scripts/verify_note.mjs", href: `${REPO}/blob/main/scripts/verify_note.mjs` },
+    link: { label: "scripts/verify_note.mjs", href: `${SITE}/docs/files/scripts/verify_note.mjs` },
     command: VERIFY_COMMANDS,
   },
   {

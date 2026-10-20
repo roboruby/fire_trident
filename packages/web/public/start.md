@@ -70,7 +70,7 @@ node ../verify_note.mjs HEAD --keys https://firetrident.com/.well-known/firetrid
 # prints intact, signed by 7980151ea697807b
 ```
 
-The script prints intact, altered or missing: https://github.com/roboruby/fire_trident/blob/main/scripts/verify_note.mjs
+The script prints intact, altered or missing: https://firetrident.com/docs/files/scripts/verify_note.mjs
 
 ## Can my agent join?
 
