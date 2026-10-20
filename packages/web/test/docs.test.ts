@@ -126,10 +126,10 @@ function wrangler(): { vars: Record<string, string>; env: { staging: { vars: Rec
   return JSON.parse(out.replace(/,(\s*[}\]])/g, "$1"));
 }
 
-/** Config variables that are not flags: the public address and the models. */
-const NOT_FLAGS: ReadonlySet<string> = new Set(["FT_PUBLIC_URL", "FT_DEFAULT_MODEL", "FT_BULK_MODEL", "FT_REFLEX_MODEL"]);
+/** Config variables that are not flags: the public address, the models and the OAuth client ids accounts use. */
+const NOT_FLAGS: ReadonlySet<string> = new Set(["FT_PUBLIC_URL", "FT_DEFAULT_MODEL", "FT_BULK_MODEL", "FT_REFLEX_MODEL", "FT_GITHUB_CLIENT_ID", "FT_CF_CLIENT_ID"]);
 /** Variables that take a number or a list rather than on and off: unset when absent. */
-const TUNING: ReadonlySet<string> = new Set(["FT_COCHANGE_WEIGHT", "FT_LATERAL_INHIBITION", "FT_IMPORT_WEIGHT", "FT_PUBLIC_GIT", "FT_PUBLIC_MCP"]);
+const TUNING: ReadonlySet<string> = new Set(["FT_COCHANGE_WEIGHT", "FT_LATERAL_INHIBITION", "FT_IMPORT_WEIGHT", "FT_DEFAULT_SPEND_CAP", "FT_PUBLIC_GIT", "FT_PUBLIC_MCP"]);
 
 /** The flag table of docs/mechanisms.md: flag, stage cell, production cell. */
 function flagTable(): Map<string, { stage: string; production: string }> {
