@@ -5,8 +5,11 @@ import type { Env } from "../env.ts";
  * Limits on public reads. Anyone may read a public colony without a token: the public MCP endpoint (POST /public/mcp,
  * mcp/public.ts) and the public GET routes of the API (/api/colonies and /api/colonies/:id/...), each of which makes a
  * colony's Durable Object do work. Two Workers Rate Limiting bindings count those reads: PUBLIC_IP_LIMIT per client
- * address, PUBLIC_COLONY_LIMIT per colony, both shared by the two doors. Their limits and periods are in wrangler.jsonc;
- * a binding's counters are kept per Cloudflare location. A read over either limit gets 429 with Retry-After and a plain
+ * address, PUBLIC_COLONY_LIMIT per colony, both shared by the two doors. Their limits and periods are in wrangler.jsonc.
+ * A binding's counters are kept per Cloudflare location, cached per machine and synced in the background, so the limit
+ * is a soft brake on sustained reads from one address, not a cap: Cloudflare documents the API as permissive and
+ * eventually consistent, and a probe of 2026-10-19 (a 10-a-minute binding, 40 calls at once from one address at one
+ * location) saw 2 refused. A read over either limit gets 429 with Retry-After and a plain
  * sentence. A request with the admin token is the operator's and is not counted. Without the bindings (local
  * development, tests) nothing is limited, and a binding that fails lets the read through (logged): the public MCP's
  * per-isolate in-flight cap stays as a second guard either way.
