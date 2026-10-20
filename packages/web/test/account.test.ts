@@ -64,6 +64,8 @@ describe("the account page's views", () => {
     const html = renderToStaticMarkup(createElement(SignIn));
     expect(html).toContain('href="/auth/github/start"');
     expect(html).toContain("A colony is one repository that FireTrident coordinates agents on.");
+    expect(html).toContain(">Request an invite</button>");
+    expect(signinText("approved")).toBe("Your request was approved and your account is open.");
   });
 
   it("shows a GitHub name as text, never as markup", () => {

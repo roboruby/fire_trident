@@ -1,7 +1,7 @@
 import type { Id } from "@fire_trident/core";
 import type { Env } from "../env.ts";
-import type { RedeemResult, TokenCheck } from "./store.ts";
-import type { Account, AccountId, GithubIdentity, InviteView, OwnedColony, TokenRole, TokenView } from "./types.ts";
+import type { RedeemResult, RequestResult, TokenCheck } from "./store.ts";
+import type { Account, AccountId, GithubIdentity, InviteRequestView, InviteView, OwnedColony, TokenRole, TokenView } from "./types.ts";
 
 /** The name of the deployment's one accounts object. */
 export const ACCOUNTS_OBJECT = "accounts";
@@ -16,6 +16,12 @@ export interface AccountsRpc {
   mintInvite(p: { id: Id; hash: string; uses: number; expiresAt: number; note: string }, now: number): Promise<InviteView>;
   listInvites(now: number): Promise<InviteView[]>;
   revokeInvite(id: Id, now: number): Promise<InviteView | null>;
+  requestInvite(p: { id: Id; login: string; email: string; note: string }, now: number): Promise<RequestResult>;
+  inviteRequest(id: Id): Promise<InviteRequestView | null>;
+  decideRequest(id: Id, decision: "approved" | "denied", now: number): Promise<InviteRequestView | null>;
+  deleteRequest(id: Id): Promise<void>;
+  openApproved(who: GithubIdentity, sessionHash: string, expiresAt: number, now: number): Promise<Account | null>;
+  listInviteRequests(): Promise<InviteRequestView[]>;
   reserveColony(accountId: AccountId, colonyId: Id, now: number): Promise<{ ok: true } | { ok: false; why: "taken" | "quota"; owned: number }>;
   confirmColony(colonyId: Id, accountId: AccountId): Promise<void>;
   releaseColony(colonyId: Id, now: number): Promise<boolean>;

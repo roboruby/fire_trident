@@ -28,3 +28,8 @@ export const TOKEN_TOUCH_MS = 60_000;
 
 /** One day in milliseconds. */
 export const DAY_MS = 24 * 60 * 60_000;
+
+/** An invite request's note is at most this long. */
+export const REQUEST_NOTE_MAX = 280;
+/** A GitHub account or email with a request waiting or approved within this window cannot ask again. */
+export const REQUEST_WINDOW_MS = 7 * DAY_MS;

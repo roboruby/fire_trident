@@ -1,8 +1,8 @@
 import type { Id } from "@fire_trident/core";
 import { newId } from "../ids.ts";
-import { MAX_COLONIES_PER_ACCOUNT, MAX_LIVE_TOKENS_PER_COLONY, TOKEN_TOUCH_MS } from "./limits.ts";
+import { MAX_COLONIES_PER_ACCOUNT, MAX_LIVE_TOKENS_PER_COLONY, TOKEN_TOUCH_MS, REQUEST_WINDOW_MS } from "./limits.ts";
 import { TOKEN_ROLES } from "./types.ts";
-import type { Account, AccountId, GithubIdentity, InviteView, OwnedColony, TokenRole, TokenView } from "./types.ts";
+import type { Account, AccountId, GithubIdentity, InviteRequestStatus, InviteRequestView, InviteView, OwnedColony, TokenRole, TokenView } from "./types.ts";
 
 /**
  * The accounts store: accounts, sessions, invite codes, colony ownership, scoped tokens and the MCP sessions those tokens
@@ -53,6 +53,18 @@ const SCHEMA = [
     at INTEGER NOT NULL,
     PRIMARY KEY (invite_id, account_id)
   )`,
+  `CREATE TABLE IF NOT EXISTS invite_requests (
+    id TEXT PRIMARY KEY,
+    login TEXT NOT NULL,
+    login_key TEXT NOT NULL,
+    email TEXT NOT NULL,
+    note TEXT NOT NULL DEFAULT '',
+    created_at INTEGER NOT NULL,
+    status TEXT NOT NULL,
+    decided_at INTEGER,
+    account_id TEXT
+  )`,
+  "CREATE INDEX IF NOT EXISTS invite_requests_by_login ON invite_requests (login_key)",
   `CREATE TABLE IF NOT EXISTS colonies (
     colony_id TEXT PRIMARY KEY,
     account_id TEXT NOT NULL,
@@ -132,6 +144,24 @@ function tokenView(row: TokenRow, now: number): TokenView {
     lastUsedAt: row.last_used_at === null ? null : Number(row.last_used_at),
     revokedAt,
     live: revokedAt === null && now < expiresAt,
+  };
+}
+
+type RequestRow = { id: string; login: string; login_key: string; email: string; note: string; created_at: number; status: string; decided_at: number | null; account_id: string | null };
+
+/** Why a request was not taken: one for the same account or email is waiting, was approved and not opened yet, or was denied within the window. */
+export type RequestResult = { ok: true; request: InviteRequestView } | { ok: false; why: "pending" | "approved" | "denied" };
+
+function requestView(r: RequestRow): InviteRequestView {
+  return {
+    id: r.id,
+    login: r.login,
+    email: r.email,
+    note: r.note,
+    createdAt: Number(r.created_at),
+    status: r.status as InviteRequestStatus,
+    ...(r.decided_at !== null ? { decidedAt: Number(r.decided_at) } : {}),
+    ...(r.account_id ? { accountId: r.account_id } : {}),
   };
 }
 
@@ -251,6 +281,67 @@ export class AccountsStore {
     this.sql.exec("UPDATE invites SET expires_at = ? WHERE id = ? AND expires_at > ?", now, id, now);
     const row = this.rows<InviteRow>("SELECT * FROM invites WHERE id = ?", id)[0];
     return row ? inviteView(row, now) : null;
+  }
+
+  /**
+   * Record a person's request for an invite: their GitHub username (matched without case) and email. Refused while a
+   * request for either is waiting, approved and not yet opened, or denied, within REQUEST_WINDOW_MS.
+   */
+  requestInvite(p: { id: Id; login: string; email: string; note: string }, now: number): RequestResult {
+    return this.tx((): RequestResult => {
+      const key = p.login.toLowerCase();
+      const email = p.email.toLowerCase();
+      const open = this.rows<RequestRow>(
+        "SELECT * FROM invite_requests WHERE (login_key = ? OR email = ?) AND status IN ('pending', 'approved', 'denied') AND created_at > ? ORDER BY created_at DESC LIMIT 1",
+        key,
+        email,
+        now - REQUEST_WINDOW_MS,
+      )[0];
+      if (open) return { ok: false, why: open.status === "approved" ? "approved" : open.status === "denied" ? "denied" : "pending" };
+      this.sql.exec("INSERT INTO invite_requests (id, login, login_key, email, note, created_at, status) VALUES (?, ?, ?, ?, ?, ?, 'pending')", p.id, p.login, key, email, p.note, now);
+      const row = this.rows<RequestRow>("SELECT * FROM invite_requests WHERE id = ?", p.id)[0];
+      if (!row) throw new Error("the request was not stored");
+      return { ok: true, request: requestView(row) };
+    });
+  }
+
+  /** One request, or null. */
+  inviteRequest(id: Id): InviteRequestView | null {
+    const row = this.rows<RequestRow>("SELECT * FROM invite_requests WHERE id = ?", id)[0];
+    return row ? requestView(row) : null;
+  }
+
+  /** Approve or deny a waiting request; one decided already keeps its decision. Null when there is no such request. */
+  decideRequest(id: Id, decision: "approved" | "denied", now: number): InviteRequestView | null {
+    this.sql.exec("UPDATE invite_requests SET status = ?, decided_at = ? WHERE id = ? AND status = 'pending'", decision, now, id);
+    return this.inviteRequest(id);
+  }
+
+  /** Forget a request whose email to the operator could not be sent, so the person can ask again. */
+  deleteRequest(id: Id): void {
+    this.sql.exec("DELETE FROM invite_requests WHERE id = ? AND status = 'pending'", id);
+  }
+
+  /**
+   * Open an account for a GitHub user whose request was approved, and start its session: the newest approved request
+   * for that username (matched without case) is marked opened. Null when none is approved or the user has an account.
+   */
+  openApproved(who: GithubIdentity, sessionHash: string, expiresAt: number, now: number): Account | null {
+    return this.tx((): Account | null => {
+      if (this.accountByGithub(who.id)) return null;
+      const approved = this.rows<RequestRow>("SELECT * FROM invite_requests WHERE login_key = ? AND status = 'approved' ORDER BY decided_at DESC LIMIT 1", who.login.toLowerCase())[0];
+      if (!approved) return null;
+      const id = this.accountId();
+      this.sql.exec("INSERT INTO accounts (id, github_id, login, name, created_at, signed_in_at) VALUES (?, ?, ?, ?, ?, ?)", id, who.id, who.login, who.name ?? null, now, now);
+      this.sql.exec("UPDATE invite_requests SET status = 'opened', account_id = ? WHERE id = ?", id, approved.id);
+      this.startSession(id, sessionHash, expiresAt, now);
+      return { id, github: { ...who }, createdAt: now };
+    });
+  }
+
+  /** Every request, newest first. */
+  listInviteRequests(): InviteRequestView[] {
+    return this.rows<RequestRow>("SELECT * FROM invite_requests ORDER BY created_at DESC LIMIT 500").map(requestView);
   }
 
   /**

@@ -114,6 +114,19 @@ export interface Env {
    */
   FT_GRANT_KEY?: string;
   /**
+   * Invite requests on the account page (accounts/requests.ts; only with FT_ACCOUNTS on): the Turnstile widget's site key
+   * (a var, public) and secret, where the operator's email goes (FT_INVITE_TO, the send_email binding's verified
+   * destination) and the sender on a zone with Email Routing (FT_INVITE_FROM). Without all of them and the INVITE_MAIL
+   * binding, the page offers no request.
+   */
+  FT_TURNSTILE_SITE_KEY?: string;
+  /** Secret: the Turnstile widget's secret, sent only to challenges.cloudflare.com's siteverify. */
+  FT_TURNSTILE_SECRET?: string;
+  FT_INVITE_TO?: string;
+  FT_INVITE_FROM?: string;
+  /** The send_email binding that carries invite requests to the operator (wrangler.jsonc `send_email`). */
+  INVITE_MAIL?: SendEmail;
+  /**
    * Secret (optional): the key that signs lineage notes, an Ed25519 private key as a JWK JSON string
    * ({"kty":"OKP","crv":"Ed25519","d":"…","x":"…"}, with an optional "since": the ISO date it started signing). With it,
    * the trunk writer signs each landing commit it builds (an FT-Note-Signature trailer just above FT-Note, over the note's

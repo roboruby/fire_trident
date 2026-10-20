@@ -68,6 +68,23 @@ export interface InviteView {
   live: boolean;
 }
 
+/** Where an invite request stands: waiting for the operator, approved (the account opens on the next sign-in), opened, or denied. */
+export type InviteRequestStatus = "pending" | "approved" | "opened" | "denied";
+
+/** An invite request as the operator's email, decision page and list show it. */
+export interface InviteRequestView {
+  id: Id;
+  /** The GitHub username the person gave. */
+  login: string;
+  email: string;
+  note: string;
+  createdAt: number;
+  status: InviteRequestStatus;
+  decidedAt?: number;
+  /** The account the approval opened. */
+  accountId?: AccountId;
+}
+
 /** A colony an account owns. `pending` while its creation runs (it counts toward the quota and is owned already). */
 export interface OwnedColony {
   colonyId: Id;

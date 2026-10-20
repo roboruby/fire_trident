@@ -1,8 +1,8 @@
 import { DurableObject } from "cloudflare:workers";
 import type { Id } from "@fire_trident/core";
 import type { Env } from "../env.ts";
-import { AccountsStore, type RedeemResult, type TokenCheck } from "./store.ts";
-import type { Account, AccountId, GithubIdentity, InviteView, OwnedColony, TokenRole, TokenView } from "./types.ts";
+import { AccountsStore, type RedeemResult, type RequestResult, type TokenCheck } from "./store.ts";
+import type { Account, AccountId, GithubIdentity, InviteRequestView, InviteView, OwnedColony, TokenRole, TokenView } from "./types.ts";
 
 /**
  * AccountsDO: the deployment's accounts, in one instance (by name, ACCOUNTS_OBJECT): accounts, sessions, invite codes,
@@ -53,6 +53,30 @@ export class AccountsDO extends DurableObject<Env> {
   }
 
   /** End an invite code now. */
+  async requestInvite(p: { id: Id; login: string; email: string; note: string }, now: number): Promise<RequestResult> {
+    return this.store.requestInvite(p, now);
+  }
+
+  async inviteRequest(id: Id): Promise<InviteRequestView | null> {
+    return this.store.inviteRequest(id);
+  }
+
+  async decideRequest(id: Id, decision: "approved" | "denied", now: number): Promise<InviteRequestView | null> {
+    return this.store.decideRequest(id, decision, now);
+  }
+
+  async deleteRequest(id: Id): Promise<void> {
+    this.store.deleteRequest(id);
+  }
+
+  async openApproved(who: GithubIdentity, sessionHash: string, expiresAt: number, now: number): Promise<Account | null> {
+    return this.store.openApproved(who, sessionHash, expiresAt, now);
+  }
+
+  async listInviteRequests(): Promise<InviteRequestView[]> {
+    return this.store.listInviteRequests();
+  }
+
   async revokeInvite(id: Id, now: number): Promise<InviteView | null> {
     return this.store.revokeInvite(id, now);
   }

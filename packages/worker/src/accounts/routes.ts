@@ -18,6 +18,7 @@ import { accountsOn, publicOrigin, sessionKey, signInConfig } from "./config.ts"
 import { OAUTH_COOKIE, SIGNIN_PATH, SIGNUP_COOKIE, clearCookie, readCookie, setCookie } from "./cookies.ts";
 import { base64url, open, pkceChallenge, randomBytes, seal, sha256Hex } from "./crypto.ts";
 import { GithubSignInError, authorizeUrl, cleanName, githubIdentity, identityOf, type GithubFetch } from "./github.ts";
+import { REQUEST_PATH, RequestBody, cleanNote, decidedPage, decisionLink, decisionPage, linkedId, noRequestPage, requestMail, requestsConfig, verifyTurnstile, type VerifyTurnstile } from "./requests.ts";
 import {
   DAY_MS,
   INVITE_DEFAULT_DAYS,
@@ -69,6 +70,8 @@ export interface AccountsDeps {
   grantFor?: (env: Env, account: AccountId) => Promise<CloudflareGrant | null>;
   /** The fetch that reaches GitHub (tests pass a fake GitHub). */
   fetch?: GithubFetch;
+  /** Turnstile's check of an invite request's token (requests.ts; tests pass a fake). */
+  verifyTurnstile?: VerifyTurnstile;
   now?: () => number;
 }
 
@@ -80,7 +83,7 @@ const SIGNUP_PURPOSE = "firetrident signup v1";
 
 /** Where the account page lives, and the sign-in outcomes it explains (?signin=). */
 const ACCOUNT_PAGE = "/account";
-export const SIGNIN_OUTCOMES = ["unavailable", "expired", "denied", "github", "invite"] as const;
+export const SIGNIN_OUTCOMES = ["unavailable", "expired", "denied", "github", "invite", "approved"] as const;
 export type SigninOutcome = (typeof SIGNIN_OUTCOMES)[number];
 
 function json(body: unknown, status = 200, headers: Record<string, string> = {}): Response {
@@ -232,6 +235,8 @@ export function accountsApp(deps: AccountsDeps = {}): Hono<{ Bindings: Env }> {
   const app = new Hono<{ Bindings: Env }>();
   const now = deps.now ?? Date.now;
   const fetcher: GithubFetch = deps.fetch ?? ((url, init) => fetch(url, init));
+  const turnstile: VerifyTurnstile = deps.verifyTurnstile ?? verifyTurnstile;
+  const html = (text: string, status = 200): Response => new Response(text, { status, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "referrer-policy": "no-referrer" } });
 
   app.onError((err, c) => {
     if (isUnsupportedRpc(err)) return json({ error: `${UPGRADING} (${messageOf(err)})` }, 503, { "Retry-After": "30" });
@@ -289,6 +294,9 @@ export function accountsApp(deps: AccountsDeps = {}): Hono<{ Bindings: Env }> {
       const session = await newSession(cfg.sessionKey, at);
       const account = await stub.signIn(who, session.hash, session.expiresAt, at);
       if (account) return redirect(accountPage(c.env), [clearState, clearCookie(SIGNUP_COOKIE, SIGNIN_PATH), session.cookie]);
+      // A new person whose invite request the operator approved: their account opens now, with no code.
+      const approved = await stub.openApproved(who, session.hash, session.expiresAt, at);
+      if (approved) return redirect(accountPage(c.env, "approved"), [clearState, clearCookie(SIGNUP_COOKIE, SIGNIN_PATH), session.cookie]);
       // A new person: who GitHub said they are waits, sealed, for an invite code.
       const signup = await seal({ gh: who }, at + SIGNUP_TTL_MS, cfg.sessionKey, SIGNUP_PURPOSE);
       return redirect(accountPage(c.env, "invite"), [clearState, setCookie(SIGNUP_COOKIE, signup, SIGNIN_PATH, SIGNUP_TTL_MS / 1000)]);
@@ -332,6 +340,80 @@ export function accountsApp(deps: AccountsDeps = {}): Hono<{ Bindings: Env }> {
         clearCookie(SIGNUP_COOKIE, SIGNIN_PATH),
         session.cookie,
       ]);
+    }),
+  );
+
+  // Invite requests (requests.ts): whether they are open, asking, and the operator's decision page from the email's link.
+  app.get(
+    "/api/accounts/invite-requests/config",
+    on((c) => {
+      const cfg = requestsConfig(c.env);
+      return json({ siteKey: "missing" in cfg ? null : cfg.siteKey });
+    }),
+  );
+
+  app.post(
+    "/api/accounts/invite-requests",
+    on(async (c) => {
+      if (!sameSite(c.env, c.req.header("origin"))) return json({ error: CROSS_SITE }, 403);
+      const cfg = requestsConfig(c.env);
+      if ("missing" in cfg) return json({ error: "Invite requests are not set up on this deployment." }, 503);
+      const b = await body(c, RequestBody);
+      if (!(await turnstile(cfg.secret, b.token, c.req.header("cf-connecting-ip") ?? null))) {
+        return json({ error: "The check that you are a person did not pass. Reload the page and try again." }, 403);
+      }
+      const at = now();
+      const stub = stubOf(c.env);
+      const res = await stub.requestInvite({ id: newId("req_"), login: b.login, email: b.email, note: cleanNote(b.note ?? "") }, at);
+      if (!res.ok) {
+        const why =
+          res.why === "approved"
+            ? "That request was approved already: sign in with GitHub as that account and it opens."
+            : res.why === "denied"
+              ? "A request for that GitHub account or email was answered recently. You can ask again in a week."
+              : "A request for that GitHub account or email is already waiting. The operator answers by email.";
+        return json({ error: why }, 409);
+      }
+      try {
+        await cfg.mail.send(requestMail(cfg, res.request, await decisionLink(cfg, res.request.id)));
+      } catch (e) {
+        console.error(`accounts: the invite request mail was not sent: ${messageOf(e)}`);
+        await stub.deleteRequest(res.request.id);
+        return json({ error: "The request could not reach the operator just now. Try again in a few minutes." }, 503);
+      }
+      return json({ ok: true, id: res.request.id }, 202);
+    }),
+  );
+
+  /** The request a decision link names, when the link's signature holds; else null. */
+  const linkedRequest = async (c: AccountsContext, token: string) => {
+    const key = sessionKey(c.env);
+    const id = c.req.param("id");
+    if (!key || !id || (await linkedId(token, key)) !== id) return null;
+    return stubOf(c.env).inviteRequest(id);
+  };
+
+  app.get(
+    `${REQUEST_PATH}/:id`,
+    on(async (c) => {
+      const token = c.req.query("t") ?? "";
+      const r = await linkedRequest(c, token);
+      if (!r) return html(noRequestPage(), 404);
+      return html(decisionPage(r, token, publicOrigin(c.env) ?? ""));
+    }),
+  );
+
+  app.post(
+    `${REQUEST_PATH}/:id`,
+    on(async (c) => {
+      const form = await c.req.parseBody();
+      const token = typeof form.t === "string" ? form.t : "";
+      const decision = form.decision === "approve" ? "approved" : form.decision === "deny" ? "denied" : null;
+      const r = await linkedRequest(c, token);
+      if (!r) return html(noRequestPage(), 404);
+      if (!decision) return html(decisionPage(r, token, publicOrigin(c.env) ?? ""), 400);
+      const decided = (await stubOf(c.env).decideRequest(r.id, decision, now())) ?? r;
+      return html(decidedPage(decided, publicOrigin(c.env) ?? ""));
     }),
   );
 
@@ -525,6 +607,10 @@ export function accountsApp(deps: AccountsDeps = {}): Hono<{ Bindings: Env }> {
     const invite = OBJECT_ID.test(id) ? await stubOf(c.env).revokeInvite(id, now()) : null;
     if (!invite) throw ftError(404, "There is no such invite code.");
     return json({ ok: true, invite });
+  });
+
+  app.get("/api/accounts/invite-requests", admin, async (c) => {
+    return json({ requests: await stubOf(c.env).listInviteRequests() });
   });
 
   return app;

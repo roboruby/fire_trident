@@ -194,3 +194,14 @@
   border-radius: 10px;
   background: rgba(243, 128, 32, 0.06);
 }
+
+/* asking for an invite (RequestInvite in Account.tsx) */
+
+.ac-request {
+  margin-top: 22px;
+}
+
+.ac-turnstile {
+  min-height: 65px;
+  margin: 4px 0 10px;
+}

@@ -90,6 +90,8 @@ export const NOT_FLAGS: readonly string[] = [
   "FT_GITHUB_TOKEN",
   "FT_GRANT_KEY",
   "FT_HEDGE_MS",
+  "FT_INVITE_FROM",
+  "FT_INVITE_TO",
   "FT_LATERAL_INHIBITION",
   "FT_MCP_TOKEN",
   "FT_NOTE_KEY",
@@ -99,6 +101,8 @@ export const NOT_FLAGS: readonly string[] = [
   "FT_REFLEX_MODEL",
   "FT_RESOLVER_MODEL",
   "FT_SESSION_KEY",
+  "FT_TURNSTILE_SECRET",
+  "FT_TURNSTILE_SITE_KEY",
 ];
 
 /** What GET /api/about answers. Every field but `service` and `flags` is null when the deployment does not say. */

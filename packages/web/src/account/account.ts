@@ -138,6 +138,8 @@ export function signinText(outcome: string | null): string | null {
       return "GitHub said you declined the sign-in. Sign in again when you are ready.";
     case "github":
       return "GitHub did not finish the sign-in. Try again in a minute.";
+    case "approved":
+      return "Your request was approved and your account is open.";
     default:
       return null;
   }

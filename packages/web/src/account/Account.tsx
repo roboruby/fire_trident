@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { TridentMark } from "../components/TopBar.tsx";
 import { Code } from "../landing/RunIt.tsx";
 import { colonyHref } from "../route.ts";
@@ -101,12 +101,13 @@ export function SignIn() {
         A colony is one repository that FireTrident coordinates agents on. With an account you can create up to three, on your own Cloudflare account, and give each agent or reviewer a token for just one of them. Reading every
         colony needs no account.
       </p>
-      <p className="ac-text">The first time, you also need an invite code from whoever runs this deployment.</p>
+      <p className="ac-text">The first time, you also need an invite code from whoever runs this deployment, or an approved request.</p>
       <div className="l-ctas">
         <a className="l-btn l-btn-primary" href="/auth/github/start">
           Sign in with GitHub
         </a>
       </div>
+      <RequestInvite />
     </>
   );
 }
@@ -164,7 +165,150 @@ function InviteStep({ onDone, onNotice }: { onDone: () => Promise<void>; onNotic
         </button>
         {error ? <p className="ac-error">{error}</p> : null}
       </form>
+      <RequestInvite login={who.login} />
     </>
+  );
+}
+
+declare global {
+  interface Window {
+    turnstile?: { render: (el: HTMLElement, opts: Record<string, unknown>) => string; remove: (id: string) => void };
+  }
+}
+
+/** Turnstile's script, loaded once and only when the form opens (explicit rendering: nothing runs until render is called). */
+const TURNSTILE_SCRIPT = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+let turnstileLoading: Promise<void> | null = null;
+function loadTurnstile(): Promise<void> {
+  if (window.turnstile) return Promise.resolve();
+  if (!turnstileLoading) {
+    turnstileLoading = new Promise((resolve, reject) => {
+      const s = document.createElement("script");
+      s.src = TURNSTILE_SCRIPT;
+      s.async = true;
+      s.onload = () => resolve();
+      s.onerror = () => {
+        turnstileLoading = null;
+        reject(new Error("Turnstile did not load"));
+      };
+      document.head.appendChild(s);
+    });
+  }
+  return turnstileLoading;
+}
+
+/**
+ * Asking for an invite: a button, then a short form (GitHub username, email, a note) behind a Turnstile check. The
+ * request goes to the operator by email with a link that approves it; an approved GitHub account opens on its next
+ * sign-in here. Offered only where the deployment has requests set up (GET /api/accounts/invite-requests/config).
+ */
+export function RequestInvite({ login: known }: { login?: string } = {}) {
+  const [open, setOpen] = useState(false);
+  const [siteKey, setSiteKey] = useState<string | null | undefined>(undefined);
+  const [login, setLogin] = useState(known ?? "");
+  const [email, setEmail] = useState("");
+  const [note, setNote] = useState("");
+  const [token, setToken] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [sent, setSent] = useState<string | null>(null);
+  const widget = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open || siteKey !== undefined) return;
+    send("GET", "/api/accounts/invite-requests/config")
+      .then(async (res) => {
+        const b = res.ok ? ((await res.json().catch(() => null)) as { siteKey?: unknown } | null) : null;
+        setSiteKey(typeof b?.siteKey === "string" && b.siteKey ? b.siteKey : null);
+      })
+      .catch(() => setSiteKey(null));
+  }, [open, siteKey]);
+
+  useEffect(() => {
+    if (!open || !siteKey || sent) return;
+    const el = widget.current;
+    if (!el) return;
+    let id: string | null = null;
+    let gone = false;
+    loadTurnstile()
+      .then(() => {
+        if (gone || !window.turnstile) return;
+        id = window.turnstile.render(el, {
+          sitekey: siteKey,
+          callback: (t: string) => setToken(t),
+          "expired-callback": () => setToken(null),
+          "error-callback": () => setToken(null),
+        });
+      })
+      .catch(() => setError("The check that you are a person could not load. Reload the page and try again."));
+    return () => {
+      gone = true;
+      if (id && window.turnstile) window.turnstile.remove(id);
+    };
+  }, [open, siteKey, sent]);
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!token) return;
+    setBusy(true);
+    setError(null);
+    const res = await send("POST", "/api/accounts/invite-requests", { login: login.trim(), email: email.trim(), note, token }).catch(() => null);
+    setBusy(false);
+    if (!res) return setError("The server could not be reached.");
+    if (!res.ok) return setError(await errorOf(res));
+    setSent(login.trim());
+  };
+
+  if (!open) {
+    return (
+      <div className="ac-request">
+        <p className="ac-text">
+          No code?{" "}
+          <button type="button" className="btn" onClick={() => setOpen(true)}>
+            Request an invite
+          </button>
+        </p>
+      </div>
+    );
+  }
+  if (sent) {
+    return (
+      <div className="ac-request">
+        <p className="ac-strong">Request sent.</p>
+        <p className="ac-text">When it is approved, sign in with GitHub as @{sent} and your account opens. Nothing else to do until then.</p>
+      </div>
+    );
+  }
+  if (siteKey === null) {
+    return (
+      <div className="ac-request">
+        <p className="ac-text">Invite requests are not open on this deployment. Ask whoever runs it for a code.</p>
+      </div>
+    );
+  }
+  return (
+    <form className="ac-form ac-request" onSubmit={(e) => void submit(e)}>
+      <h3 className="ac-h3">Request an invite</h3>
+      <p className="ac-text">The operator gets your request by email and approves it with one click. Then you sign in with GitHub here and your account opens.</p>
+      <label className="ac-field">
+        <span>Your GitHub username (the account you will sign in with)</span>
+        <input className="mono" value={login} onChange={(e) => setLogin(e.target.value)} placeholder="octocat" autoComplete="username" spellCheck={false} required maxLength={39} readOnly={!!known} />
+      </label>
+      <label className="ac-field">
+        <span>Email (so the operator can reach you)</span>
+        <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" autoComplete="email" required maxLength={254} />
+      </label>
+      <label className="ac-field">
+        <span>What you would use it for (optional)</span>
+        <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="a repository, a team, a question" maxLength={280} />
+      </label>
+      <div className="ac-turnstile" ref={widget} aria-label="A check that you are a person" />
+      <button type="submit" className="btn btn-approve" disabled={busy || !token || login.trim() === "" || email.trim() === ""}>
+        {busy ? "Sending…" : "Send the request"}
+      </button>
+      {siteKey === undefined ? <p className="ac-text">Loading.</p> : null}
+      {error ? <p className="ac-error">{error}</p> : null}
+    </form>
   );
 }
 

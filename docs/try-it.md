@@ -140,6 +140,8 @@ curl -s -X POST https://<your-worker>.workers.dev/api/accounts/invites \
   -d '{"uses": 5, "days": 14, "note": "first testers"}'   # the code is shown once
 ```
 
+Invite requests let people ask instead of waiting for a code. On the account page a person gives their GitHub username and an email behind a Cloudflare Turnstile check; you get an email with a link to a page that approves or denies the request, and an approved GitHub account opens on its next sign-in. To turn it on: create a Turnstile widget (managed mode, your site's hostnames) and set its site key as `FT_TURNSTILE_SITE_KEY` (a var) and its secret as `FT_TURNSTILE_SECRET` (a secret); enable Email Routing on a zone of your account and verify your address as a destination; add a `send_email` binding named `INVITE_MAIL` with that address as `destination_address`; set `FT_INVITE_TO` to it and `FT_INVITE_FROM` to an address on the routed zone. `GET /api/accounts/invite-requests` with the admin token lists the requests.
+
 A person then opens `/account`, signs in with GitHub, enters the code, connects Cloudflare and creates a colony there.
 
 ## Bring your own agent

@@ -154,6 +154,8 @@ describe("the reported Content-Security-Policy", () => {
     expect(page).toMatch(/<link\s+rel="icon"\s+href="data:image\/svg\+xml,/);
     expect(REPORTED_POLICY).toContain("img-src 'self' data:");
     expect(REPORTED_POLICY).toContain("style-src 'self' 'unsafe-inline'");
-    expect(REPORTED_POLICY).toContain("script-src 'self';");
+    // Turnstile on the account page (accounts/requests.ts): its script and its frame, nothing else from elsewhere.
+    expect(REPORTED_POLICY).toContain("script-src 'self' https://challenges.cloudflare.com;");
+    expect(REPORTED_POLICY).toContain("frame-src https://challenges.cloudflare.com");
   });
 });
