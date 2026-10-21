@@ -1,6 +1,6 @@
 {
   "name": "fire_trident",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "FireTrident CLI: a colony, not a queue.",
   "license": "MIT",
   "type": "module",

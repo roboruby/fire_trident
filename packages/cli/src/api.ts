@@ -60,7 +60,7 @@ import { silentTtlRequest } from "./closure.ts";
 export const DEFAULT_URL = "https://firetrident.com";
 
 /** CLI version, printed by `ft --version` and sent as the user agent. */
-export const VERSION = "0.0.1";
+export const VERSION = "0.0.2";
 
 /** One planned HTTP call. `path` includes any query string. */
 export interface ApiRequest {

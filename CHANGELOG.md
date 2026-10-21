@@ -2,7 +2,7 @@
 
 Notable changes to FireTrident, newest first, in the style of Keep a Changelog. The version at the top has no date until it is released.
 
-## 0.0.2
+## 0.0.2 - 2026-10-21
 
 ### Added
 
