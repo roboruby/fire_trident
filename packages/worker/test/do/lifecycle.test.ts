@@ -19,7 +19,7 @@ async function lifecycle(colonyId: string, intentId: string): Promise<IntentLife
 const states = (l: IntentLifecycle) => l.current.steps.map((s) => `${s.key}:${s.state}`);
 
 describe("an intent's lifecycle", () => {
-  it("follows a change from declared to landed, without a token, and never marks the forge's steps done", async () => {
+  it("follows a change from declared to landed, without a token, and never marks the repository's steps done", async () => {
     const c = await newColony();
     const i = await addIntent(c.id, ["src/life.ts"], { createdBy: "lee", source: "human" });
     const before = await lifecycle(c.id, i.id);
@@ -33,7 +33,7 @@ describe("an intent's lifecycle", () => {
       () => lifecycle(c.id, i.id),
       (x) => x.current.reached === "landed",
     );
-    expect(l).toMatchObject({ colonyId: c.id, intentId: i.id, caption: "FireTrident lands to its own trunk and never merges into your repository; the last two steps happen in your forge." });
+    expect(l).toMatchObject({ colonyId: c.id, intentId: i.id, caption: "FireTrident lands to its own trunk and never merges into your repository; the last two steps happen in your repository." });
     expect(l.current.proposalId).toBe(p.id);
     expect(states(l)).toEqual(["declared:done", "claimed:done", "proposed:done", "confirmed:done", "landed:done", "certified:todo", "taken-back:outside", "merged:outside"]);
     expect(l.current.steps[1]?.text).toBe("lander (bench agent)");

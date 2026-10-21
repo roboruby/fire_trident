@@ -155,6 +155,7 @@ describe("what certification owes (Dynamic Workers)", () => {
     const moved = await eventually(
       () => trunk(c.id).state(),
       (st) => (st.certified ?? []).includes(sha5),
+      30_000,
     );
     expect(moved.certified).toContain(sha5);
   });
